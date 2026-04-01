@@ -143,3 +143,77 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 42);
 }
+
+#[test]
+fn end_to_end_when_struct_field_write_then_value_stored() {
+    let source = "
+TYPE MY_POINT :
+  STRUCT
+    X : REAL;
+    Y : REAL;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    pt : MY_POINT;
+    result : REAL;
+  END_VAR
+    pt.X := 1.0;
+    result := pt.X;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_f32(), 1.0);
+}
+
+#[test]
+fn end_to_end_when_struct_field_write_both_fields_then_correct_values() {
+    let source = "
+TYPE MY_POINT :
+  STRUCT
+    X : REAL;
+    Y : REAL;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    pt : MY_POINT;
+    rx : REAL;
+    ry : REAL;
+  END_VAR
+    pt.X := 1.0;
+    pt.Y := 2.0;
+    rx := pt.X;
+    ry := pt.Y;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_f32(), 1.0);
+    assert_eq!(bufs.vars[2].as_f32(), 2.0);
+}
+
+#[test]
+fn end_to_end_when_struct_field_write_int_then_correct_value() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    a : INT;
+    b : DINT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : DINT;
+  END_VAR
+    s.a := 42;
+    s.b := 100;
+    result := s.a + s.b;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 142);
+}

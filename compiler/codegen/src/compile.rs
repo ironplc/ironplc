@@ -120,7 +120,10 @@ enum PoolConstant {
 }
 
 /// The IEC 61131-3 default maximum length for STRING (254 characters).
-const DEFAULT_STRING_MAX_LENGTH: u16 = 254;
+pub(crate) const DEFAULT_STRING_MAX_LENGTH_U16: u16 = 254;
+
+/// STRING_HEADER_BYTES re-exported as u32 for arithmetic in compile_array.
+pub(crate) const STRING_HEADER_BYTES_U32: u32 = STRING_HEADER_BYTES as u32;
 
 /// Metadata for a STRING variable allocated in the data region.
 struct StringVarInfo {
@@ -607,7 +610,7 @@ fn compile_user_function(
                             }
                         }
                         let desc_index =
-                            builder.add_array_descriptor(element_type_byte, total_elements);
+                            builder.add_array_descriptor(element_type_byte, total_elements, 0);
                         ctx.array_vars.insert(
                             id.clone(),
                             crate::compile_array::ArrayVarInfo {
@@ -617,6 +620,8 @@ fn compile_user_function(
                                 element_var_type_info: element_vti,
                                 total_elements,
                                 dimensions,
+                                is_string_element: false,
+                                string_max_len: 0,
                             },
                         );
                     }
@@ -1032,7 +1037,7 @@ pub(crate) struct CompileContext {
     /// Next available byte offset in the data region.
     pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
-    max_string_capacity: u16,
+    pub(crate) max_string_capacity: u16,
     /// Number of temp buffers needed (one per string load in the init function).
     num_temp_bufs: u16,
     /// Debug info: variable name entries collected during assign_variables.
@@ -1467,24 +1472,44 @@ fn emit_initial_values(
                         let var_index = array_info.var_index;
                         let desc_index = array_info.desc_index;
                         let element_vti = array_info.element_var_type_info;
+                        let is_string = array_info.is_string_element;
 
                         // Store data_offset into the variable slot (like FB instances).
                         let offset_const = ctx.add_i32_constant(data_offset as i32);
                         emitter.emit_load_const_i32(offset_const);
                         emitter.emit_store_var_i32(var_index);
 
-                        // Emit STORE_ARRAY for each initial value.
-                        if !array_init.initial_values.is_empty() {
-                            let values = crate::compile_array::flatten_array_initial_values(
-                                &array_init.initial_values,
-                            )?;
-                            let element_op_type = (element_vti.op_width, element_vti.signedness);
-                            for (i, value) in values.iter().enumerate() {
-                                compile_constant(emitter, ctx, value, element_op_type)?;
-                                emit_truncation(emitter, element_vti);
-                                let idx_const = ctx.add_i32_constant(i as i32);
-                                emitter.emit_load_const_i32(idx_const);
-                                emitter.emit_store_array(var_index, desc_index);
+                        if is_string {
+                            // Initialize all string headers in the array.
+                            emitter.emit_str_init_array(var_index, desc_index);
+
+                            // Emit STR_STORE_ARRAY_ELEM for each initial string value.
+                            if !array_init.initial_values.is_empty() {
+                                let values = crate::compile_array::flatten_array_initial_values(
+                                    &array_init.initial_values,
+                                )?;
+                                for (i, value) in values.iter().enumerate() {
+                                    compile_constant(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+                                    let idx_const = ctx.add_i32_constant(i as i32);
+                                    emitter.emit_load_const_i32(idx_const);
+                                    emitter.emit_str_store_array_elem(var_index, desc_index);
+                                }
+                            }
+                        } else {
+                            // Emit STORE_ARRAY for each initial value.
+                            if !array_init.initial_values.is_empty() {
+                                let values = crate::compile_array::flatten_array_initial_values(
+                                    &array_init.initial_values,
+                                )?;
+                                let element_op_type =
+                                    (element_vti.op_width, element_vti.signedness);
+                                for (i, value) in values.iter().enumerate() {
+                                    compile_constant(emitter, ctx, value, element_op_type)?;
+                                    emit_truncation(emitter, element_vti);
+                                    let idx_const = ctx.add_i32_constant(i as i32);
+                                    emitter.emit_load_const_i32(idx_const);
+                                    emitter.emit_store_array(var_index, desc_index);
+                                }
                             }
                         }
                     }
@@ -2037,6 +2062,20 @@ fn compile_statement(
                 return compile_bit_access_assignment(emitter, ctx, bit_access, &assignment.value);
             }
 
+            // Check if the target is a structured variable (struct field write).
+            if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) =
+                &assignment.target
+            {
+                let (var_index, desc_index, slot_offset, op_type, field_type) =
+                    crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
+                compile_expr(emitter, ctx, &assignment.value, op_type)?;
+                crate::compile_struct::emit_truncation_for_field(emitter, &field_type);
+                let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
+                emitter.emit_load_const_i32(idx_const);
+                emitter.emit_store_array(var_index, desc_index);
+                return Ok(());
+            }
+
             // Look up the target variable's type info.
             let target_name = resolve_variable_name(&assignment.target);
 
@@ -2067,6 +2106,7 @@ fn compile_statement(
                         let element_vti = info.element_var_type_info;
                         let arr_var_index = info.var_index;
                         let arr_desc_index = info.desc_index;
+                        let is_string_elem = info.is_string_element;
                         let dim_info: Vec<_> = info
                             .dimensions
                             .iter()
@@ -2077,23 +2117,37 @@ fn compile_statement(
                             })
                             .collect();
                         // info is no longer used; subscripts borrows from AST, not ctx.
-                        let element_op_type = (element_vti.op_width, element_vti.signedness);
                         let target_span = variable_span(&assignment.target);
 
-                        // 1. Compile the RHS value.
-                        compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
-                        // 2. Truncate for sub-32-bit types.
-                        emit_truncation(emitter, element_vti);
-                        // 3. Compute the flat index.
-                        crate::compile_array::emit_flat_index(
-                            emitter,
-                            ctx,
-                            &subscripts,
-                            &dim_info,
-                            &target_span,
-                        )?;
-                        // Stack: [..., value, index]. STORE_ARRAY pops both.
-                        emitter.emit_store_array(arr_var_index, arr_desc_index);
+                        if is_string_elem {
+                            // String array: compile RHS (produces buf_idx), then flat index,
+                            // then STR_STORE_ARRAY_ELEM.
+                            compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                            crate::compile_array::emit_flat_index(
+                                emitter,
+                                ctx,
+                                &subscripts,
+                                &dim_info,
+                                &target_span,
+                            )?;
+                            emitter.emit_str_store_array_elem(arr_var_index, arr_desc_index);
+                        } else {
+                            let element_op_type = (element_vti.op_width, element_vti.signedness);
+                            // 1. Compile the RHS value.
+                            compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
+                            // 2. Truncate for sub-32-bit types.
+                            emit_truncation(emitter, element_vti);
+                            // 3. Compute the flat index.
+                            crate::compile_array::emit_flat_index(
+                                emitter,
+                                ctx,
+                                &subscripts,
+                                &dim_info,
+                                &target_span,
+                            )?;
+                            // Stack: [..., value, index]. STORE_ARRAY pops both.
+                            emitter.emit_store_array(arr_var_index, arr_desc_index);
+                        }
                     }
                     crate::compile_array::ResolvedAccess::DerefArrayElement {
                         info,
@@ -2441,7 +2495,7 @@ fn compile_case_selector(
 /// not-implemented diagnostic if the length is an unresolved constant reference.
 fn resolve_string_max_length(string_init: &StringInitializer) -> Result<u16, Diagnostic> {
     match &string_init.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH),
+        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
     }
@@ -2452,7 +2506,7 @@ fn resolve_string_max_length(string_init: &StringInitializer) -> Result<u16, Dia
 /// unresolved constant reference.
 fn resolve_string_spec_max_length(spec: &StringSpecification) -> Result<u16, Diagnostic> {
     match &spec.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH),
+        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
     }
@@ -3671,7 +3725,7 @@ fn resolve_string_arg(
         ExprKind::Const(ConstantKind::CharacterString(lit)) => {
             // Allocate space in the data region for this string literal.
             let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
-            let max_length = DEFAULT_STRING_MAX_LENGTH;
+            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
             let data_offset = ctx.data_region_offset;
             let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
             ctx.data_region_offset = ctx
@@ -4473,6 +4527,7 @@ fn compile_variable_read(
                 crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
                     let arr_var_index = info.var_index;
                     let arr_desc_index = info.desc_index;
+                    let is_string_elem = info.is_string_element;
                     let dim_info: Vec<_> = info
                         .dimensions
                         .iter()
@@ -4490,7 +4545,12 @@ fn compile_variable_read(
                         &dim_info,
                         &span,
                     )?;
-                    emitter.emit_load_array(arr_var_index, arr_desc_index);
+                    if is_string_elem {
+                        ctx.num_temp_bufs += 1;
+                        emitter.emit_str_load_array_elem(arr_var_index, arr_desc_index);
+                    } else {
+                        emitter.emit_load_array(arr_var_index, arr_desc_index);
+                    }
                 }
                 crate::compile_array::ResolvedAccess::DerefArrayElement { info, subscripts } => {
                     let ref_var_index = info.var_index;
