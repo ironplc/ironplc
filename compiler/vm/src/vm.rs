@@ -1502,6 +1502,163 @@ fn execute(
 
                 stack.push(Slot::from_i32(buf_idx as i32))?;
             }
+            // --- String array opcodes ---
+
+            // STR_INIT_ARRAY: Initialize all string headers in an array of strings.
+            //
+            // Operands: var_index (u16), desc_index (u16)
+            // Stack effect: none
+            //
+            // Reads element_extra from the array descriptor as max_string_length.
+            // Element stride = STRING_HEADER_BYTES + max_string_length.
+            // Loops through all elements writing [max_len][cur_len=0] headers.
+            opcode::STR_INIT_ARRAY => {
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
+                let desc_index = read_u16_le(bytecode, &mut pc);
+
+                let desc = container
+                    .type_section
+                    .as_ref()
+                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
+                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
+                let total_elements = desc.total_elements;
+                let max_str_len = desc.element_extra;
+                let stride = STRING_HEADER_BYTES + max_str_len as usize;
+
+                scope.check_access(var_index)?;
+                let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
+
+                for i in 0..total_elements as usize {
+                    let elem_offset = base_offset + i * stride;
+                    if elem_offset + STRING_HEADER_BYTES > data_region.len() {
+                        return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
+                    }
+                    str_write_header(data_region, elem_offset, max_str_len, 0);
+                }
+            }
+
+            // STR_LOAD_ARRAY_ELEM: Load a string from an array element into a temp buffer.
+            //
+            // Operands: var_index (u16), desc_index (u16)
+            // Stack effect: pops flat_index, pushes buf_idx (net 0)
+            //
+            // Computes element offset = base + flat_index * stride, then copies the
+            // string from the data region into a temp buffer.
+            opcode::STR_LOAD_ARRAY_ELEM => {
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
+                let desc_index = read_u16_le(bytecode, &mut pc);
+                let index_slot = stack.pop()?;
+                let index_i64 = index_slot.as_i64();
+
+                let desc = container
+                    .type_section
+                    .as_ref()
+                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
+                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
+                let total_elements = desc.total_elements;
+                let max_str_len = desc.element_extra;
+                let stride = STRING_HEADER_BYTES + max_str_len as usize;
+
+                if index_i64 < 0 || index_i64 >= total_elements as i64 {
+                    return Err(Trap::ArrayIndexOutOfBounds {
+                        var_index,
+                        index: index_i64 as i32,
+                        total_elements,
+                    });
+                }
+                let index = index_i64 as usize;
+
+                scope.check_access(var_index)?;
+                let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
+                let elem_offset = base_offset + index * stride;
+
+                if elem_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
+                }
+                let src_cur_len = str_read_cur_len(data_region, elem_offset);
+                let read_len = src_cur_len.min(max_str_len) as usize;
+
+                let (buf_idx, buf_start) =
+                    str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+
+                let buf_max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                let cur_len = (read_len as u16).min(buf_max_len);
+                str_write_header(temp_buf, buf_start, buf_max_len, cur_len);
+
+                if elem_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
+                }
+                let dst_start = buf_start + STRING_HEADER_BYTES;
+                let src_start = elem_offset + STRING_HEADER_BYTES;
+                temp_buf[dst_start..dst_start + cur_len as usize]
+                    .copy_from_slice(&data_region[src_start..src_start + cur_len as usize]);
+
+                stack.push(Slot::from_i32(buf_idx as i32))?;
+            }
+
+            // STR_STORE_ARRAY_ELEM: Store a temp buffer into a string array element.
+            //
+            // Operands: var_index (u16), desc_index (u16)
+            // Stack effect: pops flat_index, pops buf_idx (net -2)
+            //
+            // Computes element offset = base + flat_index * stride, then copies
+            // the temp buffer contents into the data region, truncating per IEC 61131-3.
+            opcode::STR_STORE_ARRAY_ELEM => {
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
+                let desc_index = read_u16_le(bytecode, &mut pc);
+                let index_slot = stack.pop()?;
+                let value_slot = stack.pop()?;
+                let index_i64 = index_slot.as_i64();
+                let buf_idx = value_slot.as_i32() as usize;
+
+                let desc = container
+                    .type_section
+                    .as_ref()
+                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
+                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
+                let total_elements = desc.total_elements;
+                let max_str_len = desc.element_extra;
+                let stride = STRING_HEADER_BYTES + max_str_len as usize;
+
+                if index_i64 < 0 || index_i64 >= total_elements as i64 {
+                    return Err(Trap::ArrayIndexOutOfBounds {
+                        var_index,
+                        index: index_i64 as i32,
+                        total_elements,
+                    });
+                }
+                let index = index_i64 as usize;
+
+                scope.check_access(var_index)?;
+                let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
+                let elem_offset = base_offset + index * stride;
+
+                // Read source from temp buffer.
+                let buf_start = buf_idx * max_temp_buf_bytes;
+                if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
+                    return Err(Trap::TempBufferExhausted);
+                }
+                let src_cur_len = str_read_cur_len(temp_buf, buf_start);
+
+                if elem_offset + STRING_HEADER_BYTES > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
+                }
+
+                // Copy, truncating to max_str_len per IEC 61131-3 semantics.
+                let copy_len = src_cur_len.min(max_str_len) as usize;
+                if elem_offset + STRING_HEADER_BYTES + copy_len > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
+                }
+                let dst_start = elem_offset + STRING_HEADER_BYTES;
+                let src_start = buf_start + STRING_HEADER_BYTES;
+                data_region[dst_start..dst_start + copy_len]
+                    .copy_from_slice(&temp_buf[src_start..src_start + copy_len]);
+
+                // Update destination cur_length.
+                data_region[elem_offset + 2..elem_offset + STRING_HEADER_BYTES]
+                    .copy_from_slice(&(copy_len as u16).to_le_bytes());
+            }
+
             opcode::POP => {
                 stack.pop()?;
             }

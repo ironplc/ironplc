@@ -30,7 +30,7 @@ pub struct ContainerBuilder {
     entry_function_id: FunctionId,
     fb_types: Vec<FbTypeDescriptor>,
     array_descriptors: Vec<ArrayDescriptor>,
-    array_descriptor_cache: HashMap<(u8, u32), u16>,
+    array_descriptor_cache: HashMap<(u8, u32, u16), u16>,
     user_fb_types: Vec<UserFbDescriptor>,
     debug_var_names: Vec<VarNameEntry>,
     debug_func_names: Vec<FuncNameEntry>,
@@ -211,11 +211,17 @@ impl ContainerBuilder {
     }
 
     /// Adds an array descriptor to the type section, deduplicating
-    /// identical `(element_type, total_elements)` pairs.
+    /// identical `(element_type, total_elements, element_extra)` triples.
     ///
     /// Returns the descriptor index (for use in `LOAD_ARRAY`/`STORE_ARRAY` opcodes).
-    pub fn add_array_descriptor(&mut self, element_type: u8, total_elements: u32) -> u16 {
-        let key = (element_type, total_elements);
+    /// For STRING arrays, `element_extra` holds the max string length.
+    pub fn add_array_descriptor(
+        &mut self,
+        element_type: u8,
+        total_elements: u32,
+        element_extra: u16,
+    ) -> u16 {
+        let key = (element_type, total_elements, element_extra);
         if let Some(&index) = self.array_descriptor_cache.get(&key) {
             return index;
         }
@@ -223,6 +229,7 @@ impl ContainerBuilder {
         self.array_descriptors.push(ArrayDescriptor {
             element_type,
             total_elements,
+            element_extra,
         });
         self.array_descriptor_cache.insert(key, index);
         index
@@ -418,8 +425,8 @@ mod tests {
     #[test]
     fn builder_add_array_descriptor_when_unique_then_assigns_sequential_indices() {
         let mut builder = ContainerBuilder::new();
-        let idx0 = builder.add_array_descriptor(0, 10); // I32, 10 elements
-        let idx1 = builder.add_array_descriptor(5, 100); // F64, 100 elements
+        let idx0 = builder.add_array_descriptor(0, 10, 0); // I32, 10 elements
+        let idx1 = builder.add_array_descriptor(5, 100, 0); // F64, 100 elements
         assert_eq!(idx0, 0);
         assert_eq!(idx1, 1);
 
@@ -435,9 +442,9 @@ mod tests {
     #[test]
     fn builder_add_array_descriptor_when_duplicate_then_returns_same_index() {
         let mut builder = ContainerBuilder::new();
-        let idx0 = builder.add_array_descriptor(0, 10);
-        let idx1 = builder.add_array_descriptor(0, 10); // identical
-        let idx2 = builder.add_array_descriptor(0, 20); // different size
+        let idx0 = builder.add_array_descriptor(0, 10, 0);
+        let idx1 = builder.add_array_descriptor(0, 10, 0); // identical
+        let idx2 = builder.add_array_descriptor(0, 20, 0); // different size
         assert_eq!(idx0, 0);
         assert_eq!(idx1, 0); // deduplicated
         assert_eq!(idx2, 1); // new

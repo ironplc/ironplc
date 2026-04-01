@@ -39,7 +39,7 @@ fn array_container(
     builder = builder.add_i32_constant(0);
 
     // Add array descriptor: element_type 0 (I32)
-    builder.add_array_descriptor(0, total_elements);
+    builder.add_array_descriptor(0, total_elements, 0);
 
     builder
         .add_function(

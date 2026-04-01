@@ -228,6 +228,27 @@ pub const MID_STR: u8 = 0xEA;
 /// Pushes buf_idx (i32).
 pub const CONCAT_STR: u8 = 0xEB;
 
+// --- String array opcodes ---
+
+/// Initialize all string headers in an array of strings.
+/// Operand 1: u16 variable table index (base data_offset).
+/// Operand 2: u16 array descriptor index.
+/// Uses element_extra from the descriptor as max_string_length.
+/// Stack effect: none.
+pub const STR_INIT_ARRAY: u8 = 0xEC;
+
+/// Load a string from an array element into a temp buffer.
+/// Operand 1: u16 variable table index (base data_offset).
+/// Operand 2: u16 array descriptor index.
+/// Pops flat_index, pushes buf_idx. Net stack: 0.
+pub const STR_LOAD_ARRAY_ELEM: u8 = 0xED;
+
+/// Store a temp buffer into an array element's string slot.
+/// Operand 1: u16 variable table index (base data_offset).
+/// Operand 2: u16 array descriptor index.
+/// Pops flat_index, then pops buf_idx. Net stack: -2.
+pub const STR_STORE_ARRAY_ELEM: u8 = 0xEE;
+
 // --- Array opcodes ---
 
 /// Load a value from an array element.

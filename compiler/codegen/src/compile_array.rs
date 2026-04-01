@@ -22,10 +22,13 @@ use crate::emit::Emitter;
 pub(crate) struct ArraySpec {
     /// Per-dimension bounds as (lower, upper) inclusive pairs.
     pub dimensions: Vec<(i32, i32)>,
-    /// Element type name (e.g., "INT", "DINT").
+    /// Element type name (e.g., "INT", "DINT", "STRING").
     pub element_type_name: Id,
     /// Whether each element is a REF_TO the named type.
     pub ref_to: bool,
+    /// For STRING arrays, the maximum string length per element.
+    /// `None` for non-string element types.
+    pub string_max_len: Option<u16>,
 }
 
 /// Metadata for a single dimension of an array, used for index computation.
@@ -45,6 +48,10 @@ pub(crate) struct ArrayVarInfo {
     pub element_var_type_info: VarTypeInfo,
     pub total_elements: u32,
     pub dimensions: Vec<DimensionInfo>,
+    /// True when the array element type is STRING.
+    pub is_string_element: bool,
+    /// For STRING arrays, the max string length per element.
+    pub string_max_len: u16,
 }
 
 /// The resolved target of a variable access.
@@ -174,10 +181,23 @@ pub(crate) fn array_spec_from_inline(
             Ok((lower, upper))
         })
         .collect::<Result<Vec<_>, Diagnostic>>()?;
+    let string_max_len = match &subranges.type_name {
+        ironplc_dsl::common::ArrayElementType::String(spec)
+        | ironplc_dsl::common::ArrayElementType::WString(spec) => {
+            let len = spec
+                .length
+                .as_ref()
+                .and_then(|l| l.as_integer().map(|i| i.value as u16))
+                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
+            Some(len)
+        }
+        _ => None,
+    };
     Ok(ArraySpec {
         dimensions,
         element_type_name: Id::from(&subranges.type_name.to_type_name().to_string()),
         ref_to: subranges.ref_to,
+        string_max_len,
     })
 }
 
@@ -194,10 +214,20 @@ pub(crate) fn array_spec_from_named(
         element_type
     };
     let element_type_name = intermediate_type_to_name(inner_type)?;
+    let string_max_len = match inner_type {
+        IntermediateType::String { max_len } => {
+            let len = max_len
+                .map(|v| v as u16)
+                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
+            Some(len)
+        }
+        _ => None,
+    };
     Ok(ArraySpec {
         dimensions: dims,
         element_type_name,
         ref_to,
+        string_max_len,
     })
 }
 
@@ -255,6 +285,7 @@ fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
         IntermediateType::Time {
             size: ByteSized::B64,
         } => "LTIME",
+        IntermediateType::String { .. } => "STRING",
         _ => return Err(Diagnostic::todo(file!(), line!())),
     };
     Ok(Id::from(name))
@@ -292,6 +323,9 @@ pub(crate) fn register_array_variable(
     spec: &ArraySpec,
     span: &ironplc_dsl::core::SourceSpan,
 ) -> Result<(u8, String), Diagnostic> {
+    let is_string = spec.string_max_len.is_some();
+    let string_max_len = spec.string_max_len.unwrap_or(0);
+
     // 1. Resolve element type
     let element_vti = if spec.ref_to {
         // References are stored as 64-bit unsigned variable-table indices
@@ -299,6 +333,13 @@ pub(crate) fn register_array_variable(
             op_width: OpWidth::W64,
             signedness: Signedness::Unsigned,
             storage_bits: 64,
+        }
+    } else if is_string {
+        // STRING arrays use string-specific opcodes; VarTypeInfo is a placeholder.
+        VarTypeInfo {
+            op_width: OpWidth::W32,
+            signedness: Signedness::Unsigned,
+            storage_bits: 0,
         }
     } else {
         super::compile::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
@@ -346,7 +387,18 @@ pub(crate) fn register_array_variable(
 
     // 5. Allocate data region space
     let data_offset = ctx.data_region_offset;
-    let total_bytes = total_elements * 8;
+    let total_bytes = if is_string {
+        // STRING elements: each element is [max_len:u16][cur_len:u16][data:max_len bytes]
+        let element_stride = super::compile::STRING_HEADER_BYTES_U32 + string_max_len as u32;
+        total_elements.checked_mul(element_stride).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(span.clone(), "Data region overflow"),
+            )
+        })?
+    } else {
+        total_elements * 8
+    };
     ctx.data_region_offset = ctx
         .data_region_offset
         .checked_add(total_bytes)
@@ -366,10 +418,19 @@ pub(crate) fn register_array_variable(
     }
 
     // 7. Register descriptor in the container and get its index
-    let element_type_byte = var_type_info_to_type_byte(&element_vti);
-    let desc_index = builder.add_array_descriptor(element_type_byte, total_elements);
+    let (element_type_byte, element_extra) = if is_string {
+        (ironplc_container::FieldType::String as u8, string_max_len)
+    } else {
+        (var_type_info_to_type_byte(&element_vti), 0)
+    };
+    let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, element_extra);
 
-    // 8. Store in context
+    // 8. Track max string capacity for temp buffer sizing.
+    if is_string && string_max_len > ctx.max_string_capacity {
+        ctx.max_string_capacity = string_max_len;
+    }
+
+    // 9. Store in context
     ctx.array_vars.insert(
         id.clone(),
         ArrayVarInfo {
@@ -379,6 +440,8 @@ pub(crate) fn register_array_variable(
             element_var_type_info: element_vti,
             total_elements,
             dimensions,
+            is_string_element: is_string,
+            string_max_len,
         },
     );
 

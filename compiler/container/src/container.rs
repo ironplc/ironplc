@@ -284,7 +284,7 @@ mod tests {
         ];
 
         let mut builder = ContainerBuilder::new();
-        let desc_idx = builder.add_array_descriptor(0, 10); // I32, 10 elements
+        let desc_idx = builder.add_array_descriptor(0, 10, 0); // I32, 10 elements
         assert_eq!(desc_idx, 0);
 
         let container = builder
