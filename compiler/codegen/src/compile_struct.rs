@@ -346,7 +346,7 @@ fn var_type_info_for_field(field_type: &IntermediateType) -> Option<VarTypeInfo>
 }
 
 /// Emits truncation instructions for narrow types when storing to a struct field.
-fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &IntermediateType) {
+pub(crate) fn emit_truncation_for_field(emitter: &mut Emitter, field_type: &IntermediateType) {
     if let Some(vti) = var_type_info_for_field(field_type) {
         emit_truncation(emitter, vti);
     }
