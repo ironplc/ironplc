@@ -83,6 +83,10 @@ pub struct ArrayDescriptor {
     pub element_type: u8,
     /// Total number of elements across all dimensions.
     pub total_elements: u32,
+    /// Extra type-specific data. For STRING arrays, this holds the
+    /// max string length (element stride = STRING_HEADER_BYTES + element_extra).
+    /// Zero for primitive element types.
+    pub element_extra: u16,
 }
 
 /// Size of a single array descriptor on disk in bytes.
@@ -156,7 +160,7 @@ impl TypeSection {
             w.write_all(&[desc.element_type])?;
             w.write_all(&[0u8])?; // reserved
             w.write_all(&desc.total_elements.to_le_bytes())?;
-            w.write_all(&[0u8; 2])?; // element_extra (reserved)
+            w.write_all(&desc.element_extra.to_le_bytes())?;
         }
 
         // User FB descriptors
@@ -214,10 +218,11 @@ impl TypeSection {
             // desc_buf[1] is reserved
             let total_elements =
                 u32::from_le_bytes([desc_buf[2], desc_buf[3], desc_buf[4], desc_buf[5]]);
-            // desc_buf[6..8] is element_extra (reserved)
+            let element_extra = u16::from_le_bytes([desc_buf[6], desc_buf[7]]);
             array_descriptors.push(ArrayDescriptor {
                 element_type,
                 total_elements,
+                element_extra,
             });
         }
 
@@ -337,10 +342,12 @@ mod tests {
                 ArrayDescriptor {
                     element_type: FieldType::I32 as u8,
                     total_elements: 10,
+                    element_extra: 0,
                 },
                 ArrayDescriptor {
                     element_type: FieldType::F64 as u8,
                     total_elements: 32768,
+                    element_extra: 0,
                 },
             ],
             user_fb_types: vec![],
@@ -379,6 +386,7 @@ mod tests {
             array_descriptors: vec![ArrayDescriptor {
                 element_type: FieldType::U32 as u8,
                 total_elements: 100,
+                element_extra: 0,
             }],
             user_fb_types: vec![],
         };
@@ -414,10 +422,12 @@ mod tests {
                 ArrayDescriptor {
                     element_type: 0,
                     total_elements: 10,
+                    element_extra: 0,
                 },
                 ArrayDescriptor {
                     element_type: 4,
                     total_elements: 20,
+                    element_extra: 0,
                 },
             ],
             user_fb_types: vec![],

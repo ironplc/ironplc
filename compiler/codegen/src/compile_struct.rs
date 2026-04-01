@@ -571,7 +571,7 @@ pub(crate) fn allocate_struct_variable(
     }
 
     // Register array descriptor (treating struct as flat slot array).
-    let desc_index = builder.add_array_descriptor(FieldType::Slot as u8, total_slots);
+    let desc_index = builder.add_array_descriptor(FieldType::Slot as u8, total_slots, 0);
 
     // Build field metadata (returns error for unsupported field types)
     let (fields_vec, field_index) = build_struct_fields(fields, span)?;
