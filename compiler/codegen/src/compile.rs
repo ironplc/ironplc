@@ -2037,6 +2037,20 @@ fn compile_statement(
                 return compile_bit_access_assignment(emitter, ctx, bit_access, &assignment.value);
             }
 
+            // Check if the target is a structured variable (struct field write).
+            if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) =
+                &assignment.target
+            {
+                let (var_index, desc_index, slot_offset, op_type, field_type) =
+                    crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
+                compile_expr(emitter, ctx, &assignment.value, op_type)?;
+                crate::compile_struct::emit_truncation_for_field(emitter, &field_type);
+                let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
+                emitter.emit_load_const_i32(idx_const);
+                emitter.emit_store_array(var_index, desc_index);
+                return Ok(());
+            }
+
             // Look up the target variable's type info.
             let target_name = resolve_variable_name(&assignment.target);
 
