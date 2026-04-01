@@ -458,8 +458,41 @@ pub(crate) fn initialize_struct_fields(
             let idx_const = ctx.add_i32_constant(slot_idx.raw() as i32);
             emitter.emit_load_const_i32(idx_const);
             emitter.emit_store_array(var_index, desc_index);
+        } else if let IntermediateType::Structure { fields } = &field_info.field_type {
+            // Nested structure field — recursively initialize inner fields.
+            // Extract nested initializers from the init map for this field.
+            let nested_inits: Vec<StructureElementInit> =
+                if let Some(StructInitialValueAssignmentKind::Structure(nested)) =
+                    init_map.get(&field_info.name)
+                {
+                    nested.to_vec()
+                } else {
+                    // No explicit init — inner fields will be default-initialized.
+                    vec![]
+                };
+
+            // Build inner field metadata with offsets adjusted to the parent's base.
+            let (inner_fields, _) = build_struct_fields(fields, &SourceSpan::default())?;
+            let inner_field_infos: Vec<FieldInitInfo> = inner_fields
+                .iter()
+                .map(|f| FieldInitInfo {
+                    name: f.name.clone(),
+                    slot_offset: SlotIndex::new(slot_idx.raw() + f.slot_offset.raw()),
+                    field_type: f.field_type.clone(),
+                    op_type: f.op_type,
+                })
+                .collect();
+
+            initialize_struct_fields(
+                emitter,
+                ctx,
+                var_index,
+                desc_index,
+                &inner_field_infos,
+                &nested_inits,
+            )?;
         }
-        // else: nested structure or array field — handled in later PRs
+        // else: array field — not yet supported
     }
     Ok(())
 }
