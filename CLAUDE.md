@@ -30,9 +30,12 @@ For full details, see [specs/steering/common-tasks.md](specs/steering/common-tas
 ### Workflow
 
 1. Create a feature branch from `main`
-2. Make changes and commit to the feature branch
-3. Run the full CI pipeline: `cd compiler && just`
-4. Push the feature branch and create a PR via `gh pr create`
+2. **Write an implementation plan** in `specs/plans/` and commit it to the branch (see [Development Standards — Planning Requirement](specs/steering/development-standards.md#planning-requirement))
+3. Implement the changes following the plan
+4. Run the full CI pipeline: `cd compiler && just`
+5. Push the feature branch and create a PR via `gh pr create`
+
+> **Skip the plan** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits.
 
 ### Before Creating a PR
 
@@ -74,8 +77,9 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 
 ### Critical Rules
 1. **NEVER push directly to `main`** - Always use a feature branch and pull request
-2. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
-3. **BDD-style test names**: `function_when_condition_then_result`
-4. **Module size limit**: Max 1000 lines per module
-5. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-6. **Version numbers**: Automatically managed - do not edit manually
+2. **Plan first** - Non-trivial changes must start with a plan in `specs/plans/` committed before implementation code
+3. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
+4. **BDD-style test names**: `function_when_condition_then_result`
+5. **Module size limit**: Max 1000 lines per module
+6. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+7. **Version numbers**: Automatically managed - do not edit manually
