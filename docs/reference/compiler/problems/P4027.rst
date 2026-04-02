@@ -5,7 +5,12 @@ P4027
 .. problem-summary:: P4027
 
 This error occurs when a function's return type does not match the type of the variable
-being assigned to. IronPLC requires exact type matching for function return values.
+being assigned to. IronPLC allows implicit widening between integer types (for example,
+a function returning ``SINT`` assigned to a ``DINT`` variable), but rejects other type
+mismatches such as real to integer or narrowing conversions.
+
+For the full set of allowed implicit conversions, see
+:doc:`/explanation/type-conversions`.
 
 Example
 -------

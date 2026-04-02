@@ -15,4 +15,5 @@ them later when you want to understand *why* things work the way they do.
    Program Organization <program-organization>
    Variables and I/O <variables-and-io>
    References and Indirection <references>
+   Type Conversions <type-conversions>
    Enabling Dialects and Features <enabling-dialects-and-features>

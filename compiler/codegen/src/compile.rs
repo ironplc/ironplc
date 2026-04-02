@@ -3127,12 +3127,41 @@ fn compile_user_function_call(
             let zero_idx = ctx.add_i32_constant(0);
             emitter.emit_load_const_i32(zero_idx);
         } else {
-            let arg_op_type = func_info
+            let param_op_type = func_info
                 .param_op_types
                 .get(i)
                 .copied()
                 .unwrap_or(DEFAULT_OP_TYPE);
-            compile_expr(emitter, ctx, arg, arg_op_type)?;
+
+            // When implicit integer widening crosses OpWidth boundaries
+            // (e.g. INT [W32] -> LINT [W64]), compile the argument at its
+            // natural width and then emit a conversion opcode.
+            let arg_natural = arg
+                .resolved_type
+                .as_ref()
+                .and_then(|t| resolve_type_name(&t.name))
+                .map(|info| (info.op_width, info.signedness));
+
+            if let Some(arg_op) = arg_natural {
+                if arg_op.0 != param_op_type.0 {
+                    compile_expr(emitter, ctx, arg, arg_op)?;
+                    let source = VarTypeInfo {
+                        op_width: arg_op.0,
+                        signedness: arg_op.1,
+                        storage_bits: 0,
+                    };
+                    let target = VarTypeInfo {
+                        op_width: param_op_type.0,
+                        signedness: param_op_type.1,
+                        storage_bits: 0,
+                    };
+                    emit_conversion_opcode(emitter, &source, &target);
+                } else {
+                    compile_expr(emitter, ctx, arg, param_op_type)?;
+                }
+            } else {
+                compile_expr(emitter, ctx, arg, param_op_type)?;
+            }
         }
     }
 

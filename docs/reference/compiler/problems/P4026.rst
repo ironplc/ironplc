@@ -5,7 +5,12 @@ P4026
 .. problem-summary:: P4026
 
 This error occurs when a function call passes an argument whose type does not match the
-declared parameter type. IronPLC requires exact type matching for user-defined function arguments.
+declared parameter type. IronPLC allows implicit widening between integer types (for example,
+``INT`` to ``DINT``), but rejects other type mismatches such as integer to real or narrowing
+conversions.
+
+For the full set of allowed implicit conversions, see
+:doc:`/explanation/type-conversions`.
 
 Example
 -------
