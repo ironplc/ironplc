@@ -927,6 +927,24 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     functions
 }
 
+// =============================================================================
+// SIZEOF (Vendor Extension)
+// =============================================================================
+
+/// Returns the SIZEOF function definition.
+///
+/// SIZEOF returns the size in bytes of a variable or type. It is not part of
+/// IEC 61131-3 but is a CODESYS/TwinCAT/RuSTy extension used in buffer
+/// management functions. It is registered conditionally based on the
+/// `allow_sizeof` compiler option.
+pub fn get_sizeof_function() -> FunctionSignature {
+    FunctionSignature::stdlib(
+        "SIZEOF",
+        TypeName::from("ANY_INT"),
+        vec![input_param("IN", "ANY")],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

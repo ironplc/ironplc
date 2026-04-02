@@ -206,6 +206,18 @@ Time and Date Functions
    * - :doc:`CONCAT_DATE_TOD <concat_date_tod>`
      - Combine date and time-of-day
 
+Vendor Extensions
+-----------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Function
+     - Description
+   * - :doc:`SIZEOF <sizeof>`
+     - Size in bytes of a variable or type (requires ``--allow-sizeof``)
+
 Type Conversion Functions
 -------------------------
 
@@ -281,3 +293,4 @@ Type Conversion Functions
    type-conversions
    trunc
    bcd
+   sizeof
