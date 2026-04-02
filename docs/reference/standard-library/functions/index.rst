@@ -172,6 +172,52 @@ String Functions
    * - :doc:`FIND <find>`
      - String search
 
+Time and Date Functions
+-----------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Function
+     - Description
+   * - :doc:`ADD_TIME <add_time>`
+     - Add two durations
+   * - :doc:`SUB_TIME <sub_time>`
+     - Subtract durations
+   * - :doc:`MUL_TIME <mul_time>`
+     - Scale duration by number
+   * - :doc:`DIV_TIME <div_time>`
+     - Divide duration by number
+   * - :doc:`ADD_DT_TIME <add_dt_time>`
+     - Add duration to date-and-time
+   * - :doc:`ADD_TOD_TIME <add_tod_time>`
+     - Add duration to time-of-day
+   * - :doc:`SUB_DT_TIME <sub_dt_time>`
+     - Subtract duration from date-and-time
+   * - :doc:`SUB_TOD_TIME <sub_tod_time>`
+     - Subtract duration from time-of-day
+   * - :doc:`SUB_DT_DT <sub_dt_dt>`
+     - Difference between two datetimes
+   * - :doc:`SUB_DATE_DATE <sub_date_date>`
+     - Difference between two dates
+   * - :doc:`SUB_TOD_TOD <sub_tod_tod>`
+     - Difference between two times-of-day
+   * - :doc:`CONCAT_DATE_TOD <concat_date_tod>`
+     - Combine date and time-of-day
+
+Vendor Extensions
+-----------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Function
+     - Description
+   * - :doc:`SIZEOF <sizeof>`
+     - Size in bytes of a variable or type (requires ``--allow-sizeof``)
+
 Type Conversion Functions
 -------------------------
 
@@ -232,6 +278,19 @@ Type Conversion Functions
    delete
    replace
    find
+   add_time
+   sub_time
+   mul_time
+   div_time
+   add_dt_time
+   add_tod_time
+   sub_dt_time
+   sub_tod_time
+   sub_dt_dt
+   sub_date_date
+   sub_tod_tod
+   concat_date_tod
    type-conversions
    trunc
    bcd
+   sizeof

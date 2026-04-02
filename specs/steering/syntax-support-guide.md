@@ -159,6 +159,7 @@ Current flags in `CompilerOptions` (`parser/src/options.rs`):
 | `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) |
 | `allow_missing_semicolon` | `--allow-missing-semicolon` | Inserts semicolons after END_IF etc. |
 | `allow_ref_to` | `--allow-ref-to` | REF_TO/REF/NULL syntax without full Edition 3 |
+| `allow_sizeof` | `--allow-sizeof` | SIZEOF() operator (returns size in bytes) |
 | `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) |
 | `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
 

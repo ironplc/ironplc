@@ -134,6 +134,12 @@ features — they never disable features that a dialect already includes.
    and ``1`` to ``TRUE``. This is a universal vendor extension supported by
    CoDeSys, TwinCAT, RuSTy, and virtually every PLC runtime.
 
+``--allow-sizeof``
+   Allow the ``SIZEOF()`` operator that returns the size in bytes of a
+   variable or type. This is a vendor extension supported by CODESYS,
+   TwinCAT, and RuSTy. See
+   :doc:`/reference/standard-library/functions/sizeof`.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell

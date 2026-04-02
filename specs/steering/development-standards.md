@@ -48,6 +48,22 @@ When a document contains both design and plan content, split it into two files w
 
 **Important**: Plan and design documents must **never** be placed in `docs/`. The `docs/` directory is exclusively for the public Sphinx documentation website. All internal technical documents (plans, designs, ADRs, steering files) belong in `specs/`.
 
+### Planning Requirement
+
+All non-trivial features and changes **must** begin with an implementation plan committed to `specs/plans/` before code changes start. The plan is the first deliverable — commit it to the feature branch before writing any implementation code.
+
+A plan document should include:
+
+- **Goal** — a concise statement of what the change accomplishes
+- **Architecture** — brief summary of the technical approach
+- **Design doc reference** — link to `specs/design/` doc if one exists
+- **File map** — which files will be created or modified
+- **Tasks** — ordered steps with checkboxes (`- [ ]`) for tracking progress
+
+Name plan files with a date prefix: `YYYY-MM-DD-short-description.md` (e.g., `2026-04-01-planning-requirement.md`).
+
+**When a plan may be skipped:** Changes that are clearly mechanical and self-contained — typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits — do not require a plan.
+
 ## Code Organization
 
 ### Module Structure
