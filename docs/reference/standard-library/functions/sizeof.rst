@@ -69,17 +69,11 @@ about dialects and feature flags.
 Example
 -------
 
-.. code-block:: iecst
+.. playground-with-program::
+   :vars: x : INT; arr : ARRAY[1..10] OF INT;
 
-   PROGRAM main
-   VAR
-     x : INT;
-     arr : ARRAY[1..10] OF INT;
-     s : DINT;
-   END_VAR
-     s := SIZEOF(x);     (* s = 2 *)
-     s := SIZEOF(arr);   (* s = 20 *)
-   END_PROGRAM
+   s := SIZEOF(x);     (* s = 2 *)
+   s := SIZEOF(arr);   (* s = 20 *)
 
 See Also
 --------
