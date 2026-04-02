@@ -304,6 +304,18 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_f64(a.atan()))?;
             Ok(())
         }
+        opcode::builtin::ATAN2_F32 => {
+            let b = stack.pop()?.as_f32();
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.atan2(b)))?;
+            Ok(())
+        }
+        opcode::builtin::ATAN2_F64 => {
+            let b = stack.pop()?.as_f64();
+            let a = stack.pop()?.as_f64();
+            stack.push(Slot::from_f64(a.atan2(b)))?;
+            Ok(())
+        }
         opcode::builtin::EXPT_I64 => {
             let b = stack.pop()?.as_i64();
             let a = stack.pop()?.as_i64();
