@@ -797,6 +797,49 @@ impl ElementaryTypeName {
                 | ElementaryTypeName::ULINT
         )
     }
+
+    /// Returns the bit width and signedness of an integer type, or `None`
+    /// for non-integer types.
+    fn integer_properties(&self) -> Option<(u8, bool)> {
+        match self {
+            ElementaryTypeName::SINT => Some((8, true)),
+            ElementaryTypeName::INT => Some((16, true)),
+            ElementaryTypeName::DINT => Some((32, true)),
+            ElementaryTypeName::LINT => Some((64, true)),
+            ElementaryTypeName::USINT => Some((8, false)),
+            ElementaryTypeName::UINT => Some((16, false)),
+            ElementaryTypeName::UDINT => Some((32, false)),
+            ElementaryTypeName::ULINT => Some((64, false)),
+            _ => None,
+        }
+    }
+
+    /// Returns true if `self` can be implicitly widened to `target`.
+    ///
+    /// Allowed widening conversions follow the IEC 61131-3 integer hierarchy:
+    /// - Signed chain: SINT → INT → DINT → LINT
+    /// - Unsigned chain: USINT → UINT → UDINT → ULINT
+    /// - Cross-sign: unsigned n-bit → signed m-bit where m > n
+    ///
+    /// Not allowed: signed → unsigned, narrowing, bit-string types, REAL/LREAL.
+    pub fn can_widen_to(&self, target: &ElementaryTypeName) -> bool {
+        let Some((src_bits, src_signed)) = self.integer_properties() else {
+            return false;
+        };
+        let Some((tgt_bits, tgt_signed)) = target.integer_properties() else {
+            return false;
+        };
+        match (src_signed, tgt_signed) {
+            // Signed → signed: target must be strictly wider
+            (true, true) => tgt_bits > src_bits,
+            // Unsigned → unsigned: target must be strictly wider
+            (false, false) => tgt_bits > src_bits,
+            // Unsigned → signed: target must be strictly wider
+            (false, true) => tgt_bits > src_bits,
+            // Signed → unsigned: never allowed implicitly
+            (true, false) => false,
+        }
+    }
 }
 
 impl fmt::Display for ElementaryTypeName {
@@ -3115,5 +3158,95 @@ mod tests {
         let si: SignedInteger = i.into();
         assert!(!si.is_neg);
         assert_eq!(si.value.value, 7);
+    }
+
+    #[test]
+    fn can_widen_to_when_sint_to_int_then_true() {
+        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_sint_to_dint_then_true() {
+        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_sint_to_lint_then_true() {
+        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::LINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_int_to_dint_then_true() {
+        assert!(ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_dint_to_lint_then_true() {
+        assert!(ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::LINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_usint_to_uint_then_true() {
+        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::UINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_usint_to_ulint_then_true() {
+        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::ULINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_uint_to_udint_then_true() {
+        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::UDINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_usint_to_int_then_true() {
+        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_uint_to_dint_then_true() {
+        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_udint_to_lint_then_true() {
+        assert!(ElementaryTypeName::UDINT.can_widen_to(&ElementaryTypeName::LINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_dint_to_int_then_false() {
+        assert!(!ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_lint_to_dint_then_false() {
+        assert!(!ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_int_to_uint_then_false() {
+        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::UINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_int_to_int_then_false() {
+        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_uint_to_int_then_false() {
+        assert!(!ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_int_to_real_then_false() {
+        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_byte_to_int_then_false() {
+        assert!(!ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::INT));
     }
 }

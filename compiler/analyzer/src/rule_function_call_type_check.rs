@@ -86,6 +86,15 @@ fn are_types_compatible(expected: &TypeName, actual: &TypeName) -> bool {
             }
         }
     }
+    // Implicit integer widening: a narrower integer type can be passed
+    // where a wider integer type is expected. See ADR-0029.
+    if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.name) {
+        if let Ok(expected_elem) = ElementaryTypeName::try_from(&expected.name) {
+            if actual_elem.can_widen_to(&expected_elem) {
+                return true;
+            }
+        }
+    }
     false
 }
 
@@ -335,7 +344,7 @@ END_PROGRAM";
 FUNCTION MY_FUNC : INT
 VAR_INPUT
     A : INT;
-    B : DINT;
+    B : REAL;
 END_VAR
     MY_FUNC := A;
 END_FUNCTION
@@ -690,5 +699,251 @@ END_PROGRAM
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
         assert!(result.is_ok());
+    }
+
+    // --- Implicit integer widening tests (ADR-0029) ---
+
+    #[test]
+    fn apply_when_sint_arg_to_int_param_then_ok() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : SINT;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_int_arg_to_dint_param_then_ok() {
+        let program = "
+FUNCTION TAKES_DINT : DINT
+VAR_INPUT
+    x : DINT;
+END_VAR
+    TAKES_DINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    y : INT;
+END_VAR
+    result := TAKES_DINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_sint_arg_to_lint_param_then_ok() {
+        let program = "
+FUNCTION TAKES_LINT : LINT
+VAR_INPUT
+    x : LINT;
+END_VAR
+    TAKES_LINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : LINT;
+    y : SINT;
+END_VAR
+    result := TAKES_LINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_usint_arg_to_uint_param_then_ok() {
+        let program = "
+FUNCTION TAKES_UINT : UINT
+VAR_INPUT
+    x : UINT;
+END_VAR
+    TAKES_UINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : UINT;
+    y : USINT;
+END_VAR
+    result := TAKES_UINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_usint_arg_to_int_param_then_ok() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : USINT;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_uint_arg_to_dint_param_then_ok() {
+        let program = "
+FUNCTION TAKES_DINT : DINT
+VAR_INPUT
+    x : DINT;
+END_VAR
+    TAKES_DINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    y : UINT;
+END_VAR
+    result := TAKES_DINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_sint_return_to_dint_var_then_ok() {
+        let program = "
+FUNCTION GET_SINT : SINT
+VAR_INPUT
+    x : SINT;
+END_VAR
+    GET_SINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    y : SINT;
+END_VAR
+    result := GET_SINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_dint_arg_to_int_param_then_error() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : DINT;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_int_arg_to_uint_param_then_error() {
+        let program = "
+FUNCTION TAKES_UINT : UINT
+VAR_INPUT
+    x : UINT;
+END_VAR
+    TAKES_UINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : UINT;
+    y : INT;
+END_VAR
+    result := TAKES_UINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_byte_arg_to_int_param_then_error() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : BYTE;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn are_types_compatible_when_int_to_dint_then_true() {
+        assert!(are_types_compatible(
+            &TypeName::from("DINT"),
+            &TypeName::from("INT")
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_usint_to_int_then_true() {
+        assert!(are_types_compatible(
+            &TypeName::from("INT"),
+            &TypeName::from("USINT")
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_int_to_real_then_false() {
+        assert!(!are_types_compatible(
+            &TypeName::from("REAL"),
+            &TypeName::from("INT")
+        ));
     }
 }
