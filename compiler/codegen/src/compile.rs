@@ -3036,6 +3036,8 @@ fn compile_function_call(
         "move" => compile_move(emitter, ctx, func, op_type),
         // Truncation function
         "trunc" => compile_trunc(emitter, ctx, func, op_type),
+        // SIZEOF operator (vendor extension)
+        "sizeof" => compile_sizeof(emitter, ctx, func),
         // BCD conversion functions
         "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),
         "int_to_bcd" => compile_int_to_bcd(emitter, ctx, func, op_type),
@@ -3489,6 +3491,65 @@ fn compile_trunc(
     emit_conversion_opcode(emitter, &source, &target);
 
     Ok(())
+}
+
+/// Compiles SIZEOF(IN) — returns the size in bytes of the argument's type.
+///
+/// SIZEOF is a compile-time constant: the argument is never evaluated at runtime.
+/// For elementary types, the size is derived from the storage bit width.
+/// For array variables, the total byte count is computed from element size × element count.
+fn compile_sizeof(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    // Check if the argument is a variable that maps to an array.
+    let size: u32 =
+        if let ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(ref named))) =
+            args[0].kind
+        {
+            if let Some(array_info) = ctx.array_vars.get(&named.name) {
+                let elem_bytes = array_info.element_var_type_info.storage_bits as u32 / 8;
+                array_info.total_elements * elem_bytes
+            } else {
+                sizeof_from_resolved_type(args[0])?
+            }
+        } else {
+            sizeof_from_resolved_type(args[0])?
+        };
+
+    let pool_index = ctx.add_i32_constant(size as i32);
+    emitter.emit_load_const_i32(pool_index);
+    Ok(())
+}
+
+/// Returns the size in bytes from an expression's resolved type annotation.
+fn sizeof_from_resolved_type(expr: &Expr) -> Result<u32, Diagnostic> {
+    let resolved = expr
+        .resolved_type
+        .as_ref()
+        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+    let info =
+        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+    // Ceiling division: types like BOOL (1 bit) still occupy 1 byte.
+    Ok((info.storage_bits as u32).div_ceil(8))
 }
 
 /// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer.

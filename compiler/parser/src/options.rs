@@ -162,6 +162,11 @@ define_compiler_options! {
     "--allow-int-to-bool-initializer",
     [Rusty],
     allow_int_to_bool_initializer,
+
+    "Allow SIZEOF() operator (returns size in bytes of a variable or type)",
+    "--allow-sizeof",
+    [Rusty],
+    allow_sizeof,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -223,6 +228,7 @@ mod tests {
         assert!(!options.allow_ref_stack_variables);
         assert!(!options.allow_ref_type_punning);
         assert!(!options.allow_int_to_bool_initializer);
+        assert!(!options.allow_sizeof);
     }
 
     #[test]
@@ -241,6 +247,7 @@ mod tests {
         assert!(!options.allow_ref_stack_variables);
         assert!(!options.allow_ref_type_punning);
         assert!(!options.allow_int_to_bool_initializer);
+        assert!(!options.allow_sizeof);
     }
 
     #[test]
@@ -259,6 +266,7 @@ mod tests {
         assert!(options.allow_ref_stack_variables);
         assert!(options.allow_ref_type_punning);
         assert!(options.allow_int_to_bool_initializer);
+        assert!(options.allow_sizeof);
     }
 
     #[test]
@@ -271,7 +279,7 @@ mod tests {
 
     #[test]
     fn feature_descriptors_when_called_then_contains_all_vendor_flags() {
-        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 11);
+        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 12);
         assert_eq!(
             CompilerOptions::FEATURE_DESCRIPTORS[0].cli_flag,
             "--allow-c-style-comments"
@@ -285,7 +293,7 @@ mod tests {
             .filter(|f| f.dialects.contains(&Dialect::Rusty))
             .map(|f| f.cli_flag)
             .collect();
-        assert_eq!(rusty_features.len(), 11);
+        assert_eq!(rusty_features.len(), 12);
     }
 
     #[test]

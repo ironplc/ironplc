@@ -144,6 +144,11 @@ Options
    extension supported by CoDeSys, TwinCAT, RuSTy, and virtually every
    PLC runtime.
 
+``--allow-sizeof``
+   Allow the ``SIZEOF()`` operator that returns the size in bytes of a
+   variable or type. This is a vendor extension supported by CODESYS,
+   TwinCAT, and RuSTy.
+
 Examples
 ========
 

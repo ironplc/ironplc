@@ -67,6 +67,7 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
         options.allow_ref_stack_variables |= flag("allowRefStackVariables");
         options.allow_ref_type_punning |= flag("allowRefTypePunning");
         options.allow_int_to_bool_initializer |= flag("allowIntToBoolInitializer");
+        options.allow_sizeof |= flag("allowSizeof");
         options
     } else {
         CompilerOptions::default()
@@ -796,6 +797,28 @@ mod test {
 
         let options = super::extract_compiler_options(&params);
         assert!(options.allow_empty_var_blocks);
+    }
+
+    #[test]
+    fn extract_compiler_options_when_allow_sizeof_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowSizeof": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(options.allow_sizeof);
     }
 
     #[test]

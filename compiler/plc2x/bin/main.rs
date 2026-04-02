@@ -117,6 +117,11 @@ struct FileArgs {
     /// This is a vendor extension supported by CoDeSys, TwinCAT, and RuSTy.
     #[arg(long)]
     allow_int_to_bool_initializer: bool,
+
+    /// Allow SIZEOF() operator that returns the size in bytes of a variable or type.
+    /// This is a vendor extension supported by CODESYS, TwinCAT, and RuSTy.
+    #[arg(long)]
+    allow_sizeof: bool,
 }
 
 impl FileArgs {
@@ -133,6 +138,7 @@ impl FileArgs {
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
         options.allow_int_to_bool_initializer |= self.allow_int_to_bool_initializer;
+        options.allow_sizeof |= self.allow_sizeof;
         options
     }
 }
