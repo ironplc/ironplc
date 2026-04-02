@@ -424,6 +424,15 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
         ),
+        // ATAN2: two-argument arc tangent (ANY_REAL, ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "ATAN2",
+            TypeName::from("ANY_REAL"),
+            vec![
+                input_param("IN1", "ANY_REAL"),
+                input_param("IN2", "ANY_REAL"),
+            ],
+        ),
         // EXPT: exponentiation (ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
             "EXPT",
@@ -1040,7 +1049,7 @@ mod tests {
     fn get_numeric_functions_when_called_then_contains_all_functions() {
         let functions = get_numeric_functions();
 
-        assert_eq!(functions.len(), 16);
+        assert_eq!(functions.len(), 17);
 
         assert!(functions.iter().any(|f| f.name.original() == "ABS"));
         assert!(functions.iter().any(|f| f.name.original() == "SQRT"));
@@ -1057,6 +1066,7 @@ mod tests {
         assert!(functions.iter().any(|f| f.name.original() == "ASIN"));
         assert!(functions.iter().any(|f| f.name.original() == "ACOS"));
         assert!(functions.iter().any(|f| f.name.original() == "ATAN"));
+        assert!(functions.iter().any(|f| f.name.original() == "ATAN2"));
         assert!(functions.iter().any(|f| f.name.original() == "EXPT"));
     }
 
