@@ -177,9 +177,9 @@ Bare (untyped) integer literals like ``0`` or ``42`` are an exception: they
 can be passed to ``REAL`` or ``LREAL`` parameters because the literal has no
 declared type and the compiler infers the target type.
 
-----------------------------
+-----------------------------
 Explicit Conversion Functions
-----------------------------
+-----------------------------
 
 IEC 61131-3 defines conversion functions for all type pairs. The naming
 convention is ``<SOURCE>_TO_<TARGET>``:
