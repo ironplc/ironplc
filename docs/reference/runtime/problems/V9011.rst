@@ -1,0 +1,15 @@
+=====
+V9011
+=====
+
+.. problem-summary:: V9011
+
+The VM reached the end of a function's bytecode while reading an instruction's
+operand. This is an internal error indicating the bytecode is truncated or
+corrupted.
+
+This error should not occur during normal operation. It indicates a bug in the
+IronPLC compiler or VM, or a version mismatch between the compiler and the VM.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.
