@@ -24,8 +24,7 @@ pub(crate) fn read_string_header(
     if offset + STRING_HEADER_BYTES > data_region.len() {
         return Err(Trap::DataRegionOutOfBounds(offset as u32));
     }
-    let cur_len =
-        u16::from_le_bytes([data_region[offset + 2], data_region[offset + 3]]) as usize;
+    let cur_len = u16::from_le_bytes([data_region[offset + 2], data_region[offset + 3]]) as usize;
     let data_start = offset + STRING_HEADER_BYTES;
     Ok((cur_len, data_start))
 }
