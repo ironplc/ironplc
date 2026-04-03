@@ -143,18 +143,11 @@ struct StringVarInfo {
 /// Returns an error if no program is found or if the program contains
 /// unsupported constructs.
 /// Options that affect code generation.
+#[derive(Default)]
 pub struct CodegenOptions {
     /// When `true`, inject `__SYSTEM_UP_TIME` (TIME) and `__SYSTEM_UP_LTIME`
     /// (LTIME) as implicit globals at the start of the variable table.
     pub system_uptime_global: bool,
-}
-
-impl Default for CodegenOptions {
-    fn default() -> Self {
-        Self {
-            system_uptime_global: false,
-        }
-    }
 }
 
 pub fn compile(
