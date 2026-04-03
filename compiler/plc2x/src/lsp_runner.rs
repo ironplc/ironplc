@@ -75,19 +75,7 @@ impl VmRunner {
 
         // Run init to apply initial values
         let mut bufs = VmBuffers::from_container(&container);
-        match Vm::new()
-            .load(
-                &container,
-                &mut bufs.stack,
-                &mut bufs.vars,
-                &mut bufs.data_region,
-                &mut bufs.temp_buf,
-                &mut bufs.tasks,
-                &mut bufs.programs,
-                &mut bufs.ready,
-            )
-            .start()
-        {
+        match Vm::new().load(&container, &mut bufs).start() {
             Ok(running) => {
                 running.stop();
             }
@@ -147,57 +135,75 @@ impl VmRunner {
         };
 
         let mut bufs = VmBuffers::from_container(&container);
+        // Swap the session's persistent buffers into VmBuffers so the VM
+        // operates on them directly, avoiding a copy.
+        std::mem::swap(&mut bufs.vars, &mut self.var_buf);
+        std::mem::swap(&mut bufs.data_region, &mut self.data_region);
 
-        let mut running = Vm::new()
-            .load(
-                &container,
-                &mut bufs.stack,
-                &mut self.var_buf,
-                &mut self.data_region,
-                &mut bufs.temp_buf,
-                &mut bufs.tasks,
-                &mut bufs.programs,
-                &mut bufs.ready,
-            )
-            .resume(self.scan_count);
+        let result = run_step_scans(
+            &container,
+            &mut bufs,
+            self.scan_count,
+            scans,
+            self.cycle_time_us,
+        );
 
-        for _ in 0..scans {
-            let current_us = running.scan_count() * self.cycle_time_us;
-            if let Err(ctx) = running.run_round(current_us) {
-                let total_scans = running.scan_count();
-                let faulted = running.fault(ctx);
-                let debug_map = build_var_debug_map(&container);
-                let variables = read_all_variables_faulted(&faulted, &debug_map);
-                self.scan_count = total_scans;
-                self.faulted = true;
-                return RunResult {
-                    ok: false,
-                    variables,
-                    total_scans,
-                    error: Some(format!(
-                        "VM trap: {} (task {}, instance {})",
-                        faulted.trap(),
-                        faulted.task_id(),
-                        faulted.instance_id()
-                    )),
-                };
-            }
+        // Swap the (now-updated) persistent buffers back to the session.
+        std::mem::swap(&mut bufs.vars, &mut self.var_buf);
+        std::mem::swap(&mut bufs.data_region, &mut self.data_region);
+
+        self.scan_count = result.total_scans;
+        if !result.ok {
+            self.faulted = true;
         }
 
-        let debug_map = build_var_debug_map(&container);
-        let num_vars = running.num_variables();
-        let variables = read_all_variables_running(&running, num_vars, &debug_map);
-        let total_scans = running.scan_count();
-        running.stop();
+        result
+    }
+}
 
-        self.scan_count = total_scans;
+/// Runs scan cycles on an already-prepared [`VmBuffers`], returning a
+/// [`RunResult`] with variable snapshots and the total scan count.
+fn run_step_scans(
+    container: &Container,
+    bufs: &mut VmBuffers,
+    base_scan_count: u64,
+    scans: u32,
+    cycle_time_us: u64,
+) -> RunResult {
+    let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
-        RunResult {
-            ok: true,
-            variables,
-            total_scans,
-            error: None,
+    for _ in 0..scans {
+        let current_us = running.scan_count() * cycle_time_us;
+        if let Err(ctx) = running.run_round(current_us) {
+            let total_scans = running.scan_count();
+            let faulted = running.fault(ctx);
+            let debug_map = build_var_debug_map(container);
+            let variables = read_all_variables_faulted(&faulted, &debug_map);
+            return RunResult {
+                ok: false,
+                variables,
+                total_scans,
+                error: Some(format!(
+                    "VM trap: {} (task {}, instance {})",
+                    faulted.trap(),
+                    faulted.task_id(),
+                    faulted.instance_id()
+                )),
+            };
         }
+    }
+
+    let debug_map = build_var_debug_map(container);
+    let num_vars = running.num_variables();
+    let variables = read_all_variables_running(&running, num_vars, &debug_map);
+    let total_scans = running.scan_count();
+    running.stop();
+
+    RunResult {
+        ok: true,
+        variables,
+        total_scans,
+        error: None,
     }
 }
 
