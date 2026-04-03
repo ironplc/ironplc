@@ -315,6 +315,52 @@ fn get_time_date_conversions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// String Conversion Function Definitions (IEC 61131-3 Section 2.5.1.5)
+// =============================================================================
+
+/// Numeric types that convert to STRING (W32 signed).
+const SIGNED_INT_TO_STRING_TYPES: &[&str] = &["SINT", "INT", "DINT"];
+
+/// Numeric types that convert to STRING (W32 unsigned / bit-string).
+const UNSIGNED_INT_TO_STRING_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "BYTE", "WORD", "DWORD"];
+
+/// Integer types that can be parsed from STRING.
+const STRING_TO_INT_TYPES: &[&str] = &["SINT", "INT", "DINT", "USINT", "UINT", "UDINT"];
+
+/// Returns string ↔ numeric conversion function definitions.
+///
+/// Covers all W32 numeric types: signed integers (SINT, INT, DINT),
+/// unsigned integers and bit-strings (USINT, UINT, UDINT, BYTE, WORD, DWORD),
+/// and REAL. Each type gets a *_TO_STRING function, and a subset gets
+/// STRING_TO_* functions.
+fn get_string_conversion_functions() -> Vec<FunctionSignature> {
+    let mut functions = Vec::new();
+
+    // Signed integer → STRING
+    for source in SIGNED_INT_TO_STRING_TYPES {
+        functions.push(build_conversion_function(source, "STRING"));
+    }
+
+    // Unsigned integer / bit-string → STRING
+    for source in UNSIGNED_INT_TO_STRING_TYPES {
+        functions.push(build_conversion_function(source, "STRING"));
+    }
+
+    // REAL → STRING
+    functions.push(build_conversion_function("REAL", "STRING"));
+
+    // STRING → integer types
+    for target in STRING_TO_INT_TYPES {
+        functions.push(build_conversion_function("STRING", target));
+    }
+
+    // STRING → REAL
+    functions.push(build_conversion_function("STRING", "REAL"));
+
+    functions
+}
+
+// =============================================================================
 // Numeric Function Definitions (IEC 61131-3 Section 2.5.1.5.2)
 // =============================================================================
 
@@ -423,6 +469,15 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
             "ATAN",
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
+        ),
+        // ATAN2: two-argument arc tangent (ANY_REAL, ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "ATAN2",
+            TypeName::from("ANY_REAL"),
+            vec![
+                input_param("IN1", "ANY_REAL"),
+                input_param("IN2", "ANY_REAL"),
+            ],
         ),
         // EXPT: exponentiation (ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
@@ -859,6 +914,27 @@ fn get_time_functions() -> Vec<FunctionSignature> {
                 input_param("IN2", "TIME_OF_DAY"),
             ],
         ),
+        // Decomposition: extract DATE or TIME_OF_DAY from DATE_AND_TIME
+        FunctionSignature::stdlib(
+            "DT_TO_DATE",
+            TypeName::from("DATE"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "DATE_AND_TIME_TO_DATE",
+            TypeName::from("DATE"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "DT_TO_TOD",
+            TypeName::from("TIME_OF_DAY"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "DATE_AND_TIME_TO_TIME_OF_DAY",
+            TypeName::from("TIME_OF_DAY"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
     ]
 }
 
@@ -890,6 +966,9 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
 
     // Time/date type conversion functions
     functions.extend(get_time_date_conversions());
+
+    // String conversion functions
+    functions.extend(get_string_conversion_functions());
 
     // Numeric functions
     functions.extend(get_numeric_functions());
@@ -1040,7 +1119,7 @@ mod tests {
     fn get_numeric_functions_when_called_then_contains_all_functions() {
         let functions = get_numeric_functions();
 
-        assert_eq!(functions.len(), 16);
+        assert_eq!(functions.len(), 17);
 
         assert!(functions.iter().any(|f| f.name.original() == "ABS"));
         assert!(functions.iter().any(|f| f.name.original() == "SQRT"));
@@ -1057,6 +1136,7 @@ mod tests {
         assert!(functions.iter().any(|f| f.name.original() == "ASIN"));
         assert!(functions.iter().any(|f| f.name.original() == "ACOS"));
         assert!(functions.iter().any(|f| f.name.original() == "ATAN"));
+        assert!(functions.iter().any(|f| f.name.original() == "ATAN2"));
         assert!(functions.iter().any(|f| f.name.original() == "EXPT"));
     }
 

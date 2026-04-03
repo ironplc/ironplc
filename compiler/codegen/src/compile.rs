@@ -1943,6 +1943,95 @@ fn parse_type_conversion(name: &str) -> Option<(VarTypeInfo, VarTypeInfo)> {
     Some((source, target))
 }
 
+/// Describes a string ↔ numeric conversion direction.
+enum StringConversion {
+    /// Numeric → STRING (e.g., INT_TO_STRING, DWORD_TO_STRING).
+    NumToString { source: VarTypeInfo },
+    /// STRING → Numeric (e.g., STRING_TO_INT, STRING_TO_REAL).
+    StringToNum { target: VarTypeInfo },
+}
+
+/// Checks if a function name is a string conversion (e.g., "int_to_string").
+///
+/// Returns `Some(StringConversion)` if the name matches `*_TO_STRING` or
+/// `STRING_TO_*` and the non-string part is a recognized type name.
+fn parse_string_conversion(name: &str) -> Option<StringConversion> {
+    let upper = name.to_uppercase();
+    let parts: Vec<&str> = upper.splitn(2, "_TO_").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    if parts[1] == "STRING" {
+        let source = resolve_type_name(&Id::from(parts[0]))?;
+        Some(StringConversion::NumToString { source })
+    } else if parts[0] == "STRING" {
+        let target = resolve_type_name(&Id::from(parts[1]))?;
+        Some(StringConversion::StringToNum { target })
+    } else {
+        None
+    }
+}
+
+/// Compiles a string ↔ numeric conversion function call.
+fn compile_string_conversion(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    conv: StringConversion,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    match conv {
+        StringConversion::NumToString { source } => {
+            let source_op_type: OpType = (source.op_width, source.signedness);
+            compile_expr(emitter, ctx, args[0], source_op_type)?;
+
+            let func_id = match (source.op_width, source.signedness) {
+                (OpWidth::W32, Signedness::Signed) => opcode::builtin::CONV_I32_TO_STR,
+                (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::CONV_U32_TO_STR,
+                (OpWidth::F32, _) => opcode::builtin::CONV_F32_TO_STR,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ));
+                }
+            };
+            emitter.emit_builtin(func_id);
+            ctx.num_temp_bufs += 1;
+            Ok(())
+        }
+        StringConversion::StringToNum { target } => {
+            let data_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+            let pool_index = ctx.add_i32_constant(data_offset as i32);
+            emitter.emit_load_const_i32(pool_index);
+
+            let func_id = match target.op_width {
+                OpWidth::W32 => opcode::builtin::CONV_STR_TO_I32,
+                OpWidth::F32 => opcode::builtin::CONV_STR_TO_F32,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ));
+                }
+            };
+            emitter.emit_builtin(func_id);
+            emit_truncation(emitter, target);
+            Ok(())
+        }
+    }
+}
+
 /// Returns the operation type from an expression's resolved type annotation.
 ///
 /// The analyzer must have populated `expr.resolved_type`. A missing or
@@ -2843,6 +2932,11 @@ fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Opti
             OpWidth::F64 => Some(opcode::builtin::ATAN_F64),
             OpWidth::W32 | OpWidth::W64 => None,
         },
+        "ATAN2" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::ATAN2_F32),
+            OpWidth::F64 => Some(opcode::builtin::ATAN2_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
         _ => None,
     }
 }
@@ -3071,6 +3165,9 @@ fn compile_function_call(
         "sub_dt_time" => compile_dt_time_add_sub(emitter, ctx, func, emit_sub),
         // Time functions — Group 3: seconds-to-ms conversion after sub
         "sub_dt_dt" | "sub_date_date" => compile_sub_to_time(emitter, ctx, func),
+        // Time functions — Group 5: datetime decomposition
+        "dt_to_date" | "date_and_time_to_date" => compile_dt_to_date(emitter, ctx, func),
+        "dt_to_tod" | "date_and_time_to_time_of_day" => compile_dt_to_tod(emitter, ctx, func),
         // Time functions — Group 4: type-dependent MUL/DIV
         "mul_time" => compile_mul_div_time(emitter, ctx, func, true),
         "div_time" => compile_mul_div_time(emitter, ctx, func, false),
@@ -3078,6 +3175,8 @@ fn compile_function_call(
             // Check user-defined functions first.
             if let Some(func_info) = ctx.user_functions.get(name.as_str()).cloned() {
                 compile_user_function_call(emitter, ctx, func, &func_info)
+            } else if let Some(conv) = parse_string_conversion(name) {
+                compile_string_conversion(emitter, ctx, func, conv)
             } else if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
             } else {
@@ -3326,6 +3425,90 @@ fn compile_sub_to_time(
     emit_sub(emitter, op_type);
     let pool_idx = ctx.add_i32_constant(1000);
     emitter.emit_load_const_i32(pool_idx);
+    emit_mul(emitter, op_type);
+    Ok(())
+}
+
+/// Compiles DT_TO_DATE and DATE_AND_TIME_TO_DATE.
+///
+/// Extracts the date portion from a DATE_AND_TIME by stripping the
+/// time-of-day: `IN - (IN % 86400)`. Both DT and DATE are in seconds
+/// since 1970-01-01.
+fn compile_dt_to_date(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let op_type = (OpWidth::W32, Signedness::Unsigned);
+    // Stack: IN
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // Stack: IN, IN
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // Stack: IN, IN, 86400
+    let secs_per_day = ctx.add_i32_constant(86400);
+    emitter.emit_load_const_i32(secs_per_day);
+    // Stack: IN, (IN % 86400)
+    emit_mod(emitter, op_type);
+    // Stack: IN - (IN % 86400)
+    emit_sub(emitter, op_type);
+    Ok(())
+}
+
+/// Compiles DT_TO_TOD and DATE_AND_TIME_TO_TIME_OF_DAY.
+///
+/// Extracts the time-of-day from a DATE_AND_TIME: `(IN % 86400) * 1000`.
+/// DT is in seconds since epoch; TOD is in milliseconds since midnight.
+fn compile_dt_to_tod(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let op_type = (OpWidth::W32, Signedness::Unsigned);
+    // Stack: IN
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // Stack: IN, 86400
+    let secs_per_day = ctx.add_i32_constant(86400);
+    emitter.emit_load_const_i32(secs_per_day);
+    // Stack: (IN % 86400)
+    emit_mod(emitter, op_type);
+    // Stack: (IN % 86400), 1000
+    let ms_per_sec = ctx.add_i32_constant(1000);
+    emitter.emit_load_const_i32(ms_per_sec);
+    // Stack: (IN % 86400) * 1000
     emit_mul(emitter, op_type);
     Ok(())
 }
