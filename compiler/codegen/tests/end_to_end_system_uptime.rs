@@ -112,6 +112,31 @@ END_PROGRAM
 }
 
 #[test]
+fn vm_when_direct_access_without_var_external_then_uptime_reads_correctly() {
+    let source = "
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR
+    t : TIME;
+  END_VAR
+  t := __SYSTEM_UP_TIME;
+END_PROGRAM
+";
+    parse_and_run_rounds(source, &rusty_options(), |vm| {
+        vm.run_round(3_000_000).unwrap();
+        // Index 0: __SYSTEM_UP_TIME, Index 1: __SYSTEM_UP_LTIME, Index 2: t
+        assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 3000);
+        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 3000);
+    });
+}
+
+#[test]
 fn vm_when_uptime_exceeds_i32_max_then_time_wraps_but_ltime_does_not() {
     let source = "
 PROGRAM main
