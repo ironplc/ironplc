@@ -17,15 +17,19 @@ use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_problems::Problem;
 
-/// Stored information about a global integer constant.
+/// Stored information about an integer constant.
 #[derive(Debug, Clone)]
 struct ConstantInfo {
     value: u128,
 }
 
-/// Collect all global constant declarations that have integer-compatible types
-/// and literal initializers, then fold the AST replacing `IntegerRef::Constant`
+/// Collect global and POU-local constant declarations that have integer-compatible
+/// types and literal initializers, then fold the AST replacing `IntegerRef::Constant`
 /// and `SignedIntegerRef::Constant` with their resolved literal values.
+///
+/// Global constants are collected upfront and available everywhere. POU-local
+/// constants (VAR CONSTANT inside FUNCTION, FUNCTION_BLOCK, or PROGRAM) are
+/// scoped — they are only visible within their declaring POU.
 pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     let constants = collect_constants(&lib);
 
@@ -168,6 +172,39 @@ impl<E> Fold<E> for ConstantResolver {
             }
         }
     }
+
+    fn fold_function_block_declaration(
+        &mut self,
+        node: FunctionBlockDeclaration,
+    ) -> Result<FunctionBlockDeclaration, E> {
+        let saved = self.constants.clone();
+        collect_from_var_decls(&node.variables, &mut self.constants);
+        let result = node.recurse_fold(self);
+        self.constants = saved;
+        result
+    }
+
+    fn fold_function_declaration(
+        &mut self,
+        node: FunctionDeclaration,
+    ) -> Result<FunctionDeclaration, E> {
+        let saved = self.constants.clone();
+        collect_from_var_decls(&node.variables, &mut self.constants);
+        let result = node.recurse_fold(self);
+        self.constants = saved;
+        result
+    }
+
+    fn fold_program_declaration(
+        &mut self,
+        node: ProgramDeclaration,
+    ) -> Result<ProgramDeclaration, E> {
+        let saved = self.constants.clone();
+        collect_from_var_decls(&node.variables, &mut self.constants);
+        let result = node.recurse_fold(self);
+        self.constants = saved;
+        result
+    }
 }
 
 #[cfg(test)]
@@ -190,12 +227,13 @@ mod tests {
         .unwrap()
     }
 
-    /// Find the first VarDecl with the given name from a function block.
+    /// Find the first VarDecl with the given name from a POU.
     fn find_var_decl<'a>(lib: &'a Library, var_name: &str) -> &'a VarDecl {
         for element in &lib.elements {
             let vars = match element {
                 LibraryElementKind::FunctionBlockDeclaration(fb) => &fb.variables,
                 LibraryElementKind::FunctionDeclaration(f) => &f.variables,
+                LibraryElementKind::ProgramDeclaration(p) => &p.variables,
                 _ => continue,
             };
             for var in vars {
@@ -362,5 +400,110 @@ mod tests {
         let lib = apply(lib).unwrap();
         let var = find_var_decl(&lib, "STR");
         assert_eq!(get_string_length(var), 50);
+    }
+
+    #[test]
+    fn apply_when_fb_local_constant_in_array_bounds_then_resolves() {
+        let lib = parse(
+            "
+            FUNCTION_BLOCK MY_FIFO
+            VAR
+                fifo : ARRAY[0..n] OF DWORD;
+            END_VAR
+            VAR CONSTANT
+                n : INT := 16;
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let lib = apply(lib).unwrap();
+        let var = find_var_decl(&lib, "fifo");
+        let subranges = get_array_subranges(var);
+        assert_eq!(subranges.len(), 1);
+        assert_eq!(signed_integer_ref_value(&subranges[0].start), (false, 0));
+        assert_eq!(signed_integer_ref_value(&subranges[0].end), (false, 16));
+    }
+
+    #[test]
+    fn apply_when_function_local_constant_in_string_length_then_resolves() {
+        let lib = parse(
+            "
+            FUNCTION my_func : INT
+            VAR_INPUT
+                STR : STRING[MAX_LEN];
+            END_VAR
+            VAR CONSTANT
+                MAX_LEN : INT := 80;
+            END_VAR
+            my_func := 0;
+            END_FUNCTION
+        ",
+        );
+
+        let lib = apply(lib).unwrap();
+        let var = find_var_decl(&lib, "STR");
+        assert_eq!(get_string_length(var), 80);
+    }
+
+    #[test]
+    fn apply_when_program_local_constant_in_array_bounds_then_resolves() {
+        let lib = parse(
+            "
+            PROGRAM my_prog
+            VAR
+                buf : ARRAY[1..SIZE] OF INT;
+            END_VAR
+            VAR CONSTANT
+                SIZE : INT := 32;
+            END_VAR
+            END_PROGRAM
+        ",
+        );
+
+        let lib = apply(lib).unwrap();
+        let var = find_var_decl(&lib, "buf");
+        let subranges = get_array_subranges(var);
+        assert_eq!(subranges.len(), 1);
+        assert_eq!(signed_integer_ref_value(&subranges[0].start), (false, 1));
+        assert_eq!(signed_integer_ref_value(&subranges[0].end), (false, 32));
+    }
+
+    #[test]
+    fn apply_when_fb_local_constant_not_visible_in_other_fb_then_error() {
+        let lib = parse(
+            "
+            FUNCTION_BLOCK fb1
+            VAR CONSTANT
+                LOCAL_SIZE : INT := 10;
+            END_VAR
+            END_FUNCTION_BLOCK
+            FUNCTION_BLOCK fb2
+            VAR
+                arr : ARRAY[1..LOCAL_SIZE] OF INT;
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let result = apply(lib);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_fb_var_not_constant_then_error() {
+        let lib = parse(
+            "
+            FUNCTION_BLOCK fb1
+            VAR
+                NOT_CONST : INT := 10;
+                arr : ARRAY[1..NOT_CONST] OF INT;
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let result = apply(lib);
+        assert!(result.is_err());
     }
 }
