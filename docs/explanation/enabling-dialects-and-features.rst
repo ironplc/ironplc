@@ -140,6 +140,13 @@ features — they never disable features that a dialect already includes.
    TwinCAT, and RuSTy. See
    :doc:`/reference/standard-library/functions/sizeof`.
 
+``--allow-cross-family-widening``
+   Allow implicit widening between bit-string and integer type families.
+   For example, passing a ``BYTE`` variable where an ``INT`` parameter is
+   expected, or passing a bare integer literal ``0`` where a ``BYTE``
+   parameter is expected. This is a vendor extension supported by CODESYS,
+   TwinCAT, and RuSTy.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell

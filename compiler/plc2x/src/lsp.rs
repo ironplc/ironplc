@@ -69,6 +69,7 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
         options.allow_int_to_bool_initializer |= flag("allowIntToBoolInitializer");
         options.allow_sizeof |= flag("allowSizeof");
         options.allow_system_uptime_global |= flag("allowSystemUptimeGlobal");
+        options.allow_cross_family_widening |= flag("allowCrossFamilyWidening");
         options
     } else {
         CompilerOptions::default()
