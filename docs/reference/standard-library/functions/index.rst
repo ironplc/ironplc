@@ -205,6 +205,22 @@ Time and Date Functions
      - Difference between two times-of-day
    * - :doc:`CONCAT_DATE_TOD <concat_date_tod>`
      - Combine date and time-of-day
+   * - :doc:`DT_TO_DATE <dt_to_date>`
+     - Extract date from datetime
+   * - :doc:`DT_TO_TOD <dt_to_tod>`
+     - Extract time-of-day from datetime
+
+Vendor Extensions
+-----------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Function
+     - Description
+   * - :doc:`SIZEOF <sizeof>`
+     - Size in bytes of a variable or type (requires ``--allow-sizeof``)
 
 Type Conversion Functions
 -------------------------
@@ -278,6 +294,9 @@ Type Conversion Functions
    sub_date_date
    sub_tod_tod
    concat_date_tod
+   dt_to_date
+   dt_to_tod
    type-conversions
    trunc
    bcd
+   sizeof

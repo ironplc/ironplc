@@ -228,6 +228,27 @@ pub const MID_STR: u8 = 0xEA;
 /// Pushes buf_idx (i32).
 pub const CONCAT_STR: u8 = 0xEB;
 
+// --- String array opcodes ---
+
+/// Initialize all string headers in an array of strings.
+/// Operand 1: u16 variable table index (base data_offset).
+/// Operand 2: u16 array descriptor index.
+/// Uses element_extra from the descriptor as max_string_length.
+/// Stack effect: none.
+pub const STR_INIT_ARRAY: u8 = 0xEC;
+
+/// Load a string from an array element into a temp buffer.
+/// Operand 1: u16 variable table index (base data_offset).
+/// Operand 2: u16 array descriptor index.
+/// Pops flat_index, pushes buf_idx. Net stack: 0.
+pub const STR_LOAD_ARRAY_ELEM: u8 = 0xED;
+
+/// Store a temp buffer into an array element's string slot.
+/// Operand 1: u16 variable table index (base data_offset).
+/// Operand 2: u16 array descriptor index.
+/// Pops flat_index, then pops buf_idx. Net stack: -2.
+pub const STR_STORE_ARRAY_ELEM: u8 = 0xEE;
+
 // --- Array opcodes ---
 
 /// Load a value from an array element.
@@ -811,6 +832,42 @@ pub mod builtin {
     /// Convert 64-bit integer to boolean: 0 → FALSE (0), non-zero → TRUE (1).
     pub const CONV_I64_TO_BOOL: u16 = 0x039A;
 
+    // --- Two-argument trigonometric opcodes ---
+
+    /// ATAN2 for 32-bit floats: pops two values (b=IN2=X, a=IN1=Y), pushes atan2(Y, X).
+    pub const ATAN2_F32: u16 = 0x039B;
+
+    /// ATAN2 for 64-bit floats: pops two values (b=IN2=X, a=IN1=Y), pushes atan2(Y, X).
+    pub const ATAN2_F64: u16 = 0x039C;
+
+    // =========================================================================
+    // Numeric ↔ STRING conversion builtins
+    //
+    // These are dispatched inline in the VM main loop (not via
+    // builtin::dispatch) because they need access to temp buffers and
+    // the data region.
+    // =========================================================================
+
+    /// Convert signed 32-bit integer to decimal string.
+    /// Stack: pop i32, push buf_idx (temp buffer with result).
+    pub const CONV_I32_TO_STR: u16 = 0x039D;
+
+    /// Convert unsigned 32-bit integer to decimal string.
+    /// Stack: pop i32 (treated as u32), push buf_idx.
+    pub const CONV_U32_TO_STR: u16 = 0x039E;
+
+    /// Parse decimal string to signed 32-bit integer.
+    /// Stack: pop data_offset (i32), push parsed i32 (0 on failure).
+    pub const CONV_STR_TO_I32: u16 = 0x039F;
+
+    /// Convert 32-bit float to decimal string.
+    /// Stack: pop f32, push buf_idx (temp buffer with result).
+    pub const CONV_F32_TO_STR: u16 = 0x03A0;
+
+    /// Parse decimal string to 32-bit float.
+    /// Stack: pop data_offset (i32), push parsed f32 (0.0 on failure).
+    pub const CONV_STR_TO_F32: u16 = 0x03A1;
+
     // =========================================================================
     // MUX (multiplexer) range-based opcodes
     //
@@ -872,11 +929,13 @@ pub mod builtin {
             | CONV_F32_TO_U32 | CONV_F32_TO_U64 | CONV_F64_TO_U32 | CONV_F64_TO_U64
             | CONV_F32_TO_F64 | CONV_F64_TO_F32 | CONV_U32_TO_I64 | BCD_TO_INT_8
             | BCD_TO_INT_16 | BCD_TO_INT_32 | BCD_TO_INT_64 | INT_TO_BCD_8 | INT_TO_BCD_16
-            | INT_TO_BCD_32 | INT_TO_BCD_64 | CONV_I32_TO_BOOL | CONV_I64_TO_BOOL => 1,
+            | INT_TO_BCD_32 | INT_TO_BCD_64 | CONV_I32_TO_BOOL | CONV_I64_TO_BOOL
+            | CONV_I32_TO_STR | CONV_U32_TO_STR | CONV_STR_TO_I32 | CONV_F32_TO_STR
+            | CONV_STR_TO_F32 => 1,
             EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
             | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
             | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
-            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 => 2,
+            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 | ATAN2_F32 | ATAN2_F64 => 2,
             LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | LIMIT_I64 | LIMIT_U32 | LIMIT_U64 | SEL_I32
             | SEL_F32 | SEL_F64 | SEL_I64 => 3,
             id if is_mux(id) => {

@@ -120,7 +120,10 @@ enum PoolConstant {
 }
 
 /// The IEC 61131-3 default maximum length for STRING (254 characters).
-const DEFAULT_STRING_MAX_LENGTH: u16 = 254;
+pub(crate) const DEFAULT_STRING_MAX_LENGTH_U16: u16 = 254;
+
+/// STRING_HEADER_BYTES re-exported as u32 for arithmetic in compile_array.
+pub(crate) const STRING_HEADER_BYTES_U32: u32 = STRING_HEADER_BYTES as u32;
 
 /// Metadata for a STRING variable allocated in the data region.
 struct StringVarInfo {
@@ -607,7 +610,7 @@ fn compile_user_function(
                             }
                         }
                         let desc_index =
-                            builder.add_array_descriptor(element_type_byte, total_elements);
+                            builder.add_array_descriptor(element_type_byte, total_elements, 0);
                         ctx.array_vars.insert(
                             id.clone(),
                             crate::compile_array::ArrayVarInfo {
@@ -617,6 +620,8 @@ fn compile_user_function(
                                 element_var_type_info: element_vti,
                                 total_elements,
                                 dimensions,
+                                is_string_element: false,
+                                string_max_len: 0,
                             },
                         );
                     }
@@ -1032,7 +1037,7 @@ pub(crate) struct CompileContext {
     /// Next available byte offset in the data region.
     pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
-    max_string_capacity: u16,
+    pub(crate) max_string_capacity: u16,
     /// Number of temp buffers needed (one per string load in the init function).
     num_temp_bufs: u16,
     /// Debug info: variable name entries collected during assign_variables.
@@ -1467,24 +1472,44 @@ fn emit_initial_values(
                         let var_index = array_info.var_index;
                         let desc_index = array_info.desc_index;
                         let element_vti = array_info.element_var_type_info;
+                        let is_string = array_info.is_string_element;
 
                         // Store data_offset into the variable slot (like FB instances).
                         let offset_const = ctx.add_i32_constant(data_offset as i32);
                         emitter.emit_load_const_i32(offset_const);
                         emitter.emit_store_var_i32(var_index);
 
-                        // Emit STORE_ARRAY for each initial value.
-                        if !array_init.initial_values.is_empty() {
-                            let values = crate::compile_array::flatten_array_initial_values(
-                                &array_init.initial_values,
-                            )?;
-                            let element_op_type = (element_vti.op_width, element_vti.signedness);
-                            for (i, value) in values.iter().enumerate() {
-                                compile_constant(emitter, ctx, value, element_op_type)?;
-                                emit_truncation(emitter, element_vti);
-                                let idx_const = ctx.add_i32_constant(i as i32);
-                                emitter.emit_load_const_i32(idx_const);
-                                emitter.emit_store_array(var_index, desc_index);
+                        if is_string {
+                            // Initialize all string headers in the array.
+                            emitter.emit_str_init_array(var_index, desc_index);
+
+                            // Emit STR_STORE_ARRAY_ELEM for each initial string value.
+                            if !array_init.initial_values.is_empty() {
+                                let values = crate::compile_array::flatten_array_initial_values(
+                                    &array_init.initial_values,
+                                )?;
+                                for (i, value) in values.iter().enumerate() {
+                                    compile_constant(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+                                    let idx_const = ctx.add_i32_constant(i as i32);
+                                    emitter.emit_load_const_i32(idx_const);
+                                    emitter.emit_str_store_array_elem(var_index, desc_index);
+                                }
+                            }
+                        } else {
+                            // Emit STORE_ARRAY for each initial value.
+                            if !array_init.initial_values.is_empty() {
+                                let values = crate::compile_array::flatten_array_initial_values(
+                                    &array_init.initial_values,
+                                )?;
+                                let element_op_type =
+                                    (element_vti.op_width, element_vti.signedness);
+                                for (i, value) in values.iter().enumerate() {
+                                    compile_constant(emitter, ctx, value, element_op_type)?;
+                                    emit_truncation(emitter, element_vti);
+                                    let idx_const = ctx.add_i32_constant(i as i32);
+                                    emitter.emit_load_const_i32(idx_const);
+                                    emitter.emit_store_array(var_index, desc_index);
+                                }
                             }
                         }
                     }
@@ -1918,6 +1943,95 @@ fn parse_type_conversion(name: &str) -> Option<(VarTypeInfo, VarTypeInfo)> {
     Some((source, target))
 }
 
+/// Describes a string ↔ numeric conversion direction.
+enum StringConversion {
+    /// Numeric → STRING (e.g., INT_TO_STRING, DWORD_TO_STRING).
+    NumToString { source: VarTypeInfo },
+    /// STRING → Numeric (e.g., STRING_TO_INT, STRING_TO_REAL).
+    StringToNum { target: VarTypeInfo },
+}
+
+/// Checks if a function name is a string conversion (e.g., "int_to_string").
+///
+/// Returns `Some(StringConversion)` if the name matches `*_TO_STRING` or
+/// `STRING_TO_*` and the non-string part is a recognized type name.
+fn parse_string_conversion(name: &str) -> Option<StringConversion> {
+    let upper = name.to_uppercase();
+    let parts: Vec<&str> = upper.splitn(2, "_TO_").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    if parts[1] == "STRING" {
+        let source = resolve_type_name(&Id::from(parts[0]))?;
+        Some(StringConversion::NumToString { source })
+    } else if parts[0] == "STRING" {
+        let target = resolve_type_name(&Id::from(parts[1]))?;
+        Some(StringConversion::StringToNum { target })
+    } else {
+        None
+    }
+}
+
+/// Compiles a string ↔ numeric conversion function call.
+fn compile_string_conversion(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    conv: StringConversion,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    match conv {
+        StringConversion::NumToString { source } => {
+            let source_op_type: OpType = (source.op_width, source.signedness);
+            compile_expr(emitter, ctx, args[0], source_op_type)?;
+
+            let func_id = match (source.op_width, source.signedness) {
+                (OpWidth::W32, Signedness::Signed) => opcode::builtin::CONV_I32_TO_STR,
+                (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::CONV_U32_TO_STR,
+                (OpWidth::F32, _) => opcode::builtin::CONV_F32_TO_STR,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ));
+                }
+            };
+            emitter.emit_builtin(func_id);
+            ctx.num_temp_bufs += 1;
+            Ok(())
+        }
+        StringConversion::StringToNum { target } => {
+            let data_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+            let pool_index = ctx.add_i32_constant(data_offset as i32);
+            emitter.emit_load_const_i32(pool_index);
+
+            let func_id = match target.op_width {
+                OpWidth::W32 => opcode::builtin::CONV_STR_TO_I32,
+                OpWidth::F32 => opcode::builtin::CONV_STR_TO_F32,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ));
+                }
+            };
+            emitter.emit_builtin(func_id);
+            emit_truncation(emitter, target);
+            Ok(())
+        }
+    }
+}
+
 /// Returns the operation type from an expression's resolved type annotation.
 ///
 /// The analyzer must have populated `expr.resolved_type`. A missing or
@@ -2037,6 +2151,20 @@ fn compile_statement(
                 return compile_bit_access_assignment(emitter, ctx, bit_access, &assignment.value);
             }
 
+            // Check if the target is a structured variable (struct field write).
+            if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) =
+                &assignment.target
+            {
+                let (var_index, desc_index, slot_offset, op_type, field_type) =
+                    crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
+                compile_expr(emitter, ctx, &assignment.value, op_type)?;
+                crate::compile_struct::emit_truncation_for_field(emitter, &field_type);
+                let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
+                emitter.emit_load_const_i32(idx_const);
+                emitter.emit_store_array(var_index, desc_index);
+                return Ok(());
+            }
+
             // Look up the target variable's type info.
             let target_name = resolve_variable_name(&assignment.target);
 
@@ -2067,6 +2195,7 @@ fn compile_statement(
                         let element_vti = info.element_var_type_info;
                         let arr_var_index = info.var_index;
                         let arr_desc_index = info.desc_index;
+                        let is_string_elem = info.is_string_element;
                         let dim_info: Vec<_> = info
                             .dimensions
                             .iter()
@@ -2077,23 +2206,37 @@ fn compile_statement(
                             })
                             .collect();
                         // info is no longer used; subscripts borrows from AST, not ctx.
-                        let element_op_type = (element_vti.op_width, element_vti.signedness);
                         let target_span = variable_span(&assignment.target);
 
-                        // 1. Compile the RHS value.
-                        compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
-                        // 2. Truncate for sub-32-bit types.
-                        emit_truncation(emitter, element_vti);
-                        // 3. Compute the flat index.
-                        crate::compile_array::emit_flat_index(
-                            emitter,
-                            ctx,
-                            &subscripts,
-                            &dim_info,
-                            &target_span,
-                        )?;
-                        // Stack: [..., value, index]. STORE_ARRAY pops both.
-                        emitter.emit_store_array(arr_var_index, arr_desc_index);
+                        if is_string_elem {
+                            // String array: compile RHS (produces buf_idx), then flat index,
+                            // then STR_STORE_ARRAY_ELEM.
+                            compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                            crate::compile_array::emit_flat_index(
+                                emitter,
+                                ctx,
+                                &subscripts,
+                                &dim_info,
+                                &target_span,
+                            )?;
+                            emitter.emit_str_store_array_elem(arr_var_index, arr_desc_index);
+                        } else {
+                            let element_op_type = (element_vti.op_width, element_vti.signedness);
+                            // 1. Compile the RHS value.
+                            compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
+                            // 2. Truncate for sub-32-bit types.
+                            emit_truncation(emitter, element_vti);
+                            // 3. Compute the flat index.
+                            crate::compile_array::emit_flat_index(
+                                emitter,
+                                ctx,
+                                &subscripts,
+                                &dim_info,
+                                &target_span,
+                            )?;
+                            // Stack: [..., value, index]. STORE_ARRAY pops both.
+                            emitter.emit_store_array(arr_var_index, arr_desc_index);
+                        }
                     }
                     crate::compile_array::ResolvedAccess::DerefArrayElement {
                         info,
@@ -2441,7 +2584,7 @@ fn compile_case_selector(
 /// not-implemented diagnostic if the length is an unresolved constant reference.
 fn resolve_string_max_length(string_init: &StringInitializer) -> Result<u16, Diagnostic> {
     match &string_init.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH),
+        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
     }
@@ -2452,7 +2595,7 @@ fn resolve_string_max_length(string_init: &StringInitializer) -> Result<u16, Dia
 /// unresolved constant reference.
 fn resolve_string_spec_max_length(spec: &StringSpecification) -> Result<u16, Diagnostic> {
     match &spec.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH),
+        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
         Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
     }
@@ -2789,6 +2932,11 @@ fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Opti
             OpWidth::F64 => Some(opcode::builtin::ATAN_F64),
             OpWidth::W32 | OpWidth::W64 => None,
         },
+        "ATAN2" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::ATAN2_F32),
+            OpWidth::F64 => Some(opcode::builtin::ATAN2_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
         _ => None,
     }
 }
@@ -2982,6 +3130,8 @@ fn compile_function_call(
         "move" => compile_move(emitter, ctx, func, op_type),
         // Truncation function
         "trunc" => compile_trunc(emitter, ctx, func, op_type),
+        // SIZEOF operator (vendor extension)
+        "sizeof" => compile_sizeof(emitter, ctx, func),
         // BCD conversion functions
         "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),
         "int_to_bcd" => compile_int_to_bcd(emitter, ctx, func, op_type),
@@ -3015,6 +3165,9 @@ fn compile_function_call(
         "sub_dt_time" => compile_dt_time_add_sub(emitter, ctx, func, emit_sub),
         // Time functions — Group 3: seconds-to-ms conversion after sub
         "sub_dt_dt" | "sub_date_date" => compile_sub_to_time(emitter, ctx, func),
+        // Time functions — Group 5: datetime decomposition
+        "dt_to_date" | "date_and_time_to_date" => compile_dt_to_date(emitter, ctx, func),
+        "dt_to_tod" | "date_and_time_to_time_of_day" => compile_dt_to_tod(emitter, ctx, func),
         // Time functions — Group 4: type-dependent MUL/DIV
         "mul_time" => compile_mul_div_time(emitter, ctx, func, true),
         "div_time" => compile_mul_div_time(emitter, ctx, func, false),
@@ -3022,6 +3175,8 @@ fn compile_function_call(
             // Check user-defined functions first.
             if let Some(func_info) = ctx.user_functions.get(name.as_str()).cloned() {
                 compile_user_function_call(emitter, ctx, func, &func_info)
+            } else if let Some(conv) = parse_string_conversion(name) {
+                compile_string_conversion(emitter, ctx, func, conv)
             } else if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
             } else {
@@ -3071,12 +3226,41 @@ fn compile_user_function_call(
             let zero_idx = ctx.add_i32_constant(0);
             emitter.emit_load_const_i32(zero_idx);
         } else {
-            let arg_op_type = func_info
+            let param_op_type = func_info
                 .param_op_types
                 .get(i)
                 .copied()
                 .unwrap_or(DEFAULT_OP_TYPE);
-            compile_expr(emitter, ctx, arg, arg_op_type)?;
+
+            // When implicit integer widening crosses OpWidth boundaries
+            // (e.g. INT [W32] -> LINT [W64]), compile the argument at its
+            // natural width and then emit a conversion opcode.
+            let arg_natural = arg
+                .resolved_type
+                .as_ref()
+                .and_then(|t| resolve_type_name(&t.name))
+                .map(|info| (info.op_width, info.signedness));
+
+            if let Some(arg_op) = arg_natural {
+                if arg_op.0 != param_op_type.0 {
+                    compile_expr(emitter, ctx, arg, arg_op)?;
+                    let source = VarTypeInfo {
+                        op_width: arg_op.0,
+                        signedness: arg_op.1,
+                        storage_bits: 0,
+                    };
+                    let target = VarTypeInfo {
+                        op_width: param_op_type.0,
+                        signedness: param_op_type.1,
+                        storage_bits: 0,
+                    };
+                    emit_conversion_opcode(emitter, &source, &target);
+                } else {
+                    compile_expr(emitter, ctx, arg, param_op_type)?;
+                }
+            } else {
+                compile_expr(emitter, ctx, arg, param_op_type)?;
+            }
         }
     }
 
@@ -3241,6 +3425,90 @@ fn compile_sub_to_time(
     emit_sub(emitter, op_type);
     let pool_idx = ctx.add_i32_constant(1000);
     emitter.emit_load_const_i32(pool_idx);
+    emit_mul(emitter, op_type);
+    Ok(())
+}
+
+/// Compiles DT_TO_DATE and DATE_AND_TIME_TO_DATE.
+///
+/// Extracts the date portion from a DATE_AND_TIME by stripping the
+/// time-of-day: `IN - (IN % 86400)`. Both DT and DATE are in seconds
+/// since 1970-01-01.
+fn compile_dt_to_date(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let op_type = (OpWidth::W32, Signedness::Unsigned);
+    // Stack: IN
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // Stack: IN, IN
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // Stack: IN, IN, 86400
+    let secs_per_day = ctx.add_i32_constant(86400);
+    emitter.emit_load_const_i32(secs_per_day);
+    // Stack: IN, (IN % 86400)
+    emit_mod(emitter, op_type);
+    // Stack: IN - (IN % 86400)
+    emit_sub(emitter, op_type);
+    Ok(())
+}
+
+/// Compiles DT_TO_TOD and DATE_AND_TIME_TO_TIME_OF_DAY.
+///
+/// Extracts the time-of-day from a DATE_AND_TIME: `(IN % 86400) * 1000`.
+/// DT is in seconds since epoch; TOD is in milliseconds since midnight.
+fn compile_dt_to_tod(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let op_type = (OpWidth::W32, Signedness::Unsigned);
+    // Stack: IN
+    compile_expr(emitter, ctx, args[0], op_type)?;
+    // Stack: IN, 86400
+    let secs_per_day = ctx.add_i32_constant(86400);
+    emitter.emit_load_const_i32(secs_per_day);
+    // Stack: (IN % 86400)
+    emit_mod(emitter, op_type);
+    // Stack: (IN % 86400), 1000
+    let ms_per_sec = ctx.add_i32_constant(1000);
+    emitter.emit_load_const_i32(ms_per_sec);
+    // Stack: (IN % 86400) * 1000
     emit_mul(emitter, op_type);
     Ok(())
 }
@@ -3435,6 +3703,65 @@ fn compile_trunc(
     emit_conversion_opcode(emitter, &source, &target);
 
     Ok(())
+}
+
+/// Compiles SIZEOF(IN) — returns the size in bytes of the argument's type.
+///
+/// SIZEOF is a compile-time constant: the argument is never evaluated at runtime.
+/// For elementary types, the size is derived from the storage bit width.
+/// For array variables, the total byte count is computed from element size × element count.
+fn compile_sizeof(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    let args: Vec<&Expr> = func
+        .param_assignment
+        .iter()
+        .filter_map(|p| match p {
+            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
+            _ => None,
+        })
+        .collect();
+
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    // Check if the argument is a variable that maps to an array.
+    let size: u32 =
+        if let ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(ref named))) =
+            args[0].kind
+        {
+            if let Some(array_info) = ctx.array_vars.get(&named.name) {
+                let elem_bytes = array_info.element_var_type_info.storage_bits as u32 / 8;
+                array_info.total_elements * elem_bytes
+            } else {
+                sizeof_from_resolved_type(args[0])?
+            }
+        } else {
+            sizeof_from_resolved_type(args[0])?
+        };
+
+    let pool_index = ctx.add_i32_constant(size as i32);
+    emitter.emit_load_const_i32(pool_index);
+    Ok(())
+}
+
+/// Returns the size in bytes from an expression's resolved type annotation.
+fn sizeof_from_resolved_type(expr: &Expr) -> Result<u32, Diagnostic> {
+    let resolved = expr
+        .resolved_type
+        .as_ref()
+        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+    let info =
+        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+    // Ceiling division: types like BOOL (1 bit) still occupy 1 byte.
+    Ok((info.storage_bits as u32).div_ceil(8))
 }
 
 /// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer.
@@ -3671,7 +3998,7 @@ fn resolve_string_arg(
         ExprKind::Const(ConstantKind::CharacterString(lit)) => {
             // Allocate space in the data region for this string literal.
             let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
-            let max_length = DEFAULT_STRING_MAX_LENGTH;
+            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
             let data_offset = ctx.data_region_offset;
             let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
             ctx.data_region_offset = ctx
@@ -4473,6 +4800,7 @@ fn compile_variable_read(
                 crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
                     let arr_var_index = info.var_index;
                     let arr_desc_index = info.desc_index;
+                    let is_string_elem = info.is_string_element;
                     let dim_info: Vec<_> = info
                         .dimensions
                         .iter()
@@ -4490,7 +4818,12 @@ fn compile_variable_read(
                         &dim_info,
                         &span,
                     )?;
-                    emitter.emit_load_array(arr_var_index, arr_desc_index);
+                    if is_string_elem {
+                        ctx.num_temp_bufs += 1;
+                        emitter.emit_str_load_array_elem(arr_var_index, arr_desc_index);
+                    } else {
+                        emitter.emit_load_array(arr_var_index, arr_desc_index);
+                    }
                 }
                 crate::compile_array::ResolvedAccess::DerefArrayElement { info, subscripts } => {
                     let ref_var_index = info.var_index;

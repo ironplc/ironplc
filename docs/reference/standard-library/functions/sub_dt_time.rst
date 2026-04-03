@@ -1,6 +1,6 @@
-==========
+===========
 SUB_DT_TIME
-==========
+===========
 
 Subtracts a duration from a date-and-time value.
 

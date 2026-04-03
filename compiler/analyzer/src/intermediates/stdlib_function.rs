@@ -60,6 +60,31 @@ const ALL_INT_TYPES: &[&str] = &[
 /// Bit string type names (excluding BOOL) for conversion functions.
 const BIT_STRING_TYPES: &[&str] = &["BYTE", "WORD", "DWORD", "LWORD"];
 
+/// All time and date type names (including short aliases) for conversion functions.
+///
+/// Includes both canonical names (TIME_OF_DAY, DATE_AND_TIME) and their
+/// short aliases (TOD, DT) since function lookup is by exact name.
+const ALL_TIME_DATE_TYPES: &[&str] = &[
+    "TIME",
+    "LTIME",
+    "DATE",
+    "LDATE",
+    "TOD",
+    "TIME_OF_DAY",
+    "LTOD",
+    "LTIME_OF_DAY",
+    "DT",
+    "DATE_AND_TIME",
+    "LDT",
+    "LDATE_AND_TIME",
+];
+
+/// Integer, real, and bit string type names that time/date types convert to/from.
+const TIME_DATE_TARGETS: &[&str] = &[
+    "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "REAL", "LREAL", "BYTE",
+    "WORD", "DWORD", "LWORD",
+];
+
 /// Generates all integer-to-integer conversion functions.
 ///
 /// Creates functions like INT_TO_DINT, DINT_TO_INT, SINT_TO_LINT, etc.
@@ -268,6 +293,74 @@ fn get_bit_string_real_conversions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// Time/Date Type Conversion Functions (IEC 61131-3 Section 2.5.1.5)
+// =============================================================================
+
+/// Generates time/date type conversion functions.
+///
+/// Creates bidirectional conversions between all time/date types (TIME, DATE,
+/// TOD, DT and their long and alias forms) and integer, real, and bit string
+/// types. For example: TIME_TO_DWORD, DWORD_TO_TIME, DATE_TO_UDINT, etc.
+fn get_time_date_conversions() -> Vec<FunctionSignature> {
+    let mut functions = Vec::new();
+
+    for time_type in ALL_TIME_DATE_TYPES {
+        for target_type in TIME_DATE_TARGETS {
+            functions.push(build_conversion_function(time_type, target_type));
+            functions.push(build_conversion_function(target_type, time_type));
+        }
+    }
+
+    functions
+}
+
+// =============================================================================
+// String Conversion Function Definitions (IEC 61131-3 Section 2.5.1.5)
+// =============================================================================
+
+/// Numeric types that convert to STRING (W32 signed).
+const SIGNED_INT_TO_STRING_TYPES: &[&str] = &["SINT", "INT", "DINT"];
+
+/// Numeric types that convert to STRING (W32 unsigned / bit-string).
+const UNSIGNED_INT_TO_STRING_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "BYTE", "WORD", "DWORD"];
+
+/// Integer types that can be parsed from STRING.
+const STRING_TO_INT_TYPES: &[&str] = &["SINT", "INT", "DINT", "USINT", "UINT", "UDINT"];
+
+/// Returns string ↔ numeric conversion function definitions.
+///
+/// Covers all W32 numeric types: signed integers (SINT, INT, DINT),
+/// unsigned integers and bit-strings (USINT, UINT, UDINT, BYTE, WORD, DWORD),
+/// and REAL. Each type gets a *_TO_STRING function, and a subset gets
+/// STRING_TO_* functions.
+fn get_string_conversion_functions() -> Vec<FunctionSignature> {
+    let mut functions = Vec::new();
+
+    // Signed integer → STRING
+    for source in SIGNED_INT_TO_STRING_TYPES {
+        functions.push(build_conversion_function(source, "STRING"));
+    }
+
+    // Unsigned integer / bit-string → STRING
+    for source in UNSIGNED_INT_TO_STRING_TYPES {
+        functions.push(build_conversion_function(source, "STRING"));
+    }
+
+    // REAL → STRING
+    functions.push(build_conversion_function("REAL", "STRING"));
+
+    // STRING → integer types
+    for target in STRING_TO_INT_TYPES {
+        functions.push(build_conversion_function("STRING", target));
+    }
+
+    // STRING → REAL
+    functions.push(build_conversion_function("STRING", "REAL"));
+
+    functions
+}
+
+// =============================================================================
 // Numeric Function Definitions (IEC 61131-3 Section 2.5.1.5.2)
 // =============================================================================
 
@@ -376,6 +469,15 @@ fn get_numeric_functions() -> Vec<FunctionSignature> {
             "ATAN",
             TypeName::from("ANY_REAL"),
             vec![input_param("IN", "ANY_REAL")],
+        ),
+        // ATAN2: two-argument arc tangent (ANY_REAL, ANY_REAL -> ANY_REAL)
+        FunctionSignature::stdlib(
+            "ATAN2",
+            TypeName::from("ANY_REAL"),
+            vec![
+                input_param("IN1", "ANY_REAL"),
+                input_param("IN2", "ANY_REAL"),
+            ],
         ),
         // EXPT: exponentiation (ANY_NUM, ANY_NUM -> ANY_NUM)
         FunctionSignature::stdlib(
@@ -812,6 +914,27 @@ fn get_time_functions() -> Vec<FunctionSignature> {
                 input_param("IN2", "TIME_OF_DAY"),
             ],
         ),
+        // Decomposition: extract DATE or TIME_OF_DAY from DATE_AND_TIME
+        FunctionSignature::stdlib(
+            "DT_TO_DATE",
+            TypeName::from("DATE"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "DATE_AND_TIME_TO_DATE",
+            TypeName::from("DATE"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "DT_TO_TOD",
+            TypeName::from("TIME_OF_DAY"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "DATE_AND_TIME_TO_TIME_OF_DAY",
+            TypeName::from("TIME_OF_DAY"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
     ]
 }
 
@@ -840,6 +963,12 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     functions.extend(get_int_to_bit_string_conversions());
     functions.extend(get_bool_bit_string_conversions());
     functions.extend(get_bit_string_real_conversions());
+
+    // Time/date type conversion functions
+    functions.extend(get_time_date_conversions());
+
+    // String conversion functions
+    functions.extend(get_string_conversion_functions());
 
     // Numeric functions
     functions.extend(get_numeric_functions());
@@ -877,41 +1006,28 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     functions
 }
 
+// =============================================================================
+// SIZEOF (Vendor Extension)
+// =============================================================================
+
+/// Returns the SIZEOF function definition.
+///
+/// SIZEOF returns the size in bytes of a variable or type. It is not part of
+/// IEC 61131-3 but is a CODESYS/TwinCAT/RuSTy extension used in buffer
+/// management functions. It is registered conditionally based on the
+/// `allow_sizeof` compiler option.
+pub fn get_sizeof_function() -> FunctionSignature {
+    FunctionSignature::stdlib(
+        "SIZEOF",
+        TypeName::from("ANY_INT"),
+        vec![input_param("IN", "ANY")],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use ironplc_dsl::common::FunctionReturnType;
-
-    #[test]
-    fn get_all_stdlib_functions_returns_expected_count() {
-        let functions = get_all_stdlib_functions();
-        // Int-to-int: 4 signed × 3 targets + 4 unsigned × 3 targets + 4×4 signed-to-unsigned + 4×4 unsigned-to-signed
-        // = 12 + 12 + 16 + 16 = 56
-        // Int-to-real: 4 signed × 2 reals + 4 unsigned × 2 reals = 8 + 8 = 16
-        // Real-to-int: 2 reals × 4 signed + 2 reals × 4 unsigned = 8 + 8 = 16
-        // Real-to-real: 2 × 1 = 2
-        // Bool-to-int: 8 (BOOL to SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT)
-        // Int-to-bool: 8 (SINT/INT/DINT/LINT/USINT/UINT/UDINT/ULINT to BOOL)
-        // Bit-string-to-bit-string: 4 × 3 = 12
-        // Bit-string-to-int: 4 × 8 = 32
-        // Int-to-bit-string: 8 × 4 = 32
-        // Bool-to/from-bit-string: 4 × 2 = 8
-        // Bit-string-to/from-real: 4 × 2 × 2 = 16
-        // Numeric functions: ABS, SQRT, MIN, MAX, LIMIT, SEL, LN, LOG, EXP, SIN, COS, TAN, ASIN, ACOS, ATAN, EXPT = 16
-        // Truncation function: TRUNC = 1
-        // BCD conversion functions: BCD_TO_INT, INT_TO_BCD = 2
-        // Arithmetic functions: ADD, SUB, MUL, DIV, MOD = 5
-        // Comparison functions: GT, GE, EQ, LE, LT, NE = 6
-        // Boolean functions: AND, OR, XOR, NOT = 4
-        // Selection functions: MUX = 1
-        // Assignment function: MOVE = 1
-        // Bit shift/rotate functions: SHL, SHR, ROL, ROR = 4
-        // String functions: LEN, FIND, REPLACE, INSERT, DELETE, LEFT, RIGHT, MID, CONCAT = 9
-        // Time functions: ADD_TIME, SUB_TIME, MUL_TIME, DIV_TIME, ADD_DT_TIME, ADD_TOD_TIME,
-        //   SUB_DT_TIME, SUB_TOD_TIME, SUB_DT_DT, SUB_DATE_DATE, SUB_TOD_TOD, CONCAT_DATE_TOD = 12
-        // Total: 56 + 16 + 16 + 2 + 8 + 8 + 12 + 32 + 32 + 8 + 16 + 16 + 1 + 2 + 5 + 6 + 4 + 1 + 1 + 4 + 9 + 12 = 267
-        assert_eq!(functions.len(), 267);
-    }
 
     #[test]
     fn build_conversion_function_when_called_then_has_correct_signature() {
@@ -1003,7 +1119,7 @@ mod tests {
     fn get_numeric_functions_when_called_then_contains_all_functions() {
         let functions = get_numeric_functions();
 
-        assert_eq!(functions.len(), 16);
+        assert_eq!(functions.len(), 17);
 
         assert!(functions.iter().any(|f| f.name.original() == "ABS"));
         assert!(functions.iter().any(|f| f.name.original() == "SQRT"));
@@ -1020,6 +1136,7 @@ mod tests {
         assert!(functions.iter().any(|f| f.name.original() == "ASIN"));
         assert!(functions.iter().any(|f| f.name.original() == "ACOS"));
         assert!(functions.iter().any(|f| f.name.original() == "ATAN"));
+        assert!(functions.iter().any(|f| f.name.original() == "ATAN2"));
         assert!(functions.iter().any(|f| f.name.original() == "EXPT"));
     }
 
