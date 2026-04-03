@@ -17,16 +17,19 @@ use std::collections::HashMap;
 
 use crate::function_environment::FunctionEnvironment;
 use crate::type_environment::TypeEnvironment;
+use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
     lib: Library,
     type_environment: &mut TypeEnvironment,
     function_environment: &FunctionEnvironment,
+    options: &CompilerOptions,
 ) -> Result<Library, Vec<Diagnostic>> {
     let mut resolver = ExprTypeResolver {
         var_types: HashMap::new(),
         type_environment,
         function_environment,
+        options,
     };
     resolver.fold_library(lib).map_err(|e| vec![e])
 }
@@ -52,9 +55,20 @@ struct ExprTypeResolver<'a> {
     var_types: HashMap<Id, TypeName>,
     type_environment: &'a TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
+    options: &'a CompilerOptions,
 }
 
 impl ExprTypeResolver<'_> {
+    /// Registers implicit system globals so direct references resolve correctly.
+    fn seed_implicit_globals(&mut self) {
+        if self.options.allow_system_uptime_global {
+            self.var_types
+                .insert(Id::from("__SYSTEM_UP_TIME"), TypeName::from("TIME"));
+            self.var_types
+                .insert(Id::from("__SYSTEM_UP_LTIME"), TypeName::from("LTIME"));
+        }
+    }
+
     /// Extracts the TypeName from a variable declaration and inserts it into the
     /// variable type map.
     fn insert(&mut self, node: &VarDecl) {
@@ -228,6 +242,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         node: FunctionDeclaration,
     ) -> Result<FunctionDeclaration, Diagnostic> {
         node.variables.iter().for_each(|v| self.insert(v));
+        self.seed_implicit_globals();
         // Register the implicit return variable (function name = return type)
         // so that references like `FOO := SHR(FOO, 1)` inside FUNCTION FOO
         // can resolve the type of the FOO variable.
@@ -248,6 +263,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         node: FunctionBlockDeclaration,
     ) -> Result<FunctionBlockDeclaration, Diagnostic> {
         node.variables.iter().for_each(|v| self.insert(v));
+        self.seed_implicit_globals();
         let result = node.recurse_fold(self);
         self.var_types.clear();
         result
@@ -258,6 +274,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         node: ProgramDeclaration,
     ) -> Result<ProgramDeclaration, Diagnostic> {
         node.variables.iter().for_each(|v| self.insert(v));
+        self.seed_implicit_globals();
         let result = node.recurse_fold(self);
         self.var_types.clear();
         result
@@ -331,7 +348,13 @@ mod tests {
             &mut function_environment,
         )
         .unwrap();
-        apply(library, &mut type_environment, &function_environment).unwrap()
+        apply(
+            library,
+            &mut type_environment,
+            &function_environment,
+            &CompilerOptions::default(),
+        )
+        .unwrap()
     }
 
     /// Helper visitor to collect resolved types from assignment RHS expressions.
