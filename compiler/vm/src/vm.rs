@@ -561,7 +561,7 @@ fn execute(
     current_time_us: u64,
 ) -> Result<(), Trap> {
     let mut pc: usize = 0;
-    let mut next_temp_buf: u16 = 0;
+    let mut temp_alloc = string_ops::TempBufAllocator::new(max_temp_buf_bytes);
 
     while pc < bytecode.len() {
         let op = bytecode[pc];
@@ -781,11 +781,10 @@ fn execute(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                            &mut next_temp_buf,
-                            max_temp_buf_bytes,
-                            temp_buf.len(),
-                        )?;
+                        let (buf_idx, buf_start) = {
+                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            (slot.buf_idx as usize, slot.buf_start)
+                        };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
                         string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
@@ -799,11 +798,10 @@ fn execute(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                            &mut next_temp_buf,
-                            max_temp_buf_bytes,
-                            temp_buf.len(),
-                        )?;
+                        let (buf_idx, buf_start) = {
+                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            (slot.buf_idx as usize, slot.buf_start)
+                        };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
                         string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
@@ -817,11 +815,10 @@ fn execute(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                            &mut next_temp_buf,
-                            max_temp_buf_bytes,
-                            temp_buf.len(),
-                        )?;
+                        let (buf_idx, buf_start) = {
+                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            (slot.buf_idx as usize, slot.buf_start)
+                        };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
                         string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
@@ -922,7 +919,7 @@ fn execute(
             //      string values. Same [max][cur][data] layout. The temp buffer
             //      pool is a flat byte array divided into equal-sized slots; a
             //      `buf_idx` (which fits in one stack slot) identifies which temp
-            //      buffer holds the data. A bump allocator (`next_temp_buf`)
+            //      buffer holds the data. A bump allocator (`TempBufAllocator`)
             //      hands out temp buffers within a single function call.
             //
             // The typical pattern for string assignment is:
@@ -967,11 +964,10 @@ fn execute(
                     .get_str(ConstantIndex::new(index))
                     .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
 
-                let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                    &mut next_temp_buf,
-                    max_temp_buf_bytes,
-                    temp_buf.len(),
-                )?;
+                let (buf_idx, buf_start) = {
+                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    (slot.buf_idx as usize, slot.buf_start)
+                };
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (str_bytes.len() as u16).min(max_len);
@@ -1048,11 +1044,10 @@ fn execute(
                 // Defensive: never read more than max_length bytes.
                 let read_len = src_cur_len.min(src_max_len) as usize;
 
-                let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                    &mut next_temp_buf,
-                    max_temp_buf_bytes,
-                    temp_buf.len(),
-                )?;
+                let (buf_idx, buf_start) = {
+                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    (slot.buf_idx as usize, slot.buf_start)
+                };
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(max_len);
@@ -1148,9 +1143,7 @@ fn execute(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1197,9 +1190,7 @@ fn execute(
                 let suffix_len = in1_len - insert_idx;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1248,9 +1239,7 @@ fn execute(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + suffix_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1285,9 +1274,7 @@ fn execute(
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
                 let result_len = l.min(in_len);
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1314,9 +1301,7 @@ fn execute(
                 let result_len = l.min(in_len);
                 let src_start = in_len - result_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1346,9 +1331,7 @@ fn execute(
                 let start_idx = (p - 1).min(in_len);
                 let result_len = l.min(in_len - start_idx);
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1375,9 +1358,7 @@ fn execute(
 
                 let result_len = in1_len + in2_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1477,11 +1458,10 @@ fn execute(
                 let src_cur_len = string_ops::str_read_cur_len(data_region, elem_offset);
                 let read_len = src_cur_len.min(max_str_len) as usize;
 
-                let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                    &mut next_temp_buf,
-                    max_temp_buf_bytes,
-                    temp_buf.len(),
-                )?;
+                let (buf_idx, buf_start) = {
+                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    (slot.buf_idx as usize, slot.buf_start)
+                };
 
                 let buf_max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(buf_max_len);
