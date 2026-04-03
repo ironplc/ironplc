@@ -86,6 +86,8 @@ jobs:
           # Include target triple in cache key for cross-compilation
           key: ${{ matrix.rust_target }}
       - uses: taiki-e/install-action@03e268b84870ac3cfa58a44d9b504511b732a857 # cargo-llvm-cov
+      - name: Install cargo-dupes
+        run: cargo install cargo-dupes
       - name: Cache NSIS
         if: ${{ matrix.os == 'windows-2025' }}
         id: cache-nsis

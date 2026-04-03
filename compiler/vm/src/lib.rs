@@ -4,6 +4,7 @@ pub mod error;
 pub(crate) mod intrinsic;
 pub(crate) mod scheduler;
 pub(crate) mod stack;
+pub(crate) mod string_ops;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub(crate) mod value;
