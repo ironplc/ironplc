@@ -1943,6 +1943,95 @@ fn parse_type_conversion(name: &str) -> Option<(VarTypeInfo, VarTypeInfo)> {
     Some((source, target))
 }
 
+/// Describes a string ↔ numeric conversion direction.
+enum StringConversion {
+    /// Numeric → STRING (e.g., INT_TO_STRING, DWORD_TO_STRING).
+    NumToString { source: VarTypeInfo },
+    /// STRING → Numeric (e.g., STRING_TO_INT, STRING_TO_REAL).
+    StringToNum { target: VarTypeInfo },
+}
+
+/// Checks if a function name is a string conversion (e.g., "int_to_string").
+///
+/// Returns `Some(StringConversion)` if the name matches `*_TO_STRING` or
+/// `STRING_TO_*` and the non-string part is a recognized type name.
+fn parse_string_conversion(name: &str) -> Option<StringConversion> {
+    let upper = name.to_uppercase();
+    let parts: Vec<&str> = upper.splitn(2, "_TO_").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    if parts[1] == "STRING" {
+        let source = resolve_type_name(&Id::from(parts[0]))?;
+        Some(StringConversion::NumToString { source })
+    } else if parts[0] == "STRING" {
+        let target = resolve_type_name(&Id::from(parts[1]))?;
+        Some(StringConversion::StringToNum { target })
+    } else {
+        None
+    }
+}
+
+/// Compiles a string ↔ numeric conversion function call.
+fn compile_string_conversion(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    conv: StringConversion,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    match conv {
+        StringConversion::NumToString { source } => {
+            let source_op_type: OpType = (source.op_width, source.signedness);
+            compile_expr(emitter, ctx, args[0], source_op_type)?;
+
+            let func_id = match (source.op_width, source.signedness) {
+                (OpWidth::W32, Signedness::Signed) => opcode::builtin::CONV_I32_TO_STR,
+                (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::CONV_U32_TO_STR,
+                (OpWidth::F32, _) => opcode::builtin::CONV_F32_TO_STR,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ));
+                }
+            };
+            emitter.emit_builtin(func_id);
+            ctx.num_temp_bufs += 1;
+            Ok(())
+        }
+        StringConversion::StringToNum { target } => {
+            let data_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+            let pool_index = ctx.add_i32_constant(data_offset as i32);
+            emitter.emit_load_const_i32(pool_index);
+
+            let func_id = match target.op_width {
+                OpWidth::W32 => opcode::builtin::CONV_STR_TO_I32,
+                OpWidth::F32 => opcode::builtin::CONV_STR_TO_F32,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ));
+                }
+            };
+            emitter.emit_builtin(func_id);
+            emit_truncation(emitter, target);
+            Ok(())
+        }
+    }
+}
+
 /// Returns the operation type from an expression's resolved type annotation.
 ///
 /// The analyzer must have populated `expr.resolved_type`. A missing or
@@ -3086,6 +3175,8 @@ fn compile_function_call(
             // Check user-defined functions first.
             if let Some(func_info) = ctx.user_functions.get(name.as_str()).cloned() {
                 compile_user_function_call(emitter, ctx, func, &func_info)
+            } else if let Some(conv) = parse_string_conversion(name) {
+                compile_string_conversion(emitter, ctx, func, conv)
             } else if let Some((source, target)) = parse_type_conversion(name) {
                 compile_type_conversion(emitter, ctx, func, source, target)
             } else {
