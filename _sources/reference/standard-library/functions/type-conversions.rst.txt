@@ -12,7 +12,7 @@ values between data types. Each function follows the naming pattern
    * - **IEC 61131-3**
      - Section 2.5.1.5.1
    * - **Support**
-     - Supported (numeric conversions)
+     - Supported (numeric and time/date conversions)
 
 Conversion Categories
 ---------------------
@@ -314,6 +314,146 @@ to ``FALSE`` and any non-zero value converts to ``TRUE``.
      - 64-bit unsigned to Boolean
      - Supported
 
+Time/Duration Conversions
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Conversions between time duration types (``TIME``, ``LTIME``) and
+numeric or bit string types. The underlying value is the duration in
+milliseconds.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Function
+     - Description
+     - Support
+   * - ``TIME_TO_DINT``
+     - Duration to 32-bit signed
+     - Supported
+   * - ``TIME_TO_INT``
+     - Duration to 16-bit signed
+     - Supported
+   * - ``TIME_TO_REAL``
+     - Duration to single-precision float
+     - Supported
+   * - ``TIME_TO_DWORD``
+     - Duration to 32-bit unsigned word
+     - Supported
+   * - ``DINT_TO_TIME``
+     - 32-bit signed to duration
+     - Supported
+   * - ``DWORD_TO_TIME``
+     - 32-bit unsigned word to duration
+     - Supported
+   * - ``LTIME_TO_LINT``
+     - Long duration to 64-bit signed
+     - Supported
+   * - ``LTIME_TO_LWORD``
+     - Long duration to 64-bit unsigned word
+     - Supported
+   * - ``LINT_TO_LTIME``
+     - 64-bit signed to long duration
+     - Supported
+
+All combinations of ``TIME``/``LTIME`` with signed integers, unsigned
+integers, real types, and bit string types are supported.
+
+Date Conversions
+^^^^^^^^^^^^^^^^
+
+Conversions between date types (``DATE``, ``LDATE``) and numeric or
+bit string types. The underlying value is seconds since 1970-01-01.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Function
+     - Description
+     - Support
+   * - ``DATE_TO_DWORD``
+     - Date to 32-bit unsigned word
+     - Supported
+   * - ``DATE_TO_UDINT``
+     - Date to 32-bit unsigned integer
+     - Supported
+   * - ``DWORD_TO_DATE``
+     - 32-bit unsigned word to date
+     - Supported
+   * - ``LDATE_TO_LWORD``
+     - Long date to 64-bit unsigned word
+     - Supported
+
+All combinations of ``DATE``/``LDATE`` with signed integers, unsigned
+integers, real types, and bit string types are supported.
+
+Time-of-Day Conversions
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Conversions between time-of-day types (``TOD``/``TIME_OF_DAY``,
+``LTOD``/``LTIME_OF_DAY``) and numeric or bit string types. The
+underlying value is milliseconds since midnight (``TOD``) or
+nanoseconds since midnight (``LTOD``).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Function
+     - Description
+     - Support
+   * - ``TOD_TO_DWORD``
+     - Time-of-day to 32-bit unsigned word
+     - Supported
+   * - ``TOD_TO_UDINT``
+     - Time-of-day to 32-bit unsigned integer
+     - Supported
+   * - ``DWORD_TO_TOD``
+     - 32-bit unsigned word to time-of-day
+     - Supported
+   * - ``LTOD_TO_LWORD``
+     - Long time-of-day to 64-bit unsigned word
+     - Supported
+
+Both short aliases (``TOD``, ``LTOD``) and full names
+(``TIME_OF_DAY``, ``LTIME_OF_DAY``) are supported. All combinations
+with signed integers, unsigned integers, real types, and bit string
+types are supported.
+
+Date-and-Time Conversions
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Conversions between date-and-time types (``DT``/``DATE_AND_TIME``,
+``LDT``/``LDATE_AND_TIME``) and numeric or bit string types. The
+underlying value is seconds since 1970-01-01 (``DT``) or nanoseconds
+since 1970-01-01 (``LDT``).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Function
+     - Description
+     - Support
+   * - ``DT_TO_DWORD``
+     - Date-and-time to 32-bit unsigned word
+     - Supported
+   * - ``DT_TO_UDINT``
+     - Date-and-time to 32-bit unsigned integer
+     - Supported
+   * - ``DWORD_TO_DT``
+     - 32-bit unsigned word to date-and-time
+     - Supported
+   * - ``LDT_TO_LWORD``
+     - Long date-and-time to 64-bit unsigned word
+     - Supported
+
+Both short aliases (``DT``, ``LDT``) and full names
+(``DATE_AND_TIME``, ``LDATE_AND_TIME``) are supported. All
+combinations with signed integers, unsigned integers, real types,
+and bit string types are supported.
+
 Numeric to String
 ^^^^^^^^^^^^^^^^^
 
@@ -328,19 +468,37 @@ Conversions from numeric types to string representation.
      - Support
    * - ``SINT_TO_STRING``
      - 8-bit signed to string
-     - Not yet supported
+     - Supported
    * - ``INT_TO_STRING``
      - 16-bit signed to string
-     - Not yet supported
+     - Supported
    * - ``DINT_TO_STRING``
      - 32-bit signed to string
-     - Not yet supported
+     - Supported
    * - ``LINT_TO_STRING``
      - 64-bit signed to string
      - Not yet supported
+   * - ``USINT_TO_STRING``
+     - 8-bit unsigned to string
+     - Supported
+   * - ``UINT_TO_STRING``
+     - 16-bit unsigned to string
+     - Supported
+   * - ``UDINT_TO_STRING``
+     - 32-bit unsigned to string
+     - Supported
+   * - ``BYTE_TO_STRING``
+     - Byte to string
+     - Supported
+   * - ``WORD_TO_STRING``
+     - Word to string
+     - Supported
+   * - ``DWORD_TO_STRING``
+     - Double word to string
+     - Supported
    * - ``REAL_TO_STRING``
      - Single-precision to string
-     - Not yet supported
+     - Supported
    * - ``LREAL_TO_STRING``
      - Double-precision to string
      - Not yet supported
@@ -360,19 +518,28 @@ must contain a valid numeric literal for the target type.
      - Support
    * - ``STRING_TO_SINT``
      - String to 8-bit signed
-     - Not yet supported
+     - Supported
    * - ``STRING_TO_INT``
      - String to 16-bit signed
-     - Not yet supported
+     - Supported
    * - ``STRING_TO_DINT``
      - String to 32-bit signed
-     - Not yet supported
+     - Supported
    * - ``STRING_TO_LINT``
      - String to 64-bit signed
      - Not yet supported
+   * - ``STRING_TO_USINT``
+     - String to 8-bit unsigned
+     - Supported
+   * - ``STRING_TO_UINT``
+     - String to 16-bit unsigned
+     - Supported
+   * - ``STRING_TO_UDINT``
+     - String to 32-bit unsigned
+     - Supported
    * - ``STRING_TO_REAL``
      - String to single-precision
-     - Not yet supported
+     - Supported
    * - ``STRING_TO_LREAL``
      - String to double-precision
      - Not yet supported

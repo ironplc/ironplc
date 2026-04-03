@@ -18,18 +18,18 @@ Supported Dialects
 
 **iec61131-3-ed3**
    Strict IEC 61131-3:2013 (Edition 3). Enables Edition 3 keywords
-   including :doc:`LTIME </reference/language/data-types/ltime>`,
-   :doc:`LDATE </reference/language/data-types/ldate>`,
-   :doc:`LTIME_OF_DAY </reference/language/data-types/ltime-of-day>`,
-   :doc:`LDATE_AND_TIME </reference/language/data-types/ldate-and-time>`,
-   :doc:`REF_TO </reference/language/data-types/reference-types>`,
-   :doc:`REF </reference/language/data-types/reference-types>`, and
-   :doc:`NULL </reference/language/data-types/reference-types>`. No vendor extensions.
+   including :doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDATE </reference/language/data-types/elementary/ldate>`,
+   :doc:`LTIME_OF_DAY </reference/language/data-types/elementary/ltime-of-day>`,
+   :doc:`LDATE_AND_TIME </reference/language/data-types/elementary/ldate-and-time>`,
+   :doc:`REF_TO </reference/language/data-types/derived/reference-types>`,
+   :doc:`REF </reference/language/data-types/derived/reference-types>`, and
+   :doc:`NULL </reference/language/data-types/derived/reference-types>`. No vendor extensions.
 
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
-   names like :doc:`LDT </reference/language/data-types/ldate-and-time>` remain available as identifiers) and enables
-   :doc:`REF_TO </reference/language/data-types/reference-types>` support plus all vendor extensions.
+   names like :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` remain available as identifiers) and enables
+   :doc:`REF_TO </reference/language/data-types/derived/reference-types>` support plus all vendor extensions.
 
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
@@ -106,7 +106,7 @@ features — they never disable features that a dialect already includes.
 ``--allow-constant-type-params``
    Allow constant references in type parameters such as array bounds and
    string lengths (e.g., ``ARRAY[1..MY_CONST] OF INT`` or
-   ``STRING[MY_CONST]``). See :doc:`/reference/language/data-types/array-types`.
+   ``STRING[MY_CONST]``). See :doc:`/reference/language/data-types/derived/array-types`.
 
 ``--allow-empty-var-blocks``
    Allow empty variable blocks (``VAR END_VAR``, ``VAR_INPUT END_VAR``, etc.).
@@ -121,7 +121,7 @@ features — they never disable features that a dialect already includes.
    Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
    Edition 3. This is useful when you need references but want to keep
    Edition 2 keyword handling for the rest of your code. See
-   :doc:`/reference/language/data-types/reference-types`.
+   :doc:`/reference/language/data-types/derived/reference-types`.
 
 ``--allow-pointer-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
@@ -133,6 +133,12 @@ features — they never disable features that a dialect already includes.
    (e.g., ``debug : BOOL := 0;``). The compiler rewrites ``0`` to ``FALSE``
    and ``1`` to ``TRUE``. This is a universal vendor extension supported by
    CoDeSys, TwinCAT, RuSTy, and virtually every PLC runtime.
+
+``--allow-sizeof``
+   Allow the ``SIZEOF()`` operator that returns the size in bytes of a
+   variable or type. This is a vendor extension supported by CODESYS,
+   TwinCAT, and RuSTy. See
+   :doc:`/reference/standard-library/functions/sizeof`.
 
 Pass the flag when running :program:`ironplcc`:
 

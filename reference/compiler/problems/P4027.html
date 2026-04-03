@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.184.0">
+<meta name="ironplc-version" content="0.186.0">
 </head>
   <body>
     
@@ -253,6 +253,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/program-organization.html">Program Organization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/variables-and-io.html">Variables and I/O</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/references.html">References and Indirection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../explanation/type-conversions.html">Type Conversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html">Enabling Dialects and Features</a></li>
 </ul>
 </li>
@@ -260,36 +261,36 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../language/index.html">Language</a><input aria-label="Toggle navigation of Language" class="toctree-checkbox" id="toctree-checkbox-8" name="toctree-checkbox-8" role="switch" type="checkbox"/><label for="toctree-checkbox-8"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../language/edition-support.html">Edition Support</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../language/data-types/index.html">Data Types</a><input aria-label="Toggle navigation of Data Types" class="toctree-checkbox" id="toctree-checkbox-9" name="toctree-checkbox-9" role="switch" type="checkbox"/><label for="toctree-checkbox-9"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/bool.html">BOOL</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/sint.html">SINT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/int.html">INT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/dint.html">DINT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/lint.html">LINT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/usint.html">USINT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/uint.html">UINT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/udint.html">UDINT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/ulint.html">ULINT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/real.html">REAL</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/lreal.html">LREAL</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/byte.html">BYTE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/word.html">WORD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/dword.html">DWORD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/lword.html">LWORD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/string.html">STRING</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/wstring.html">WSTRING</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/time.html">TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/ltime.html">LTIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/date.html">DATE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/ldate.html">LDATE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/time-of-day.html">TIME_OF_DAY</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/ltime-of-day.html">LTIME_OF_DAY</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/date-and-time.html">DATE_AND_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/ldate-and-time.html">LDATE_AND_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/enumerated-types.html">Enumerated Types</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/subrange-types.html">Subrange Types</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/array-types.html">Array Types</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/structure-types.html">Structure Types</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/reference-types.html">Reference Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/bool.html">BOOL</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/sint.html">SINT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/int.html">INT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/dint.html">DINT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/lint.html">LINT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/usint.html">USINT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/uint.html">UINT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/udint.html">UDINT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/ulint.html">ULINT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/real.html">REAL</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/lreal.html">LREAL</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/byte.html">BYTE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/word.html">WORD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/dword.html">DWORD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/lword.html">LWORD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/string.html">STRING</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/wstring.html">WSTRING</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/time.html">TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/ltime.html">LTIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/date.html">DATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/ldate.html">LDATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/time-of-day.html">TIME_OF_DAY</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/ltime-of-day.html">LTIME_OF_DAY</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/date-and-time.html">DATE_AND_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/elementary/ldate-and-time.html">LDATE_AND_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/derived/enumerated-types.html">Enumerated Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/derived/subrange-types.html">Subrange Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/derived/array-types.html">Array Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/derived/structure-types.html">Structure Types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../language/data-types/derived/reference-types.html">Reference Types</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../language/variables/index.html">Variables</a><input aria-label="Toggle navigation of Variables" class="toctree-checkbox" id="toctree-checkbox-10" name="toctree-checkbox-10" role="switch" type="checkbox"/><label for="toctree-checkbox-10"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -377,9 +378,24 @@
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/delete.html">DELETE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/replace.html">REPLACE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/find.html">FIND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_time.html">ADD_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_time.html">SUB_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mul_time.html">MUL_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/div_time.html">DIV_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_dt_time.html">ADD_DT_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_tod_time.html">ADD_TOD_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_dt_time.html">SUB_DT_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_tod_time.html">SUB_TOD_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_dt_dt.html">SUB_DT_DT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_date_date.html">SUB_DATE_DATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_tod_tod.html">SUB_TOD_TOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/concat_date_tod.html">CONCAT_DATE_TOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/dt_to_date.html">DT_TO_DATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/dt_to_tod.html">DT_TO_TOD</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/type-conversions.html">Type Conversions</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/trunc.html">TRUNC</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/bcd.html">BCD_TO_INT / INT_TO_BCD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sizeof.html">SIZEOF</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../standard-library/function-blocks/index.html">Function Blocks</a><input aria-label="Toggle navigation of Function Blocks" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -602,7 +618,11 @@
 </dd>
 </dl>
 <p>This error occurs when a function’s return type does not match the type of the variable
-being assigned to. IronPLC requires exact type matching for function return values.</p>
+being assigned to. IronPLC allows implicit widening between integer types (for example,
+a function returning <code class="docutils literal notranslate"><span class="pre">SINT</span></code> assigned to a <code class="docutils literal notranslate"><span class="pre">DINT</span></code> variable), but rejects other type
+mismatches such as real to integer or narrowing conversions.</p>
+<p>For the full set of allowed implicit conversions, see
+<a class="reference internal" href="../../../explanation/type-conversions.html"><span class="doc">Type Conversions</span></a>.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P4027:</p>

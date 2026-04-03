@@ -4,7 +4,7 @@ References and Indirection
 
 This page explains what references are, why they exist in IEC 61131-3, and
 when to reach for them in your programs. For the complete syntax and operator
-list, see the :doc:`/reference/language/data-types/reference-types`.
+list, see the :doc:`/reference/language/data-types/derived/reference-types`.
 
 .. note::
 
@@ -218,13 +218,13 @@ References in IronPLC have intentional limits that keep programs predictable:
   ``--allow-pointer-arithmetic``.
 
 For the complete list of restrictions and related compiler diagnostics, see
-:doc:`/reference/language/data-types/reference-types`.
+:doc:`/reference/language/data-types/derived/reference-types`.
 
 --------------------------------------
 Next Steps
 --------------------------------------
 
-- :doc:`/reference/language/data-types/reference-types` — full syntax,
+- :doc:`/reference/language/data-types/derived/reference-types` — full syntax,
   operators, and problem codes
 - :doc:`enabling-dialects-and-features` — how to enable references via dialects or flags
 - :doc:`/quickstart/index` — hands-on tutorials
