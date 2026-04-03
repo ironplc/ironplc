@@ -7,6 +7,7 @@ use crate::builtin;
 use crate::error::Trap;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
+use crate::string_ops;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
 use core::fmt::Write as FmtWrite;
@@ -767,11 +768,14 @@ fn execute(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) =
-                            str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                        let (buf_idx, buf_start) = string_ops::str_alloc_temp(
+                            &mut next_temp_buf,
+                            max_temp_buf_bytes,
+                            temp_buf.len(),
+                        )?;
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
-                        str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                             .copy_from_slice(&bytes[..cur_len as usize]);
@@ -782,11 +786,14 @@ fn execute(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) =
-                            str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                        let (buf_idx, buf_start) = string_ops::str_alloc_temp(
+                            &mut next_temp_buf,
+                            max_temp_buf_bytes,
+                            temp_buf.len(),
+                        )?;
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
-                        str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                             .copy_from_slice(&bytes[..cur_len as usize]);
@@ -797,11 +804,14 @@ fn execute(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) =
-                            str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                        let (buf_idx, buf_start) = string_ops::str_alloc_temp(
+                            &mut next_temp_buf,
+                            max_temp_buf_bytes,
+                            temp_buf.len(),
+                        )?;
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
-                        str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                             .copy_from_slice(&bytes[..cur_len as usize]);
@@ -812,7 +822,8 @@ fn execute(
                         if data_offset + STRING_HEADER_BYTES > data_region.len() {
                             return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                         }
-                        let cur_len = str_read_cur_len(data_region, data_offset) as usize;
+                        let cur_len =
+                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
                         let start = data_offset + STRING_HEADER_BYTES;
                         let end = (start + cur_len).min(data_region.len());
                         let result = core::str::from_utf8(&data_region[start..end])
@@ -826,7 +837,8 @@ fn execute(
                         if data_offset + STRING_HEADER_BYTES > data_region.len() {
                             return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                         }
-                        let cur_len = str_read_cur_len(data_region, data_offset) as usize;
+                        let cur_len =
+                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
                         let start = data_offset + STRING_HEADER_BYTES;
                         let end = (start + cur_len).min(data_region.len());
                         let result = core::str::from_utf8(&data_region[start..end])
@@ -920,7 +932,7 @@ fn execute(
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
-                str_write_header(data_region, data_offset, max_length, 0);
+                string_ops::str_write_header(data_region, data_offset, max_length, 0);
             }
 
             // LOAD_CONST_STR: Load a string literal from the constant pool
@@ -942,12 +954,15 @@ fn execute(
                     .get_str(ConstantIndex::new(index))
                     .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
 
-                let (buf_idx, buf_start) =
-                    str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                let (buf_idx, buf_start) = string_ops::str_alloc_temp(
+                    &mut next_temp_buf,
+                    max_temp_buf_bytes,
+                    temp_buf.len(),
+                )?;
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (str_bytes.len() as u16).min(max_len);
-                str_write_header(temp_buf, buf_start, max_len, cur_len);
+                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
                 temp_buf[buf_start + STRING_HEADER_BYTES
                     ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                     .copy_from_slice(&str_bytes[..cur_len as usize]);
@@ -978,12 +993,12 @@ fn execute(
                 if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
                     return Err(Trap::TempBufferExhausted);
                 }
-                let src_cur_len = str_read_cur_len(temp_buf, buf_start);
+                let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
-                let dest_max_len = str_read_max_len(data_region, data_offset);
+                let dest_max_len = string_ops::str_read_max_len(data_region, data_offset);
 
                 // Copy character data, truncating if source exceeds destination capacity.
                 let copy_len = src_cur_len.min(dest_max_len) as usize;
@@ -1015,17 +1030,20 @@ fn execute(
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
-                let src_max_len = str_read_max_len(data_region, data_offset);
-                let src_cur_len = str_read_cur_len(data_region, data_offset);
+                let src_max_len = string_ops::str_read_max_len(data_region, data_offset);
+                let src_cur_len = string_ops::str_read_cur_len(data_region, data_offset);
                 // Defensive: never read more than max_length bytes.
                 let read_len = src_cur_len.min(src_max_len) as usize;
 
-                let (buf_idx, buf_start) =
-                    str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                let (buf_idx, buf_start) = string_ops::str_alloc_temp(
+                    &mut next_temp_buf,
+                    max_temp_buf_bytes,
+                    temp_buf.len(),
+                )?;
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(max_len);
-                str_write_header(temp_buf, buf_start, max_len, cur_len);
+                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
                 if data_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
@@ -1100,37 +1118,15 @@ fn execute(
             opcode::REPLACE_STR => {
                 let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
                 let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
-
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN1's current length.
-                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u32));
-                }
-                let in1_len =
-                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
-                        as usize;
+                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
 
-                // Read IN2's current length.
-                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u32));
-                }
-                let in2_len =
-                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
-                        as usize;
-
-                let in1_start = in1_offset + STRING_HEADER_BYTES;
-                let in2_start = in2_offset + STRING_HEADER_BYTES;
-
-                // Clamp P to valid range (1-based, minimum 1).
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Convert P from 1-based to 0-based index.
                 let start_idx = (p - 1).min(in1_len);
-                // Number of characters to delete, clamped to remaining length.
                 let delete_len = l.min(in1_len - start_idx);
 
                 // Result = IN1[0..start_idx] + IN2 + IN1[start_idx+delete_len..]
@@ -1139,85 +1135,48 @@ fn execute(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot =
+                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
+                next_temp_buf = slot.next_temp_buf;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
-
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
                 // Write result data: prefix + IN2 + suffix.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let mut write_pos = 0usize;
-
-                // Copy prefix (IN1[0..start_idx]).
                 let prefix_copy = prefix_len.min(cur_len as usize);
                 for i in 0..prefix_copy {
                     temp_buf[data_start + write_pos] = data_region[in1_start + i];
                     write_pos += 1;
                 }
-
-                // Copy IN2.
                 let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
                 for i in 0..in2_copy {
                     temp_buf[data_start + write_pos] = data_region[in2_start + i];
                     write_pos += 1;
                 }
-
-                // Copy suffix (IN1[suffix_start..]).
                 let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
                 for i in 0..suffix_copy {
                     temp_buf[data_start + write_pos] = data_region[in1_start + suffix_start + i];
                     write_pos += 1;
                 }
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // INSERT_STR: Insert IN2 into IN1 after position P.
             // Pops P from stack, pushes buf_idx.
             opcode::INSERT_STR => {
                 let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
                 let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
-
                 let p_val = stack.pop()?.as_i32();
 
-                // Read IN1's current length.
-                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u32));
-                }
-                let in1_len =
-                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
-                        as usize;
+                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
 
-                // Read IN2's current length.
-                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u32));
-                }
-                let in2_len =
-                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
-                        as usize;
-
-                let in1_start = in1_offset + STRING_HEADER_BYTES;
-                let in2_start = in2_offset + STRING_HEADER_BYTES;
-
-                // Clamp P to valid range (1-based, minimum 0 means insert at start).
                 let p = if p_val < 0 { 0usize } else { p_val as usize };
-
-                // Insert point: after position P (0-based index = P).
                 let insert_idx = p.min(in1_len);
 
                 // Result = IN1[0..insert_idx] + IN2 + IN1[insert_idx..]
@@ -1225,80 +1184,49 @@ fn execute(
                 let suffix_len = in1_len - insert_idx;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot =
+                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
+                next_temp_buf = slot.next_temp_buf;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
-
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
                 // Write result data: prefix + IN2 + suffix.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let mut write_pos = 0usize;
-
-                // Copy prefix (IN1[0..insert_idx]).
                 let prefix_copy = prefix_len.min(cur_len as usize);
                 for i in 0..prefix_copy {
                     temp_buf[data_start + write_pos] = data_region[in1_start + i];
                     write_pos += 1;
                 }
-
-                // Copy IN2.
                 let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
                 for i in 0..in2_copy {
                     temp_buf[data_start + write_pos] = data_region[in2_start + i];
                     write_pos += 1;
                 }
-
-                // Copy suffix (IN1[insert_idx..]).
                 let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
                 for i in 0..suffix_copy {
                     temp_buf[data_start + write_pos] = data_region[in1_start + insert_idx + i];
                     write_pos += 1;
                 }
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // DELETE_STR: Delete L characters from IN1 starting at position P.
             // Pops P then L from stack, pushes buf_idx.
             opcode::DELETE_STR => {
                 let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN1's current length.
-                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u32));
-                }
-                let in1_len =
-                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
-                        as usize;
+                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
 
-                let in1_start = in1_offset + STRING_HEADER_BYTES;
-
-                // Clamp P to valid range (1-based, minimum 1).
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Convert P from 1-based to 0-based index.
                 let start_idx = (p - 1).min(in1_len);
-                // Number of characters to delete, clamped to remaining length.
                 let delete_len = l.min(in1_len - start_idx);
 
                 // Result = IN1[0..start_idx] + IN1[start_idx+delete_len..]
@@ -1307,212 +1235,121 @@ fn execute(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + suffix_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot =
+                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
+                next_temp_buf = slot.next_temp_buf;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
-
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
                 // Write result data: prefix + suffix.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let mut write_pos = 0usize;
-
-                // Copy prefix (IN1[0..start_idx]).
                 let prefix_copy = prefix_len.min(cur_len as usize);
                 for i in 0..prefix_copy {
                     temp_buf[data_start + write_pos] = data_region[in1_start + i];
                     write_pos += 1;
                 }
-
-                // Copy suffix (IN1[suffix_start..]).
                 let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
                 for i in 0..suffix_copy {
                     temp_buf[data_start + write_pos] = data_region[in1_start + suffix_start + i];
                     write_pos += 1;
                 }
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // LEFT_STR: Return the leftmost L characters of IN.
             // Pops L from stack, pushes buf_idx.
             opcode::LEFT_STR => {
                 let in_offset = read_u32_le(bytecode, &mut pc) as usize;
-
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN's current length.
-                if in_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in_offset as u32));
-                }
-                let in_len =
-                    u16::from_le_bytes([data_region[in_offset + 2], data_region[in_offset + 3]])
-                        as usize;
+                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
 
-                let in_start = in_offset + STRING_HEADER_BYTES;
-
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Result length is min(L, in_len).
                 let result_len = l.min(in_len);
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot =
+                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
+                next_temp_buf = slot.next_temp_buf;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
-
-                // Copy leftmost characters from IN.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let copy_len = cur_len as usize;
                 temp_buf[data_start..data_start + copy_len]
                     .copy_from_slice(&data_region[in_start..in_start + copy_len]);
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // RIGHT_STR: Return the rightmost L characters of IN.
             // Pops L from stack, pushes buf_idx.
             opcode::RIGHT_STR => {
                 let in_offset = read_u32_le(bytecode, &mut pc) as usize;
-
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN's current length.
-                if in_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in_offset as u32));
-                }
-                let in_len =
-                    u16::from_le_bytes([data_region[in_offset + 2], data_region[in_offset + 3]])
-                        as usize;
+                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
 
-                let in_start = in_offset + STRING_HEADER_BYTES;
-
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Result length is min(L, in_len).
                 let result_len = l.min(in_len);
-
-                // Start index within IN for the rightmost characters.
                 let src_start = in_len - result_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot =
+                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
+                next_temp_buf = slot.next_temp_buf;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
-
-                // Copy rightmost characters from IN.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let copy_len = cur_len as usize;
                 let src = in_start + src_start;
                 temp_buf[data_start..data_start + copy_len]
                     .copy_from_slice(&data_region[src..src + copy_len]);
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // MID_STR: Return L characters from IN starting at position P.
             // Pops P then L from stack, pushes buf_idx.
             opcode::MID_STR => {
                 let in_offset = read_u32_le(bytecode, &mut pc) as usize;
-
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN's current length.
-                if in_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in_offset as u32));
-                }
-                let in_len =
-                    u16::from_le_bytes([data_region[in_offset + 2], data_region[in_offset + 3]])
-                        as usize;
+                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
 
-                let in_start = in_offset + STRING_HEADER_BYTES;
-
-                // Clamp P to valid range (1-based, minimum 1).
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Convert P from 1-based to 0-based index.
                 let start_idx = (p - 1).min(in_len);
-                // Number of characters to extract, clamped to remaining length.
                 let result_len = l.min(in_len - start_idx);
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot =
+                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
+                next_temp_buf = slot.next_temp_buf;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
-
-                // Copy characters from IN starting at start_idx.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let copy_len = cur_len as usize;
                 let src = in_start + start_idx;
                 temp_buf[data_start..data_start + copy_len]
                     .copy_from_slice(&data_region[src..src + copy_len]);
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // CONCAT_STR: Concatenate IN1 and IN2.
             // Pushes buf_idx.
@@ -1520,67 +1357,36 @@ fn execute(
                 let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
                 let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
 
-                // Read IN1's current length.
-                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u32));
-                }
-                let in1_len =
-                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
-                        as usize;
-
-                // Read IN2's current length.
-                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u32));
-                }
-                let in2_len =
-                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
-                        as usize;
-
-                let in1_start = in1_offset + STRING_HEADER_BYTES;
-                let in2_start = in2_offset + STRING_HEADER_BYTES;
+                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
 
                 let result_len = in1_len + in2_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot =
+                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
+                next_temp_buf = slot.next_temp_buf;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
-
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
                 // Write result data: IN1 + IN2.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let mut write_pos = 0usize;
-
-                // Copy IN1.
                 let in1_copy = in1_len.min(cur_len as usize);
                 for i in 0..in1_copy {
                     temp_buf[data_start + write_pos] = data_region[in1_start + i];
                     write_pos += 1;
                 }
-
-                // Copy IN2.
                 let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
                 for i in 0..in2_copy {
                     temp_buf[data_start + write_pos] = data_region[in2_start + i];
                     write_pos += 1;
                 }
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // --- String array opcodes ---
 
@@ -1613,7 +1419,7 @@ fn execute(
                     if elem_offset + STRING_HEADER_BYTES > data_region.len() {
                         return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
                     }
-                    str_write_header(data_region, elem_offset, max_str_len, 0);
+                    string_ops::str_write_header(data_region, elem_offset, max_str_len, 0);
                 }
             }
 
@@ -1655,15 +1461,18 @@ fn execute(
                 if elem_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
                 }
-                let src_cur_len = str_read_cur_len(data_region, elem_offset);
+                let src_cur_len = string_ops::str_read_cur_len(data_region, elem_offset);
                 let read_len = src_cur_len.min(max_str_len) as usize;
 
-                let (buf_idx, buf_start) =
-                    str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                let (buf_idx, buf_start) = string_ops::str_alloc_temp(
+                    &mut next_temp_buf,
+                    max_temp_buf_bytes,
+                    temp_buf.len(),
+                )?;
 
                 let buf_max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(buf_max_len);
-                str_write_header(temp_buf, buf_start, buf_max_len, cur_len);
+                string_ops::str_write_header(temp_buf, buf_start, buf_max_len, cur_len);
 
                 if elem_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
@@ -1718,7 +1527,7 @@ fn execute(
                 if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
                     return Err(Trap::TempBufferExhausted);
                 }
-                let src_cur_len = str_read_cur_len(temp_buf, buf_start);
+                let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
 
                 if elem_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
@@ -2129,22 +1938,6 @@ fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> i16 {
     value
 }
 
-/// Read max_length from a string header at `offset` in `buf`.
-fn str_read_max_len(buf: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([buf[offset], buf[offset + 1]])
-}
-
-/// Read cur_length from a string header at `offset` in `buf`.
-fn str_read_cur_len(buf: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([buf[offset + 2], buf[offset + 3]])
-}
-
-/// Write a string header (max_length, cur_length) at `offset` in `buf`.
-fn str_write_header(buf: &mut [u8], offset: usize, max_len: u16, cur_len: u16) {
-    buf[offset..offset + 2].copy_from_slice(&max_len.to_le_bytes());
-    buf[offset + 2..offset + STRING_HEADER_BYTES].copy_from_slice(&cur_len.to_le_bytes());
-}
-
 /// A small stack-allocated buffer for formatting numbers as strings.
 ///
 /// Used by CONV_I32_TO_STR, CONV_U32_TO_STR, and CONV_F32_TO_STR to
@@ -2177,24 +1970,6 @@ impl core::fmt::Write for StackFmtBuf {
         self.len += to_copy;
         Ok(())
     }
-}
-
-/// Allocate the next temp buffer slot. Returns (buf_idx, buf_start).
-fn str_alloc_temp(
-    next_temp_buf: &mut u16,
-    max_temp_buf_bytes: usize,
-    temp_buf_len: usize,
-) -> Result<(usize, usize), Trap> {
-    if max_temp_buf_bytes == 0 {
-        return Err(Trap::TempBufferExhausted);
-    }
-    let buf_idx = *next_temp_buf as usize;
-    let buf_start = buf_idx * max_temp_buf_bytes;
-    if buf_start + max_temp_buf_bytes > temp_buf_len {
-        return Err(Trap::TempBufferExhausted);
-    }
-    *next_temp_buf = next_temp_buf.wrapping_add(1);
-    Ok((buf_idx, buf_start))
 }
 
 #[cfg(test)]
