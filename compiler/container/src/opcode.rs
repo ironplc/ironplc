@@ -850,23 +850,23 @@ pub mod builtin {
 
     /// Convert signed 32-bit integer to decimal string.
     /// Stack: pop i32, push buf_idx (temp buffer with result).
-    pub const CONV_I32_TO_STR: u16 = 0x039B;
+    pub const CONV_I32_TO_STR: u16 = 0x039D;
 
     /// Convert unsigned 32-bit integer to decimal string.
     /// Stack: pop i32 (treated as u32), push buf_idx.
-    pub const CONV_U32_TO_STR: u16 = 0x039C;
+    pub const CONV_U32_TO_STR: u16 = 0x039E;
 
     /// Parse decimal string to signed 32-bit integer.
     /// Stack: pop data_offset (i32), push parsed i32 (0 on failure).
-    pub const CONV_STR_TO_I32: u16 = 0x039D;
+    pub const CONV_STR_TO_I32: u16 = 0x039F;
 
     /// Convert 32-bit float to decimal string.
     /// Stack: pop f32, push buf_idx (temp buffer with result).
-    pub const CONV_F32_TO_STR: u16 = 0x039E;
+    pub const CONV_F32_TO_STR: u16 = 0x03A0;
 
     /// Parse decimal string to 32-bit float.
     /// Stack: pop data_offset (i32), push parsed f32 (0.0 on failure).
-    pub const CONV_STR_TO_F32: u16 = 0x039F;
+    pub const CONV_STR_TO_F32: u16 = 0x03A1;
 
     // =========================================================================
     // MUX (multiplexer) range-based opcodes
