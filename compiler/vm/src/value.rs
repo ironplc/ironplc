@@ -78,6 +78,7 @@ impl Slot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn slot_from_i32_when_negative_then_roundtrips() {
@@ -184,5 +185,36 @@ mod tests {
     fn slot_as_var_index_when_too_large_then_none() {
         let slot = Slot::from_u64(u16::MAX as u64 + 1);
         assert_eq!(slot.as_var_index(), None);
+    }
+
+    proptest! {
+        #[test]
+        fn slot_from_i32_when_any_value_then_roundtrips(v in any::<i32>()) {
+            prop_assert_eq!(Slot::from_i32(v).as_i32(), v);
+        }
+
+        #[test]
+        fn slot_from_i64_when_any_value_then_roundtrips(v in any::<i64>()) {
+            prop_assert_eq!(Slot::from_i64(v).as_i64(), v);
+        }
+
+        #[test]
+        fn slot_from_f32_when_any_non_nan_then_roundtrips(
+            v in any::<f32>().prop_filter("NaN != NaN", |v| !v.is_nan())
+        ) {
+            prop_assert_eq!(Slot::from_f32(v).as_f32(), v);
+        }
+
+        #[test]
+        fn slot_from_f64_when_any_non_nan_then_roundtrips(
+            v in any::<f64>().prop_filter("NaN != NaN", |v| !v.is_nan())
+        ) {
+            prop_assert_eq!(Slot::from_f64(v).as_f64(), v);
+        }
+
+        #[test]
+        fn slot_from_u64_when_any_value_then_roundtrips(v in any::<u64>()) {
+            prop_assert_eq!(Slot::from_u64(v).as_u64(), v);
+        }
     }
 }

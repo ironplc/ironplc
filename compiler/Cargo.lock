@@ -790,6 +790,7 @@ dependencies = [
  "csv",
  "ironplc-container",
  "ironplc-vm",
+ "proptest",
 ]
 
 [[package]]

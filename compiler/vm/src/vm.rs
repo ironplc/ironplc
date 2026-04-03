@@ -522,7 +522,7 @@ macro_rules! checked_divop {
 /// Load constant from pool: read index, look up, push.
 macro_rules! load_const {
     ($bytecode:expr, $pc:expr, $container:expr, $stack:expr, $get:ident, $from:ident) => {{
-        let index = read_u16_le($bytecode, &mut $pc);
+        let index = read_u16_le($bytecode, &mut $pc)?;
         let value = $container
             .constant_pool
             .$get(ConstantIndex::new(index))
@@ -580,7 +580,7 @@ fn execute(
             | opcode::LOAD_VAR_I64
             | opcode::LOAD_VAR_F32
             | opcode::LOAD_VAR_F64 => {
-                let index = VarIndex::new(read_u16_le(bytecode, &mut pc));
+                let index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 scope.check_access(index)?;
                 let slot = variables.load(index)?;
                 stack.push(slot)?;
@@ -589,7 +589,7 @@ fn execute(
             | opcode::STORE_VAR_I64
             | opcode::STORE_VAR_F32
             | opcode::STORE_VAR_F64 => {
-                let index = VarIndex::new(read_u16_le(bytecode, &mut pc));
+                let index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 scope.check_access(index)?;
                 let slot = stack.pop()?;
                 variables.store(index, slot)?;
@@ -747,18 +747,18 @@ fn execute(
             opcode::BIT_NOT_64 => unaryop!(stack, as_i64, from_i64, a, !a),
             // --- Control flow ---
             opcode::JMP => {
-                let offset = read_i16_le(bytecode, &mut pc);
+                let offset = read_i16_le(bytecode, &mut pc)?;
                 pc = (pc as isize + offset as isize) as usize;
             }
             opcode::JMP_IF_NOT => {
-                let offset = read_i16_le(bytecode, &mut pc);
+                let offset = read_i16_le(bytecode, &mut pc)?;
                 let cond = stack.pop()?.as_i32();
                 if cond == 0 {
                     pc = (pc as isize + offset as isize) as usize;
                 }
             }
             opcode::BUILTIN => {
-                let func_id = read_u16_le(bytecode, &mut pc);
+                let func_id = read_u16_le(bytecode, &mut pc)?;
                 match func_id {
                     // --- Numeric ↔ STRING conversions ---
                     //
@@ -849,8 +849,8 @@ fn execute(
                 }
             }
             opcode::CALL => {
-                let func_id = read_u16_le(bytecode, &mut pc);
-                let var_offset = read_u16_le(bytecode, &mut pc);
+                let func_id = read_u16_le(bytecode, &mut pc)?;
+                let var_offset = read_u16_le(bytecode, &mut pc)?;
                 let func = container
                     .code
                     .get_function(FunctionId::new(func_id))
@@ -924,8 +924,8 @@ fn execute(
             // are stored. STR_STORE_VAR relies on max_length being set here
             // to enforce the capacity bound.
             opcode::STR_INIT => {
-                let data_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let max_length = read_u16_le(bytecode, &mut pc);
+                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let max_length = read_u16_le(bytecode, &mut pc)?;
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
@@ -946,7 +946,7 @@ fn execute(
             //   4. Push the buf_idx onto the stack so a subsequent opcode
             //      (e.g. STR_STORE_VAR) can find the data
             opcode::LOAD_CONST_STR => {
-                let index = read_u16_le(bytecode, &mut pc);
+                let index = read_u16_le(bytecode, &mut pc)?;
                 let str_bytes = container
                     .constant_pool
                     .get_str(ConstantIndex::new(index))
@@ -983,7 +983,7 @@ fn execute(
             //      destination can hold (IEC 61131-3 assignment semantics)
             //   5. Update the destination's cur_length
             opcode::STR_STORE_VAR => {
-                let data_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let buf_idx = stack.pop()?.as_i32() as usize;
 
                 let buf_start = buf_idx * max_temp_buf_bytes;
@@ -1022,7 +1022,7 @@ fn execute(
             // region and writes to a temp buffer so the string value can be
             // passed through the stack to another opcode.
             opcode::STR_LOAD_VAR => {
-                let data_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
@@ -1055,7 +1055,7 @@ fn execute(
             // LEN_STR reads the cur_length field from a STRING variable's
             // header in the data region and pushes it as an i32.
             opcode::LEN_STR => {
-                let data_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
@@ -1069,8 +1069,8 @@ fn execute(
             // FIND_STR: Find the first occurrence of IN2 within IN1.
             // Returns 1-based position or 0 if not found.
             opcode::FIND_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
 
                 // Read IN1's current length.
                 if in1_offset + STRING_HEADER_BYTES > data_region.len() {
@@ -1112,8 +1112,8 @@ fn execute(
             // REPLACE_STR: Replace L characters starting at position P in IN1
             // with IN2. Pops P then L from stack, pushes buf_idx.
             opcode::REPLACE_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
@@ -1163,8 +1163,8 @@ fn execute(
             // INSERT_STR: Insert IN2 into IN1 after position P.
             // Pops P from stack, pushes buf_idx.
             opcode::INSERT_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let p_val = stack.pop()?.as_i32();
 
                 let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
@@ -1210,7 +1210,7 @@ fn execute(
             // DELETE_STR: Delete L characters from IN1 starting at position P.
             // Pops P then L from stack, pushes buf_idx.
             opcode::DELETE_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
@@ -1254,7 +1254,7 @@ fn execute(
             // LEFT_STR: Return the leftmost L characters of IN.
             // Pops L from stack, pushes buf_idx.
             opcode::LEFT_STR => {
-                let in_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let l_val = stack.pop()?.as_i32();
 
                 let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
@@ -1280,7 +1280,7 @@ fn execute(
             // RIGHT_STR: Return the rightmost L characters of IN.
             // Pops L from stack, pushes buf_idx.
             opcode::RIGHT_STR => {
-                let in_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let l_val = stack.pop()?.as_i32();
 
                 let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
@@ -1308,7 +1308,7 @@ fn execute(
             // MID_STR: Return L characters from IN starting at position P.
             // Pops P then L from stack, pushes buf_idx.
             opcode::MID_STR => {
-                let in_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
@@ -1338,8 +1338,8 @@ fn execute(
             // CONCAT_STR: Concatenate IN1 and IN2.
             // Pushes buf_idx.
             opcode::CONCAT_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
 
                 let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
                 let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
@@ -1381,8 +1381,8 @@ fn execute(
             // Element stride = STRING_HEADER_BYTES + max_string_length.
             // Loops through all elements writing [max_len][cur_len=0] headers.
             opcode::STR_INIT_ARRAY => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
 
                 let desc = container
                     .type_section
@@ -1413,8 +1413,8 @@ fn execute(
             // Computes element offset = base + flat_index * stride, then copies the
             // string from the data region into a temp buffer.
             opcode::STR_LOAD_ARRAY_ELEM => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
 
@@ -1474,8 +1474,8 @@ fn execute(
             // Computes element offset = base + flat_index * stride, then copies
             // the temp buffer contents into the data region, truncating per IEC 61131-3.
             opcode::STR_STORE_ARRAY_ELEM => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let value_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
@@ -1534,14 +1534,13 @@ fn execute(
             }
             // --- Function block opcodes ---
             opcode::FB_LOAD_INSTANCE => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 scope.check_access(var_index)?;
                 let slot = variables.load(var_index)?;
                 stack.push(slot)?;
             }
             opcode::FB_STORE_PARAM => {
-                let field = bytecode[pc] as u16;
-                pc += 1;
+                let field = read_u8(bytecode, &mut pc)? as u16;
                 let value = stack.pop()?;
                 let fb_ref = stack.peek()?.as_i32() as u32;
                 let offset = fb_ref as usize + field as usize * 8;
@@ -1551,8 +1550,7 @@ fn execute(
                 data_region[offset..offset + 8].copy_from_slice(&value.as_i64().to_le_bytes());
             }
             opcode::FB_LOAD_PARAM => {
-                let field = bytecode[pc] as u16;
-                pc += 1;
+                let field = read_u8(bytecode, &mut pc)? as u16;
                 let fb_ref = stack.peek()?.as_i32() as u32;
                 let offset = fb_ref as usize + field as usize * 8;
                 if offset + 8 > data_region.len() {
@@ -1563,7 +1561,7 @@ fn execute(
                 stack.push(Slot::from_i64(i64::from_le_bytes(buf)))?;
             }
             opcode::FB_CALL => {
-                let type_id = read_u16_le(bytecode, &mut pc);
+                let type_id = read_u16_le(bytecode, &mut pc)?;
                 let fb_ref = stack.peek()?.as_i32() as u32;
                 let instance_start = fb_ref as usize;
                 match type_id {
@@ -1713,8 +1711,8 @@ fn execute(
             }
             // --- Array opcodes ---
             opcode::LOAD_ARRAY => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
 
                 // Read index as i64 to catch overflow from i64 flat-index arithmetic.
@@ -1753,8 +1751,8 @@ fn execute(
                 stack.push(Slot::from_i64(raw))?;
             }
             opcode::STORE_ARRAY => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let value_slot = stack.pop()?;
 
@@ -1789,8 +1787,8 @@ fn execute(
                     .copy_from_slice(&value_slot.as_i64().to_le_bytes());
             }
             opcode::LOAD_ARRAY_DEREF => {
-                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
 
@@ -1836,8 +1834,8 @@ fn execute(
                 stack.push(Slot::from_i64(raw))?;
             }
             opcode::STORE_ARRAY_DEREF => {
-                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let value_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
@@ -1893,30 +1891,52 @@ fn execute(
     Ok(())
 }
 
+/// Reads a single byte from bytecode at pc, advancing pc by 1.
+fn read_u8(bytecode: &[u8], pc: &mut usize) -> Result<u8, Trap> {
+    if *pc >= bytecode.len() {
+        return Err(Trap::UnexpectedEndOfBytecode);
+    }
+    let value = bytecode[*pc];
+    *pc += 1;
+    Ok(value)
+}
+
 /// Reads a little-endian u16 from bytecode at pc, advancing pc by 2.
-fn read_u16_le(bytecode: &[u8], pc: &mut usize) -> u16 {
+fn read_u16_le(bytecode: &[u8], pc: &mut usize) -> Result<u16, Trap> {
+    let end = *pc + 2;
+    if end > bytecode.len() {
+        return Err(Trap::UnexpectedEndOfBytecode);
+    }
     let value = u16::from_le_bytes([bytecode[*pc], bytecode[*pc + 1]]);
-    *pc += 2;
-    value
+    *pc = end;
+    Ok(value)
 }
 
 /// Reads a little-endian u32 from bytecode at pc, advancing pc by 4.
-fn read_u32_le(bytecode: &[u8], pc: &mut usize) -> u32 {
+fn read_u32_le(bytecode: &[u8], pc: &mut usize) -> Result<u32, Trap> {
+    let end = *pc + 4;
+    if end > bytecode.len() {
+        return Err(Trap::UnexpectedEndOfBytecode);
+    }
     let value = u32::from_le_bytes([
         bytecode[*pc],
         bytecode[*pc + 1],
         bytecode[*pc + 2],
         bytecode[*pc + 3],
     ]);
-    *pc += 4;
-    value
+    *pc = end;
+    Ok(value)
 }
 
 /// Reads a little-endian i16 from bytecode at pc, advancing pc by 2.
-fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> i16 {
+fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> Result<i16, Trap> {
+    let end = *pc + 2;
+    if end > bytecode.len() {
+        return Err(Trap::UnexpectedEndOfBytecode);
+    }
     let value = i16::from_le_bytes([bytecode[*pc], bytecode[*pc + 1]]);
-    *pc += 2;
-    value
+    *pc = end;
+    Ok(value)
 }
 
 /// A small stack-allocated buffer for formatting numbers as strings.

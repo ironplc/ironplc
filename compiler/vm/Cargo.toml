@@ -15,6 +15,7 @@ ironplc-container = { path = "../container", version = "0.186.0" }
 
 [dev-dependencies]
 ironplc-vm = { path = ".", features = ["test-support"] }
+proptest = "1"
 
 [build-dependencies]
 csv = "1"

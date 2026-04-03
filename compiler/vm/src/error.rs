@@ -24,6 +24,7 @@ pub enum Trap {
         index: i32,
         total_elements: u32,
     },
+    UnexpectedEndOfBytecode,
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -62,6 +63,7 @@ impl fmt::Display for Trap {
                     "array index out of bounds: index {index} for array variable {var_index} with {total_elements} elements"
                 )
             }
+            Trap::UnexpectedEndOfBytecode => write!(f, "bytecode ended mid-instruction"),
         }
     }
 }
@@ -182,6 +184,11 @@ mod tests {
     }
 
     #[test]
+    fn v_code_when_unexpected_end_of_bytecode_then_v9011() {
+        assert_eq!(Trap::UnexpectedEndOfBytecode.v_code(), "V9011");
+    }
+
+    #[test]
     fn exit_code_when_internal_error_then_3() {
         assert_eq!(Trap::StackOverflow.exit_code(), 3);
         assert_eq!(Trap::StackUnderflow.exit_code(), 3);
@@ -197,5 +204,6 @@ mod tests {
             3
         );
         assert_eq!(Trap::InvalidFbTypeId(FbTypeId::new(0)).exit_code(), 3);
+        assert_eq!(Trap::UnexpectedEndOfBytecode.exit_code(), 3);
     }
 }
