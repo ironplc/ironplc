@@ -127,6 +127,11 @@ struct FileArgs {
     /// VAR_GLOBALs containing the VM's monotonic uptime in milliseconds.
     #[arg(long)]
     allow_system_uptime_global: bool,
+
+    /// Allow implicit widening between bit-string and integer type families
+    /// (e.g. BYTE→INT, literal 0→BYTE). This is a vendor extension.
+    #[arg(long)]
+    allow_cross_family_widening: bool,
 }
 
 impl FileArgs {
@@ -145,6 +150,7 @@ impl FileArgs {
         options.allow_int_to_bool_initializer |= self.allow_int_to_bool_initializer;
         options.allow_sizeof |= self.allow_sizeof;
         options.allow_system_uptime_global |= self.allow_system_uptime_global;
+        options.allow_cross_family_widening |= self.allow_cross_family_widening;
         options
     }
 }
