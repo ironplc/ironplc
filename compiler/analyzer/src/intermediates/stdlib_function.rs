@@ -868,6 +868,27 @@ fn get_time_functions() -> Vec<FunctionSignature> {
                 input_param("IN2", "TIME_OF_DAY"),
             ],
         ),
+        // Decomposition: extract DATE or TIME_OF_DAY from DATE_AND_TIME
+        FunctionSignature::stdlib(
+            "DT_TO_DATE",
+            TypeName::from("DATE"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "DATE_AND_TIME_TO_DATE",
+            TypeName::from("DATE"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "DT_TO_TOD",
+            TypeName::from("TIME_OF_DAY"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
+        FunctionSignature::stdlib(
+            "DATE_AND_TIME_TO_TIME_OF_DAY",
+            TypeName::from("TIME_OF_DAY"),
+            vec![input_param("IN", "DATE_AND_TIME")],
+        ),
     ]
 }
 
