@@ -3,6 +3,7 @@ use ironplc_container::{
     STRING_HEADER_BYTES,
 };
 
+use crate::buffers::VmBuffers;
 use crate::builtin;
 use crate::error::Trap;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
@@ -33,28 +34,15 @@ impl Vm {
         Vm
     }
 
-    /// Loads a container, using caller-provided buffers for stack, variables,
-    /// data region, temporary buffers, task states, program instance states,
-    /// and ready-task buffer.
+    /// Loads a container, using caller-provided buffers for execution state.
     ///
-    /// Populates `task_states` and `program_instances` from `container.task_table`.
+    /// Populates task states and program instances from `container.task_table`.
     /// Consumes the empty VM and returns a ready VM.
-    #[allow(clippy::too_many_arguments)]
-    pub fn load<'a>(
-        self,
-        container: &'a Container,
-        stack_buf: &'a mut [Slot],
-        var_buf: &'a mut [Slot],
-        data_region_buf: &'a mut [u8],
-        temp_buf: &'a mut [u8],
-        task_states: &'a mut [TaskState],
-        program_instances: &'a mut [ProgramInstanceState],
-        ready_buf: &'a mut [usize],
-    ) -> VmReady<'a> {
+    pub fn load<'a>(self, container: &'a Container, bufs: &'a mut VmBuffers) -> VmReady<'a> {
         // Populate task_states from the container's task table.
         for (i, t) in container.task_table.tasks.iter().enumerate() {
-            if i < task_states.len() {
-                task_states[i] = TaskState {
+            if i < bufs.tasks.len() {
+                bufs.tasks[i] = TaskState {
                     task_id: t.task_id,
                     priority: t.priority,
                     task_type: t.task_type,
@@ -72,8 +60,8 @@ impl Vm {
 
         // Populate program_instances from the container's task table.
         for (i, p) in container.task_table.programs.iter().enumerate() {
-            if i < program_instances.len() {
-                program_instances[i] = ProgramInstanceState {
+            if i < bufs.programs.len() {
+                bufs.programs[i] = ProgramInstanceState {
                     instance_id: p.instance_id,
                     task_id: p.task_id,
                     entry_function_id: p.entry_function_id,
@@ -84,20 +72,20 @@ impl Vm {
             }
         }
 
-        let stack = OperandStack::new(stack_buf);
-        let variables = VariableTable::new(var_buf);
+        let stack = OperandStack::new(&mut bufs.stack);
+        let variables = VariableTable::new(&mut bufs.vars);
         let max_temp_buf_bytes = container.header.max_temp_buf_bytes as usize;
 
         VmReady {
             container,
             stack,
             variables,
-            data_region: data_region_buf,
-            temp_buf,
+            data_region: &mut bufs.data_region,
+            temp_buf: &mut bufs.temp_buf,
             max_temp_buf_bytes,
-            task_states,
-            program_instances,
-            ready_buf,
+            task_states: &mut bufs.tasks,
+            program_instances: &mut bufs.programs,
+            ready_buf: &mut bufs.ready,
         }
     }
 }
@@ -561,7 +549,7 @@ fn execute(
     current_time_us: u64,
 ) -> Result<(), Trap> {
     let mut pc: usize = 0;
-    let mut next_temp_buf: u16 = 0;
+    let mut temp_alloc = string_ops::TempBufAllocator::new(max_temp_buf_bytes);
 
     while pc < bytecode.len() {
         let op = bytecode[pc];
@@ -781,11 +769,10 @@ fn execute(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                            &mut next_temp_buf,
-                            max_temp_buf_bytes,
-                            temp_buf.len(),
-                        )?;
+                        let (buf_idx, buf_start) = {
+                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            (slot.buf_idx as usize, slot.buf_start)
+                        };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
                         string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
@@ -799,11 +786,10 @@ fn execute(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                            &mut next_temp_buf,
-                            max_temp_buf_bytes,
-                            temp_buf.len(),
-                        )?;
+                        let (buf_idx, buf_start) = {
+                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            (slot.buf_idx as usize, slot.buf_start)
+                        };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
                         string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
@@ -817,11 +803,10 @@ fn execute(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                            &mut next_temp_buf,
-                            max_temp_buf_bytes,
-                            temp_buf.len(),
-                        )?;
+                        let (buf_idx, buf_start) = {
+                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            (slot.buf_idx as usize, slot.buf_start)
+                        };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
                         string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
@@ -922,7 +907,7 @@ fn execute(
             //      string values. Same [max][cur][data] layout. The temp buffer
             //      pool is a flat byte array divided into equal-sized slots; a
             //      `buf_idx` (which fits in one stack slot) identifies which temp
-            //      buffer holds the data. A bump allocator (`next_temp_buf`)
+            //      buffer holds the data. A bump allocator (`TempBufAllocator`)
             //      hands out temp buffers within a single function call.
             //
             // The typical pattern for string assignment is:
@@ -967,11 +952,10 @@ fn execute(
                     .get_str(ConstantIndex::new(index))
                     .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
 
-                let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                    &mut next_temp_buf,
-                    max_temp_buf_bytes,
-                    temp_buf.len(),
-                )?;
+                let (buf_idx, buf_start) = {
+                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    (slot.buf_idx as usize, slot.buf_start)
+                };
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (str_bytes.len() as u16).min(max_len);
@@ -1048,11 +1032,10 @@ fn execute(
                 // Defensive: never read more than max_length bytes.
                 let read_len = src_cur_len.min(src_max_len) as usize;
 
-                let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                    &mut next_temp_buf,
-                    max_temp_buf_bytes,
-                    temp_buf.len(),
-                )?;
+                let (buf_idx, buf_start) = {
+                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    (slot.buf_idx as usize, slot.buf_start)
+                };
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(max_len);
@@ -1148,9 +1131,7 @@ fn execute(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1197,9 +1178,7 @@ fn execute(
                 let suffix_len = in1_len - insert_idx;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1248,9 +1227,7 @@ fn execute(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + suffix_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1285,9 +1262,7 @@ fn execute(
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
                 let result_len = l.min(in_len);
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1314,9 +1289,7 @@ fn execute(
                 let result_len = l.min(in_len);
                 let src_start = in_len - result_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1346,9 +1319,7 @@ fn execute(
                 let start_idx = (p - 1).min(in_len);
                 let result_len = l.min(in_len - start_idx);
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1375,9 +1346,7 @@ fn execute(
 
                 let result_len = in1_len + in2_len;
 
-                let slot =
-                    string_ops::allocate_temp_buffer(temp_buf, next_temp_buf, max_temp_buf_bytes)?;
-                next_temp_buf = slot.next_temp_buf;
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
@@ -1477,11 +1446,10 @@ fn execute(
                 let src_cur_len = string_ops::str_read_cur_len(data_region, elem_offset);
                 let read_len = src_cur_len.min(max_str_len) as usize;
 
-                let (buf_idx, buf_start) = string_ops::str_alloc_temp(
-                    &mut next_temp_buf,
-                    max_temp_buf_bytes,
-                    temp_buf.len(),
-                )?;
+                let (buf_idx, buf_start) = {
+                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    (slot.buf_idx as usize, slot.buf_start)
+                };
 
                 let buf_max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(buf_max_len);
@@ -2044,16 +2012,7 @@ mod tests {
     fn vm_load_when_valid_container_then_returns_ready() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let ready = Vm::new().load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        );
+        let ready = Vm::new().load(&c, &mut b);
 
         // If this compiles, the VM is in the Ready state.
         // Verify we can read the initial variable values.
@@ -2064,19 +2023,7 @@ mod tests {
     fn vm_run_round_when_steel_thread_then_x_is_10_y_is_42() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         vm.run_round(0).unwrap();
 
@@ -2088,19 +2035,7 @@ mod tests {
     fn vm_run_round_when_invalid_opcode_then_trap() {
         let c = single_function_container(&[0xFF], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidInstruction(0xFF));
     }
@@ -2109,19 +2044,7 @@ mod tests {
     fn vm_request_stop_when_called_then_stop_requested() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert!(!vm.stop_requested());
         vm.request_stop();
@@ -2132,19 +2055,7 @@ mod tests {
     fn vm_stop_when_called_then_returns_stopped() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let vm = Vm::new().load(&c, &mut b).start().unwrap();
         let stopped = vm.stop();
         assert_eq!(stopped.read_variable(VarIndex::new(0)).unwrap(), 0); // not yet executed
     }
@@ -2153,19 +2064,7 @@ mod tests {
     fn vm_fault_when_called_then_returns_faulted_with_context() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let vm = Vm::new().load(&c, &mut b).start().unwrap();
         let ctx = FaultContext {
             trap: Trap::WatchdogTimeout(ironplc_container::TaskId::new(3)),
             task_id: ironplc_container::TaskId::new(3),
@@ -2204,19 +2103,7 @@ mod tests {
             .build();
 
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
         assert_trap(&mut vm, Trap::StackOverflow);
     }
 
@@ -2225,19 +2112,7 @@ mod tests {
         // ADD_I32 tries to pop 2 values from an empty stack
         let c = single_function_container(&[0x30], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::StackUnderflow);
     }
@@ -2251,19 +2126,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidConstantIndex(ConstantIndex::new(0)));
     }
@@ -2278,19 +2141,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 1, &[42]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
@@ -2304,19 +2155,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 1, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
@@ -2359,19 +2198,7 @@ mod tests {
             .entry_function_id(FunctionId::SCAN)
             .build();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
         vm.run_round(0).unwrap();
 
         // result should be 3 + 7 = 10
@@ -2382,19 +2209,7 @@ mod tests {
     fn execute_when_empty_bytecode_then_ok() {
         let c = single_function_container(&[], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert!(vm.run_round(0).is_ok());
     }
