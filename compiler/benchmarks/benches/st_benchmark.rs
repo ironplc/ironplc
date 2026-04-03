@@ -21,14 +21,15 @@ use ironplc_vm::{Slot, VmBuffers};
 /// Compiles an IEC 61131-3 source string through the full pipeline:
 /// parse → analyze (all semantic rules) → codegen.
 fn compile_st(source: &str) -> Container {
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
-    let (analyzed, context) =
-        ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
+    let options = CompilerOptions::default();
+    let library = parse_program(source, &FileId::default(), &options).unwrap();
+    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
     assert!(
         !context.has_diagnostics(),
         "Benchmark source has semantic diagnostics"
     );
-    compile(&analyzed, &context).unwrap()
+    let codegen_options = ironplc_codegen::CodegenOptions::default();
+    compile(&analyzed, &context, &codegen_options).unwrap()
 }
 
 /// Runs one benchmark iteration: creates `VmBuffers`, applies `$setup`,

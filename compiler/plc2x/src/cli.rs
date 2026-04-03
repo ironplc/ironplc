@@ -148,10 +148,14 @@ pub fn compile(
 
     // Generate bytecode, skipping user-defined functions not reachable from
     // the PROGRAM root to reduce container size.
-    let container = ironplc_codegen::compile(&analyzed, &context).map_err(|err| {
-        handle_diagnostics(&[err], Some(&project), suppress_output);
-        String::from("Error during code generation")
-    })?;
+    let codegen_options = ironplc_codegen::CodegenOptions {
+        system_uptime_global: compiler_options.allow_system_uptime_global,
+    };
+    let container =
+        ironplc_codegen::compile(&analyzed, &context, &codegen_options).map_err(|err| {
+            handle_diagnostics(&[err], Some(&project), suppress_output);
+            String::from("Error during code generation")
+        })?;
 
     // Write the container to the output file
     let mut out_file =
