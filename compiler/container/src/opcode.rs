@@ -833,6 +833,34 @@ pub mod builtin {
     pub const CONV_I64_TO_BOOL: u16 = 0x039A;
 
     // =========================================================================
+    // Numeric ↔ STRING conversion builtins
+    //
+    // These are dispatched inline in the VM main loop (not via
+    // builtin::dispatch) because they need access to temp buffers and
+    // the data region.
+    // =========================================================================
+
+    /// Convert signed 32-bit integer to decimal string.
+    /// Stack: pop i32, push buf_idx (temp buffer with result).
+    pub const CONV_I32_TO_STR: u16 = 0x039B;
+
+    /// Convert unsigned 32-bit integer to decimal string.
+    /// Stack: pop i32 (treated as u32), push buf_idx.
+    pub const CONV_U32_TO_STR: u16 = 0x039C;
+
+    /// Parse decimal string to signed 32-bit integer.
+    /// Stack: pop data_offset (i32), push parsed i32 (0 on failure).
+    pub const CONV_STR_TO_I32: u16 = 0x039D;
+
+    /// Convert 32-bit float to decimal string.
+    /// Stack: pop f32, push buf_idx (temp buffer with result).
+    pub const CONV_F32_TO_STR: u16 = 0x039E;
+
+    /// Parse decimal string to 32-bit float.
+    /// Stack: pop data_offset (i32), push parsed f32 (0.0 on failure).
+    pub const CONV_STR_TO_F32: u16 = 0x039F;
+
+    // =========================================================================
     // MUX (multiplexer) range-based opcodes
     //
     // MUX is extensible: the number of IN arguments varies per call site.
@@ -893,7 +921,9 @@ pub mod builtin {
             | CONV_F32_TO_U32 | CONV_F32_TO_U64 | CONV_F64_TO_U32 | CONV_F64_TO_U64
             | CONV_F32_TO_F64 | CONV_F64_TO_F32 | CONV_U32_TO_I64 | BCD_TO_INT_8
             | BCD_TO_INT_16 | BCD_TO_INT_32 | BCD_TO_INT_64 | INT_TO_BCD_8 | INT_TO_BCD_16
-            | INT_TO_BCD_32 | INT_TO_BCD_64 | CONV_I32_TO_BOOL | CONV_I64_TO_BOOL => 1,
+            | INT_TO_BCD_32 | INT_TO_BCD_64 | CONV_I32_TO_BOOL | CONV_I64_TO_BOOL
+            | CONV_I32_TO_STR | CONV_U32_TO_STR | CONV_STR_TO_I32 | CONV_F32_TO_STR
+            | CONV_STR_TO_F32 => 1,
             EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
             | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
             | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
