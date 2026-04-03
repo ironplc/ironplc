@@ -6,12 +6,52 @@ use crate::error::Trap;
 pub(crate) struct TempBufferSlot {
     /// Index of this buffer slot (the value pushed onto the stack).
     pub buf_idx: u16,
-    /// Updated next_temp_buf value (caller must assign back).
-    pub next_temp_buf: u16,
     /// Byte offset where this slot starts in the temp buffer.
     pub buf_start: usize,
     /// Maximum string data length (capacity minus header).
     pub max_len: u16,
+}
+
+/// Bump allocator for temporary string buffers.
+///
+/// Wraps the raw `u16` counter so that callers cannot manually
+/// increment it — all allocations must go through [`Self::alloc`].
+pub(crate) struct TempBufAllocator {
+    next: u16,
+    max_temp_buf_bytes: usize,
+}
+
+impl TempBufAllocator {
+    /// Create a new allocator starting at slot 0.
+    pub fn new(max_temp_buf_bytes: usize) -> Self {
+        Self {
+            next: 0,
+            max_temp_buf_bytes,
+        }
+    }
+
+    /// Allocate the next temp buffer slot.
+    ///
+    /// Returns a [`TempBufferSlot`] with the slot index, byte offset,
+    /// and max data length. The internal counter is advanced automatically.
+    pub fn alloc(&mut self, temp_buf_len: usize) -> Result<TempBufferSlot, Trap> {
+        if self.max_temp_buf_bytes == 0 {
+            return Err(Trap::TempBufferExhausted);
+        }
+        let buf_idx = self.next;
+        let buf_start = buf_idx as usize * self.max_temp_buf_bytes;
+        let buf_end = buf_start + self.max_temp_buf_bytes;
+        if buf_end > temp_buf_len {
+            return Err(Trap::TempBufferExhausted);
+        }
+        let max_len = (self.max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+        self.next = self.next.wrapping_add(1);
+        Ok(TempBufferSlot {
+            buf_idx,
+            buf_start,
+            max_len,
+        })
+    }
 }
 
 /// Read a string's current length and data-start offset from the data region.
@@ -27,33 +67,6 @@ pub(crate) fn read_string_header(
     let cur_len = u16::from_le_bytes([data_region[offset + 2], data_region[offset + 3]]) as usize;
     let data_start = offset + STRING_HEADER_BYTES;
     Ok((cur_len, data_start))
-}
-
-/// Allocate the next temp buffer slot.
-///
-/// Returns a [`TempBufferSlot`] with the slot index, updated counter,
-/// byte offset, and max data length.
-pub(crate) fn allocate_temp_buffer(
-    temp_buf: &[u8],
-    next_temp_buf: u16,
-    max_temp_buf_bytes: usize,
-) -> Result<TempBufferSlot, Trap> {
-    if max_temp_buf_bytes == 0 {
-        return Err(Trap::TempBufferExhausted);
-    }
-    let buf_idx = next_temp_buf;
-    let buf_start = buf_idx as usize * max_temp_buf_bytes;
-    let buf_end = buf_start + max_temp_buf_bytes;
-    if buf_end > temp_buf.len() {
-        return Err(Trap::TempBufferExhausted);
-    }
-    let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-    Ok(TempBufferSlot {
-        buf_idx,
-        next_temp_buf: next_temp_buf.wrapping_add(1),
-        buf_start,
-        max_len,
-    })
 }
 
 /// Write a string header into a temp buffer and return `(cur_len, data_start)`.
@@ -89,26 +102,6 @@ pub(crate) fn str_write_header(buf: &mut [u8], offset: usize, max_len: u16, cur_
     buf[offset + 2..offset + STRING_HEADER_BYTES].copy_from_slice(&cur_len.to_le_bytes());
 }
 
-/// Allocate the next temp buffer slot. Returns (buf_idx, buf_start).
-///
-/// This is the legacy interface used by non-string-op callers.
-pub(crate) fn str_alloc_temp(
-    next_temp_buf: &mut u16,
-    max_temp_buf_bytes: usize,
-    temp_buf_len: usize,
-) -> Result<(usize, usize), Trap> {
-    if max_temp_buf_bytes == 0 {
-        return Err(Trap::TempBufferExhausted);
-    }
-    let buf_idx = *next_temp_buf as usize;
-    let buf_start = buf_idx * max_temp_buf_bytes;
-    if buf_start + max_temp_buf_bytes > temp_buf_len {
-        return Err(Trap::TempBufferExhausted);
-    }
-    *next_temp_buf = next_temp_buf.wrapping_add(1);
-    Ok((buf_idx, buf_start))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,35 +134,34 @@ mod tests {
     }
 
     #[test]
-    fn allocate_temp_buffer_when_valid_then_returns_slot() {
-        let buf = [0u8; 64];
-        let slot = allocate_temp_buffer(&buf, 0, 32).unwrap();
+    fn alloc_when_valid_then_returns_slot() {
+        let mut alloc = TempBufAllocator::new(32);
+        let slot = alloc.alloc(64).unwrap();
         assert_eq!(slot.buf_idx, 0);
-        assert_eq!(slot.next_temp_buf, 1);
         assert_eq!(slot.buf_start, 0);
         assert_eq!(slot.max_len, (32 - STRING_HEADER_BYTES) as u16);
     }
 
     #[test]
-    fn allocate_temp_buffer_when_second_slot_then_offset_correct() {
-        let buf = [0u8; 64];
-        let slot = allocate_temp_buffer(&buf, 1, 32).unwrap();
-        assert_eq!(slot.buf_idx, 1);
-        assert_eq!(slot.next_temp_buf, 2);
-        assert_eq!(slot.buf_start, 32);
+    fn alloc_when_called_twice_then_second_slot_offset_correct() {
+        let mut alloc = TempBufAllocator::new(32);
+        let _first = alloc.alloc(64).unwrap();
+        let second = alloc.alloc(64).unwrap();
+        assert_eq!(second.buf_idx, 1);
+        assert_eq!(second.buf_start, 32);
     }
 
     #[test]
-    fn allocate_temp_buffer_when_zero_max_then_trap() {
-        let buf = [0u8; 64];
-        let result = allocate_temp_buffer(&buf, 0, 0);
+    fn alloc_when_zero_max_then_trap() {
+        let mut alloc = TempBufAllocator::new(0);
+        let result = alloc.alloc(64);
         assert!(matches!(result, Err(Trap::TempBufferExhausted)));
     }
 
     #[test]
-    fn allocate_temp_buffer_when_exceeds_len_then_trap() {
-        let buf = [0u8; 16];
-        let result = allocate_temp_buffer(&buf, 0, 32);
+    fn alloc_when_exceeds_len_then_trap() {
+        let mut alloc = TempBufAllocator::new(32);
+        let result = alloc.alloc(16);
         assert!(matches!(result, Err(Trap::TempBufferExhausted)));
     }
 
