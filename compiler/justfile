@@ -2,11 +2,12 @@ set windows-shell := ["powershell.exe", "-c"]
 
 alias ci := default
 # Coverage runs all tests with instrumentation, so separate test step is redundant
-default: compile coverage lint
+default: compile coverage lint dupes
 
 setup:
   cargo install cargo-release
   cargo install cargo-llvm-cov
+  cargo install cargo-dupes
 
 compile:
   cargo build
@@ -27,6 +28,10 @@ format:
 lint:
   cargo clippy
   cargo fmt --all -- --check
+
+# Check for duplicate code (AST-based).
+dupes:
+  cargo dupes check --max-exact-percent 10 --max-near-percent 5 --exclude-tests --min-lines 10
 
 # Set the version number for this component.
 version version:
