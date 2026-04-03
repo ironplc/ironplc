@@ -15,6 +15,10 @@ pub const FORMAT_VERSION: u16 = 1;
 /// `[max_length: u16][cur_length: u16][data: max_length bytes]`.
 pub const STRING_HEADER_BYTES: usize = 4;
 
+/// Flag bit: container expects __SYSTEM_UP_TIME at VarIndex(0) and
+/// __SYSTEM_UP_LTIME at VarIndex(1), written by the VM before each scan.
+pub const FLAG_HAS_SYSTEM_UPTIME: u8 = 0x01;
+
 /// Fixed size of the file header in bytes.
 pub const HEADER_SIZE: usize = 256;
 

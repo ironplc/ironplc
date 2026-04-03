@@ -33,7 +33,9 @@ mod type_section;
 pub use const_type::ConstType;
 pub use container_ref::{ContainerRef, ProgramEntryRef, TaskEntryRef};
 pub use error::ContainerError;
-pub use header::{FileHeader, FORMAT_VERSION, HEADER_SIZE, MAGIC, STRING_HEADER_BYTES};
+pub use header::{
+    FileHeader, FLAG_HAS_SYSTEM_UPTIME, FORMAT_VERSION, HEADER_SIZE, MAGIC, STRING_HEADER_BYTES,
+};
 pub use id_types::{ConstantIndex, FbTypeId, FunctionId, InstanceId, SlotIndex, TaskId, VarIndex};
 pub use task_type::TaskType;
 

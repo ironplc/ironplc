@@ -356,7 +356,10 @@ fn compile_inner(source: &str, dialect: &str) -> CompileResult {
         };
     }
 
-    let container = match codegen_compile(&library, &context) {
+    let codegen_options = ironplc_codegen::CodegenOptions {
+        system_uptime_global: options.allow_system_uptime_global,
+    };
+    let container = match codegen_compile(&library, &context, &codegen_options) {
         Ok(c) => c,
         Err(diag) => {
             return CompileResult {
@@ -876,7 +879,7 @@ END_PROGRAM
         assert!(result.ok);
         assert_eq!(result.scans_completed, 1);
         assert!(!result.variables.is_empty());
-        assert_eq!(result.variables[0].value, "42");
+        assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -912,8 +915,8 @@ END_PROGRAM
         assert!(result.error.is_none());
         assert_eq!(result.scans_completed, 1);
         assert!(result.variables.len() >= 2);
-        assert_eq!(result.variables[0].value, "10");
-        assert_eq!(result.variables[1].value, "42");
+        assert_eq!(result.variables[2].value, "10"); // indices 0-1 are system globals
+        assert_eq!(result.variables[3].value, "42"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -938,7 +941,7 @@ END_PROGRAM
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 5, "")).unwrap();
         assert!(result.ok);
         assert_eq!(result.scans_completed, 5);
-        assert_eq!(result.variables[0].value, "99");
+        assert_eq!(result.variables[2].value, "99"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -1029,7 +1032,7 @@ END_PROGRAM
         assert!(result.ok);
         assert_eq!(result.total_scans, 1);
         assert!(!result.variables.is_empty());
-        assert_eq!(result.variables[0].value, "42");
+        assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -1047,11 +1050,11 @@ END_PROGRAM
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
-        assert_eq!(r1.variables[0].value, "1");
+        assert_eq!(r1.variables[2].value, "1"); // indices 0-1 are system globals
 
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r2.ok);
-        assert_eq!(r2.variables[0].value, "2");
+        assert_eq!(r2.variables[2].value, "2"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -1208,7 +1211,7 @@ END_PROGRAM
 ";
         load_program(source_a, 100_000, "");
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
-        assert_eq!(r1.variables[0].value, "10");
+        assert_eq!(r1.variables[2].value, "10"); // indices 0-1 are system globals
 
         let source_b = "
 PROGRAM main
@@ -1220,7 +1223,7 @@ END_PROGRAM
 ";
         load_program(source_b, 100_000, "");
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
-        assert_eq!(r2.variables[0].value, "20");
+        assert_eq!(r2.variables[2].value, "20"); // indices 0-1 are system globals
         assert_eq!(r2.total_scans, 1);
     }
 
@@ -1240,17 +1243,17 @@ END_PROGRAM
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
         assert_eq!(r1.total_scans, 1);
-        assert_eq!(r1.variables[0].value, "2"); // 1 * 2
+        assert_eq!(r1.variables[2].value, "2"); // 1 * 2; indices 0-1 are system globals
 
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r2.ok);
         assert_eq!(r2.total_scans, 2);
-        assert_eq!(r2.variables[0].value, "4"); // 2 * 2
+        assert_eq!(r2.variables[2].value, "4"); // 2 * 2; indices 0-1 are system globals
 
         let r3: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r3.ok);
         assert_eq!(r3.total_scans, 3);
-        assert_eq!(r3.variables[0].value, "8"); // 4 * 2
+        assert_eq!(r3.variables[2].value, "8"); // 4 * 2; indices 0-1 are system globals
     }
 
     #[test]
@@ -1265,7 +1268,7 @@ END_PROGRAM
 ";
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
-        assert_eq!(result.variables[0].value, "42");
+        assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -1280,7 +1283,7 @@ END_PROGRAM
 ";
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
-        assert_eq!(result.variables[0].value, "16#42");
+        assert_eq!(result.variables[2].value, "16#42"); // indices 0-1 are system globals
     }
 
     #[test]

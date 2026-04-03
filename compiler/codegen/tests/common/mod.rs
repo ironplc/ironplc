@@ -36,7 +36,10 @@ pub fn try_parse_and_compile(
     options: &CompilerOptions,
 ) -> Result<Container, Diagnostic> {
     let (library, context) = parse(source, options);
-    compile(&library, &context)
+    let codegen_options = ironplc_codegen::CodegenOptions {
+        system_uptime_global: options.allow_system_uptime_global,
+    };
+    compile(&library, &context, &codegen_options)
 }
 
 /// Parses, analyzes, compiles, and runs one scan cycle.
@@ -54,7 +57,10 @@ pub fn parse_and_try_run(
     options: &CompilerOptions,
 ) -> Result<(Container, VmBuffers), FaultContext> {
     let (library, context) = parse(source, options);
-    let container = compile(&library, &context).unwrap();
+    let codegen_options = ironplc_codegen::CodegenOptions {
+        system_uptime_global: options.allow_system_uptime_global,
+    };
+    let container = compile(&library, &context, &codegen_options).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs)?;
@@ -73,7 +79,10 @@ pub fn parse_and_run_rounds(
     f: impl FnOnce(&mut ironplc_vm::VmRunning<'_>),
 ) {
     let (library, context) = parse(source, options);
-    let container = compile(&library, &context).unwrap();
+    let codegen_options = ironplc_codegen::CodegenOptions {
+        system_uptime_global: options.allow_system_uptime_global,
+    };
+    let container = compile(&library, &context, &codegen_options).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = load_and_start(&container, &mut bufs).unwrap();
     f(&mut vm);

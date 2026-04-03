@@ -241,12 +241,16 @@ fn compile_to_bytes(source: &str, options: &CompilerOptions) -> Result<Vec<u8>, 
         });
     }
 
-    let container = codegen_compile(&library, &context).map_err(|diag| RunResult {
-        ok: false,
-        variables: vec![],
-        total_scans: 0,
-        error: Some(diag.description()),
-    })?;
+    let codegen_options = ironplc_codegen::CodegenOptions {
+        system_uptime_global: options.allow_system_uptime_global,
+    };
+    let container =
+        codegen_compile(&library, &context, &codegen_options).map_err(|diag| RunResult {
+            ok: false,
+            variables: vec![],
+            total_scans: 0,
+            error: Some(diag.description()),
+        })?;
 
     let mut buf = Vec::new();
     container.write_to(&mut buf).map_err(|e| RunResult {

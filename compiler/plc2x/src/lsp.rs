@@ -68,6 +68,7 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
         options.allow_ref_type_punning |= flag("allowRefTypePunning");
         options.allow_int_to_bool_initializer |= flag("allowIntToBoolInitializer");
         options.allow_sizeof |= flag("allowSizeof");
+        options.allow_system_uptime_global |= flag("allowSystemUptimeGlobal");
         options
     } else {
         CompilerOptions::default()

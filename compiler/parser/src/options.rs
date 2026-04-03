@@ -167,6 +167,11 @@ define_compiler_options! {
     "--allow-sizeof",
     [Rusty],
     allow_sizeof,
+
+    "Expose __SYSTEM_UP_TIME and __SYSTEM_UP_LTIME as implicit VAR_GLOBALs (runtime monotonic uptime)",
+    "--allow-system-uptime-global",
+    [Rusty],
+    allow_system_uptime_global,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -229,6 +234,7 @@ mod tests {
         assert!(!options.allow_ref_type_punning);
         assert!(!options.allow_int_to_bool_initializer);
         assert!(!options.allow_sizeof);
+        assert!(!options.allow_system_uptime_global);
     }
 
     #[test]
@@ -248,6 +254,7 @@ mod tests {
         assert!(!options.allow_ref_type_punning);
         assert!(!options.allow_int_to_bool_initializer);
         assert!(!options.allow_sizeof);
+        assert!(!options.allow_system_uptime_global);
     }
 
     #[test]
@@ -267,6 +274,7 @@ mod tests {
         assert!(options.allow_ref_type_punning);
         assert!(options.allow_int_to_bool_initializer);
         assert!(options.allow_sizeof);
+        assert!(options.allow_system_uptime_global);
     }
 
     #[test]
@@ -279,7 +287,7 @@ mod tests {
 
     #[test]
     fn feature_descriptors_when_called_then_contains_all_vendor_flags() {
-        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 12);
+        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 13);
         assert_eq!(
             CompilerOptions::FEATURE_DESCRIPTORS[0].cli_flag,
             "--allow-c-style-comments"
@@ -293,7 +301,7 @@ mod tests {
             .filter(|f| f.dialects.contains(&Dialect::Rusty))
             .map(|f| f.cli_flag)
             .collect();
-        assert_eq!(rusty_features.len(), 12);
+        assert_eq!(rusty_features.len(), 13);
     }
 
     #[test]

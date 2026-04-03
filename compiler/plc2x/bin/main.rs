@@ -122,6 +122,11 @@ struct FileArgs {
     /// This is a vendor extension supported by CODESYS, TwinCAT, and RuSTy.
     #[arg(long)]
     allow_sizeof: bool,
+
+    /// Expose __SYSTEM_UP_TIME (TIME) and __SYSTEM_UP_LTIME (LTIME) as implicit
+    /// VAR_GLOBALs containing the VM's monotonic uptime in milliseconds.
+    #[arg(long)]
+    allow_system_uptime_global: bool,
 }
 
 impl FileArgs {
@@ -139,6 +144,7 @@ impl FileArgs {
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
         options.allow_int_to_bool_initializer |= self.allow_int_to_bool_initializer;
         options.allow_sizeof |= self.allow_sizeof;
+        options.allow_system_uptime_global |= self.allow_system_uptime_global;
         options
     }
 }

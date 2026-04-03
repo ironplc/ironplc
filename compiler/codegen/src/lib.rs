@@ -33,4 +33,4 @@ mod compile_array;
 mod compile_struct;
 mod emit;
 
-pub use compile::compile;
+pub use compile::{compile, CodegenOptions};

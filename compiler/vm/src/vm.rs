@@ -275,6 +275,19 @@ impl<'a> VmRunning<'a> {
             return Ok(());
         }
 
+        // System variable injection: write monotonic uptime before task execution.
+        if self.container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME != 0 {
+            let time_ms = (current_time_us / 1000) as i64;
+            // __SYSTEM_UP_TIME at VarIndex(0): i32 milliseconds (wrapping)
+            self.variables
+                .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
+                .expect("system uptime variable must exist at index 0");
+            // __SYSTEM_UP_LTIME at VarIndex(1): i64 milliseconds (non-wrapping)
+            self.variables
+                .store(VarIndex::new(1), Slot::from_i64(time_ms))
+                .expect("system uptime variable must exist at index 1");
+        }
+
         // Stub: INPUT_FREEZE (no-op)
 
         for ri in 0..ready_count {
