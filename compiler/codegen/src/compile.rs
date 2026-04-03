@@ -2932,6 +2932,11 @@ fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Opti
             OpWidth::F64 => Some(opcode::builtin::ATAN_F64),
             OpWidth::W32 | OpWidth::W64 => None,
         },
+        "ATAN2" => match op_width {
+            OpWidth::F32 => Some(opcode::builtin::ATAN2_F32),
+            OpWidth::F64 => Some(opcode::builtin::ATAN2_F64),
+            OpWidth::W32 | OpWidth::W64 => None,
+        },
         _ => None,
     }
 }

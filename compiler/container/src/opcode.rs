@@ -832,6 +832,14 @@ pub mod builtin {
     /// Convert 64-bit integer to boolean: 0 → FALSE (0), non-zero → TRUE (1).
     pub const CONV_I64_TO_BOOL: u16 = 0x039A;
 
+    // --- Two-argument trigonometric opcodes ---
+
+    /// ATAN2 for 32-bit floats: pops two values (b=IN2=X, a=IN1=Y), pushes atan2(Y, X).
+    pub const ATAN2_F32: u16 = 0x039B;
+
+    /// ATAN2 for 64-bit floats: pops two values (b=IN2=X, a=IN1=Y), pushes atan2(Y, X).
+    pub const ATAN2_F64: u16 = 0x039C;
+
     // =========================================================================
     // Numeric ↔ STRING conversion builtins
     //
@@ -927,7 +935,7 @@ pub mod builtin {
             EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
             | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
             | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
-            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 => 2,
+            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 | ATAN2_F32 | ATAN2_F64 => 2,
             LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | LIMIT_I64 | LIMIT_U32 | LIMIT_U64 | SEL_I32
             | SEL_F32 | SEL_F64 | SEL_I64 => 3,
             id if is_mux(id) => {
