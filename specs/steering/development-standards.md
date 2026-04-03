@@ -396,7 +396,7 @@ This runs compile, test, coverage, and lint. The **lint step includes clippy**, 
 **Do not:**
 - Push directly to `main` — always use a feature branch and PR
 - Skip running `just` before creating a PR
-- Suppress clippy warnings with `#[allow(...)]` unless justified
+- Suppress clippy warnings with `#[allow(...)]` — fix the underlying issue instead. The only acceptable exception is `#[allow(dead_code)]` or `#[allow(unused_*)]` for in-progress code that is not yet wired up
 - Create a PR if any check fails
 
 See [common-tasks.md](./common-tasks.md) for detailed pre-PR requirements and troubleshooting.
@@ -435,7 +435,7 @@ The build system enforces synchronization between components:
 ## Code Quality
 
 ### Rust Best Practices
-- Use `#[allow(dead_code)]` sparingly and only when justified
+- Do not suppress clippy warnings with `#[allow(...)]` — fix the underlying code instead. The only acceptable exception is `#[allow(dead_code)]` or `#[allow(unused_*)]` for in-progress code that is not yet wired up; remove these suppressions once the code is complete
 - Prefer `Result<T, E>` for error handling over panics
 - Use appropriate visibility modifiers (`pub`, `pub(crate)`, etc.)
 - Follow Rust naming conventions and idioms
