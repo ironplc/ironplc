@@ -9,6 +9,7 @@ use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
+use core::fmt::Write as FmtWrite;
 use ironplc_container::opcode;
 
 /// Context for a fault that occurred during task execution.
@@ -756,7 +757,86 @@ fn execute(
             }
             opcode::BUILTIN => {
                 let func_id = read_u16_le(bytecode, &mut pc);
-                builtin::dispatch(func_id, stack)?;
+                match func_id {
+                    // --- Numeric ↔ STRING conversions ---
+                    //
+                    // These are handled inline (not via builtin::dispatch)
+                    // because they need access to temp_buf and data_region.
+                    opcode::builtin::CONV_I32_TO_STR => {
+                        let val = stack.pop()?.as_i32();
+                        let mut fmt_buf = StackFmtBuf::new();
+                        let _ = write!(fmt_buf, "{}", val);
+                        let bytes = fmt_buf.as_bytes();
+                        let (buf_idx, buf_start) =
+                            str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                        let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                        let cur_len = (bytes.len() as u16).min(max_len);
+                        str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        temp_buf[buf_start + STRING_HEADER_BYTES
+                            ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
+                            .copy_from_slice(&bytes[..cur_len as usize]);
+                        stack.push(Slot::from_i32(buf_idx as i32))?;
+                    }
+                    opcode::builtin::CONV_U32_TO_STR => {
+                        let val = stack.pop()?.as_i32() as u32;
+                        let mut fmt_buf = StackFmtBuf::new();
+                        let _ = write!(fmt_buf, "{}", val);
+                        let bytes = fmt_buf.as_bytes();
+                        let (buf_idx, buf_start) =
+                            str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                        let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                        let cur_len = (bytes.len() as u16).min(max_len);
+                        str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        temp_buf[buf_start + STRING_HEADER_BYTES
+                            ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
+                            .copy_from_slice(&bytes[..cur_len as usize]);
+                        stack.push(Slot::from_i32(buf_idx as i32))?;
+                    }
+                    opcode::builtin::CONV_F32_TO_STR => {
+                        let val = stack.pop()?.as_f32();
+                        let mut fmt_buf = StackFmtBuf::new();
+                        let _ = write!(fmt_buf, "{}", val);
+                        let bytes = fmt_buf.as_bytes();
+                        let (buf_idx, buf_start) =
+                            str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                        let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                        let cur_len = (bytes.len() as u16).min(max_len);
+                        str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        temp_buf[buf_start + STRING_HEADER_BYTES
+                            ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
+                            .copy_from_slice(&bytes[..cur_len as usize]);
+                        stack.push(Slot::from_i32(buf_idx as i32))?;
+                    }
+                    opcode::builtin::CONV_STR_TO_I32 => {
+                        let data_offset = stack.pop()?.as_i32() as usize;
+                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
+                        }
+                        let cur_len = str_read_cur_len(data_region, data_offset) as usize;
+                        let start = data_offset + STRING_HEADER_BYTES;
+                        let end = (start + cur_len).min(data_region.len());
+                        let result = core::str::from_utf8(&data_region[start..end])
+                            .ok()
+                            .and_then(|s| s.trim().parse::<i32>().ok())
+                            .unwrap_or(0);
+                        stack.push(Slot::from_i32(result))?;
+                    }
+                    opcode::builtin::CONV_STR_TO_F32 => {
+                        let data_offset = stack.pop()?.as_i32() as usize;
+                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
+                        }
+                        let cur_len = str_read_cur_len(data_region, data_offset) as usize;
+                        let start = data_offset + STRING_HEADER_BYTES;
+                        let end = (start + cur_len).min(data_region.len());
+                        let result = core::str::from_utf8(&data_region[start..end])
+                            .ok()
+                            .and_then(|s| s.trim().parse::<f32>().ok())
+                            .unwrap_or(0.0);
+                        stack.push(Slot::from_f32(result))?;
+                    }
+                    _ => builtin::dispatch(func_id, stack)?,
+                }
             }
             opcode::CALL => {
                 let func_id = read_u16_le(bytecode, &mut pc);
@@ -2063,6 +2143,40 @@ fn str_read_cur_len(buf: &[u8], offset: usize) -> u16 {
 fn str_write_header(buf: &mut [u8], offset: usize, max_len: u16, cur_len: u16) {
     buf[offset..offset + 2].copy_from_slice(&max_len.to_le_bytes());
     buf[offset + 2..offset + STRING_HEADER_BYTES].copy_from_slice(&cur_len.to_le_bytes());
+}
+
+/// A small stack-allocated buffer for formatting numbers as strings.
+///
+/// Used by CONV_I32_TO_STR, CONV_U32_TO_STR, and CONV_F32_TO_STR to
+/// avoid heap allocation. 48 bytes is enough for any i32, u32, or f32
+/// decimal representation.
+struct StackFmtBuf {
+    buf: [u8; 48],
+    len: usize,
+}
+
+impl StackFmtBuf {
+    fn new() -> Self {
+        Self {
+            buf: [0u8; 48],
+            len: 0,
+        }
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.buf[..self.len]
+    }
+}
+
+impl core::fmt::Write for StackFmtBuf {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let bytes = s.as_bytes();
+        let remaining = self.buf.len() - self.len;
+        let to_copy = bytes.len().min(remaining);
+        self.buf[self.len..self.len + to_copy].copy_from_slice(&bytes[..to_copy]);
+        self.len += to_copy;
+        Ok(())
+    }
 }
 
 /// Allocate the next temp buffer slot. Returns (buf_idx, buf_start).

@@ -468,19 +468,37 @@ Conversions from numeric types to string representation.
      - Support
    * - ``SINT_TO_STRING``
      - 8-bit signed to string
-     - Not yet supported
+     - Supported
    * - ``INT_TO_STRING``
      - 16-bit signed to string
-     - Not yet supported
+     - Supported
    * - ``DINT_TO_STRING``
      - 32-bit signed to string
-     - Not yet supported
+     - Supported
    * - ``LINT_TO_STRING``
      - 64-bit signed to string
      - Not yet supported
+   * - ``USINT_TO_STRING``
+     - 8-bit unsigned to string
+     - Supported
+   * - ``UINT_TO_STRING``
+     - 16-bit unsigned to string
+     - Supported
+   * - ``UDINT_TO_STRING``
+     - 32-bit unsigned to string
+     - Supported
+   * - ``BYTE_TO_STRING``
+     - Byte to string
+     - Supported
+   * - ``WORD_TO_STRING``
+     - Word to string
+     - Supported
+   * - ``DWORD_TO_STRING``
+     - Double word to string
+     - Supported
    * - ``REAL_TO_STRING``
      - Single-precision to string
-     - Not yet supported
+     - Supported
    * - ``LREAL_TO_STRING``
      - Double-precision to string
      - Not yet supported
@@ -500,19 +518,28 @@ must contain a valid numeric literal for the target type.
      - Support
    * - ``STRING_TO_SINT``
      - String to 8-bit signed
-     - Not yet supported
+     - Supported
    * - ``STRING_TO_INT``
      - String to 16-bit signed
-     - Not yet supported
+     - Supported
    * - ``STRING_TO_DINT``
      - String to 32-bit signed
-     - Not yet supported
+     - Supported
    * - ``STRING_TO_LINT``
      - String to 64-bit signed
      - Not yet supported
+   * - ``STRING_TO_USINT``
+     - String to 8-bit unsigned
+     - Supported
+   * - ``STRING_TO_UINT``
+     - String to 16-bit unsigned
+     - Supported
+   * - ``STRING_TO_UDINT``
+     - String to 32-bit unsigned
+     - Supported
    * - ``STRING_TO_REAL``
      - String to single-precision
-     - Not yet supported
+     - Supported
    * - ``STRING_TO_LREAL``
      - String to double-precision
      - Not yet supported
