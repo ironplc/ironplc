@@ -315,6 +315,52 @@ fn get_time_date_conversions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
+// String Conversion Function Definitions (IEC 61131-3 Section 2.5.1.5)
+// =============================================================================
+
+/// Numeric types that convert to STRING (W32 signed).
+const SIGNED_INT_TO_STRING_TYPES: &[&str] = &["SINT", "INT", "DINT"];
+
+/// Numeric types that convert to STRING (W32 unsigned / bit-string).
+const UNSIGNED_INT_TO_STRING_TYPES: &[&str] = &["USINT", "UINT", "UDINT", "BYTE", "WORD", "DWORD"];
+
+/// Integer types that can be parsed from STRING.
+const STRING_TO_INT_TYPES: &[&str] = &["SINT", "INT", "DINT", "USINT", "UINT", "UDINT"];
+
+/// Returns string ↔ numeric conversion function definitions.
+///
+/// Covers all W32 numeric types: signed integers (SINT, INT, DINT),
+/// unsigned integers and bit-strings (USINT, UINT, UDINT, BYTE, WORD, DWORD),
+/// and REAL. Each type gets a *_TO_STRING function, and a subset gets
+/// STRING_TO_* functions.
+fn get_string_conversion_functions() -> Vec<FunctionSignature> {
+    let mut functions = Vec::new();
+
+    // Signed integer → STRING
+    for source in SIGNED_INT_TO_STRING_TYPES {
+        functions.push(build_conversion_function(source, "STRING"));
+    }
+
+    // Unsigned integer / bit-string → STRING
+    for source in UNSIGNED_INT_TO_STRING_TYPES {
+        functions.push(build_conversion_function(source, "STRING"));
+    }
+
+    // REAL → STRING
+    functions.push(build_conversion_function("REAL", "STRING"));
+
+    // STRING → integer types
+    for target in STRING_TO_INT_TYPES {
+        functions.push(build_conversion_function("STRING", target));
+    }
+
+    // STRING → REAL
+    functions.push(build_conversion_function("STRING", "REAL"));
+
+    functions
+}
+
+// =============================================================================
 // Numeric Function Definitions (IEC 61131-3 Section 2.5.1.5.2)
 // =============================================================================
 
@@ -899,6 +945,9 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
 
     // Time/date type conversion functions
     functions.extend(get_time_date_conversions());
+
+    // String conversion functions
+    functions.extend(get_string_conversion_functions());
 
     // Numeric functions
     functions.extend(get_numeric_functions());
