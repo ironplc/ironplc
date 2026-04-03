@@ -16,18 +16,7 @@ pub fn load_and_start<'a>(
     container: &'a Container,
     bufs: &'a mut VmBuffers,
 ) -> Result<VmRunning<'a>, FaultContext> {
-    Vm::new()
-        .load(
-            container,
-            &mut bufs.stack,
-            &mut bufs.vars,
-            &mut bufs.data_region,
-            &mut bufs.temp_buf,
-            &mut bufs.tasks,
-            &mut bufs.programs,
-            &mut bufs.ready,
-        )
-        .start()
+    Vm::new().load(container, bufs).start()
 }
 
 /// Asserts that a run_round produces a specific trap.

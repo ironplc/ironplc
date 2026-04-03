@@ -443,19 +443,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 
     let mut bufs = VmBuffers::from_container(&container);
 
-    let mut running = match Vm::new()
-        .load(
-            &container,
-            &mut bufs.stack,
-            &mut bufs.vars,
-            &mut bufs.data_region,
-            &mut bufs.temp_buf,
-            &mut bufs.tasks,
-            &mut bufs.programs,
-            &mut bufs.ready,
-        )
-        .start()
-    {
+    let mut running = match Vm::new().load(&container, &mut bufs).start() {
         Ok(vm) => vm,
         Err(ctx) => {
             return RunResult {
@@ -644,19 +632,7 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str) -> StepRe
     // Subsequent calls to step() will use resume() to skip re-initialization.
     let mut bufs = VmBuffers::from_container(&container);
 
-    match Vm::new()
-        .load(
-            &container,
-            &mut bufs.stack,
-            &mut bufs.vars,
-            &mut bufs.data_region,
-            &mut bufs.temp_buf,
-            &mut bufs.tasks,
-            &mut bufs.programs,
-            &mut bufs.ready,
-        )
-        .start()
-    {
+    match Vm::new().load(&container, &mut bufs).start() {
         Ok(running) => {
             running.stop();
         }
@@ -775,26 +751,37 @@ fn step_inner(scans: u32) -> StepResult {
 /// Returns `(variables, total_scan_count, error)`.
 fn run_vm_step(
     container: &Container,
-    var_buf: &mut [Slot],
-    data_region: &mut [u8],
+    var_buf: &mut Vec<Slot>,
+    data_region: &mut Vec<u8>,
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
 ) -> (Vec<VariableInfo>, u64, Option<String>) {
     let mut bufs = VmBuffers::from_container(container);
+    // Swap the session's persistent buffers into VmBuffers so the VM
+    // operates on them directly, avoiding a copy.
+    std::mem::swap(&mut bufs.vars, var_buf);
+    std::mem::swap(&mut bufs.data_region, data_region);
 
-    let mut running = Vm::new()
-        .load(
-            container,
-            &mut bufs.stack,
-            var_buf,
-            data_region,
-            &mut bufs.temp_buf,
-            &mut bufs.tasks,
-            &mut bufs.programs,
-            &mut bufs.ready,
-        )
-        .resume(base_scan_count);
+    let result = run_vm_scans(container, &mut bufs, base_scan_count, scans, cycle_time_us);
+
+    // Swap the (now-updated) persistent buffers back to the session.
+    std::mem::swap(&mut bufs.vars, var_buf);
+    std::mem::swap(&mut bufs.data_region, data_region);
+
+    result
+}
+
+/// Runs scan cycles on an already-prepared [`VmBuffers`], returning variable
+/// snapshots and the total scan count.
+fn run_vm_scans(
+    container: &Container,
+    bufs: &mut VmBuffers,
+    base_scan_count: u64,
+    scans: u32,
+    cycle_time_us: u64,
+) -> (Vec<VariableInfo>, u64, Option<String>) {
+    let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
     for _ in 0..scans {
         let current_us = running.scan_count() * cycle_time_us;

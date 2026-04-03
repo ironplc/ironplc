@@ -149,6 +149,11 @@ Options
    variable or type. This is a vendor extension supported by CODESYS,
    TwinCAT, and RuSTy.
 
+``--allow-cross-family-widening``
+   Allow implicit widening between bit-string and integer type families
+   (e.g. ``BYTE`` to ``INT``, literal ``0`` to ``BYTE``). This is a vendor
+   extension supported by CODESYS, TwinCAT, and RuSTy.
+
 Examples
 ========
 
