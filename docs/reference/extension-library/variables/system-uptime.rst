@@ -76,7 +76,7 @@ Usage
 
 Access the system uptime variables using ``VAR_EXTERNAL``:
 
-.. code-block:: iecst
+.. code-block:: text
 
    PROGRAM main
    VAR_EXTERNAL
@@ -91,7 +91,7 @@ Access the system uptime variables using ``VAR_EXTERNAL``:
 A common pattern is to wrap the variable in a function for compatibility
 with CODESYS-style code:
 
-.. code-block:: iecst
+.. code-block:: text
 
    FUNCTION TIME : TIME
    VAR_EXTERNAL
