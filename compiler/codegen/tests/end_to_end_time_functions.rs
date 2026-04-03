@@ -145,6 +145,74 @@ END_PROGRAM
 }
 
 // =============================================================================
+// Group 5: datetime decomposition
+// =============================================================================
+
+#[test]
+fn dt_to_date_when_datetime_then_returns_date() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DATE;
+  END_VAR
+  x := DT_TO_DATE(DT#2000-01-01-12:00:00);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // DT#2000-01-01-12:00:00 = 946728000s
+    // DATE = 946728000 - (946728000 % 86400) = 946728000 - 43200 = 946684800
+    assert_eq!(bufs.vars[0].as_i32(), 946_684_800);
+}
+
+#[test]
+fn dt_to_tod_when_datetime_then_returns_tod() {
+    let source = "
+PROGRAM main
+  VAR
+    x : TIME_OF_DAY;
+  END_VAR
+  x := DT_TO_TOD(DT#2000-01-01-12:00:00);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // DT#2000-01-01-12:00:00 = 946728000s
+    // TOD = (946728000 % 86400) * 1000 = 43200 * 1000 = 43200000ms
+    assert_eq!(bufs.vars[0].as_i32(), 43_200_000);
+}
+
+#[test]
+fn date_and_time_to_date_when_datetime_then_returns_date() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DATE;
+  END_VAR
+  x := DATE_AND_TIME_TO_DATE(DT#2000-01-01-12:00:00);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(bufs.vars[0].as_i32(), 946_684_800);
+}
+
+#[test]
+fn date_and_time_to_time_of_day_when_datetime_then_returns_tod() {
+    let source = "
+PROGRAM main
+  VAR
+    x : TIME_OF_DAY;
+  END_VAR
+  x := DATE_AND_TIME_TO_TIME_OF_DAY(DT#2000-01-01-12:00:00);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(bufs.vars[0].as_i32(), 43_200_000);
+}
+
+// =============================================================================
 // Group 3: seconds-to-ms conversion after sub
 // =============================================================================
 
