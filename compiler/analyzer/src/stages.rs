@@ -197,7 +197,12 @@ pub fn resolve_types(
 
     // Recoverable: resolve expression types using the function environment.
     let fallback = library.clone();
-    match xform_resolve_expr_types::apply(library, &mut type_environment, &function_environment) {
+    match xform_resolve_expr_types::apply(
+        library,
+        &mut type_environment,
+        &function_environment,
+        options,
+    ) {
         Ok(result) => library = result,
         Err(errs) => {
             diagnostics.extend(errs);
