@@ -142,10 +142,33 @@ struct StringVarInfo {
 ///
 /// Returns an error if no program is found or if the program contains
 /// unsupported constructs.
-pub fn compile(library: &Library, context: &SemanticContext) -> Result<Container, Diagnostic> {
+/// Options that affect code generation.
+#[derive(Default)]
+pub struct CodegenOptions {
+    /// When `true`, inject `__SYSTEM_UP_TIME` (TIME) and `__SYSTEM_UP_LTIME`
+    /// (LTIME) as implicit globals at the start of the variable table.
+    pub system_uptime_global: bool,
+}
+
+pub fn compile(
+    library: &Library,
+    context: &SemanticContext,
+    options: &CodegenOptions,
+) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
     let config = find_configuration(library);
-    let global_vars: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
+    let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
+
+    // Prepend system uptime globals when the feature is enabled.
+    let mut synthetic_globals: Vec<VarDecl> = Vec::new();
+    if options.system_uptime_global {
+        synthetic_globals
+            .push(VarDecl::simple("__SYSTEM_UP_TIME", "TIME").with_type(VariableType::Global));
+        synthetic_globals
+            .push(VarDecl::simple("__SYSTEM_UP_LTIME", "LTIME").with_type(VariableType::Global));
+    }
+    synthetic_globals.extend_from_slice(user_globals);
+    let global_vars = &synthetic_globals;
 
     let reachable = context.reachable();
 
@@ -177,14 +200,20 @@ pub fn compile(library: &Library, context: &SemanticContext) -> Result<Container
         })
         .collect();
 
-    compile_program_with_functions(
+    let mut container = compile_program_with_functions(
         program,
         &func_decls,
         &fb_decls,
         global_vars,
         context.functions(),
         context.types(),
-    )
+    )?;
+
+    if options.system_uptime_global {
+        container.header.flags |= ironplc_container::FLAG_HAS_SYSTEM_UPTIME;
+    }
+
+    Ok(container)
 }
 
 /// Finds the first PROGRAM declaration in the library.
@@ -5251,7 +5280,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 2);
@@ -5288,7 +5317,7 @@ FUNCTION_BLOCK MyBlock
 END_FUNCTION_BLOCK
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context);
+        let result = compile(&library, &context, &CodegenOptions::default());
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -5305,7 +5334,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         // Should have two functions (init + scan), both just RET_VOID
         assert_eq!(container.header.num_functions, 2);
@@ -5334,7 +5363,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         // Should only have one constant (10 is deduplicated)
         assert_eq!(container.constant_pool.len(), 1);
@@ -5353,7 +5382,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 2);
@@ -5389,7 +5418,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(
             container
@@ -5420,7 +5449,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context);
+        let result = compile(&library, &context, &CodegenOptions::default());
 
         assert!(result.is_ok());
     }
@@ -5437,7 +5466,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context);
+        let result = compile(&library, &context, &CodegenOptions::default());
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -5458,7 +5487,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context);
+        let result = compile(&library, &context, &CodegenOptions::default());
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -5476,7 +5505,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -5499,7 +5528,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -5528,7 +5557,7 @@ END_VAR
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         // Should have 3 functions: init, scan, SIGN_R
         assert_eq!(container.header.num_functions, 3);
