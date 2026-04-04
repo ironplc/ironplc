@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta content="Type conversion rules in IronPLC, including implicit integer widening and explicit conversion functions." name="description" />
+<meta content="Type conversion rules in IronPLC, including implicit type widening for integers, reals, and bit-strings, and explicit conversion functions." name="description" />
 <meta property="og:title" content="Type Conversions" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/explanation/type-conversions.html" />
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.186.0">
+<meta name="ironplc-version" content="0.187.0">
 </head>
   <body>
     
@@ -395,7 +395,6 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/type-conversions.html">Type Conversions</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/trunc.html">TRUNC</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/bcd.html">BCD_TO_INT / INT_TO_BCD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../reference/standard-library/functions/sizeof.html">SIZEOF</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/standard-library/function-blocks/index.html">Function Blocks</a><input aria-label="Toggle navigation of Function Blocks" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -413,16 +412,28 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/extension-library/index.html">Extension Library</a><input aria-label="Toggle navigation of Extension Library" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/extension-library/functions/index.html">Functions</a><input aria-label="Toggle navigation of Functions" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../reference/extension-library/functions/sizeof.html">SIZEOF</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/extension-library/function-blocks/index.html">Function Blocks</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/extension-library/variables/index.html">Variables</a><input aria-label="Toggle navigation of Variables" class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../reference/extension-library/variables/system-uptime.html">System Uptime</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../reference/compiler/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/compiler/ironplcc.html">Command Reference</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/source-formats/text.html">Text</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/source-formats/plcopen-xml.html">PLCopen XML</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/source-formats/twincat.html">TwinCAT</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/compiler/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/compiler/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P0001.html">P0001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P0002.html">P0002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P0003.html">P0003</a></li>
@@ -518,10 +529,10 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../reference/runtime/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/runtime/ironplcvm.html">Command Reference</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/runtime/problems/index.html">Error Codes</a><input aria-label="Toggle navigation of Error Codes" class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/runtime/problems/index.html">Error Codes</a><input aria-label="Toggle navigation of Error Codes" class="toctree-checkbox" id="toctree-checkbox-24" name="toctree-checkbox-24" role="switch" type="checkbox"/><label for="toctree-checkbox-24"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4001.html">V4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4002.html">V4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4003.html">V4003</a></li>
@@ -544,16 +555,17 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9008.html">V9008</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9009.html">V9009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9010.html">V9010</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9011.html">V9011</a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" role="switch" type="checkbox"/><label for="toctree-checkbox-25"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/build-tasks.html">Build Tasks</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/bytecode-viewer.html">Bytecode Viewer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/settings.html">Settings</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/editor/problems/E0001.html">E0001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/editor/problems/E0002.html">E0002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/editor/problems/E0003.html">E0003</a></li>
@@ -614,13 +626,21 @@
 <p>IronPLC follows the IEC 61131-3 type hierarchy for conversions between
 elementary data types. Some conversions happen implicitly (the compiler inserts
 them automatically); others require an explicit conversion function call.</p>
-<section id="implicit-integer-widening">
-<h2>Implicit Integer Widening<a class="headerlink" href="#implicit-integer-widening" title="Link to this heading">¶</a></h2>
-<p>A value of a narrower integer type can be passed wherever a wider integer type
-is expected. This applies to function arguments, function return values
-assigned to variables, and bare integer literals.</p>
-<p>The rule is: an implicit conversion is allowed when the source type’s full
-value range fits inside the target type’s value range.</p>
+<section id="implicit-type-widening">
+<h2>Implicit Type Widening<a class="headerlink" href="#implicit-type-widening" title="Link to this heading">¶</a></h2>
+<p>A value of a narrower type can be passed wherever a wider type is expected.
+This applies to function arguments, function return values assigned to
+variables, and bare integer literals.</p>
+<p>The general rule is: an implicit conversion is allowed when the source type’s
+full value range is exactly representable in the target type.</p>
+<p>IronPLC supports three categories of implicit widening:</p>
+<ol class="arabic simple">
+<li><p><strong>Integer widening</strong> — within signed, unsigned, and cross-sign integer types</p></li>
+<li><p><strong>Integer to real widening</strong> — when the conversion is lossless</p></li>
+<li><p><strong>Bit-string widening</strong> — within the <code class="docutils literal notranslate"><span class="pre">ANY_BIT</span></code> family (<code class="docutils literal notranslate"><span class="pre">BOOL</span></code> excluded)</p></li>
+</ol>
+<section id="integer-widening">
+<h3>Integer widening<a class="headerlink" href="#integer-widening" title="Link to this heading">¶</a></h3>
 <div class="table-wrapper docutils container" id="id1">
 <table class="docutils align-default" id="id1">
 <caption><span class="caption-text">Implicit integer widening matrix</span><a class="headerlink" href="#id1" title="Link to this table">¶</a></caption>
@@ -723,6 +743,111 @@ value range fits inside the target type’s value range.</p>
 <p>Read each row as “source type” and each column as “target type”. <strong>Yes</strong> means
 the compiler accepts the conversion implicitly. <strong>No</strong> means an explicit
 conversion function is required.</p>
+</section>
+<section id="integer-to-real-widening">
+<h3>Integer to real widening<a class="headerlink" href="#integer-to-real-widening" title="Link to this heading">¶</a></h3>
+<p>An integer type can implicitly widen to a real type when every value of the
+source type is exactly representable in the target type. <code class="docutils literal notranslate"><span class="pre">REAL</span></code> is a 32-bit
+float with a 23-bit mantissa, so it covers integers up to 16 bits. <code class="docutils literal notranslate"><span class="pre">LREAL</span></code>
+is a 64-bit float with a 52-bit mantissa, so it covers all standard integer
+types.</p>
+<div class="table-wrapper docutils container" id="id2">
+<table class="docutils align-default" id="id2">
+<caption><span class="caption-text">Implicit integer to real widening matrix</span><a class="headerlink" href="#id2" title="Link to this table">¶</a></caption>
+<thead>
+<tr class="row-odd"><th class="head stub"></th>
+<th class="head"><p>REAL</p></th>
+<th class="head"><p>LREAL</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><th class="stub"><p><strong>SINT</strong></p></th>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>INT</strong></p></th>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><th class="stub"><p><strong>DINT</strong></p></th>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>LINT</strong></p></th>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><th class="stub"><p><strong>USINT</strong></p></th>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>UINT</strong></p></th>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><th class="stub"><p><strong>UDINT</strong></p></th>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>ULINT</strong></p></th>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">DINT</span></code>, <code class="docutils literal notranslate"><span class="pre">LINT</span></code>, <code class="docutils literal notranslate"><span class="pre">UDINT</span></code>, and <code class="docutils literal notranslate"><span class="pre">ULINT</span></code> cannot implicitly widen to
+<code class="docutils literal notranslate"><span class="pre">REAL</span></code> because their value ranges exceed the 23-bit mantissa precision. Use
+an explicit conversion such as <code class="docutils literal notranslate"><span class="pre">DINT_TO_REAL(x)</span></code> or widen to <code class="docutils literal notranslate"><span class="pre">LREAL</span></code>
+instead.</p>
+<p>Real to integer is never implicit. Use explicit conversion functions such as
+<code class="docutils literal notranslate"><span class="pre">REAL_TO_INT</span></code>.</p>
+</section>
+<section id="bit-string-widening">
+<h3>Bit-string widening<a class="headerlink" href="#bit-string-widening" title="Link to this heading">¶</a></h3>
+<p>Bit-string types widen by zero-extending to a wider container. <code class="docutils literal notranslate"><span class="pre">BOOL</span></code> is
+excluded because it has boolean semantics (<code class="docutils literal notranslate"><span class="pre">TRUE</span></code>/<code class="docutils literal notranslate"><span class="pre">FALSE</span></code>), not
+numeric bit-container semantics.</p>
+<div class="table-wrapper docutils container" id="id3">
+<table class="docutils align-default" id="id3">
+<caption><span class="caption-text">Implicit bit-string widening matrix</span><a class="headerlink" href="#id3" title="Link to this table">¶</a></caption>
+<thead>
+<tr class="row-odd"><th class="head stub"></th>
+<th class="head"><p>BYTE</p></th>
+<th class="head"><p>WORD</p></th>
+<th class="head"><p>DWORD</p></th>
+<th class="head"><p>LWORD</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><th class="stub"><p><strong>BYTE</strong></p></th>
+<td><p>=</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>WORD</strong></p></th>
+<td><p>No</p></td>
+<td><p>=</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><th class="stub"><p><strong>DWORD</strong></p></th>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>=</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>LWORD</strong></p></th>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>=</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 <section id="widening-chains">
 <h3>Widening chains<a class="headerlink" href="#widening-chains" title="Link to this heading">¶</a></h3>
 <ul class="simple">
@@ -730,6 +855,9 @@ conversion function is required.</p>
 <li><p><strong>Unsigned:</strong> <code class="docutils literal notranslate"><span class="pre">USINT</span></code> → <code class="docutils literal notranslate"><span class="pre">UINT</span></code> → <code class="docutils literal notranslate"><span class="pre">UDINT</span></code> → <code class="docutils literal notranslate"><span class="pre">ULINT</span></code></p></li>
 <li><p><strong>Cross-sign:</strong> an unsigned type can widen to a signed type of strictly
 greater bit width (e.g. <code class="docutils literal notranslate"><span class="pre">USINT</span></code> → <code class="docutils literal notranslate"><span class="pre">INT</span></code>, <code class="docutils literal notranslate"><span class="pre">UINT</span></code> → <code class="docutils literal notranslate"><span class="pre">DINT</span></code>).</p></li>
+<li><p><strong>Bit-string:</strong> <code class="docutils literal notranslate"><span class="pre">BYTE</span></code> → <code class="docutils literal notranslate"><span class="pre">WORD</span></code> → <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> → <code class="docutils literal notranslate"><span class="pre">LWORD</span></code></p></li>
+<li><p><strong>Integer to REAL (lossless):</strong> <code class="docutils literal notranslate"><span class="pre">SINT</span></code>, <code class="docutils literal notranslate"><span class="pre">INT</span></code>, <code class="docutils literal notranslate"><span class="pre">USINT</span></code>, <code class="docutils literal notranslate"><span class="pre">UINT</span></code> → <code class="docutils literal notranslate"><span class="pre">REAL</span></code></p></li>
+<li><p><strong>Integer to LREAL (lossless):</strong> all integer types → <code class="docutils literal notranslate"><span class="pre">LREAL</span></code></p></li>
 </ul>
 </section>
 <section id="example">
@@ -767,19 +895,96 @@ lose data, so IronPLC requires an explicit conversion function:</p>
 </section>
 <section id="bit-string-types">
 <h2>Bit-String Types<a class="headerlink" href="#bit-string-types" title="Link to this heading">¶</a></h2>
-<p>Bit-string types (<code class="docutils literal notranslate"><span class="pre">BYTE</span></code>, <code class="docutils literal notranslate"><span class="pre">WORD</span></code>, <code class="docutils literal notranslate"><span class="pre">DWORD</span></code>, <code class="docutils literal notranslate"><span class="pre">LWORD</span></code>) are a separate
-type family. There is no implicit conversion between bit-string types and
-integer types. Use explicit conversion functions such as <code class="docutils literal notranslate"><span class="pre">BYTE_TO_INT</span></code> or
-<code class="docutils literal notranslate"><span class="pre">INT_TO_WORD</span></code>.</p>
+<p>Bit-string types (<code class="docutils literal notranslate"><span class="pre">BYTE</span></code>, <code class="docutils literal notranslate"><span class="pre">WORD</span></code>, <code class="docutils literal notranslate"><span class="pre">DWORD</span></code>, <code class="docutils literal notranslate"><span class="pre">LWORD</span></code>) support implicit
+widening within the bit-string family — see the bit-string widening matrix
+above.</p>
+<p><code class="docutils literal notranslate"><span class="pre">BOOL</span></code> is excluded from bit-string widening. Although IEC 61131-3 places
+<code class="docutils literal notranslate"><span class="pre">BOOL</span></code> under <code class="docutils literal notranslate"><span class="pre">ANY_BIT</span></code>, it has boolean semantics and is not treated as a
+numeric bit container.</p>
+<section id="cross-family-widening">
+<h3>Cross-family widening<a class="headerlink" href="#cross-family-widening" title="Link to this heading">¶</a></h3>
+<p>Widening from a bit-string type to an integer type crosses the <code class="docutils literal notranslate"><span class="pre">ANY_BIT</span></code> /
+<code class="docutils literal notranslate"><span class="pre">ANY_INT</span></code> boundary and is not part of the IEC 61131-3 standard. IronPLC
+supports this as a vendor extension behind the <code class="docutils literal notranslate"><span class="pre">--allow-cross-family-widening</span></code>
+flag (enabled by default in the <code class="docutils literal notranslate"><span class="pre">Rusty</span></code> dialect). See
+<a class="reference internal" href="enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for how to enable this flag.</p>
+<p>When the flag is enabled, a bit-string type can widen to an integer type of
+strictly greater bit width:</p>
+<div class="table-wrapper docutils container" id="id4">
+<table class="docutils align-default" id="id4">
+<caption><span class="caption-text">Cross-family widening: bit-string to integer (requires <code class="docutils literal notranslate"><span class="pre">--allow-cross-family-widening</span></code>)</span><a class="headerlink" href="#id4" title="Link to this table">¶</a></caption>
+<thead>
+<tr class="row-odd"><th class="head stub"></th>
+<th class="head"><p>SINT</p></th>
+<th class="head"><p>INT</p></th>
+<th class="head"><p>DINT</p></th>
+<th class="head"><p>LINT</p></th>
+<th class="head"><p>USINT</p></th>
+<th class="head"><p>UINT</p></th>
+<th class="head"><p>UDINT</p></th>
+<th class="head"><p>ULINT</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><th class="stub"><p><strong>BYTE</strong></p></th>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>WORD</strong></p></th>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><th class="stub"><p><strong>DWORD</strong></p></th>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p><strong>LWORD</strong></p></th>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The reverse direction (integer to bit-string) is never implicit — use explicit
+conversion functions such as <code class="docutils literal notranslate"><span class="pre">INT_TO_BYTE</span></code>.</p>
+<p>Bare integer literals (e.g. <code class="docutils literal notranslate"><span class="pre">0</span></code>) can also be passed to bit-string parameters
+when the flag is enabled.</p>
+</section>
 </section>
 <section id="integer-and-real-types">
 <h2>Integer and Real Types<a class="headerlink" href="#integer-and-real-types" title="Link to this heading">¶</a></h2>
-<p>There is no implicit conversion between integer types and real types
-(<code class="docutils literal notranslate"><span class="pre">REAL</span></code>, <code class="docutils literal notranslate"><span class="pre">LREAL</span></code>). Use explicit conversion functions such as
-<code class="docutils literal notranslate"><span class="pre">INT_TO_REAL</span></code> or <code class="docutils literal notranslate"><span class="pre">REAL_TO_INT</span></code>.</p>
-<p>Bare (untyped) integer literals like <code class="docutils literal notranslate"><span class="pre">0</span></code> or <code class="docutils literal notranslate"><span class="pre">42</span></code> are an exception: they
-can be passed to <code class="docutils literal notranslate"><span class="pre">REAL</span></code> or <code class="docutils literal notranslate"><span class="pre">LREAL</span></code> parameters because the literal has no
-declared type and the compiler infers the target type.</p>
+<p>Integer types can implicitly widen to <code class="docutils literal notranslate"><span class="pre">REAL</span></code> or <code class="docutils literal notranslate"><span class="pre">LREAL</span></code> when the conversion
+is lossless — see the integer to real widening matrix above.</p>
+<p>Converting from a real type to an integer type is never implicit because it
+truncates the fractional part. Use explicit conversion functions such as
+<code class="docutils literal notranslate"><span class="pre">REAL_TO_INT</span></code>.</p>
+<p>Bare (untyped) integer literals like <code class="docutils literal notranslate"><span class="pre">0</span></code> or <code class="docutils literal notranslate"><span class="pre">42</span></code> can be passed to <code class="docutils literal notranslate"><span class="pre">REAL</span></code>
+or <code class="docutils literal notranslate"><span class="pre">LREAL</span></code> parameters because the literal has no declared type and the
+compiler infers the target type.</p>
 </section>
 <section id="explicit-conversion-functions">
 <h2>Explicit Conversion Functions<a class="headerlink" href="#explicit-conversion-functions" title="Link to this heading">¶</a></h2>
@@ -858,13 +1063,19 @@ convention is <code class="docutils literal notranslate"><span class="pre">&lt;S
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Type Conversions</a><ul>
-<li><a class="reference internal" href="#implicit-integer-widening">Implicit Integer Widening</a><ul>
+<li><a class="reference internal" href="#implicit-type-widening">Implicit Type Widening</a><ul>
+<li><a class="reference internal" href="#integer-widening">Integer widening</a></li>
+<li><a class="reference internal" href="#integer-to-real-widening">Integer to real widening</a></li>
+<li><a class="reference internal" href="#bit-string-widening">Bit-string widening</a></li>
 <li><a class="reference internal" href="#widening-chains">Widening chains</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#narrowing-conversions">Narrowing Conversions</a></li>
-<li><a class="reference internal" href="#bit-string-types">Bit-String Types</a></li>
+<li><a class="reference internal" href="#bit-string-types">Bit-String Types</a><ul>
+<li><a class="reference internal" href="#cross-family-widening">Cross-family widening</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#integer-and-real-types">Integer and Real Types</a></li>
 <li><a class="reference internal" href="#explicit-conversion-functions">Explicit Conversion Functions</a></li>
 </ul>

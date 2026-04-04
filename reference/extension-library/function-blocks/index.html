@@ -3,17 +3,17 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta property="og:title" content="SIZEOF" />
+<meta property="og:title" content="Function Blocks" />
 <meta property="og:type" content="website" />
-<meta property="og:url" content="https://www.ironplc.com/reference/standard-library/functions/sizeof.html" />
+<meta property="og:url" content="https://www.ironplc.com/reference/extension-library/function-blocks/index.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Returns the size in bytes of a variable or type.,, IEC 61131-3, Not part of the standard (vendor extension),, Support, Supported (requires--allow-sizeof or--dialect rusty),,,, Signatures:,,,,#, Inp..." />
-<meta name="description" content="Returns the size in bytes of a variable or type.,, IEC 61131-3, Not part of the standard (vendor extension),, Support, Supported (requires--allow-sizeof or--dialect rusty),,,, Signatures:,,,,#, Inp..." />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="Function Blocks" href="../function-blocks/index.html"><link rel="prev" title="BCD_TO_INT / INT_TO_BCD" href="bcd.html">
-        <link rel="canonical" href="https://www.ironplc.com/reference/standard-library/functions/sizeof.html">
+<meta property="og:description" content="No vendor extension function blocks are currently defined." />
+<meta name="description" content="No vendor extension function blocks are currently defined." />
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="Variables" href="../variables/index.html"><link rel="prev" title="SIZEOF" href="../functions/sizeof.html">
+        <link rel="canonical" href="https://www.ironplc.com/reference/extension-library/function-blocks/index.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>SIZEOF - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
+        <title>Function Blocks - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/tabs.css?v=4c969af8" />
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.186.0">
+<meta name="ironplc-version" content="0.187.0">
 </head>
   <body>
     
@@ -200,7 +200,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
@@ -334,95 +334,106 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">Standard Library</a><input aria-label="Toggle navigation of Standard Library" checked="" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
-<li class="toctree-l3 current has-children"><a class="reference internal" href="index.html">Functions</a><input aria-label="Toggle navigation of Functions" checked="" class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="abs.html">ABS</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sqrt.html">SQRT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="ln.html">LN</a></li>
-<li class="toctree-l4"><a class="reference internal" href="log.html">LOG</a></li>
-<li class="toctree-l4"><a class="reference internal" href="exp.html">EXP</a></li>
-<li class="toctree-l4"><a class="reference internal" href="expt.html">EXPT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sin.html">SIN</a></li>
-<li class="toctree-l4"><a class="reference internal" href="cos.html">COS</a></li>
-<li class="toctree-l4"><a class="reference internal" href="tan.html">TAN</a></li>
-<li class="toctree-l4"><a class="reference internal" href="asin.html">ASIN</a></li>
-<li class="toctree-l4"><a class="reference internal" href="acos.html">ACOS</a></li>
-<li class="toctree-l4"><a class="reference internal" href="atan.html">ATAN</a></li>
-<li class="toctree-l4"><a class="reference internal" href="add.html">ADD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sub.html">SUB</a></li>
-<li class="toctree-l4"><a class="reference internal" href="mul.html">MUL</a></li>
-<li class="toctree-l4"><a class="reference internal" href="div.html">DIV</a></li>
-<li class="toctree-l4"><a class="reference internal" href="mod.html">MOD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="move.html">MOVE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="gt.html">GT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="ge.html">GE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="eq.html">EQ</a></li>
-<li class="toctree-l4"><a class="reference internal" href="le.html">LE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="lt.html">LT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="ne.html">NE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sel.html">SEL</a></li>
-<li class="toctree-l4"><a class="reference internal" href="max.html">MAX</a></li>
-<li class="toctree-l4"><a class="reference internal" href="min.html">MIN</a></li>
-<li class="toctree-l4"><a class="reference internal" href="limit.html">LIMIT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="mux.html">MUX</a></li>
-<li class="toctree-l4"><a class="reference internal" href="shl.html">SHL</a></li>
-<li class="toctree-l4"><a class="reference internal" href="shr.html">SHR</a></li>
-<li class="toctree-l4"><a class="reference internal" href="rol.html">ROL</a></li>
-<li class="toctree-l4"><a class="reference internal" href="ror.html">ROR</a></li>
-<li class="toctree-l4"><a class="reference internal" href="len.html">LEN</a></li>
-<li class="toctree-l4"><a class="reference internal" href="left.html">LEFT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="right.html">RIGHT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="mid.html">MID</a></li>
-<li class="toctree-l4"><a class="reference internal" href="concat.html">CONCAT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="insert.html">INSERT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="delete.html">DELETE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="replace.html">REPLACE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="find.html">FIND</a></li>
-<li class="toctree-l4"><a class="reference internal" href="add_time.html">ADD_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sub_time.html">SUB_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="mul_time.html">MUL_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="div_time.html">DIV_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="add_dt_time.html">ADD_DT_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="add_tod_time.html">ADD_TOD_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sub_dt_time.html">SUB_DT_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sub_tod_time.html">SUB_TOD_TIME</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sub_dt_dt.html">SUB_DT_DT</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sub_date_date.html">SUB_DATE_DATE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="sub_tod_tod.html">SUB_TOD_TOD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="concat_date_tod.html">CONCAT_DATE_TOD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="dt_to_date.html">DT_TO_DATE</a></li>
-<li class="toctree-l4"><a class="reference internal" href="dt_to_tod.html">DT_TO_TOD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="type-conversions.html">Type Conversions</a></li>
-<li class="toctree-l4"><a class="reference internal" href="trunc.html">TRUNC</a></li>
-<li class="toctree-l4"><a class="reference internal" href="bcd.html">BCD_TO_INT / INT_TO_BCD</a></li>
-<li class="toctree-l4 current current-page"><a class="current reference internal" href="#">SIZEOF</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../standard-library/index.html">Standard Library</a><input aria-label="Toggle navigation of Standard Library" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../standard-library/functions/index.html">Functions</a><input aria-label="Toggle navigation of Functions" class="toctree-checkbox" id="toctree-checkbox-15" name="toctree-checkbox-15" role="switch" type="checkbox"/><label for="toctree-checkbox-15"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/abs.html">ABS</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sqrt.html">SQRT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/ln.html">LN</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/log.html">LOG</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/exp.html">EXP</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/expt.html">EXPT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sin.html">SIN</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/cos.html">COS</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/tan.html">TAN</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/asin.html">ASIN</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/acos.html">ACOS</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/atan.html">ATAN</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add.html">ADD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub.html">SUB</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mul.html">MUL</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/div.html">DIV</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mod.html">MOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/move.html">MOVE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/gt.html">GT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/ge.html">GE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/eq.html">EQ</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/le.html">LE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/lt.html">LT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/ne.html">NE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sel.html">SEL</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/max.html">MAX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/min.html">MIN</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/limit.html">LIMIT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mux.html">MUX</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shl.html">SHL</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/shr.html">SHR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/rol.html">ROL</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/ror.html">ROR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/len.html">LEN</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/left.html">LEFT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/right.html">RIGHT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mid.html">MID</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/concat.html">CONCAT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/insert.html">INSERT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/delete.html">DELETE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/replace.html">REPLACE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/find.html">FIND</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_time.html">ADD_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_time.html">SUB_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/mul_time.html">MUL_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/div_time.html">DIV_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_dt_time.html">ADD_DT_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/add_tod_time.html">ADD_TOD_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_dt_time.html">SUB_DT_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_tod_time.html">SUB_TOD_TIME</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_dt_dt.html">SUB_DT_DT</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_date_date.html">SUB_DATE_DATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/sub_tod_tod.html">SUB_TOD_TOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/concat_date_tod.html">CONCAT_DATE_TOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/dt_to_date.html">DT_TO_DATE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/dt_to_tod.html">DT_TO_TOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/type-conversions.html">Type Conversions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/trunc.html">TRUNC</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/functions/bcd.html">BCD_TO_INT / INT_TO_BCD</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../function-blocks/index.html">Function Blocks</a><input aria-label="Toggle navigation of Function Blocks" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/ton.html">TON</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/tof.html">TOF</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/tp.html">TP</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/ctu.html">CTU</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/ctd.html">CTD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/ctud.html">CTUD</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/r-trig.html">R_TRIG</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/f-trig.html">F_TRIG</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/sr.html">SR</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../function-blocks/rs.html">RS</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../standard-library/function-blocks/index.html">Function Blocks</a><input aria-label="Toggle navigation of Function Blocks" class="toctree-checkbox" id="toctree-checkbox-16" name="toctree-checkbox-16" role="switch" type="checkbox"/><label for="toctree-checkbox-16"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/ton.html">TON</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/tof.html">TOF</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/tp.html">TP</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/ctu.html">CTU</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/ctd.html">CTD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/ctud.html">CTUD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/r-trig.html">R_TRIG</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/f-trig.html">F_TRIG</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/sr.html">SR</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../standard-library/function-blocks/rs.html">RS</a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">Extension Library</a><input aria-label="Toggle navigation of Extension Library" checked="" class="toctree-checkbox" id="toctree-checkbox-17" name="toctree-checkbox-17" role="switch" type="checkbox"/><label for="toctree-checkbox-17"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="../functions/index.html">Functions</a><input aria-label="Toggle navigation of Functions" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../functions/sizeof.html">SIZEOF</a></li>
+</ul>
+</li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">Function Blocks</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../variables/index.html">Variables</a><input aria-label="Toggle navigation of Variables" class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../variables/system-uptime.html">System Uptime</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../compiler/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../compiler/ironplcc.html">Command Reference</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/text.html">Text</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/plcopen-xml.html">PLCopen XML</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/source-formats/twincat.html">TwinCAT</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../compiler/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../compiler/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0001.html">P0001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0002.html">P0002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0003.html">P0003</a></li>
@@ -518,10 +529,10 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../runtime/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../runtime/ironplcvm.html">Command Reference</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../runtime/problems/index.html">Error Codes</a><input aria-label="Toggle navigation of Error Codes" class="toctree-checkbox" id="toctree-checkbox-21" name="toctree-checkbox-21" role="switch" type="checkbox"/><label for="toctree-checkbox-21"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../runtime/problems/index.html">Error Codes</a><input aria-label="Toggle navigation of Error Codes" class="toctree-checkbox" id="toctree-checkbox-24" name="toctree-checkbox-24" role="switch" type="checkbox"/><label for="toctree-checkbox-24"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4001.html">V4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4002.html">V4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4003.html">V4003</a></li>
@@ -544,16 +555,17 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9008.html">V9008</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9009.html">V9009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9010.html">V9010</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9011.html">V9011</a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" role="switch" type="checkbox"/><label for="toctree-checkbox-25"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/build-tasks.html">Build Tasks</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/bytecode-viewer.html">Bytecode Viewer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/settings.html">Settings</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0001.html">E0001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0002.html">E0002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0003.html">E0003</a></li>
@@ -583,12 +595,12 @@
         </a>
         <div class="content-icon-container">
           <div class="view-this-page">
-  <a class="muted-link" href="https://github.com/ironplc/ironplc/blob/main/docs/reference/standard-library/functions/sizeof.rst?plain=true" title="View this page">
+  <a class="muted-link" href="https://github.com/ironplc/ironplc/blob/main/docs/reference/extension-library/function-blocks/index.rst?plain=true" title="View this page">
     <svg><use href="#svg-eye"></use></svg>
     <span class="visually-hidden">View this page</span>
   </a>
 </div><div class="edit-this-page">
-  <a class="muted-link" href="https://github.com/ironplc/ironplc/edit/main/docs/reference/standard-library/functions/sizeof.rst" rel="edit" title="Edit this page">
+  <a class="muted-link" href="https://github.com/ironplc/ironplc/edit/main/docs/reference/extension-library/function-blocks/index.rst" rel="edit" title="Edit this page">
     <svg><use href="#svg-pencil"></use></svg>
     <span class="visually-hidden">Edit this page</span>
   </a>
@@ -600,7 +612,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
@@ -609,92 +621,9 @@
 <p class="admonition-title">Attention</p>
 <p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include structures and user defined function blocks.</p>
 </div>
-<section id="sizeof">
-<h1>SIZEOF<a class="headerlink" href="#sizeof" title="Link to this heading">¶</a></h1>
-<p>Returns the size in bytes of a variable or type.</p>
-<div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 30.0%" />
-<col style="width: 70.0%" />
-</colgroup>
-<tbody>
-<tr class="row-odd"><td><p><strong>IEC 61131-3</strong></p></td>
-<td><p>Not part of the standard (vendor extension)</p></td>
-</tr>
-<tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Supported (requires <code class="docutils literal notranslate"><span class="pre">--allow-sizeof</span></code> or <code class="docutils literal notranslate"><span class="pre">--dialect</span> <span class="pre">rusty</span></code>)</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<section id="signatures">
-<h2>Signatures<a class="headerlink" href="#signatures" title="Link to this heading">¶</a></h2>
-<div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 10.0%" />
-<col style="width: 30.0%" />
-<col style="width: 30.0%" />
-<col style="width: 30.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>#</p></th>
-<th class="head"><p>Input (IN)</p></th>
-<th class="head"><p>Return Type</p></th>
-<th class="head"><p>Support</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p>1</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ANY</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">ANY_INT</span></code></p></td>
-<td><p>Supported</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-</section>
-<section id="description">
-<h2>Description<a class="headerlink" href="#description" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">SIZEOF</span></code> returns the size in bytes of the argument’s type as a
-compile-time constant. It is not part of the IEC 61131-3 standard but is
-a widely supported vendor extension available in CODESYS, TwinCAT/Beckhoff,
-and RuSTy. It is commonly used in buffer management functions that work with
-<code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> pointers, such as those in the OSCAT library.</p>
-<p>For elementary types, <code class="docutils literal notranslate"><span class="pre">SIZEOF</span></code> returns the number of bytes the type
-occupies:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">BOOL</span></code> → 1</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">INT</span></code> → 2</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">DINT</span></code> / <code class="docutils literal notranslate"><span class="pre">DWORD</span></code> / <code class="docutils literal notranslate"><span class="pre">REAL</span></code> → 4</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">LINT</span></code> / <code class="docutils literal notranslate"><span class="pre">LREAL</span></code> → 8</p></li>
-</ul>
-<p>For arrays, <code class="docutils literal notranslate"><span class="pre">SIZEOF</span></code> returns the total number of bytes occupied by all
-elements (element count × element size).</p>
-</section>
-<section id="enabling">
-<h2>Enabling<a class="headerlink" href="#enabling" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">SIZEOF</span></code> is a vendor extension and must be explicitly enabled:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--allow-sizeof<span class="w"> </span>main.st
-</pre></div>
-</div>
-<p>Or use the RuSTy dialect which enables all vendor extensions:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--dialect<span class="w"> </span>rusty<span class="w"> </span>main.st
-</pre></div>
-</div>
-<p>See <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for more information
-about dialects and feature flags.</p>
-</section>
-<section id="example">
-<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&code=cyA6PSBTSVpFT0YoeCk7ICAgICAoKiBzID0gMiAqKQpzIDo9IFNJWkVPRihhcnIpOyAgICgqIHMgPSAyMCAqKQ%3D%3D&vars=eCA6IElOVDsgYXJyIDogQVJSQVlbMS4uMTBdIE9GIElOVDs%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:329px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
-<section id="see-also">
-<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<ul class="simple">
-<li><p><a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> — enabling vendor extensions</p></li>
-</ul>
-</section>
+<section id="function-blocks">
+<h1>Function Blocks<a class="headerlink" href="#function-blocks" title="Link to this heading">¶</a></h1>
+<p>No vendor extension function blocks are currently defined.</p>
 </section>
 
         </article>
@@ -702,23 +631,23 @@ about dialects and feature flags.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../function-blocks/index.html">
+          <a class="next-page" href="../variables/index.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Function Blocks</div>
+                <div class="title">Variables</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="bcd.html">
+          <a class="prev-page" href="../functions/sizeof.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">BCD_TO_INT / INT_TO_BCD</div>
+                <div class="title">SIZEOF</div>
                 
               </div>
             </a>
@@ -748,31 +677,8 @@ about dialects and feature flags.</p>
         
       </footer>
     </div>
-    <aside class="toc-drawer">
+    <aside class="toc-drawer no-toc">
       
-      
-      <div class="toc-sticky toc-scroll">
-        <div class="toc-title-container">
-          <span class="toc-title">
-            On this page
-          </span>
-        </div>
-        <div class="toc-tree-container">
-          <div class="toc-tree">
-            <ul>
-<li><a class="reference internal" href="#">SIZEOF</a><ul>
-<li><a class="reference internal" href="#signatures">Signatures</a></li>
-<li><a class="reference internal" href="#description">Description</a></li>
-<li><a class="reference internal" href="#enabling">Enabling</a></li>
-<li><a class="reference internal" href="#example">Example</a></li>
-<li><a class="reference internal" href="#see-also">See Also</a></li>
-</ul>
-</li>
-</ul>
-
-          </div>
-        </div>
-      </div>
       
       
     </aside>
