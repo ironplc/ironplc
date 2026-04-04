@@ -4049,11 +4049,30 @@ fn resolve_string_arg(
 
             Ok(data_offset)
         }
-        _ => Err(Diagnostic::todo_with_span(
-            func_span.clone(),
-            file!(),
-            line!(),
-        )),
+        _ => {
+            // General expression (e.g., nested function call like MID(...)).
+            // Compile the expression (pushes buf_idx), then store into a
+            // temporary data region slot so the caller gets a data_offset.
+            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
+            let data_offset = ctx.data_region_offset;
+            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+            ctx.data_region_offset = ctx
+                .data_region_offset
+                .checked_add(total_bytes)
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+
+            if max_length > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_length;
+            }
+
+            emitter.emit_str_init(data_offset, max_length);
+
+            let op_type = DEFAULT_OP_TYPE;
+            compile_expr(emitter, ctx, arg, op_type)?;
+            emitter.emit_str_store_var(data_offset);
+
+            Ok(data_offset)
+        }
     }
 }
 
