@@ -536,37 +536,58 @@ fn get_arithmetic_functions() -> Vec<FunctionSignature> {
 /// These are the functional equivalents of the comparison operators:
 /// GT (>), GE (>=), EQ (=), LE (<=), LT (<), NE (<>).
 /// Each takes two inputs and returns BOOL.
+///
+/// IEC 61131-3 Table 33 defines these for ANY_ELEMENTARY, which includes
+/// numeric types (ANY_NUM), bit-string types (ANY_BIT), and others.
 fn get_comparison_functions() -> Vec<FunctionSignature> {
     vec![
         FunctionSignature::stdlib(
             "GT",
             TypeName::from("BOOL"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
         ),
         FunctionSignature::stdlib(
             "GE",
             TypeName::from("BOOL"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
         ),
         FunctionSignature::stdlib(
             "EQ",
             TypeName::from("BOOL"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
         ),
         FunctionSignature::stdlib(
             "LE",
             TypeName::from("BOOL"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
         ),
         FunctionSignature::stdlib(
             "LT",
             TypeName::from("BOOL"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
         ),
         FunctionSignature::stdlib(
             "NE",
             TypeName::from("BOOL"),
-            vec![input_param("IN1", "ANY_NUM"), input_param("IN2", "ANY_NUM")],
+            vec![
+                input_param("IN1", "ANY_ELEMENTARY"),
+                input_param("IN2", "ANY_ELEMENTARY"),
+            ],
         ),
     ]
 }
