@@ -568,7 +568,7 @@ fn compile_user_function(
     for (id, info) in &saved_var_types {
         if saved_variables
             .get(id)
-            .map_or(false, |i| i.raw() < num_globals)
+            .is_some_and(|i| i.raw() < num_globals)
         {
             ctx.var_types.insert(id.clone(), *info);
         }
@@ -576,7 +576,7 @@ fn compile_user_function(
     for (id, info) in &saved_string_vars {
         if saved_variables
             .get(id)
-            .map_or(false, |i| i.raw() < num_globals)
+            .is_some_and(|i| i.raw() < num_globals)
         {
             ctx.string_vars.insert(id.clone(), info.clone());
         }
@@ -937,7 +937,7 @@ fn compile_user_function_block(
     for (id, info) in &saved_var_types {
         if saved_variables
             .get(id)
-            .map_or(false, |i| i.raw() < num_globals)
+            .is_some_and(|i| i.raw() < num_globals)
         {
             ctx.var_types.insert(id.clone(), *info);
         }
@@ -945,7 +945,7 @@ fn compile_user_function_block(
     for (id, info) in &saved_string_vars {
         if saved_variables
             .get(id)
-            .map_or(false, |i| i.raw() < num_globals)
+            .is_some_and(|i| i.raw() < num_globals)
         {
             ctx.string_vars.insert(id.clone(), info.clone());
         }
