@@ -52,8 +52,8 @@ use ironplc_dsl::common::{
     Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionBlockDeclaration,
     FunctionDeclaration, FunctionReturnType, GenericTypeName, InitialValueAssignmentKind,
     IntegerRef, Library, LibraryElementKind, ProgramDeclaration, ReferenceInitialValue,
-    ReferenceTarget, SignedInteger, SignedIntegerRef, SpecificationKind, StringInitializer,
-    StringSpecification, VarDecl, VariableType,
+    SignedInteger, SignedIntegerRef, SpecificationKind, StringInitializer, StringSpecification,
+    VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -596,64 +596,13 @@ fn compile_user_function(
                             storage_bits: 64,
                         },
                     );
-                    // If the reference target is an inline array type
-                    // (REF_TO ARRAY[...] OF T), register an array descriptor
-                    // so that PT^[idx] can be compiled with deref array opcodes.
-                    // No data region space is allocated — the reference parameter
-                    // points to an array in the caller's scope.
-                    if let ReferenceTarget::Array(subranges) = &ref_init.target {
-                        let span = id.span();
-                        let spec = crate::compile_array::array_spec_from_inline(subranges, &span)?;
-                        let element_vti = if spec.ref_to {
-                            VarTypeInfo {
-                                op_width: OpWidth::W64,
-                                signedness: Signedness::Unsigned,
-                                storage_bits: 64,
-                            }
-                        } else {
-                            resolve_type_name(&spec.element_type_name).unwrap_or(VarTypeInfo {
-                                op_width: OpWidth::W32,
-                                signedness: Signedness::Unsigned,
-                                storage_bits: 32,
-                            })
-                        };
-                        let element_type_byte =
-                            crate::compile_array::var_type_info_to_type_byte(&element_vti);
-                        let mut dimensions = Vec::new();
-                        let mut total_elements: u32 = 1;
-                        for &(lower, upper) in &spec.dimensions {
-                            let size = (upper as i64 - lower as i64 + 1) as u32;
-                            dimensions.push(crate::compile_array::DimensionInfo {
-                                lower_bound: lower,
-                                size,
-                                stride: 0,
-                            });
-                            total_elements *= size;
-                        }
-                        let n = dimensions.len();
-                        if n > 0 {
-                            dimensions[n - 1].stride = 1;
-                            for k in (0..n - 1).rev() {
-                                dimensions[k].stride =
-                                    dimensions[k + 1].stride * dimensions[k + 1].size;
-                            }
-                        }
-                        let desc_index =
-                            builder.add_array_descriptor(element_type_byte, total_elements, 0);
-                        ctx.array_vars.insert(
-                            id.clone(),
-                            crate::compile_array::ArrayVarInfo {
-                                var_index: current_index,
-                                desc_index,
-                                data_offset: 0,
-                                element_var_type_info: element_vti,
-                                total_elements,
-                                dimensions,
-                                is_string_element: false,
-                                string_max_len: 0,
-                            },
-                        );
-                    }
+                    crate::compile_array::register_ref_to_array_metadata(
+                        ctx,
+                        builder,
+                        id,
+                        current_index,
+                        ref_init,
+                    )?;
                 }
                 _ => {}
             }
@@ -702,7 +651,7 @@ fn compile_user_function(
                         },
                     );
                 }
-                InitialValueAssignmentKind::Reference(_) => {
+                InitialValueAssignmentKind::Reference(ref_init) => {
                     ctx.var_types.insert(
                         id.clone(),
                         VarTypeInfo {
@@ -711,6 +660,13 @@ fn compile_user_function(
                             storage_bits: 64,
                         },
                     );
+                    crate::compile_array::register_ref_to_array_metadata(
+                        ctx,
+                        builder,
+                        id,
+                        current_index,
+                        ref_init,
+                    )?;
                 }
                 _ => {}
             }
@@ -1337,7 +1293,7 @@ fn assign_variables(
                         &decl.identifier.span(),
                     )?
                 }
-                InitialValueAssignmentKind::Reference(_) => {
+                InitialValueAssignmentKind::Reference(ref_init) => {
                     // References are stored as 64-bit variable-table indices (unsigned).
                     ctx.var_types.insert(
                         id.clone(),
@@ -1347,6 +1303,9 @@ fn assign_variables(
                             storage_bits: 64,
                         },
                     );
+                    crate::compile_array::register_ref_to_array_metadata(
+                        ctx, builder, id, index, ref_init,
+                    )?;
                     (iec_type_tag::OTHER, "REF_TO".into())
                 }
                 InitialValueAssignmentKind::Structure(struct_init) => {
@@ -4073,11 +4032,30 @@ fn resolve_string_arg(
 
             Ok(data_offset)
         }
-        _ => Err(Diagnostic::todo_with_span(
-            func_span.clone(),
-            file!(),
-            line!(),
-        )),
+        _ => {
+            // General expression (e.g., nested function call like MID(...)).
+            // Compile the expression (pushes buf_idx), then store into a
+            // temporary data region slot so the caller gets a data_offset.
+            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
+            let data_offset = ctx.data_region_offset;
+            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+            ctx.data_region_offset = ctx
+                .data_region_offset
+                .checked_add(total_bytes)
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+
+            if max_length > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_length;
+            }
+
+            emitter.emit_str_init(data_offset, max_length);
+
+            let op_type = DEFAULT_OP_TYPE;
+            compile_expr(emitter, ctx, arg, op_type)?;
+            emitter.emit_str_store_var(data_offset);
+
+            Ok(data_offset)
+        }
     }
 }
 
