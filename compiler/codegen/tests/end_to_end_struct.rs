@@ -123,8 +123,6 @@ END_PROGRAM
 #[test]
 fn end_to_end_when_struct_with_string_field_defined_then_program_runs() {
     // Struct with STRING field is defined but not instantiated.
-    // Codegen doesn't yet support STRING struct field instantiation,
-    // but defining the type should not block compilation.
     let source = "
 TYPE MY_DATA :
   STRUCT
@@ -142,6 +140,83 @@ END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_global_struct_with_string_field_then_compiles_and_runs() {
+    // Regression test: global struct with STRING field previously failed with
+    // P9999 "Structure contains unsupported field types".
+    let source = "
+TYPE MY_DATA :
+  STRUCT
+    NAME : STRING[30];
+    VALUE : INT;
+  END_STRUCT;
+END_TYPE
+
+VAR_GLOBAL
+    data1 : MY_DATA;
+END_VAR
+
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+    x := 1;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // data1 is var 0 (global), x is var 1
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_local_struct_with_string_field_then_compiles_and_runs() {
+    // Struct with STRING field as local variable.
+    let source = "
+TYPE MY_DATA :
+  STRUCT
+    NAME : STRING[30];
+    VALUE : INT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    data1 : MY_DATA;
+    x : INT;
+  END_VAR
+    x := 1;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // x is var index 1 (data1 is var 0)
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_struct_with_string_field_then_int_field_accessible() {
+    // Read the INT field of a struct that also contains a STRING field.
+    let source = "
+TYPE MY_DATA :
+  STRUCT
+    NAME : STRING[30];
+    VALUE : INT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    data1 : MY_DATA;
+    result : INT;
+  END_VAR
+    data1.VALUE := 42;
+    result := data1.VALUE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // result is var index 1
+    assert_eq!(bufs.vars[1].as_i32(), 42);
 }
 
 #[test]
