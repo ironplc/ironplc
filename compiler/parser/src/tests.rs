@@ -1957,6 +1957,40 @@ END_PROGRAM";
     }
 
     #[test]
+    fn parse_when_time_function_declaration_and_flag_enabled_then_ok() {
+        let source = "FUNCTION TIME : TIME
+VAR
+    t : TIME;
+END_VAR
+TIME := T#0s;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    t : TIME;
+END_VAR
+t := TIME();
+END_PROGRAM";
+
+        let options = CompilerOptions {
+            allow_time_as_function_name: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_when_time_function_declaration_and_flag_disabled_then_err() {
+        let source = "FUNCTION TIME : TIME
+TIME := T#0s;
+END_FUNCTION";
+
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn parse_when_function_with_var_temp_then_succeeds() {
         let lib = parse_text(
             "FUNCTION my_func : DINT
