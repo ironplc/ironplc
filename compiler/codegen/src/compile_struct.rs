@@ -55,6 +55,8 @@ pub(crate) struct StructFieldInfo {
     /// Op type for leaf (primitive/enum) fields. `None` for structure/array
     /// fields (which are accessed via further resolution).
     pub op_type: Option<OpType>,
+    /// For STRING fields, the maximum character length. `None` for non-STRING fields.
+    pub string_max_length: Option<u16>,
 }
 
 /// Maps an IntermediateType to its OpType for leaf fields.
@@ -131,6 +133,10 @@ pub(crate) fn build_struct_fields(
         })?;
         let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
+        let string_max_length = match &field.field_type {
+            IntermediateType::String { max_len } => Some(max_len.unwrap_or(254) as u16),
+            _ => None,
+        };
 
         // Defense-in-depth: detect duplicate field names (case-insensitive).
         // The analyzer should reject these, but if one slips through, silently
@@ -154,6 +160,7 @@ pub(crate) fn build_struct_fields(
             slot_offset,
             field_type: field.field_type.clone(),
             op_type,
+            string_max_length,
         });
         slot_offset = SlotIndex::new(slot_offset.raw() + field_slots);
     }
@@ -416,6 +423,8 @@ pub(crate) struct FieldInitInfo {
     pub slot_offset: SlotIndex,
     pub field_type: IntermediateType,
     pub op_type: Option<OpType>,
+    /// For STRING fields, the maximum character length. `None` for non-STRING fields.
+    pub string_max_length: Option<u16>,
 }
 
 /// Initializes fields of a structure variable.
@@ -428,6 +437,7 @@ pub(crate) fn initialize_struct_fields(
     ctx: &mut CompileContext,
     var_index: VarIndex,
     desc_index: u16,
+    struct_data_offset: u32,
     fields: &[FieldInitInfo],
     element_inits: &[StructureElementInit],
 ) -> Result<(), Diagnostic> {
@@ -480,6 +490,7 @@ pub(crate) fn initialize_struct_fields(
                     slot_offset: SlotIndex::new(slot_idx.raw() + f.slot_offset.raw()),
                     field_type: f.field_type.clone(),
                     op_type: f.op_type,
+                    string_max_length: f.string_max_length,
                 })
                 .collect();
 
@@ -488,9 +499,16 @@ pub(crate) fn initialize_struct_fields(
                 ctx,
                 var_index,
                 desc_index,
+                struct_data_offset,
                 &inner_field_infos,
                 &nested_inits,
             )?;
+        } else if let IntermediateType::String { .. } = &field_info.field_type {
+            // STRING field — initialize the header in the data region.
+            if let Some(max_length) = field_info.string_max_length {
+                let byte_offset = struct_data_offset + slot_idx.raw() * 8;
+                emitter.emit_str_init(byte_offset, max_length);
+            }
         }
         // else: array field — not yet supported
     }
@@ -575,6 +593,15 @@ pub(crate) fn allocate_struct_variable(
 
     // Build field metadata (returns error for unsupported field types)
     let (fields_vec, field_index) = build_struct_fields(fields, span)?;
+
+    // Track max STRING capacity for temp buffer sizing.
+    for f in &fields_vec {
+        if let Some(max_len) = f.string_max_length {
+            if max_len > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_len;
+            }
+        }
+    }
 
     // Store metadata
     ctx.struct_vars.insert(
@@ -663,13 +690,35 @@ mod tests {
     }
 
     #[test]
-    fn build_struct_fields_when_string_field_then_returns_error() {
+    fn build_struct_fields_when_string_field_then_computes_slots() {
+        // STRING[255] needs ceil((4 + 255) / 8) = 33 slots
         let fields = vec![make_field(
             "s",
             IntermediateType::String { max_len: Some(255) },
         )];
-        let result = build_struct_fields(&fields, &SourceSpan::default());
-        assert!(result.is_err());
+        let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
+        assert_eq!(field_list.len(), 1);
+        assert_eq!(field_list[0].name, "s");
+        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
+        assert_eq!(field_list[0].string_max_length, Some(255));
+        assert!(field_list[0].op_type.is_none());
+    }
+
+    #[test]
+    fn build_struct_fields_when_string_and_int_then_correct_offsets() {
+        // STRING[30] needs ceil((4 + 30) / 8) = 5 slots, then INT at offset 5
+        let fields = vec![
+            make_field("s", IntermediateType::String { max_len: Some(30) }),
+            make_field(
+                "n",
+                IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+            ),
+        ];
+        let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
+        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
+        assert_eq!(field_list[1].slot_offset, SlotIndex::new(5));
     }
 
     #[test]
