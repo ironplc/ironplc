@@ -245,7 +245,7 @@ pub(crate) fn resolve_struct_field_access(
 /// - **Recursive case** (`Structured`): recurses to resolve the parent, then
 ///   uses `find_field_in_type` to resolve the current field within the parent
 ///   type, accumulating slot offsets.
-fn walk_struct_chain(
+pub(crate) fn walk_struct_chain(
     ctx: &CompileContext,
     record: &SymbolicVariableKind,
     field: &Id,

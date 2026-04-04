@@ -217,3 +217,105 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 142);
 }
+
+#[test]
+fn end_to_end_when_struct_array_field_read_constant_index_then_correct_element() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    values : ARRAY[0..2] OF DINT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : DINT;
+  END_VAR
+    s.values[0] := 10;
+    s.values[1] := 20;
+    s.values[2] := 30;
+    result := s.values[1];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 20);
+}
+
+#[test]
+fn end_to_end_when_struct_array_field_write_then_stores_value() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    data : ARRAY[1..3] OF DINT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : DINT;
+  END_VAR
+    s.data[1] := 100;
+    s.data[2] := 200;
+    s.data[3] := 300;
+    result := s.data[1] + s.data[2] + s.data[3];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 600);
+}
+
+#[test]
+fn end_to_end_when_struct_array_field_variable_index_then_correct() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    items : ARRAY[0..4] OF REAL;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct;
+    i : INT;
+    result : REAL;
+  END_VAR
+    s.items[0] := 1.0;
+    s.items[1] := 2.0;
+    s.items[2] := 3.0;
+    s.items[3] := 4.0;
+    s.items[4] := 5.0;
+    i := 3;
+    result := s.items[i];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[2].as_f32(), 4.0);
+}
+
+#[test]
+fn end_to_end_when_struct_with_scalar_and_array_fields_then_both_correct() {
+    let source = "
+TYPE Mixed :
+  STRUCT
+    count : DINT;
+    values : ARRAY[0..2] OF DINT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    m : Mixed;
+    result : DINT;
+  END_VAR
+    m.count := 3;
+    m.values[0] := 10;
+    m.values[1] := 20;
+    m.values[2] := 30;
+    result := m.count + m.values[0] + m.values[1] + m.values[2];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 63);
+}
