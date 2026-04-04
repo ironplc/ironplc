@@ -16,6 +16,7 @@ use ironplc_dsl::textual::*;
 use std::collections::HashMap;
 
 use crate::function_environment::FunctionEnvironment;
+use crate::intermediate_type::IntermediateType;
 use crate::type_environment::TypeEnvironment;
 use ironplc_parser::options::CompilerOptions;
 
@@ -27,6 +28,7 @@ pub fn apply(
 ) -> Result<Library, Vec<Diagnostic>> {
     let mut resolver = ExprTypeResolver {
         var_types: HashMap::new(),
+        global_var_types: HashMap::new(),
         type_environment,
         function_environment,
         options,
@@ -53,19 +55,25 @@ fn is_generic_type(tn: &TypeName) -> bool {
 struct ExprTypeResolver<'a> {
     /// Maps variable names to their declared TypeName within the current POU scope.
     var_types: HashMap<Id, TypeName>,
+    /// Maps global variable names to their declared TypeName, persists across POU folds.
+    global_var_types: HashMap<Id, TypeName>,
     type_environment: &'a TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
     options: &'a CompilerOptions,
 }
 
 impl ExprTypeResolver<'_> {
-    /// Registers implicit system globals so direct references resolve correctly.
+    /// Registers implicit system globals and top-level VAR_GLOBAL variables
+    /// so direct references resolve correctly within each POU scope.
     fn seed_implicit_globals(&mut self) {
         if self.options.allow_system_uptime_global {
             self.var_types
                 .insert(Id::from("__SYSTEM_UP_TIME"), TypeName::from("TIME"));
             self.var_types
                 .insert(Id::from("__SYSTEM_UP_LTIME"), TypeName::from("LTIME"));
+        }
+        for (id, type_name) in &self.global_var_types {
+            self.var_types.insert(id.clone(), type_name.clone());
         }
     }
 
@@ -215,6 +223,54 @@ impl ExprTypeResolver<'_> {
         }
     }
 
+    /// Resolves the type of a struct field access expression (e.g., `setup.FLAG`).
+    ///
+    /// Walks the struct chain to find the root variable, looks up its struct
+    /// type definition, then finds the leaf field's type.
+    fn resolve_structured_variable_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
+        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
+        match parent_type {
+            IntermediateType::Structure { fields } => {
+                let field = fields.iter().find(|f| f.name == sv.field)?;
+                self.type_environment
+                    .elementary_type_name_for(&field.field_type)
+            }
+            _ => None,
+        }
+    }
+
+    /// Resolves a `SymbolicVariableKind` to its struct `IntermediateType`.
+    ///
+    /// For `Named`, looks up the variable's declared type and resolves it as a
+    /// struct. For `Structured`, recursively resolves the parent and finds the
+    /// nested struct field type.
+    fn resolve_parent_struct_type<'b>(
+        &'b self,
+        kind: &SymbolicVariableKind,
+    ) -> Option<&'b IntermediateType> {
+        match kind {
+            SymbolicVariableKind::Named(nv) => {
+                let var_type = self.var_types.get(&nv.name)?;
+                self.type_environment.resolve_struct_type(var_type)
+            }
+            SymbolicVariableKind::Structured(sv) => {
+                let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
+                match parent_type {
+                    IntermediateType::Structure { fields } => {
+                        let field = fields.iter().find(|f| f.name == sv.field)?;
+                        if field.field_type.is_structure() {
+                            Some(&field.field_type)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
     fn resolve_variable_type(&self, var: &Variable) -> Option<TypeName> {
         match var {
             Variable::Symbolic(SymbolicVariableKind::Named(nv)) => {
@@ -228,7 +284,9 @@ impl ExprTypeResolver<'_> {
                 )
             }
             Variable::Symbolic(SymbolicVariableKind::Array(_)) => None,
-            Variable::Symbolic(SymbolicVariableKind::Structured(_)) => None,
+            Variable::Symbolic(SymbolicVariableKind::Structured(sv)) => {
+                self.resolve_structured_variable_type(sv)
+            }
             Variable::Symbolic(SymbolicVariableKind::BitAccess(_)) => Some(TypeName::from("BOOL")),
             Variable::Symbolic(SymbolicVariableKind::Deref(_)) => None,
             Variable::Direct(_) => None,
@@ -237,6 +295,24 @@ impl ExprTypeResolver<'_> {
 }
 
 impl Fold<Diagnostic> for ExprTypeResolver<'_> {
+    fn fold_library(
+        &mut self,
+        node: ironplc_dsl::common::Library,
+    ) -> Result<ironplc_dsl::common::Library, Diagnostic> {
+        // Pre-collect top-level VAR_GLOBAL variable types so they are
+        // available when folding FUNCTION/FB/PROGRAM bodies.
+        for element in &node.elements {
+            if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
+                for decl in decls {
+                    self.insert(decl);
+                }
+            }
+        }
+        self.global_var_types = self.var_types.clone();
+        self.var_types.clear();
+        node.recurse_fold(self)
+    }
+
     fn fold_function_declaration(
         &mut self,
         node: FunctionDeclaration,

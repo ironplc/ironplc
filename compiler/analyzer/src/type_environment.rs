@@ -289,6 +289,19 @@ impl TypeEnvironment {
             .map(|(name, _)| TypeName::from(name))
     }
 
+    /// Maps an `IntermediateType` back to its elementary `TypeName`.
+    ///
+    /// Scans the elementary type table to find one matching the given
+    /// `IntermediateType`. Returns `Some(TypeName::from("BOOL"))` for
+    /// `IntermediateType::Bool`, etc. Returns `None` for complex types
+    /// (structs, arrays, enums).
+    pub fn elementary_type_name_for(&self, it: &IntermediateType) -> Option<TypeName> {
+        ELEMENTARY_TYPES_LOWER_CASE
+            .iter()
+            .find(|(_, elem_type)| elem_type == it)
+            .map(|(name, _)| TypeName::from(name))
+    }
+
     /// Returns the intermediate type for a named array type.
     ///
     /// Returns `Some` with the `IntermediateType::Array` if the type is found
