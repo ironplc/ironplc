@@ -152,3 +152,102 @@ END_PROGRAM
 
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
+
+#[test]
+fn end_to_end_when_byte_ge_true_then_one() {
+    let source = "
+PROGRAM main
+  VAR
+    c : BYTE;
+    result : BOOL;
+  END_VAR
+  c := BYTE#72;
+  result := c >= BYTE#65;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // 72 >= 65 is TRUE
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_byte_le_true_then_one() {
+    let source = "
+PROGRAM main
+  VAR
+    c : BYTE;
+    result : BOOL;
+  END_VAR
+  c := BYTE#72;
+  result := c <= BYTE#90;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // 72 <= 90 is TRUE
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_byte_gt_false_then_zero() {
+    let source = "
+PROGRAM main
+  VAR
+    c : BYTE;
+    result : BOOL;
+  END_VAR
+  c := BYTE#50;
+  result := c > BYTE#65;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // 50 > 65 is FALSE
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_byte_lt_false_then_zero() {
+    let source = "
+PROGRAM main
+  VAR
+    c : BYTE;
+    result : BOOL;
+  END_VAR
+  c := BYTE#200;
+  result := c < BYTE#100;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // 200 < 100 is FALSE (unsigned comparison)
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_byte_range_check_then_correct() {
+    let source = "
+FUNCTION IS_UPPERCASE : BOOL
+VAR_INPUT
+    c : BYTE;
+END_VAR
+    IS_UPPERCASE := c >= BYTE#65 AND c <= BYTE#90;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    yes : BOOL;
+    no : BOOL;
+  END_VAR
+  yes := IS_UPPERCASE(c := BYTE#72);
+  no := IS_UPPERCASE(c := BYTE#97);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // 'H' (72) is uppercase
+    assert_eq!(bufs.vars[0].as_i32(), 1);
+    // 'a' (97) is not uppercase
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
