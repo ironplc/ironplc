@@ -210,18 +210,6 @@ Time and Date Functions
    * - :doc:`DT_TO_TOD <dt_to_tod>`
      - Extract time-of-day from datetime
 
-Vendor Extensions
------------------
-
-.. list-table::
-   :header-rows: 1
-   :widths: 20 80
-
-   * - Function
-     - Description
-   * - :doc:`SIZEOF <sizeof>`
-     - Size in bytes of a variable or type (requires ``--allow-sizeof``)
-
 Type Conversion Functions
 -------------------------
 
@@ -299,4 +287,3 @@ Type Conversion Functions
    type-conversions
    trunc
    bcd
-   sizeof
