@@ -327,3 +327,86 @@ END_PROGRAM
     assert_eq!(bufs.vars[2].as_i32(), 42);
     assert_eq!(bufs.vars[3].as_i32(), 42);
 }
+
+#[test]
+fn end_to_end_when_top_level_global_scalar_then_readable_from_function() {
+    let source = "
+VAR_GLOBAL
+  counter : DINT := 42;
+END_VAR
+
+FUNCTION read_counter : DINT
+  read_counter := counter;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := read_counter();
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: counter (global), var 3: result (program local)
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[2].as_i32(), 42);
+    assert_eq!(bufs.vars[3].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_top_level_global_constant_then_readable_from_function() {
+    let source = "
+VAR_GLOBAL CONSTANT
+  MY_CONST : DINT := 100;
+END_VAR
+
+FUNCTION use_const : DINT
+  use_const := MY_CONST;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := use_const();
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: MY_CONST (global constant), var 3: result (program local)
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[2].as_i32(), 100);
+    assert_eq!(bufs.vars[3].as_i32(), 100);
+}
+
+#[test]
+fn end_to_end_when_top_level_global_then_writable_from_function_block() {
+    let source = "
+VAR_GLOBAL
+  scale_factor : DINT := 5;
+  fb_result : DINT := 0;
+END_VAR
+
+FUNCTION_BLOCK Scaler
+  VAR_INPUT
+    value : DINT;
+  END_VAR
+  fb_result := value * scale_factor;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    s : Scaler;
+  END_VAR
+  s(value := 10);
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: scale_factor (global), var 3: fb_result (global), var 4: s
+    // After FB call: fb_result = 10 * 5 = 50
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[2].as_i32(), 5);
+    assert_eq!(bufs.vars[3].as_i32(), 50);
+}
