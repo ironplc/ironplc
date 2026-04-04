@@ -167,6 +167,15 @@ pub fn compile(
         synthetic_globals
             .push(VarDecl::simple("__SYSTEM_UP_LTIME", "LTIME").with_type(VariableType::Global));
     }
+
+    // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
+    // These are common in the RuSTy dialect and OSCAT libraries.
+    for element in &library.elements {
+        if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
+            synthetic_globals.extend_from_slice(decls);
+        }
+    }
+
     synthetic_globals.extend_from_slice(user_globals);
     let global_vars = &synthetic_globals;
 
@@ -1171,12 +1180,30 @@ fn assign_variables(
             // Resolve type info and collect debug metadata.
             let (type_tag, type_name_str) = match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
-                    if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
-                        ctx.var_types.insert(id.clone(), type_info);
+                    // The global_var_decl parser produces Simple for all named
+                    // types, including structs.  Detect struct types via the
+                    // type environment and register them properly so that field
+                    // access works in codegen.
+                    if types.resolve_struct_type(&simple.type_name).is_some() {
+                        crate::compile_struct::allocate_struct_variable(
+                            ctx,
+                            builder,
+                            types,
+                            &simple.type_name,
+                            id,
+                            index,
+                            &decl.identifier.span(),
+                        )?;
+                        let type_name_str = simple.type_name.to_string().to_uppercase();
+                        (iec_type_tag::OTHER, type_name_str)
+                    } else {
+                        if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
+                            ctx.var_types.insert(id.clone(), type_info);
+                        }
+                        let tag = resolve_iec_type_tag(&simple.type_name.name);
+                        let name = simple.type_name.name.to_string().to_uppercase();
+                        (tag, name)
                     }
-                    let tag = resolve_iec_type_tag(&simple.type_name.name);
-                    let name = simple.type_name.name.to_string().to_uppercase();
-                    (tag, name)
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
@@ -1409,7 +1436,38 @@ fn emit_initial_values(
         if let Some(id) = decl.identifier.symbolic_id() {
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
-                    if let Some(constant) = &simple.initial_value {
+                    // The global_var_decl parser produces Simple for all
+                    // named types, including structs.  If the variable was
+                    // registered as a struct during assign_variables,
+                    // initialize it like a Structure initializer.
+                    if let Some(struct_info) = ctx.struct_vars.get(id) {
+                        let data_offset = struct_info.data_offset;
+                        let var_index = struct_info.var_index;
+                        let desc_index = struct_info.desc_index;
+                        let fields: Vec<_> = struct_info
+                            .fields
+                            .iter()
+                            .map(|f| crate::compile_struct::FieldInitInfo {
+                                name: f.name.clone(),
+                                slot_offset: f.slot_offset,
+                                field_type: f.field_type.clone(),
+                                op_type: f.op_type,
+                            })
+                            .collect();
+
+                        let offset_const = ctx.add_i32_constant(data_offset as i32);
+                        emitter.emit_load_const_i32(offset_const);
+                        emitter.emit_store_var_i32(var_index);
+
+                        crate::compile_struct::initialize_struct_fields(
+                            emitter,
+                            ctx,
+                            var_index,
+                            desc_index,
+                            &fields,
+                            &[],
+                        )?;
+                    } else if let Some(constant) = &simple.initial_value {
                         let var_index = ctx.var_index(id)?;
                         let type_info = ctx.var_type_info(id);
                         let op_type = type_info
