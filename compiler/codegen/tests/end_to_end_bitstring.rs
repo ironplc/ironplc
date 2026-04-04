@@ -465,3 +465,51 @@ END_PROGRAM
     // NOT 0xFF00 at 32-bit = 0xFFFF00FF, truncated to u16 = 0x00FF
     assert_eq!(bufs.vars[1].as_i32(), 0x00FF);
 }
+
+// --- DWORD large unsigned values (above i32::MAX) ---
+
+#[test]
+fn end_to_end_when_dword_initial_value_near_max_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DWORD := 4294967292;
+  END_VAR
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // 4294967292 as u32 stored as i32 bit pattern is -4
+    assert_eq!(bufs.vars[0].as_i32(), -4);
+}
+
+#[test]
+fn end_to_end_when_dword_large_literal_eq_right_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    mask : DWORD;
+    b : BOOL;
+  END_VAR
+  mask := 4294967292;
+  b := mask = 4294967292;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_dword_large_literal_eq_left_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    mask : DWORD;
+    b : BOOL;
+  END_VAR
+  mask := 4294967292;
+  b := 4294967292 = mask;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}

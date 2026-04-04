@@ -2103,6 +2103,22 @@ fn op_type_from_expr(expr: &Expr) -> Option<OpType> {
     Some((info.op_width, info.signedness))
 }
 
+/// Returns the operation type only when the expression has a concrete
+/// (non-generic) resolved type.
+///
+/// Generic types like `ANY_INT` map to a signed default (`DINT`) which is
+/// wrong when the other operand is unsigned (e.g. `DWORD`). Returning
+/// `None` for generic types lets callers prefer a concrete type from
+/// another operand.
+fn concrete_op_type_from_expr(expr: &Expr) -> Option<OpType> {
+    let resolved = expr.resolved_type.as_ref()?;
+    if GenericTypeName::try_from(&resolved.name).is_ok() {
+        return None;
+    }
+    let info = resolve_type_name(&resolved.name)?;
+    Some((info.op_width, info.signedness))
+}
+
 /// Returns the storage bit width from an expression's resolved type annotation.
 ///
 /// The analyzer must have populated `expr.resolved_type`. A missing or
@@ -3110,13 +3126,18 @@ pub(crate) fn compile_expr(
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
         ExprKind::Compare(compare) => {
             // A comparison's result is BOOL, but its operands may be a different
-            // type (e.g. REAL for `in < 0.0`). Derive the operand type from the
-            // left operand's resolved type so that literals are compiled with the
-            // correct width. For boolean connectives (AND/OR/XOR), keep the
+            // type (e.g. REAL for `in < 0.0`). Derive the operand type from a
+            // concrete (non-generic) resolved type, preferring the left operand.
+            // When one side is a literal (generic type like ANY_INT) and the other
+            // is a typed variable (e.g. DWORD), we use the concrete type to ensure
+            // correct signedness. For boolean connectives (AND/OR/XOR), keep the
             // incoming op_type since both sides are already BOOL.
             let operand_op_type = match compare.op {
                 CompareOp::And | CompareOp::Or | CompareOp::Xor => op_type,
-                _ => op_type_from_expr(&compare.left).unwrap_or(op_type),
+                _ => concrete_op_type_from_expr(&compare.left)
+                    .or_else(|| concrete_op_type_from_expr(&compare.right))
+                    .or_else(|| op_type_from_expr(&compare.left))
+                    .unwrap_or(op_type),
             };
             compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
             compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
