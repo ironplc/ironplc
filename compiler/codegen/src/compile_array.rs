@@ -4,7 +4,9 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_dsl::common::{ArrayInitialElementKind, ConstantKind};
+use ironplc_dsl::common::{
+    ArrayInitialElementKind, ConstantKind, ReferenceInitializer, ReferenceTarget,
+};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
@@ -458,6 +460,71 @@ pub(crate) fn register_array_variable(
         )
     };
     Ok((type_tag, type_name_str))
+}
+
+/// Registers array metadata for a `REF_TO ARRAY` variable so that
+/// `PT^[idx]` can be compiled with deref array opcodes.
+///
+/// No data region space is allocated — the reference parameter
+/// points to an array in the caller's scope.
+pub(crate) fn register_ref_to_array_metadata(
+    ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
+    id: &Id,
+    var_index: VarIndex,
+    ref_init: &ReferenceInitializer,
+) -> Result<(), Diagnostic> {
+    if let ReferenceTarget::Array(subranges) = &ref_init.target {
+        let span = id.span();
+        let spec = array_spec_from_inline(subranges, &span)?;
+        let element_vti = if spec.ref_to {
+            VarTypeInfo {
+                op_width: OpWidth::W64,
+                signedness: Signedness::Unsigned,
+                storage_bits: 64,
+            }
+        } else {
+            super::compile::resolve_type_name(&spec.element_type_name).unwrap_or(VarTypeInfo {
+                op_width: OpWidth::W32,
+                signedness: Signedness::Unsigned,
+                storage_bits: 32,
+            })
+        };
+        let element_type_byte = var_type_info_to_type_byte(&element_vti);
+        let mut dimensions = Vec::new();
+        let mut total_elements: u32 = 1;
+        for &(lower, upper) in &spec.dimensions {
+            let size = (upper as i64 - lower as i64 + 1) as u32;
+            dimensions.push(DimensionInfo {
+                lower_bound: lower,
+                size,
+                stride: 0,
+            });
+            total_elements *= size;
+        }
+        let n = dimensions.len();
+        if n > 0 {
+            dimensions[n - 1].stride = 1;
+            for k in (0..n - 1).rev() {
+                dimensions[k].stride = dimensions[k + 1].stride * dimensions[k + 1].size;
+            }
+        }
+        let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, 0);
+        ctx.array_vars.insert(
+            id.clone(),
+            ArrayVarInfo {
+                var_index,
+                desc_index,
+                data_offset: 0,
+                element_var_type_info: element_vti,
+                total_elements,
+                dimensions,
+                is_string_element: false,
+                string_max_len: 0,
+            },
+        );
+    }
+    Ok(())
 }
 
 /// Recursively walks the `ArrayInitialElementKind` tree and produces
