@@ -1509,6 +1509,7 @@ fn emit_initial_values(
                                 slot_offset: f.slot_offset,
                                 field_type: f.field_type.clone(),
                                 op_type: f.op_type,
+                                string_max_length: f.string_max_length,
                             })
                             .collect();
 
@@ -1521,6 +1522,7 @@ fn emit_initial_values(
                             ctx,
                             var_index,
                             desc_index,
+                            data_offset,
                             &fields,
                             &[],
                         )?;
@@ -1648,6 +1650,7 @@ fn emit_initial_values(
                                 slot_offset: f.slot_offset,
                                 field_type: f.field_type.clone(),
                                 op_type: f.op_type,
+                                string_max_length: f.string_max_length,
                             })
                             .collect();
 
@@ -1662,6 +1665,7 @@ fn emit_initial_values(
                             ctx,
                             var_index,
                             desc_index,
+                            data_offset,
                             &fields,
                             &struct_init.elements_init,
                         )?;
