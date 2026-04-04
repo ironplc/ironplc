@@ -125,3 +125,21 @@ END_PROGRAM
     // 'DE' starts at position 4 (1-based).
     assert_eq!(bufs.vars[2].as_i32(), 4);
 }
+
+#[test]
+fn end_to_end_when_find_with_nested_mid_then_returns_position() {
+    let source = "
+PROGRAM main
+  VAR
+    s1 : STRING := 'hello world';
+    s2 : STRING := 'world';
+    n : INT;
+  END_VAR
+  n := FIND(s1, MID(s2, 3, 1));
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // MID('world', L=3, P=1) = 'wor', FIND('hello world', 'wor') = 7 (1-based).
+    assert_eq!(bufs.vars[2].as_i32(), 7);
+}
