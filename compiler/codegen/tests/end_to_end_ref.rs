@@ -349,3 +349,71 @@ END_PROGRAM
     // check (var[2]) should be 42 (written through REF)
     assert_eq!(bufs.vars[2].as_i32(), 42);
 }
+
+#[test]
+fn end_to_end_when_function_with_local_ref_to_array_deref_subscript_then_writes_through_ref() {
+    // Verifies that a local REF_TO ARRAY variable (not a parameter) can be used
+    // with deref array subscript syntax (local_pt^[0]).
+    let source = "
+FUNCTION fill_first : INT
+  VAR_INPUT
+      arr_ref : REF_TO ARRAY[0..4] OF INT;
+  END_VAR
+  VAR
+      local_pt : REF_TO ARRAY[0..4] OF INT;
+  END_VAR
+      local_pt := arr_ref;
+      local_pt^[0] := 77;
+      fill_first := 1;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    arr : ARRAY[0..4] OF INT;
+    result : INT;
+    check : INT;
+END_VAR
+    result := fill_first(arr_ref := REF(arr));
+    check := arr[0];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
+    // result (var[1]) should be 1 (function return value)
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    // check (var[2]) should be 77 (written through local REF)
+    assert_eq!(bufs.vars[2].as_i32(), 77);
+}
+
+#[test]
+fn end_to_end_when_program_ref_to_array_deref_subscript_then_reads_element() {
+    // Verifies that a program-level REF_TO ARRAY variable can be used
+    // with deref array subscript syntax (pt^[i]) to read array elements.
+    // This is the pattern used in OSCAT buffer/list functions.
+    let source = "
+FUNCTION GET_ELEMENT : REAL
+VAR_INPUT
+    pt : REF_TO ARRAY[0..100] OF REAL;
+    i : INT;
+END_VAR
+    GET_ELEMENT := pt^[i];
+END_FUNCTION
+
+PROGRAM main
+VAR
+    arr : ARRAY[0..100] OF REAL;
+    r : REAL;
+END_VAR
+    arr[0] := 42.0;
+    r := GET_ELEMENT(pt := REF(arr), i := 0);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
+    // r (var[1]) should be 42.0 (REAL is 32-bit float)
+    assert_eq!(bufs.vars[1].as_f32(), 42.0);
+}
