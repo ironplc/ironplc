@@ -11,9 +11,9 @@ use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variab
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
-use ironplc_container::{ContainerBuilder, VarIndex};
+use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 
-use super::compile::{compile_expr, CompileContext, OpWidth, Signedness, VarTypeInfo};
+use super::compile::{compile_expr, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
 use crate::emit::Emitter;
 
 /// Normalized array specification, independent of AST representation.
@@ -75,6 +75,24 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
     DerefArrayElement {
         info: &'ctx ArrayVarInfo,
         subscripts: Vec<&'ast Expr>,
+    },
+    /// Array element within a struct field — compute flat index + struct field offset,
+    /// then use the struct's LOAD_ARRAY/STORE_ARRAY descriptor.
+    StructFieldArrayElement {
+        /// Struct variable table index.
+        var_index: VarIndex,
+        /// Struct array descriptor index (treats struct as flat slot array).
+        desc_index: u16,
+        /// Compile-time slot offset of the array field within the struct.
+        field_slot_offset: SlotIndex,
+        /// Dimension info for computing the flat index from subscripts.
+        dimensions: Vec<DimensionInfo>,
+        /// Subscript expressions.
+        subscripts: Vec<&'ast Expr>,
+        /// Element op type for compile_expr width.
+        element_op_type: OpType,
+        /// Element intermediate type for truncation on store.
+        element_type: IntermediateType,
     },
 }
 
@@ -151,6 +169,11 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                             }
                         }
                     }
+                    SymbolicVariableKind::Structured(structured) => {
+                        levels.reverse();
+                        let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
+                        return resolve_struct_field_array(ctx, structured, all_subscripts);
+                    }
                     other => {
                         return Err(Diagnostic::todo_with_span(other.span(), file!(), line!()));
                     }
@@ -163,6 +186,93 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
             Ok(ResolvedAccess::Scalar { var_index })
         }
     }
+}
+
+/// Resolves an array subscript whose base is a struct field.
+///
+/// For `math.FACTS[x]`, the struct field `FACTS` is an array. We resolve the
+/// struct chain to get the field's slot offset and type, extract array dimension
+/// info, and return a `StructFieldArrayElement` that the caller uses to emit
+/// `flat_index + slot_offset` followed by the struct's LOAD_ARRAY/STORE_ARRAY.
+fn resolve_struct_field_array<'ctx, 'ast>(
+    ctx: &'ctx CompileContext,
+    structured: &ironplc_dsl::textual::StructuredVariable,
+    subscripts: Vec<&'ast Expr>,
+) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    let (root_name, slot_offset, field_type) =
+        crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
+
+    let IntermediateType::Array {
+        element_type,
+        dimensions: array_dims,
+    } = &field_type
+    else {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                structured.field.span(),
+                format!("Field '{}' is not an array type", structured.field),
+            ),
+        ));
+    };
+
+    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                structured.span(),
+                format!("Variable '{}' is not a structure", root_name),
+            ),
+        )
+    })?;
+
+    let element_op_type =
+        crate::compile_struct::resolve_field_op_type(element_type).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(
+                    structured.field.span(),
+                    "Array element type is not a primitive (nested struct/array elements not supported)",
+                ),
+            )
+        })?;
+
+    let dimensions = dimensions_from_intermediate(array_dims);
+
+    Ok(ResolvedAccess::StructFieldArrayElement {
+        var_index: struct_info.var_index,
+        desc_index: struct_info.desc_index,
+        field_slot_offset: slot_offset,
+        dimensions,
+        subscripts,
+        element_op_type,
+        element_type: element_type.as_ref().clone(),
+    })
+}
+
+/// Converts `ArrayDimension` bounds into `DimensionInfo` with computed strides.
+///
+/// Strides follow row-major order: the last dimension has stride 1, each
+/// preceding dimension's stride is the product of all subsequent dimension sizes.
+fn dimensions_from_intermediate(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
+    let sizes: Vec<u32> = dims
+        .iter()
+        .map(|d| (d.upper as i64 - d.lower as i64 + 1).max(0) as u32)
+        .collect();
+
+    let mut strides = vec![1u32; sizes.len()];
+    for i in (0..sizes.len().saturating_sub(1)).rev() {
+        strides[i] = strides[i + 1].saturating_mul(sizes[i + 1]);
+    }
+
+    dims.iter()
+        .zip(sizes.iter().zip(strides.iter()))
+        .map(|(d, (&size, &stride))| DimensionInfo {
+            lower_bound: d.lower,
+            size,
+            stride,
+        })
+        .collect()
 }
 
 /// Converts an inline array specification (from the AST) to a normalized ArraySpec.

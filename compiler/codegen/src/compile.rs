@@ -2297,6 +2297,30 @@ fn compile_statement(
                         )?;
                         emitter.emit_store_array_deref(ref_var_index, arr_desc_index);
                     }
+                    crate::compile_array::ResolvedAccess::StructFieldArrayElement {
+                        var_index,
+                        desc_index,
+                        field_slot_offset,
+                        ref dimensions,
+                        subscripts,
+                        element_op_type,
+                        ref element_type,
+                    } => {
+                        let target_span = variable_span(&assignment.target);
+                        compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
+                        crate::compile_struct::emit_truncation_for_field(emitter, element_type);
+                        crate::compile_array::emit_flat_index(
+                            emitter,
+                            ctx,
+                            &subscripts,
+                            dimensions,
+                            &target_span,
+                        )?;
+                        let offset_const = ctx.add_i64_constant(field_slot_offset.raw() as i64);
+                        emitter.emit_load_const_i64(offset_const);
+                        emitter.emit_add_i64();
+                        emitter.emit_store_array(var_index, desc_index);
+                    }
                 }
             }
             Ok(())
@@ -4875,6 +4899,27 @@ fn compile_variable_read(
                         &span,
                     )?;
                     emitter.emit_load_array_deref(ref_var_index, arr_desc_index);
+                }
+                crate::compile_array::ResolvedAccess::StructFieldArrayElement {
+                    var_index,
+                    desc_index,
+                    field_slot_offset,
+                    ref dimensions,
+                    subscripts,
+                    ..
+                } => {
+                    let span = variable_span(variable);
+                    crate::compile_array::emit_flat_index(
+                        emitter,
+                        ctx,
+                        &subscripts,
+                        dimensions,
+                        &span,
+                    )?;
+                    let offset_const = ctx.add_i64_constant(field_slot_offset.raw() as i64);
+                    emitter.emit_load_const_i64(offset_const);
+                    emitter.emit_add_i64();
+                    emitter.emit_load_array(var_index, desc_index);
                 }
             }
             Ok(())
