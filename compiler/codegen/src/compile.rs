@@ -126,6 +126,7 @@ pub(crate) const DEFAULT_STRING_MAX_LENGTH_U16: u16 = 254;
 pub(crate) const STRING_HEADER_BYTES_U32: u32 = STRING_HEADER_BYTES as u32;
 
 /// Metadata for a STRING variable allocated in the data region.
+#[derive(Clone)]
 struct StringVarInfo {
     /// Byte offset into the data region where this string starts.
     data_offset: u32,
@@ -283,6 +284,7 @@ fn compile_program_with_functions(
 
     // Assign global variable indices first (indices 0..G).
     assign_variables(&mut ctx, &mut builder, global_vars, types)?;
+    let num_globals = ctx.variables.len() as u16;
 
     // Pre-scan user-defined FB declarations to register type metadata
     // (field indices, field op types, type IDs) before assign_variables runs.
@@ -371,8 +373,14 @@ fn compile_program_with_functions(
         // Update the var_offset in the registered type info.
         ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = var_offset.raw();
 
-        let compiled =
-            compile_user_function_block(fb_decl, fb_func_id, var_offset.raw(), &mut ctx, types)?;
+        let compiled = compile_user_function_block(
+            fb_decl,
+            fb_func_id,
+            var_offset.raw(),
+            &mut ctx,
+            types,
+            num_globals,
+        )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         compiled_fb_bodies.push(compiled);
     }
@@ -385,6 +393,7 @@ fn compile_program_with_functions(
             &mut ctx,
             functions,
             &mut builder,
+            num_globals,
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         next_function_id += 1;
@@ -542,12 +551,36 @@ fn compile_user_function(
     ctx: &mut CompileContext,
     functions: &FunctionEnvironment,
     builder: &mut ContainerBuilder,
+    num_globals: u16,
 ) -> Result<CompiledFunction, Diagnostic> {
     // Save the program's variable mappings.
     let saved_variables = std::mem::take(&mut ctx.variables);
     let saved_var_types = std::mem::take(&mut ctx.var_types);
     let saved_string_vars = std::mem::take(&mut ctx.string_vars);
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
+
+    // Re-insert global variable mappings so the function body can access them.
+    for (id, index) in &saved_variables {
+        if index.raw() < num_globals {
+            ctx.variables.insert(id.clone(), *index);
+        }
+    }
+    for (id, info) in &saved_var_types {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.var_types.insert(id.clone(), *info);
+        }
+    }
+    for (id, info) in &saved_string_vars {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.string_vars.insert(id.clone(), info.clone());
+        }
+    }
 
     // Assign variable slots for the function's parameters and locals,
     // starting at var_offset. Input parameters come first (declaration order),
@@ -865,6 +898,7 @@ fn compile_user_function_block(
     var_offset: u16,
     ctx: &mut CompileContext,
     _types: &TypeEnvironment,
+    num_globals: u16,
 ) -> Result<CompiledFunction, Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
 
@@ -893,6 +927,29 @@ fn compile_user_function_block(
     let saved_string_vars = std::mem::take(&mut ctx.string_vars);
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
     let saved_fb_instances = std::mem::take(&mut ctx.fb_instances);
+
+    // Re-insert global variable mappings so the FB body can access them.
+    for (id, index) in &saved_variables {
+        if index.raw() < num_globals {
+            ctx.variables.insert(id.clone(), *index);
+        }
+    }
+    for (id, info) in &saved_var_types {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.var_types.insert(id.clone(), *info);
+        }
+    }
+    for (id, info) in &saved_string_vars {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.string_vars.insert(id.clone(), info.clone());
+        }
+    }
 
     // Assign variable slots for all FB fields, in the same order as field_decls.
     let mut current_index = VarIndex::new(var_offset);
@@ -1452,6 +1509,7 @@ fn emit_initial_values(
                                 slot_offset: f.slot_offset,
                                 field_type: f.field_type.clone(),
                                 op_type: f.op_type,
+                                string_max_length: f.string_max_length,
                             })
                             .collect();
 
@@ -1464,6 +1522,7 @@ fn emit_initial_values(
                             ctx,
                             var_index,
                             desc_index,
+                            data_offset,
                             &fields,
                             &[],
                         )?;
@@ -1591,6 +1650,7 @@ fn emit_initial_values(
                                 slot_offset: f.slot_offset,
                                 field_type: f.field_type.clone(),
                                 op_type: f.op_type,
+                                string_max_length: f.string_max_length,
                             })
                             .collect();
 
@@ -1605,6 +1665,7 @@ fn emit_initial_values(
                             ctx,
                             var_index,
                             desc_index,
+                            data_offset,
                             &fields,
                             &struct_init.elements_init,
                         )?;
