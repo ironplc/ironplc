@@ -1151,6 +1151,14 @@ impl CompileContext {
             .unwrap_or(DEFAULT_OP_TYPE)
     }
 
+    /// Allocates a scratch variable with a synthetic name and returns its index.
+    pub(crate) fn allocate_scratch_variable(&mut self, suffix: &str) -> VarIndex {
+        let idx = VarIndex::new(self.variables.len() as u16);
+        self.variables
+            .insert(Id::from(&format!("__scratch_{}", suffix)), idx);
+        idx
+    }
+
     /// Adds an i32 constant to the pool and returns its index.
     pub(crate) fn add_i32_constant(&mut self, value: i32) -> u16 {
         for (i, existing) in self.constants.iter().enumerate() {
@@ -2414,6 +2422,34 @@ fn compile_statement(
                         emitter.emit_load_const_i64(offset_const);
                         emitter.emit_add_i64();
                         emitter.emit_store_array(var_index, desc_index);
+                    }
+                    crate::compile_array::ResolvedAccess::StructFieldStringArrayElement {
+                        var_index,
+                        scratch_var_index,
+                        string_desc_index,
+                        field_byte_offset,
+                        ref dimensions,
+                        subscripts,
+                    } => {
+                        let target_span = variable_span(&assignment.target);
+                        // 1. Compile RHS (produces buf_idx on stack).
+                        compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                        // 2. Compute base: struct_data_offset + field_byte_offset → scratch.
+                        emitter.emit_load_var_i32(var_index);
+                        let offset_const = ctx.add_i32_constant(field_byte_offset as i32);
+                        emitter.emit_load_const_i32(offset_const);
+                        emitter.emit_add_i32();
+                        emitter.emit_store_var_i32(scratch_var_index);
+                        // 3. Compute flat index.
+                        crate::compile_array::emit_flat_index(
+                            emitter,
+                            ctx,
+                            &subscripts,
+                            dimensions,
+                            &target_span,
+                        )?;
+                        // 4. Store string element.
+                        emitter.emit_str_store_array_elem(scratch_var_index, string_desc_index);
                     }
                 }
             }
@@ -5038,6 +5074,33 @@ fn compile_variable_read(
                     emitter.emit_load_const_i64(offset_const);
                     emitter.emit_add_i64();
                     emitter.emit_load_array(var_index, desc_index);
+                }
+                crate::compile_array::ResolvedAccess::StructFieldStringArrayElement {
+                    var_index,
+                    scratch_var_index,
+                    string_desc_index,
+                    field_byte_offset,
+                    ref dimensions,
+                    subscripts,
+                } => {
+                    let span = variable_span(variable);
+                    // 1. Compute base: struct_data_offset + field_byte_offset → scratch.
+                    emitter.emit_load_var_i32(var_index);
+                    let offset_const = ctx.add_i32_constant(field_byte_offset as i32);
+                    emitter.emit_load_const_i32(offset_const);
+                    emitter.emit_add_i32();
+                    emitter.emit_store_var_i32(scratch_var_index);
+                    // 2. Compute flat index.
+                    crate::compile_array::emit_flat_index(
+                        emitter,
+                        ctx,
+                        &subscripts,
+                        dimensions,
+                        &span,
+                    )?;
+                    // 3. Load string element.
+                    ctx.num_temp_bufs += 1;
+                    emitter.emit_str_load_array_elem(scratch_var_index, string_desc_index);
                 }
             }
             Ok(())

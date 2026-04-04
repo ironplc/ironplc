@@ -2,9 +2,19 @@
 //! Compiles ST programs with struct field access and runs them through the VM.
 
 mod common;
+use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
+
+/// Reads a STRING value from the data region at the given byte offset.
+fn read_string(data_region: &[u8], data_offset: usize) -> String {
+    let cur_len =
+        u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
+    let data_start = data_offset + STRING_HEADER_BYTES;
+    let bytes = &data_region[data_start..data_start + cur_len];
+    bytes.iter().map(|&b| b as char).collect()
+}
 
 #[test]
 fn end_to_end_when_struct_field_read_then_returns_initialized_value() {
@@ -393,4 +403,117 @@ END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 63);
+}
+
+#[test]
+fn end_to_end_when_struct_string_array_field_write_and_read_then_correct() {
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    names : ARRAY[1..3] OF STRING[10];
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : STRING[10];
+  END_VAR
+    s.names[1] := 'hello';
+    s.names[2] := 'world';
+    result := s.names[2];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // s is var 0 (struct data_offset), result is var 1 (STRING in data region).
+    // The struct occupies slots for the string array: 3 * ceil((4+10)/8) = 3*2 = 6 slots = 48 bytes.
+    // result is a STRING[10] starting at data_region offset 48.
+    let struct_base = bufs.vars[0].as_i32() as usize;
+    let stride = STRING_HEADER_BYTES + 10;
+
+    // Verify the writes landed in the struct's data region.
+    assert_eq!(read_string(&bufs.data_region, struct_base), "hello");
+    assert_eq!(
+        read_string(&bufs.data_region, struct_base + stride),
+        "world"
+    );
+
+    // Verify the read-back via result.
+    let result_offset = struct_base + 6 * 8; // after struct's 6 slots
+    assert_eq!(read_string(&bufs.data_region, result_offset), "world");
+}
+
+#[test]
+fn end_to_end_when_struct_multidim_string_array_field_read_then_correct() {
+    let source = "
+TYPE MyLang :
+  STRUCT
+    names : ARRAY[1..2, 1..3] OF STRING[10];
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    lang : MyLang;
+    r1 : STRING[10];
+    r2 : STRING[10];
+  END_VAR
+    lang.names[1, 1] := 'Mon';
+    lang.names[1, 2] := 'Tue';
+    lang.names[1, 3] := 'Wed';
+    lang.names[2, 1] := 'Mo';
+    lang.names[2, 2] := 'Di';
+    lang.names[2, 3] := 'Mi';
+    r1 := lang.names[1, 2];
+    r2 := lang.names[2, 3];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // lang struct: 2*3=6 STRING[10] elements, each 2 slots = 12 slots = 96 bytes.
+    // r1 starts at offset 96, r2 at 96 + (4+10) = 96 + 14 = not quite...
+    // r1 and r2 are STRING[10] variables, each takes STRING_HEADER_BYTES + 10 bytes.
+    let struct_base = bufs.vars[0].as_i32() as usize;
+    let struct_slots = 12; // 6 elements * 2 slots each
+    let r1_offset = struct_base + struct_slots * 8;
+    let r2_offset = r1_offset + STRING_HEADER_BYTES + 10;
+
+    assert_eq!(read_string(&bufs.data_region, r1_offset), "Tue");
+    assert_eq!(read_string(&bufs.data_region, r2_offset), "Mi");
+}
+
+#[test]
+fn end_to_end_when_global_struct_string_array_field_read_then_correct() {
+    let source = "
+TYPE MY_LANG :
+  STRUCT
+    NAMES : ARRAY[1..2, 1..3] OF STRING[10];
+  END_STRUCT;
+END_TYPE
+
+VAR_GLOBAL
+    lang : MY_LANG;
+END_VAR
+
+PROGRAM main
+  VAR
+    r : STRING[10];
+  END_VAR
+    lang.NAMES[1, 1] := 'Mon';
+    lang.NAMES[2, 2] := 'Di';
+    r := lang.NAMES[2, 2];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // Global struct 'lang' is var 0 (globals come first), scratch is var 1.
+    // Program var 'r' is var 2.
+    // Struct: 6 STRING[10] elements * 2 slots = 12 slots = 96 bytes.
+    // r starts at offset 96.
+    let struct_base = bufs.vars[0].as_i32() as usize;
+    let struct_slots = 12;
+    let r_offset = struct_base + struct_slots * 8;
+
+    assert_eq!(read_string(&bufs.data_region, r_offset), "Di");
 }

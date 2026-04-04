@@ -42,6 +42,13 @@ pub(crate) struct StructVarInfo {
     pub fields: Vec<StructFieldInfo>,
     /// Maps field name (lowercase) to index in `fields` Vec for O(1) lookup.
     pub field_index: HashMap<String, usize>,
+    /// Scratch variable for STRING array field access. Allocated lazily
+    /// only when the struct has at least one STRING array field. Holds
+    /// `struct_data_offset + field_byte_offset` during STR_LOAD/STORE_ARRAY_ELEM.
+    pub scratch_var_index: Option<VarIndex>,
+    /// Per-field STRING array descriptor info. Maps field name (lowercase) to
+    /// `(desc_index, total_elements, max_string_len)`.
+    pub string_array_descs: HashMap<String, (u16, u32, u16)>,
 }
 
 /// Metadata for a single structure field.
@@ -509,8 +516,25 @@ pub(crate) fn initialize_struct_fields(
                 let byte_offset = struct_data_offset + slot_idx.raw() * 8;
                 emitter.emit_str_init(byte_offset, max_length);
             }
+        } else if let IntermediateType::Array {
+            element_type,
+            dimensions: array_dims,
+        } = &field_info.field_type
+        {
+            if let IntermediateType::String { max_len } = element_type.as_ref() {
+                // STRING array field — initialize headers for each string element.
+                let max_length = max_len.unwrap_or(254) as u16;
+                let total_elements = array_dims
+                    .iter()
+                    .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
+                let stride = super::compile::STRING_HEADER_BYTES_U32 + max_length as u32;
+                let field_byte_offset = struct_data_offset + slot_idx.raw() * 8;
+                for i in 0..total_elements {
+                    let elem_byte_offset = field_byte_offset + i * stride;
+                    emitter.emit_str_init(elem_byte_offset, max_length);
+                }
+            }
         }
-        // else: array field — not yet supported
     }
     Ok(())
 }
@@ -603,6 +627,52 @@ pub(crate) fn allocate_struct_variable(
         }
     }
 
+    // Register STRING array descriptors and scratch variable for fields
+    // that are ARRAY OF STRING.
+    let mut string_array_descs: HashMap<String, (u16, u32, u16)> = HashMap::new();
+    let mut scratch_var_index: Option<VarIndex> = None;
+    for f in &fields_vec {
+        if let IntermediateType::Array {
+            element_type,
+            dimensions: array_dims,
+        } = &f.field_type
+        {
+            if let IntermediateType::String { max_len } = element_type.as_ref() {
+                let max_str_len = max_len.unwrap_or(254) as u16;
+                let total_elements = array_dims
+                    .iter()
+                    .try_fold(1u32, |acc, d| {
+                        let size = (d.upper as i64 - d.lower as i64 + 1).max(0) as u32;
+                        acc.checked_mul(size)
+                    })
+                    .ok_or_else(|| {
+                        Diagnostic::problem(
+                            Problem::NotImplemented,
+                            Label::span(span.clone(), "Array too large"),
+                        )
+                    })?;
+                // Allocate scratch variable once for all STRING array fields.
+                if scratch_var_index.is_none() {
+                    let scratch_idx = ctx.allocate_scratch_variable(&id.to_string());
+                    scratch_var_index = Some(scratch_idx);
+                }
+                let str_desc_index = builder.add_array_descriptor(
+                    FieldType::String as u8,
+                    total_elements,
+                    max_str_len,
+                );
+                string_array_descs.insert(
+                    f.name.clone(),
+                    (str_desc_index, total_elements, max_str_len),
+                );
+                // Track max string capacity for temp buffer sizing.
+                if max_str_len > ctx.max_string_capacity {
+                    ctx.max_string_capacity = max_str_len;
+                }
+            }
+        }
+    }
+
     // Store metadata
     ctx.struct_vars.insert(
         id.clone(),
@@ -613,6 +683,8 @@ pub(crate) fn allocate_struct_variable(
             desc_index,
             fields: fields_vec,
             field_index,
+            scratch_var_index,
+            string_array_descs,
         },
     );
     Ok(())
