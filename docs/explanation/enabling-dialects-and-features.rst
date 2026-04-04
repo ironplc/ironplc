@@ -138,7 +138,7 @@ features — they never disable features that a dialect already includes.
    Allow the ``SIZEOF()`` operator that returns the size in bytes of a
    variable or type. This is a vendor extension supported by CODESYS,
    TwinCAT, and RuSTy. See
-   :doc:`/reference/standard-library/functions/sizeof`.
+   :doc:`/reference/extension-library/functions/sizeof`.
 
 ``--allow-cross-family-widening``
    Allow implicit widening between bit-string and integer type families.
