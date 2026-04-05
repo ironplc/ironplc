@@ -513,3 +513,57 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
+
+#[test]
+fn end_to_end_when_dword_hex_literal_near_max_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DWORD;
+  END_VAR
+  x := DWORD#16#FFFFFFFC;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // 0xFFFFFFFC = 4294967292, stored as i32 bit pattern = -4
+    assert_eq!(bufs.vars[0].as_i32(), -4);
+}
+
+#[test]
+fn end_to_end_when_dword_hex_literal_in_function_then_correct() {
+    let source = "
+FUNCTION MY_FUNC : DWORD
+VAR
+    mask : DWORD;
+END_VAR
+    mask := DWORD#16#FFFFFFFC;
+    MY_FUNC := mask;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    r : DWORD;
+  END_VAR
+  r := MY_FUNC();
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // 0xFFFFFFFC = 4294967292, stored as i32 bit pattern = -4
+    assert_eq!(bufs.vars[0].as_i32(), -4);
+}
+
+#[test]
+fn end_to_end_when_dword_hex_literal_eq_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    mask : DWORD;
+    b : BOOL;
+  END_VAR
+  mask := DWORD#16#FFFFFFFC;
+  b := mask = DWORD#16#FFFFFFFC;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
