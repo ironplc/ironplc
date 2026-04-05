@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 
 use assert_cmd::cargo;
 use assert_cmd::prelude::*;
-use ironplc_container::ContainerBuilder;
+use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
+use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use predicates::prelude::*;
 use std::process::Command;
 use tempfile::TempDir;
@@ -215,6 +216,87 @@ fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .success()
         .stdout(predicate::str::starts_with("ironplcvm version "));
+
+    Ok(())
+}
+
+/// Builds a container with debug info: two BOOL variables named Button and Buzzer.
+/// Program logic: Buzzer := NOT Button (Button defaults to 0/FALSE, so Buzzer = TRUE).
+fn write_doorbell_container(path: &Path) {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x10, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push Button)
+        0x57,                   // BOOL_NOT                 (NOT Button)
+        0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (Buzzer := result)
+        0xB5,                   // RET_VOID
+    ];
+
+    let container = ContainerBuilder::new()
+        .num_variables(2)
+        .add_function(FunctionId::new(0), &bytecode, 1, 2, 0)
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(0),
+            function_id: FunctionId::GLOBAL_SCOPE,
+            var_section: 0,
+            iec_type_tag: iec_type_tag::BOOL,
+            name: "Button".into(),
+            type_name: "BOOL".into(),
+        })
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(1),
+            function_id: FunctionId::GLOBAL_SCOPE,
+            var_section: 0,
+            iec_type_tag: iec_type_tag::BOOL,
+            name: "Buzzer".into(),
+            type_name: "BOOL".into(),
+        })
+        .build();
+
+    let mut buf = Vec::new();
+    container.write_to(&mut buf).unwrap();
+    std::fs::write(path, &buf).unwrap();
+}
+
+#[test]
+fn run_when_debug_info_and_dump_vars_then_shows_named_variables(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("doorbell.iplc");
+    let dump_path = dir.path().join("vars.txt");
+    write_doorbell_container(&container_path);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--dump-vars")
+        .arg(&dump_path)
+        .arg("--scans")
+        .arg("1");
+    cmd.assert().success();
+
+    let contents = std::fs::read_to_string(&dump_path)?;
+    assert_eq!(contents, "Button: FALSE\nBuzzer: TRUE\n");
+
+    Ok(())
+}
+
+#[test]
+fn run_when_dump_vars_without_path_then_prints_to_stdout(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("test.iplc");
+    write_steel_thread_container(&container_path);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--scans")
+        .arg("1")
+        .arg("--dump-vars");
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("var[0]: 10"))
+        .stdout(predicate::str::contains("var[1]: 42"));
 
     Ok(())
 }
