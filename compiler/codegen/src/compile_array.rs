@@ -228,6 +228,16 @@ fn resolve_struct_field_array<'ctx, 'ast>(
         )
     })?;
 
+    // If this field has a pre-registered STRING array helper, use that directly.
+    let field_name = structured.field.to_string().to_lowercase();
+    if struct_info.string_array_fields.contains_key(&field_name) {
+        let synthetic_key =
+            ironplc_dsl::core::Id::from(&format!("__str_arr_{}_{}", root_name, field_name));
+        if let Some(info) = ctx.array_vars.get(&synthetic_key) {
+            return Ok(ResolvedAccess::ArrayElement { info, subscripts });
+        }
+    }
+
     let element_op_type =
         crate::compile_struct::resolve_field_op_type(element_type).ok_or_else(|| {
             Diagnostic::problem(
@@ -250,6 +260,11 @@ fn resolve_struct_field_array<'ctx, 'ast>(
         element_op_type,
         element_type: element_type.as_ref().clone(),
     })
+}
+
+/// Public wrapper for `dimensions_from_intermediate` for use outside this module.
+pub(crate) fn dimensions_from_intermediate_pub(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
+    dimensions_from_intermediate(dims)
 }
 
 /// Converts `ArrayDimension` bounds into `DimensionInfo` with computed strides.
