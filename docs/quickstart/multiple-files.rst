@@ -21,11 +21,13 @@ First, edit :file:`main.st` so it contains **only** the program:
 
    PROGRAM main
       VAR
-         Button AT %IX1: BOOL;
-         Buzzer AT %QX1: BOOL;
+         Button : BOOL;
+         Buzzer : BOOL;
+         PulseTimer : TON;
       END_VAR
 
-      Buzzer := NOT Button;
+      PulseTimer(IN := NOT Button, PT := T#500ms);
+      Buzzer := PulseTimer.Q;
 
    END_PROGRAM
 
@@ -53,6 +55,20 @@ together, so it will still validate that the configuration references a
 valid program.
 
 --------------------------------------
+Compile with Multiple Files
+--------------------------------------
+
+When compiling multiple files, pass all of them to the compiler:
+
+.. code-block:: shell
+   :caption: Compile Multiple Files
+
+   ironplcc compile main.st config.st --output main.iplc
+
+The compiled output is the same — IronPLC merges all source files before
+compiling.
+
+--------------------------------------
 Why Split Files?
 --------------------------------------
 
@@ -73,6 +89,7 @@ Next Steps
 --------------------------------------
 
 You now have a complete, multi-file IEC 61131-3 application. In the final
-chapter, you will compile it into a bytecode container and run it.
+chapter, you will learn how to connect your program to physical hardware
+inputs and outputs.
 
 Continue to :doc:`compiling-and-running`.

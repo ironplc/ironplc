@@ -1,117 +1,61 @@
-================================
+========================
+How a PLC Program Works
+========================
+
+Before writing your first program, it helps to understand how a PLC
+application is structured. This chapter introduces the core idea that every
+PLC program is built around.
+
+--------------------------------------
 The Sense-Control-Actuate Cycle
-================================
-
-In the previous chapter, you wrote a program that increments a counter. That
-program works, but it does not interact with the outside world. In this
-chapter, you will connect your program to inputs and outputs using a doorbell
-example.
-
---------------------------------------
-The Idea
 --------------------------------------
 
-Controllers normally operate as part of a **sense-control-actuate** cycle:
+Controllers operate in a continuous **sense-control-actuate** cycle:
 
-1. **Sense** — read inputs from sensors.
+1. **Sense** — read inputs from sensors (buttons, temperature probes, etc.).
 2. **Control** — evaluate logic to decide what to do.
-3. **Actuate** — write outputs to actuators.
+3. **Actuate** — write outputs to actuators (buzzers, motors, valves, etc.).
 
-We'll illustrate this with a simple doorbell system. The system has a button
-(the sensor) and a buzzer (the actuator).
+The runtime repeats this cycle on a fixed schedule — for example, every
+100 milliseconds. Each repetition is called a **scan cycle**.
+
+--------------------------------------
+A Doorbell Example
+--------------------------------------
+
+A simple doorbell system illustrates the cycle. The system has a button
+(the sensor) and a buzzer (the actuator):
 
 .. figure:: button-buzzer.svg
    :width: 200
 
    Pressing the button triggers the buzzer.
 
-We want the buzzer to sound when the button is pressed. To do that, our
-program reads the button state and sets the buzzer accordingly.
+In each scan cycle, the PLC:
+
+1. **Senses** whether the button is pressed.
+2. **Controls** — decides the buzzer should sound when the button is pressed.
+3. **Actuates** — turns the buzzer on or off.
 
 .. note::
 
    A real doorbell does not need a PLC. This example is deliberately simple
-   to illustrate IEC 61131-3 concepts.
+   to illustrate how PLC programs work.
 
 --------------------------------------
-Add Variables for I/O
+What You Will Build
 --------------------------------------
 
-Open the :file:`main.st` file from the previous chapter and replace its
-contents with:
+In this tutorial, you will write a doorbell program and progressively
+enhance it:
 
-.. code-block::
-   :caption: Doorbell Program
-   :name: doorbell
+- Write the control logic in **Structured Text**, the programming language
+  defined by IEC 61131-3.
+- **Compile** it into bytecode using the IronPLC compiler.
+- **Run** it in the IronPLC virtual machine and inspect the results.
+- **Configure** the application with a task schedule.
+- **Connect** it to hardware inputs and outputs.
 
-   PROGRAM main
-      VAR
-         Button AT %IX1: BOOL;
-         Buzzer AT %QX1: BOOL;
-      END_VAR
+Let's start writing code.
 
-      Buzzer := NOT Button;
-
-   END_PROGRAM
-
-Save the file. The IronPLC extension checks the file automatically — you
-should see no errors.
-
---------------------------------------
-What Changed
---------------------------------------
-
-We replaced the counter with two new variables:
-
-- ``Button AT %IX1 : BOOL`` — a Boolean **input** variable. The :code:`AT`
-  keyword followed by ``%IX1`` maps this variable to a physical input
-  address. The ``I`` means input, ``X`` means single bit, and ``1`` is the
-  address number.
-
-- ``Buzzer AT %QX1 : BOOL`` — a Boolean **output** variable. The ``Q``
-  means output.
-
-These are called **directly represented variables** because they are tied
-to specific hardware I/O points. On a real PLC, ``%IX1`` would correspond
-to a digital input pin (the button) and ``%QX1`` to a digital output pin
-(the buzzer).
-
-The statement ``Buzzer := NOT Button;`` assigns the logical inverse of
-the button state to the buzzer. When the button is pressed (FALSE in this
-wiring), the buzzer turns on (TRUE).
-
-.. tip::
-
-   You can experiment with the boolean logic in the playground — a
-   simplified version without hardware addresses. The playground does
-   not support directly represented variables (``AT %IX1``), but it is a
-   quick way to try the logic.
-
-   .. playground-link::
-      :text: Open in Playground
-
-      PROGRAM main
-         VAR
-            Button : BOOL;
-            Buzzer : BOOL;
-         END_VAR
-
-         Buzzer := NOT Button;
-
-      END_PROGRAM
-
-.. tip::
-
-   For a complete explanation of the addressing format (``%IX``, ``%QX``,
-   ``%MW``, etc.), see :doc:`/explanation/variables-and-io`.
-
---------------------------------------
-Next Steps
---------------------------------------
-
-You now have a program with inputs and outputs, but it is not yet a
-complete IEC 61131-3 application. We need to tell the runtime *how often*
-to run this program and *where* to run it. That's what configurations,
-resources, and tasks are for.
-
-Continue to :doc:`configuring`.
+Continue to :doc:`helloworld`.

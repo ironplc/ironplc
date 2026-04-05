@@ -75,4 +75,13 @@ Follow the steps below to install IronPLC.
    The weekly builds do include a homebrew tap for Linux but the tap is not
    tested other than to validate that it compiles.
 
+--------------------------------------
+Next Steps
+--------------------------------------
+
+You are ready to start programming. In the next chapter, you will learn how
+PLC programs work before writing your first one.
+
+Continue to :doc:`sense-control-actuate`.
+
 .. _IronPLC GitHub releases: https://github.com/ironplc/ironplc/releases/

@@ -1,27 +1,27 @@
-=============
-Hello, World!
-=============
+==================
+Your First Program
+==================
 
-Now that you've installed IronPLC, it's time to write your first program.
-
-In most programming languages, "Hello, World" prints text to the screen.
-IEC 61131-3 is designed for real-time automation controllers that often do
-not have a display, so our "Hello, World" will look a little different. In
-this chapter, we write the simplest possible program and use IronPLC to
-check it for correctness.
+Now it's time to write, compile, and run your first IEC 61131-3 program.
+By the end of this chapter, you will have a working doorbell program running
+in the IronPLC virtual machine.
 
 --------------------------------------
 Create a Project Directory
 --------------------------------------
 
-In a Terminal, create a new folder and open it in your development environment:
+Open a terminal and create a new folder for your project:
 
 .. code-block:: shell
    :caption: Create Project Directory
-   :name: newhelloworld
 
-   mkdir helloworld
-   cd helloworld
+   mkdir doorbell
+   cd doorbell
+
+Then open the folder in your development environment:
+
+.. code-block:: shell
+
    code .
 
 .. tip::
@@ -29,7 +29,7 @@ In a Terminal, create a new folder and open it in your development environment:
    If you are using Cursor, use ``cursor .`` instead of ``code .``.
 
 --------------------------------------
-Write Your First Program
+Write the Program
 --------------------------------------
 
 In your development environment:
@@ -39,22 +39,23 @@ In your development environment:
 #. Enter the following code into the :guilabel:`Editor`:
 
    .. code-block::
-      :caption: Hello World
-      :name: helloworld
+      :caption: main.st — Doorbell Program
+      :name: doorbell-program
 
       PROGRAM main
          VAR
-            Counter : INT := 0;
+            Button : BOOL;
+            Buzzer : BOOL;
          END_VAR
 
-         Counter := Counter + 1;
+         Buzzer := NOT Button;
 
       END_PROGRAM
 
 #. Save the file with the name :file:`main.st`.
 
-That's it — you have written a valid IEC 61131-3 program. If the IronPLC
-extension is installed, you should see no errors highlighted in the editor.
+If the IronPLC extension is installed, you should see no errors highlighted
+in the editor.
 
 --------------------------------------
 What This Program Does
@@ -66,45 +67,88 @@ Let's break it down:
   ``main``. A program is the basic unit of control logic in IEC 61131-3,
   similar to a ``main`` function in other languages.
 
-- :code:`VAR` ... :code:`END_VAR` declares a **variable** named ``Counter``
-  of type :code:`INT` (a 16-bit signed integer), initialized to 0.
+- :code:`VAR` ... :code:`END_VAR` declares two **variables** of type
+  :code:`BOOL`. ``Button`` represents the sensor input and ``Buzzer``
+  represents the actuator output.
 
-- ``Counter := Counter + 1;`` is an **assignment statement**. The ``:=``
+- ``Buzzer := NOT Button;`` is an **assignment statement**. The ``:=``
   operator assigns the value on the right to the variable on the left.
+  When ``Button`` is ``FALSE`` (not pressed), ``Buzzer`` is ``TRUE``
+  (sounding).
 
-This program increments a counter by one each time it runs. On a real PLC,
-this would happen on every scan cycle — but we have not configured that yet.
-We will add that in :doc:`configuring`.
+--------------------------------------
+Open a Terminal
+--------------------------------------
 
-.. tip::
+The next steps use the IronPLC command line tools. Open a terminal inside
+your development environment:
 
-   Want to see this program run? Click Start to watch ``Counter`` increment
-   on every scan cycle — no installation needed. The playground runs a
-   subset of what IronPLC supports; for the full experience, continue with
-   the tutorial.
+- In Visual Studio Code or Cursor, select
+  :menuselection:`Terminal --> New Terminal` from the main menu.
 
-   .. playground-link::
-      :text: Open in Playground
+The terminal should open in your :file:`doorbell` project directory.
 
-      PROGRAM main
-         VAR
-            Counter : INT := 0;
-         END_VAR
+--------------------------------------
+Check the Program
+--------------------------------------
 
-         Counter := Counter + 1;
+Run the following command to check your program for errors:
 
-      END_PROGRAM
+.. code-block:: shell
+   :caption: Check Syntax
 
-.. tip::
+   ironplcc check main.st
 
-   For a deeper look at Structured Text syntax, see
-   :doc:`/explanation/structured-text-basics`.
+On success, the command produces no output. If there are errors, IronPLC
+prints diagnostics with the file name, line number, and a description of
+the problem.
+
+.. include:: ../includes/requires-compiler.rst
+
+--------------------------------------
+Compile the Program
+--------------------------------------
+
+Compile your program into a bytecode container:
+
+.. code-block:: shell
+   :caption: Compile to Bytecode
+
+   ironplcc compile main.st --output main.iplc
+
+On success, the command creates the :file:`main.iplc` file. This file
+contains the compiled bytecode that the IronPLC virtual machine can execute.
+
+--------------------------------------
+Run the Program
+--------------------------------------
+
+Run the compiled program in the IronPLC virtual machine:
+
+.. code-block:: shell
+   :caption: Run and Inspect Variables
+
+   ironplcvm run main.iplc --scans 1 --dump-vars
+
+The ``--scans 1`` flag runs one scan cycle, and ``--dump-vars`` prints the
+value of every variable after execution. You should see output like:
+
+.. code-block:: text
+
+   Button: FALSE
+   Buzzer: TRUE
+
+``Button`` starts as ``FALSE`` (the default for :code:`BOOL`), so
+``NOT Button`` evaluates to ``TRUE``, and the buzzer sounds. This is
+exactly the sense-control-actuate cycle in action — even though there is
+no physical hardware connected yet.
 
 --------------------------------------
 Next Steps
 --------------------------------------
 
-In the next chapter, we will make the program more interesting by connecting
-it to inputs and outputs using a doorbell example.
+You now have a working program, but it runs only once and exits. In the
+next chapter, you will configure the application to run on a repeating
+schedule and add a timer to make the buzzer pulse automatically.
 
-Continue to :doc:`sense-control-actuate`.
+Continue to :doc:`configuring`.
