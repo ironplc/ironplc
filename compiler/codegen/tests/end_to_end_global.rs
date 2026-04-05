@@ -410,3 +410,43 @@ END_PROGRAM
     assert_eq!(bufs.vars[2].as_i32(), 5);
     assert_eq!(bufs.vars[3].as_i32(), 50);
 }
+
+#[test]
+fn end_to_end_when_global_struct_field_used_as_condition_then_branch_works() {
+    let source = "
+TYPE SETUP_DATA :
+STRUCT
+    FLAG : BOOL;
+END_STRUCT
+END_TYPE
+
+VAR_GLOBAL
+    setup : SETUP_DATA;
+END_VAR
+
+FUNCTION USE_GLOBAL_STRUCT : DINT
+VAR_INPUT
+    x : DINT;
+END_VAR
+    IF setup.FLAG THEN
+        USE_GLOBAL_STRUCT := x;
+    ELSE
+        USE_GLOBAL_STRUCT := 0;
+    END_IF;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+END_VAR
+    setup.FLAG := TRUE;
+    result := USE_GLOBAL_STRUCT(x := 42);
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: setup (global struct), var 3: result (program local)
+    // setup.FLAG is set to TRUE, so the IF branch returns x=42
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[3].as_i32(), 42);
+}
