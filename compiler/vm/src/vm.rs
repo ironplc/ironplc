@@ -845,6 +845,33 @@ fn execute(
                             .unwrap_or(0.0);
                         stack.push(Slot::from_f32(result))?;
                     }
+                    opcode::builtin::CMP_STR => {
+                        let right_offset = stack.pop()?.as_i32() as usize;
+                        let left_offset = stack.pop()?.as_i32() as usize;
+
+                        if left_offset + STRING_HEADER_BYTES > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(left_offset as u32));
+                        }
+                        let left_len =
+                            string_ops::str_read_cur_len(data_region, left_offset) as usize;
+                        let left_start = left_offset + STRING_HEADER_BYTES;
+                        let left_data = &data_region[left_start..left_start + left_len];
+
+                        if right_offset + STRING_HEADER_BYTES > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(right_offset as u32));
+                        }
+                        let right_len =
+                            string_ops::str_read_cur_len(data_region, right_offset) as usize;
+                        let right_start = right_offset + STRING_HEADER_BYTES;
+                        let right_data = &data_region[right_start..right_start + right_len];
+
+                        let cmp_val = match left_data.cmp(right_data) {
+                            core::cmp::Ordering::Less => -1i32,
+                            core::cmp::Ordering::Equal => 0i32,
+                            core::cmp::Ordering::Greater => 1i32,
+                        };
+                        stack.push(Slot::from_i32(cmp_val))?;
+                    }
                     _ => builtin::dispatch(func_id, stack)?,
                 }
             }
