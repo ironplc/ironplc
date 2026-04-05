@@ -1127,6 +1127,14 @@ impl CompileContext {
         self.loop_exit_labels.last().copied()
     }
 
+    /// Allocates an auxiliary variable with a synthetic name.
+    /// Returns the assigned `VarIndex`.
+    pub(crate) fn alloc_aux_variable(&mut self, name: Id) -> VarIndex {
+        let index = VarIndex::new(self.variables.len() as u16);
+        self.variables.insert(name, index);
+        index
+    }
+
     /// Looks up a variable index by identifier, using the provided span for error reporting.
     fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
         self.variables.get(name).copied().ok_or_else(|| {
@@ -1526,6 +1534,33 @@ fn emit_initial_values(
                             &fields,
                             &[],
                         )?;
+                        // Initialize helper variables for ARRAY OF STRING
+                        // fields: store base byte offset and init headers.
+                        let str_arr_fields: Vec<_> = ctx
+                            .struct_vars
+                            .get(id)
+                            .map(|si| {
+                                si.string_array_fields
+                                    .iter()
+                                    .filter_map(|(name, info)| {
+                                        si.field_index.get(name).map(|&idx| {
+                                            let slot_off = si.fields[idx].slot_offset.raw();
+                                            (
+                                                info.var_index,
+                                                info.desc_index,
+                                                data_offset + slot_off * 8,
+                                            )
+                                        })
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        for (helper_var, helper_desc, base_byte_offset) in str_arr_fields {
+                            let c = ctx.add_i32_constant(base_byte_offset as i32);
+                            emitter.emit_load_const_i32(c);
+                            emitter.emit_store_var_i32(helper_var);
+                            emitter.emit_str_init_array(helper_var, helper_desc);
+                        }
                     } else if let Some(constant) = &simple.initial_value {
                         let var_index = ctx.var_index(id)?;
                         let type_info = ctx.var_type_info(id);
@@ -4139,13 +4174,33 @@ fn resolve_string_arg(
 ) -> Result<u32, Diagnostic> {
     match &arg.kind {
         ExprKind::Variable(variable) => {
-            let var_name = resolve_variable_name(variable)
+            // Fast path: simple named variable found in string_vars.
+            if let Some(var_name) = resolve_variable_name(variable) {
+                if let Some(info) = ctx.string_vars.get(var_name) {
+                    return Ok(info.data_offset);
+                }
+            }
+            // Complex variable (e.g., struct field array subscript): fall
+            // through to the general expression path below.
+            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
+            let data_offset = ctx.data_region_offset;
+            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+            ctx.data_region_offset = ctx
+                .data_region_offset
+                .checked_add(total_bytes)
                 .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-            let info = ctx
-                .string_vars
-                .get(var_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-            Ok(info.data_offset)
+
+            if max_length > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_length;
+            }
+
+            emitter.emit_str_init(data_offset, max_length);
+
+            let op_type = DEFAULT_OP_TYPE;
+            compile_expr(emitter, ctx, arg, op_type)?;
+            emitter.emit_str_store_var(data_offset);
+
+            Ok(data_offset)
         }
         ExprKind::Const(ConstantKind::CharacterString(lit)) => {
             // Allocate space in the data region for this string literal.

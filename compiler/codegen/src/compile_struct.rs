@@ -42,6 +42,17 @@ pub(crate) struct StructVarInfo {
     pub fields: Vec<StructFieldInfo>,
     /// Maps field name (lowercase) to index in `fields` Vec for O(1) lookup.
     pub field_index: HashMap<String, usize>,
+    /// Maps field name (lowercase) to string-array helper metadata.
+    pub string_array_fields: HashMap<String, StructStringArrayFieldInfo>,
+}
+
+/// Metadata for a STRING array field inside a structure.
+#[allow(dead_code)]
+pub(crate) struct StructStringArrayFieldInfo {
+    pub var_index: VarIndex,
+    pub desc_index: u16,
+    pub max_str_len: u16,
+    pub total_elements: u32,
 }
 
 /// Metadata for a single structure field.
@@ -509,8 +520,30 @@ pub(crate) fn initialize_struct_fields(
                 let byte_offset = struct_data_offset + slot_idx.raw() * 8;
                 emitter.emit_str_init(byte_offset, max_length);
             }
+        } else if let IntermediateType::Array {
+            element_type,
+            dimensions: array_dims,
+        } = &field_info.field_type
+        {
+            // ARRAY OF STRING field — initialize string headers for each element.
+            if matches!(element_type.as_ref(), IntermediateType::String { .. }) {
+                let max_str_len = match element_type.as_ref() {
+                    IntermediateType::String { max_len } => max_len
+                        .map(|v| v as u16)
+                        .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16),
+                    _ => super::compile::DEFAULT_STRING_MAX_LENGTH_U16,
+                };
+                let dim_infos = crate::compile_array::dimensions_from_intermediate_pub(array_dims);
+                let total_elements: u32 = dim_infos.iter().map(|d| d.size).product();
+                let element_stride = super::compile::STRING_HEADER_BYTES_U32 + max_str_len as u32;
+                let base_byte_offset = struct_data_offset + slot_idx.raw() * 8;
+                for i in 0..total_elements {
+                    let elem_offset = base_byte_offset + i * element_stride;
+                    emitter.emit_str_init(elem_offset, max_str_len);
+                }
+            }
         }
-        // else: array field — not yet supported
+        // else: other array field — not yet supported
     }
     Ok(())
 }
@@ -603,6 +636,72 @@ pub(crate) fn allocate_struct_variable(
         }
     }
 
+    // Detect ARRAY OF STRING fields and register helper variables + descriptors.
+    let mut string_array_fields: HashMap<String, StructStringArrayFieldInfo> = HashMap::new();
+    for f in &fields_vec {
+        if let IntermediateType::Array {
+            element_type,
+            dimensions: array_dims,
+        } = &f.field_type
+        {
+            if matches!(element_type.as_ref(), IntermediateType::String { .. }) {
+                let max_str_len = match element_type.as_ref() {
+                    IntermediateType::String { max_len } => max_len
+                        .map(|v| v as u16)
+                        .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16),
+                    _ => super::compile::DEFAULT_STRING_MAX_LENGTH_U16,
+                };
+
+                if max_str_len > ctx.max_string_capacity {
+                    ctx.max_string_capacity = max_str_len;
+                }
+
+                let dim_infos = crate::compile_array::dimensions_from_intermediate_pub(array_dims);
+                let total_elements: u32 = dim_infos.iter().map(|d| d.size).product();
+
+                let synthetic_name =
+                    ironplc_dsl::core::Id::from(&format!("__str_arr_{}_{}", id, f.name));
+                let helper_var = ctx.alloc_aux_variable(synthetic_name.clone());
+
+                let helper_desc = builder.add_array_descriptor(
+                    ironplc_container::FieldType::String as u8,
+                    total_elements,
+                    max_str_len,
+                );
+
+                // Pre-register ArrayVarInfo so resolve_access can find it.
+                let element_vti = super::compile::VarTypeInfo {
+                    op_width: super::compile::OpWidth::W32,
+                    signedness: super::compile::Signedness::Unsigned,
+                    storage_bits: 0,
+                };
+                ctx.array_vars.insert(
+                    synthetic_name.clone(),
+                    crate::compile_array::ArrayVarInfo {
+                        var_index: helper_var,
+                        desc_index: helper_desc,
+                        data_offset: 0, // filled at init time
+                        element_var_type_info: element_vti,
+                        total_elements,
+                        dimensions: dim_infos,
+                        is_string_element: true,
+                        string_max_len: max_str_len,
+                    },
+                );
+
+                string_array_fields.insert(
+                    f.name.clone(),
+                    StructStringArrayFieldInfo {
+                        var_index: helper_var,
+                        desc_index: helper_desc,
+                        max_str_len,
+                        total_elements,
+                    },
+                );
+            }
+        }
+    }
+
     // Store metadata
     ctx.struct_vars.insert(
         id.clone(),
@@ -613,6 +712,7 @@ pub(crate) fn allocate_struct_variable(
             desc_index,
             fields: fields_vec,
             field_index,
+            string_array_fields,
         },
     );
     Ok(())
