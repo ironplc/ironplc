@@ -378,6 +378,7 @@ fn compile_program_with_functions(
             fb_func_id,
             var_offset.raw(),
             &mut ctx,
+            &mut builder,
             types,
             num_globals,
         )?;
@@ -923,6 +924,7 @@ fn compile_user_function_block(
     function_id: u16,
     var_offset: u16,
     ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
     _types: &TypeEnvironment,
     num_globals: u16,
 ) -> Result<CompiledFunction, Diagnostic> {
@@ -952,6 +954,7 @@ fn compile_user_function_block(
     let saved_var_types = std::mem::take(&mut ctx.var_types);
     let saved_string_vars = std::mem::take(&mut ctx.string_vars);
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
+    let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
     let saved_fb_instances = std::mem::take(&mut ctx.fb_instances);
 
     // Re-insert global variable mappings so the FB body can access them.
@@ -976,16 +979,71 @@ fn compile_user_function_block(
             ctx.string_vars.insert(id.clone(), info.clone());
         }
     }
+    for (id, info) in &saved_struct_vars {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.struct_vars.insert(id.clone(), info.clone());
+        }
+    }
 
     // Assign variable slots for all FB fields, in the same order as field_decls.
     let mut current_index = VarIndex::new(var_offset);
     for decl in &field_decls {
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
-            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                if let Some(vti) = resolve_type_name(&simple.type_name.name) {
-                    ctx.var_types.insert(id.clone(), vti);
+            match &decl.initializer {
+                InitialValueAssignmentKind::Simple(simple) => {
+                    if let Some(vti) = resolve_type_name(&simple.type_name.name) {
+                        ctx.var_types.insert(id.clone(), vti);
+                    }
                 }
+                InitialValueAssignmentKind::Reference(ref_init) => {
+                    ctx.var_types.insert(
+                        id.clone(),
+                        VarTypeInfo {
+                            op_width: OpWidth::W64,
+                            signedness: Signedness::Unsigned,
+                            storage_bits: 64,
+                        },
+                    );
+                    crate::compile_array::register_ref_to_array_metadata(
+                        ctx,
+                        builder,
+                        id,
+                        current_index,
+                        ref_init,
+                    )?;
+                }
+                InitialValueAssignmentKind::String(string_init) => {
+                    let max_length = resolve_string_max_length(string_init)?;
+
+                    let data_offset = ctx.data_region_offset;
+                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+                    ctx.data_region_offset = ctx
+                        .data_region_offset
+                        .checked_add(total_bytes)
+                        .ok_or_else(|| {
+                            Diagnostic::problem(
+                                Problem::NotImplemented,
+                                Label::span(string_init.span(), "Data region overflow"),
+                            )
+                        })?;
+
+                    if max_length > ctx.max_string_capacity {
+                        ctx.max_string_capacity = max_length;
+                    }
+
+                    ctx.string_vars.insert(
+                        id.clone(),
+                        StringVarInfo {
+                            data_offset,
+                            max_length,
+                        },
+                    );
+                }
+                _ => {}
             }
             current_index = VarIndex::new(current_index.raw() + 1);
         }
@@ -1006,6 +1064,7 @@ fn compile_user_function_block(
     ctx.var_types = saved_var_types;
     ctx.string_vars = saved_string_vars;
     ctx.array_vars = saved_array_vars;
+    ctx.struct_vars = saved_struct_vars;
     ctx.fb_instances = saved_fb_instances;
 
     Ok(CompiledFunction {
