@@ -155,7 +155,14 @@ function registerRunSupport(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('ironplc.runProgram', async () => {
       if (!client) {
-        vscode.window.showErrorMessage('IronPLC compiler is not available. Install the compiler to run programs.');
+        vscode.window.showErrorMessage(
+          formatProblem(ProblemCode.NoCompiler, 'Install the compiler to run programs.'),
+          'Open Online Help',
+        ).then((selection) => {
+          if (selection === 'Open Online Help') {
+            openProblemInBrowser(ProblemCode.NoCompiler);
+          }
+        });
         return;
       }
 
