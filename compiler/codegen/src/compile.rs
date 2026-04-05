@@ -56,11 +56,11 @@ use ironplc_dsl::common::{
     VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
-use ironplc_dsl::core::{FileId, Id, Located};
+use ironplc_dsl::core::{FileId, Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    BitAccessVariable, CaseSelectionKind, CompareOp, Expr, ExprKind, FbCall, Function, Operator,
-    ParamAssignmentKind, Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
+    BitAccessVariable, CaseSelectionKind, CompareExpr, CompareOp, Expr, ExprKind, FbCall, Function,
+    Operator, ParamAssignmentKind, Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -2246,6 +2246,14 @@ fn concrete_op_type_from_expr(expr: &Expr) -> Option<OpType> {
     Some((info.op_width, info.signedness))
 }
 
+/// Returns `true` if the expression's resolved type is STRING.
+fn expr_is_string(expr: &Expr) -> bool {
+    expr.resolved_type
+        .as_ref()
+        .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())
+        .is_some_and(|e| matches!(e, ElementaryTypeName::STRING))
+}
+
 /// Returns the storage bit width from an expression's resolved type annotation.
 ///
 /// The analyzer must have populated `expr.resolved_type`. A missing or
@@ -3314,6 +3322,12 @@ pub(crate) fn compile_expr(
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
         ExprKind::Compare(compare) => {
+            // String comparisons need a completely different code path because
+            // strings live in the data region, not on the operand stack.
+            if expr_is_string(&compare.left) {
+                return compile_string_compare(emitter, ctx, compare);
+            }
+
             // A comparison's result is BOOL, but its operands may be a different
             // type (e.g. REAL for `in < 0.0`). Derive the operand type from a
             // concrete (non-generic) resolved type, preferring the left operand.
@@ -4251,6 +4265,44 @@ fn compile_len(
         .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
 
     emitter.emit_len_str(info.data_offset);
+    Ok(())
+}
+
+/// Compiles a string comparison expression.
+///
+/// Emits a `CMP_STR` builtin call (three-way comparison returning -1/0/+1),
+/// followed by an integer comparison against zero to produce the boolean result.
+fn compile_string_compare(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    compare: &CompareExpr,
+) -> Result<(), Diagnostic> {
+    let span = SourceSpan::default();
+    let left_offset = resolve_string_arg(emitter, ctx, &compare.left, &span)?;
+    let right_offset = resolve_string_arg(emitter, ctx, &compare.right, &span)?;
+
+    // Push data_offsets as stack values.
+    let left_pool = ctx.add_i32_constant(left_offset as i32);
+    emitter.emit_load_const_i32(left_pool);
+    let right_pool = ctx.add_i32_constant(right_offset as i32);
+    emitter.emit_load_const_i32(right_pool);
+
+    emitter.emit_builtin(opcode::builtin::CMP_STR);
+
+    let zero_idx = ctx.add_i32_constant(0);
+    emitter.emit_load_const_i32(zero_idx);
+
+    match compare.op {
+        CompareOp::Eq => emitter.emit_eq_i32(),
+        CompareOp::Ne => emitter.emit_ne_i32(),
+        CompareOp::Lt => emitter.emit_lt_i32(),
+        CompareOp::Gt => emitter.emit_gt_i32(),
+        CompareOp::LtEq => emitter.emit_le_i32(),
+        CompareOp::GtEq => emitter.emit_ge_i32(),
+        _ => {
+            return Err(Diagnostic::todo_with_span(span, file!(), line!()));
+        }
+    }
     Ok(())
 }
 
