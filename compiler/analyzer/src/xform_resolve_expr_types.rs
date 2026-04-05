@@ -218,7 +218,22 @@ impl ExprTypeResolver<'_> {
                 }
             }
             ExprKind::UnaryOp(op) => op.term.resolved_type.clone(),
-            ExprKind::Compare(_) => Some(TypeName::from("BOOL")),
+            ExprKind::Compare(compare) => match compare.op {
+                CompareOp::And | CompareOp::Or | CompareOp::Xor => {
+                    // Bitwise/logical operators preserve operand type.
+                    // When one operand is generic (e.g. ANY_INT literal)
+                    // and the other is concrete (e.g. DWORD variable), use
+                    // the concrete type.
+                    match (&compare.left.resolved_type, &compare.right.resolved_type) {
+                        (Some(l), Some(r)) if is_generic_type(l) && !is_generic_type(r) => {
+                            Some(r.clone())
+                        }
+                        (Some(l), _) => Some(l.clone()),
+                        (_, r) => r.clone(),
+                    }
+                }
+                _ => Some(TypeName::from("BOOL")),
+            },
             ExprKind::Function(f) => {
                 let sig = self.function_environment.get(&f.name)?;
                 let return_type = sig.return_type.as_ref()?.to_type_name();
