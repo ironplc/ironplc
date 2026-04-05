@@ -511,7 +511,7 @@ pub(crate) fn register_array_variable(
             storage_bits: 0,
         }
     } else {
-        super::compile::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
+        super::compile_setup::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::NotImplemented,
                 Label::span(span.clone(), "Unsupported array element type"),
@@ -651,11 +651,13 @@ pub(crate) fn register_ref_to_array_metadata(
                 storage_bits: 64,
             }
         } else {
-            super::compile::resolve_type_name(&spec.element_type_name).unwrap_or(VarTypeInfo {
-                op_width: OpWidth::W32,
-                signedness: Signedness::Unsigned,
-                storage_bits: 32,
-            })
+            super::compile_setup::resolve_type_name(&spec.element_type_name).unwrap_or(
+                VarTypeInfo {
+                    op_width: OpWidth::W32,
+                    signedness: Signedness::Unsigned,
+                    storage_bits: 32,
+                },
+            )
         };
         let element_type_byte = var_type_info_to_type_byte(&element_vti);
         let mut dimensions = Vec::new();

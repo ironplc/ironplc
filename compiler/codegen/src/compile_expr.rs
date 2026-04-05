@@ -15,10 +15,9 @@ use ironplc_dsl::textual::{
 };
 use ironplc_problems::Problem;
 
-use super::compile::{
-    resolve_type_name, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_OP_TYPE,
-};
+use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_OP_TYPE};
 use super::compile_call::compile_function_call;
+use super::compile_setup::resolve_type_name;
 use super::compile_string::compile_string_compare;
 use crate::emit::Emitter;
 

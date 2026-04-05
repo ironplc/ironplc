@@ -4,15 +4,16 @@
 //! builtin lookup, type conversions, time functions, and shift/rotate operations.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
+use std::collections::HashMap;
+
 use ironplc_container::opcode;
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{
     Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind, Variable,
 };
 
 use super::compile::{
-    compile_string_conversion, parse_string_conversion, parse_type_conversion, resolve_type_name,
     CompileContext, OpType, OpWidth, Signedness, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
 };
 use super::compile_expr::{
@@ -20,6 +21,7 @@ use super::compile_expr::{
     emit_mod, emit_mul, emit_ne, emit_or, emit_sub, emit_truncation, emit_xor, op_type,
     op_type_from_expr, storage_bits,
 };
+use super::compile_setup::resolve_type_name;
 use super::compile_string::{
     compile_concat, compile_delete, compile_find, compile_insert, compile_left, compile_len,
     compile_mid, compile_replace, compile_right, resolve_string_arg,
@@ -1167,4 +1169,208 @@ fn compile_shift_rotate(
 
     emitter.emit_builtin(func_id);
     Ok(())
+}
+
+// --- FB type helpers and string conversion (moved from compile.rs) ---
+
+/// Resolves a standard FB type name to its (type_id, total_num_fields, field_name->index map).
+/// Returns None for unknown FB types.
+pub(crate) fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String, u8>)> {
+    match name {
+        "TON" => Some((opcode::fb_type::TON, 6, timer_fb_fields())),
+        "TOF" => Some((opcode::fb_type::TOF, 6, timer_fb_fields())),
+        "TP" => Some((opcode::fb_type::TP, 6, timer_fb_fields())),
+        "CTU" | "CTU_INT" | "CTU_DINT" | "CTU_LINT" | "CTU_UDINT" | "CTU_ULINT" => {
+            Some((opcode::fb_type::CTU, 6, ctu_fb_fields()))
+        }
+        "CTD" | "CTD_INT" | "CTD_DINT" | "CTD_LINT" | "CTD_UDINT" | "CTD_ULINT" => {
+            Some((opcode::fb_type::CTD, 6, ctd_fb_fields()))
+        }
+        "CTUD" | "CTUD_INT" | "CTUD_DINT" | "CTUD_LINT" | "CTUD_UDINT" | "CTUD_ULINT" => {
+            Some((opcode::fb_type::CTUD, 10, ctud_fb_fields()))
+        }
+        "SR" => Some((opcode::fb_type::SR, 3, sr_fb_fields())),
+        "RS" => Some((opcode::fb_type::RS, 3, rs_fb_fields())),
+        "R_TRIG" => Some((opcode::fb_type::R_TRIG, 3, edge_trig_fb_fields())),
+        "F_TRIG" => Some((opcode::fb_type::F_TRIG, 3, edge_trig_fb_fields())),
+        _ => None,
+    }
+}
+
+/// Returns the shared field map for timer FBs (TON, TOF, TP).
+/// Fields 4-5 are hidden (start_time, running) and not included.
+fn timer_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("in".to_string(), 0);
+    fields.insert("pt".to_string(), 1);
+    fields.insert("q".to_string(), 2);
+    fields.insert("et".to_string(), 3);
+    fields
+}
+
+/// Returns the field map for CTU (count up) FBs.
+/// Field 5 is hidden (prev_cu) and not included.
+fn ctu_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("cu".to_string(), 0);
+    fields.insert("r".to_string(), 1);
+    fields.insert("pv".to_string(), 2);
+    fields.insert("q".to_string(), 3);
+    fields.insert("cv".to_string(), 4);
+    fields
+}
+
+/// Returns the field map for CTD (count down) FBs.
+/// Field 5 is hidden (prev_cd) and not included.
+fn ctd_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("cd".to_string(), 0);
+    fields.insert("ld".to_string(), 1);
+    fields.insert("pv".to_string(), 2);
+    fields.insert("q".to_string(), 3);
+    fields.insert("cv".to_string(), 4);
+    fields
+}
+
+/// Returns the field map for CTUD (count up/down) FBs.
+/// Fields 8-9 are hidden (prev_cu, prev_cd) and not included.
+fn ctud_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("cu".to_string(), 0);
+    fields.insert("cd".to_string(), 1);
+    fields.insert("r".to_string(), 2);
+    fields.insert("ld".to_string(), 3);
+    fields.insert("pv".to_string(), 4);
+    fields.insert("qu".to_string(), 5);
+    fields.insert("qd".to_string(), 6);
+    fields.insert("cv".to_string(), 7);
+    fields
+}
+
+/// Returns the field map for SR (set-reset) FBs.
+fn sr_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("s1".to_string(), 0);
+    fields.insert("r".to_string(), 1);
+    fields.insert("q1".to_string(), 2);
+    fields
+}
+
+/// Returns the field map for RS (reset-set) FBs.
+fn rs_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("s".to_string(), 0);
+    fields.insert("r1".to_string(), 1);
+    fields.insert("q1".to_string(), 2);
+    fields
+}
+
+/// Returns the field map for edge trigger FBs (R_TRIG, F_TRIG).
+/// Field 2 is hidden (M / previous CLK) and not included.
+fn edge_trig_fb_fields() -> HashMap<String, u8> {
+    let mut fields = HashMap::new();
+    fields.insert("clk".to_string(), 0);
+    fields.insert("q".to_string(), 1);
+    fields
+}
+
+/// Checks if a function name is a type conversion (e.g., "int_to_real").
+pub(crate) fn parse_type_conversion(name: &str) -> Option<(VarTypeInfo, VarTypeInfo)> {
+    let upper = name.to_uppercase();
+    let parts: Vec<&str> = upper.splitn(2, "_TO_").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let source = resolve_type_name(&Id::from(parts[0]))?;
+    let target = resolve_type_name(&Id::from(parts[1]))?;
+    Some((source, target))
+}
+
+/// Describes a string ↔ numeric conversion direction.
+pub(crate) enum StringConversion {
+    /// Numeric → STRING (e.g., INT_TO_STRING, DWORD_TO_STRING).
+    NumToString { source: VarTypeInfo },
+    /// STRING → Numeric (e.g., STRING_TO_INT, STRING_TO_REAL).
+    StringToNum { target: VarTypeInfo },
+}
+
+/// Checks if a function name is a string conversion (e.g., "int_to_string").
+///
+/// Returns `Some(StringConversion)` if the name matches `*_TO_STRING` or
+/// `STRING_TO_*` and the non-string part is a recognized type name.
+pub(crate) fn parse_string_conversion(name: &str) -> Option<StringConversion> {
+    let upper = name.to_uppercase();
+    let parts: Vec<&str> = upper.splitn(2, "_TO_").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    if parts[1] == "STRING" {
+        let source = resolve_type_name(&Id::from(parts[0]))?;
+        Some(StringConversion::NumToString { source })
+    } else if parts[0] == "STRING" {
+        let target = resolve_type_name(&Id::from(parts[1]))?;
+        Some(StringConversion::StringToNum { target })
+    } else {
+        None
+    }
+}
+
+/// Compiles a string ↔ numeric conversion function call.
+pub(crate) fn compile_string_conversion(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    conv: StringConversion,
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+    if args.len() != 1 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    match conv {
+        StringConversion::NumToString { source } => {
+            let source_op_type: OpType = (source.op_width, source.signedness);
+            compile_expr(emitter, ctx, args[0], source_op_type)?;
+
+            let func_id = match (source.op_width, source.signedness) {
+                (OpWidth::W32, Signedness::Signed) => opcode::builtin::CONV_I32_TO_STR,
+                (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::CONV_U32_TO_STR,
+                (OpWidth::F32, _) => opcode::builtin::CONV_F32_TO_STR,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ));
+                }
+            };
+            emitter.emit_builtin(func_id);
+            ctx.num_temp_bufs += 1;
+            Ok(())
+        }
+        StringConversion::StringToNum { target } => {
+            let data_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+            let pool_index = ctx.add_i32_constant(data_offset as i32);
+            emitter.emit_load_const_i32(pool_index);
+
+            let func_id = match target.op_width {
+                OpWidth::W32 => opcode::builtin::CONV_STR_TO_I32,
+                OpWidth::F32 => opcode::builtin::CONV_STR_TO_F32,
+                _ => {
+                    return Err(Diagnostic::todo_with_span(
+                        func.name.span(),
+                        file!(),
+                        line!(),
+                    ));
+                }
+            };
+            emitter.emit_builtin(func_id);
+            emit_truncation(emitter, target);
+            Ok(())
+        }
+    }
 }
