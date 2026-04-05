@@ -517,3 +517,83 @@ END_PROGRAM
 
     assert_eq!(read_string(&bufs.data_region, r_offset), "Di");
 }
+
+#[test]
+fn end_to_end_when_function_returns_struct_with_field_assignment_then_fields_correct() {
+    let source = "
+TYPE POINT :
+  STRUCT
+    X : REAL;
+    Y : REAL;
+  END_STRUCT;
+END_TYPE
+
+FUNCTION MAKE_POINT : POINT
+VAR_INPUT
+    px : REAL;
+    py : REAL;
+END_VAR
+    MAKE_POINT.X := px;
+    MAKE_POINT.Y := py;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    p : POINT;
+    rx : REAL;
+    ry : REAL;
+  END_VAR
+    p := MAKE_POINT(px := 1.5, py := 2.5);
+    rx := p.X;
+    ry := p.Y;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // p is var 0 (struct), rx is var 1, ry is var 2
+    assert_eq!(bufs.vars[1].as_f32(), 1.5);
+    assert_eq!(bufs.vars[2].as_f32(), 2.5);
+}
+
+#[test]
+fn end_to_end_when_two_calls_to_struct_returning_function_then_independent_copies() {
+    let source = "
+TYPE POINT :
+  STRUCT
+    X : REAL;
+    Y : REAL;
+  END_STRUCT;
+END_TYPE
+
+FUNCTION MAKE_POINT : POINT
+VAR_INPUT
+    px : REAL;
+    py : REAL;
+END_VAR
+    MAKE_POINT.X := px;
+    MAKE_POINT.Y := py;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    p1 : POINT;
+    p2 : POINT;
+    r1x : REAL;
+    r1y : REAL;
+    r2x : REAL;
+    r2y : REAL;
+  END_VAR
+    p1 := MAKE_POINT(px := 1.0, py := 2.0);
+    p2 := MAKE_POINT(px := 3.0, py := 4.0);
+    r1x := p1.X;
+    r1y := p1.Y;
+    r2x := p2.X;
+    r2y := p2.Y;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // p1 is var 0, p2 is var 1, r1x is var 2, r1y is var 3, r2x is var 4, r2y is var 5
+    assert_eq!(bufs.vars[2].as_f32(), 1.0);
+    assert_eq!(bufs.vars[3].as_f32(), 2.0);
+    assert_eq!(bufs.vars[4].as_f32(), 3.0);
+    assert_eq!(bufs.vars[5].as_f32(), 4.0);
+}
