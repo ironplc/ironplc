@@ -26,6 +26,7 @@ use super::compile::{
 use crate::emit::Emitter;
 
 /// Metadata for a structure variable, stored in CompileContext.
+#[derive(Clone)]
 pub(crate) struct StructVarInfo {
     /// Variable table index holding the data region offset.
     pub var_index: VarIndex,
@@ -52,6 +53,7 @@ pub(crate) struct StructVarInfo {
 }
 
 /// Metadata for a single structure field.
+#[derive(Clone)]
 pub(crate) struct StructFieldInfo {
     /// Field name (lowercase, for matching against access chains).
     pub name: String,
