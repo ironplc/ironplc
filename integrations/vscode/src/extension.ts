@@ -41,6 +41,10 @@ export function activate(context: vscode.ExtensionContext) {
     });
   }));
 
+  // Register run commands unconditionally so they exist even without a
+  // compiler (the commands gracefully no-op when no client is available).
+  registerRunSupport(context);
+
   const env: CompilerEnvironment = {
     platform: process.platform,
     existsSync: existsSync,
@@ -72,10 +76,6 @@ export function activate(context: vscode.ExtensionContext) {
   if (client) {
     client.start();
     context.subscriptions.push(IplcEditorProvider.register(context, client));
-
-    // Register run/stop infrastructure
-    registerRunSupport(context, client);
-
     console.debug('Extension "ironplc" is active!');
   }
   else {
@@ -83,7 +83,7 @@ export function activate(context: vscode.ExtensionContext) {
   }
 }
 
-function registerRunSupport(context: vscode.ExtensionContext, lspClient: LanguageClient) {
+function registerRunSupport(context: vscode.ExtensionContext) {
   // Output channel for variable display
   const outputChannel = vscode.window.createOutputChannel('IronPLC Run');
   context.subscriptions.push(outputChannel);
@@ -147,6 +147,11 @@ function registerRunSupport(context: vscode.ExtensionContext, lspClient: Languag
   // Run command
   context.subscriptions.push(
     vscode.commands.registerCommand('ironplc.runProgram', async () => {
+      if (!client) {
+        vscode.window.showErrorMessage('IronPLC compiler is not available. Install the compiler to run programs.');
+        return;
+      }
+
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
         vscode.window.showWarningMessage('No active editor with a program to run.');
@@ -160,7 +165,7 @@ function registerRunSupport(context: vscode.ExtensionContext, lspClient: Languag
         runSession.dispose();
       }
 
-      runSession = new RunSession(lspClient, {
+      runSession = new RunSession(client, {
         onStateChange: updateStatusBar,
         onVariablesUpdate(variables, totalScans) {
           outputChannel.clear();
