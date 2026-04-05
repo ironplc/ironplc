@@ -129,16 +129,23 @@ function registerRunSupport(context: vscode.ExtensionContext) {
     vscode.languages.registerCodeLensProvider(stSelector, {
       provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
         const lenses = findProgramLenses(document.getText());
+        const hasCompiler = !!client;
         return lenses.map(lens => {
           const range = new vscode.Range(
             new vscode.Position(lens.range.start.line, lens.range.start.character),
             new vscode.Position(lens.range.end.line, lens.range.end.character),
           );
-          return new vscode.CodeLens(range, lens.command ? {
-            title: lens.command.title,
-            command: lens.command.command,
-            arguments: lens.command.arguments,
-          } : undefined);
+          if (hasCompiler) {
+            return new vscode.CodeLens(range, lens.command ? {
+              title: lens.command.title,
+              command: lens.command.command,
+              arguments: lens.command.arguments,
+            } : undefined);
+          }
+          return new vscode.CodeLens(range, {
+            title: '$(warning) Run Program (no compiler)',
+            command: 'ironplc.runProgram',
+          });
         });
       },
     }),
