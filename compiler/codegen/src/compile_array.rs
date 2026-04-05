@@ -96,6 +96,23 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
         /// Element intermediate type for truncation on store.
         element_type: IntermediateType,
     },
+    /// STRING array element within a struct field — uses a scratch variable
+    /// to hold `struct_data_offset + field_byte_offset` and a STRING-specific
+    /// array descriptor for STR_LOAD/STORE_ARRAY_ELEM.
+    StructFieldStringArrayElement {
+        /// Struct variable table index (holds struct data_offset).
+        var_index: VarIndex,
+        /// Scratch variable for the adjusted base offset.
+        scratch_var_index: VarIndex,
+        /// STRING array descriptor index (element_extra = max_str_len).
+        string_desc_index: u16,
+        /// Byte offset of the array field within the struct (slot_offset * 8).
+        field_byte_offset: u32,
+        /// Dimension info for computing the flat index from subscripts.
+        dimensions: Vec<DimensionInfo>,
+        /// Subscript expressions.
+        subscripts: Vec<&'ast Expr>,
+    },
 }
 
 /// Resolves a variable reference into its access kind.
@@ -227,6 +244,44 @@ fn resolve_struct_field_array<'ctx, 'ast>(
             ),
         )
     })?;
+
+    // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
+    // with a scratch variable and a STRING-specific array descriptor.
+    if let IntermediateType::String { .. } = element_type.as_ref() {
+        let field_name = structured.field.to_string().to_lowercase();
+        let &(str_desc_index, _, _) =
+            struct_info
+                .string_array_descs
+                .get(&field_name)
+                .ok_or_else(|| {
+                    Diagnostic::problem(
+                        Problem::NotImplemented,
+                        Label::span(
+                            structured.field.span(),
+                            "STRING array descriptor not registered for field",
+                        ),
+                    )
+                })?;
+        let scratch = struct_info.scratch_var_index.ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(
+                    structured.field.span(),
+                    "Scratch variable not allocated for struct",
+                ),
+            )
+        })?;
+        let dimensions = dimensions_from_intermediate(array_dims);
+        let field_byte_offset = slot_offset.raw() * 8;
+        return Ok(ResolvedAccess::StructFieldStringArrayElement {
+            var_index: struct_info.var_index,
+            scratch_var_index: scratch,
+            string_desc_index: str_desc_index,
+            field_byte_offset,
+            dimensions,
+            subscripts,
+        });
+    }
 
     let element_op_type =
         crate::compile_struct::resolve_field_op_type(element_type).ok_or_else(|| {
