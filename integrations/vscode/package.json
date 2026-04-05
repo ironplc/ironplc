@@ -38,6 +38,24 @@
         "title": "New Structured Text File",
         "shortTitle": "Structured Text File",
         "category": "IronPLC"
+      },
+      {
+        "command": "ironplc.runProgram",
+        "title": "Run Program",
+        "category": "IronPLC",
+        "icon": "$(play)"
+      },
+      {
+        "command": "ironplc.stopProgram",
+        "title": "Stop Program",
+        "category": "IronPLC",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "ironplc.pauseProgram",
+        "title": "Pause/Resume Program",
+        "category": "IronPLC",
+        "icon": "$(debug-pause)"
       }
     ],
     "menus": {
