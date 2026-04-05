@@ -3,17 +3,17 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta property="og:title" content="Compiling and Running" />
+<meta property="og:title" content="Connecting to Hardware" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/quickstart/compiling-and-running.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="So far you have been writing code and letting the development environment extension check it for correctness. In this chapter, you will use the command line to compile your program into a bytecode ..." />
-<meta name="description" content="So far you have been writing code and letting the development environment extension check it for correctness. In this chapter, you will use the command line to compile your program into a bytecode ..." />
+<meta property="og:description" content="So far, your doorbell program uses regular variables with no connection to physical hardware. On a real PLC, variables are mapped to specific input and output pins. In this chapter, you will learn ..." />
+<meta name="description" content="So far, your doorbell program uses regular variables with no connection to physical hardware. On a real PLC, variables are mapped to specific input and output pins. In this chapter, you will learn ..." />
 <link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="How-to guides" href="../how-to-guides/index.html"><link rel="prev" title="Working with Multiple Files" href="multiple-files.html">
         <link rel="canonical" href="https://www.ironplc.com/quickstart/compiling-and-running.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Compiling and Running - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
+        <title>Connecting to Hardware - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.187.0">
+<meta name="ironplc-version" content="0.188.0">
 </head>
   <body>
     
@@ -221,11 +221,11 @@
   <ul class="current">
 <li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">Quick start</a><input aria-label="Toggle navigation of Quick start" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="helloworld.html">Hello, World!</a></li>
-<li class="toctree-l2"><a class="reference internal" href="sense-control-actuate.html">The Sense-Control-Actuate Cycle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sense-control-actuate.html">How a PLC Program Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="helloworld.html">Your First Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="configuring.html">Configuring Your Application</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multiple-files.html">Working with Multiple Files</a></li>
-<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Compiling and Running</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Connecting to Hardware</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../how-to-guides/index.html">How-to guides</a><input aria-label="Toggle navigation of How-to guides" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -621,57 +621,68 @@
 <p class="admonition-title">Attention</p>
 <p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include structures and user defined function blocks.</p>
 </div>
-<section id="compiling-and-running">
-<h1>Compiling and Running<a class="headerlink" href="#compiling-and-running" title="Link to this heading">¶</a></h1>
-<p>So far you have been writing code and letting the development environment extension check it
-for correctness. In this chapter, you will use the command line to compile
-your program into a bytecode container and run it.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>This guide assumes you have installed the IronPLC Compiler. See
-<a class="reference internal" href="installation.html#installation-steps-target"><span class="std std-ref">Installation</span></a> if you have not already installed it.</p>
+<section id="connecting-to-hardware">
+<h1>Connecting to Hardware<a class="headerlink" href="#connecting-to-hardware" title="Link to this heading">¶</a></h1>
+<p>So far, your doorbell program uses regular variables with no connection to
+physical hardware. On a real PLC, variables are mapped to specific input
+and output pins. In this chapter, you will learn how to make that
+connection.</p>
+<section id="directly-represented-variables">
+<h2>Directly Represented Variables<a class="headerlink" href="#directly-represented-variables" title="Link to this heading">¶</a></h2>
+<p>IEC 61131-3 uses the <code class="code docutils literal notranslate"><span class="pre">AT</span></code> keyword to bind a variable to a physical
+I/O address. Open <code class="file docutils literal notranslate"><span class="pre">main.st</span></code> and update the variable declarations:</p>
+<div class="literal-block-wrapper docutils container" id="hardware-doorbell">
+<div class="code-block-caption"><span class="caption-text">main.st — With Hardware Addresses</span><a class="headerlink" href="#hardware-doorbell" title="Link to this code">¶</a></div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+   <span class="n">VAR</span>
+      <span class="n">Button</span> <span class="n">AT</span> <span class="o">%</span><span class="n">IX1</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">Buzzer</span> <span class="n">AT</span> <span class="o">%</span><span class="n">QX1</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">PulseTimer</span> <span class="p">:</span> <span class="n">TON</span><span class="p">;</span>
+   <span class="n">END_VAR</span>
+
+   <span class="n">PulseTimer</span><span class="p">(</span><span class="n">IN</span> <span class="o">:=</span> <span class="n">NOT</span> <span class="n">Button</span><span class="p">,</span> <span class="n">PT</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#500ms);</span>
+   <span class="n">Buzzer</span> <span class="o">:=</span> <span class="n">PulseTimer</span><span class="o">.</span><span class="n">Q</span><span class="p">;</span>
+
+<span class="n">END_PROGRAM</span>
+</pre></div>
 </div>
+</div>
+</section>
+<section id="what-changed">
+<h2>What Changed<a class="headerlink" href="#what-changed" title="Link to this heading">¶</a></h2>
+<p>We added <code class="code docutils literal notranslate"><span class="pre">AT</span></code> addresses to the <code class="docutils literal notranslate"><span class="pre">Button</span></code> and <code class="docutils literal notranslate"><span class="pre">Buzzer</span></code> variables:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Button</span> <span class="pre">AT</span> <span class="pre">%IX1</span> <span class="pre">:</span> <span class="pre">BOOL</span></code> — a Boolean <strong>input</strong> variable. The <code class="docutils literal notranslate"><span class="pre">I</span></code>
+means input, <code class="docutils literal notranslate"><span class="pre">X</span></code> means single bit, and <code class="docutils literal notranslate"><span class="pre">1</span></code> is the address number.
+On a real PLC, <code class="docutils literal notranslate"><span class="pre">%IX1</span></code> corresponds to a digital input pin connected
+to the button.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Buzzer</span> <span class="pre">AT</span> <span class="pre">%QX1</span> <span class="pre">:</span> <span class="pre">BOOL</span></code> — a Boolean <strong>output</strong> variable. The <code class="docutils literal notranslate"><span class="pre">Q</span></code>
+means output. On a real PLC, <code class="docutils literal notranslate"><span class="pre">%QX1</span></code> corresponds to a digital output
+pin connected to the buzzer.</p></li>
+</ul>
+<p>These are called <strong>directly represented variables</strong> because they are tied
+to specific hardware I/O points. The address format follows a pattern:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">%I</span></code> — input, <code class="docutils literal notranslate"><span class="pre">%Q</span></code> — output, <code class="docutils literal notranslate"><span class="pre">%M</span></code> — memory</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">X</span></code> — single bit, <code class="docutils literal notranslate"><span class="pre">B</span></code> — byte, <code class="docutils literal notranslate"><span class="pre">W</span></code> — word (16-bit), <code class="docutils literal notranslate"><span class="pre">D</span></code> — double word (32-bit)</p></li>
+<li><p>The number is the address within that region</p></li>
+</ul>
+</section>
 <section id="check-the-program">
 <h2>Check the Program<a class="headerlink" href="#check-the-program" title="Link to this heading">¶</a></h2>
-<p>Open a terminal in your <code class="file docutils literal notranslate"><span class="pre">helloworld</span></code> directory and run:</p>
-<div class="literal-block-wrapper docutils container" id="qs-check-syntax">
-<div class="code-block-caption"><span class="caption-text">Check Syntax</span><a class="headerlink" href="#qs-check-syntax" title="Link to this code">¶</a></div>
+<p>You can verify the updated program is correct:</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>main.st<span class="w"> </span>config.st
 </pre></div>
 </div>
-</div>
-<p>On success, the command produces no output. If there are errors, IronPLC
-prints diagnostics with the file name, line number, and a description of
-the problem.</p>
-</section>
-<section id="compile-to-bytecode">
-<h2>Compile to Bytecode<a class="headerlink" href="#compile-to-bytecode" title="Link to this heading">¶</a></h2>
-<p>To compile your source files into a bytecode container (<code class="file docutils literal notranslate"><span class="pre">.iplc</span></code> file),
-run:</p>
-<div class="literal-block-wrapper docutils container" id="qs-compile-program">
-<div class="code-block-caption"><span class="caption-text">Compile Program</span><a class="headerlink" href="#qs-compile-program" title="Link to this code">¶</a></div>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>compile<span class="w"> </span>main.st<span class="w"> </span>--output<span class="w"> </span>main.iplc
-</pre></div>
-</div>
-</div>
-<p>You can also use the short form <code class="docutils literal notranslate"><span class="pre">-o</span></code> for the output flag:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>compile<span class="w"> </span>main.st<span class="w"> </span>-o<span class="w"> </span>main.iplc
-</pre></div>
-</div>
-<p>On success, the command creates the <code class="file docutils literal notranslate"><span class="pre">.iplc</span></code> file at the specified path.</p>
-</section>
-<section id="run-the-program">
-<h2>Run the Program<a class="headerlink" href="#run-the-program" title="Link to this heading">¶</a></h2>
-<p>Use the IronPLC virtual machine runtime to execute the compiled program:</p>
-<div class="literal-block-wrapper docutils container" id="qs-run-program">
-<div class="code-block-caption"><span class="caption-text">Run Program</span><a class="headerlink" href="#qs-run-program" title="Link to this code">¶</a></div>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcvm<span class="w"> </span>run<span class="w"> </span>main.iplc
-</pre></div>
-</div>
-</div>
-<p>You can inspect variable values after execution by specifying a dump file:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcvm<span class="w"> </span>run<span class="w"> </span>main.iplc<span class="w"> </span>--dump-vars<span class="w"> </span>output.txt
-</pre></div>
+<p>The IronPLC checker validates the hardware addresses and ensures the
+program is well-formed.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The IronPLC compiler does not yet support compiling programs with
+directly represented variables to bytecode. You can check these
+programs for correctness, but compiling and running them requires a
+future release. For now, remove the <code class="code docutils literal notranslate"><span class="pre">AT</span></code> addresses to compile
+and run in the virtual machine.</p>
 </div>
 </section>
 <section id="what-you-have-learned">
@@ -679,11 +690,12 @@ run:</p>
 <p>Over the course of this tutorial, you have:</p>
 <ol class="arabic simple">
 <li><p><strong>Installed</strong> IronPLC and the development environment extension.</p></li>
-<li><p><strong>Written</strong> a minimal IEC 61131-3 program.</p></li>
-<li><p><strong>Connected</strong> it to inputs and outputs with directly represented variables.</p></li>
-<li><p><strong>Configured</strong> the application with a task, resource, and configuration.</p></li>
-<li><p><strong>Organized</strong> the code across multiple files.</p></li>
+<li><p><strong>Learned</strong> the sense-control-actuate cycle that drives PLC programs.</p></li>
+<li><p><strong>Written</strong> a doorbell program with boolean logic and a timer.</p></li>
 <li><p><strong>Compiled</strong> and <strong>run</strong> the program from the command line.</p></li>
+<li><p><strong>Configured</strong> the application with a task schedule.</p></li>
+<li><p><strong>Organized</strong> the code across multiple files.</p></li>
+<li><p><strong>Connected</strong> variables to hardware I/O addresses.</p></li>
 </ol>
 </section>
 <section id="where-to-go-from-here">
@@ -760,10 +772,10 @@ concepts.</p></li>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Compiling and Running</a><ul>
+<li><a class="reference internal" href="#">Connecting to Hardware</a><ul>
+<li><a class="reference internal" href="#directly-represented-variables">Directly Represented Variables</a></li>
+<li><a class="reference internal" href="#what-changed">What Changed</a></li>
 <li><a class="reference internal" href="#check-the-program">Check the Program</a></li>
-<li><a class="reference internal" href="#compile-to-bytecode">Compile to Bytecode</a></li>
-<li><a class="reference internal" href="#run-the-program">Run the Program</a></li>
 <li><a class="reference internal" href="#what-you-have-learned">What You Have Learned</a></li>
 <li><a class="reference internal" href="#where-to-go-from-here">Where to Go from Here</a></li>
 </ul>

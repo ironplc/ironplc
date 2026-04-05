@@ -7,9 +7,9 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/quickstart/configuring.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="In the previous chapter, you wrote a program with inputs and outputs. But a program alone is not a complete IEC 61131-3 application — you need to tell the runtime how often to run it and on what ha..." />
-<meta name="description" content="In the previous chapter, you wrote a program with inputs and outputs. But a program alone is not a complete IEC 61131-3 application — you need to tell the runtime how often to run it and on what ha..." />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Working with Multiple Files" href="multiple-files.html"><link rel="prev" title="The Sense-Control-Actuate Cycle" href="sense-control-actuate.html">
+<meta property="og:description" content="In the previous chapter, you compiled and ran a doorbell program. But it only ran once. On a real PLC, the sense-control-actuate cycle repeats continuously on a fixed schedule. In this chapter, you..." />
+<meta name="description" content="In the previous chapter, you compiled and ran a doorbell program. But it only ran once. On a real PLC, the sense-control-actuate cycle repeats continuously on a fixed schedule. In this chapter, you..." />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Working with Multiple Files" href="multiple-files.html"><link rel="prev" title="Your First Program" href="helloworld.html">
         <link rel="canonical" href="https://www.ironplc.com/quickstart/configuring.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.187.0">
+<meta name="ironplc-version" content="0.188.0">
 </head>
   <body>
     
@@ -221,11 +221,11 @@
   <ul class="current">
 <li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">Quick start</a><input aria-label="Toggle navigation of Quick start" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="helloworld.html">Hello, World!</a></li>
-<li class="toctree-l2"><a class="reference internal" href="sense-control-actuate.html">The Sense-Control-Actuate Cycle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sense-control-actuate.html">How a PLC Program Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="helloworld.html">Your First Program</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Configuring Your Application</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multiple-files.html">Working with Multiple Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="compiling-and-running.html">Compiling and Running</a></li>
+<li class="toctree-l2"><a class="reference internal" href="compiling-and-running.html">Connecting to Hardware</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../how-to-guides/index.html">How-to guides</a><input aria-label="Toggle navigation of How-to guides" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -623,23 +623,62 @@
 </div>
 <section id="configuring-your-application">
 <h1>Configuring Your Application<a class="headerlink" href="#configuring-your-application" title="Link to this heading">¶</a></h1>
-<p>In the previous chapter, you wrote a program with inputs and outputs. But
-a program alone is not a complete IEC 61131-3 application — you need to
-tell the runtime <em>how often</em> to run it and <em>on what hardware</em>. That is the
-job of a configuration.</p>
-<section id="add-a-configuration-block">
-<h2>Add a Configuration Block<a class="headerlink" href="#add-a-configuration-block" title="Link to this heading">¶</a></h2>
-<p>Open <code class="file docutils literal notranslate"><span class="pre">main.st</span></code> and add the following <strong>below</strong> the existing
-<code class="code docutils literal notranslate"><span class="pre">END_PROGRAM</span></code>:</p>
-<div class="literal-block-wrapper docutils container" id="complete-app">
-<div class="code-block-caption"><span class="caption-text">Complete Application</span><a class="headerlink" href="#complete-app" title="Link to this code">¶</a></div>
+<p>In the previous chapter, you compiled and ran a doorbell program. But it
+only ran once. On a real PLC, the sense-control-actuate cycle repeats
+continuously on a fixed schedule. In this chapter, you will add a
+configuration to schedule the program and a timer to make the buzzer
+pulse automatically.</p>
+<section id="add-a-timer">
+<h2>Add a Timer<a class="headerlink" href="#add-a-timer" title="Link to this heading">¶</a></h2>
+<p>A doorbell that buzzes constantly is not very useful. Let’s add a timer
+so the buzzer pulses — turning on for a short duration, then turning off.</p>
+<p>Open <code class="file docutils literal notranslate"><span class="pre">main.st</span></code> and replace its contents with:</p>
+<div class="literal-block-wrapper docutils container" id="doorbell-timer">
+<div class="code-block-caption"><span class="caption-text">main.st — Doorbell with Timer</span><a class="headerlink" href="#doorbell-timer" title="Link to this code">¶</a></div>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
    <span class="n">VAR</span>
-      <span class="n">Button</span> <span class="n">AT</span> <span class="o">%</span><span class="n">IX1</span><span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
-      <span class="n">Buzzer</span> <span class="n">AT</span> <span class="o">%</span><span class="n">QX1</span><span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">Button</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">Buzzer</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">PulseTimer</span> <span class="p">:</span> <span class="n">TON</span><span class="p">;</span>
    <span class="n">END_VAR</span>
 
-   <span class="n">Buzzer</span> <span class="o">:=</span> <span class="n">NOT</span> <span class="n">Button</span><span class="p">;</span>
+   <span class="n">PulseTimer</span><span class="p">(</span><span class="n">IN</span> <span class="o">:=</span> <span class="n">NOT</span> <span class="n">Button</span><span class="p">,</span> <span class="n">PT</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#500ms);</span>
+   <span class="n">Buzzer</span> <span class="o">:=</span> <span class="n">PulseTimer</span><span class="o">.</span><span class="n">Q</span><span class="p">;</span>
+
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
+</section>
+<section id="what-changed">
+<h2>What Changed<a class="headerlink" href="#what-changed" title="Link to this heading">¶</a></h2>
+<p>We added a <strong>timer on delay</strong> (<code class="docutils literal notranslate"><span class="pre">TON</span></code>) function block:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">PulseTimer</span> <span class="pre">:</span> <span class="pre">TON</span></code> declares an instance of the standard <code class="docutils literal notranslate"><span class="pre">TON</span></code>
+function block. <code class="docutils literal notranslate"><span class="pre">TON</span></code> turns its output <code class="docutils literal notranslate"><span class="pre">Q</span></code> to <code class="docutils literal notranslate"><span class="pre">TRUE</span></code> after a
+specified delay.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">PulseTimer(IN</span> <span class="pre">:=</span> <span class="pre">NOT</span> <span class="pre">Button,</span> <span class="pre">PT</span> <span class="pre">:=</span> <span class="pre">T#500ms)</span></code> calls the timer.
+<code class="docutils literal notranslate"><span class="pre">IN</span></code> is the enable input (<code class="docutils literal notranslate"><span class="pre">TRUE</span></code> when the button is not pressed),
+and <code class="docutils literal notranslate"><span class="pre">PT</span></code> is the delay duration (500 milliseconds).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Buzzer</span> <span class="pre">:=</span> <span class="pre">PulseTimer.Q</span></code> reads the timer’s output. <code class="docutils literal notranslate"><span class="pre">Q</span></code> becomes
+<code class="docutils literal notranslate"><span class="pre">TRUE</span></code> once the timer has been running for 500 ms.</p></li>
+</ul>
+</section>
+<section id="add-a-configuration-block">
+<h2>Add a Configuration Block<a class="headerlink" href="#add-a-configuration-block" title="Link to this heading">¶</a></h2>
+<p>Now add a <strong>configuration</strong> to tell the runtime how to schedule the
+program. Add the following <strong>below</strong> the existing <code class="code docutils literal notranslate"><span class="pre">END_PROGRAM</span></code>:</p>
+<div class="literal-block-wrapper docutils container" id="complete-app">
+<div class="code-block-caption"><span class="caption-text">main.st — Complete Application</span><a class="headerlink" href="#complete-app" title="Link to this code">¶</a></div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+   <span class="n">VAR</span>
+      <span class="n">Button</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">Buzzer</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">PulseTimer</span> <span class="p">:</span> <span class="n">TON</span><span class="p">;</span>
+   <span class="n">END_VAR</span>
+
+   <span class="n">PulseTimer</span><span class="p">(</span><span class="n">IN</span> <span class="o">:=</span> <span class="n">NOT</span> <span class="n">Button</span><span class="p">,</span> <span class="n">PT</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#500ms);</span>
+   <span class="n">Buzzer</span> <span class="o">:=</span> <span class="n">PulseTimer</span><span class="o">.</span><span class="n">Q</span><span class="p">;</span>
 
 <span class="n">END_PROGRAM</span>
 
@@ -652,11 +691,10 @@ job of a configuration.</p>
 </pre></div>
 </div>
 </div>
-<p>Save the file. The IronPLC extension should show no errors.</p>
 </section>
 <section id="what-the-configuration-does">
 <h2>What the Configuration Does<a class="headerlink" href="#what-the-configuration-does" title="Link to this heading">¶</a></h2>
-<p>The new block introduces three layers:</p>
+<p>The configuration block introduces three layers:</p>
 <dl class="simple">
 <dt><strong>CONFIGURATION</strong></dt><dd><p>The top-level container for your application. Every IEC 61131-3
 application has exactly one configuration. Here it is named <code class="docutils literal notranslate"><span class="pre">config</span></code>.</p>
@@ -683,16 +721,31 @@ runtime reads the inputs, runs <code class="docutils literal notranslate"><span 
 <a class="reference internal" href="../explanation/program-organization.html"><span class="doc">Program Organization</span></a>.</p>
 </div>
 </section>
-<section id="you-now-have-a-complete-application">
-<h2>You Now Have a Complete Application<a class="headerlink" href="#you-now-have-a-complete-application" title="Link to this heading">¶</a></h2>
-<p>Your <code class="file docutils literal notranslate"><span class="pre">main.st</span></code> file now contains everything needed for a deployable
-IEC 61131-3 application:</p>
-<ul class="simple">
-<li><p>A <strong>program</strong> that reads a button and controls a buzzer.</p></li>
-<li><p>A <strong>configuration</strong> that runs the program every 100 ms.</p></li>
-</ul>
-<p>In the next chapter, you will learn how to split this into multiple files
-as your project grows.</p>
+<section id="compile-and-run">
+<h2>Compile and Run<a class="headerlink" href="#compile-and-run" title="Link to this heading">¶</a></h2>
+<p>Compile and run the updated program:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>compile<span class="w"> </span>main.st<span class="w"> </span>--output<span class="w"> </span>main.iplc
+ironplcvm<span class="w"> </span>run<span class="w"> </span>main.iplc<span class="w"> </span>--scans<span class="w"> </span><span class="m">10</span><span class="w"> </span>--dump-vars
+</pre></div>
+</div>
+<p>With 10 scan cycles at 100 ms intervals, the timer accumulates time.
+You should see output showing the timer’s state:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Button: FALSE
+Buzzer: TRUE
+PulseTimer.IN: TRUE
+PulseTimer.PT: T#500ms
+PulseTimer.Q: TRUE
+PulseTimer.ET: T#1000ms
+</pre></div>
+</div>
+<p>The timer’s elapsed time (<code class="docutils literal notranslate"><span class="pre">ET</span></code>) shows how long it has been running.
+After enough scan cycles, <code class="docutils literal notranslate"><span class="pre">Q</span></code> becomes <code class="docutils literal notranslate"><span class="pre">TRUE</span></code> and the buzzer turns on.</p>
+</section>
+<section id="next-steps">
+<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">¶</a></h2>
+<p>Your <code class="file docutils literal notranslate"><span class="pre">main.st</span></code> file now contains everything needed for a working
+IEC 61131-3 application. As your project grows, you will want to organize
+code across multiple files.</p>
 <p>Continue to <a class="reference internal" href="multiple-files.html"><span class="doc">Working with Multiple Files</span></a>.</p>
 </section>
 </section>
@@ -711,14 +764,14 @@ as your project grows.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="sense-control-actuate.html">
+          <a class="prev-page" href="helloworld.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">The Sense-Control-Actuate Cycle</div>
+                <div class="title">Your First Program</div>
                 
               </div>
             </a>
@@ -761,9 +814,12 @@ as your project grows.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Configuring Your Application</a><ul>
+<li><a class="reference internal" href="#add-a-timer">Add a Timer</a></li>
+<li><a class="reference internal" href="#what-changed">What Changed</a></li>
 <li><a class="reference internal" href="#add-a-configuration-block">Add a Configuration Block</a></li>
 <li><a class="reference internal" href="#what-the-configuration-does">What the Configuration Does</a></li>
-<li><a class="reference internal" href="#you-now-have-a-complete-application">You Now Have a Complete Application</a></li>
+<li><a class="reference internal" href="#compile-and-run">Compile and Run</a></li>
+<li><a class="reference internal" href="#next-steps">Next Steps</a></li>
 </ul>
 </li>
 </ul>

@@ -9,7 +9,7 @@
 <meta property="og:site_name" content="IronPLC" />
 <meta property="og:description" content="As your IEC 61131-3 application grows, you will want to organize your code across multiple files. IronPLC combines all files into a single unit, so you can split your application however you like. ..." />
 <meta name="description" content="As your IEC 61131-3 application grows, you will want to organize your code across multiple files. IronPLC combines all files into a single unit, so you can split your application however you like. ..." />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Compiling and Running" href="compiling-and-running.html"><link rel="prev" title="Configuring Your Application" href="configuring.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Connecting to Hardware" href="compiling-and-running.html"><link rel="prev" title="Configuring Your Application" href="configuring.html">
         <link rel="canonical" href="https://www.ironplc.com/quickstart/multiple-files.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.187.0">
+<meta name="ironplc-version" content="0.188.0">
 </head>
   <body>
     
@@ -221,11 +221,11 @@
   <ul class="current">
 <li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">Quick start</a><input aria-label="Toggle navigation of Quick start" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="helloworld.html">Hello, World!</a></li>
-<li class="toctree-l2"><a class="reference internal" href="sense-control-actuate.html">The Sense-Control-Actuate Cycle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sense-control-actuate.html">How a PLC Program Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="helloworld.html">Your First Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="configuring.html">Configuring Your Application</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Working with Multiple Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="compiling-and-running.html">Compiling and Running</a></li>
+<li class="toctree-l2"><a class="reference internal" href="compiling-and-running.html">Connecting to Hardware</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../how-to-guides/index.html">How-to guides</a><input aria-label="Toggle navigation of How-to guides" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -635,11 +635,13 @@ Let’s separate them.</p>
 <div class="code-block-caption"><span class="caption-text">main.st — Program only</span><a class="headerlink" href="#main-only" title="Link to this code">¶</a></div>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
    <span class="n">VAR</span>
-      <span class="n">Button</span> <span class="n">AT</span> <span class="o">%</span><span class="n">IX1</span><span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
-      <span class="n">Buzzer</span> <span class="n">AT</span> <span class="o">%</span><span class="n">QX1</span><span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">Button</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">Buzzer</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">PulseTimer</span> <span class="p">:</span> <span class="n">TON</span><span class="p">;</span>
    <span class="n">END_VAR</span>
 
-   <span class="n">Buzzer</span> <span class="o">:=</span> <span class="n">NOT</span> <span class="n">Button</span><span class="p">;</span>
+   <span class="n">PulseTimer</span><span class="p">(</span><span class="n">IN</span> <span class="o">:=</span> <span class="n">NOT</span> <span class="n">Button</span><span class="p">,</span> <span class="n">PT</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#500ms);</span>
+   <span class="n">Buzzer</span> <span class="o">:=</span> <span class="n">PulseTimer</span><span class="o">.</span><span class="n">Q</span><span class="p">;</span>
 
 <span class="n">END_PROGRAM</span>
 </pre></div>
@@ -668,6 +670,18 @@ Let’s separate them.</p>
 together, so it will still validate that the configuration references a
 valid program.</p>
 </section>
+<section id="compile-with-multiple-files">
+<h2>Compile with Multiple Files<a class="headerlink" href="#compile-with-multiple-files" title="Link to this heading">¶</a></h2>
+<p>When compiling multiple files, pass all of them to the compiler:</p>
+<div class="literal-block-wrapper docutils container" id="id1">
+<div class="code-block-caption"><span class="caption-text">Compile Multiple Files</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>compile<span class="w"> </span>main.st<span class="w"> </span>config.st<span class="w"> </span>--output<span class="w"> </span>main.iplc
+</pre></div>
+</div>
+</div>
+<p>The compiled output is the same — IronPLC merges all source files before
+compiling.</p>
+</section>
 <section id="why-split-files">
 <h2>Why Split Files?<a class="headerlink" href="#why-split-files" title="Link to this heading">¶</a></h2>
 <p>For a small example like this, splitting may seem unnecessary. But in
@@ -685,8 +699,9 @@ structure makes sense for your project.</p>
 <section id="next-steps">
 <h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">¶</a></h2>
 <p>You now have a complete, multi-file IEC 61131-3 application. In the final
-chapter, you will compile it into a bytecode container and run it.</p>
-<p>Continue to <a class="reference internal" href="compiling-and-running.html"><span class="doc">Compiling and Running</span></a>.</p>
+chapter, you will learn how to connect your program to physical hardware
+inputs and outputs.</p>
+<p>Continue to <a class="reference internal" href="compiling-and-running.html"><span class="doc">Connecting to Hardware</span></a>.</p>
 </section>
 </section>
 
@@ -700,7 +715,7 @@ chapter, you will compile it into a bytecode container and run it.</p>
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Compiling and Running</div>
+                <div class="title">Connecting to Hardware</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -755,6 +770,7 @@ chapter, you will compile it into a bytecode container and run it.</p>
             <ul>
 <li><a class="reference internal" href="#">Working with Multiple Files</a><ul>
 <li><a class="reference internal" href="#split-the-application">Split the Application</a></li>
+<li><a class="reference internal" href="#compile-with-multiple-files">Compile with Multiple Files</a></li>
 <li><a class="reference internal" href="#why-split-files">Why Split Files?</a></li>
 <li><a class="reference internal" href="#next-steps">Next Steps</a></li>
 </ul>

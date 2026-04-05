@@ -1,5 +1,5 @@
 .. meta::
-   :description: Get started with IronPLC: install the development environment extension, write your first IEC 61131-3 Structured Text program, and compile it.
+   :description: Get started with IronPLC: install the development environment, write a doorbell program in IEC 61131-3 Structured Text, compile it, and run it.
 
 ====================
 Quick start tutorial
@@ -7,7 +7,7 @@ Quick start tutorial
 
 This tutorial guides you from installation to a working IEC 61131-3
 application, introducing one concept at a time. Each chapter builds on the
-last and leaves you with a program you can check for correctness.
+last and leaves you with a program you can compile and run.
 
 If you are completely new to PLC programming, you may want to read
 :doc:`/explanation/what-is-iec-61131-3` first for background on the
@@ -18,8 +18,8 @@ concepts.
    :hidden:
 
    Installation <installation>
-   Hello, World! <helloworld>
-   The Sense-Control-Actuate Cycle <sense-control-actuate>
+   How a PLC Program Works <sense-control-actuate>
+   Your First Program <helloworld>
    Configuring Your Application <configuring>
    Working with Multiple Files <multiple-files>
-   Compiling and Running <compiling-and-running>
+   Connecting to Hardware <compiling-and-running>

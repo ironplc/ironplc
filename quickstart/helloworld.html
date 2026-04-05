@@ -3,17 +3,17 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta property="og:title" content="Hello, World!" />
+<meta property="og:title" content="Your First Program" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/quickstart/helloworld.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Now that you’ve installed IronPLC, it’s time to write your first program. In most programming languages, “Hello, World” prints text to the screen. IEC 61131-3 is designed for real-time automation c..." />
-<meta name="description" content="Now that you’ve installed IronPLC, it’s time to write your first program. In most programming languages, “Hello, World” prints text to the screen. IEC 61131-3 is designed for real-time automation c..." />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="The Sense-Control-Actuate Cycle" href="sense-control-actuate.html"><link rel="prev" title="Installation" href="installation.html">
+<meta property="og:description" content="Now it’s time to write, compile, and run your first IEC 61131-3 program. By the end of this chapter, you will have a working doorbell program running in the IronPLC virtual machine. Create a Projec..." />
+<meta name="description" content="Now it’s time to write, compile, and run your first IEC 61131-3 program. By the end of this chapter, you will have a working doorbell program running in the IronPLC virtual machine. Create a Projec..." />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Configuring Your Application" href="configuring.html"><link rel="prev" title="How a PLC Program Works" href="sense-control-actuate.html">
         <link rel="canonical" href="https://www.ironplc.com/quickstart/helloworld.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Hello, World! - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
+        <title>Your First Program - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.187.0">
+<meta name="ironplc-version" content="0.188.0">
 </head>
   <body>
     
@@ -221,11 +221,11 @@
   <ul class="current">
 <li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">Quick start</a><input aria-label="Toggle navigation of Quick start" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Hello, World!</a></li>
-<li class="toctree-l2"><a class="reference internal" href="sense-control-actuate.html">The Sense-Control-Actuate Cycle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sense-control-actuate.html">How a PLC Program Works</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Your First Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="configuring.html">Configuring Your Application</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multiple-files.html">Working with Multiple Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="compiling-and-running.html">Compiling and Running</a></li>
+<li class="toctree-l2"><a class="reference internal" href="compiling-and-running.html">Connecting to Hardware</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../how-to-guides/index.html">How-to guides</a><input aria-label="Toggle navigation of How-to guides" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -621,45 +621,46 @@
 <p class="admonition-title">Attention</p>
 <p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include structures and user defined function blocks.</p>
 </div>
-<section id="hello-world">
-<h1>Hello, World!<a class="headerlink" href="#hello-world" title="Link to this heading">¶</a></h1>
-<p>Now that you’ve installed IronPLC, it’s time to write your first program.</p>
-<p>In most programming languages, “Hello, World” prints text to the screen.
-IEC 61131-3 is designed for real-time automation controllers that often do
-not have a display, so our “Hello, World” will look a little different. In
-this chapter, we write the simplest possible program and use IronPLC to
-check it for correctness.</p>
+<section id="your-first-program">
+<h1>Your First Program<a class="headerlink" href="#your-first-program" title="Link to this heading">¶</a></h1>
+<p>Now it’s time to write, compile, and run your first IEC 61131-3 program.
+By the end of this chapter, you will have a working doorbell program running
+in the IronPLC virtual machine.</p>
 <section id="create-a-project-directory">
 <h2>Create a Project Directory<a class="headerlink" href="#create-a-project-directory" title="Link to this heading">¶</a></h2>
-<p>In a Terminal, create a new folder and open it in your development environment:</p>
-<div class="literal-block-wrapper docutils container" id="newhelloworld">
-<div class="code-block-caption"><span class="caption-text">Create Project Directory</span><a class="headerlink" href="#newhelloworld" title="Link to this code">¶</a></div>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>helloworld
-<span class="nb">cd</span><span class="w"> </span>helloworld
-code<span class="w"> </span>.
+<p>Open a terminal and create a new folder for your project:</p>
+<div class="literal-block-wrapper docutils container" id="id1">
+<div class="code-block-caption"><span class="caption-text">Create Project Directory</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>mkdir<span class="w"> </span>doorbell
+<span class="nb">cd</span><span class="w"> </span>doorbell
 </pre></div>
 </div>
+</div>
+<p>Then open the folder in your development environment:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>code<span class="w"> </span>.
+</pre></div>
 </div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
 <p>If you are using Cursor, use <code class="docutils literal notranslate"><span class="pre">cursor</span> <span class="pre">.</span></code> instead of <code class="docutils literal notranslate"><span class="pre">code</span> <span class="pre">.</span></code>.</p>
 </div>
 </section>
-<section id="write-your-first-program">
-<h2>Write Your First Program<a class="headerlink" href="#write-your-first-program" title="Link to this heading">¶</a></h2>
+<section id="write-the-program">
+<h2>Write the Program<a class="headerlink" href="#write-the-program" title="Link to this heading">¶</a></h2>
 <p>In your development environment:</p>
 <ol class="arabic">
 <li><p>In the main menu, select <span class="menuselection">File ‣ New File…</span>.</p></li>
 <li><p>In the <span class="guilabel">New File…</span> dialog, select the <span class="menuselection">Structured Text File</span> option.</p></li>
 <li><p>Enter the following code into the <span class="guilabel">Editor</span>:</p>
-<div class="literal-block-wrapper docutils container" id="helloworld">
-<div class="code-block-caption"><span class="caption-text">Hello World</span><a class="headerlink" href="#helloworld" title="Link to this code">¶</a></div>
+<div class="literal-block-wrapper docutils container" id="doorbell-program">
+<div class="code-block-caption"><span class="caption-text">main.st — Doorbell Program</span><a class="headerlink" href="#doorbell-program" title="Link to this code">¶</a></div>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
    <span class="n">VAR</span>
-      <span class="n">Counter</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span>
+      <span class="n">Button</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
+      <span class="n">Buzzer</span> <span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
    <span class="n">END_VAR</span>
 
-   <span class="n">Counter</span> <span class="o">:=</span> <span class="n">Counter</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+   <span class="n">Buzzer</span> <span class="o">:=</span> <span class="n">NOT</span> <span class="n">Button</span><span class="p">;</span>
 
 <span class="n">END_PROGRAM</span>
 </pre></div>
@@ -668,8 +669,8 @@ code<span class="w"> </span>.
 </li>
 <li><p>Save the file with the name <code class="file docutils literal notranslate"><span class="pre">main.st</span></code>.</p></li>
 </ol>
-<p>That’s it — you have written a valid IEC 61131-3 program. If the IronPLC
-extension is installed, you should see no errors highlighted in the editor.</p>
+<p>If the IronPLC extension is installed, you should see no errors highlighted
+in the editor.</p>
 </section>
 <section id="what-this-program-does">
 <h2>What This Program Does<a class="headerlink" href="#what-this-program-does" title="Link to this heading">¶</a></h2>
@@ -678,33 +679,81 @@ extension is installed, you should see no errors highlighted in the editor.</p>
 <li><p><code class="code docutils literal notranslate"><span class="pre">PROGRAM</span> <span class="pre">main</span></code> … <code class="code docutils literal notranslate"><span class="pre">END_PROGRAM</span></code> defines a <strong>program</strong> named
 <code class="docutils literal notranslate"><span class="pre">main</span></code>. A program is the basic unit of control logic in IEC 61131-3,
 similar to a <code class="docutils literal notranslate"><span class="pre">main</span></code> function in other languages.</p></li>
-<li><p><code class="code docutils literal notranslate"><span class="pre">VAR</span></code> … <code class="code docutils literal notranslate"><span class="pre">END_VAR</span></code> declares a <strong>variable</strong> named <code class="docutils literal notranslate"><span class="pre">Counter</span></code>
-of type <code class="code docutils literal notranslate"><span class="pre">INT</span></code> (a 16-bit signed integer), initialized to 0.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">Counter</span> <span class="pre">:=</span> <span class="pre">Counter</span> <span class="pre">+</span> <span class="pre">1;</span></code> is an <strong>assignment statement</strong>. The <code class="docutils literal notranslate"><span class="pre">:=</span></code>
-operator assigns the value on the right to the variable on the left.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">VAR</span></code> … <code class="code docutils literal notranslate"><span class="pre">END_VAR</span></code> declares two <strong>variables</strong> of type
+<code class="code docutils literal notranslate"><span class="pre">BOOL</span></code>. <code class="docutils literal notranslate"><span class="pre">Button</span></code> represents the sensor input and <code class="docutils literal notranslate"><span class="pre">Buzzer</span></code>
+represents the actuator output.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Buzzer</span> <span class="pre">:=</span> <span class="pre">NOT</span> <span class="pre">Button;</span></code> is an <strong>assignment statement</strong>. The <code class="docutils literal notranslate"><span class="pre">:=</span></code>
+operator assigns the value on the right to the variable on the left.
+When <code class="docutils literal notranslate"><span class="pre">Button</span></code> is <code class="docutils literal notranslate"><span class="pre">FALSE</span></code> (not pressed), <code class="docutils literal notranslate"><span class="pre">Buzzer</span></code> is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>
+(sounding).</p></li>
 </ul>
-<p>This program increments a counter by one each time it runs. On a real PLC,
-this would happen on every scan cycle — but we have not configured that yet.
-We will add that in <a class="reference internal" href="configuring.html"><span class="doc">Configuring Your Application</span></a>.</p>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>Want to see this program run? Click Start to watch <code class="docutils literal notranslate"><span class="pre">Counter</span></code> increment
-on every scan cycle — no installation needed. The playground runs a
-subset of what IronPLC supports; for the full experience, continue with
-the tutorial.</p>
-<p><a class="playground-link reference external" href="https://playground.ironplc.com/?code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBDb3VudGVyIDogSU5UIDo9IDA7CiAgIEVORF9WQVIKCiAgIENvdW50ZXIgOj0gQ291bnRlciArIDE7CgpFTkRfUFJPR1JBTQ%3D%3D">Open in Playground</a></p>
+</section>
+<section id="open-a-terminal">
+<h2>Open a Terminal<a class="headerlink" href="#open-a-terminal" title="Link to this heading">¶</a></h2>
+<p>The next steps use the IronPLC command line tools. Open a terminal inside
+your development environment:</p>
+<ul class="simple">
+<li><p>In Visual Studio Code or Cursor, select
+<span class="menuselection">Terminal ‣ New Terminal</span> from the main menu.</p></li>
+</ul>
+<p>The terminal should open in your <code class="file docutils literal notranslate"><span class="pre">doorbell</span></code> project directory.</p>
+</section>
+<section id="check-the-program">
+<h2>Check the Program<a class="headerlink" href="#check-the-program" title="Link to this heading">¶</a></h2>
+<p>Run the following command to check your program for errors:</p>
+<div class="literal-block-wrapper docutils container" id="id2">
+<div class="code-block-caption"><span class="caption-text">Check Syntax</span><a class="headerlink" href="#id2" title="Link to this code">¶</a></div>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>main.st
+</pre></div>
 </div>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>For a deeper look at Structured Text syntax, see
-<a class="reference internal" href="../explanation/structured-text-basics.html"><span class="doc">Structured Text Basics</span></a>.</p>
 </div>
+<p>On success, the command produces no output. If there are errors, IronPLC
+prints diagnostics with the file name, line number, and a description of
+the problem.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This guide assumes you have installed the IronPLC Compiler. See
+<a class="reference internal" href="installation.html#installation-steps-target"><span class="std std-ref">Installation</span></a> if you have not already installed it.</p>
+</div>
+</section>
+<section id="compile-the-program">
+<h2>Compile the Program<a class="headerlink" href="#compile-the-program" title="Link to this heading">¶</a></h2>
+<p>Compile your program into a bytecode container:</p>
+<div class="literal-block-wrapper docutils container" id="id3">
+<div class="code-block-caption"><span class="caption-text">Compile to Bytecode</span><a class="headerlink" href="#id3" title="Link to this code">¶</a></div>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>compile<span class="w"> </span>main.st<span class="w"> </span>--output<span class="w"> </span>main.iplc
+</pre></div>
+</div>
+</div>
+<p>On success, the command creates the <code class="file docutils literal notranslate"><span class="pre">main.iplc</span></code> file. This file
+contains the compiled bytecode that the IronPLC virtual machine can execute.</p>
+</section>
+<section id="run-the-program">
+<h2>Run the Program<a class="headerlink" href="#run-the-program" title="Link to this heading">¶</a></h2>
+<p>Run the compiled program in the IronPLC virtual machine:</p>
+<div class="literal-block-wrapper docutils container" id="id4">
+<div class="code-block-caption"><span class="caption-text">Run and Inspect Variables</span><a class="headerlink" href="#id4" title="Link to this code">¶</a></div>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcvm<span class="w"> </span>run<span class="w"> </span>main.iplc<span class="w"> </span>--scans<span class="w"> </span><span class="m">1</span><span class="w"> </span>--dump-vars
+</pre></div>
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">--scans</span> <span class="pre">1</span></code> flag runs one scan cycle, and <code class="docutils literal notranslate"><span class="pre">--dump-vars</span></code> prints the
+value of every variable after execution. You should see output like:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Button: FALSE
+Buzzer: TRUE
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">Button</span></code> starts as <code class="docutils literal notranslate"><span class="pre">FALSE</span></code> (the default for <code class="code docutils literal notranslate"><span class="pre">BOOL</span></code>), so
+<code class="docutils literal notranslate"><span class="pre">NOT</span> <span class="pre">Button</span></code> evaluates to <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>, and the buzzer sounds. This is
+exactly the sense-control-actuate cycle in action — even though there is
+no physical hardware connected yet.</p>
 </section>
 <section id="next-steps">
 <h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">¶</a></h2>
-<p>In the next chapter, we will make the program more interesting by connecting
-it to inputs and outputs using a doorbell example.</p>
-<p>Continue to <a class="reference internal" href="sense-control-actuate.html"><span class="doc">The Sense-Control-Actuate Cycle</span></a>.</p>
+<p>You now have a working program, but it runs only once and exits. In the
+next chapter, you will configure the application to run on a repeating
+schedule and add a timer to make the buzzer pulse automatically.</p>
+<p>Continue to <a class="reference internal" href="configuring.html"><span class="doc">Configuring Your Application</span></a>.</p>
 </section>
 </section>
 
@@ -713,23 +762,23 @@ it to inputs and outputs using a doorbell example.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="sense-control-actuate.html">
+          <a class="next-page" href="configuring.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">The Sense-Control-Actuate Cycle</div>
+                <div class="title">Configuring Your Application</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="installation.html">
+          <a class="prev-page" href="sense-control-actuate.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Installation</div>
+                <div class="title">How a PLC Program Works</div>
                 
               </div>
             </a>
@@ -771,10 +820,14 @@ it to inputs and outputs using a doorbell example.</p>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Hello, World!</a><ul>
+<li><a class="reference internal" href="#">Your First Program</a><ul>
 <li><a class="reference internal" href="#create-a-project-directory">Create a Project Directory</a></li>
-<li><a class="reference internal" href="#write-your-first-program">Write Your First Program</a></li>
+<li><a class="reference internal" href="#write-the-program">Write the Program</a></li>
 <li><a class="reference internal" href="#what-this-program-does">What This Program Does</a></li>
+<li><a class="reference internal" href="#open-a-terminal">Open a Terminal</a></li>
+<li><a class="reference internal" href="#check-the-program">Check the Program</a></li>
+<li><a class="reference internal" href="#compile-the-program">Compile the Program</a></li>
+<li><a class="reference internal" href="#run-the-program">Run the Program</a></li>
 <li><a class="reference internal" href="#next-steps">Next Steps</a></li>
 </ul>
 </li>

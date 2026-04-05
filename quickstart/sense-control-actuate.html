@@ -3,17 +3,17 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta property="og:title" content="The Sense-Control-Actuate Cycle" />
+<meta property="og:title" content="How a PLC Program Works" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/quickstart/sense-control-actuate.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="In the previous chapter, you wrote a program that increments a counter. That program works, but it does not interact with the outside world. In this chapter, you will connect your program to inputs..." />
-<meta name="description" content="In the previous chapter, you wrote a program that increments a counter. That program works, but it does not interact with the outside world. In this chapter, you will connect your program to inputs..." />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Configuring Your Application" href="configuring.html"><link rel="prev" title="Hello, World!" href="helloworld.html">
+<meta property="og:description" content="Before writing your first program, it helps to understand how a PLC application is structured. This chapter introduces the core idea that every PLC program is built around. The Sense-Control-Actuat..." />
+<meta name="description" content="Before writing your first program, it helps to understand how a PLC application is structured. This chapter introduces the core idea that every PLC program is built around. The Sense-Control-Actuat..." />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Your First Program" href="helloworld.html"><link rel="prev" title="Installation" href="installation.html">
         <link rel="canonical" href="https://www.ironplc.com/quickstart/sense-control-actuate.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>The Sense-Control-Actuate Cycle - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
+        <title>How a PLC Program Works - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.187.0">
+<meta name="ironplc-version" content="0.188.0">
 </head>
   <body>
     
@@ -221,11 +221,11 @@
   <ul class="current">
 <li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">Quick start</a><input aria-label="Toggle navigation of Quick start" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="helloworld.html">Hello, World!</a></li>
-<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">The Sense-Control-Actuate Cycle</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">How a PLC Program Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="helloworld.html">Your First Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="configuring.html">Configuring Your Application</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multiple-files.html">Working with Multiple Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="compiling-and-running.html">Compiling and Running</a></li>
+<li class="toctree-l2"><a class="reference internal" href="compiling-and-running.html">Connecting to Hardware</a></li>
 </ul>
 </li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../how-to-guides/index.html">How-to guides</a><input aria-label="Toggle navigation of How-to guides" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -621,96 +621,58 @@
 <p class="admonition-title">Attention</p>
 <p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include structures and user defined function blocks.</p>
 </div>
+<section id="how-a-plc-program-works">
+<h1>How a PLC Program Works<a class="headerlink" href="#how-a-plc-program-works" title="Link to this heading">¶</a></h1>
+<p>Before writing your first program, it helps to understand how a PLC
+application is structured. This chapter introduces the core idea that every
+PLC program is built around.</p>
 <section id="the-sense-control-actuate-cycle">
-<h1>The Sense-Control-Actuate Cycle<a class="headerlink" href="#the-sense-control-actuate-cycle" title="Link to this heading">¶</a></h1>
-<p>In the previous chapter, you wrote a program that increments a counter. That
-program works, but it does not interact with the outside world. In this
-chapter, you will connect your program to inputs and outputs using a doorbell
-example.</p>
-<section id="the-idea">
-<h2>The Idea<a class="headerlink" href="#the-idea" title="Link to this heading">¶</a></h2>
-<p>Controllers normally operate as part of a <strong>sense-control-actuate</strong> cycle:</p>
+<h2>The Sense-Control-Actuate Cycle<a class="headerlink" href="#the-sense-control-actuate-cycle" title="Link to this heading">¶</a></h2>
+<p>Controllers operate in a continuous <strong>sense-control-actuate</strong> cycle:</p>
 <ol class="arabic simple">
-<li><p><strong>Sense</strong> — read inputs from sensors.</p></li>
+<li><p><strong>Sense</strong> — read inputs from sensors (buttons, temperature probes, etc.).</p></li>
 <li><p><strong>Control</strong> — evaluate logic to decide what to do.</p></li>
-<li><p><strong>Actuate</strong> — write outputs to actuators.</p></li>
+<li><p><strong>Actuate</strong> — write outputs to actuators (buzzers, motors, valves, etc.).</p></li>
 </ol>
-<p>We’ll illustrate this with a simple doorbell system. The system has a button
-(the sensor) and a buzzer (the actuator).</p>
+<p>The runtime repeats this cycle on a fixed schedule — for example, every
+100 milliseconds. Each repetition is called a <strong>scan cycle</strong>.</p>
+</section>
+<section id="a-doorbell-example">
+<h2>A Doorbell Example<a class="headerlink" href="#a-doorbell-example" title="Link to this heading">¶</a></h2>
+<p>A simple doorbell system illustrates the cycle. The system has a button
+(the sensor) and a buzzer (the actuator):</p>
 <figure class="align-default" id="id1">
 <img alt="../_images/button-buzzer.svg" src="../_images/button-buzzer.svg" width="200" />
 <figcaption>
 <p><span class="caption-text">Pressing the button triggers the buzzer.</span><a class="headerlink" href="#id1" title="Link to this image">¶</a></p>
 </figcaption>
 </figure>
-<p>We want the buzzer to sound when the button is pressed. To do that, our
-program reads the button state and sets the buzzer accordingly.</p>
+<p>In each scan cycle, the PLC:</p>
+<ol class="arabic simple">
+<li><p><strong>Senses</strong> whether the button is pressed.</p></li>
+<li><p><strong>Controls</strong> — decides the buzzer should sound when the button is pressed.</p></li>
+<li><p><strong>Actuates</strong> — turns the buzzer on or off.</p></li>
+</ol>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>A real doorbell does not need a PLC. This example is deliberately simple
-to illustrate IEC 61131-3 concepts.</p>
+to illustrate how PLC programs work.</p>
 </div>
 </section>
-<section id="add-variables-for-i-o">
-<h2>Add Variables for I/O<a class="headerlink" href="#add-variables-for-i-o" title="Link to this heading">¶</a></h2>
-<p>Open the <code class="file docutils literal notranslate"><span class="pre">main.st</span></code> file from the previous chapter and replace its
-contents with:</p>
-<div class="literal-block-wrapper docutils container" id="doorbell">
-<div class="code-block-caption"><span class="caption-text">Doorbell Program</span><a class="headerlink" href="#doorbell" title="Link to this code">¶</a></div>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
-   <span class="n">VAR</span>
-      <span class="n">Button</span> <span class="n">AT</span> <span class="o">%</span><span class="n">IX1</span><span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
-      <span class="n">Buzzer</span> <span class="n">AT</span> <span class="o">%</span><span class="n">QX1</span><span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
-   <span class="n">END_VAR</span>
-
-   <span class="n">Buzzer</span> <span class="o">:=</span> <span class="n">NOT</span> <span class="n">Button</span><span class="p">;</span>
-
-<span class="n">END_PROGRAM</span>
-</pre></div>
-</div>
-</div>
-<p>Save the file. The IronPLC extension checks the file automatically — you
-should see no errors.</p>
-</section>
-<section id="what-changed">
-<h2>What Changed<a class="headerlink" href="#what-changed" title="Link to this heading">¶</a></h2>
-<p>We replaced the counter with two new variables:</p>
+<section id="what-you-will-build">
+<h2>What You Will Build<a class="headerlink" href="#what-you-will-build" title="Link to this heading">¶</a></h2>
+<p>In this tutorial, you will write a doorbell program and progressively
+enhance it:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">Button</span> <span class="pre">AT</span> <span class="pre">%IX1</span> <span class="pre">:</span> <span class="pre">BOOL</span></code> — a Boolean <strong>input</strong> variable. The <code class="code docutils literal notranslate"><span class="pre">AT</span></code>
-keyword followed by <code class="docutils literal notranslate"><span class="pre">%IX1</span></code> maps this variable to a physical input
-address. The <code class="docutils literal notranslate"><span class="pre">I</span></code> means input, <code class="docutils literal notranslate"><span class="pre">X</span></code> means single bit, and <code class="docutils literal notranslate"><span class="pre">1</span></code> is the
-address number.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">Buzzer</span> <span class="pre">AT</span> <span class="pre">%QX1</span> <span class="pre">:</span> <span class="pre">BOOL</span></code> — a Boolean <strong>output</strong> variable. The <code class="docutils literal notranslate"><span class="pre">Q</span></code>
-means output.</p></li>
+<li><p>Write the control logic in <strong>Structured Text</strong>, the programming language
+defined by IEC 61131-3.</p></li>
+<li><p><strong>Compile</strong> it into bytecode using the IronPLC compiler.</p></li>
+<li><p><strong>Run</strong> it in the IronPLC virtual machine and inspect the results.</p></li>
+<li><p><strong>Configure</strong> the application with a task schedule.</p></li>
+<li><p><strong>Connect</strong> it to hardware inputs and outputs.</p></li>
 </ul>
-<p>These are called <strong>directly represented variables</strong> because they are tied
-to specific hardware I/O points. On a real PLC, <code class="docutils literal notranslate"><span class="pre">%IX1</span></code> would correspond
-to a digital input pin (the button) and <code class="docutils literal notranslate"><span class="pre">%QX1</span></code> to a digital output pin
-(the buzzer).</p>
-<p>The statement <code class="docutils literal notranslate"><span class="pre">Buzzer</span> <span class="pre">:=</span> <span class="pre">NOT</span> <span class="pre">Button;</span></code> assigns the logical inverse of
-the button state to the buzzer. When the button is pressed (FALSE in this
-wiring), the buzzer turns on (TRUE).</p>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>You can experiment with the boolean logic in the playground — a
-simplified version without hardware addresses. The playground does
-not support directly represented variables (<code class="docutils literal notranslate"><span class="pre">AT</span> <span class="pre">%IX1</span></code>), but it is a
-quick way to try the logic.</p>
-<p><a class="playground-link reference external" href="https://playground.ironplc.com/?code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBCdXR0b24gOiBCT09MOwogICAgICBCdXp6ZXIgOiBCT09MOwogICBFTkRfVkFSCgogICBCdXp6ZXIgOj0gTk9UIEJ1dHRvbjsKCkVORF9QUk9HUkFN">Open in Playground</a></p>
-</div>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>For a complete explanation of the addressing format (<code class="docutils literal notranslate"><span class="pre">%IX</span></code>, <code class="docutils literal notranslate"><span class="pre">%QX</span></code>,
-<code class="docutils literal notranslate"><span class="pre">%MW</span></code>, etc.), see <a class="reference internal" href="../explanation/variables-and-io.html"><span class="doc">Variables and I/O</span></a>.</p>
-</div>
-</section>
-<section id="next-steps">
-<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">¶</a></h2>
-<p>You now have a program with inputs and outputs, but it is not yet a
-complete IEC 61131-3 application. We need to tell the runtime <em>how often</em>
-to run this program and <em>where</em> to run it. That’s what configurations,
-resources, and tasks are for.</p>
-<p>Continue to <a class="reference internal" href="configuring.html"><span class="doc">Configuring Your Application</span></a>.</p>
+<p>Let’s start writing code.</p>
+<p>Continue to <a class="reference internal" href="helloworld.html"><span class="doc">Your First Program</span></a>.</p>
 </section>
 </section>
 
@@ -719,23 +681,23 @@ resources, and tasks are for.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="configuring.html">
+          <a class="next-page" href="helloworld.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Configuring Your Application</div>
+                <div class="title">Your First Program</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="helloworld.html">
+          <a class="prev-page" href="installation.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Hello, World!</div>
+                <div class="title">Installation</div>
                 
               </div>
             </a>
@@ -777,11 +739,10 @@ resources, and tasks are for.</p>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">The Sense-Control-Actuate Cycle</a><ul>
-<li><a class="reference internal" href="#the-idea">The Idea</a></li>
-<li><a class="reference internal" href="#add-variables-for-i-o">Add Variables for I/O</a></li>
-<li><a class="reference internal" href="#what-changed">What Changed</a></li>
-<li><a class="reference internal" href="#next-steps">Next Steps</a></li>
+<li><a class="reference internal" href="#">How a PLC Program Works</a><ul>
+<li><a class="reference internal" href="#the-sense-control-actuate-cycle">The Sense-Control-Actuate Cycle</a></li>
+<li><a class="reference internal" href="#a-doorbell-example">A Doorbell Example</a></li>
+<li><a class="reference internal" href="#what-you-will-build">What You Will Build</a></li>
 </ul>
 </li>
 </ul>
