@@ -281,8 +281,8 @@ fn run_when_debug_info_and_dump_vars_then_shows_named_variables(
 }
 
 #[test]
-fn run_when_dump_vars_without_path_then_prints_to_stdout(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn run_when_dump_vars_without_path_then_prints_to_stdout() -> Result<(), Box<dyn std::error::Error>>
+{
     let dir = TempDir::new()?;
     let container_path = dir.path().join("test.iplc");
     write_steel_thread_container(&container_path);

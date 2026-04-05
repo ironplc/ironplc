@@ -227,7 +227,10 @@ fn build_var_debug_map(container: &Container) -> HashMap<u16, (&str, u8)> {
     let mut map = HashMap::new();
     if let Some(ref debug) = container.debug_section {
         for entry in &debug.var_names {
-            map.insert(entry.var_index.raw(), (entry.name.as_str(), entry.iec_type_tag));
+            map.insert(
+                entry.var_index.raw(),
+                (entry.name.as_str(), entry.iec_type_tag),
+            );
         }
     }
     map
@@ -279,7 +282,10 @@ fn write_variable_line(
         format!("var[{index}]: {}", raw as i32)
     };
     writeln!(out, "{line}").map_err(|e| {
-        VmError::io(error::DUMP_WRITE, format!("Unable to write dump output: {e}"))
+        VmError::io(
+            error::DUMP_WRITE,
+            format!("Unable to write dump output: {e}"),
+        )
     })
 }
 
