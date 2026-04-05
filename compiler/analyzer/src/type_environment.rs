@@ -289,6 +289,19 @@ impl TypeEnvironment {
             .map(|(name, _)| TypeName::from(name))
     }
 
+    /// Given an [`IntermediateType`], finds the matching elementary type name.
+    ///
+    /// Scans the 29 elementary types. Returns `None` for complex types
+    /// (arrays, structs, references). This is the inverse of
+    /// [`resolve_elementary_type_name`] — it starts from the representation
+    /// rather than a stored type name.
+    pub fn elementary_type_name_from_repr(&self, repr: &IntermediateType) -> Option<TypeName> {
+        ELEMENTARY_TYPES_LOWER_CASE
+            .iter()
+            .find(|(_, elem_type)| elem_type == repr)
+            .map(|(name, _)| TypeName::from(name))
+    }
+
     /// Returns the intermediate type for a named array type.
     ///
     /// Returns `Some` with the `IntermediateType::Array` if the type is found
