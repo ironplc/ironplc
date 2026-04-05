@@ -3333,15 +3333,12 @@ pub(crate) fn compile_expr(
             // concrete (non-generic) resolved type, preferring the left operand.
             // When one side is a literal (generic type like ANY_INT) and the other
             // is a typed variable (e.g. DWORD), we use the concrete type to ensure
-            // correct signedness. For boolean connectives (AND/OR/XOR), keep the
-            // incoming op_type since both sides are already BOOL.
-            let operand_op_type = match compare.op {
-                CompareOp::And | CompareOp::Or | CompareOp::Xor => op_type,
-                _ => concrete_op_type_from_expr(&compare.left)
-                    .or_else(|| concrete_op_type_from_expr(&compare.right))
-                    .or_else(|| op_type_from_expr(&compare.left))
-                    .unwrap_or(op_type),
-            };
+            // correct signedness. This also applies to AND/OR/XOR which can be
+            // either boolean (BOOL operands) or bitwise (e.g. DWORD operands).
+            let operand_op_type = concrete_op_type_from_expr(&compare.left)
+                .or_else(|| concrete_op_type_from_expr(&compare.right))
+                .or_else(|| op_type_from_expr(&compare.left))
+                .unwrap_or(op_type);
             compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
             compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
             match compare.op {

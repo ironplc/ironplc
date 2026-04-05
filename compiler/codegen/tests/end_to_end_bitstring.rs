@@ -567,3 +567,44 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 1);
 }
+
+#[test]
+fn end_to_end_when_dword_and_large_hex_literal_in_comparison_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    mask : DWORD;
+    last : DWORD;
+    b : BOOL;
+  END_VAR
+  mask := 4294967292;
+  last := mask AND 16#FFFF_FFFC;
+  IF (mask AND 16#FFFF_FFFC) = last THEN
+    b := TRUE;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // mask AND 16#FFFF_FFFC = 4294967292 AND 4294967292 = 4294967292 = last
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_dword_or_large_hex_literal_in_comparison_then_correct() {
+    let source = "
+PROGRAM main
+  VAR
+    mask : DWORD;
+    last : DWORD;
+    b : BOOL;
+  END_VAR
+  mask := 4294967292;
+  last := mask OR 16#FFFF_FFFC;
+  IF (mask OR 16#FFFF_FFFC) = last THEN
+    b := TRUE;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+}
