@@ -15,7 +15,8 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 
-use super::compile::{compile_expr, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
 
 /// Normalized array specification, independent of AST representation.
@@ -201,7 +202,7 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
         }
         _ => {
             // Fall through to existing resolve_variable() for scalars.
-            let var_index = super::compile::resolve_variable(ctx, variable)?;
+            let var_index = super::compile_expr::resolve_variable(ctx, variable)?;
             Ok(ResolvedAccess::Scalar { var_index })
         }
     }
@@ -341,10 +342,11 @@ pub(crate) fn array_spec_from_inline(
         .ranges
         .iter()
         .map(|range| {
-            let lower =
-                super::compile::signed_integer_to_i32(range.start.as_signed_integer().unwrap())?;
+            let lower = super::compile_stmt::signed_integer_to_i32(
+                range.start.as_signed_integer().unwrap(),
+            )?;
             let upper =
-                super::compile::signed_integer_to_i32(range.end.as_signed_integer().unwrap())?;
+                super::compile_stmt::signed_integer_to_i32(range.end.as_signed_integer().unwrap())?;
             Ok((lower, upper))
         })
         .collect::<Result<Vec<_>, Diagnostic>>()?;

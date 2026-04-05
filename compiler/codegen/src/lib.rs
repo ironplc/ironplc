@@ -30,6 +30,10 @@
 
 mod compile;
 mod compile_array;
+mod compile_call;
+mod compile_expr;
+mod compile_stmt;
+mod compile_string;
 mod compile_struct;
 mod emit;
 

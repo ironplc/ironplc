@@ -19,10 +19,8 @@ use ironplc_container::FieldType;
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit, TypeName};
 
-use super::compile::{
-    compile_constant, emit_truncation, emit_zero_const, CompileContext, OpType, OpWidth,
-    Signedness, VarTypeInfo,
-};
+use super::compile::{emit_zero_const, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile_expr::{compile_constant, emit_truncation};
 use crate::emit::Emitter;
 
 /// Metadata for a structure variable, stored in CompileContext.
