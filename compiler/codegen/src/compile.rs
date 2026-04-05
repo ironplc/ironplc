@@ -393,6 +393,7 @@ fn compile_program_with_functions(
             &mut ctx,
             functions,
             &mut builder,
+            types,
             num_globals,
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
@@ -544,6 +545,7 @@ fn compile_program_with_functions(
 /// - Input parameters (in declaration order)
 /// - Local variables (VAR)
 /// - Return value variable (named same as function)
+#[allow(clippy::too_many_arguments)]
 fn compile_user_function(
     func_decl: &FunctionDeclaration,
     function_id: u16,
@@ -551,6 +553,7 @@ fn compile_user_function(
     ctx: &mut CompileContext,
     functions: &FunctionEnvironment,
     builder: &mut ContainerBuilder,
+    types: &TypeEnvironment,
     num_globals: u16,
 ) -> Result<CompiledFunction, Diagnostic> {
     // Save the program's variable mappings.
@@ -558,6 +561,7 @@ fn compile_user_function(
     let saved_var_types = std::mem::take(&mut ctx.var_types);
     let saved_string_vars = std::mem::take(&mut ctx.string_vars);
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
+    let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
 
     // Re-insert global variable mappings so the function body can access them.
     for (id, index) in &saved_variables {
@@ -579,6 +583,14 @@ fn compile_user_function(
             .is_some_and(|i| i.raw() < num_globals)
         {
             ctx.string_vars.insert(id.clone(), info.clone());
+        }
+    }
+    for (id, info) in &saved_struct_vars {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.struct_vars.insert(id.clone(), info.clone());
         }
     }
 
@@ -751,7 +763,20 @@ fn compile_user_function(
         }
         FunctionReturnType::Named(_) => {
             let return_type_name = func_decl.return_type.to_type_name();
-            if let Some(type_info) = resolve_type_name(&return_type_name.name) {
+            if types.resolve_struct_type(&return_type_name).is_some() {
+                // Return type is a struct — allocate data region space and
+                // register the return variable so field assignments
+                // (e.g. FUNC.X := val) work inside the function body.
+                crate::compile_struct::allocate_struct_variable(
+                    ctx,
+                    builder,
+                    types,
+                    &return_type_name,
+                    &return_id,
+                    return_var_index,
+                    &func_decl.name.span(),
+                )?;
+            } else if let Some(type_info) = resolve_type_name(&return_type_name.name) {
                 ctx.var_types.insert(return_id.clone(), type_info);
             }
             None
@@ -855,6 +880,15 @@ fn compile_user_function(
         }
     }
 
+    let return_struct_info = ctx
+        .struct_vars
+        .get(&return_id)
+        .map(|info| StructReturnInfo {
+            data_offset: info.data_offset,
+            total_slots: info.total_slots.raw(),
+            desc_index: info.desc_index,
+        });
+
     ctx.user_functions.insert(
         func_name.to_string(),
         UserFunctionInfo {
@@ -864,6 +898,7 @@ fn compile_user_function(
             param_op_types,
             param_string_info,
             return_string_info,
+            return_struct_info,
             max_stack_depth,
         },
     );
@@ -873,6 +908,7 @@ fn compile_user_function(
     ctx.var_types = saved_var_types;
     ctx.string_vars = saved_string_vars;
     ctx.array_vars = saved_array_vars;
+    ctx.struct_vars = saved_struct_vars;
 
     Ok(CompiledFunction {
         function_id,
@@ -1016,6 +1052,22 @@ struct StringReturnInfo {
     max_length: u16,
 }
 
+/// Metadata for a structure return value in a user-defined function.
+///
+/// When a function returns a struct type, the return value occupies multiple
+/// slots in the data region. The caller must copy the data from the function's
+/// return location to the destination variable after CALL.
+#[derive(Clone)]
+#[allow(dead_code)]
+struct StructReturnInfo {
+    /// Byte offset in the data region where the return struct's fields start.
+    data_offset: u32,
+    /// Total number of 8-byte slots the struct occupies.
+    total_slots: u32,
+    /// Array descriptor index (treats struct as flat slot array).
+    desc_index: u16,
+}
+
 /// Metadata for a compiled user-defined function.
 #[derive(Clone)]
 struct UserFunctionInfo {
@@ -1034,6 +1086,10 @@ struct UserFunctionInfo {
     /// in the data region. Used at call sites to initialize the return string
     /// header before CALL.
     return_string_info: Option<StringReturnInfo>,
+    /// If the function returns a struct type, info about the return struct
+    /// in the data region. Used at call sites to copy struct data after CALL.
+    #[allow(dead_code)]
+    return_struct_info: Option<StructReturnInfo>,
     /// Maximum stack depth used by this function's body.
     max_stack_depth: u16,
 }
@@ -1763,7 +1819,36 @@ fn emit_function_local_prologue(
     }
 
     // Zero-initialize the return variable.
-    if let Some(info) = ctx.string_vars.get(&func_decl.name) {
+    if let Some(struct_info) = ctx.struct_vars.get(&func_decl.name).cloned() {
+        // Struct return: store data_offset into the return var slot and
+        // zero all struct fields. Functions are stateless, so the struct
+        // must be re-initialized on every call.
+        let offset_const = ctx.add_i32_constant(struct_info.data_offset as i32);
+        emitter.emit_load_const_i32(offset_const);
+        emitter.emit_store_var_i32(return_var_index);
+
+        let fields: Vec<_> = struct_info
+            .fields
+            .iter()
+            .map(|f| crate::compile_struct::FieldInitInfo {
+                name: f.name.clone(),
+                slot_offset: f.slot_offset,
+                field_type: f.field_type.clone(),
+                op_type: f.op_type,
+                string_max_length: f.string_max_length,
+            })
+            .collect();
+
+        crate::compile_struct::initialize_struct_fields(
+            emitter,
+            ctx,
+            return_var_index,
+            struct_info.desc_index,
+            struct_info.data_offset,
+            &fields,
+            &[],
+        )?;
+    } else if let Some(info) = ctx.string_vars.get(&func_decl.name) {
         // STRING return: initialize the string header in the data region.
         emitter.emit_str_init(info.data_offset, info.max_length);
     } else {
@@ -2286,6 +2371,40 @@ fn compile_statement(
                 emitter.emit_load_const_i32(idx_const);
                 emitter.emit_store_array(var_index, desc_index);
                 return Ok(());
+            }
+
+            // Check if the target is a struct variable (whole-struct assignment).
+            if let Some(target_name) = resolve_variable_name(&assignment.target) {
+                if let Some(dst_info) = ctx.struct_vars.get(target_name).cloned() {
+                    let dst_var = ctx.var_index(target_name)?;
+                    // Compile RHS (for struct-returning functions, leaves
+                    // the source struct's data_offset on the stack).
+                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+
+                    // Copy protocol: temporarily point dst_var to source data,
+                    // load all fields, restore dst_var, store all fields.
+                    emit_store_var(emitter, dst_var, DEFAULT_OP_TYPE);
+
+                    let total = dst_info.total_slots.raw();
+                    for i in 0..total {
+                        let idx = ctx.add_i32_constant(i as i32);
+                        emitter.emit_load_const_i32(idx);
+                        emitter.emit_load_array(dst_var, dst_info.desc_index);
+                    }
+
+                    // Restore dst_var's own data_offset.
+                    let dst_offset = ctx.add_i32_constant(dst_info.data_offset as i32);
+                    emitter.emit_load_const_i32(dst_offset);
+                    emit_store_var(emitter, dst_var, DEFAULT_OP_TYPE);
+
+                    // Store fields in reverse order (LIFO stack consumption).
+                    for i in (0..total).rev() {
+                        let idx = ctx.add_i32_constant(i as i32);
+                        emitter.emit_load_const_i32(idx);
+                        emitter.emit_store_array(dst_var, dst_info.desc_index);
+                    }
+                    return Ok(());
+                }
             }
 
             // Look up the target variable's type info.
