@@ -10,6 +10,8 @@ import { IplcEditorProvider } from './iplcEditorProvider';
 import { IronplcTaskProvider } from './ironplcTaskProvider';
 import { CompilerEnvironment, findCompilerPath } from './compilerDiscovery';
 import { ProblemCode, formatProblem } from './problems';
+import { RunSession, RunState } from './runSession';
+import { findProgramLenses } from './runCodeLensProvider';
 
 const VERBOSITY = new Map<string, string[]>([
   ['ERROR', []],
@@ -20,6 +22,7 @@ const VERBOSITY = new Map<string, string[]>([
 ]);
 
 let client: LanguageClient | undefined;
+let runSession: RunSession | undefined;
 
 function openProblemInBrowser(code: ProblemCode) {
   const ext = vscode.extensions.getExtension('ironplc.ironplc');
@@ -37,6 +40,10 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showTextDocument(newFile);
     });
   }));
+
+  // Register run commands unconditionally so they exist even without a
+  // compiler (the commands gracefully no-op when no client is available).
+  registerRunSupport(context);
 
   const env: CompilerEnvironment = {
     platform: process.platform,
@@ -74,6 +81,149 @@ export function activate(context: vscode.ExtensionContext) {
   else {
     console.error('Extension "ironplc" is NOT active!');
   }
+}
+
+function registerRunSupport(context: vscode.ExtensionContext) {
+  // Output channel for variable display
+  const outputChannel = vscode.window.createOutputChannel('IronPLC Run');
+  context.subscriptions.push(outputChannel);
+
+  // Status bar items
+  const pauseItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  pauseItem.command = 'ironplc.pauseProgram';
+  context.subscriptions.push(pauseItem);
+
+  const stopItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+  stopItem.text = '$(debug-stop) Stop';
+  stopItem.tooltip = 'Stop program execution';
+  stopItem.command = 'ironplc.stopProgram';
+  context.subscriptions.push(stopItem);
+
+  function updateStatusBar(state: RunState) {
+    if (state === 'running') {
+      pauseItem.text = '$(debug-pause) Pause';
+      pauseItem.tooltip = 'Pause program execution';
+      pauseItem.show();
+      stopItem.show();
+    } else if (state === 'paused') {
+      pauseItem.text = '$(debug-continue) Resume';
+      pauseItem.tooltip = 'Resume program execution';
+      pauseItem.show();
+      stopItem.show();
+    } else {
+      pauseItem.hide();
+      stopItem.hide();
+    }
+  }
+
+  // Initially hidden
+  updateStatusBar('idle');
+
+  // CodeLens provider
+  const stSelector: vscode.DocumentSelector = [
+    { scheme: 'file', language: '61131-3-st' },
+    { scheme: 'file', language: 'twincat-pou' },
+  ];
+
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(stSelector, {
+      provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
+        const lenses = findProgramLenses(document.getText());
+        const hasCompiler = !!client;
+        return lenses.map(lens => {
+          const range = new vscode.Range(
+            new vscode.Position(lens.range.start.line, lens.range.start.character),
+            new vscode.Position(lens.range.end.line, lens.range.end.character),
+          );
+          if (hasCompiler) {
+            return new vscode.CodeLens(range, lens.command ? {
+              title: lens.command.title,
+              command: lens.command.command,
+              arguments: lens.command.arguments,
+            } : undefined);
+          }
+          return new vscode.CodeLens(range, {
+            title: '$(warning) Run Program (no compiler)',
+            command: 'ironplc.runProgram',
+          });
+        });
+      },
+    }),
+  );
+
+  // Run command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ironplc.runProgram', async () => {
+      if (!client) {
+        vscode.window.showErrorMessage(
+          formatProblem(ProblemCode.NoCompiler, 'Install the compiler to run programs.'),
+          'Open Online Help',
+        ).then((selection) => {
+          if (selection === 'Open Online Help') {
+            openProblemInBrowser(ProblemCode.NoCompiler);
+          }
+        });
+        return;
+      }
+
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showWarningMessage('No active editor with a program to run.');
+        return;
+      }
+
+      const source = editor.document.getText();
+
+      // Dispose previous session
+      if (runSession) {
+        runSession.dispose();
+      }
+
+      runSession = new RunSession(client, {
+        onStateChange: updateStatusBar,
+        onVariablesUpdate(variables, totalScans) {
+          outputChannel.clear();
+          outputChannel.appendLine(`Scan cycle: ${totalScans}`);
+          outputChannel.appendLine('---');
+          for (const v of variables) {
+            const label = v.name || `var[${v.index}]`;
+            const typeSuffix = v.type_name ? ` : ${v.type_name}` : '';
+            outputChannel.appendLine(`  ${label}${typeSuffix} = ${v.value}`);
+          }
+        },
+        onError(message) {
+          vscode.window.showErrorMessage(`IronPLC Run: ${message}`);
+          outputChannel.appendLine(`ERROR: ${message}`);
+        },
+      });
+
+      outputChannel.show(true);
+      await runSession.start(source);
+    }),
+  );
+
+  // Pause/resume command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ironplc.pauseProgram', () => {
+      if (!runSession) {
+        return;
+      }
+      if (runSession.getState() === 'running') {
+        runSession.pause();
+      } else if (runSession.getState() === 'paused') {
+        runSession.resume();
+      }
+    }),
+  );
+
+  // Stop command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('ironplc.stopProgram', async () => {
+      if (runSession) {
+        await runSession.stop();
+      }
+    }),
+  );
 }
 
 function createClient(compilerFilePath: string, config: vscode.WorkspaceConfiguration) {
@@ -135,6 +285,11 @@ function createClient(compilerFilePath: string, config: vscode.WorkspaceConfigur
 // This method is called when this extension is deactivated
 export function deactivate(): Thenable<void> | undefined {
   console.log('Extension "ironplc" is deactivating!');
+
+  if (runSession) {
+    runSession.dispose();
+    runSession = undefined;
+  }
 
   if (!client) {
     return undefined;
