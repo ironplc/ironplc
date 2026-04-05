@@ -4178,13 +4178,33 @@ fn resolve_string_arg(
 ) -> Result<u32, Diagnostic> {
     match &arg.kind {
         ExprKind::Variable(variable) => {
-            let var_name = resolve_variable_name(variable)
+            // Fast path: simple named variable found in string_vars.
+            if let Some(var_name) = resolve_variable_name(variable) {
+                if let Some(info) = ctx.string_vars.get(var_name) {
+                    return Ok(info.data_offset);
+                }
+            }
+            // Complex variable (e.g., struct field array subscript): fall
+            // through to the general expression path below.
+            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
+            let data_offset = ctx.data_region_offset;
+            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+            ctx.data_region_offset = ctx
+                .data_region_offset
+                .checked_add(total_bytes)
                 .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-            let info = ctx
-                .string_vars
-                .get(var_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-            Ok(info.data_offset)
+
+            if max_length > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_length;
+            }
+
+            emitter.emit_str_init(data_offset, max_length);
+
+            let op_type = DEFAULT_OP_TYPE;
+            compile_expr(emitter, ctx, arg, op_type)?;
+            emitter.emit_str_store_var(data_offset);
+
+            Ok(data_offset)
         }
         ExprKind::Const(ConstantKind::CharacterString(lit)) => {
             // Allocate space in the data region for this string literal.
