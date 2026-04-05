@@ -29,6 +29,7 @@ pub fn apply(
     let mut resolver = ExprTypeResolver {
         var_types: HashMap::new(),
         global_var_types: HashMap::new(),
+        array_element_types: HashMap::new(),
         type_environment,
         function_environment,
         options,
@@ -52,11 +53,30 @@ fn is_generic_type(tn: &TypeName) -> bool {
     GENERIC_TYPES.iter().any(|name| TypeName::from(name) == *tn)
 }
 
+/// Walks a nested [`SymbolicVariableKind`] chain to find the root named variable.
+///
+/// For example, `pt^[i]` is `Array { Deref { Named("pt") } }` — this returns `"pt"`.
+fn find_base_variable_name(var: &SymbolicVariableKind) -> Option<&Id> {
+    match var {
+        SymbolicVariableKind::Named(nv) => Some(&nv.name),
+        SymbolicVariableKind::Deref(dv) => find_base_variable_name(&dv.variable),
+        SymbolicVariableKind::Array(av) => find_base_variable_name(&av.subscripted_variable),
+        _ => None,
+    }
+}
+
 struct ExprTypeResolver<'a> {
     /// Maps variable names to their declared TypeName within the current POU scope.
     var_types: HashMap<Id, TypeName>,
     /// Maps global variable names to their declared TypeName, persists across POU folds.
     global_var_types: HashMap<Id, TypeName>,
+    /// For variables declared as arrays or REF_TO arrays, stores the element type.
+    ///
+    /// For `arr : ARRAY[0..10] OF INT`, stores `"int"` keyed by `"arr"`.
+    /// For `pt : REF_TO ARRAY[1..255] OF BYTE`, stores `"byte"` keyed by `"pt"`.
+    /// This enables `resolve_variable_type` to return the correct element type
+    /// when resolving `arr[i]` or `pt^[i]` expressions.
+    array_element_types: HashMap<Id, TypeName>,
     type_environment: &'a TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
     options: &'a CompilerOptions,
@@ -78,8 +98,12 @@ impl ExprTypeResolver<'_> {
     }
 
     /// Extracts the TypeName from a variable declaration and inserts it into the
-    /// variable type map.
+    /// variable type map. Also populates `array_element_types` for array and
+    /// REF_TO array variables so that subscript expressions can resolve their
+    /// element type.
     fn insert(&mut self, node: &VarDecl) {
+        self.insert_array_element_type(node);
+
         let type_name = match &node.initializer {
             InitialValueAssignmentKind::None(_) => return,
             InitialValueAssignmentKind::Simple(si) => si.type_name.clone(),
@@ -112,6 +136,69 @@ impl ExprTypeResolver<'_> {
                     self.var_types.insert(name.clone(), type_name);
                 }
             }
+        }
+    }
+
+    /// Extracts and stores the array element type for array and REF_TO array
+    /// variable declarations.
+    fn insert_array_element_type(&mut self, node: &VarDecl) {
+        let id = match &node.identifier {
+            VariableIdentifier::Symbol(id) => id.clone(),
+            VariableIdentifier::Direct(direct) => match &direct.name {
+                Some(name) => name.clone(),
+                None => return,
+            },
+        };
+
+        let elem_type_name = match &node.initializer {
+            // ARRAY[...] OF T (inline spec)
+            InitialValueAssignmentKind::Array(a) => match &a.spec {
+                SpecificationKind::Inline(inline) => {
+                    Some(self.resolve_element_type_name(&inline.type_name))
+                }
+                SpecificationKind::Named(tn) => self.element_type_from_named_array(tn),
+            },
+            // REF_TO ARRAY[...] OF T or REF_TO <named_array_type>
+            InitialValueAssignmentKind::Reference(ref_init) => match &ref_init.target {
+                ReferenceTarget::Array(subranges) => {
+                    Some(self.resolve_element_type_name(&subranges.type_name))
+                }
+                ReferenceTarget::Named(tn) => self.element_type_from_named_array(tn),
+            },
+            // Named type that may be an array alias (e.g., `arr : MyArr`
+            // where `TYPE MyArr : ARRAY[0..10] OF INT; END_TYPE`)
+            InitialValueAssignmentKind::Simple(si) => {
+                self.element_type_from_named_array(&si.type_name)
+            }
+            // Late-resolved type that may be an array alias
+            InitialValueAssignmentKind::LateResolvedType(tn) => {
+                self.element_type_from_named_array(tn)
+            }
+            _ => None,
+        };
+
+        if let Some(elem_tn) = elem_type_name {
+            self.array_element_types.insert(id, elem_tn);
+        }
+    }
+
+    /// Resolves an [`ArrayElementType`] to a canonical elementary type name.
+    fn resolve_element_type_name(&self, elem: &ArrayElementType) -> TypeName {
+        let tn = elem.to_type_name();
+        self.type_environment
+            .resolve_elementary_type_name(&tn)
+            .unwrap_or(tn)
+    }
+
+    /// Looks up a named type in the type environment; if it is an array,
+    /// returns the element type name.
+    fn element_type_from_named_array(&self, type_name: &TypeName) -> Option<TypeName> {
+        let attrs = self.type_environment.get(type_name)?;
+        match &attrs.representation {
+            IntermediateType::Array { element_type, .. } => {
+                self.type_environment.elementary_type_name_for(element_type)
+            }
+            _ => None,
         }
     }
 
@@ -283,12 +370,31 @@ impl ExprTypeResolver<'_> {
                         .unwrap_or_else(|| declared.clone()),
                 )
             }
-            Variable::Symbolic(SymbolicVariableKind::Array(_)) => None,
+            Variable::Symbolic(SymbolicVariableKind::Array(arr_var)) => {
+                // Array subscript: walk to base variable, return element type.
+                let base_name = find_base_variable_name(&arr_var.subscripted_variable)?;
+                let elem_type = self.array_element_types.get(base_name)?;
+                Some(
+                    self.type_environment
+                        .resolve_elementary_type_name(elem_type)
+                        .unwrap_or_else(|| elem_type.clone()),
+                )
+            }
             Variable::Symbolic(SymbolicVariableKind::Structured(sv)) => {
                 self.resolve_structured_variable_type(sv)
             }
             Variable::Symbolic(SymbolicVariableKind::BitAccess(_)) => Some(TypeName::from("BOOL")),
-            Variable::Symbolic(SymbolicVariableKind::Deref(_)) => None,
+            Variable::Symbolic(SymbolicVariableKind::Deref(deref_var)) => {
+                // Dereference: resolve the target type of the reference.
+                let base_name = find_base_variable_name(&deref_var.variable)?;
+                let declared = self.var_types.get(base_name)?;
+                let attrs = self.type_environment.get(declared)?;
+                if let Some(target) = attrs.representation.referenced_type() {
+                    self.type_environment.elementary_type_name_for(target)
+                } else {
+                    None
+                }
+            }
             Variable::Direct(_) => None,
         }
     }
@@ -331,6 +437,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
             .insert(node.name.clone(), resolved_return_type);
         let result = node.recurse_fold(self);
         self.var_types.clear();
+        self.array_element_types.clear();
         result
     }
 
@@ -342,6 +449,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         self.seed_implicit_globals();
         let result = node.recurse_fold(self);
         self.var_types.clear();
+        self.array_element_types.clear();
         result
     }
 
@@ -353,6 +461,7 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         self.seed_implicit_globals();
         let result = node.recurse_fold(self);
         self.var_types.clear();
+        self.array_element_types.clear();
         result
     }
 
@@ -398,13 +507,16 @@ mod tests {
     use ironplc_dsl::core::FileId;
     use ironplc_dsl::fold::Fold;
     use ironplc_dsl::textual::*;
-    use ironplc_parser::options::CompilerOptions;
+    use ironplc_parser::options::{CompilerOptions, Dialect};
 
     /// Runs the prerequisite passes and then the expression type resolution pass.
     fn run_pass(program: &str) -> Library {
-        let library =
-            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
-                .unwrap();
+        run_pass_with_options(program, &CompilerOptions::default())
+    }
+
+    /// Like [`run_pass`] but with explicit compiler options (needed for REF_TO tests).
+    fn run_pass_with_options(program: &str, options: &CompilerOptions) -> Library {
+        let library = ironplc_parser::parse_program(program, &FileId::default(), options).unwrap();
         let mut type_environment = TypeEnvironmentBuilder::new()
             .with_elementary_types()
             .with_stdlib_function_blocks()
@@ -428,7 +540,7 @@ mod tests {
             library,
             &mut type_environment,
             &function_environment,
-            &CompilerOptions::default(),
+            options,
         )
         .unwrap()
     }
@@ -1076,5 +1188,66 @@ END_PROGRAM";
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
         assert_type_eq(&types[0], "INT");
+    }
+
+    #[test]
+    fn apply_when_ref_to_inline_array_deref_subscript_then_resolves_element_type() {
+        let options = CompilerOptions::from_dialect(Dialect::Rusty);
+        let program = "
+FUNCTION GET_CHAR_BYTE : BYTE
+VAR_INPUT
+    pt : REF_TO ARRAY[1..255] OF BYTE;
+    pos : INT;
+END_VAR
+    GET_CHAR_BYTE := pt^[pos];
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : BYTE;
+END_VAR
+    result := GET_CHAR_BYTE(pt := NULL, pos := 1);
+END_PROGRAM";
+
+        let result = run_pass_with_options(program, &options);
+        let types = collect_assignment_types(&result);
+        // First assignment: GET_CHAR_BYTE := pt^[pos] — should resolve to BYTE
+        assert_type_eq(&types[0], "BYTE");
+    }
+
+    #[test]
+    fn apply_when_named_array_subscript_then_resolves_element_type() {
+        let program = "
+TYPE MyArr : ARRAY[0..10] OF INT; END_TYPE
+
+FUNCTION_BLOCK FB_TEST
+VAR
+    arr : MyArr;
+    result : INT;
+END_VAR
+    result := arr[0];
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "INT");
+    }
+
+    #[test]
+    fn apply_when_inline_array_subscript_then_resolves_element_type() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    arr : ARRAY[0..10] OF DINT;
+    result : DINT;
+END_VAR
+    result := arr[0];
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "DINT");
     }
 }

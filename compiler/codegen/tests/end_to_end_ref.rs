@@ -417,3 +417,38 @@ END_PROGRAM
     // r (var[1]) should be 42.0 (REAL is 32-bit float)
     assert_eq!(bufs.vars[1].as_f32(), 42.0);
 }
+
+#[test]
+fn end_to_end_when_ref_to_byte_array_deref_subscript_in_comparison_then_correct() {
+    // Verifies that pt^[i] used in a comparison context works end-to-end.
+    // This exercises the resolved_type on deref+array subscript expressions,
+    // which is needed for op_type() in comparison codegen.
+    let source = "
+FUNCTION READ_ELEM : BYTE
+VAR_INPUT
+    pt : REF_TO ARRAY[0..10] OF BYTE;
+    i : INT;
+END_VAR
+    READ_ELEM := pt^[i];
+END_FUNCTION
+
+PROGRAM main
+VAR
+    arr : ARRAY[0..10] OF BYTE;
+    b : BYTE;
+    found : BOOL;
+END_VAR
+    arr[0] := BYTE#42;
+    b := READ_ELEM(pt := REF(arr), i := 0);
+    found := b > BYTE#0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
+    // b (var[1]) should be 42
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+    // found (var[2]) should be TRUE (42 > 0)
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+}
