@@ -90,6 +90,35 @@ fn compile_statement(
             if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) =
                 &assignment.target
             {
+                // STRING fields are composite (multi-slot) and handled via the
+                // data region, so we intercept before resolve_struct_field_access
+                // which only supports single-slot (primitive/enum) fields.
+                let (root_name, slot_offset, field_type) =
+                    crate::compile_struct::walk_struct_chain(
+                        ctx,
+                        &structured.record,
+                        &structured.field,
+                        0,
+                    )?;
+                if matches!(
+                    &field_type,
+                    ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
+                ) {
+                    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+                        Diagnostic::problem(
+                            Problem::NotImplemented,
+                            Label::span(
+                                structured.span(),
+                                format!("Variable '{}' is not a structure", root_name),
+                            ),
+                        )
+                    })?;
+                    let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
+                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                    emitter.emit_str_store_var(byte_offset);
+                    return Ok(());
+                }
+
                 let (var_index, desc_index, slot_offset, op_type, field_type) =
                     crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
                 compile_expr(emitter, ctx, &assignment.value, op_type)?;
