@@ -104,6 +104,12 @@ impl Emitter {
     // --- Push ops (no operand, push 1) ---
     emit_push_op!(emit_load_true, opcode::LOAD_TRUE);
     emit_push_op!(emit_load_false, opcode::LOAD_FALSE);
+    /// Emits DUP (duplicates top of stack). Net: +1.
+    #[allow(dead_code)]
+    pub fn emit_dup(&mut self) {
+        self.bytecode.push(opcode::DUP);
+        self.push_stack(1);
+    }
 
     // --- Load ops (u16 operand, push 1) ---
     emit_load_u16!(emit_load_const_i32, opcode::LOAD_CONST_I32);
@@ -185,6 +191,13 @@ impl Emitter {
     emit_binop!(emit_bit_and_64, opcode::BIT_AND_64);
     emit_binop!(emit_bit_or_64, opcode::BIT_OR_64);
     emit_binop!(emit_bit_xor_64, opcode::BIT_XOR_64);
+
+    // --- Stack manipulation ops ---
+    /// Emits SWAP (swaps top two values). Net: 0.
+    #[allow(dead_code)]
+    pub fn emit_swap(&mut self) {
+        self.bytecode.push(opcode::SWAP);
+    }
 
     // --- Unary ops (pops 1, pushes 1 = no stack change) ---
     emit_unaryop!(emit_neg_i32, opcode::NEG_I32);
