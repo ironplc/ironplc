@@ -54,12 +54,12 @@ ManifestSupportedOS all
 ; UI
   
 !define MUI_HEADERIMAGE
-!define MUI_WELCOMEFINISHPAGE_BITMAP "nsis\assets\finished-banner.bmp"
-!define MUI_HEADERIMAGE_BITMAP "nsis\assets\banner.bmp"
+!define MUI_WELCOMEFINISHPAGE_BITMAP "..\assets\nsis-finished-banner.bmp"
+!define MUI_HEADERIMAGE_BITMAP "..\assets\nsis-banner.bmp"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "${SLUG} Setup"
-!define MUI_ICON "nsis\assets\logo.ico"
-!define MUI_UNICON "nsis\assets\logo.ico"
+!define MUI_ICON "..\assets\nsis-logo.ico"
+!define MUI_UNICON "..\assets\nsis-logo.ico"
 
 ;--------------------------------
 ; Pages

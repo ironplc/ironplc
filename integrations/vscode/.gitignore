@@ -3,3 +3,4 @@
 /.vscode-test
 /coverage
 /src/problems.ts
+/assets

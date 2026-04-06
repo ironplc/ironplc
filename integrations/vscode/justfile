@@ -56,7 +56,14 @@ update-grammar-snapshots:
 
 # Build the VSIX package for this component.
 package filename:
+  just copy-assets
   npx vsce package --out {{filename}} --pre-release
+
+# Copy branding assets from the centralized assets/ directory.
+# vsce requires the icon to be inside the extension directory.
+copy-assets:
+  mkdir -p assets
+  cp ../../assets/vscode-logo.png assets/vscode-logo.png
 
 # Sets the version number for this component.
 version version:

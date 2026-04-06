@@ -3,9 +3,9 @@
 ## Goal
 
 Create a single `assets/` directory at the repository root containing all branding
-images. Each consumer (website, Windows installer, VS Code extension) will symlink
-to the centralized files so that updating branding requires changing files in only
-one place.
+images. Each consumer (website, Windows installer, VS Code extension) references
+the centralized files directly so that updating branding requires changing files in
+only one place.
 
 ## Current State
 
@@ -22,17 +22,23 @@ Branding images are duplicated across three locations:
 
 1. Create `assets/` at the repo root
 2. Move all branding files into `assets/`, using prefixed names to avoid collisions
-3. Replace original files with relative symlinks pointing into `assets/`
-4. No reference updates needed — symlinks preserve original paths
+3. Update all references to point directly to the centralized files
+4. For VS Code (which requires assets inside the extension directory for packaging),
+   add a `copy-assets` build step that copies from `assets/` before packaging
 
 ### Naming Convention in `assets/`
-
-Use descriptive prefixed names grouped by type:
 
 - Website files keep their existing names (already prefixed with `ironplc-`)
 - NSIS files get `nsis-` prefix
 - VS Code files get `vscode-` prefix
-- Shared files (if identical) use a single copy
+
+### Reference Updates
+
+| Consumer | How it references `assets/` |
+|---|---|
+| Sphinx website | `html_static_path` in `conf.py` includes `../assets` |
+| NSIS installer | `setup.nsi` paths changed to `..\assets\nsis-*` |
+| VS Code extension | `copy-assets` justfile recipe copies to local `assets/` dir; `package.json` references `assets/vscode-logo.png` |
 
 ### File Mapping
 
@@ -64,6 +70,10 @@ Use descriptive prefixed names grouped by type:
 
 1. Create `assets/` directory
 2. Move files to `assets/` with new names
-3. Create symlinks from old locations to new locations
-4. Verify symlinks resolve correctly
-5. Run CI to confirm nothing breaks
+3. Remove original directories (`docs/images/`, `compiler/nsis/assets/`, `integrations/vscode/images/`)
+4. Update `docs/conf.py` to include `../assets` in `html_static_path`
+5. Update `compiler/setup.nsi` to reference `../assets/nsis-*`
+6. Update `integrations/vscode/package.json` to reference `assets/vscode-logo.png`
+7. Add `copy-assets` recipe to `integrations/vscode/justfile`
+8. Add `assets/` to `integrations/vscode/.gitignore` (it's a build artifact there)
+9. Run CI to confirm nothing breaks
