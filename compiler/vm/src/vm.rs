@@ -1170,20 +1170,19 @@ fn execute(
                 // Write result data: prefix + IN2 + suffix.
                 let mut write_pos = 0usize;
                 let prefix_copy = prefix_len.min(cur_len as usize);
-                for i in 0..prefix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start..data_start + prefix_copy]
+                    .copy_from_slice(&data_region[in1_start..in1_start + prefix_copy]);
+                write_pos += prefix_copy;
                 let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..in2_copy {
-                    temp_buf[data_start + write_pos] = data_region[in2_start + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start + write_pos..data_start + write_pos + in2_copy]
+                    .copy_from_slice(&data_region[in2_start..in2_start + in2_copy]);
+                write_pos += in2_copy;
                 let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..suffix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + suffix_start + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start + write_pos..data_start + write_pos + suffix_copy]
+                    .copy_from_slice(
+                        &data_region
+                            [in1_start + suffix_start..in1_start + suffix_start + suffix_copy],
+                    );
 
                 stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
@@ -1217,20 +1216,18 @@ fn execute(
                 // Write result data: prefix + IN2 + suffix.
                 let mut write_pos = 0usize;
                 let prefix_copy = prefix_len.min(cur_len as usize);
-                for i in 0..prefix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start..data_start + prefix_copy]
+                    .copy_from_slice(&data_region[in1_start..in1_start + prefix_copy]);
+                write_pos += prefix_copy;
                 let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..in2_copy {
-                    temp_buf[data_start + write_pos] = data_region[in2_start + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start + write_pos..data_start + write_pos + in2_copy]
+                    .copy_from_slice(&data_region[in2_start..in2_start + in2_copy]);
+                write_pos += in2_copy;
                 let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..suffix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + insert_idx + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start + write_pos..data_start + write_pos + suffix_copy]
+                    .copy_from_slice(
+                        &data_region[in1_start + insert_idx..in1_start + insert_idx + suffix_copy],
+                    );
 
                 stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
@@ -1266,15 +1263,15 @@ fn execute(
                 // Write result data: prefix + suffix.
                 let mut write_pos = 0usize;
                 let prefix_copy = prefix_len.min(cur_len as usize);
-                for i in 0..prefix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start..data_start + prefix_copy]
+                    .copy_from_slice(&data_region[in1_start..in1_start + prefix_copy]);
+                write_pos += prefix_copy;
                 let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..suffix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + suffix_start + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start + write_pos..data_start + write_pos + suffix_copy]
+                    .copy_from_slice(
+                        &data_region
+                            [in1_start + suffix_start..in1_start + suffix_start + suffix_copy],
+                    );
 
                 stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
