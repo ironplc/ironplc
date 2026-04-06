@@ -215,6 +215,28 @@ pub fn run_and_read_i64(bytecode: &[u8], num_vars: u16, constants: &[i64]) -> i6
     b.vars[0].as_i64()
 }
 
+/// Runs bytecode with f32 constants and returns var[0] as f32.
+pub fn run_and_read_f32(bytecode: &[u8], num_vars: u16, constants: &[f32]) -> f32 {
+    let c = single_function_container_f32(bytecode, num_vars, constants);
+    let mut b = VmBuffers::from_container(&c);
+    {
+        let mut vm = load_and_start(&c, &mut b).unwrap();
+        vm.run_round(0).unwrap();
+    }
+    b.vars[0].as_f32()
+}
+
+/// Runs bytecode with f64 constants and returns var[0] as f64.
+pub fn run_and_read_f64(bytecode: &[u8], num_vars: u16, constants: &[f64]) -> f64 {
+    let c = single_function_container_f64(bytecode, num_vars, constants);
+    let mut b = VmBuffers::from_container(&c);
+    {
+        let mut vm = load_and_start(&c, &mut b).unwrap();
+        vm.run_round(0).unwrap();
+    }
+    b.vars[0].as_f64()
+}
+
 /// Runs bytecode with i32 constants expecting a trap, returns the trap.
 pub fn run_and_expect_trap_i32(bytecode: &[u8], num_vars: u16, constants: &[i32]) -> Trap {
     let c = single_function_container(bytecode, num_vars, constants);
