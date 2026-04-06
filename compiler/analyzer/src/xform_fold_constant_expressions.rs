@@ -113,6 +113,15 @@ fn fold_real_binary(op: &Operator, left: f64, right: f64) -> f64 {
     }
 }
 
+/// Extracts a constant as an f64, converting integers to float if needed.
+fn const_as_f64(kind: &ExprKind) -> Option<f64> {
+    match kind {
+        ExprKind::Const(ConstantKind::RealLiteral(lit)) => Some(lit.value),
+        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => Some(integer_value(lit) as f64),
+        _ => None,
+    }
+}
+
 /// Tries to fold a `BinaryExpr` whose operands are both constants.
 /// Returns `Some(folded_kind)` if folding succeeded, `None` otherwise.
 fn try_fold_binary(binary: &BinaryExpr) -> Option<ExprKind> {
@@ -131,6 +140,20 @@ fn try_fold_binary(binary: &BinaryExpr) -> Option<ExprKind> {
             ExprKind::Const(ConstantKind::RealLiteral(right)),
         ) => {
             let result = fold_real_binary(&binary.op, left.value, right.value);
+            Some(ExprKind::Const(make_real_constant(result)))
+        }
+        // Mixed integer + real: promote the integer to f64 and fold as real.
+        (
+            ExprKind::Const(ConstantKind::IntegerLiteral(_)),
+            ExprKind::Const(ConstantKind::RealLiteral(_)),
+        )
+        | (
+            ExprKind::Const(ConstantKind::RealLiteral(_)),
+            ExprKind::Const(ConstantKind::IntegerLiteral(_)),
+        ) => {
+            let lv = const_as_f64(&binary.left.kind)?;
+            let rv = const_as_f64(&binary.right.kind)?;
+            let result = fold_real_binary(&binary.op, lv, rv);
             Some(ExprKind::Const(make_real_constant(result)))
         }
         _ => None,
@@ -341,6 +364,32 @@ mod tests {
         assert_has_real_const(&exprs, -3.14);
         let has_unary = exprs.iter().any(|e| matches!(e, ExprKind::UnaryOp(_)));
         assert!(!has_unary, "Unary negation should be folded");
+    }
+
+    // --- Mixed integer + real folding ---
+
+    #[test]
+    fn fold_expr_when_add_integer_and_real_then_produces_real_constant() {
+        let lib = apply_fold("PROGRAM main VAR x : REAL; END_VAR x := 2 + 3.5; END_PROGRAM");
+        let exprs = collect_exprs(&lib);
+        assert_has_real_const(&exprs, 5.5);
+        assert_no_binary_ops(&exprs);
+    }
+
+    #[test]
+    fn fold_expr_when_add_real_and_integer_then_produces_real_constant() {
+        let lib = apply_fold("PROGRAM main VAR x : REAL; END_VAR x := 1.5 + 2; END_PROGRAM");
+        let exprs = collect_exprs(&lib);
+        assert_has_real_const(&exprs, 3.5);
+        assert_no_binary_ops(&exprs);
+    }
+
+    #[test]
+    fn fold_expr_when_mul_integer_and_real_then_produces_real_constant() {
+        let lib = apply_fold("PROGRAM main VAR x : REAL; END_VAR x := 3 * 2.5; END_PROGRAM");
+        let exprs = collect_exprs(&lib);
+        assert_has_real_const(&exprs, 7.5);
+        assert_no_binary_ops(&exprs);
     }
 
     // --- Non-constant operands are left unchanged ---
