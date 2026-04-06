@@ -317,6 +317,76 @@ fn scenario_when_tasks_share_global_then_communication_works() {
     assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 99); // task 1 read the global
 }
 
+/// A task with a 1µs watchdog timeout trips when execution takes longer.
+///
+/// Uses a busy-loop (10 000 iterations) to guarantee measurable elapsed time.
+#[test]
+fn scenario_when_watchdog_exceeded_then_trap() {
+    // WHILE var[0] > 0 DO var[0] := var[0] - 1 END_WHILE
+    // Constants: pool[0]=0, pool[1]=1
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        // LOOP (offset 0):
+        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0)
+        0x6C,                   // GT_I32
+        0xB2, 0x0D, 0x00,       // JMP_IF_NOT +13 -> END (offset 23)
+        // body:
+        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (1)
+        0x31,                   // SUB_I32
+        0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]
+        0xB0, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
+        // END (offset 23):
+        0xB5,                   // RET_VOID
+    ];
+
+    let c = ContainerBuilder::new()
+        .num_variables(1)
+        .add_i32_constant(0)
+        .add_i32_constant(1)
+        .add_function(FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(FunctionId::new(1), &bytecode, 2, 1, 0) // scan: busy loop
+        .add_task(freewheeling_task(0, 0, 1)) // watchdog_us = 1 (1µs)
+        .add_program_instance(program_instance(0, 0, 1, 0, 1))
+        .build();
+
+    let mut b = VmBuffers::from_container(&c);
+    b.vars[0] = ironplc_vm::Slot::from_i32(10_000);
+    let mut vm = load_and_start(&c, &mut b).unwrap();
+    let result = vm.run_round(0);
+
+    assert!(result.is_err());
+    let ctx = result.unwrap_err();
+    assert_eq!(ctx.trap, Trap::WatchdogTimeout(TaskId::new(0)));
+}
+
+/// A task with watchdog_us = 0 (disabled) never triggers a watchdog timeout.
+#[test]
+fn scenario_when_watchdog_disabled_then_no_trap() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
+        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0xB5,              // RET_VOID
+    ];
+
+    let c = ContainerBuilder::new()
+        .num_variables(1)
+        .add_i32_constant(42)
+        .add_function(FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(FunctionId::new(1), &bytecode, 1, 1, 0) // scan
+        .add_task(freewheeling_task(0, 0, 0)) // watchdog_us = 0 (disabled)
+        .add_program_instance(program_instance(0, 0, 1, 0, 1))
+        .build();
+
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = load_and_start(&c, &mut b).unwrap();
+    vm.run_round(0).unwrap();
+
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 42);
+}
+
 /// A program instance that accesses a variable outside its scope is trapped.
 ///
 /// Layout:
