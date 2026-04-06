@@ -13,6 +13,7 @@ use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
 use core::fmt::Write as FmtWrite;
 use ironplc_container::opcode;
+use std::time::Instant;
 
 /// Context for a fault that occurred during task execution.
 #[derive(Debug)]
@@ -282,6 +283,9 @@ impl<'a> VmRunning<'a> {
             let task_idx = self.ready_buf[ri];
             let task_id = self.task_states[task_idx].task_id;
 
+            let start = Instant::now();
+            let mut last_instance_id = InstanceId::DEFAULT;
+
             // Iterate over program instances for this task.
             // Copy fields to locals before calling execute() to satisfy borrow checker.
             for pi in 0..self.program_instances.len() {
@@ -289,6 +293,7 @@ impl<'a> VmRunning<'a> {
                     continue;
                 }
                 let instance_id = self.program_instances[pi].instance_id;
+                last_instance_id = instance_id;
                 let entry_function_id = self.program_instances[pi].entry_function_id;
                 let var_table_offset = self.program_instances[pi].var_table_offset;
                 let var_table_count = self.program_instances[pi].var_table_count;
@@ -327,13 +332,21 @@ impl<'a> VmRunning<'a> {
                 })?;
             }
 
-            // Watchdog check stub: without Instant-based sub-round timing,
-            // elapsed is always 0, so the watchdog never fires here.
-            // Phase 4 will add real elapsed tracking.
+            let elapsed_us = start.elapsed().as_micros() as u64;
 
-            // Record execution with 0 elapsed (caller manages timing).
+            // Watchdog check: if the task has a watchdog configured and
+            // execution exceeded the timeout, trap.
+            let watchdog_us = self.task_states[task_idx].watchdog_us;
+            if watchdog_us > 0 && elapsed_us > watchdog_us {
+                return Err(FaultContext {
+                    trap: Trap::WatchdogTimeout(task_id),
+                    task_id,
+                    instance_id: last_instance_id,
+                });
+            }
+
             let mut scheduler = TaskScheduler::new(self.task_states);
-            scheduler.record_execution(task_idx, 0, current_time_us);
+            scheduler.record_execution(task_idx, elapsed_us, current_time_us);
         }
 
         // Stub: OUTPUT_FLUSH (no-op)
@@ -1555,6 +1568,12 @@ fn execute(
 
             opcode::POP => {
                 stack.pop()?;
+            }
+            opcode::DUP => {
+                stack.dup()?;
+            }
+            opcode::SWAP => {
+                stack.swap()?;
             }
             // --- Function block opcodes ---
             opcode::FB_LOAD_INSTANCE => {
