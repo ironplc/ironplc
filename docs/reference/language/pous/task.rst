@@ -36,6 +36,26 @@ Parameters
      - ``INT``
      - Task priority (0 = highest)
 
+Behavior
+--------
+
+The runtime uses ``INTERVAL`` and ``PRIORITY`` to schedule task execution
+during the scan cycle:
+
+- **Interval** controls how often the task runs. On each scheduling round,
+  the runtime checks whether the task's interval has elapsed since its last
+  execution. If it has, the task is ready to run. A shorter interval means
+  the task runs more frequently but consumes more CPU time.
+
+- **Priority** controls execution order when multiple tasks are ready in
+  the same round. Priority 0 is the highest. Higher-priority tasks always
+  execute before lower-priority tasks. Tasks with equal priority run in
+  declaration order.
+
+If a task takes longer than its interval, the runtime skips the missed
+cycle and realigns forward. See :doc:`/explanation/execution-cycle` for
+details on overruns, watchdog timeouts, and the full scheduling model.
+
 Example
 -------
 
