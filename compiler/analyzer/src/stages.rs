@@ -24,8 +24,8 @@ use crate::{
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_int_to_bool_initializer, xform_named_to_positional_args,
-    xform_resolve_constant_expressions, xform_resolve_expr_types,
+    type_table, xform_fold_constant_expressions, xform_int_to_bool_initializer,
+    xform_named_to_positional_args, xform_resolve_constant_expressions, xform_resolve_expr_types,
     xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
     xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
     xform_resolve_type_decl_environment, xform_toposort_declarations,
@@ -203,6 +203,16 @@ pub fn resolve_types(
         &function_environment,
         options,
     ) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
+
+    // Recoverable: fold constant binary and unary expressions.
+    let fallback = library.clone();
+    match xform_fold_constant_expressions::apply(library) {
         Ok(result) => library = result,
         Err(errs) => {
             diagnostics.extend(errs);

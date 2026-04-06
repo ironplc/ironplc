@@ -131,51 +131,9 @@ pub(crate) fn compile_expr(
         }
         ExprKind::UnaryOp(unary) => match unary.op {
             UnaryOp::Neg => {
-                // Constant folding: if the operand is an integer literal,
-                // emit the negated constant directly.
-                if let ExprKind::Const(ConstantKind::IntegerLiteral(lit)) = &unary.term.kind {
-                    let unsigned = lit.value.value.value as i128;
-                    let signed = -unsigned;
-                    match op_type.0 {
-                        OpWidth::W32 => {
-                            let value = i32::try_from(signed).map_err(|_| {
-                                Diagnostic::problem(
-                                    Problem::ConstantOverflow,
-                                    Label::span(lit.value.value.span(), "Integer literal"),
-                                )
-                                .with_context("value", &format!("-{}", unsigned))
-                            })?;
-                            let pool_index = ctx.add_i32_constant(value);
-                            emitter.emit_load_const_i32(pool_index);
-                        }
-                        OpWidth::W64 => {
-                            let value = i64::try_from(signed).map_err(|_| {
-                                Diagnostic::problem(
-                                    Problem::ConstantOverflow,
-                                    Label::span(lit.value.value.span(), "Integer literal"),
-                                )
-                                .with_context("value", &format!("-{}", unsigned))
-                            })?;
-                            let pool_index = ctx.add_i64_constant(value);
-                            emitter.emit_load_const_i64(pool_index);
-                        }
-                        OpWidth::F32 => {
-                            let value = -(unsigned as f32);
-                            let pool_index = ctx.add_f32_constant(value);
-                            emitter.emit_load_const_f32(pool_index);
-                        }
-                        OpWidth::F64 => {
-                            let value = -(unsigned as f64);
-                            let pool_index = ctx.add_f64_constant(value);
-                            emitter.emit_load_const_f64(pool_index);
-                        }
-                    }
-                    Ok(())
-                } else {
-                    compile_expr(emitter, ctx, &unary.term, op_type)?;
-                    emit_neg(emitter, op_type);
-                    Ok(())
-                }
+                compile_expr(emitter, ctx, &unary.term, op_type)?;
+                emit_neg(emitter, op_type);
+                Ok(())
             }
             UnaryOp::Not => {
                 compile_expr(emitter, ctx, &unary.term, op_type)?;
