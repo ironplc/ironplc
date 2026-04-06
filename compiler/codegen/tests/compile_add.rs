@@ -68,31 +68,16 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // Should have 3 constants: 1, 2, 3
-    assert_eq!(container.constant_pool.len(), 3);
+    // Constant folding: 1 + 2 + 3 = 6, single constant in pool
+    assert_eq!(container.constant_pool.len(), 1);
     assert_eq!(
         container
             .constant_pool
             .get_i32(ironplc_container::ConstantIndex::new(0))
             .unwrap(),
-        1
-    );
-    assert_eq!(
-        container
-            .constant_pool
-            .get_i32(ironplc_container::ConstantIndex::new(1))
-            .unwrap(),
-        2
-    );
-    assert_eq!(
-        container
-            .constant_pool
-            .get_i32(ironplc_container::ConstantIndex::new(2))
-            .unwrap(),
-        3
+        6
     );
 
-    // (1 + 2) + 3: left-associative evaluation
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -100,11 +85,7 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (2)
-            0x30, // ADD_I32
-            0x01, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (3)
-            0x30, // ADD_I32
+            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (6)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xB5, // RET_VOID
         ]
@@ -123,7 +104,7 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // (10 + 5) - 3
+    // Constant folding: (10 + 5) - 3 = 12
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -131,11 +112,7 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
-            0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
-            0x30, // ADD_I32
-            0x01, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (3)
-            0x31, // SUB_I32
+            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (12)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xB5, // RET_VOID
         ]
@@ -154,7 +131,7 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // Parser should respect operator precedence: 2 + (3 * 4)
+    // Constant folding: 2 + (3 * 4) = 14
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -162,11 +139,7 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (2)
-            0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (3)
-            0x01, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (4)
-            0x32, // MUL_I32
-            0x30, // ADD_I32
+            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (14)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xB5, // RET_VOID
         ]
