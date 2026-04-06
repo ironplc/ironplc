@@ -534,6 +534,24 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 3;
             }
+            opcode::DUP => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "DUP",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
+            opcode::SWAP => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "SWAP",
+                    "operands": "",
+                    "comment": "",
+                }));
+                pc += 1;
+            }
             opcode::RET_VOID => {
                 instructions.push(json!({
                     "offset": offset,

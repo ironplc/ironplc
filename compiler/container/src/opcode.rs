@@ -145,6 +145,14 @@ pub const RET_VOID: u8 = 0xB5;
 /// Discard the top value from the operand stack.
 pub const POP: u8 = 0xA0;
 
+/// Duplicate the top value on the operand stack.
+/// Stack effect: [..., a] -> [..., a, a]
+pub const DUP: u8 = 0xA1;
+
+/// Swap the top two values on the operand stack.
+/// Stack effect: [..., a, b] -> [..., b, a]
+pub const SWAP: u8 = 0xA2;
+
 // --- Function block opcodes ---
 
 /// Push FB instance reference from variable table.
