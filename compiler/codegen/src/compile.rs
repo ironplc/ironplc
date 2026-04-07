@@ -105,7 +105,7 @@ pub(crate) const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
 pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
 
 /// A constant in the pool: integer, float, or string.
-enum PoolConstant {
+pub(crate) enum PoolConstant {
     I32(i32),
     I64(i64),
     F32(f32),
@@ -450,7 +450,7 @@ fn compile_program_with_functions(
     // Function 0: init, Function 1: scan
     // bytecode() must be called before max_stack_depth() because the
     // peephole optimizer (run inside bytecode()) may increase max_stack_depth.
-    let init_bytecode = init_emitter.bytecode().to_vec();
+    let init_bytecode = crate::optimize::optimize(init_emitter.bytecode(), &ctx.constants);
     let init_stack = init_emitter.max_stack_depth();
     builder = builder.add_function(
         FunctionId::INIT,
@@ -460,7 +460,7 @@ fn compile_program_with_functions(
         0,
     );
 
-    let scan_bytecode = scan_emitter.bytecode().to_vec();
+    let scan_bytecode = crate::optimize::optimize(scan_emitter.bytecode(), &ctx.constants);
     let scan_stack = scan_emitter.max_stack_depth() + max_fb_body_stack;
     builder = builder.add_function(
         FunctionId::SCAN,
@@ -615,7 +615,7 @@ pub(crate) struct CompileContext {
     /// Maps variable identifiers to their type information.
     pub(crate) var_types: HashMap<Id, VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
-    constants: Vec<PoolConstant>,
+    pub(crate) constants: Vec<PoolConstant>,
     /// Stack of loop exit labels for EXIT statement compilation.
     /// Each enclosing loop pushes its end label; EXIT jumps to the top.
     pub(crate) loop_exit_labels: Vec<crate::emit::Label>,
