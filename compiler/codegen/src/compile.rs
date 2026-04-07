@@ -443,21 +443,23 @@ fn compile_program_with_functions(
         .unwrap_or(0);
 
     // Function 0: init, Function 1: scan
+    // bytecode() must be called before max_stack_depth() because the
+    // peephole optimizer (run inside bytecode()) may increase max_stack_depth.
+    let init_bytecode = init_emitter.bytecode().to_vec();
     let init_stack = init_emitter.max_stack_depth();
-    let init_bytecode = init_emitter.bytecode();
     builder = builder.add_function(
         FunctionId::INIT,
-        init_bytecode,
+        &init_bytecode,
         init_stack,
         program_var_count,
         0,
     );
 
+    let scan_bytecode = scan_emitter.bytecode().to_vec();
     let scan_stack = scan_emitter.max_stack_depth() + max_fb_body_stack;
-    let scan_bytecode = scan_emitter.bytecode();
     builder = builder.add_function(
         FunctionId::SCAN,
-        scan_bytecode,
+        &scan_bytecode,
         scan_stack,
         program_var_count,
         0,
@@ -909,8 +911,9 @@ END_PROGRAM
         assert_eq!(container.header.num_functions, 2);
 
         // Function 1 (scan):
-        // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
-        // y := x:  LOAD_VAR_I32 var:0, STORE_VAR_I32 var:1
+        // x := 10: LOAD_CONST_I32 pool:0
+        // (store-load peephole): DUP, STORE_VAR_I32 var:0, NOP, NOP
+        // y := x:  STORE_VAR_I32 var:1
         // RET_VOID
         let bytecode = container
             .code
@@ -920,8 +923,9 @@ END_PROGRAM
             bytecode,
             &[
                 0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0
+                0xA1, // DUP (store-load optimization)
                 0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-                0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+                0xA3, 0xA3, // NOP, NOP (padding)
                 0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
                 0xB5, // RET_VOID
             ]

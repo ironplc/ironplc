@@ -153,6 +153,9 @@ pub const DUP: u8 = 0xA1;
 /// Stack effect: [..., a, b] -> [..., b, a]
 pub const SWAP: u8 = 0xA2;
 
+/// No operation. Used as padding by the peephole optimizer.
+pub const NOP: u8 = 0xA3;
+
 // --- Function block opcodes ---
 
 /// Push FB instance reference from variable table.

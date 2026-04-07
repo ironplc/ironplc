@@ -33,8 +33,9 @@ END_PROGRAM
         &[
             0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x0F)
             0x21, // TRUNC_U8
+            0xA1, // DUP (store-load optimization)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0xA3, 0xA3, // NOP, NOP (padding)
             0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (4)
             0xC4, 0x48, 0x03, // BUILTIN SHL_I32 (0x0348)
             0x21, // TRUNC_U8
@@ -68,8 +69,9 @@ END_PROGRAM
         &[
             0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x81)
             0x21, // TRUNC_U8
+            0xA1, // DUP (store-load optimization)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0xA3, 0xA3, // NOP, NOP (padding)
             0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
             0xC4, 0x50, 0x03, // BUILTIN ROL_U8 (0x0350)
             0x21, // TRUNC_U8
@@ -103,8 +105,9 @@ END_PROGRAM
         &[
             0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x8001)
             0x23, // TRUNC_U16
+            0xA1, // DUP (store-load optimization)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0xA3, 0xA3, // NOP, NOP (padding)
             0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
             0xC4, 0x53, 0x03, // BUILTIN ROR_U16 (0x0353)
             0x23, // TRUNC_U16
@@ -137,8 +140,9 @@ END_PROGRAM
         bytecode,
         &[
             0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x0F)
+            0xA1, // DUP (store-load optimization)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0xA3, 0xA3, // NOP, NOP (padding)
             0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (4)
             0xC4, 0x48, 0x03, // BUILTIN SHL_I32 (0x0348)
             0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
