@@ -564,51 +564,43 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
 /// Stack layout (top to bottom): IN(n-1), ..., IN1, IN0, K
 /// Pops all n IN values and K, pushes IN[K] (clamped to 0..n-1).
 fn dispatch_mux_i32(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
-    // Pop IN values in reverse order (last pushed = first popped)
-    let mut inputs = vec![0i32; n];
-    for i in (0..n).rev() {
-        inputs[i] = stack.pop()?.as_i32();
-    }
-    let k = stack.pop()?.as_i32();
-    // Clamp K to valid range
+    // Stack layout (top down): IN(n-1), ..., IN0, K. Select in place to
+    // avoid heap allocation for the input buffer.
+    let k = stack.peek_at(n)?.as_i32();
     let idx = (k.max(0) as usize).min(n - 1);
-    stack.push(Slot::from_i32(inputs[idx]))?;
+    let selected = stack.peek_at(n - 1 - idx)?.as_i32();
+    stack.truncate_by(n + 1)?;
+    stack.push(Slot::from_i32(selected))?;
     Ok(())
 }
 
 /// Dispatches MUX for 64-bit integer values.
 fn dispatch_mux_i64(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
-    let mut inputs = vec![0i64; n];
-    for i in (0..n).rev() {
-        inputs[i] = stack.pop()?.as_i64();
-    }
-    let k = stack.pop()?.as_i32(); // K is always i32
+    let k = stack.peek_at(n)?.as_i32(); // K is always i32
     let idx = (k.max(0) as usize).min(n - 1);
-    stack.push(Slot::from_i64(inputs[idx]))?;
+    let selected = stack.peek_at(n - 1 - idx)?.as_i64();
+    stack.truncate_by(n + 1)?;
+    stack.push(Slot::from_i64(selected))?;
     Ok(())
 }
 
 /// Dispatches MUX for 32-bit float values.
 fn dispatch_mux_f32(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
-    let mut inputs = vec![0.0f32; n];
-    for i in (0..n).rev() {
-        inputs[i] = stack.pop()?.as_f32();
-    }
-    let k = stack.pop()?.as_i32(); // K is always i32
+    let k = stack.peek_at(n)?.as_i32(); // K is always i32
     let idx = (k.max(0) as usize).min(n - 1);
-    stack.push(Slot::from_f32(inputs[idx]))?;
+    let selected = stack.peek_at(n - 1 - idx)?.as_f32();
+    stack.truncate_by(n + 1)?;
+    stack.push(Slot::from_f32(selected))?;
     Ok(())
 }
 
 /// Dispatches MUX for 64-bit float values.
 fn dispatch_mux_f64(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
-    let mut inputs = vec![0.0f64; n];
-    for i in (0..n).rev() {
-        inputs[i] = stack.pop()?.as_f64();
-    }
-    let k = stack.pop()?.as_i32(); // K is always i32
+    let k = stack.peek_at(n)?.as_i32(); // K is always i32
     let idx = (k.max(0) as usize).min(n - 1);
-    stack.push(Slot::from_f64(inputs[idx]))?;
+    let selected = stack.peek_at(n - 1 - idx)?.as_f64();
+    stack.truncate_by(n + 1)?;
+    stack.push(Slot::from_f64(selected))?;
     Ok(())
 }
 

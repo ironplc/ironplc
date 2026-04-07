@@ -43,6 +43,23 @@ impl<'a> OperandStack<'a> {
         Ok(self.data[self.len - 1])
     }
 
+    /// Returns the slot at `depth` slots below the top (depth 0 = top).
+    pub fn peek_at(&self, depth: usize) -> Result<Slot, Trap> {
+        if depth >= self.len {
+            return Err(Trap::StackUnderflow);
+        }
+        Ok(self.data[self.len - 1 - depth])
+    }
+
+    /// Removes `n` slots from the top of the stack.
+    pub fn truncate_by(&mut self, n: usize) -> Result<(), Trap> {
+        if n > self.len {
+            return Err(Trap::StackUnderflow);
+        }
+        self.len -= n;
+        Ok(())
+    }
+
     /// Duplicates the top value on the stack.
     pub fn dup(&mut self) -> Result<(), Trap> {
         let top = self.peek()?;
