@@ -6,7 +6,7 @@ use crate::code_section::{CodeSection, FuncEntry};
 use crate::const_type::ConstType;
 use crate::constant_pool::{ConstEntry, ConstantPool};
 use crate::container::Container;
-use crate::debug_section::{DebugSection, FuncNameEntry, VarNameEntry};
+use crate::debug_section::{DebugSection, FuncNameEntry, LineMapEntry, VarNameEntry};
 use crate::header::FileHeader;
 use crate::id_types::{FunctionId, InstanceId, TaskId, VarIndex};
 use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
@@ -34,6 +34,7 @@ pub struct ContainerBuilder {
     user_fb_types: Vec<UserFbDescriptor>,
     debug_var_names: Vec<VarNameEntry>,
     debug_func_names: Vec<FuncNameEntry>,
+    debug_line_map: Vec<LineMapEntry>,
 }
 
 impl ContainerBuilder {
@@ -58,6 +59,7 @@ impl ContainerBuilder {
             user_fb_types: Vec::new(),
             debug_var_names: Vec::new(),
             debug_func_names: Vec::new(),
+            debug_line_map: Vec::new(),
         }
     }
 
@@ -198,6 +200,12 @@ impl ContainerBuilder {
         self
     }
 
+    /// Adds a source-map entry to the debug section.
+    pub fn add_line_map_entry(mut self, entry: LineMapEntry) -> Self {
+        self.debug_line_map.push(entry);
+        self
+    }
+
     /// Adds an FB type descriptor to the type section.
     pub fn add_fb_type(mut self, desc: FbTypeDescriptor) -> Self {
         self.fb_types.push(desc);
@@ -297,12 +305,16 @@ impl ContainerBuilder {
             }
         };
 
-        let debug_section = if self.debug_var_names.is_empty() && self.debug_func_names.is_empty() {
+        let debug_section = if self.debug_var_names.is_empty()
+            && self.debug_func_names.is_empty()
+            && self.debug_line_map.is_empty()
+        {
             None
         } else {
             Some(DebugSection {
                 var_names: self.debug_var_names,
                 func_names: self.debug_func_names,
+                line_map: self.debug_line_map,
             })
         };
 

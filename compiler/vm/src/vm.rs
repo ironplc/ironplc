@@ -5,6 +5,7 @@ use ironplc_container::{
 
 use crate::buffers::VmBuffers;
 use crate::builtin;
+use crate::debug_hook::{DebugHook, NoopDebugHook};
 use crate::error::Trap;
 #[cfg(feature = "profiling")]
 use crate::profile::InstructionProfile;
@@ -586,11 +587,12 @@ macro_rules! load_const {
     }};
 }
 
-/// Executes bytecode until RET_VOID or a trap.
+/// Executes bytecode until RET_VOID or a trap, using a no-op debug hook.
 ///
-/// This is a free function so that the borrow checker can see
-/// independent borrows of container (immutable) vs stack/variables
-/// (mutable).
+/// This is a thin wrapper around [`execute_with_hook`] that supplies a
+/// [`NoopDebugHook`]. Existing call sites use this entry point so that the
+/// debug-hook plumbing imposes no overhead on VMs that do not need
+/// instruction-level callbacks (the noop hook is a ZST and inlines away).
 #[allow(clippy::too_many_arguments)]
 fn execute(
     bytecode: &[u8],
@@ -604,11 +606,54 @@ fn execute(
     current_time_us: u64,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
+    let mut hook = NoopDebugHook;
+    execute_with_hook(
+        bytecode,
+        container,
+        stack,
+        variables,
+        data_region,
+        temp_buf,
+        max_temp_buf_bytes,
+        scope,
+        current_time_us,
+        #[cfg(feature = "profiling")]
+        profile,
+        &mut hook,
+    )
+}
+
+/// Executes bytecode until RET_VOID or a trap, invoking `hook.before_instruction`
+/// before each opcode.
+///
+/// This is a free function so that the borrow checker can see
+/// independent borrows of container (immutable) vs stack/variables
+/// (mutable). It is generic over the hook type so that the noop hook
+/// monomorphization compiles to identical code as before; only callers
+/// that supply a real hook pay any runtime cost.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_with_hook<H: DebugHook>(
+    bytecode: &[u8],
+    container: &Container,
+    stack: &mut OperandStack,
+    variables: &mut VariableTable,
+    data_region: &mut [u8],
+    temp_buf: &mut [u8],
+    max_temp_buf_bytes: usize,
+    scope: &VariableScope,
+    current_time_us: u64,
+    #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
+    hook: &mut H,
+) -> Result<(), Trap> {
     let mut pc: usize = 0;
     let mut temp_alloc = string_ops::TempBufAllocator::new(max_temp_buf_bytes);
 
     while pc < bytecode.len() {
         let op = bytecode[pc];
+        // Notify the debug hook before advancing pc so the hook sees the
+        // offset of the opcode itself, not its operand bytes. With
+        // NoopDebugHook this call is inlined away to nothing.
+        hook.before_instruction(pc, op);
         pc += 1;
 
         #[cfg(feature = "profiling")]
@@ -961,8 +1006,9 @@ fn execute(
                 // TODO: Replace Rust-recursive execute() with an iterative dispatch
                 // loop that manages its own return-address stack, so call depth is
                 // controlled by the VM rather than Rust's thread stack.
-                // Recursively execute the function body.
-                execute(
+                // Recursively execute the function body, threading the debug hook
+                // through so callees are observable too.
+                execute_with_hook(
                     func_bytecode,
                     container,
                     stack,
@@ -974,6 +1020,7 @@ fn execute(
                     current_time_us,
                     #[cfg(feature = "profiling")]
                     profile,
+                    hook,
                 )?;
             }
             opcode::RET => {
@@ -1779,7 +1826,7 @@ fn execute(
                             instance_offset: var_off,
                             instance_count: func.num_locals,
                         };
-                        execute(
+                        execute_with_hook(
                             func_bytecode,
                             container,
                             stack,
@@ -1791,6 +1838,7 @@ fn execute(
                             current_time_us,
                             #[cfg(feature = "profiling")]
                             profile,
+                            hook,
                         )?;
 
                         // Copy-out: variable table slots -> data region fields.
