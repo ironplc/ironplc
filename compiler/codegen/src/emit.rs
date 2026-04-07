@@ -26,36 +26,47 @@ pub struct Emitter {
     labels: Vec<Option<usize>>,
     /// Jump operands that need backpatching.
     patches: Vec<PendingPatch>,
+    /// Tracks the last emitted load for consecutive-load DUP optimization.
+    last_load: Option<LastLoad>,
+}
+
+/// Records the last emitted load instruction for DUP optimization.
+/// When two consecutive identical loads are emitted, the second is
+/// replaced with a cheaper DUP instruction (1 byte vs 3 bytes).
+#[derive(Clone, PartialEq)]
+struct LastLoad {
+    /// The opcode byte (e.g. LOAD_VAR_I32, LOAD_CONST_I32).
+    opcode: u8,
+    /// The 2-byte operand (little-endian).
+    operand: [u8; 2],
 }
 
 /// Emit a no-operand instruction that pushes one value.
 macro_rules! emit_push_op {
     ($name:ident, $opcode:expr) => {
         pub fn $name(&mut self) {
-            self.bytecode.push($opcode);
+            self.emit_opcode($opcode);
             self.push_stack(1);
         }
     };
 }
 
 /// Emit an instruction with a u16 operand that pushes one value.
+/// Uses DUP optimization when the same load is emitted consecutively.
 macro_rules! emit_load_u16 {
     ($name:ident, $opcode:expr) => {
         pub fn $name(&mut self, index: u16) {
-            self.bytecode.push($opcode);
-            self.bytecode.extend_from_slice(&index.to_le_bytes());
-            self.push_stack(1);
+            self.emit_load_with_dup_check($opcode, index.to_le_bytes());
         }
     };
 }
 
 /// Emit a variable load instruction with a VarIndex operand that pushes one value.
+/// Uses DUP optimization when the same load is emitted consecutively.
 macro_rules! emit_load_var_index {
     ($name:ident, $opcode:expr) => {
         pub fn $name(&mut self, index: VarIndex) {
-            self.bytecode.push($opcode);
-            self.bytecode.extend_from_slice(&index.to_le_bytes());
-            self.push_stack(1);
+            self.emit_load_with_dup_check($opcode, index.to_le_bytes());
         }
     };
 }
@@ -64,7 +75,7 @@ macro_rules! emit_load_var_index {
 macro_rules! emit_store_var_index {
     ($name:ident, $opcode:expr) => {
         pub fn $name(&mut self, index: VarIndex) {
-            self.bytecode.push($opcode);
+            self.emit_opcode($opcode);
             self.bytecode.extend_from_slice(&index.to_le_bytes());
             self.pop_stack(1);
         }
@@ -75,7 +86,7 @@ macro_rules! emit_store_var_index {
 macro_rules! emit_binop {
     ($name:ident, $opcode:expr) => {
         pub fn $name(&mut self) {
-            self.bytecode.push($opcode);
+            self.emit_opcode($opcode);
             self.pop_stack(1);
         }
     };
@@ -85,7 +96,7 @@ macro_rules! emit_binop {
 macro_rules! emit_unaryop {
     ($name:ident, $opcode:expr) => {
         pub fn $name(&mut self) {
-            self.bytecode.push($opcode);
+            self.emit_opcode($opcode);
         }
     };
 }
@@ -98,6 +109,39 @@ impl Emitter {
             current_stack_depth: 0,
             labels: Vec::new(),
             patches: Vec::new(),
+            last_load: None,
+        }
+    }
+
+    /// Pushes an opcode byte and invalidates the consecutive-load tracker.
+    ///
+    /// Every non-load emission goes through this method, so `last_load` is
+    /// automatically cleared without needing explicit calls at each site.
+    /// The load path (`emit_load_with_dup_check`) bypasses this to manage
+    /// the tracker itself.
+    fn emit_opcode(&mut self, op: u8) {
+        self.bytecode.push(op);
+        self.last_load = None;
+    }
+
+    /// Checks if the load matches the last emitted load; if so, emits DUP
+    /// instead of the full load instruction. Otherwise emits the load normally
+    /// and records it for future DUP checks.
+    fn emit_load_with_dup_check(&mut self, op: u8, operand: [u8; 2]) {
+        let candidate = LastLoad {
+            opcode: op,
+            operand,
+        };
+        if self.last_load.as_ref() == Some(&candidate) {
+            // Consecutive identical load — emit DUP instead.
+            self.emit_opcode(opcode::DUP);
+            self.push_stack(1);
+            self.last_load = None;
+        } else {
+            self.bytecode.push(op);
+            self.bytecode.extend_from_slice(&operand);
+            self.push_stack(1);
+            self.last_load = Some(candidate);
         }
     }
 
@@ -107,7 +151,7 @@ impl Emitter {
     /// Emits DUP (duplicates top of stack). Net: +1.
     #[allow(dead_code)]
     pub fn emit_dup(&mut self) {
-        self.bytecode.push(opcode::DUP);
+        self.emit_opcode(opcode::DUP);
         self.push_stack(1);
     }
 
@@ -196,7 +240,7 @@ impl Emitter {
     /// Emits SWAP (swaps top two values). Net: 0.
     #[allow(dead_code)]
     pub fn emit_swap(&mut self) {
-        self.bytecode.push(opcode::SWAP);
+        self.emit_opcode(opcode::SWAP);
     }
 
     // --- Unary ops (pops 1, pushes 1 = no stack change) ---
@@ -218,7 +262,7 @@ impl Emitter {
     /// Emits STORE_INDIRECT.
     /// Pops 2 (value and reference). Net: -2.
     pub fn emit_store_indirect(&mut self) {
-        self.bytecode.push(opcode::STORE_INDIRECT);
+        self.emit_opcode(opcode::STORE_INDIRECT);
         self.pop_stack(2);
     }
 
@@ -226,7 +270,7 @@ impl Emitter {
     /// Pops 1 (flat index already on stack), pushes 1 (element value). Net: 0.
     #[allow(dead_code)]
     pub fn emit_load_array(&mut self, var_index: VarIndex, desc_index: u16) {
-        self.bytecode.push(opcode::LOAD_ARRAY);
+        self.emit_opcode(opcode::LOAD_ARRAY);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
         // Pop index, push value = no net change
@@ -238,7 +282,7 @@ impl Emitter {
     /// Pops 2 (value and flat index). Net: -2.
     #[allow(dead_code)]
     pub fn emit_store_array(&mut self, var_index: VarIndex, desc_index: u16) {
-        self.bytecode.push(opcode::STORE_ARRAY);
+        self.emit_opcode(opcode::STORE_ARRAY);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
         self.pop_stack(2);
@@ -247,7 +291,7 @@ impl Emitter {
     /// Emits LOAD_ARRAY_DEREF with ref_var_index and desc_index operands.
     /// Pops 1 (flat index), pushes 1 (element value). Net: 0.
     pub fn emit_load_array_deref(&mut self, ref_var_index: VarIndex, desc_index: u16) {
-        self.bytecode.push(opcode::LOAD_ARRAY_DEREF);
+        self.emit_opcode(opcode::LOAD_ARRAY_DEREF);
         self.bytecode
             .extend_from_slice(&ref_var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
@@ -258,7 +302,7 @@ impl Emitter {
     /// Emits STORE_ARRAY_DEREF with ref_var_index and desc_index operands.
     /// Pops 2 (value and flat index). Net: -2.
     pub fn emit_store_array_deref(&mut self, ref_var_index: VarIndex, desc_index: u16) {
-        self.bytecode.push(opcode::STORE_ARRAY_DEREF);
+        self.emit_opcode(opcode::STORE_ARRAY_DEREF);
         self.bytecode
             .extend_from_slice(&ref_var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
@@ -268,7 +312,7 @@ impl Emitter {
     /// Emits STR_INIT_ARRAY with var_index and desc_index operands.
     /// Initializes all string headers in an array. No stack effect.
     pub fn emit_str_init_array(&mut self, var_index: VarIndex, desc_index: u16) {
-        self.bytecode.push(opcode::STR_INIT_ARRAY);
+        self.emit_opcode(opcode::STR_INIT_ARRAY);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
     }
@@ -276,7 +320,7 @@ impl Emitter {
     /// Emits STR_LOAD_ARRAY_ELEM with var_index and desc_index operands.
     /// Pops flat_index, pushes buf_idx. Net: 0.
     pub fn emit_str_load_array_elem(&mut self, var_index: VarIndex, desc_index: u16) {
-        self.bytecode.push(opcode::STR_LOAD_ARRAY_ELEM);
+        self.emit_opcode(opcode::STR_LOAD_ARRAY_ELEM);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
         self.pop_stack(1);
@@ -286,7 +330,7 @@ impl Emitter {
     /// Emits STR_STORE_ARRAY_ELEM with var_index and desc_index operands.
     /// Pops flat_index and buf_idx. Net: -2.
     pub fn emit_str_store_array_elem(&mut self, var_index: VarIndex, desc_index: u16) {
-        self.bytecode.push(opcode::STR_STORE_ARRAY_ELEM);
+        self.emit_opcode(opcode::STR_STORE_ARRAY_ELEM);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
         self.pop_stack(2);
@@ -296,7 +340,7 @@ impl Emitter {
     /// All builtins pop `arg_count` values and push one result.
     /// The arg count is looked up from `opcode::builtin::arg_count()`.
     pub fn emit_builtin(&mut self, func_id: u16) {
-        self.bytecode.push(opcode::BUILTIN);
+        self.emit_opcode(opcode::BUILTIN);
         self.bytecode.extend_from_slice(&func_id.to_le_bytes());
         // Net effect: pop arg_count, push 1 = pop (arg_count - 1)
         let arg_count = opcode::builtin::arg_count(func_id);
@@ -313,13 +357,16 @@ impl Emitter {
     }
 
     /// Binds a label to the current bytecode position.
+    /// Binds a label to the current bytecode position.
+    /// Clears the last-load tracker because a jump may land here.
     pub fn bind_label(&mut self, label: Label) {
         self.labels[label.0] = Some(self.bytecode.len());
+        self.last_load = None;
     }
 
     /// Emits JMP with a placeholder offset targeting the given label.
     pub fn emit_jmp(&mut self, label: Label) {
-        self.bytecode.push(opcode::JMP);
+        self.emit_opcode(opcode::JMP);
         let patch_offset = self.bytecode.len();
         self.bytecode.extend_from_slice(&0i16.to_le_bytes());
         self.patches.push(PendingPatch {
@@ -331,7 +378,7 @@ impl Emitter {
     /// Emits JMP_IF_NOT with a placeholder offset targeting the given label.
     /// Pops the condition value from the stack.
     pub fn emit_jmp_if_not(&mut self, label: Label) {
-        self.bytecode.push(opcode::JMP_IF_NOT);
+        self.emit_opcode(opcode::JMP_IF_NOT);
         let patch_offset = self.bytecode.len();
         self.bytecode.extend_from_slice(&0i16.to_le_bytes());
         self.patches.push(PendingPatch {
@@ -344,7 +391,7 @@ impl Emitter {
     /// Emits STR_INIT with data_offset and max_length operands.
     /// Initializes a STRING variable's header in the data region.
     pub fn emit_str_init(&mut self, data_offset: u32, max_length: u16) {
-        self.bytecode.push(opcode::STR_INIT);
+        self.emit_opcode(opcode::STR_INIT);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.bytecode.extend_from_slice(&max_length.to_le_bytes());
         // No stack effect.
@@ -353,7 +400,7 @@ impl Emitter {
     /// Emits LOAD_CONST_STR with a constant pool index.
     /// Loads a string literal from the constant pool into a temp buffer and pushes buf_idx.
     pub fn emit_load_const_str(&mut self, pool_index: u16) {
-        self.bytecode.push(opcode::LOAD_CONST_STR);
+        self.emit_opcode(opcode::LOAD_CONST_STR);
         self.bytecode.extend_from_slice(&pool_index.to_le_bytes());
         self.push_stack(1);
     }
@@ -361,7 +408,7 @@ impl Emitter {
     /// Emits STR_STORE_VAR with a data_offset operand.
     /// Pops buf_idx from the stack and copies the temp buffer contents to the data region.
     pub fn emit_str_store_var(&mut self, data_offset: u32) {
-        self.bytecode.push(opcode::STR_STORE_VAR);
+        self.emit_opcode(opcode::STR_STORE_VAR);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.pop_stack(1);
     }
@@ -370,7 +417,7 @@ impl Emitter {
     /// Copies a string from the data region into a temp buffer and pushes buf_idx.
     #[allow(dead_code)]
     pub fn emit_str_load_var(&mut self, data_offset: u32) {
-        self.bytecode.push(opcode::STR_LOAD_VAR);
+        self.emit_opcode(opcode::STR_LOAD_VAR);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.push_stack(1);
     }
@@ -379,7 +426,7 @@ impl Emitter {
     /// Reads the current length of a STRING variable from the data region
     /// and pushes the result as an i32.
     pub fn emit_len_str(&mut self, data_offset: u32) {
-        self.bytecode.push(opcode::LEN_STR);
+        self.emit_opcode(opcode::LEN_STR);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.push_stack(1);
     }
@@ -388,7 +435,7 @@ impl Emitter {
     /// Finds the first occurrence of IN2 within IN1 and pushes the
     /// 1-based position as an i32 (0 if not found).
     pub fn emit_find_str(&mut self, in1_data_offset: u32, in2_data_offset: u32) {
-        self.bytecode.push(opcode::FIND_STR);
+        self.emit_opcode(opcode::FIND_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());
         self.bytecode
@@ -400,7 +447,7 @@ impl Emitter {
     /// Pops P (i32) then L (i32) from stack, replaces L characters at
     /// position P in IN1 with IN2, and pushes the result buf_idx.
     pub fn emit_replace_str(&mut self, in1_data_offset: u32, in2_data_offset: u32) {
-        self.bytecode.push(opcode::REPLACE_STR);
+        self.emit_opcode(opcode::REPLACE_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());
         self.bytecode
@@ -413,7 +460,7 @@ impl Emitter {
     /// Pops P (i32) from stack, inserts IN2 into IN1 after position P,
     /// and pushes the result buf_idx.
     pub fn emit_insert_str(&mut self, in1_data_offset: u32, in2_data_offset: u32) {
-        self.bytecode.push(opcode::INSERT_STR);
+        self.emit_opcode(opcode::INSERT_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());
         self.bytecode
@@ -425,7 +472,7 @@ impl Emitter {
     /// Pops P (i32) then L (i32) from stack, deletes L characters from
     /// IN1 starting at position P, and pushes the result buf_idx.
     pub fn emit_delete_str(&mut self, in1_data_offset: u32) {
-        self.bytecode.push(opcode::DELETE_STR);
+        self.emit_opcode(opcode::DELETE_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());
         // Net effect: pop 2 (L, P), push 1 (buf_idx) = pop 1
@@ -436,7 +483,7 @@ impl Emitter {
     /// Pops L (i32) from stack, returns the leftmost L characters of IN,
     /// and pushes the result buf_idx.
     pub fn emit_left_str(&mut self, in_data_offset: u32) {
-        self.bytecode.push(opcode::LEFT_STR);
+        self.emit_opcode(opcode::LEFT_STR);
         self.bytecode
             .extend_from_slice(&in_data_offset.to_le_bytes());
         // Net effect: pop 1 (L), push 1 (buf_idx) = 0
@@ -446,7 +493,7 @@ impl Emitter {
     /// Pops L (i32) from stack, returns the rightmost L characters of IN,
     /// and pushes the result buf_idx.
     pub fn emit_right_str(&mut self, in_data_offset: u32) {
-        self.bytecode.push(opcode::RIGHT_STR);
+        self.emit_opcode(opcode::RIGHT_STR);
         self.bytecode
             .extend_from_slice(&in_data_offset.to_le_bytes());
         // Net effect: pop 1 (L), push 1 (buf_idx) = 0
@@ -456,7 +503,7 @@ impl Emitter {
     /// Pops P (i32) then L (i32) from stack, returns L characters from
     /// IN starting at position P, and pushes the result buf_idx.
     pub fn emit_mid_str(&mut self, in_data_offset: u32) {
-        self.bytecode.push(opcode::MID_STR);
+        self.emit_opcode(opcode::MID_STR);
         self.bytecode
             .extend_from_slice(&in_data_offset.to_le_bytes());
         // Net effect: pop 2 (L, P), push 1 (buf_idx) = pop 1
@@ -466,7 +513,7 @@ impl Emitter {
     /// Emits CONCAT_STR with two data_offset operands.
     /// Concatenates IN1 and IN2, pushes the result buf_idx.
     pub fn emit_concat_str(&mut self, in1_data_offset: u32, in2_data_offset: u32) {
-        self.bytecode.push(opcode::CONCAT_STR);
+        self.emit_opcode(opcode::CONCAT_STR);
         self.bytecode
             .extend_from_slice(&in1_data_offset.to_le_bytes());
         self.bytecode
@@ -476,13 +523,13 @@ impl Emitter {
 
     /// Emits POP (discards top of stack).
     pub fn emit_pop(&mut self) {
-        self.bytecode.push(opcode::POP);
+        self.emit_opcode(opcode::POP);
         self.pop_stack(1);
     }
 
     /// Emits FB_LOAD_INSTANCE with a variable index.
     pub fn emit_fb_load_instance(&mut self, var_index: VarIndex) {
-        self.bytecode.push(opcode::FB_LOAD_INSTANCE);
+        self.emit_opcode(opcode::FB_LOAD_INSTANCE);
         self.bytecode.extend_from_slice(&var_index.to_le_bytes());
         self.push_stack(1);
     }
@@ -490,7 +537,7 @@ impl Emitter {
     /// Emits FB_STORE_PARAM with a field index.
     /// Pops one value (the parameter); fb_ref remains on stack.
     pub fn emit_fb_store_param(&mut self, field: u8) {
-        self.bytecode.push(opcode::FB_STORE_PARAM);
+        self.emit_opcode(opcode::FB_STORE_PARAM);
         self.bytecode.push(field);
         self.pop_stack(1);
     }
@@ -498,7 +545,7 @@ impl Emitter {
     /// Emits FB_LOAD_PARAM with a field index.
     /// Pushes one value (the output parameter); fb_ref remains on stack.
     pub fn emit_fb_load_param(&mut self, field: u8) {
-        self.bytecode.push(opcode::FB_LOAD_PARAM);
+        self.emit_opcode(opcode::FB_LOAD_PARAM);
         self.bytecode.push(field);
         self.push_stack(1);
     }
@@ -506,7 +553,7 @@ impl Emitter {
     /// Emits FB_CALL with a type_id.
     /// Net stack effect: 0 (fb_ref stays on stack).
     pub fn emit_fb_call(&mut self, type_id: u16) {
-        self.bytecode.push(opcode::FB_CALL);
+        self.emit_opcode(opcode::FB_CALL);
         self.bytecode.extend_from_slice(&type_id.to_le_bytes());
     }
 
@@ -521,7 +568,7 @@ impl Emitter {
         var_offset: VarIndex,
         callee_max_stack: u16,
     ) {
-        self.bytecode.push(opcode::CALL);
+        self.emit_opcode(opcode::CALL);
         self.bytecode.extend_from_slice(&function_id.to_le_bytes());
         self.bytecode.extend_from_slice(&var_offset.to_le_bytes());
         if num_params > 0 {
@@ -539,17 +586,22 @@ impl Emitter {
 
     /// Emits RET (return with value on stack).
     pub fn emit_ret(&mut self) {
-        self.bytecode.push(opcode::RET);
+        self.emit_opcode(opcode::RET);
     }
 
     /// Emits RET_VOID.
     pub fn emit_ret_void(&mut self) {
-        self.bytecode.push(opcode::RET_VOID);
+        self.emit_opcode(opcode::RET_VOID);
     }
 
-    /// Returns the accumulated bytecode, resolving all pending jump patches.
+    /// Returns the accumulated bytecode, resolving all pending jump patches
+    /// and applying peephole optimizations.
+    ///
+    /// Must be called before `max_stack_depth()` because the peephole pass
+    /// may increase the reported maximum.
     pub fn bytecode(&mut self) -> &[u8] {
         self.patch_jumps();
+        self.peephole_store_load();
         &self.bytecode
     }
 
@@ -569,6 +621,235 @@ impl Emitter {
             let bytes = offset.to_le_bytes();
             self.bytecode[patch.patch_offset] = bytes[0];
             self.bytecode[patch.patch_offset + 1] = bytes[1];
+        }
+    }
+
+    /// Peephole optimization: replace `STORE_VAR_Xx N; LOAD_VAR_Xx N` with
+    /// `DUP; STORE_VAR_Xx N; NOP; NOP`. This avoids a redundant load when a
+    /// value is stored and immediately read back.
+    ///
+    /// Must be called after `patch_jumps` so that jump targets are resolved.
+    /// The rewrite preserves bytecode length (6 bytes → 6 bytes) so all
+    /// jump offsets remain valid.
+    fn peephole_store_load(&mut self) {
+        if self.bytecode.len() < 6 {
+            return;
+        }
+        let jump_targets = self.collect_jump_targets();
+
+        let mut applied = false;
+        let mut i = 0;
+        while i + 5 < self.bytecode.len() {
+            let store_op = self.bytecode[i];
+            if let Some(load_op) = Self::store_to_load(store_op) {
+                let load_start = i + 3;
+                if self.bytecode[load_start] == load_op
+                    && self.bytecode[i + 1] == self.bytecode[load_start + 1]
+                    && self.bytecode[i + 2] == self.bytecode[load_start + 2]
+                    && !Self::range_has_target(&jump_targets, load_start, load_start + 3)
+                {
+                    // Rewrite: [STORE, lo, hi, LOAD, lo, hi]
+                    //       → [DUP, STORE, lo, hi, NOP, NOP]
+                    self.bytecode[i + 5] = opcode::NOP;
+                    self.bytecode[i + 4] = opcode::NOP;
+                    self.bytecode[i + 3] = self.bytecode[i + 2];
+                    self.bytecode[i + 2] = self.bytecode[i + 1];
+                    self.bytecode[i + 1] = store_op;
+                    self.bytecode[i] = opcode::DUP;
+                    applied = true;
+                    i += 6;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        // DUP temporarily adds one extra value to the stack before the
+        // STORE pops it, so bump the reported max.
+        if applied {
+            self.max_stack_depth += 1;
+        }
+    }
+
+    /// Maps a STORE_VAR opcode to its corresponding LOAD_VAR opcode.
+    fn store_to_load(op: u8) -> Option<u8> {
+        match op {
+            opcode::STORE_VAR_I32 => Some(opcode::LOAD_VAR_I32),
+            opcode::STORE_VAR_I64 => Some(opcode::LOAD_VAR_I64),
+            opcode::STORE_VAR_F32 => Some(opcode::LOAD_VAR_F32),
+            opcode::STORE_VAR_F64 => Some(opcode::LOAD_VAR_F64),
+            _ => None,
+        }
+    }
+
+    /// Returns true if any jump target falls within [start, end).
+    fn range_has_target(targets: &[bool], start: usize, end: usize) -> bool {
+        targets[start..end].iter().any(|&t| t)
+    }
+
+    /// Scans bytecode for JMP and JMP_IF_NOT instructions and returns a
+    /// boolean array marking every address that is a jump target.
+    fn collect_jump_targets(&self) -> Vec<bool> {
+        let bc = &self.bytecode;
+        let mut targets = vec![false; bc.len()];
+        let mut pc = 0;
+        while pc < bc.len() {
+            match bc[pc] {
+                opcode::JMP | opcode::JMP_IF_NOT => {
+                    if pc + 2 < bc.len() {
+                        let offset = i16::from_le_bytes([bc[pc + 1], bc[pc + 2]]);
+                        let next_pc = pc + 3;
+                        let target = (next_pc as isize + offset as isize) as usize;
+                        if target < targets.len() {
+                            targets[target] = true;
+                        }
+                    }
+                    pc += 3;
+                }
+                _ => {
+                    pc += Self::instruction_len(bc[pc]);
+                }
+            }
+        }
+        targets
+    }
+
+    /// Returns the byte length of an instruction (opcode + operands).
+    fn instruction_len(op: u8) -> usize {
+        match op {
+            // 1-byte (no operands)
+            opcode::ADD_I32
+            | opcode::SUB_I32
+            | opcode::MUL_I32
+            | opcode::DIV_I32
+            | opcode::MOD_I32
+            | opcode::NEG_I32
+            | opcode::ADD_I64
+            | opcode::SUB_I64
+            | opcode::MUL_I64
+            | opcode::DIV_I64
+            | opcode::MOD_I64
+            | opcode::NEG_I64
+            | opcode::DIV_U32
+            | opcode::MOD_U32
+            | opcode::DIV_U64
+            | opcode::MOD_U64
+            | opcode::ADD_F32
+            | opcode::SUB_F32
+            | opcode::MUL_F32
+            | opcode::DIV_F32
+            | opcode::ADD_F64
+            | opcode::SUB_F64
+            | opcode::MUL_F64
+            | opcode::DIV_F64
+            | opcode::NEG_F32
+            | opcode::NEG_F64
+            | opcode::EQ_I32
+            | opcode::NE_I32
+            | opcode::LT_I32
+            | opcode::LE_I32
+            | opcode::GT_I32
+            | opcode::GE_I32
+            | opcode::EQ_I64
+            | opcode::NE_I64
+            | opcode::LT_I64
+            | opcode::LE_I64
+            | opcode::GT_I64
+            | opcode::GE_I64
+            | opcode::LT_U32
+            | opcode::LE_U32
+            | opcode::GT_U32
+            | opcode::GE_U32
+            | opcode::LT_U64
+            | opcode::LE_U64
+            | opcode::GT_U64
+            | opcode::GE_U64
+            | opcode::EQ_F32
+            | opcode::NE_F32
+            | opcode::LT_F32
+            | opcode::LE_F32
+            | opcode::GT_F32
+            | opcode::GE_F32
+            | opcode::EQ_F64
+            | opcode::NE_F64
+            | opcode::LT_F64
+            | opcode::LE_F64
+            | opcode::GT_F64
+            | opcode::GE_F64
+            | opcode::BOOL_AND
+            | opcode::BOOL_OR
+            | opcode::BOOL_XOR
+            | opcode::BOOL_NOT
+            | opcode::BIT_AND_32
+            | opcode::BIT_OR_32
+            | opcode::BIT_XOR_32
+            | opcode::BIT_NOT_32
+            | opcode::BIT_AND_64
+            | opcode::BIT_OR_64
+            | opcode::BIT_XOR_64
+            | opcode::BIT_NOT_64
+            | opcode::TRUNC_I8
+            | opcode::TRUNC_U8
+            | opcode::TRUNC_I16
+            | opcode::TRUNC_U16
+            | opcode::LOAD_TRUE
+            | opcode::LOAD_FALSE
+            | opcode::POP
+            | opcode::DUP
+            | opcode::SWAP
+            | opcode::NOP
+            | opcode::RET
+            | opcode::RET_VOID
+            | opcode::LOAD_INDIRECT
+            | opcode::STORE_INDIRECT => 1,
+
+            // 2-byte (opcode + u8)
+            opcode::FB_STORE_PARAM | opcode::FB_LOAD_PARAM => 2,
+
+            // 3-byte (opcode + u16)
+            opcode::LOAD_CONST_I32
+            | opcode::LOAD_CONST_I64
+            | opcode::LOAD_CONST_F32
+            | opcode::LOAD_CONST_F64
+            | opcode::LOAD_CONST_STR
+            | opcode::LOAD_VAR_I32
+            | opcode::LOAD_VAR_I64
+            | opcode::LOAD_VAR_F32
+            | opcode::LOAD_VAR_F64
+            | opcode::STORE_VAR_I32
+            | opcode::STORE_VAR_I64
+            | opcode::STORE_VAR_F32
+            | opcode::STORE_VAR_F64
+            | opcode::JMP
+            | opcode::JMP_IF_NOT
+            | opcode::BUILTIN
+            | opcode::FB_LOAD_INSTANCE
+            | opcode::FB_CALL => 3,
+
+            // 5-byte (opcode + u16 + u16)
+            opcode::CALL
+            | opcode::LOAD_ARRAY
+            | opcode::STORE_ARRAY
+            | opcode::LOAD_ARRAY_DEREF
+            | opcode::STORE_ARRAY_DEREF
+            | opcode::STR_INIT_ARRAY
+            | opcode::STR_LOAD_ARRAY_ELEM
+            | opcode::STR_STORE_ARRAY_ELEM
+            | opcode::STR_LOAD_VAR
+            | opcode::STR_STORE_VAR
+            | opcode::LEN_STR
+            | opcode::DELETE_STR
+            | opcode::LEFT_STR
+            | opcode::RIGHT_STR
+            | opcode::MID_STR => 5,
+
+            // 7-byte (opcode + u32 + u16)
+            opcode::STR_INIT => 7,
+
+            // 9-byte (opcode + u32 + u32)
+            opcode::FIND_STR | opcode::REPLACE_STR | opcode::INSERT_STR | opcode::CONCAT_STR => 9,
+
+            // Unknown: advance by 1 to avoid infinite loops.
+            _ => 1,
         }
     }
 
