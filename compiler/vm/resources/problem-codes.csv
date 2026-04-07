@@ -15,3 +15,4 @@ V9008,DataRegionOutOfBounds,Data region access out of bounds,true
 V9009,TempBufferExhausted,Temporary buffer pool exhausted,false
 V9010,InvalidFbTypeId,Function block type ID not recognized as intrinsic,true
 V9011,UnexpectedEndOfBytecode,Bytecode ended mid-instruction,false
+V9012,CallStackOverflow,VM call frame stack exceeded maximum depth,false
