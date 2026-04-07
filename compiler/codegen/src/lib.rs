@@ -38,5 +38,6 @@ mod compile_stmt;
 mod compile_string;
 mod compile_struct;
 mod emit;
+mod optimize;
 
 pub use compile::{compile, CodegenOptions};

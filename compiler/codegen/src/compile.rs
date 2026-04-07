@@ -105,7 +105,7 @@ pub(crate) const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
 pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
 
 /// A constant in the pool: integer, float, or string.
-enum PoolConstant {
+pub(crate) enum PoolConstant {
     I32(i32),
     I64(i64),
     F32(f32),
@@ -443,21 +443,23 @@ fn compile_program_with_functions(
         .unwrap_or(0);
 
     // Function 0: init, Function 1: scan
+    // bytecode() must be called before max_stack_depth() because the
+    // peephole optimizer (run inside bytecode()) may increase max_stack_depth.
+    let init_bytecode = crate::optimize::optimize(init_emitter.bytecode(), &ctx.constants);
     let init_stack = init_emitter.max_stack_depth();
-    let init_bytecode = init_emitter.bytecode();
     builder = builder.add_function(
         FunctionId::INIT,
-        init_bytecode,
+        &init_bytecode,
         init_stack,
         program_var_count,
         0,
     );
 
+    let scan_bytecode = crate::optimize::optimize(scan_emitter.bytecode(), &ctx.constants);
     let scan_stack = scan_emitter.max_stack_depth() + max_fb_body_stack;
-    let scan_bytecode = scan_emitter.bytecode();
     builder = builder.add_function(
         FunctionId::SCAN,
-        scan_bytecode,
+        &scan_bytecode,
         scan_stack,
         program_var_count,
         0,
@@ -608,7 +610,7 @@ pub(crate) struct CompileContext {
     /// Maps variable identifiers to their type information.
     pub(crate) var_types: HashMap<Id, VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
-    constants: Vec<PoolConstant>,
+    pub(crate) constants: Vec<PoolConstant>,
     /// Stack of loop exit labels for EXIT statement compilation.
     /// Each enclosing loop pushes its end label; EXIT jumps to the top.
     pub(crate) loop_exit_labels: Vec<crate::emit::Label>,
@@ -909,8 +911,9 @@ END_PROGRAM
         assert_eq!(container.header.num_functions, 2);
 
         // Function 1 (scan):
-        // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
-        // y := x:  LOAD_VAR_I32 var:0, STORE_VAR_I32 var:1
+        // x := 10: LOAD_CONST_I32 pool:0
+        // (store-load peephole): DUP, STORE_VAR_I32 var:0, NOP, NOP
+        // y := x:  STORE_VAR_I32 var:1
         // RET_VOID
         let bytecode = container
             .code
@@ -920,8 +923,9 @@ END_PROGRAM
             bytecode,
             &[
                 0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0
+                0xA1, // DUP (store-load optimization)
                 0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-                0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+                0xA3, 0xA3, // NOP, NOP (padding)
                 0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
                 0xB5, // RET_VOID
             ]
