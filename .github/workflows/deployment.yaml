@@ -156,6 +156,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           id: ${{ needs.release.outputs.gh-release-id }}
           prerelease: false
+          makeLatest: true
 
   publish-playground:
     name: Publish Playground to playground.ironplc.com
