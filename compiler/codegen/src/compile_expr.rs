@@ -96,7 +96,14 @@ pub(crate) fn condition_op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     match &expr.kind {
         ExprKind::Compare(compare) => match compare.op {
             CompareOp::And | CompareOp::Or | CompareOp::Xor => condition_op_type(&compare.left),
-            _ => op_type(&compare.left),
+            _ => {
+                // String comparisons take a dedicated path in compile_expr
+                // that emits an i32 boolean; the operand op_type is unused.
+                if expr_is_string(&compare.left) {
+                    return Ok(DEFAULT_OP_TYPE);
+                }
+                op_type(&compare.left)
+            }
         },
         ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => condition_op_type(&unary.term),
         ExprKind::Expression(inner) => condition_op_type(inner),
