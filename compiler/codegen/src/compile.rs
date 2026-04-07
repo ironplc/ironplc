@@ -360,6 +360,27 @@ fn compile_program_with_functions(
     let mut next_function_id: u16 = 2;
     let mut var_offset = VarIndex::new(program_var_count);
 
+    // Compile user FUNCTIONs before FUNCTION_BLOCK bodies so that FB bodies
+    // can resolve calls to user functions via `ctx.user_functions` (functions
+    // register themselves at the end of `compile_user_function`). Per
+    // IEC 61131-3 functions cannot instantiate FBs, so they don't require FB
+    // bodies to have been compiled first.
+    for func_decl in func_decls {
+        let compiled = compile_user_function(
+            func_decl,
+            next_function_id,
+            var_offset,
+            &mut ctx,
+            functions,
+            &mut builder,
+            types,
+            num_globals,
+        )?;
+        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
+        next_function_id += 1;
+        compiled_functions.push(compiled);
+    }
+
     for fb_decl in fb_decls {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let fb_func_id = ctx.user_fb_types[&fb_name].function_id;
@@ -378,22 +399,6 @@ fn compile_program_with_functions(
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         compiled_fb_bodies.push(compiled);
-    }
-
-    for func_decl in func_decls {
-        let compiled = compile_user_function(
-            func_decl,
-            next_function_id,
-            var_offset,
-            &mut ctx,
-            functions,
-            &mut builder,
-            types,
-            num_globals,
-        )?;
-        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
-        next_function_id += 1;
-        compiled_functions.push(compiled);
     }
 
     let total_variables = var_offset;
