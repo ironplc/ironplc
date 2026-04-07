@@ -197,3 +197,84 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[2].as_i32(), 1);
 }
+
+#[test]
+fn end_to_end_when_string_eq_in_if_then_branch_taken() {
+    let source = "
+PROGRAM main
+  VAR
+    s1 : STRING := 'hello';
+    s2 : STRING := 'hello';
+    r : BOOL;
+  END_VAR
+  IF s1 = s2 THEN
+    r := TRUE;
+  ELSE
+    r := FALSE;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_string_ne_in_if_else_then_else_taken() {
+    let source = "
+PROGRAM main
+  VAR
+    s1 : STRING := 'hello';
+    s2 : STRING := 'hello';
+    r : BOOL;
+  END_VAR
+  IF s1 <> s2 THEN
+    r := TRUE;
+  ELSE
+    r := FALSE;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[2].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_string_eq_in_while_then_loops() {
+    let source = "
+PROGRAM main
+  VAR
+    s1 : STRING := 'a';
+    s2 : STRING := 'a';
+    n : INT := 0;
+  END_VAR
+  WHILE s1 = s2 DO
+    n := n + 1;
+    IF n >= 3 THEN
+      s2 := 'b';
+    END_IF;
+  END_WHILE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[2].as_i32(), 3);
+}
+
+#[test]
+fn end_to_end_when_not_string_eq_in_if_then_branch_taken() {
+    let source = "
+PROGRAM main
+  VAR
+    s1 : STRING := 'hello';
+    s2 : STRING := 'world';
+    r : BOOL;
+  END_VAR
+  IF NOT (s1 = s2) THEN
+    r := TRUE;
+  ELSE
+    r := FALSE;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+}
