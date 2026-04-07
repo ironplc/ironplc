@@ -37,6 +37,7 @@ pub use header::{
     FileHeader, FLAG_HAS_SYSTEM_UPTIME, FORMAT_VERSION, HEADER_SIZE, MAGIC, STRING_HEADER_BYTES,
 };
 pub use id_types::{ConstantIndex, FbTypeId, FunctionId, InstanceId, SlotIndex, TaskId, VarIndex};
+pub use opcode::Opcode;
 pub use task_type::TaskType;
 
 // std-only re-exports

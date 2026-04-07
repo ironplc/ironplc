@@ -9,6 +9,7 @@ repository.workspace = true
 
 [features]
 test-support = []
+profiling = []
 
 [dependencies]
 ironplc-container = { path = "../container", version = "0.189.0" }
