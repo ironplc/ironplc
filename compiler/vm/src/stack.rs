@@ -43,11 +43,6 @@ impl<'a> OperandStack<'a> {
         Ok(self.data[self.len - 1])
     }
 
-    /// Returns the current number of slots on the stack.
-    pub fn depth(&self) -> usize {
-        self.len
-    }
-
     /// Returns the slot at `depth` slots below the top (depth 0 = top).
     pub fn peek_at(&self, depth: usize) -> Result<Slot, Trap> {
         if depth >= self.len {
