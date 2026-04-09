@@ -15,7 +15,7 @@ use lsp_types::{
 use lsp_types::{SemanticToken, Uri};
 
 use crate::lsp_runner::{RunResult, VmRunner};
-use crate::project::Project;
+use ironplc_project::Project;
 
 fn to_path_buf(uri: &Uri) -> Result<PathBuf, ()> {
     Ok(PathBuf::from(uri.path().as_str()))
@@ -618,7 +618,7 @@ mod test {
     use ironplc_test::read_shared_resource;
     use lsp_types::{SemanticToken, Uri};
 
-    use crate::project::FileBackedProject;
+    use ironplc_project::FileBackedProject;
 
     use super::{LspProject, LspTokenType};
 
@@ -1119,7 +1119,7 @@ INVALID_SYNTAX"
     #[test]
     fn map_diagnostic_when_problem_code_url_then_docs_directory_exists() {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        // compiler/plc2x/ -> repo root
+        // compiler/ironplc-cli/ -> repo root
         path.push("../..");
         path.push("docs/reference/compiler/problems");
         assert!(
