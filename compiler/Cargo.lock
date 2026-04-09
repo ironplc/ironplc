@@ -685,6 +685,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironplc-cli"
+version = "0.190.0"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "codespan-reporting",
+ "crossbeam-channel",
+ "encoding_rs",
+ "env_logger",
+ "ironplc-analyzer",
+ "ironplc-codegen",
+ "ironplc-container",
+ "ironplc-dsl",
+ "ironplc-parser",
+ "ironplc-plc2plc",
+ "ironplc-problems",
+ "ironplc-project",
+ "ironplc-sources",
+ "ironplc-test",
+ "ironplc-vm",
+ "log",
+ "lsp-server",
+ "lsp-types",
+ "predicates",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "time",
+]
+
+[[package]]
 name = "ironplc-codegen"
 version = "0.190.0"
 dependencies = [
@@ -712,6 +743,13 @@ dependencies = [
  "paste",
  "regex",
  "time",
+]
+
+[[package]]
+name = "ironplc-mcp"
+version = "0.190.0"
+dependencies = [
+ "ironplc-project",
 ]
 
 [[package]]
@@ -765,6 +803,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironplc-project"
+version = "0.190.0"
+dependencies = [
+ "ironplc-analyzer",
+ "ironplc-container",
+ "ironplc-dsl",
+ "ironplc-parser",
+ "ironplc-problems",
+ "ironplc-sources",
+ "log",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "ironplc-sources"
 version = "0.190.0"
 dependencies = [
@@ -806,36 +859,6 @@ dependencies = [
  "ironplc-vm",
  "log",
  "predicates",
- "serde_json",
- "tempfile",
- "time",
-]
-
-[[package]]
-name = "ironplcc"
-version = "0.190.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "codespan-reporting",
- "crossbeam-channel",
- "encoding_rs",
- "env_logger",
- "ironplc-analyzer",
- "ironplc-codegen",
- "ironplc-container",
- "ironplc-dsl",
- "ironplc-parser",
- "ironplc-plc2plc",
- "ironplc-problems",
- "ironplc-sources",
- "ironplc-test",
- "ironplc-vm",
- "log",
- "lsp-server",
- "lsp-types",
- "predicates",
- "serde",
  "serde_json",
  "tempfile",
  "time",

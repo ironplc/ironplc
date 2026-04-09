@@ -18,7 +18,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::str::FromStr;
 
 use crate::lsp_project::{LspProject, TOKEN_TYPE_LEGEND};
-use crate::project::FileBackedProject;
+use ironplc_project::disassemble;
+use ironplc_project::FileBackedProject;
 
 /// Start the LSP server.
 ///
@@ -258,7 +259,7 @@ impl<'a> LspServer<'a> {
                 Ok(uri) => {
                     let path_str = uri_to_file_path(&uri);
                     let path = std::path::Path::new(&path_str);
-                    crate::disassemble::disassemble_file(path)
+                    disassemble::disassemble_file(path)
                 }
                 Err(_) => serde_json::json!({"error": "Invalid URI"}),
             };
@@ -453,7 +454,7 @@ mod test {
     use std::str::FromStr;
 
     use crate::lsp_project::LspProject;
-    use crate::project::{FileBackedProject, Project};
+    use ironplc_project::{FileBackedProject, Project};
 
     use super::start_with_connection;
 

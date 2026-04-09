@@ -32,7 +32,7 @@ cd ironplc/compiler
 Run the checker using Cargo:
 
 ```sh
-cargo run check plc2x/resources/test/first_steps.st
+cargo run check ironplc-cli/resources/test/first_steps.st
 ```
 
 ### Making Changes

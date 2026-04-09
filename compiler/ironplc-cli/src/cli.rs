@@ -25,7 +25,8 @@ use std::{
 use ironplc_dsl::common::Library;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::project::{FileBackedProject, Project};
+use ironplc_project::tokenizer;
+use ironplc_project::{FileBackedProject, Project};
 
 // Checks specified files.
 pub fn check(
@@ -97,7 +98,7 @@ pub fn tokenize(
     let project = create_project(paths, compiler_options, suppress_output)?;
 
     for src in project.sources() {
-        crate::tokenizer::tokenize_source(src, &project, suppress_output, &handle_diagnostics)?;
+        tokenizer::tokenize_source(src, &project, suppress_output, &handle_diagnostics)?;
     }
 
     Ok(())
