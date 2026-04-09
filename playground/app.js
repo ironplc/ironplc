@@ -120,6 +120,7 @@ let lastVariables = null;
 let stepInFlight = false;
 let previousValues = new Map();
 let compilerVersion = "";
+let currentIntervalMs = 500;
 
 // --- URL parameter handling ---
 
@@ -142,7 +143,6 @@ function trackPageview(path, title) {
 
 // --- Sparkline history ---
 
-const STEP_INTERVAL_MS = 100;
 const RENDER_INTERVAL_MS = 500;
 const HISTORY_WINDOW_MS = 5000;
 let valueHistory = new Map();
@@ -318,6 +318,7 @@ function getIntervalMs() {
 }
 
 function startStepLoop() {
+  const intervalMs = currentIntervalMs;
   stepIntervalId = setInterval(async () => {
     if (stepInFlight) return;
     stepInFlight = true;
@@ -351,11 +352,11 @@ function startStepLoop() {
       return;
     }
 
-    // Check for cycle overrun against the step interval
-    if (elapsed > STEP_INTERVAL_MS) {
+    // Check for cycle overrun against the configured step interval
+    if (elapsed > intervalMs) {
       stopExecution();
-      status.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but step interval is ${STEP_INTERVAL_MS}ms`;
-      diagnosticsPanel.innerHTML = `<p class="error-message">Cycle overrun: program execution took ${elapsed.toFixed(0)}ms but the step interval is ${STEP_INTERVAL_MS}ms. Reduce program complexity or increase the interval.</p>`;
+      status.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but step interval is ${intervalMs}ms`;
+      diagnosticsPanel.innerHTML = `<p class="error-message">Cycle overrun: program execution took ${elapsed.toFixed(0)}ms but the step interval is ${intervalMs}ms. Reduce program complexity or increase the interval.</p>`;
       activateTab("diagnostics");
       return;
     }
@@ -363,7 +364,7 @@ function startStepLoop() {
     cycleCount = result.total_scans;
     lastVariables = result.variables;
     accumulateHistory(result.variables);
-  }, STEP_INTERVAL_MS);
+  }, intervalMs);
 }
 
 function startRenderLoop() {
@@ -452,6 +453,7 @@ startBtn.addEventListener("click", async () => {
   lastVariables = null;
   isRunning = true;
   isPaused = false;
+  currentIntervalMs = intervalMs;
 
   startBtn.disabled = true;
   startBtn.classList.add("active");
