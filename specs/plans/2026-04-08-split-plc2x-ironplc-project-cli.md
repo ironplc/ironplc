@@ -29,9 +29,9 @@ flowchart LR
 
 | Crate (package name) | Path                        | Role                                                                                                                                                                                                 |
 | -------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ironplc-project`    | `compiler/ironplc-project/` | Library: `Project` trait, `FileBackedProject`, `tokenizer.rs`, and `disassemble.rs` (IPLC → JSON for LSP, MCP, tooling). |
+| `ironplc-project`    | `compiler/project/` | Library: `Project` trait, `FileBackedProject`, `tokenizer.rs`, and `disassemble.rs` (IPLC → JSON for LSP, MCP, tooling). |
 | `ironplc-cli`        | `compiler/ironplc-cli/`     | Library + binary: everything else from today’s crate; **binary name stays `ironplcc`**. |
-| `ironplc-mcp`        | `compiler/ironplc-mcp/`     | Binary-only **shell**: package name `ironplc-mcp`, binary **`ironplcmcp`**, depends on **`ironplc-project`** (no MCP SDK yet; stub `main`). |
+| `ironplc-mcp`        | `compiler/mcp/`     | Binary-only **shell**: package name `ironplc-mcp`, binary **`ironplcmcp`**, depends on **`ironplc-project`** (no MCP SDK yet; stub `main`). |
 
 ```mermaid
 flowchart LR
@@ -97,7 +97,7 @@ flowchart LR
 
 - **Package name:** `ironplc-mcp` (crate `ironplc_mcp`).
 - **Binary name:** `ironplcmcp`.
-- **Dependencies:** `ironplc-project` only.
+- **Dependencies:** `ironplc-project` only. (Path dependency points to `compiler/project/`.)
 - **Release tarballs:** Optional to add `ironplcmcp` to `justfile` packages later.
 
 ## Follow-up (out of scope)
