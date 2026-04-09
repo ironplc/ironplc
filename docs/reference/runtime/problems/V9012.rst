@@ -1,0 +1,17 @@
+=====
+V9012
+=====
+
+.. problem-summary:: V9012
+
+The VM call frame stack exceeded the maximum depth while dispatching a
+``CALL`` or function-block invocation. The VM uses an explicit call
+frame stack to bound recursion, and this limit was reached.
+
+This typically indicates unbounded recursion in the PLC program or a
+call chain deeper than the VM's configured maximum. Check the program
+for recursive function or function-block calls.
+
+If the program is not recursive and genuinely requires a deeper call
+chain, report this at https://github.com/ironplc/ironplc/issues with
+the source program so the limit can be reviewed.
