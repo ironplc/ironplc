@@ -12,7 +12,7 @@ All detailed steering documentation lives in **`specs/steering/`**. Different AI
 
 - **Kiro**: Uses pointer files in `.kiro/steering/` that are automatically loaded
 - **Claude**: Uses `CLAUDE.md` as an entry point with links to `specs/steering/`
-- **Cursor**: Could use `CURSOR.md` with links to `specs/steering/`
+- **Cursor**: Uses `CURSOR.md` at the repository root (full entry point, same content pattern as `CLAUDE.md`) plus `.cursor/rules/ironplc-steering.mdc` with `alwaysApply: true` so the agent always sees a short pointer to `specs/steering/`
 - **Other AI tools**: Can reference `specs/steering/` files directly or through custom entry points
 
 ### 1. Detailed Documentation (in `specs/steering/`)
@@ -77,9 +77,18 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 - **[Topic Name](specs/steering/[topic].md)** - [Brief description]
 ```
 
+#### Cursor Entry Point (`CURSOR.md` and `.cursor/rules/`)
+
+**Purpose**: Cursor loads project rules from `.cursor/rules/*.mdc`; the repo also keeps a human-readable entry point at the root.
+
+**Layout**:
+
+- **`CURSOR.md`** (repository root): Same role as `CLAUDE.md` — steering links, git workflow, quick reference, and pointers to `specs/steering/common-tasks.md` for `just` commands (Cursor does not run Claude Code slash commands automatically).
+- **`.cursor/rules/ironplc-steering.mdc`**: Concise `alwaysApply: true` rule that points at `CURSOR.md` and lists `specs/steering/` paths so standards apply in every chat without duplicating long-form docs in the rule file.
+
 #### Other AI Tools
 
-Other AI assistants can use similar entry point files (e.g., `CURSOR.md`, `COPILOT.md`) or directly reference files in `specs/steering/` through their own mechanisms
+Other AI assistants can use similar entry point files (e.g., `COPILOT.md`) or directly reference files in `specs/steering/` through their own mechanisms
 
 ## Why This Pattern?
 
@@ -121,7 +130,8 @@ specs/steering/common-tasks.md (single source of truth)
     ├─→ .kiro/steering/common-tasks.md (Kiro pointer)
     ├─→ CLAUDE.md (Claude entry point)
     ├─→ .claude/commands/ci.md (Claude skill / slash command)
-    ├─→ CURSOR.md (Cursor entry point, if created)
+    ├─→ CURSOR.md (Cursor entry point)
+    ├─→ .cursor/rules/ironplc-steering.mdc (Cursor always-on rule)
     └─→ Direct reference (any AI tool)
 ```
 
@@ -206,9 +216,15 @@ Then add the skill to the "Skills" section of `CLAUDE.md`:
 - `/project:[action]` - [Brief description]
 ```
 
+#### For Cursor
+
+**Steering**: Update `CURSOR.md` under "Steering Files" the same way you update `CLAUDE.md` (link to `specs/steering/[topic].md`). If a topic is always critical for every session, add or adjust a one-line pointer in `.cursor/rules/ironplc-steering.mdc` (keep that file concise; prefer linking to `specs/steering/` over duplicating long guidance).
+
+**Skills**: Document the equivalent `just` command in `CURSOR.md` (or rely on `specs/steering/common-tasks.md`); Cursor does not use `.claude/commands/` slash commands natively.
+
 #### For Other AI Tools
 
-Create or update their entry point files (e.g., `CURSOR.md`, `COPILOT.md`) following the same pattern as `CLAUDE.md`.
+Create or update their entry point files (e.g., `COPILOT.md`) following the same pattern as `CLAUDE.md`.
 
 ## Kiro-Specific: Conditional vs. Always Inclusion
 
@@ -269,8 +285,9 @@ Background information that AI assistants need as context when working on code. 
 **Characteristics**:
 - Answer "what are the rules?" or "how is this structured?"
 - Needed as background context for making code changes
-- Referenced in `CLAUDE.md` under "Steering Files"
+- Referenced in `CLAUDE.md` and `CURSOR.md` under "Steering Files"
 - Referenced in `.kiro/steering/` as pointer files
+- Summarized or linked from `.cursor/rules/ironplc-steering.mdc` for Cursor
 
 ### Skills (Actionable Procedures)
 
@@ -357,7 +374,8 @@ When updating a steering file:
 1. ✅ Update the detailed doc in `specs/steering/[topic].md`
 2. ✅ Check if pointer summaries need updating:
    - `.kiro/steering/[topic].md` (if exists)
-   - `CLAUDE.md` (if topic is listed)
+   - `CLAUDE.md` and `CURSOR.md` (if topic is listed)
+   - `.cursor/rules/ironplc-steering.mdc` (if the topic should appear in the always-on Cursor rule)
    - Other AI tool entry points
 3. ✅ Test with an AI assistant to verify the guidance works
 4. ✅ Commit all updated files together
