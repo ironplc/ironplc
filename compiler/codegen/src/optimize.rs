@@ -44,145 +44,6 @@ impl Instruction {
     }
 }
 
-/// Returns the total byte size of the instruction starting with `op`.
-fn instruction_size(op: u8) -> usize {
-    match op {
-        // 1-byte: arithmetic, logic, comparison, unary, stack, control.
-        opcode::ADD_I32
-        | opcode::SUB_I32
-        | opcode::MUL_I32
-        | opcode::DIV_I32
-        | opcode::MOD_I32
-        | opcode::NEG_I32
-        | opcode::ADD_I64
-        | opcode::SUB_I64
-        | opcode::MUL_I64
-        | opcode::DIV_I64
-        | opcode::MOD_I64
-        | opcode::NEG_I64
-        | opcode::DIV_U32
-        | opcode::MOD_U32
-        | opcode::DIV_U64
-        | opcode::MOD_U64
-        | opcode::ADD_F32
-        | opcode::SUB_F32
-        | opcode::MUL_F32
-        | opcode::DIV_F32
-        | opcode::NEG_F32
-        | opcode::ADD_F64
-        | opcode::SUB_F64
-        | opcode::MUL_F64
-        | opcode::DIV_F64
-        | opcode::NEG_F64
-        | opcode::EQ_I32
-        | opcode::NE_I32
-        | opcode::LT_I32
-        | opcode::LE_I32
-        | opcode::GT_I32
-        | opcode::GE_I32
-        | opcode::EQ_I64
-        | opcode::NE_I64
-        | opcode::LT_I64
-        | opcode::LE_I64
-        | opcode::GT_I64
-        | opcode::GE_I64
-        | opcode::LT_U32
-        | opcode::LE_U32
-        | opcode::GT_U32
-        | opcode::GE_U32
-        | opcode::LT_U64
-        | opcode::LE_U64
-        | opcode::GT_U64
-        | opcode::GE_U64
-        | opcode::EQ_F32
-        | opcode::NE_F32
-        | opcode::LT_F32
-        | opcode::LE_F32
-        | opcode::GT_F32
-        | opcode::GE_F32
-        | opcode::EQ_F64
-        | opcode::NE_F64
-        | opcode::LT_F64
-        | opcode::LE_F64
-        | opcode::GT_F64
-        | opcode::GE_F64
-        | opcode::BOOL_AND
-        | opcode::BOOL_OR
-        | opcode::BOOL_XOR
-        | opcode::BOOL_NOT
-        | opcode::BIT_AND_32
-        | opcode::BIT_OR_32
-        | opcode::BIT_XOR_32
-        | opcode::BIT_NOT_32
-        | opcode::BIT_AND_64
-        | opcode::BIT_OR_64
-        | opcode::BIT_XOR_64
-        | opcode::BIT_NOT_64
-        | opcode::TRUNC_I8
-        | opcode::TRUNC_U8
-        | opcode::TRUNC_I16
-        | opcode::TRUNC_U16
-        | opcode::LOAD_INDIRECT
-        | opcode::STORE_INDIRECT
-        | opcode::LOAD_TRUE
-        | opcode::LOAD_FALSE
-        | opcode::POP
-        | opcode::DUP
-        | opcode::SWAP
-        | opcode::NOP
-        | opcode::RET
-        | opcode::RET_VOID => 1,
-
-        // 2-byte: opcode + u8 field index.
-        opcode::FB_STORE_PARAM | opcode::FB_LOAD_PARAM => 2,
-
-        // 3-byte: opcode + u16.
-        opcode::LOAD_CONST_I32
-        | opcode::LOAD_CONST_I64
-        | opcode::LOAD_CONST_F32
-        | opcode::LOAD_CONST_F64
-        | opcode::LOAD_CONST_STR
-        | opcode::LOAD_VAR_I32
-        | opcode::LOAD_VAR_I64
-        | opcode::LOAD_VAR_F32
-        | opcode::LOAD_VAR_F64
-        | opcode::STORE_VAR_I32
-        | opcode::STORE_VAR_I64
-        | opcode::STORE_VAR_F32
-        | opcode::STORE_VAR_F64
-        | opcode::FB_LOAD_INSTANCE
-        | opcode::FB_CALL
-        | opcode::JMP
-        | opcode::JMP_IF_NOT
-        | opcode::BUILTIN
-        | opcode::STR_LOAD_VAR
-        | opcode::STR_STORE_VAR
-        | opcode::LEN_STR
-        | opcode::DELETE_STR
-        | opcode::LEFT_STR
-        | opcode::RIGHT_STR
-        | opcode::MID_STR => 3,
-
-        // 5-byte: opcode + u16 + u16.
-        opcode::LOAD_ARRAY
-        | opcode::STORE_ARRAY
-        | opcode::LOAD_ARRAY_DEREF
-        | opcode::STORE_ARRAY_DEREF
-        | opcode::STR_INIT
-        | opcode::FIND_STR
-        | opcode::REPLACE_STR
-        | opcode::INSERT_STR
-        | opcode::CONCAT_STR
-        | opcode::STR_INIT_ARRAY
-        | opcode::STR_LOAD_ARRAY_ELEM
-        | opcode::STR_STORE_ARRAY_ELEM
-        | opcode::CALL => 5,
-
-        // Unknown: advance by 1 byte to avoid infinite loops.
-        _ => 1,
-    }
-}
-
 /// Decode raw bytecode into a list of instructions and the set of jump
 /// target offsets (relative to the original bytecode).
 fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
@@ -192,7 +53,7 @@ fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
 
     while pc < bytecode.len() {
         let op = bytecode[pc];
-        let size = instruction_size(op);
+        let size = opcode::instruction_size(op);
         let end = (pc + size).min(bytecode.len());
         instructions.push(Instruction {
             offset: pc,
@@ -430,6 +291,26 @@ mod tests {
     fn jmp(offset: i16) -> Vec<u8> {
         let mut v = vec![opcode::JMP];
         v.extend_from_slice(&offset.to_le_bytes());
+        v
+    }
+
+    fn str_load_var(data_offset: u32) -> Vec<u8> {
+        let mut v = vec![opcode::STR_LOAD_VAR];
+        v.extend_from_slice(&data_offset.to_le_bytes());
+        v
+    }
+
+    fn find_str(in1: u32, in2: u32) -> Vec<u8> {
+        let mut v = vec![opcode::FIND_STR];
+        v.extend_from_slice(&in1.to_le_bytes());
+        v.extend_from_slice(&in2.to_le_bytes());
+        v
+    }
+
+    fn str_init(data_offset: u32, max_length: u16) -> Vec<u8> {
+        let mut v = vec![opcode::STR_INIT];
+        v.extend_from_slice(&data_offset.to_le_bytes());
+        v.extend_from_slice(&max_length.to_le_bytes());
         v
     }
 
@@ -710,6 +591,53 @@ mod tests {
         // NOP bytes (inserted by the emitter's store-load peephole) must
         // be preserved as 1-byte instructions.
         let bytecode = vec![opcode::NOP, opcode::NOP, opcode::RET_VOID];
+        let result = optimize(&bytecode, &[]);
+        assert_eq!(result, bytecode);
+    }
+
+    // --- String opcode regression tests (instruction size correctness) ---
+
+    #[test]
+    fn optimize_when_str_load_var_before_jump_then_no_panic() {
+        // STR_LOAD_VAR uses a u32 operand (5 bytes total). A wrong
+        // instruction size would desynchronize the decoder and cause
+        // a panic when resolving the jump target.
+        let mut bytecode = Vec::new();
+        bytecode.extend_from_slice(&str_load_var(100));
+        bytecode.push(opcode::POP);
+        bytecode.extend_from_slice(&jmp(1));
+        bytecode.push(opcode::NOP);
+        bytecode.push(opcode::RET_VOID);
+
+        let result = optimize(&bytecode, &[]);
+        assert_eq!(result, bytecode);
+    }
+
+    #[test]
+    fn optimize_when_find_str_before_jump_then_no_panic() {
+        // FIND_STR uses two u32 operands (9 bytes total). A wrong
+        // instruction size would desynchronize the decoder.
+        let mut bytecode = Vec::new();
+        bytecode.extend_from_slice(&find_str(100, 200));
+        bytecode.push(opcode::POP);
+        bytecode.extend_from_slice(&jmp(1));
+        bytecode.push(opcode::NOP);
+        bytecode.push(opcode::RET_VOID);
+
+        let result = optimize(&bytecode, &[]);
+        assert_eq!(result, bytecode);
+    }
+
+    #[test]
+    fn optimize_when_str_init_before_jump_then_no_panic() {
+        // STR_INIT uses u32 + u16 operands (7 bytes total). A wrong
+        // instruction size would desynchronize the decoder.
+        let mut bytecode = Vec::new();
+        bytecode.extend_from_slice(&str_init(100, 80));
+        bytecode.extend_from_slice(&jmp(1));
+        bytecode.push(opcode::NOP);
+        bytecode.push(opcode::RET_VOID);
+
         let result = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }

@@ -185,60 +185,60 @@ pub const FB_CALL: Opcode = 0xC3;
 pub const LOAD_CONST_STR: Opcode = 0x09;
 
 /// Initialize a STRING variable in the data region.
-/// Operands: data_offset: u16, max_length: u16.
+/// Operands: data_offset: u32, max_length: u16.
 /// Sets max_length and cur_length=0 at the given data_offset.
 pub const STR_INIT: Opcode = 0xE4;
 
 /// Copy STRING from data region into a temp buffer; push temp buf_idx.
-/// Operand: data_offset: u16.
+/// Operand: data_offset: u32.
 pub const STR_LOAD_VAR: Opcode = 0xE0;
 
 /// Copy temp buffer contents into STRING variable at data_offset.
-/// Operand: data_offset: u16. Pops buf_idx from stack.
+/// Operand: data_offset: u32. Pops buf_idx from stack.
 pub const STR_STORE_VAR: Opcode = 0xE1;
 
 /// Read the current length of a STRING variable from the data region.
-/// Operand: data_offset: u16.
+/// Operand: data_offset: u32.
 /// Pushes the cur_length as an i32 onto the stack.
 pub const LEN_STR: Opcode = 0xE2;
 
 /// Find the first occurrence of IN2 within IN1.
-/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Operands: in1_data_offset: u32, in2_data_offset: u32.
 /// Pushes the 1-based position as i32 (0 if not found).
 pub const FIND_STR: Opcode = 0xE3;
 
 /// Replace L characters starting at position P in IN1 with IN2.
-/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Operands: in1_data_offset: u32, in2_data_offset: u32.
 /// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
 pub const REPLACE_STR: Opcode = 0xE5;
 
 /// Insert IN2 into IN1 after position P.
-/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Operands: in1_data_offset: u32, in2_data_offset: u32.
 /// Pops P (i32) from stack. Pushes buf_idx (i32).
 pub const INSERT_STR: Opcode = 0xE6;
 
 /// Delete L characters from IN1 starting at position P.
-/// Operand: in1_data_offset: u16.
+/// Operand: in1_data_offset: u32.
 /// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
 pub const DELETE_STR: Opcode = 0xE7;
 
 /// Return the leftmost L characters of IN.
-/// Operand: in_data_offset: u16.
+/// Operand: in_data_offset: u32.
 /// Pops L (i32) from stack. Pushes buf_idx (i32).
 pub const LEFT_STR: Opcode = 0xE8;
 
 /// Return the rightmost L characters of IN.
-/// Operand: in_data_offset: u16.
+/// Operand: in_data_offset: u32.
 /// Pops L (i32) from stack. Pushes buf_idx (i32).
 pub const RIGHT_STR: Opcode = 0xE9;
 
 /// Return L characters from IN starting at position P.
-/// Operand: in_data_offset: u16.
+/// Operand: in_data_offset: u32.
 /// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
 pub const MID_STR: Opcode = 0xEA;
 
 /// Concatenate IN1 and IN2.
-/// Operands: in1_data_offset: u16, in2_data_offset: u16.
+/// Operands: in1_data_offset: u32, in2_data_offset: u32.
 /// Pushes buf_idx (i32).
 pub const CONCAT_STR: Opcode = 0xEB;
 
@@ -562,6 +562,52 @@ pub const GT_F64: Opcode = 0x8C;
 /// Compare two 64-bit floats (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
 pub const GE_F64: Opcode = 0x8D;
+
+/// Returns the total byte size of the instruction starting with `op`.
+///
+/// This is the single source of truth for instruction sizes, shared by both
+/// the emitter and the optimizer. Keeping one function prevents the two from
+/// diverging and producing misaligned instruction boundaries.
+pub fn instruction_size(op: Opcode) -> usize {
+    match op {
+        // 1-byte: arithmetic, logic, comparison, unary, stack, control.
+        ADD_I32 | SUB_I32 | MUL_I32 | DIV_I32 | MOD_I32 | NEG_I32 | ADD_I64 | SUB_I64 | MUL_I64
+        | DIV_I64 | MOD_I64 | NEG_I64 | DIV_U32 | MOD_U32 | DIV_U64 | MOD_U64 | ADD_F32
+        | SUB_F32 | MUL_F32 | DIV_F32 | NEG_F32 | ADD_F64 | SUB_F64 | MUL_F64 | DIV_F64
+        | NEG_F64 | EQ_I32 | NE_I32 | LT_I32 | LE_I32 | GT_I32 | GE_I32 | EQ_I64 | NE_I64
+        | LT_I64 | LE_I64 | GT_I64 | GE_I64 | LT_U32 | LE_U32 | GT_U32 | GE_U32 | LT_U64
+        | LE_U64 | GT_U64 | GE_U64 | EQ_F32 | NE_F32 | LT_F32 | LE_F32 | GT_F32 | GE_F32
+        | EQ_F64 | NE_F64 | LT_F64 | LE_F64 | GT_F64 | GE_F64 | BOOL_AND | BOOL_OR | BOOL_XOR
+        | BOOL_NOT | BIT_AND_32 | BIT_OR_32 | BIT_XOR_32 | BIT_NOT_32 | BIT_AND_64 | BIT_OR_64
+        | BIT_XOR_64 | BIT_NOT_64 | TRUNC_I8 | TRUNC_U8 | TRUNC_I16 | TRUNC_U16 | LOAD_INDIRECT
+        | STORE_INDIRECT | LOAD_TRUE | LOAD_FALSE | POP | DUP | SWAP | NOP | RET | RET_VOID => 1,
+
+        // 2-byte: opcode + u8 field index.
+        FB_STORE_PARAM | FB_LOAD_PARAM => 2,
+
+        // 3-byte: opcode + u16.
+        LOAD_CONST_I32 | LOAD_CONST_I64 | LOAD_CONST_F32 | LOAD_CONST_F64 | LOAD_CONST_STR
+        | LOAD_VAR_I32 | LOAD_VAR_I64 | LOAD_VAR_F32 | LOAD_VAR_F64 | STORE_VAR_I32
+        | STORE_VAR_I64 | STORE_VAR_F32 | STORE_VAR_F64 | FB_LOAD_INSTANCE | FB_CALL | JMP
+        | JMP_IF_NOT | BUILTIN => 3,
+
+        // 5-byte: opcode + u16 + u16.
+        CALL | LOAD_ARRAY | STORE_ARRAY | LOAD_ARRAY_DEREF | STORE_ARRAY_DEREF | STR_INIT_ARRAY
+        | STR_LOAD_ARRAY_ELEM | STR_STORE_ARRAY_ELEM => 5,
+
+        // 5-byte: opcode + u32.
+        STR_LOAD_VAR | STR_STORE_VAR | LEN_STR | DELETE_STR | LEFT_STR | RIGHT_STR | MID_STR => 5,
+
+        // 7-byte: opcode + u32 + u16.
+        STR_INIT => 7,
+
+        // 9-byte: opcode + u32 + u32.
+        FIND_STR | REPLACE_STR | INSERT_STR | CONCAT_STR => 9,
+
+        // Unknown: advance by 1 byte to avoid infinite loops.
+        _ => 1,
+    }
+}
 
 /// Built-in function IDs used with the BUILTIN opcode.
 pub mod builtin {
