@@ -7,6 +7,7 @@ use crate::value::Slot;
 ///
 /// Each program instance can access shared globals (indices 0..shared_globals_size)
 /// and its own partition (indices instance_offset..instance_offset+instance_count).
+#[derive(Clone, Copy)]
 pub struct VariableScope {
     pub shared_globals_size: u16,
     pub instance_offset: u16,

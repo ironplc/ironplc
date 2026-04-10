@@ -25,6 +25,7 @@ pub enum Trap {
         total_elements: u32,
     },
     UnexpectedEndOfBytecode,
+    CallStackOverflow,
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -64,6 +65,7 @@ impl fmt::Display for Trap {
                 )
             }
             Trap::UnexpectedEndOfBytecode => write!(f, "bytecode ended mid-instruction"),
+            Trap::CallStackOverflow => write!(f, "call stack overflow"),
         }
     }
 }

@@ -2,10 +2,10 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
+use ironplc_cli::cli;
+use ironplc_cli::logger;
+use ironplc_cli::lsp;
 use ironplc_parser::options::{describe_dialects, CompilerOptions, Dialect};
-use ironplcc::cli;
-use ironplcc::logger;
-use ironplcc::lsp;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
