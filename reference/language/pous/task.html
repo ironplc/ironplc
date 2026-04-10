@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.188.0">
+<meta name="ironplc-version" content="0.192.0">
 </head>
   <body>
     
@@ -251,6 +251,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/ironplc-ecosystem.html">IronPLC and the IEC 61131-3 Ecosystem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/program-organization.html">Program Organization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../explanation/execution-cycle.html">Execution Cycle</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/variables-and-io.html">Variables and I/O</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/references.html">References and Indirection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../explanation/type-conversions.html">Type Conversions</a></li>
@@ -556,6 +557,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9009.html">V9009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9010.html">V9010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9011.html">V9011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9012.html">V9012</a></li>
 </ul>
 </li>
 </ul>
@@ -619,7 +621,7 @@
         <article role="main" id="furo-main-content">
           <div class="admonition attention">
 <p class="admonition-title">Attention</p>
-<p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include structures and user defined function blocks.</p>
+<p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include ranges, enum and I/O mapping.</p>
 </div>
 <section id="task">
 <h1>TASK<a class="headerlink" href="#task" title="Link to this heading">¶</a></h1>
@@ -673,6 +675,24 @@
 </tbody>
 </table>
 </div>
+</section>
+<section id="behavior">
+<h2>Behavior<a class="headerlink" href="#behavior" title="Link to this heading">¶</a></h2>
+<p>The runtime uses <code class="docutils literal notranslate"><span class="pre">INTERVAL</span></code> and <code class="docutils literal notranslate"><span class="pre">PRIORITY</span></code> to schedule task execution
+during the scan cycle:</p>
+<ul class="simple">
+<li><p><strong>Interval</strong> controls how often the task runs. On each scheduling round,
+the runtime checks whether the task’s interval has elapsed since its last
+execution. If it has, the task is ready to run. A shorter interval means
+the task runs more frequently but consumes more CPU time.</p></li>
+<li><p><strong>Priority</strong> controls execution order when multiple tasks are ready in
+the same round. Priority 0 is the highest. Higher-priority tasks always
+execute before lower-priority tasks. Tasks with equal priority run in
+declaration order.</p></li>
+</ul>
+<p>If a task takes longer than its interval, the runtime skips the missed
+cycle and realigns forward. See <a class="reference internal" href="../../../explanation/execution-cycle.html"><span class="doc">Execution Cycle</span></a> for
+details on overruns, watchdog timeouts, and the full scheduling model.</p>
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
@@ -763,6 +783,7 @@ executes its associated programs at the specified interval.</p>
 <li><a class="reference internal" href="#">TASK</a><ul>
 <li><a class="reference internal" href="#syntax">Syntax</a></li>
 <li><a class="reference internal" href="#parameters">Parameters</a></li>
+<li><a class="reference internal" href="#behavior">Behavior</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>

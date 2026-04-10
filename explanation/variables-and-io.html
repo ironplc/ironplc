@@ -9,7 +9,7 @@
 <meta property="og:site_name" content="IronPLC" />
 <meta property="og:description" content="This page explains how IEC 61131-3 programs declare variables and connect them to physical inputs and outputs. For hands-on practice, see the Quick start tutorial. Variable Declarations: Variables ..." />
 <meta name="description" content="This page explains how IEC 61131-3 programs declare variables and connect them to physical inputs and outputs. For hands-on practice, see the Quick start tutorial. Variable Declarations: Variables ..." />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="References and Indirection" href="references.html"><link rel="prev" title="Program Organization" href="program-organization.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="References and Indirection" href="references.html"><link rel="prev" title="Execution Cycle" href="execution-cycle.html">
         <link rel="canonical" href="https://www.ironplc.com/explanation/variables-and-io.html">
 
     <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.188.0">
+<meta name="ironplc-version" content="0.192.0">
 </head>
   <body>
     
@@ -251,6 +251,7 @@
 <li class="toctree-l2"><a class="reference internal" href="ironplc-ecosystem.html">IronPLC and the IEC 61131-3 Ecosystem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="program-organization.html">Program Organization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="execution-cycle.html">Execution Cycle</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Variables and I/O</a></li>
 <li class="toctree-l2"><a class="reference internal" href="references.html">References and Indirection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="type-conversions.html">Type Conversions</a></li>
@@ -556,6 +557,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9009.html">V9009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9010.html">V9010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9011.html">V9011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9012.html">V9012</a></li>
 </ul>
 </li>
 </ul>
@@ -619,7 +621,7 @@
         <article role="main" id="furo-main-content">
           <div class="admonition attention">
 <p class="admonition-title">Attention</p>
-<p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include structures and user defined function blocks.</p>
+<p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include ranges, enum and I/O mapping.</p>
 </div>
 <section id="variables-and-i-o">
 <h1>Variables and I/O<a class="headerlink" href="#variables-and-i-o" title="Link to this heading">¶</a></h1>
@@ -803,14 +805,14 @@ types and variable sections, see the <a class="reference internal" href="../refe
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="program-organization.html">
+          <a class="prev-page" href="execution-cycle.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Program Organization</div>
+                <div class="title">Execution Cycle</div>
                 
               </div>
             </a>

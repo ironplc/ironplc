@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.188.0">
+<meta name="ironplc-version" content="0.192.0">
 </head>
   <body>
     
@@ -251,6 +251,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/ironplc-ecosystem.html">IronPLC and the IEC 61131-3 Ecosystem</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/structured-text-basics.html">Structured Text Basics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/program-organization.html">Program Organization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../explanation/execution-cycle.html">Execution Cycle</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/variables-and-io.html">Variables and I/O</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/references.html">References and Indirection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../explanation/type-conversions.html">Type Conversions</a></li>
@@ -556,6 +557,7 @@
 <li class="toctree-l4"><a class="reference internal" href="problems/V9009.html">V9009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/V9010.html">V9010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="problems/V9011.html">V9011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="problems/V9012.html">V9012</a></li>
 </ul>
 </li>
 </ul>
@@ -619,7 +621,7 @@
         <article role="main" id="furo-main-content">
           <div class="admonition attention">
 <p class="admonition-title">Attention</p>
-<p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include structures and user defined function blocks.</p>
+<p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include ranges, enum and I/O mapping.</p>
 </div>
 <section id="overview">
 <h1>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h1>
@@ -631,11 +633,26 @@ defined in the source program.</p>
 <h2>Execution Model<a class="headerlink" href="#execution-model" title="Link to this heading">¶</a></h2>
 <p>The runtime follows the IEC 61131-3 execution model. A compiled program
 contains one or more tasks, each with an associated interval and priority.
-On each scheduling round, the runtime checks which tasks are due to run
-based on elapsed time and executes them in priority order.</p>
+The runtime runs a continuous loop called the <strong>scan cycle</strong>. Each pass
+through the loop is one scheduling round.</p>
+<p>On each round, the runtime reads a monotonic clock, collects all tasks
+whose interval has elapsed, sorts them by priority (0 is highest), and
+executes them in order. Within a task, program instances run in the order
+they are declared in the source code. All tasks execute cooperatively in
+a single thread — the runtime does not preempt a running task.</p>
+<p>If a task takes longer than its interval, the runtime <strong>skips the missed
+cycle</strong> and realigns the next-due time forward. This prevents a cascade
+of back-to-back executions. The runtime tracks an overrun counter for
+each task so you can detect when this happens.</p>
+<p>Each task can also have a <strong>watchdog timeout</strong>. If a single execution
+exceeds the watchdog duration, the runtime triggers a fault and the VM
+stops. Unlike an overrun (which skips a cycle and continues), a watchdog
+timeout halts execution to protect against runaway logic.</p>
 <p>By default, <strong class="program">ironplcvm</strong> runs continuously, executing scheduling
 rounds until interrupted with <kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">C</kbd>. You can also limit execution
 to a fixed number of rounds using the <code class="docutils literal notranslate"><span class="pre">--scans</span></code> option.</p>
+<p>For a detailed explanation of the scan cycle, overruns, watchdog behavior,
+and the VM lifecycle, see <a class="reference internal" href="../../explanation/execution-cycle.html"><span class="doc">Execution Cycle</span></a>.</p>
 </section>
 <section id="variable-inspection">
 <h2>Variable Inspection<a class="headerlink" href="#variable-inspection" title="Link to this heading">¶</a></h2>
