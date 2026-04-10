@@ -113,8 +113,7 @@ impl<'a> TaskScheduler<'a> {
 
     /// Returns the earliest `next_due_us` across all enabled cyclic tasks,
     /// or `None` if no cyclic tasks exist.
-    // Used in tests; will be called from the CLI run-loop once cyclic sleep is added.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn next_due_us(&self) -> Option<u64> {
         self.task_states
             .iter()
