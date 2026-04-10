@@ -22,8 +22,44 @@ project's workflow already follows a spec-plan-implement cycle.
 
 ### What's Missing
 
-The gap is **enforcement**. The spec and code are two independent sources of
-truth maintained by hand. Concretely:
+There are two gaps: a **requirements layer** and **enforcement**.
+
+#### No Requirements Layer
+
+The project has specs that say *what* to build (design docs) and *why*
+decisions were made (ADRs), but nothing that says *what the system must do*
+from a user or stakeholder perspective. Requirements sit above design docs —
+they capture testable "must" statements that designs satisfy.
+
+For example, the container format spec describes the header layout in detail,
+but nowhere does the project state:
+
+- "The VM **must** reject bytecode with an invalid content signature"
+- "The compiler **must** produce deterministic output for the same input"
+- "The runtime **must** reject a program at load time if RAM is insufficient"
+
+These claims are implied by the design docs and implemented in code, but they
+aren't captured as first-class, testable requirements. This matters because:
+
+1. **Design docs answer "what does it look like?" not "what must it do?"** — a
+   design doc can describe a header layout without stating that the VM must
+   reject invalid headers. The requirement is the *why* behind the design.
+2. **Requirements are testable contracts** — each "must" statement maps to one
+   or more acceptance tests. Without requirements, you can have passing tests
+   that don't verify the right things.
+3. **Requirements enable traceability** — when a test fails, you can trace it
+   back to a requirement, then to a design doc, then to an ADR. Today the
+   chain starts at the design doc level, missing the top link.
+
+Note: IronPLC's steering files function as the project's **constitution** —
+immutable architectural principles and development standards. A spec-kit-style
+constitution would be redundant. Requirements are the missing layer, not
+principles.
+
+#### Spec-Code Drift
+
+The second gap is **enforcement**. The spec and code are two independent
+sources of truth maintained by hand. Concretely:
 
 1. **Opcode drift** — `specs/design/bytecode-instruction-set.md` defines
    opcodes in markdown tables. `compiler/container/src/opcode.rs` defines them
@@ -101,10 +137,100 @@ The approach below works naturally with Claude Code on any platform: specs are
 markdown files that Claude reads before implementing, and spec tests are Rust
 tests that run with `cargo test`.
 
-## Adoption Strategy: Machine-Readable Spec Layer
+## Known Spec Gaps to Address
 
-The key insight: **keep the human-readable markdown specs but add a
-machine-readable layer that both humans and tools can validate against.**
+Beyond the drift issues already identified, several areas lack any spec at all
+— the code is the only source of truth:
+
+1. **Builtin function registry** — 100+ builtin functions in
+   `compiler/vm/src/builtin.rs` with no spec document listing their IDs,
+   signatures, or semantics. A new builtin can be added to code without any
+   spec update.
+
+2. **Standard library function signatures** — 200+ stdlib functions defined
+   across `intermediates/stdlib_function.rs` (51KB) and
+   `stdlib_function_block.rs` (25KB). The user-facing docs in
+   `docs/reference/stdlib/` describe behavior, but there's no internal spec
+   tying function IDs to implementations.
+
+3. **Type coercion rules** — spread across ADR-0001, ADR-0029, ADR-0031, plus
+   `xform_resolve_expr_types.rs` (42KB). No single document consolidates all
+   coercion rules (implicit widening, explicit narrowing, cross-type
+   conversions). A developer must read multiple ADRs and implementation code to
+   understand the full picture.
+
+4. **DSL / AST node reference** — the AST types in `dsl/src/` (core.rs,
+   textual.rs, common.rs — 150KB+ combined) have no design doc. The code is
+   the spec. Onboarding requires reading code.
+
+5. **Intermediate representations** — `intermediate_type.rs` (74KB) plus the
+   `intermediates/` subdirectory define the compiler's internal type system.
+   No design doc explains the representation choices or evolution path.
+
+These gaps should be addressed **opportunistically** — when touching related
+code, write the spec first, then make the change. Do not attempt a big-bang
+spec-writing effort.
+
+## Adoption Strategy
+
+Two parallel tracks: (A) add a requirements layer above design docs, and (B)
+add a machine-readable spec layer alongside design docs for enforcement.
+
+### Phase 0: Requirements for New Features (immediate)
+
+For every new feature or subsystem going forward, write **requirements** before
+writing the design doc. Requirements capture testable "must" statements:
+
+```markdown
+# Requirements: Bytecode Verifier
+
+## REQ-VER-001: Reject invalid signatures
+The VM MUST reject bytecode where the content signature does not verify
+against the content hash.
+
+## REQ-VER-002: Reject insufficient resources
+The VM MUST reject a program at load time if the computed RAM requirement
+exceeds available RAM, before allocating any runtime resources.
+
+## REQ-VER-003: Deterministic compilation
+The compiler MUST produce identical bytecode (byte-for-byte) for identical
+source input, regardless of compilation environment.
+```
+
+**Location:** `specs/requirements/` (new directory).
+
+**Format:** Markdown with `REQ-{AREA}-{NNN}` identifiers. Each requirement
+uses RFC 2119 language (MUST, SHOULD, MAY). Each requirement maps to one or
+more acceptance tests.
+
+**Relationship to existing artifacts:**
+
+```
+Requirements (specs/requirements/)    — what the system MUST do
+    ↓ satisfied by
+Design docs (specs/design/)           — what the system looks like
+    ↓ justified by
+ADRs (specs/adrs/)                    — why this design was chosen
+    ↓ implemented via
+Plans (specs/plans/)                  — how to build it step by step
+```
+
+**Traceability:** Spec conformance tests (Phase 1) reference requirements:
+
+```rust
+/// REQ-VER-001: Reject invalid signatures
+/// Spec: bytecode-container-format.md § Loading Sequence, step 6
+#[test]
+fn vm_when_invalid_signature_then_rejects() { ... }
+```
+
+**When requirements may be skipped:** Same as plans — mechanical changes,
+bug fixes, formatting, dependency bumps.
+
+**Why this works for velocity:** Requirements are short (1-3 sentences each).
+Writing them before the design doc takes minutes and saves hours of ambiguity.
+Claude Code can draft requirements from a brief description and then implement
+against them.
 
 ### Phase 1: Spec Tests for New Development (immediate)
 
@@ -243,13 +369,18 @@ The closed standard requires a different approach:
 | Recommendation | Priority | Effort |
 |----------------|----------|--------|
 | Do NOT adopt spec-kit | — | — |
+| Steering files = constitution (don't write a separate one) | — | — |
+| Add `specs/requirements/` with REQ-AREA-NNN format | Immediate | Low |
 | Add spec conformance tests for new specs | Immediate | Low |
 | Add `{area}_spec_{claim}` test naming convention | Immediate | Low |
 | Update steering files with spec-first rule | Immediate | Low |
 | Add machine-readable CSV for opcode table | Near-term | Medium |
+| Add machine-readable CSV for builtin function registry | Near-term | Medium |
 | Add CI check for opcode spec-code consistency | Near-term | Medium |
+| Consolidate type coercion rules into single design doc | Near-term | Medium |
 | Treat language reference as the IEC 61131-3 spec | Ongoing | Low |
 | Backfill spec conformance tests for existing specs | Later | High |
+| Write specs for stdlib functions, DSL/AST, IRs | Later | High |
 
 ## What NOT To Do
 
