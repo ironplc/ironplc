@@ -86,7 +86,7 @@ html_theme_options = {
 }
 
 rst_prolog = """.. attention::
-    IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include structures and user defined function blocks.
+    IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include ranges, enum and I/O mapping.
 """
 
 # -- Version configuration ---------------------------------------------------

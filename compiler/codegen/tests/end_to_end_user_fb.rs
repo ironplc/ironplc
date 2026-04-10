@@ -118,3 +118,29 @@ END_PROGRAM
         );
     });
 }
+
+#[test]
+fn end_to_end_when_user_fb_body_calls_user_function_then_compiles() {
+    // Regression for codegen P9999: calling a user-defined FUNCTION from
+    // inside a FUNCTION_BLOCK body previously failed in codegen because user
+    // functions were registered into `ctx.user_functions` only after FB
+    // bodies were compiled. Compiling FUNCTIONs before FB bodies fixes this.
+    let source = "
+FUNCTION ADD_ONE : INT
+  VAR_INPUT x : INT; END_VAR
+  ADD_ONE := x + 1;
+END_FUNCTION
+
+FUNCTION_BLOCK COUNTER
+  VAR count : INT; END_VAR
+  count := ADD_ONE(x := count);
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR c : COUNTER; END_VAR
+  c();
+END_PROGRAM
+";
+    let _ = common::try_parse_and_compile(source, &CompilerOptions::default())
+        .expect("FB calling user function should compile");
+}

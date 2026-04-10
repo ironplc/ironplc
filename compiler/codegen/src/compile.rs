@@ -105,7 +105,7 @@ pub(crate) const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
 pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
 
 /// A constant in the pool: integer, float, or string.
-enum PoolConstant {
+pub(crate) enum PoolConstant {
     I32(i32),
     I64(i64),
     F32(f32),
@@ -360,6 +360,27 @@ fn compile_program_with_functions(
     let mut next_function_id: u16 = 2;
     let mut var_offset = VarIndex::new(program_var_count);
 
+    // Compile user FUNCTIONs before FUNCTION_BLOCK bodies so that FB bodies
+    // can resolve calls to user functions via `ctx.user_functions` (functions
+    // register themselves at the end of `compile_user_function`). Per
+    // IEC 61131-3 functions cannot instantiate FBs, so they don't require FB
+    // bodies to have been compiled first.
+    for func_decl in func_decls {
+        let compiled = compile_user_function(
+            func_decl,
+            next_function_id,
+            var_offset,
+            &mut ctx,
+            functions,
+            &mut builder,
+            types,
+            num_globals,
+        )?;
+        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
+        next_function_id += 1;
+        compiled_functions.push(compiled);
+    }
+
     for fb_decl in fb_decls {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let fb_func_id = ctx.user_fb_types[&fb_name].function_id;
@@ -378,22 +399,6 @@ fn compile_program_with_functions(
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         compiled_fb_bodies.push(compiled);
-    }
-
-    for func_decl in func_decls {
-        let compiled = compile_user_function(
-            func_decl,
-            next_function_id,
-            var_offset,
-            &mut ctx,
-            functions,
-            &mut builder,
-            types,
-            num_globals,
-        )?;
-        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
-        next_function_id += 1;
-        compiled_functions.push(compiled);
     }
 
     let total_variables = var_offset;
@@ -443,21 +448,23 @@ fn compile_program_with_functions(
         .unwrap_or(0);
 
     // Function 0: init, Function 1: scan
+    // bytecode() must be called before max_stack_depth() because the
+    // peephole optimizer (run inside bytecode()) may increase max_stack_depth.
+    let init_bytecode = crate::optimize::optimize(init_emitter.bytecode(), &ctx.constants);
     let init_stack = init_emitter.max_stack_depth();
-    let init_bytecode = init_emitter.bytecode();
     builder = builder.add_function(
         FunctionId::INIT,
-        init_bytecode,
+        &init_bytecode,
         init_stack,
         program_var_count,
         0,
     );
 
+    let scan_bytecode = crate::optimize::optimize(scan_emitter.bytecode(), &ctx.constants);
     let scan_stack = scan_emitter.max_stack_depth() + max_fb_body_stack;
-    let scan_bytecode = scan_emitter.bytecode();
     builder = builder.add_function(
         FunctionId::SCAN,
-        scan_bytecode,
+        &scan_bytecode,
         scan_stack,
         program_var_count,
         0,
@@ -608,7 +615,7 @@ pub(crate) struct CompileContext {
     /// Maps variable identifiers to their type information.
     pub(crate) var_types: HashMap<Id, VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
-    constants: Vec<PoolConstant>,
+    pub(crate) constants: Vec<PoolConstant>,
     /// Stack of loop exit labels for EXIT statement compilation.
     /// Each enclosing loop pushes its end label; EXIT jumps to the top.
     pub(crate) loop_exit_labels: Vec<crate::emit::Label>,
@@ -909,8 +916,9 @@ END_PROGRAM
         assert_eq!(container.header.num_functions, 2);
 
         // Function 1 (scan):
-        // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
-        // y := x:  LOAD_VAR_I32 var:0, STORE_VAR_I32 var:1
+        // x := 10: LOAD_CONST_I32 pool:0
+        // (store-load peephole): DUP, STORE_VAR_I32 var:0, NOP, NOP
+        // y := x:  STORE_VAR_I32 var:1
         // RET_VOID
         let bytecode = container
             .code
@@ -920,8 +928,9 @@ END_PROGRAM
             bytecode,
             &[
                 0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0
+                0xA1, // DUP (store-load optimization)
                 0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-                0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+                0xA3, 0xA3, // NOP, NOP (padding)
                 0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
                 0xB5, // RET_VOID
             ]

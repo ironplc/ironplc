@@ -1,0 +1,18 @@
+[package]
+name = "ironplc-mcp"
+description = "Model Context Protocol server for IronPLC (shell — implementation pending)."
+version = "0.192.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[badges]
+maintenance = { status = "experimental" }
+
+[dependencies]
+ironplc-project = { path = "../project", version = "0.192.0" }
+
+[[bin]]
+name = "ironplcmcp"
+path = "src/main.rs"

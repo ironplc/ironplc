@@ -313,8 +313,8 @@ pub(crate) fn compile_user_function(
     }
     func_emitter.emit_ret();
 
+    let bytecode = crate::optimize::optimize(func_emitter.bytecode(), &ctx.constants);
     let max_stack_depth = func_emitter.max_stack_depth();
-    let bytecode = func_emitter.bytecode().to_vec();
 
     // Record function metadata for use at call sites.
     let func_name = func_decl.name.lower_case();
@@ -545,8 +545,8 @@ pub(crate) fn compile_user_function_block(
     compile_body(&mut fb_emitter, ctx, &fb_decl.body)?;
     fb_emitter.emit_ret_void();
 
+    let bytecode = crate::optimize::optimize(fb_emitter.bytecode(), &ctx.constants);
     let max_stack_depth = fb_emitter.max_stack_depth();
-    let bytecode = fb_emitter.bytecode().to_vec();
 
     // Restore the program's variable mappings.
     ctx.variables = saved_variables;

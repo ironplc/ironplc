@@ -50,7 +50,7 @@ This single command runs **all required checks**:
 | Check | Command | What it validates |
 |-------|---------|-------------------|
 | Compile | `cargo build` | Code compiles without errors |
-| Coverage | `cargo llvm-cov ...` | All tests pass and line coverage ≥ 85% |
+| Coverage | `cargo llvm-cov --quiet ...` | All tests pass and line coverage ≥ 85% |
 | **Lint** | `cargo clippy` + `cargo fmt --check` | No clippy warnings, code is formatted |
 
 ### Fixing Common Failures
@@ -104,7 +104,7 @@ just clean       # Remove build artifacts
 ```bash
 cd compiler
 just             # Runs: compile, coverage, lint
-just test        # Run tests only (without coverage instrumentation)
+just test        # Run tests only (--quiet, without coverage instrumentation)
 just coverage    # Run tests with coverage (requires 85% line coverage)
 just format      # Auto-fix linting errors
 just clean       # Remove build artifacts (target/, lcov.info)

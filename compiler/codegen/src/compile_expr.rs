@@ -96,7 +96,14 @@ pub(crate) fn condition_op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     match &expr.kind {
         ExprKind::Compare(compare) => match compare.op {
             CompareOp::And | CompareOp::Or | CompareOp::Xor => condition_op_type(&compare.left),
-            _ => op_type(&compare.left),
+            _ => {
+                // String comparisons take a dedicated path in compile_expr
+                // that emits an i32 boolean; the operand op_type is unused.
+                if expr_is_string(&compare.left) {
+                    return Ok(DEFAULT_OP_TYPE);
+                }
+                op_type(&compare.left)
+            }
         },
         ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => condition_op_type(&unary.term),
         ExprKind::Expression(inner) => condition_op_type(inner),
@@ -511,6 +518,34 @@ pub(crate) fn compile_variable_read(
             Ok(())
         }
         Variable::Symbolic(SymbolicVariableKind::Structured(structured)) => {
+            // STRING fields are composite (multi-slot) and stored in the data
+            // region, so we intercept before resolve_struct_field_access which
+            // only supports single-slot (primitive/enum) fields.
+            let (root_name, slot_offset, field_type) = crate::compile_struct::walk_struct_chain(
+                ctx,
+                &structured.record,
+                &structured.field,
+                0,
+            )?;
+            if matches!(
+                &field_type,
+                ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
+            ) {
+                let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+                    Diagnostic::problem(
+                        Problem::NotImplemented,
+                        Label::span(
+                            structured.span(),
+                            format!("Variable '{}' is not a structure", root_name),
+                        ),
+                    )
+                })?;
+                let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
+                ctx.num_temp_bufs += 1;
+                emitter.emit_str_load_var(byte_offset);
+                return Ok(());
+            }
+
             let (var_index, desc_index, slot_offset, _op_type, _field_type) =
                 crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
             let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);

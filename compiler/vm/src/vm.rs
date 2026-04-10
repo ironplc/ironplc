@@ -6,6 +6,8 @@ use ironplc_container::{
 use crate::buffers::VmBuffers;
 use crate::builtin;
 use crate::error::Trap;
+#[cfg(feature = "profiling")]
+use crate::profile::InstructionProfile;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
 use crate::string_ops;
@@ -13,6 +15,7 @@ use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
 use core::fmt::Write as FmtWrite;
 use ironplc_container::opcode;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 /// Context for a fault that occurred during task execution.
@@ -87,6 +90,8 @@ impl Vm {
             task_states: &mut bufs.tasks,
             program_instances: &mut bufs.programs,
             ready_buf: &mut bufs.ready,
+            #[cfg(feature = "profiling")]
+            profile: InstructionProfile::new(),
         }
     }
 }
@@ -110,6 +115,8 @@ pub struct VmReady<'a> {
     task_states: &'a mut [TaskState],
     program_instances: &'a mut [ProgramInstanceState],
     ready_buf: &'a mut [usize],
+    #[cfg(feature = "profiling")]
+    profile: InstructionProfile,
 }
 
 impl<'a> VmReady<'a> {
@@ -159,6 +166,8 @@ impl<'a> VmReady<'a> {
                 self.max_temp_buf_bytes,
                 &scope,
                 0, // init functions don't need real time
+                #[cfg(feature = "profiling")]
+                &mut self.profile,
             )
             .map_err(|trap| FaultContext {
                 trap,
@@ -180,6 +189,8 @@ impl<'a> VmReady<'a> {
             shared_globals_size,
             scan_count: 0,
             stop_requested: false,
+            #[cfg(feature = "profiling")]
+            profile: self.profile,
         })
     }
 
@@ -204,6 +215,8 @@ impl<'a> VmReady<'a> {
             shared_globals_size,
             scan_count: initial_scan_count,
             stop_requested: false,
+            #[cfg(feature = "profiling")]
+            profile: self.profile,
         }
     }
 
@@ -237,6 +250,8 @@ pub struct VmRunning<'a> {
     shared_globals_size: u16,
     scan_count: u64,
     stop_requested: bool,
+    #[cfg(feature = "profiling")]
+    profile: InstructionProfile,
 }
 
 impl<'a> VmRunning<'a> {
@@ -283,6 +298,7 @@ impl<'a> VmRunning<'a> {
             let task_idx = self.ready_buf[ri];
             let task_id = self.task_states[task_idx].task_id;
 
+            #[cfg(not(target_arch = "wasm32"))]
             let start = Instant::now();
             let mut last_instance_id = InstanceId::DEFAULT;
 
@@ -324,6 +340,8 @@ impl<'a> VmRunning<'a> {
                     self.max_temp_buf_bytes,
                     &scope,
                     current_time_us,
+                    #[cfg(feature = "profiling")]
+                    &mut self.profile,
                 )
                 .map_err(|trap| FaultContext {
                     trap,
@@ -332,7 +350,10 @@ impl<'a> VmRunning<'a> {
                 })?;
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             let elapsed_us = start.elapsed().as_micros() as u64;
+            #[cfg(target_arch = "wasm32")]
+            let elapsed_us = 0u64;
 
             // Watchdog check: if the task has a watchdog configured and
             // execution exceeded the timeout, trap.
@@ -413,11 +434,19 @@ impl<'a> VmRunning<'a> {
         self.stop_requested
     }
 
+    /// Returns a reference to the instruction profile.
+    #[cfg(feature = "profiling")]
+    pub fn profile(&self) -> &InstructionProfile {
+        &self.profile
+    }
+
     /// Transitions to the stopped state (clean shutdown).
     pub fn stop(self) -> VmStopped<'a> {
         VmStopped {
             variables: self.variables,
             scan_count: self.scan_count,
+            #[cfg(feature = "profiling")]
+            profile: self.profile,
         }
     }
 
@@ -428,6 +457,8 @@ impl<'a> VmRunning<'a> {
             task_id: ctx.task_id,
             instance_id: ctx.instance_id,
             variables: self.variables,
+            #[cfg(feature = "profiling")]
+            profile: self.profile,
         }
     }
 }
@@ -436,6 +467,8 @@ impl<'a> VmRunning<'a> {
 pub struct VmStopped<'a> {
     variables: VariableTable<'a>,
     scan_count: u64,
+    #[cfg(feature = "profiling")]
+    profile: InstructionProfile,
 }
 
 impl<'a> VmStopped<'a> {
@@ -460,6 +493,12 @@ impl<'a> VmStopped<'a> {
     pub fn scan_count(&self) -> u64 {
         self.scan_count
     }
+
+    /// Returns a reference to the instruction profile.
+    #[cfg(feature = "profiling")]
+    pub fn profile(&self) -> &InstructionProfile {
+        &self.profile
+    }
 }
 
 /// A VM that has stopped due to a trap.
@@ -468,6 +507,8 @@ pub struct VmFaulted<'a> {
     task_id: TaskId,
     instance_id: InstanceId,
     variables: VariableTable<'a>,
+    #[cfg(feature = "profiling")]
+    profile: InstructionProfile,
 }
 
 impl<'a> VmFaulted<'a> {
@@ -501,6 +542,12 @@ impl<'a> VmFaulted<'a> {
     /// Returns the number of variable slots.
     pub fn num_variables(&self) -> u16 {
         self.variables.len()
+    }
+
+    /// Returns a reference to the instruction profile.
+    #[cfg(feature = "profiling")]
+    pub fn profile(&self) -> &InstructionProfile {
+        &self.profile
     }
 }
 
@@ -570,6 +617,7 @@ fn execute(
     max_temp_buf_bytes: usize,
     scope: &VariableScope,
     current_time_us: u64,
+    #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
     let mut pc: usize = 0;
     let mut temp_alloc = string_ops::TempBufAllocator::new(max_temp_buf_bytes);
@@ -577,6 +625,9 @@ fn execute(
     while pc < bytecode.len() {
         let op = bytecode[pc];
         pc += 1;
+
+        #[cfg(feature = "profiling")]
+        profile.record(op);
 
         match op {
             // --- Load constants ---
@@ -936,6 +987,8 @@ fn execute(
                     max_temp_buf_bytes,
                     &func_scope,
                     current_time_us,
+                    #[cfg(feature = "profiling")]
+                    profile,
                 )?;
             }
             opcode::RET => {
@@ -1585,6 +1638,7 @@ fn execute(
             opcode::SWAP => {
                 stack.swap()?;
             }
+            opcode::NOP => {}
             // --- Function block opcodes ---
             opcode::FB_LOAD_INSTANCE => {
                 let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
@@ -1750,6 +1804,8 @@ fn execute(
                             max_temp_buf_bytes,
                             &func_scope,
                             current_time_us,
+                            #[cfg(feature = "profiling")]
+                            profile,
                         )?;
 
                         // Copy-out: variable table slots -> data region fields.

@@ -555,6 +555,111 @@ END_PROGRAM
 }
 
 #[test]
+fn end_to_end_when_struct_string_field_write_then_value_stored() {
+    let source = "
+TYPE MY_DATA :
+  STRUCT
+    NAME : STRING[10];
+    VALUE : INT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    d : MY_DATA;
+  END_VAR
+    d.NAME := 'hello';
+    d.VALUE := 42;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let struct_base = bufs.vars[0].as_i32() as usize;
+    assert_eq!(read_string(&bufs.data_region, struct_base), "hello");
+    // INT field is at slot 2 (STRING[10] = ceil((4+10)/8) = 2 slots)
+    assert_eq!(bufs.vars[0].as_i32() as usize, struct_base);
+}
+
+#[test]
+fn end_to_end_when_struct_string_field_read_then_correct_value() {
+    let source = "
+TYPE MY_DATA :
+  STRUCT
+    NAME : STRING[10];
+    VALUE : INT;
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    d : MY_DATA;
+    result : STRING[10];
+  END_VAR
+    d.NAME := 'world';
+    result := d.NAME;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let struct_base = bufs.vars[0].as_i32() as usize;
+    assert_eq!(read_string(&bufs.data_region, struct_base), "world");
+    // result is the second string variable; its data follows the struct data
+    // struct occupies 3 slots (2 for STRING[10] + 1 for INT) = 24 bytes
+    let result_offset = struct_base + 3 * 8;
+    assert_eq!(read_string(&bufs.data_region, result_offset), "world");
+}
+
+#[test]
+fn end_to_end_when_function_return_struct_with_string_field_then_correct() {
+    let source = "
+TYPE MY_DATA :
+  STRUCT
+    TYP : BYTE;
+    NAME : STRING[10];
+    VALUES : ARRAY[1..3] OF DINT;
+  END_STRUCT;
+END_TYPE
+
+FUNCTION MAKE_DATA : MY_DATA
+VAR_INPUT
+    t : BYTE;
+    n : STRING[10];
+END_VAR
+    MAKE_DATA.TYP := t;
+    MAKE_DATA.NAME := n;
+    MAKE_DATA.VALUES[1] := 10;
+    MAKE_DATA.VALUES[2] := 20;
+    MAKE_DATA.VALUES[3] := 30;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    d : MY_DATA;
+    result_name : STRING[10];
+    result_sum : DINT;
+  END_VAR
+    d := MAKE_DATA(t := BYTE#5, n := 'test');
+    result_name := d.NAME;
+    result_sum := d.VALUES[1] + d.VALUES[2] + d.VALUES[3];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // d is var 0 (struct), result_name is var 1 (STRING), result_sum is var 2
+    let struct_base = bufs.vars[0].as_i32() as usize;
+    // TYP is at slot 0, NAME starts at slot 1 (2 slots for STRING[10]),
+    // VALUES at slot 3 (3 DINT slots)
+    // Total struct slots: 1 + 2 + 3 = 6
+
+    // Verify NAME field in the struct data region (slot 1 = byte offset 8)
+    assert_eq!(read_string(&bufs.data_region, struct_base + 1 * 8), "test");
+
+    // Verify result_name (STRING var after struct data)
+    let result_name_offset = struct_base + 6 * 8;
+    assert_eq!(read_string(&bufs.data_region, result_name_offset), "test");
+
+    // Verify sum of array values
+    assert_eq!(bufs.vars[2].as_i32(), 60);
+}
+
+#[test]
 fn end_to_end_when_two_calls_to_struct_returning_function_then_independent_copies() {
     let source = "
 TYPE POINT :
