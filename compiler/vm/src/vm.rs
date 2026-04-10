@@ -16,6 +16,7 @@ use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
 use core::fmt::Write as FmtWrite;
 use ironplc_container::opcode;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 /// Context for a fault that occurred during task execution.
@@ -298,6 +299,7 @@ impl<'a> VmRunning<'a> {
             let task_idx = self.ready_buf[ri];
             let task_id = self.task_states[task_idx].task_id;
 
+            #[cfg(not(target_arch = "wasm32"))]
             let start = Instant::now();
             let mut last_instance_id = InstanceId::DEFAULT;
 
@@ -349,7 +351,10 @@ impl<'a> VmRunning<'a> {
                 })?;
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             let elapsed_us = start.elapsed().as_micros() as u64;
+            #[cfg(target_arch = "wasm32")]
+            let elapsed_us = 0u64;
 
             // Watchdog check: if the task has a watchdog configured and
             // execution exceeded the timeout, trap.
