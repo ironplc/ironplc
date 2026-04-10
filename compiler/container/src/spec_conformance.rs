@@ -83,19 +83,18 @@ fn container_spec_req_cf_004_header_uses_little_endian() {
 #[spec_test(REQ_CF_005)]
 fn container_spec_req_cf_005_header_field_offsets() {
     // Write a header with distinctive values and verify byte offsets
-    let mut header = FileHeader::default();
-    header.num_variables = 0x1234;
-    header.code_section_offset = 0xAABBCCDD;
+    let header = FileHeader {
+        num_variables: 0x1234,
+        code_section_offset: 0xAABBCCDD,
+        ..Default::default()
+    };
 
     let mut buf = Vec::new();
     header.write_to(&mut buf).unwrap();
     assert_eq!(buf.len(), 256);
 
     // num_variables at offset 196 (u16 LE)
-    assert_eq!(
-        u16::from_le_bytes([buf[196], buf[197]]),
-        0x1234
-    );
+    assert_eq!(u16::from_le_bytes([buf[196], buf[197]]), 0x1234);
 
     // code_section_offset at offset 176 (u32 LE)
     assert_eq!(
@@ -125,8 +124,10 @@ fn container_spec_req_cf_007_flags_bit0_is_system_uptime() {
     assert_eq!(FLAG_HAS_SYSTEM_UPTIME, 0x01);
 
     // Verify the flag is at byte offset 7
-    let mut header = FileHeader::default();
-    header.flags = FLAG_HAS_SYSTEM_UPTIME;
+    let header = FileHeader {
+        flags: FLAG_HAS_SYSTEM_UPTIME,
+        ..Default::default()
+    };
     let mut buf = Vec::new();
     header.write_to(&mut buf).unwrap();
     assert_eq!(buf[7], 0x01);
