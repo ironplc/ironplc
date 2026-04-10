@@ -22,18 +22,12 @@ use crate::header::{FileHeader, FLAG_HAS_SYSTEM_UPTIME, FORMAT_VERSION, HEADER_S
 
 #[test]
 fn all_spec_requirements_have_tests() {
-    let source = include_str!("spec_conformance.rs");
-    let mut missing = Vec::new();
-    for req in crate::spec_requirements::ALL {
-        let ident = req.replace('-', "_");
-        if !source.contains(&ident) {
-            missing.push(*req);
-        }
-    }
+    // UNTESTED is computed by build.rs by scanning all .rs files under src/
+    // for #[spec_test(REQ_...)] attributes.
     assert!(
-        missing.is_empty(),
+        crate::spec_requirements::UNTESTED.is_empty(),
         "Requirements in spec with no conformance test: {:?}",
-        missing
+        crate::spec_requirements::UNTESTED
     );
 }
 

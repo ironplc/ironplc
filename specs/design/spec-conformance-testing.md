@@ -38,14 +38,24 @@ future additions.
 
 ## Spec Annotation
 
-Requirements appear as inline bold markers in the design docs, directly next
-to the testable claim:
+Each testable claim gets its own line, with the requirement ID first:
 
 ```markdown
-The file header is exactly 256 bytes. **REQ-CF-001**
+**REQ-CF-001** The file header is exactly 256 bytes.
 ```
 
-These are visible when reading the spec and searchable with grep.
+For tables, the requirement ID goes in a dedicated first column:
+
+```markdown
+| Requirement | Offset | Field | Type | Description |
+|-------------|--------|-------|------|-------------|
+| **REQ-CF-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
+```
+
+Rules:
+- At most one requirement per line.
+- ID-first makes the association unambiguous: the ID labels the text to its right.
+- Visible when reading the spec and searchable with grep.
 
 ## Enforcement Mechanism
 
@@ -78,9 +88,10 @@ that:
 
 ### Completeness meta-test
 
-A hand-written test reads the conformance test source with `include_str!` and
-checks that every requirement ID from `spec_requirements::ALL` appears in the
-source. This catches requirements that exist in the spec but have no test.
+The build script also scans all `.rs` files under `src/` for `spec_test(REQ_`
+patterns and generates an `UNTESTED` constant listing any requirements without
+tests. A meta-test asserts that `UNTESTED` is empty. Tests can live in any
+file within the crate — there is no single-file restriction.
 
 ## Test Conventions
 
@@ -96,7 +107,7 @@ source. This catches requirements that exist in the spec but have no test.
 
 In `bytecode-container-format.md`:
 ```markdown
-The file header occupies exactly 256 bytes. **REQ-CF-001**
+**REQ-CF-001** The file header is exactly 256 bytes.
 ```
 
 In `spec_conformance.rs`:
