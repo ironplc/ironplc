@@ -13,8 +13,13 @@ compile:
   cp node_modules/uplot/dist/uPlot.min.css _build/
   cp *.html *.js *.css *.txt *.xml _build/
 
+# Run end-to-end tests (requires a compiled _build/)
+test: compile
+  npx playwright install chromium
+  npx playwright test
+
 # Build everything (CI entry point)
-ci: setup compile
+ci: setup test
 
 # Serve locally for development
 serve: compile
