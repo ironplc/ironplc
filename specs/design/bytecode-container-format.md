@@ -20,7 +20,9 @@ The format builds on:
 
 ## File Layout
 
-Sections appear in this fixed order. All multi-byte values are little-endian, matching the instruction set encoding.
+**REQ-CF-004** All multi-byte values are little-endian, matching the instruction set encoding.
+
+Sections appear in this fixed order.
 
 ```
 ┌─────────────────────────────────────────┐  offset 0
@@ -44,7 +46,9 @@ Sections appear in this fixed order. All multi-byte values are little-endian, ma
 
 ## File Header
 
-The header is exactly 256 bytes. The VM reads this in a single read and decides whether to proceed.
+**REQ-CF-001** The header is exactly 256 bytes.
+
+The VM reads this in a single read and decides whether to proceed.
 
 The header is organized into four logical regions:
 
@@ -53,44 +57,44 @@ The header is organized into four logical regions:
 3. **Section directory** (bytes 136-191): offset/size pairs for each section, in file-layout order
 4. **Runtime parameters** (bytes 192-231): stack/memory budgets, counts, I/O image sizes
 
-| Offset | Field | Type | Description |
-|--------|-------|------|-------------|
-| 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
-| 4 | format_version | u16 | Container format version (initially 1) |
-| 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
-| 7 | flags | u8 | Bit 0: has content signature; Bit 1: has debug section; Bit 2: has type section |
-| 8 | content_hash | [u8; 32] | SHA-256 over `source_hash \|\| type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
-| 40 | source_hash | [u8; 32] | SHA-256 of the source text that produced this bytecode (all zeros if unavailable) |
-| 72 | debug_hash | [u8; 32] | SHA-256 over debug section (all zeros if no debug section) |
-| 104 | layout_hash | [u8; 32] | SHA-256 over the memory layout signature (see Layout Hash and Online Change) |
-| 136 | sig_section_offset | u32 | Offset of content signature section (0 if absent) |
-| 140 | sig_section_size | u32 | Size of content signature section |
-| 144 | debug_sig_offset | u32 | Offset of debug signature section (0 if absent) |
-| 148 | debug_sig_size | u32 | Size of debug signature section |
-| 152 | type_section_offset | u32 | Offset of type section (0 if stripped) |
-| 156 | type_section_size | u32 | Size of type section |
-| 160 | task_section_offset | u32 | Offset of task table section (0 if absent; see [Task Support Design](61131-task-support.md)) |
-| 164 | task_section_size | u32 | Size of task table section |
-| 168 | const_section_offset | u32 | Offset of constant pool section |
-| 172 | const_section_size | u32 | Size of constant pool section |
-| 176 | code_section_offset | u32 | Offset of code section |
-| 180 | code_section_size | u32 | Size of code section |
-| 184 | debug_section_offset | u32 | Offset of debug section (0 if absent) |
-| 188 | debug_section_size | u32 | Size of debug section |
-| 192 | max_stack_depth | u16 | Maximum operand stack depth across all functions |
-| 194 | max_call_depth | u16 | Maximum call nesting depth |
-| 196 | num_variables | u16 | Total variable table entries (including compiler-generated hidden variables) |
-| 198 | data_region_bytes | u32 | Total size of the mutable data region in bytes (compiler-summed across all variable-length variables: strings, arrays, FB instances) — see [ADR-0017](../adrs/0017-unified-data-region.md) |
-| 202 | num_temp_bufs | u16 | Number of temporary buffers for string operations |
-| 204 | max_temp_buf_bytes | u32 | Size of the largest temporary buffer in bytes |
-| 208 | num_functions | u16 | Number of function entries in the code section |
-| 210 | num_fb_types | u16 | Number of FB type descriptors in the type section |
-| 212 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
-| 214 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
-| 216 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
-| 218 | reserved | [u8; 38] | Reserved for future use; must be zero |
+**REQ-CF-005** The header field layout is as follows, totaling 256 bytes.
 
-Total header size: 256 bytes.
+| Requirement | Offset | Field | Type | Description |
+|-------------|--------|-------|------|-------------|
+| **REQ-CF-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
+| **REQ-CF-003** | 4 | format_version | u16 | Container format version (initially 1) |
+| | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
+| **REQ-CF-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section; Bit 2: has type section |
+| | 8 | content_hash | [u8; 32] | SHA-256 over `source_hash \|\| type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
+| | 40 | source_hash | [u8; 32] | SHA-256 of the source text that produced this bytecode (all zeros if unavailable) |
+| | 72 | debug_hash | [u8; 32] | SHA-256 over debug section (all zeros if no debug section) |
+| | 104 | layout_hash | [u8; 32] | SHA-256 over the memory layout signature (see Layout Hash and Online Change) |
+| | 136 | sig_section_offset | u32 | Offset of content signature section (0 if absent) |
+| | 140 | sig_section_size | u32 | Size of content signature section |
+| | 144 | debug_sig_offset | u32 | Offset of debug signature section (0 if absent) |
+| | 148 | debug_sig_size | u32 | Size of debug signature section |
+| | 152 | type_section_offset | u32 | Offset of type section (0 if stripped) |
+| | 156 | type_section_size | u32 | Size of type section |
+| | 160 | task_section_offset | u32 | Offset of task table section (0 if absent; see [Task Support Design](61131-task-support.md)) |
+| | 164 | task_section_size | u32 | Size of task table section |
+| | 168 | const_section_offset | u32 | Offset of constant pool section |
+| | 172 | const_section_size | u32 | Size of constant pool section |
+| | 176 | code_section_offset | u32 | Offset of code section |
+| | 180 | code_section_size | u32 | Size of code section |
+| | 184 | debug_section_offset | u32 | Offset of debug section (0 if absent) |
+| | 188 | debug_section_size | u32 | Size of debug section |
+| | 192 | max_stack_depth | u16 | Maximum operand stack depth across all functions |
+| | 194 | max_call_depth | u16 | Maximum call nesting depth |
+| | 196 | num_variables | u16 | Total variable table entries (including compiler-generated hidden variables) |
+| | 198 | data_region_bytes | u32 | Total size of the mutable data region in bytes (compiler-summed across all variable-length variables: strings, arrays, FB instances) — see [ADR-0017](../adrs/0017-unified-data-region.md) |
+| | 202 | num_temp_bufs | u16 | Number of temporary buffers for string operations |
+| | 204 | max_temp_buf_bytes | u32 | Size of the largest temporary buffer in bytes |
+| | 208 | num_functions | u16 | Number of function entries in the code section |
+| | 210 | num_fb_types | u16 | Number of FB type descriptors in the type section |
+| | 212 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
+| | 214 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
+| | 216 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
+| **REQ-CF-006** | 218 | reserved | [u8; 38] | Reserved for future use; must be zero |
 
 ### Resource Budget Calculation
 
