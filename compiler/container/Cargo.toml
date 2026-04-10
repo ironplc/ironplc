@@ -10,3 +10,6 @@ repository.workspace = true
 [features]
 default = ["std"]
 std = []
+
+[dev-dependencies]
+spec_test_macro = { path = "../spec_test_macro" }

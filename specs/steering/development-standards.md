@@ -48,6 +48,32 @@ When a document contains both design and plan content, split it into two files w
 
 **Important**: Plan and design documents must **never** be placed in `docs/`. The `docs/` directory is exclusively for the public Sphinx documentation website. All internal technical documents (plans, designs, ADRs, steering files) belong in `specs/`.
 
+### Design Requirement
+
+Compiler design documents in `specs/design/` **must** include **requirement IDs** for every testable claim. Requirements use the ID-first, one-per-line format:
+
+```markdown
+**REQ-CF-001** The file header is exactly 256 bytes.
+```
+
+For tables, add a Requirement column as the first column:
+
+```markdown
+| Requirement | Offset | Field | Type | Description |
+|-------------|--------|-------|------|-------------|
+| **REQ-CF-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
+```
+
+Rules:
+- At most one requirement per line
+- ID-first: `**REQ-XX-NNN**` followed by the testable claim
+- IDs use three-digit zero-padded numbers grouped by section with gaps for future additions
+- IDs are never reused; gaps are allowed
+
+Each requirement **must** have a corresponding conformance test annotated with `#[spec_test(REQ_XX_NNN)]`. The build system enforces this bidirectionally: removing a requirement from the spec causes a compile error; adding a requirement without a test causes the completeness meta-test to fail.
+
+See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism.
+
 ### Planning Requirement
 
 All non-trivial features and changes **must** begin with an implementation plan committed to `specs/plans/` before code changes start. The plan is the first deliverable — commit it to the feature branch before writing any implementation code.

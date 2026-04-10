@@ -57,3 +57,11 @@ pub use task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
 pub use type_section::{
     ArrayDescriptor, FbTypeDescriptor, FieldEntry, FieldType, TypeSection, UserFbDescriptor,
 };
+
+// Spec conformance testing infrastructure (test-only)
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;

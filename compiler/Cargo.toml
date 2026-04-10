@@ -16,7 +16,8 @@ members = [
     "test",
     "vm",
     "vm-cli",
-    "playground"
+    "playground",
+    "spec_test_macro"
 ]
 resolver = "2"
 
