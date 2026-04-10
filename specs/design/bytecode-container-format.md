@@ -20,7 +20,7 @@ The format builds on:
 
 ## File Layout
 
-Sections appear in this fixed order. All multi-byte values are little-endian, matching the instruction set encoding.
+Sections appear in this fixed order. All multi-byte values are little-endian, matching the instruction set encoding. **REQ-CF-004**
 
 ```
 ┌─────────────────────────────────────────┐  offset 0
@@ -44,7 +44,7 @@ Sections appear in this fixed order. All multi-byte values are little-endian, ma
 
 ## File Header
 
-The header is exactly 256 bytes. The VM reads this in a single read and decides whether to proceed.
+The header is exactly 256 bytes. **REQ-CF-001** The VM reads this in a single read and decides whether to proceed.
 
 The header is organized into four logical regions:
 
@@ -55,10 +55,10 @@ The header is organized into four logical regions:
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
-| 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
-| 4 | format_version | u16 | Container format version (initially 1) |
+| 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) **REQ-CF-002** |
+| 4 | format_version | u16 | Container format version (initially 1) **REQ-CF-003** |
 | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
-| 7 | flags | u8 | Bit 0: has content signature; Bit 1: has debug section; Bit 2: has type section |
+| 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section; Bit 2: has type section **REQ-CF-007** |
 | 8 | content_hash | [u8; 32] | SHA-256 over `source_hash \|\| type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
 | 40 | source_hash | [u8; 32] | SHA-256 of the source text that produced this bytecode (all zeros if unavailable) |
 | 72 | debug_hash | [u8; 32] | SHA-256 over debug section (all zeros if no debug section) |
@@ -88,9 +88,9 @@ The header is organized into four logical regions:
 | 212 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
 | 214 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
 | 216 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
-| 218 | reserved | [u8; 38] | Reserved for future use; must be zero |
+| 218 | reserved | [u8; 38] | Reserved for future use; must be zero **REQ-CF-006** |
 
-Total header size: 256 bytes.
+Total header size: 256 bytes. **REQ-CF-005**
 
 ### Resource Budget Calculation
 
