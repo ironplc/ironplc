@@ -80,6 +80,16 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
             return Err(err);
         }
         rounds += 1;
+
+        // Sleep until the next cyclic task is due to avoid burning CPU.
+        // Freewheeling-only programs (next_due_us returns None) run every round.
+        if let Some(due_us) = running.next_due_us() {
+            let now_us = start.elapsed().as_micros() as u64;
+            let sleep_us = due_us.saturating_sub(now_us);
+            if sleep_us > 0 {
+                std::thread::sleep(std::time::Duration::from_micros(sleep_us));
+            }
+        }
     }
 
     let stopped = running.stop();
