@@ -1,5 +1,5 @@
 use ironplc_container::{
-    ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, VarIndex,
+    ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, TaskType, VarIndex,
     STRING_HEADER_BYTES,
 };
 
@@ -412,6 +412,16 @@ impl<'a> VmRunning<'a> {
     /// Returns the number of completed scan cycles.
     pub fn scan_count(&self) -> u64 {
         self.scan_count
+    }
+
+    /// Returns the earliest `next_due_us` across all enabled cyclic tasks,
+    /// or `None` if no cyclic tasks exist (e.g. freewheeling only).
+    pub fn next_due_us(&self) -> Option<u64> {
+        self.task_states
+            .iter()
+            .filter(|t| t.enabled && t.task_type == TaskType::Cyclic)
+            .map(|t| t.next_due_us)
+            .min()
     }
 
     /// Requests the VM to stop after the current round.
