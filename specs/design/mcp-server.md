@@ -400,37 +400,38 @@ Returns every user-defined type (UDT, enumeration, type alias, array, subrange, 
 
 ### `compile`
 
-Runs the full pipeline (parse → semantic analysis → codegen) and returns an opaque, session-scoped **container handle** that identifies the compiled `.iplc` bytes inside the server. Also returns the task configuration extracted from the compiled program, which the agent can use to choose a sensible `duration_ms` for `run`.
+Runs the full pipeline (parse → semantic analysis → codegen) on the supplied sources and returns an opaque **container handle** that identifies the compiled `.iplc` bytes inside the server. Also returns the task configuration extracted from the compiled program, which the agent uses to choose a sensible `duration_ms` for `run`.
 
 The container handle is the primary transport: agents pass it back to `run` and `verify` without ever routing the bytecode through the LLM context. Base64-encoded bytes are available on request for clients that need to persist or transmit the artifact.
 
 **Inputs:**
-- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool compiles the session workspace
-- `options`: optional compiler options — when omitted, the session's active options are used
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; same schema as `check`
 - `include_bytes`: optional boolean (default `false`) — when `true`, the response also includes `container_base64`
 
-**REQ-TOL-030** The `compile` tool returns a session-scoped `container_id` string that uniquely identifies the compiled `.iplc` container inside the current session.
+**REQ-TOL-030** The `compile` tool returns a `container_id` string that uniquely identifies the compiled `.iplc` container inside the server process. `container_id` values are opaque strings with no structure the caller should rely on.
 
-**REQ-TOL-031** The `compile` tool returns `container_id: null` and a populated `diagnostics` array on failure. The caller determines success by checking whether `container_id` is non-null.
+**REQ-TOL-031** The `compile` tool returns `ok: false`, `container_id: null`, and a populated `diagnostics` array on failure.
 
-**REQ-TOL-032** The `compile` tool returns a `tasks` array describing each task declared in the program, including `name`, `priority`, and `interval_ms` (the cyclic interval in milliseconds, or `null` for event-triggered tasks).
+**REQ-TOL-032** The `compile` tool returns a `tasks` array describing each task declared in the program. Each entry contains `name`, `priority`, `kind` (one of `"cyclic"`, `"single"`, `"event"`), and `interval_ms` (the cyclic interval in milliseconds when `kind == "cyclic"`, otherwise `null`).
 
-**REQ-TOL-033** The `compile` tool returns a `programs` array listing each program name and the task it is bound to.
+**REQ-TOL-033** The `compile` tool returns a `programs` array listing each program name and the task it is bound to. When a program is not bound to any task, its `task` field is `null`.
 
-**REQ-TOL-034** The `compile` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
+**REQ-TOL-034** The `compile` tool returns the `.iplc` container encoded as a base64 string in `container_base64` only when the caller sets `include_bytes: true`; otherwise `container_base64` is `null`. This keeps the default response small and lets the agent pass `container_id` back to `run`/`verify` without ever routing the bytecode through the LLM context.
 
-**REQ-TOL-035** The `compile` tool returns the `.iplc` container encoded as a base64 string in `container_base64` only when the caller sets `include_bytes: true`; otherwise `container_base64` is `null`. This keeps the default response small and lets the agent pass `container_id` back to `run`/`verify` without ever routing the bytecode through the LLM context.
+**REQ-TOL-035** The server stores the compiled container bytes in a process-level container cache keyed by `container_id`. See Container Cache under Architecture for the cache's capacity and eviction policy.
 
-**REQ-TOL-036** The server stores the compiled container bytes in a session-scoped container cache keyed by `container_id`. Entries are dropped when the session ends or when the caller invokes `container_drop`.
+**REQ-TOL-036** A container produced by `compile` is an immutable snapshot of the exact `sources` and `options` used at compile time. Subsequent calls to `compile`, `run`, or `verify` — including calls whose `sources` differ — do not affect any previously cached container. A `container_id` that has not been evicted from the cache can be passed to `run` for the lifetime of the server process.
 
 **Output:**
 ```json
 {
+  "ok": true,
   "container_id": "c_9f3a1e",
   "container_base64": null,
   "tasks": [
-    { "name": "Main", "priority": 1, "interval_ms": 10 },
-    { "name": "Slow", "priority": 2, "interval_ms": 100 }
+    { "name": "Main", "priority": 1, "kind": "cyclic", "interval_ms": 10 },
+    { "name": "Slow", "priority": 2, "kind": "cyclic", "interval_ms": 100 }
   ],
   "programs": [
     { "name": "Control", "task": "Main" }
@@ -439,18 +440,16 @@ The container handle is the primary transport: agents pass it back to `run` and 
 }
 ```
 
-> **Note:** `compile` adds significant dependency weight (the codegen crate). Defer to a second milestone if needed; `check` covers the most important validation use case.
-
 ### `container_drop`
 
-Removes a previously compiled container from the session container cache. Agents normally do not need to call this — the cache is already bounded by the session lifetime — but it is provided for long-running sessions that churn through many `compile` calls.
+Removes a previously compiled container from the process container cache. Agents normally do not need to call this — the cache is already bounded by its LRU capacity and by process lifetime — but it is provided for long-running servers that churn through many `compile` calls and want to reclaim memory eagerly.
 
 **Inputs:**
 - `container_id: string`
 
-**REQ-TOL-150** The `container_drop` tool removes the container identified by `container_id` from the session container cache and returns `removed: true`.
+**REQ-TOL-150** The `container_drop` tool removes the container identified by `container_id` from the process container cache and returns `ok: true`, `removed: true`.
 
-**REQ-TOL-151** The `container_drop` tool returns `removed: false` and a populated `diagnostics` array when the `container_id` is unknown, rather than raising an MCP-level error.
+**REQ-TOL-151** The `container_drop` tool returns `ok: false`, `removed: false`, and a populated `diagnostics` array when the `container_id` is unknown (either never existed, or already evicted by LRU or by a prior `container_drop`), rather than raising an MCP-level error.
 
 ### `run`
 
@@ -459,10 +458,11 @@ Loads a compiled `.iplc` container into the IronPLC VM and executes it for a spe
 This enables the agent to verify logical correctness, not just syntactic validity. The agent can drive inputs over time via a `stimuli` schedule and observe the resulting output values in the returned trace.
 
 **Inputs:**
-- `container_id: string` — the session-scoped handle returned by `compile` (preferred)
+- `container_id: string` — the handle returned by `compile` (preferred)
 - `container_base64: string` — inline `.iplc` bytes; exactly one of `container_id` and `container_base64` must be present
 - `duration_ms: number` — simulated time to run in milliseconds
-- `variables: [string]` — list of fully-qualified variable names to include in the trace (see Variable Naming in Architecture)
+- `variables: [string]` — list of fully-qualified variable names to include in the trace (see Variable Naming in Architecture). May be empty when combined with `trace_outputs: true`.
+- `trace_outputs: boolean` — optional (default `false`); when `true`, the server expands the trace set to include every externally observable variable in the container (same set as `project_io.outputs`), in addition to any explicit `variables`. The combined set is still subject to `max_variables_per_run`.
 - `stimuli: [Stimulus]` — optional time-ordered schedule of writes applied to externally-drivable variables; an empty or omitted schedule runs the program with declared initial values only
 - `trace: TraceOptions` — optional object controlling the trace sampling mode and size; see below
 - `limits: LimitOverrides` — optional object that may tighten (but not loosen) the server-configured resource limits; see VM Sandboxing in Architecture
@@ -482,48 +482,49 @@ A `TraceOptions` object has these fields (all optional):
 }
 ```
 
-**REQ-TOL-040** The `run` tool executes the referenced `.iplc` container in the IronPLC VM for the simulated duration specified by `duration_ms`, deriving the number of scan cycles from the task intervals declared in the container. Exactly one of `container_id` and `container_base64` must be present; when `container_id` is supplied, the server looks up the compiled bytes in the session container cache (see REQ-TOL-036).
+**REQ-TOL-040** The `run` tool executes the referenced `.iplc` container in the IronPLC VM for the simulated duration specified by `duration_ms`, deriving the number of scan cycles from the task intervals declared in the container. Exactly one of `container_id` and `container_base64` must be present; when `container_id` is supplied, the server looks up the compiled bytes in the process container cache (see REQ-TOL-035). When a container declares no tasks at all, the `run` tool returns `ok: false` and a diagnostic instructing the caller to declare at least one task; it does not attempt to invent a cycle schedule.
 
-**REQ-TOL-041** The `run` tool returns a `trace` array. Each entry contains `time_ms` (simulated milliseconds since start of run), `task` (the name of the task whose cycle end produced the entry), and `variables` (a map from the fully-qualified names requested in `variables` to their values at that instant). Entries are time-ordered by `time_ms`; ties are broken by task priority (lower priority number first), then by task name. Each requested variable name must be fully qualified and must resolve against the loaded container (see REQ-ARC-020 and REQ-ARC-021); unresolved or ambiguous names abort the run with a diagnostic. Wildcard names (for example `"*"`, `"Main.*"`) are rejected with a diagnostic — the agent must explicitly enumerate the variables of interest. The `variables` array's length is capped at the server-configured `max_variables_per_run` limit (see VM Sandboxing); a request that exceeds the cap is rejected before the VM starts.
+**REQ-TOL-041** The `run` tool returns a `trace` array. Each entry contains `time_ms` (simulated milliseconds since start of run), `task` (the name of the task whose cycle end produced the entry), and `variables` (a map from the fully-qualified names in the effective trace set to their values at that instant). Entries are time-ordered by `time_ms`; ties are broken by task priority (lower priority number first), then by task name. Each requested variable name must be fully qualified and must resolve against the loaded container (see REQ-ARC-020 and REQ-ARC-021); unresolved or ambiguous names cause the run to return `ok: false` with a diagnostic before the VM starts. Wildcard names (for example `"*"`, `"Main.*"`) are rejected with a diagnostic — agents that want to trace many variables set `trace_outputs: true` or enumerate the names explicitly. The effective trace set (the union of `variables` and the expansion of `trace_outputs`) is capped at the server-configured `max_variables_per_run` limit (see VM Sandboxing); a request that exceeds the cap is rejected with a diagnostic that reports the limit and the request size.
 
-**REQ-TOL-042** The `run` tool accepts a time-ordered `stimuli` array. Each stimulus is applied at the start of the first scan cycle whose simulated end-time is greater than or equal to the stimulus `time_ms`. Values persist in their target variables until overwritten by a later stimulus or by the program itself. The `run` tool only permits stimuli to write variables reported by the `ironplc://project/io` resource as externally drivable (`VAR_INPUT` of Programs, `VAR_EXTERNAL`, globals, and `%I*`-mapped variables); attempts to write a local, `VAR_OUTPUT`, or `%Q*`-mapped variable result in a diagnostic and abort the run. A stimulus whose value does not match the declared type of the target variable (for example, setting a `BOOL` to `42`) is likewise rejected.
+**REQ-TOL-042** The `run` tool accepts a `stimuli` array that must be sorted by strictly non-decreasing `time_ms`; an out-of-order array is rejected with a diagnostic before the VM starts. Each stimulus is applied at the start of the first scan cycle whose simulated **start** time is greater than or equal to the stimulus `time_ms`. Values persist in their target variables until overwritten by a later stimulus or by the program itself. The `run` tool only permits stimuli to write variables that `project_io` would classify as inputs for the same container (`VAR_INPUT` or `VAR_IN_OUT` of Programs, `VAR_EXTERNAL`, non-addressed globals, and `%I*`-mapped variables); attempts to write a local, a pure `VAR_OUTPUT`, a `%Q*`-mapped variable, or a `%M*`-mapped marker result in a diagnostic and the run is not started. A stimulus whose value does not match the declared type of the target variable (for example, setting a `BOOL` to `42`) is likewise rejected.
 
 **REQ-TOL-043** The JSON encoding of values in `stimuli.set`, `trace[].variables`, and `summary.final_values` is recursive and is defined for every IEC 61131-3 type the compiler accepts:
   - `BOOL` ↔ JSON boolean.
   - `SINT`/`INT`/`DINT`/`USINT`/`UINT`/`UDINT` ↔ JSON number.
-  - `LINT`/`ULINT` ↔ JSON string in decimal (to preserve 64-bit precision).
+  - `LINT`/`ULINT` ↔ JSON string in decimal (to preserve 64-bit precision). Stimuli may also supply a JSON number for these types when the value fits in a signed 53-bit integer; larger magnitudes must use the string form.
   - `REAL`/`LREAL` ↔ JSON number. The special IEEE-754 values are encoded as the JSON strings `"NaN"`, `"Infinity"`, and `"-Infinity"`.
   - `STRING`/`WSTRING` ↔ JSON string.
   - `TIME`/`DATE`/`DT`/`TOD` ↔ JSON string in IEC 61131-3 literal syntax (e.g. `"T#500ms"`, `"D#2025-01-01"`).
-  - Enumeration values ↔ JSON string containing the symbolic enum value name (e.g. `"Running"`).
-  - `ARRAY[L..U] OF T` ↔ JSON array of length `U - L + 1`, lowest index first, each element encoded per this same rule.
-  - `STRUCT` / function-block instances ↔ JSON object whose keys are field names and whose values are encoded per this same rule.
+  - Enumeration values ↔ JSON string of the form `"<EnumTypeName>.<ValueName>"` (e.g. `"MotorState.Running"`). The bare value name (`"Running"`) is also accepted on input when it is unambiguous across the container's type table; ambiguous bare names are rejected with a diagnostic.
+  - `ARRAY[L..U] OF T` ↔ JSON array of length `U - L + 1`, lowest index first, each element encoded per this same rule. On `stimuli.set`, the entire array must be supplied; partial updates by index are out of scope for this milestone (see Future Work).
+  - `STRUCT` / function-block instances ↔ JSON object whose keys are field names and whose values are encoded per this same rule. On `stimuli.set`, every field must be supplied; partial updates by field are out of scope for this milestone (see Future Work).
   - Nested aggregates apply the rules recursively.
   Any value that does not match its declared type is rejected with a diagnostic.
 
 **REQ-TOL-044** The `run` tool accepts an optional `trace.mode` of `"every_cycle"` (default), `"every_ms"`, `"on_change"`, or `"final_only"`:
   - `"every_cycle"` emits one sample per task cycle end, as described in REQ-TOL-041.
   - `"every_ms"` requires `trace.interval_ms` and emits at most one sample per interval. A sample is emitted at the first task cycle end whose `time_ms` is greater than or equal to the next interval tick; samples carry the actual `time_ms` (they are not interpolated).
-  - `"on_change"` emits a sample only when at least one variable in `variables` has a different value than the most recently emitted sample for that variable set. The first cycle always emits.
-  - `"final_only"` emits exactly one sample at the end of the run, containing the final values of every requested variable. `task` on that sample is the literal string `"final"`.
+  - `"on_change"` emits a sample only when at least one variable in the effective trace set has a different value than the most recently emitted sample for that set. The first cycle always emits.
+  - `"final_only"` emits exactly one sample at the end of the run, containing the final values of every variable in the effective trace set. `task` on that sample is the literal string `"final"`.
 
 **REQ-TOL-045** The `run` tool accepts an optional `tasks` filter. When present, only cycles from the named tasks appear in the trace; cycles from other tasks still execute in the VM and still influence `summary.completed_cycles`, but are not emitted as samples.
 
 **REQ-TOL-046** The `run` tool caps the returned trace at `min(trace.max_samples, server_max_samples)` entries, where `server_max_samples` is a server-configured limit described under VM Sandboxing. When the cap is hit, the last entry in `trace` is the most recent sample that fit; `truncated: true` is set in the response; and `terminated_reason` is set to `"sample_cap"`. The run still executes to completion (up to other limits) — only the emitted trace is truncated.
 
-**REQ-TOL-047** The `run` tool enforces the resource limits described under VM Sandboxing (maximum simulated `duration_ms`, VM fuel, wall-clock time). When a limit is exceeded, or when the VM encounters a trap, the run terminates early. In all early-termination cases the response carries the partial trace up to the last cycle that completed before termination, a populated `diagnostics` entry identifying the cause, and `terminated_reason` set to one of `"duration"`, `"fuel"`, `"wall_clock"`, `"sample_cap"`, `"error"`, or — for a run that finished cleanly — `"completed"`. An agent-supplied `limits` override may only tighten the server-configured bounds, never loosen them.
+**REQ-TOL-047** The `run` tool enforces the resource limits described under VM Sandboxing (maximum simulated `duration_ms`, VM fuel, wall-clock time). When a limit is exceeded, or when the VM encounters a trap, the run terminates early. In all early-termination cases the response carries the partial trace up to the last cycle that completed before termination, a populated `diagnostics` entry identifying the cause, and `terminated_reason` set to one of `"duration"`, `"fuel"`, `"wall_clock"`, `"sample_cap"`, `"error"`, or — for a run that finished cleanly — `"completed"`. An agent-supplied `limits` override may only tighten the server-configured bounds, never loosen them. `ok` is `true` only when `terminated_reason == "completed"`.
 
-**REQ-TOL-048** The `run` tool's response always includes a `summary` object with at least: `final_values` (a map of every requested variable to its value at the last simulated instant, regardless of `trace.mode`), `completed_cycles` (a map from task name to the number of cycles that completed for that task), and `terminated_reason`. `summary` is populated even when the trace is empty because of `"final_only"` mode or because `"on_change"` never fired.
+**REQ-TOL-048** The `run` tool's response always includes a `summary` object with at least: `final_values` (a map of every variable in the effective trace set to its value at the last simulated instant, regardless of `trace.mode`), `completed_cycles` (a map from task name to the number of cycles that completed for that task), and `terminated_reason`. `summary` is populated even when the trace is empty because of `"final_only"` mode or because `"on_change"` never fired.
 
 **Output:**
 ```json
 {
+  "ok": true,
   "trace": [
     { "time_ms": 10, "task": "Main", "variables": { "Main.MotorRun": false, "Main.Counter": 0 } },
     { "time_ms": 20, "task": "Main", "variables": { "Main.MotorRun": true,  "Main.Counter": 1 } }
   ],
   "truncated": false,
-  "terminated_reason": "duration",
+  "terminated_reason": "completed",
   "summary": {
     "final_values": { "Main.MotorRun": true, "Main.Counter": 50 },
     "completed_cycles": { "Main": 100, "Slow": 10 }
@@ -539,13 +540,13 @@ Compiles the provided sources, runs them in the VM against a caller-supplied sti
 The primary reason this is a dedicated tool rather than a prompt is that expectation evaluation lives on the server side: the agent gets back `{ passed: true }` or a structured list of failures. Agents react reliably to structured pass/fail; reducing a raw trace into assertions in the agent's own reasoning is error-prone and burns tokens.
 
 **Inputs:**
-- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool verifies the session workspace
-- `options`: optional compiler options (same as `check`) — when omitted, the session's active options are used
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; same schema as `check`
 - `duration_ms: number`
 - `stimuli: [Stimulus]` — same shape as `run`'s `stimuli`
 - `expectations: [Expectation]`
 - `trace_variables: [string]` — optional; additional fully-qualified names to include in the returned trace beyond those referenced by expectations
-- `trace: TraceOptions` — optional; same shape as `run`'s `trace`. Because `verify` must evaluate expectations against recorded samples, a user-supplied `trace.mode` that drops the sample at which an expectation's `at` resolves causes that expectation to fail with `actual: null`.
+- `trace: TraceOptions` — optional; same shape as `run`'s `trace`, with one constraint described in REQ-TOL-094 below
 - `limits: LimitOverrides` — optional; same shape and semantics as `run`'s `limits` (tighten only, never loosen)
 
 An `Expectation` is:
@@ -557,23 +558,27 @@ An `Expectation` is:
 }
 ```
 
-The `at` field is either the literal string `"final"` (evaluated at the last recorded cycle) or `{ "time_ms": N }` (evaluated at the first recorded cycle whose `time_ms >= N`). Exactly one comparator field must be present: `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, or `approximately` with a required `tolerance` field for floating-point comparisons.
+The `at` field is either the literal string `"final"` (evaluated at the last completed cycle) or `{ "time_ms": N }` (evaluated at the first cycle whose simulated time is `>= N`). Exactly one comparator field must be present: `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, or `approximately` with a required `tolerance` field for floating-point comparisons.
 
-**REQ-TOL-090** The `verify` tool compiles the provided sources, runs them against the supplied stimuli and duration using the same VM semantics, value encoding, trace options, and resource limits as `run`, evaluates the supplied expectations, and returns `passed`, `failures`, `trace`, `summary`, `truncated`, and `terminated_reason`.
+**REQ-TOL-090** The `verify` tool compiles the provided sources, runs them against the supplied stimuli and duration using the same VM semantics, value encoding, and resource limits as `run`, evaluates the supplied expectations, and returns `ok`, `passed`, `failures`, `trace`, `summary`, `truncated`, and `terminated_reason`. `ok` tracks the compile + run outcome (`true` only when the run reached `terminated_reason == "completed"`); `passed` is the logical AND of every expectation's evaluation outcome and is only meaningful when `ok` is `true`.
 
-**REQ-TOL-091** The `verify` tool sets `passed: false` and returns the full list of unsatisfied expectations in `failures` when any expectation is not met. Each failure entry includes the original expectation, the `actual` value observed (or `null` if the sample required by the expectation's `at` was not recorded), and the `time_ms` at which the comparison was evaluated.
+**REQ-TOL-091** The `verify` tool sets `passed: false` and returns the full list of unsatisfied expectations in `failures` when any expectation is not met. Each failure entry includes the original expectation, the `actual` value observed, and the `time_ms` at which the comparison was evaluated.
 
-**REQ-TOL-092** The `verify` tool returns `passed: false` with compile or run diagnostics in `diagnostics` when the sources fail to compile, when the VM traps, or when the run terminates early due to a resource limit. In these cases `failures` is empty, `trace` is empty or partial up to the point of termination, and `terminated_reason` carries the specific cause inherited from `run` (`"error"`, `"duration"`, `"fuel"`, `"wall_clock"`, or `"sample_cap"`).
+**REQ-TOL-092** The `verify` tool returns `ok: false`, `passed: false`, and compile or run diagnostics in `diagnostics` when the sources fail to compile, when the VM traps, or when the run terminates early due to a resource limit. In these cases `failures` is empty, `trace` is empty or partial up to the point of termination, and `terminated_reason` carries the specific cause inherited from `run` (`"error"`, `"duration"`, `"fuel"`, `"wall_clock"`, or `"sample_cap"`).
 
-**REQ-TOL-093** The `verify` tool evaluates the `approximately` comparator as `abs(actual - expected) <= tolerance`; both `equals` and `not_equals` on floating-point types are rejected with a diagnostic instructing the caller to use `approximately`.
+**REQ-TOL-093** The `verify` tool evaluates the `approximately` comparator as `abs(actual - expected) <= tolerance`; both `equals` and `not_equals` on any expectation whose resolved variable type is `REAL` or `LREAL`, or whose resolved type contains a `REAL`/`LREAL` leaf, are rejected with a diagnostic instructing the caller to use `approximately`.
 
-**REQ-TOL-094** The `verify` tool includes in its returned `trace` at least every variable referenced by an expectation, plus any variable named in `trace_variables`. The server is free to suppress other variables from the trace to stay within the sample cap.
+**REQ-TOL-094** The `verify` tool guarantees that the sample required by every expectation's `at` field is recorded and available for evaluation, regardless of the caller-supplied `trace.mode`. Concretely:
+  - Every variable referenced by any expectation is added to the effective trace set, in addition to any variable named in `trace_variables`.
+  - Every simulated cycle whose `time_ms` matches the resolution rule for an `at: "final"` or `at: { time_ms: N }` field is force-recorded even under `"on_change"` or `"final_only"`. The returned `trace` surfaces these force-recorded samples so the caller can see exactly which cycle every expectation was evaluated against.
+  - If the caller-supplied `trace.mode` and `trace.max_samples` would prevent a required sample from being recorded, the `verify` tool returns `ok: false` before the VM starts and a diagnostic identifying the conflicting expectation and trace option. The tool never silently fails an expectation because a required sample was dropped.
 
-**REQ-TOL-095** The `verify` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020). The `verify` tool does not populate the session container cache — any compiled artifact it produces is discarded at the end of the call.
+**REQ-TOL-095** The `verify` tool does not populate the process container cache — the compiled artifact it produces internally is discarded at the end of the call. Agents that want to re-run the same compiled artifact with different stimuli should call `compile` once and then call `run` or `verify` repeatedly, passing the `container_id`.
 
 **Output:**
 ```json
 {
+  "ok": true,
   "passed": false,
   "failures": [
     {
@@ -601,9 +606,11 @@ Prompts are instructional templates the agent can invoke to perform structured m
 
 ### `verify-logic`
 
-**REQ-PRM-001** The `verify-logic` prompt instructs the agent to: (1) consult `ironplc://project/io` to identify the externally drivable inputs and the observable outputs of the program under test; (2) derive a stimulus schedule and a set of expectations from the user's natural-language specification, using fully-qualified variable names; (3) call the `verify` tool with the sources, `duration_ms`, `stimuli`, and `expectations`; and (4) report pass/fail to the user, including the returned `failures` and an excerpt of the `trace` on failure.
+**REQ-PRM-001** The `verify-logic` prompt instructs the agent to: (1) call the `project_io` tool with the current sources to identify the externally drivable inputs and the observable outputs of the program under test; (2) derive a stimulus schedule and a set of expectations from the user's natural-language specification, using fully-qualified variable names; (3) call the `verify` tool with the sources, `options`, `duration_ms`, `stimuli`, and `expectations`; and (4) report pass/fail to the user, including the returned `failures` and an excerpt of the `trace` on failure.
 
 **REQ-PRM-002** The `verify-logic` prompt instructs the agent, on a failed verification, to inspect the `failures` and `trace` returned by `verify`, edit the sources, and retry the `verify` call. The prompt instructs the agent to give up after three consecutive failed iterations and surface the last failure to the user rather than continuing to edit.
+
+**REQ-PRM-003** The `verify-logic` prompt instructs the agent, on any diagnostic whose `code` is not already familiar, to call `explain_diagnostic` before editing the sources. This is the self-heal path for unfamiliar problem codes and is the only sanctioned way for the agent to learn what a compiler error means mid-loop.
 
 ## Architecture
 
