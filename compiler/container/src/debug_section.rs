@@ -613,15 +613,11 @@ mod tests {
         };
 
         // Exact match
-        let hit = section
-            .lookup_source_location(FunctionId::SCAN, 0)
-            .unwrap();
+        let hit = section.lookup_source_location(FunctionId::SCAN, 0).unwrap();
         assert_eq!(hit.source_line, 10);
 
         // Between entries: should pick the largest bytecode_offset <= 5 (which is 0)
-        let hit = section
-            .lookup_source_location(FunctionId::SCAN, 5)
-            .unwrap();
+        let hit = section.lookup_source_location(FunctionId::SCAN, 5).unwrap();
         assert_eq!(hit.source_line, 10);
 
         // At/after the second entry
@@ -631,9 +627,7 @@ mod tests {
         assert_eq!(hit.source_line, 11);
 
         // Different function uses its own entries
-        let hit = section
-            .lookup_source_location(FunctionId::INIT, 0)
-            .unwrap();
+        let hit = section.lookup_source_location(FunctionId::INIT, 0).unwrap();
         assert_eq!(hit.source_line, 99);
 
         // Function with no entries returns None
