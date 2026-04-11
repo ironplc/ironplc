@@ -201,9 +201,18 @@ This resource gives the agent a single call that answers "what can I drive?" and
 
 **REQ-RES-030** The `ironplc://pou/{name}/lineage` resource returns the upstream and downstream dependencies of the named POU derived from the dependency DAG.
 
-**REQ-RES-031** The lineage resource renders the dependency graph in DOT format (Graphviz).
+**REQ-RES-031** The lineage resource returns a JSON object with three fields: `pou` (the requested POU name), `upstream` (an array of POU names that the requested POU depends on, directly or transitively), and `downstream` (an array of POU names that depend on the requested POU, directly or transitively). This JSON representation is the default because agents parse adjacency-list JSON more reliably than DOT syntax, and the JSON encoding is shorter for the same information.
 
-DOT is preferred over Mermaid because: the resource is consumed by an AI agent rather than rendered in a browser, making Mermaid's rendering advantage irrelevant; DOT is the native output of graph libraries such as petgraph; and DOT handles POU names with special characters more reliably than Mermaid.
+**REQ-RES-032** The lineage resource accepts an optional `format` query-string parameter (`ironplc://pou/{name}/lineage?format=dot`) that returns the same graph in DOT (Graphviz) syntax instead. DOT remains available for callers that want to render the graph visually, but it is never the default and is never required by any tool in this design.
+
+**Output:**
+```json
+{
+  "pou": "Motor",
+  "upstream":   ["PID", "Scale"],
+  "downstream": ["Main"]
+}
+```
 
 ## Tools
 
@@ -297,6 +306,22 @@ Use this for rapid iteration on code structure. It is faster than `check` and us
 
 **REQ-TOL-013** The `parse` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
 
+**REQ-TOL-014** The `parse` tool returns a best-effort `structure` array alongside `diagnostics`, even when `diagnostics` contains errors. Each entry describes a top-level declaration the parser was able to recognize and contains `kind` (`"program"`, `"function"`, `"function_block"`, `"type"`, or `"configuration"`), `name` (string, or `null` when the parser could not recover a name), `file`, `start_line`, and `end_line`. This gives the agent an outline of its own in-progress draft to reason about even when the source is not yet valid — without it, a broken parse leaves the agent with only an opaque diagnostic and no structural context.
+
+**Output:**
+```json
+{
+  "structure": [
+    { "kind": "program", "name": "Main", "file": "main.st", "start_line": 1, "end_line": 22 },
+    { "kind": "function_block", "name": null, "file": "main.st", "start_line": 24, "end_line": 40 }
+  ],
+  "diagnostics": [
+    { "code": "P0001", "message": "expected `;`", "file": "main.st",
+      "start_line": 18, "start_col": 10, "end_line": 18, "end_col": 11, "severity": "error" }
+  ]
+}
+```
+
 ### `check`
 
 Runs the full parse and semantic analysis pipeline — the same stages as the CLI `check` command — and returns diagnostics. This covers syntax errors, type errors, undeclared symbols, and all other semantic rules. It stops before code generation, so no bytecode is produced.
@@ -325,6 +350,8 @@ This is the highest-value tool. AI assistants use it to validate code they gener
 **REQ-TOL-026** The `check` tool accepts individual feature flag overrides in `options` that are applied on top of the dialect preset.
 
 **REQ-TOL-027** The `check` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
+
+**REQ-TOL-028** When the `check` tool is called with a per-call `options` override whose `dialect` differs from the session's active dialect, or whose feature flags differ from the session's active flags, the response includes a diagnostic with `severity: "warning"` and `code: "P-MCP-001"` stating that a dialect or feature-flag override is active. This warning is always emitted even when no other diagnostics are present, so that an analyst watching the log stream (see REQ-ARC-045) can detect agents that toggle dialect to erase errors rather than fix them. The same warning is emitted by `parse`, `compile`, and `verify` on per-call options overrides.
 
 **Output:**
 ```json
@@ -376,6 +403,7 @@ This lets an AI assistant understand the structure of a program before suggestin
 **Inputs:**
 - `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool reads from the session workspace
 - `options`: optional compiler options — when omitted, the session's active options are used
+- `pou`: optional string — when present, the response is narrowed to just the named POU and the types its declarations reference (see REQ-ARC-060)
 
 **REQ-TOL-050** The `symbols` tool returns the top-level declarations for programs, functions, function blocks, and types found in the sources under analysis.
 
@@ -386,6 +414,8 @@ This lets an AI assistant understand the structure of a program before suggestin
 **REQ-TOL-053** The `symbols` response includes a `diagnostics` array using the same format as `check`.
 
 **REQ-TOL-054** The `symbols` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
+
+**REQ-TOL-055** When the `pou` input is present, the `symbols` response includes only the matching POU (in exactly one of `programs`, `functions`, or `function_blocks`) and only the types actually referenced by that POU's declarations. When no POU with the given name exists, the response returns `found: false` and an empty `programs`/`functions`/`function_blocks`/`types` set along with a diagnostic, rather than an MCP-level error.
 
 **Output:**
 - `programs: [{ name, variables: [{ name, type, direction, address, external }] }]`
@@ -447,6 +477,37 @@ The self-healing loop depends on this: without it, an agent sees `P0042` in a di
   "title": "...",
   "description": "...",
   "suggested_fix": "...",
+  "diagnostics": []
+}
+```
+
+### `get_resource`
+
+Returns the content of any `ironplc://` resource as a tool call, so an autonomous agent can reach the project-scoped knowledge surface without relying on MCP-client-specific resource-exposure behavior.
+
+MCP distinguishes between **tools** (freely callable by the model) and **resources** (typically surfaced to the human and selectively attached to turns). In IronPLC's case the project-scoped surfaces — `manifest`, `source/{file}`, `pou/{name}/scope`, `pou/{name}/lineage`, `types/all`, `project/io` — are agent-facing: the agent needs to read them itself to plan an edit or a verification. Exposing them only as resources is a trap, because on several MCP clients the model cannot pull resources autonomously. `get_resource` closes that gap without duplicating every resource as a separate tool.
+
+**Inputs:**
+- `uri: string` — any `ironplc://` URI served by this server, with template parameters substituted (for example, `"ironplc://pou/Motor/scope"` or `"ironplc://source/main.st"`)
+
+**REQ-TOL-160** The `get_resource` tool resolves the `uri` against the server's resource routing table and returns a response object containing `uri` (echoing the input), `content` (the JSON body the resource would have returned), and `diagnostics`.
+
+**REQ-TOL-161** The `get_resource` tool returns `content: null` with a populated `diagnostics` array when the URI does not match any registered resource template, or when required template parameters are missing. It does not raise an MCP-level error.
+
+**REQ-TOL-162** `get_resource` returns the **same** data a direct resource read would have returned for the same URI, computed against the same session workspace state (see REQ-SES-010 / REQ-SES-011). A client that supports both tool calls and resource reads can use them interchangeably.
+
+**REQ-TOL-163** `get_resource` log entries follow REQ-ARC-041's resource-summary shape (resolved URI, response size in bytes, bound template parameters), not the tool-summary shape, so that log analysts see a uniform view of how the project-scoped surface is being consulted regardless of which call path the agent used.
+
+**Output:**
+```json
+{
+  "uri": "ironplc://pou/Motor/scope",
+  "content": {
+    "pou": "Motor",
+    "variables": [
+      { "name": "Start", "type": "BOOL", "direction": "In", "initial_value": "FALSE" }
+    ]
+  },
   "diagnostics": []
 }
 ```
@@ -537,7 +598,7 @@ A `TraceOptions` object has these fields (all optional):
 
 **REQ-TOL-040** The `run` tool executes the referenced `.iplc` container in the IronPLC VM for the simulated duration specified by `duration_ms`, deriving the number of scan cycles from the task intervals declared in the container. Exactly one of `container_id` and `container_base64` must be present; when `container_id` is supplied, the server looks up the compiled bytes in the session container cache (see REQ-TOL-036).
 
-**REQ-TOL-041** The `run` tool returns a `trace` array. Each entry contains `time_ms` (simulated milliseconds since start of run), `task` (the name of the task whose cycle end produced the entry), and `variables` (a map from the fully-qualified names requested in `variables` to their values at that instant). Entries are time-ordered by `time_ms`; ties are broken by task priority (lower priority number first), then by task name. Each requested variable name must be fully qualified and must resolve against the loaded container (see REQ-ARC-020 and REQ-ARC-021); unresolved or ambiguous names abort the run with a diagnostic.
+**REQ-TOL-041** The `run` tool returns a `trace` array. Each entry contains `time_ms` (simulated milliseconds since start of run), `task` (the name of the task whose cycle end produced the entry), and `variables` (a map from the fully-qualified names requested in `variables` to their values at that instant). Entries are time-ordered by `time_ms`; ties are broken by task priority (lower priority number first), then by task name. Each requested variable name must be fully qualified and must resolve against the loaded container (see REQ-ARC-020 and REQ-ARC-021); unresolved or ambiguous names abort the run with a diagnostic. Wildcard names (for example `"*"`, `"Main.*"`) are rejected with a diagnostic — the agent must explicitly enumerate the variables of interest. The `variables` array's length is capped at the server-configured `max_variables_per_run` limit (see VM Sandboxing); a request that exceeds the cap is rejected before the VM starts.
 
 **REQ-TOL-042** The `run` tool accepts a time-ordered `stimuli` array. Each stimulus is applied at the start of the first scan cycle whose simulated end-time is greater than or equal to the stimulus `time_ms`. Values persist in their target variables until overwritten by a later stimulus or by the program itself. The `run` tool only permits stimuli to write variables reported by the `ironplc://project/io` resource as externally drivable (`VAR_INPUT` of Programs, `VAR_EXTERNAL`, globals, and `%I*`-mapped variables); attempts to write a local, `VAR_OUTPUT`, or `%Q*`-mapped variable result in a diagnostic and abort the run. A stimulus whose value does not match the declared type of the target variable (for example, setting a `BOOL` to `42`) is likewise rejected.
 
@@ -715,11 +776,12 @@ The limits are configured at server startup and exposed as a `LimitOverrides` ob
   "max_duration_ms": 60000,
   "max_fuel": 50000000,
   "max_wall_clock_ms": 5000,
-  "max_samples": 1000
+  "max_samples": 1000,
+  "max_variables_per_run": 64
 }
 ```
 
-**REQ-ARC-030** The server imposes a `max_duration_ms` (simulated time), a `max_fuel` (VM instruction budget), a `max_wall_clock_ms` (real-world execution time), and a `max_samples` (trace entry cap) on every `run` and `verify` invocation. The defaults are configurable at server startup via command-line arguments (e.g. `--max-duration-ms`, `--max-fuel`, `--max-wall-clock-ms`, `--max-samples`) and have sane defaults for an interactive agent session: 60000 ms simulated, 50000000 fuel, 5000 ms wall-clock, 1000 samples.
+**REQ-ARC-030** The server imposes a `max_duration_ms` (simulated time), a `max_fuel` (VM instruction budget), a `max_wall_clock_ms` (real-world execution time), a `max_samples` (trace entry cap), and a `max_variables_per_run` (maximum length of the `variables` input to `run` and `verify`) on every VM invocation. The defaults are configurable at server startup via command-line arguments (e.g. `--max-duration-ms`, `--max-fuel`, `--max-wall-clock-ms`, `--max-samples`, `--max-variables-per-run`) and have sane defaults for an interactive agent session: 60000 ms simulated, 50000000 fuel, 5000 ms wall-clock, 1000 samples, 64 variables per run.
 
 **REQ-ARC-031** The server rejects any `limits` override in `run.limits` or `verify.limits` whose field exceeds the server-configured default for that field, returning a diagnostic that names the offending field and does not start the VM.
 
@@ -738,7 +800,7 @@ The MCP server is the first place we get to watch a real AI agent drive the Iron
 **REQ-ARC-040** The server emits a structured log entry for every tool call and every resource read. Each entry contains at minimum: `session_id` (a UUID assigned when the session starts), `seq` (a monotonic per-session counter), `timestamp` (ISO 8601 UTC), `kind` (`"tool"` or `"resource"`), `name` (the tool name, or the resource URI template such as `"ironplc://pou/{name}/scope"`), `duration_ms` (wall-clock execution time of the handler), `outcome` (`"ok"` or `"error"`), and — when `outcome` is `"error"` — `error_kind` drawn from a stable taxonomy (`"invalid_arguments"`, `"unknown_name"`, `"limit_exceeded"`, `"parse_failed"`, `"analysis_failed"`, `"vm_trap"`, `"internal"`).
 
 **REQ-ARC-041** Each log entry additionally includes a small tool-specific or resource-specific summary so that an analyst can reconstruct agent behavior without the payload itself:
-  - Analysis tools (`parse`, `check`, `format`, `symbols`): `source_count`, `source_total_bytes`, `used_session_workspace` (`true` when the call read the session, `false` when it used a per-call `sources` override), `diagnostic_count`, `error_count`, `warning_count`, and (for `check`) a sorted deduplicated `problem_codes` array.
+  - Analysis tools (`parse`, `check`, `format`, `symbols`): `source_count`, `source_total_bytes`, `used_session_workspace` (`true` when the call read the session, `false` when it used a per-call `sources` override), `options_override` (`true` when a per-call `options` override was supplied, `false` otherwise), `dialect_override` (the overridden dialect id, or `null`), `diagnostic_count`, `error_count`, `warning_count`, and (for `check`) a sorted deduplicated `problem_codes` array.
   - Workspace mutation tools (`workspace_set`, `workspace_put`, `workspace_remove`, `workspace_clear`, `workspace_set_options`): `file_count_before`, `file_count_after`, and — for `workspace_set_options` — the list of option keys changed.
   - `compile`: `container_id`, `container_size_bytes`, `task_count`, `program_count`, `include_bytes`, plus the analysis-tool fields above.
   - `run`: `container_id`, `duration_ms_requested`, `duration_ms_simulated` (how far the VM actually got), `fuel_consumed`, `trace_mode`, `trace_samples_emitted`, `truncated`, `terminated_reason`, `stimulus_count`, `task_count`.
@@ -763,11 +825,44 @@ Tool handlers return structured JSON responses in all cases — they never panic
 
 MCP-level errors (invalid tool name, malformed arguments) are handled by the SDK.
 
+### Tool Descriptions Agents See
+
+Every MCP tool is registered with a short description string that the client hands to the model. Those strings are the first line of defense against common agent failure modes: picking the wrong tool, escalating to a heavier tool to "try again", or toggling options to make errors disappear. These descriptions are part of the contract, not marketing text.
+
+**REQ-ARC-050** The MCP tool descriptions shipped with the server must follow the guidance below. These are contractual, not flavor text; any change requires a design-note update in this document.
+
+- `parse`: "Syntax check only. Use while drafting to confirm the source tokenizes and parses. Do NOT use this to validate a change — it does not catch type errors, undeclared symbols, or any other semantic rule. Call `check` for that."
+- `check`: "Primary validator. Runs parse and full semantic analysis and returns structured diagnostics. ALWAYS run this before reporting success to the user and before calling `compile`, `run`, or `verify`. Self-heal by reading the returned diagnostics, fixing the code, and calling `check` again. Call `explain_diagnostic` to understand any unfamiliar problem code BEFORE editing the source."
+- `format`: "Canonical re-rendering using the project's formatter. Safe to call on any parseable source. Does not mutate the session — pair with `workspace_put` to persist the formatted content."
+- `symbols`: "Top-level declarations of programs, functions, function blocks, and types. Use the `pou` filter when you only care about one POU; calling this without the filter can return a large response for a real project."
+- `list_options`: "Enumerates dialects and feature flags you are allowed to pass in `options`. Call this ONCE per session when you need to know which flags exist. Do NOT toggle flags or change dialect to make errors go away — the server emits a warning when you do, and the behavior is logged."
+- `explain_diagnostic`: "Look up the human-readable explanation for a problem code (e.g. `P0042`). Call this before editing code in response to a diagnostic you do not fully understand."
+- `get_resource`: "Fetches any `ironplc://` resource as a tool call. Prefer the targeted resource URIs (`pou/{name}/scope`, `project/io`) over the whole-project `symbols` tool when you only need context for one POU."
+- `compile`: "Only call this when you need a compiled artifact to `run` or `verify`. For validation, call `check` instead — `check` is faster, produces the same diagnostics, and does not incur codegen cost. A failing `compile` does not give you any information that a failing `check` would not."
+- `run`: "Simulates a compiled container in the VM for a caller-specified duration. Use this only after `check` passes. Drive inputs over time via `stimuli` and observe outputs via `variables`. The returned `trace` is bounded; use `trace.mode: \"final_only\"` or the `summary` object when you only care about outcomes."
+- `verify`: "One-shot compile + run + assertion evaluation. Prefer this over a manual `compile`+`run` when you have concrete expectations. Failed expectations are returned structurally — react to `failures`, not to the raw trace."
+- `workspace_*`: Each workspace tool description must explicitly state that it mutates the session workspace, and that subsequent tool/resource reads (without a per-call `sources` override) will see the change.
+
+**REQ-ARC-051** Tool descriptions must NOT make claims the server cannot verify. In particular, tool descriptions may not promise things like "always faster than X" or "preferred for all use cases"; they must state concrete semantic differences and call out the cases where the wrong tool is tempting.
+
 ### Context Scoping
 
-Resources are designed to return only the context relevant to the POU being edited. The agent should:
-- Use `ironplc://pou/{name}/scope` instead of `symbols` when editing a single POU
-- Use `ironplc://pou/{name}/lineage` before any refactoring
-- Use `ironplc://types/all` only when generating new type-dependent code
+Context scoping is enforced structurally, not by prose recommendations to the agent. Three mechanisms work together to keep token usage lean:
 
-This keeps token usage lean and avoids sending the entire project's symbol table for every interaction.
+**REQ-ARC-060** The `symbols` tool accepts an optional `pou: string` filter. When present, the response includes only the named POU and any types directly referenced by its variable declarations. Agents editing a single POU call `symbols` with the filter; the server does not need to return the full project symbol table.
+
+**REQ-ARC-061** The `get_resource` tool description (see REQ-ARC-050) explicitly steers the agent toward the scoped resources (`pou/{name}/scope`, `pou/{name}/lineage`, `project/io`) rather than the whole-project `symbols` tool.
+
+**REQ-ARC-062** Every tool and resource response carries a `response_size_bytes` field in the structured log (see REQ-ARC-041). An analyst reviewing the session log can trivially spot an agent that is pulling the entire project on every turn instead of scoped context, and use that evidence to refine tool descriptions or add further structural guards.
+
+## Future Work
+
+These items are intentionally out of scope for the initial milestone. They are listed here so the surface stays small and so implementers and reviewers know what has been considered and deliberately deferred.
+
+- **Persistent test harness.** The `verify` tool is invocation-scoped: each call carries its own `stimuli` and `expectations`. A future milestone should add a conventional directory (e.g. `tests/`) in the session workspace and a `run_tests` tool that discovers and runs every saved scenario. The agent then curates tests alongside the source instead of re-inventing assertions on every turn.
+- **Aggregate stimulus values for complex types.** The value encoding in REQ-TOL-043 covers reading arrays and structs in `trace[].variables`. Driving them from `stimuli.set` is also specified, but may need refinement for partial-update semantics (for example, setting a single array element by index, or setting one field of a struct without supplying the whole object). A follow-up should pin these down once real agent usage reveals what shapes are needed.
+- **Streaming traces.** Long `run` calls currently return the complete trace in a single response. A future revision may offer incremental trace delivery via MCP's streaming facilities, which would let the agent react to intermediate values without extending `duration_ms` conservatively.
+- **Workspace snapshots.** There is currently no way to checkpoint the session workspace and roll it back on a failed edit. A `workspace_snapshot` / `workspace_restore` pair would let an agent try a risky refactor and atomically revert.
+- **Multi-project support.** The server holds a single session workspace per connection. Multi-project scenarios (shared library + application) can be expressed today by loading both into one session, but a proper multi-project layout with per-project dialects and import boundaries would require a different state model.
+- **IEC 61131-3 Edition 3 dialect semantics.** The `dialect` preset exists but the precise set of Ed. 3 features supported by the MCP server should be documented once the compiler's Ed. 3 support is complete. A future revision of this doc should link directly to a compatibility matrix.
+- **LSP parity for the in-memory analyzer.** The LSP server already converts byte offsets to line/column diagnostics (see Diagnostic Mapping). The MCP server borrows that code; once both mature, they should share a single implementation so that a diagnostic seen in an editor and a diagnostic seen by an agent are byte-identical.
