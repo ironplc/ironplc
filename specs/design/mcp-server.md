@@ -24,9 +24,21 @@ IronPLC already has all the underlying capabilities. The MCP server maps them to
 The server is designed to support an autonomous agent workflow:
 
 1. **Draft** — agent writes ST code using Resource context (symbol tables, type info, dependency graph)
-2. **Verify** — agent calls `check` to get structured JSON diagnostics and self-heals
+2. **Verify** — agent calls `check` (full parse + semantic analysis) to get structured JSON diagnostics and self-heals
 3. **Simulate** — agent calls `run` to verify logical correctness against expected outputs
 4. **Finalize** — agent commits only when all checks pass
+
+## Tool Vocabulary
+
+The MCP tool names are aligned with the existing CLI vocabulary to avoid contributor confusion:
+
+| Stage                               | CLI command | MCP tool   |
+|-------------------------------------|-------------|------------|
+| Tokenize / parse only (no semantic) | `tokenize`  | `parse`    |
+| Parse + full semantic analysis      | `check`     | `check`    |
+| Parse + semantic analysis + codegen | `compile`   | `compile`  |
+
+Agents familiar with the CLI can use the MCP tools with matching expectations.
 
 Resources provide "background knowledge" (scoped context, type tables, dependency graphs). Tools provide "hands" (actions with structured feedback). This separation keeps context lean: the agent only loads the scope relevant to the POU it is editing.
 
@@ -65,7 +77,19 @@ Resources give the agent contextual knowledge without requiring it to read raw s
 
 **REQ-RES-011** The scope resource derives variable information from the symbol table built during semantic analysis.
 
-**REQ-RES-012** The scope resource returns a Markdown table with columns: Name, Type, Direction (Local / In / Out / InOut / Global), and Initial Value.
+**REQ-RES-012** The scope resource returns a JSON object with a `variables` array. Each entry contains: `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`), and `initial_value` (string representation, or `null` when no initial value is declared).
+
+**Output:**
+```json
+{
+  "pou": "Motor",
+  "variables": [
+    { "name": "Start",    "type": "BOOL", "direction": "In",    "initial_value": "FALSE" },
+    { "name": "Counter",  "type": "DINT", "direction": "Local", "initial_value": "0" },
+    { "name": "MotorRun", "type": "BOOL", "direction": "Out",   "initial_value": null }
+  ]
+}
+```
 
 ### `ironplc://types/all`
 
@@ -93,23 +117,23 @@ DOT is preferred over Mermaid because: the resource is consumed by an AI agent r
 
 ## Tools
 
-### `check`
+### `parse`
 
 Runs the parse stage only — no semantic analysis. Returns syntax diagnostics (malformed tokens, missing keywords, structural grammar errors).
 
-Use this for rapid iteration on code structure. It is faster than `analyze` and useful when the agent is drafting code and wants to confirm it parses before investing in semantic correctness.
+Use this for rapid iteration on code structure. It is faster than `check` and useful when the agent is drafting code and wants to confirm it parses before investing in semantic correctness.
 
 **Inputs:**
 - `sources`: array of `{ name: string, content: string }`
-- `options`: optional object with `dialect` and individual feature flags, same as `analyze`
+- `options`: optional object with `dialect` and individual feature flags, same as `check`
 
-**REQ-TOL-010** The `check` tool runs the parse stage only and does not run semantic analysis.
+**REQ-TOL-010** The `parse` tool runs the parse stage only and does not run semantic analysis.
 
-**REQ-TOL-011** The `check` tool returns a `diagnostics` array using the same format as `analyze`.
+**REQ-TOL-011** The `parse` tool returns a `diagnostics` array using the same format as `check`.
 
-**REQ-TOL-012** The `check` tool accepts the same `options` object as `analyze`, since dialect and feature flags affect the parser.
+**REQ-TOL-012** The `parse` tool accepts the same `options` object as `check`, since dialect and feature flags affect the parser.
 
-### `analyze`
+### `check`
 
 Runs the full parse and semantic analysis pipeline — the same stages as the CLI `check` command — and returns diagnostics. This covers syntax errors, type errors, undeclared symbols, and all other semantic rules. It stops before code generation, so no bytecode is produced.
 
@@ -121,19 +145,19 @@ This is the highest-value tool. AI assistants use it to validate code they gener
   - `dialect: string` — one of `"iec61131-3-ed2"` (default), `"iec61131-3-ed3"`, `"rusty"`. Selects a preset that enables the appropriate flags in one shot.
   - individual feature flags (e.g. `allow_c_style_comments: bool`) — override specific flags on top of the dialect preset. The full list of flags and their descriptions is returned by `list_options`.
 
-**REQ-TOL-020** The `analyze` tool runs the parse stage and the full semantic analysis stage on the provided sources.
+**REQ-TOL-020** The `check` tool runs the parse stage and the full semantic analysis stage on the provided sources.
 
-**REQ-TOL-021** The `analyze` tool does not run code generation.
+**REQ-TOL-021** The `check` tool does not run code generation.
 
-**REQ-TOL-022** The `analyze` tool returns a `diagnostics` array; an empty array indicates no errors. The caller determines success by checking whether any diagnostic has `severity: "error"`.
+**REQ-TOL-022** The `check` tool returns a `diagnostics` array; an empty array indicates no errors. The caller determines success by checking whether any diagnostic has `severity: "error"`.
 
-**REQ-TOL-023** Each diagnostic in the `analyze` response includes: `code`, `message`, `file`, `start_line`, `start_col`, `end_line`, `end_col`, and `severity`.
+**REQ-TOL-023** Each diagnostic in the `check` response includes: `code`, `message`, `file`, `start_line`, `start_col`, `end_line`, `end_col`, and `severity`.
 
-**REQ-TOL-024** The `analyze` tool never returns an MCP-level error for a compiler failure; parse and semantic errors are returned as diagnostics.
+**REQ-TOL-024** The `check` tool never returns an MCP-level error for a compiler failure; parse and semantic errors are returned as diagnostics.
 
-**REQ-TOL-025** The `analyze` tool accepts an optional `dialect` string in `options`; when omitted, `"iec61131-3-ed2"` is used.
+**REQ-TOL-025** The `check` tool accepts an optional `dialect` string in `options`; when omitted, `"iec61131-3-ed2"` is used.
 
-**REQ-TOL-026** The `analyze` tool accepts individual feature flag overrides in `options` that are applied on top of the dialect preset.
+**REQ-TOL-026** The `check` tool accepts individual feature flag overrides in `options` that are applied on top of the dialect preset.
 
 **Output:**
 ```json
@@ -155,13 +179,13 @@ This lets an AI assistant understand the structure of a program before suggestin
 **Inputs:**
 - `sources`: array of `{ name: string, content: string }`
 
-**REQ-TOL-010** The `symbols` tool returns the top-level declarations for programs, functions, function blocks, and types found in the provided sources.
+**REQ-TOL-050** The `symbols` tool returns the top-level declarations for programs, functions, function blocks, and types found in the provided sources.
 
-**REQ-TOL-011** Each program entry in the `symbols` response includes the program name and its variable declarations (name, type, direction).
+**REQ-TOL-051** Each program entry in the `symbols` response includes the program name and its variable declarations (name, type, direction).
 
-**REQ-TOL-012** Each function entry in the `symbols` response includes the function name, return type, and parameter list.
+**REQ-TOL-052** Each function entry in the `symbols` response includes the function name, return type, and parameter list.
 
-**REQ-TOL-013** The `symbols` response includes a `diagnostics` array using the same format as `check`.
+**REQ-TOL-053** The `symbols` response includes a `diagnostics` array using the same format as `check`.
 
 **Output:**
 - `programs: [{ name, variables: [{ name, type, direction }] }]`
@@ -170,9 +194,66 @@ This lets an AI assistant understand the structure of a program before suggestin
 - `types: [{ name, kind }]`
 - `diagnostics: [...]`
 
+### `list_options`
+
+Returns the set of compiler options the agent may pass in an `options` object to `parse`, `check`, or `compile`. This includes the list of dialect presets and the individual feature flags that can override them.
+
+This tool lets an agent discover what flags exist without memorizing them and without risk of silent failure from a misspelled flag name.
+
+**Inputs:** none.
+
+**REQ-TOL-060** The `list_options` tool takes no inputs.
+
+**REQ-TOL-061** The `list_options` tool returns a `dialects` array whose entries each contain `id`, `display_name`, and `description`.
+
+**REQ-TOL-062** The `list_options` tool returns a `flags` array whose entries each contain `id`, `type` (`"bool"`, `"string"`, `"enum"`), `default`, `description`, and — for enum flags — an `allowed_values` array.
+
+**REQ-TOL-063** The option `id` values returned by `list_options` are the exact keys accepted in the `options` object of `parse`, `check`, and `compile`.
+
+**Output:**
+```json
+{
+  "dialects": [
+    { "id": "iec61131-3-ed2", "display_name": "IEC 61131-3 Ed. 2", "description": "..." },
+    { "id": "iec61131-3-ed3", "display_name": "IEC 61131-3 Ed. 3", "description": "..." },
+    { "id": "rusty",          "display_name": "RuSTy-compatible",   "description": "..." }
+  ],
+  "flags": [
+    { "id": "allow_c_style_comments", "type": "bool", "default": false, "description": "..." }
+  ]
+}
+```
+
+### `explain_diagnostic`
+
+Returns the human-readable explanation for a compiler problem code (e.g. `P0001`). This is the same text published under `docs/compiler/problems/P####.rst` and is already maintained as part of the project.
+
+The self-healing loop depends on this: without it, an agent sees `P0042` in a diagnostic and has no way to understand why the compiler flagged the code, leading to guessed or destructive fixes.
+
+**Inputs:**
+- `code: string` — the problem code, case-insensitive (e.g. `"P0001"`).
+
+**REQ-TOL-070** The `explain_diagnostic` tool accepts a `code` string and returns `code`, `title`, `description`, and optionally `suggested_fix`.
+
+**REQ-TOL-071** The `explain_diagnostic` tool returns `found: false` and a populated `diagnostics` array when the code is unknown, rather than raising an MCP-level error.
+
+**REQ-TOL-072** The text returned by `explain_diagnostic` is sourced from the same problem-code documentation that is published under `docs/compiler/problems/`.
+
+**Output:**
+```json
+{
+  "found": true,
+  "code": "P0001",
+  "title": "...",
+  "description": "...",
+  "suggested_fix": "...",
+  "diagnostics": []
+}
+```
+
 ### `compile`
 
-Runs the full pipeline (parse → analyze → codegen) and returns the bytecode container as base64-encoded bytes, or diagnostics on failure. Also returns the task configuration extracted from the compiled program, which the agent can use to determine how many cycles to pass to `run`.
+Runs the full pipeline (parse → semantic analysis → codegen) and returns the bytecode container as base64-encoded bytes, or diagnostics on failure. Also returns the task configuration extracted from the compiled program, which the agent can use to determine how many cycles to pass to `run`.
 
 **Inputs:**
 - `sources`: array of `{ name: string, content: string }`
@@ -201,7 +282,7 @@ Runs the full pipeline (parse → analyze → codegen) and returns the bytecode 
 }
 ```
 
-> **Note:** `compile` adds significant dependency weight (the codegen crate). Defer to a second milestone if needed; `analyze` covers the most important validation use case.
+> **Note:** `compile` adds significant dependency weight (the codegen crate). Defer to a second milestone if needed; `check` covers the most important validation use case.
 
 ### `run`
 
@@ -239,7 +320,9 @@ Prompts are instructional templates the agent can invoke to perform structured m
 
 ### `verify-logic`
 
-**REQ-PRM-001** The `verify-logic` prompt instructs the agent to compile the provided source using `compile`, run a simulation using `run` with specified inputs and cycle count, assert that named output variables match expected values, and report pass/fail with the full trace on failure.
+**REQ-PRM-001** The `verify-logic` prompt instructs the agent to compile the provided source using `compile`, run a simulation using `run` for a caller-supplied `duration_ms` and list of traced variables, compare the traced values against caller-supplied expected values at the final cycle, and report pass/fail with the full trace on failure.
+
+> **Note:** The prompt does not drive input variables over time. The `run` tool as currently specified executes a program for a fixed simulated duration with whatever initial values the program declares; it does not accept a time-indexed stimulus schedule. Prompts that require external stimulus (for example, "press Start at t=100 ms") will need a future stimulus-enabled version of `run` and are out of scope for this milestone.
 
 ## Architecture
 
