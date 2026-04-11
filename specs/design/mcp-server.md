@@ -731,6 +731,28 @@ The limits are configured at server startup and exposed as a `LimitOverrides` ob
 
 **REQ-ARC-035** The server is not required to enforce wall-clock limits with hard real-time precision. The implementation is permitted to check the wall-clock between task cycle ends, so the actual termination time may exceed `max_wall_clock_ms` by up to one task cycle's worth of VM work.
 
+### Logging and Observability
+
+The MCP server is the first place we get to watch a real AI agent drive the IronPLC toolchain. Understanding how agents actually use it — which tools they reach for, in what sequence, how often `check` diagnostics lead to a successful self-heal on the next call, how often `run`/`verify` terminates on a resource limit rather than completing — is essential for refining the tool surface, the problem-code docs, and the prompts. This observability must be designed in, not grafted on after the fact.
+
+**REQ-ARC-040** The server emits a structured log entry for every tool call and every resource read. Each entry contains at minimum: `session_id` (a UUID assigned when the session starts), `seq` (a monotonic per-session counter), `timestamp` (ISO 8601 UTC), `kind` (`"tool"` or `"resource"`), `name` (the tool name, or the resource URI template such as `"ironplc://pou/{name}/scope"`), `duration_ms` (wall-clock execution time of the handler), `outcome` (`"ok"` or `"error"`), and — when `outcome` is `"error"` — `error_kind` drawn from a stable taxonomy (`"invalid_arguments"`, `"unknown_name"`, `"limit_exceeded"`, `"parse_failed"`, `"analysis_failed"`, `"vm_trap"`, `"internal"`).
+
+**REQ-ARC-041** Each log entry additionally includes a small tool-specific or resource-specific summary so that an analyst can reconstruct agent behavior without the payload itself:
+  - Analysis tools (`parse`, `check`, `format`, `symbols`): `source_count`, `source_total_bytes`, `used_session_workspace` (`true` when the call read the session, `false` when it used a per-call `sources` override), `diagnostic_count`, `error_count`, `warning_count`, and (for `check`) a sorted deduplicated `problem_codes` array.
+  - Workspace mutation tools (`workspace_set`, `workspace_put`, `workspace_remove`, `workspace_clear`, `workspace_set_options`): `file_count_before`, `file_count_after`, and — for `workspace_set_options` — the list of option keys changed.
+  - `compile`: `container_id`, `container_size_bytes`, `task_count`, `program_count`, `include_bytes`, plus the analysis-tool fields above.
+  - `run`: `container_id`, `duration_ms_requested`, `duration_ms_simulated` (how far the VM actually got), `fuel_consumed`, `trace_mode`, `trace_samples_emitted`, `truncated`, `terminated_reason`, `stimulus_count`, `task_count`.
+  - `verify`: every field `run` logs, plus `expectation_count`, `failure_count`, and `passed`.
+  - Resources: the resolved URI, the size in bytes of the serialized response, and — for `source/{file}` and `pou/{name}/*` — the template-parameter values that were bound.
+
+**REQ-ARC-042** The server does **not** log source text, stimulus values, expectation values, trace variable values, or explanation bodies by default. These fields are replaced in the log with fixed-width content hashes (first 12 hex characters of a SHA-256 over the UTF-8 bytes) so that an analyst can detect "the agent sent the same source twice" or "the source changed between `check` calls" without the payload ever leaving the host. A `--log-level=debug` startup flag opts into logging full payloads for local debugging; this mode must print a warning to stderr at session start that payload logging is enabled.
+
+**REQ-ARC-043** Logs are written to stderr by default, because the stdio transport uses stdout for the MCP JSON-RPC stream and any log output on stdout would corrupt the protocol. The `--log-file <path>` startup flag redirects logs to a file. The `--log-format` startup flag accepts `"json"` (one JSON object per line, the default) or `"text"` (human-readable, not intended for machine analysis).
+
+**REQ-ARC-044** At session start the server emits a `session_start` event containing `session_id`, the server version, the effective resource limits (after applying command-line overrides), the `--project-dir` value if present, the file count of any pre-loaded workspace, and the startup `options` (with any secret-looking fields redacted). At session end the server emits a `session_end` event containing `session_id`, the total session wall-clock, the total number of tool calls and resource reads, per-tool call counts, and the reason for session termination (`"client_disconnect"`, `"signal"`, `"internal_error"`).
+
+**REQ-ARC-045** The log stream is sufficient — without any payload fields — to answer at least: (1) the full ordered sequence of tool and resource calls in a session; (2) which calls used the session workspace vs. a per-call `sources` override; (3) which `check` calls returned which problem codes and whether a subsequent call presented a source with a different content hash; (4) which `verify` calls passed, and for failing ones, the `terminated_reason` and `failure_count`; (5) the distribution of `terminated_reason` values across `run` and `verify` calls in the session.
+
 ### Diagnostic Mapping
 
 The existing `Diagnostic` type (from `ironplc-dsl`) carries file ID, source span (byte offsets), problem code, and message. The MCP server converts byte offsets to line/column numbers using the source text before serializing to JSON. This is the same conversion the LSP server already performs.
