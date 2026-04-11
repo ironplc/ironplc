@@ -42,13 +42,62 @@ Agents familiar with the CLI can use the MCP tools with matching expectations.
 
 Resources provide "background knowledge" (scoped context, type tables, dependency graphs). Tools provide "hands" (actions with structured feedback). This separation keeps context lean: the agent only loads the scope relevant to the POU it is editing.
 
+## Session State Model
+
+An MCP client connects to one server process over stdio. For the lifetime of that connection the server holds a single **session workspace**, which is the source of truth for every project-scoped resource and for any tool call that is not given inline `sources`.
+
+The session workspace contains:
+
+- a set of named source files (`name → content`)
+- the active compiler options (dialect + feature flags)
+- any cached analysis artifacts the server derives from the above
+
+The session workspace is authoritative: when an agent calls a project-scoped resource like `ironplc://pou/Motor/scope`, the server answers from the session workspace, not from disk. This removes the "is this the on-disk file or my edit?" ambiguity — if the agent wants the answer to reflect its edit, it must first write the edit into the session.
+
+### Lifecycle
+
+**REQ-SES-001** When an MCP client connects, the server starts a new session with an empty workspace (no files) and the default options (dialect `"iec61131-3-ed2"`, no feature-flag overrides).
+
+**REQ-SES-002** When the MCP client disconnects, the session and all cached analysis artifacts are dropped.
+
+**REQ-SES-003** The server supports at most one active session per process; the MCP stdio transport naturally enforces this because the process itself is per-connection.
+
+**REQ-SES-004** The server accepts an optional `--project-dir <path>` command-line argument at startup. When present, the server pre-populates the session workspace with every source file that `FileBackedProject` would discover under the given path. The `--project-dir` mode is purely a convenience — no tool, resource, or response depends on the presence of a project directory.
+
+### Resources always read the session workspace
+
+**REQ-SES-010** Every resource under `ironplc://` reads its data from the session workspace. When the workspace is empty, resources return empty collections (empty `files`, empty `variables`, empty `types`) rather than an MCP-level error.
+
+**REQ-SES-011** Resources that depend on semantic analysis (`scope`, `lineage`, `types/all`, `project/io`, any diagnostics surfaced through a resource) reflect the current session workspace state and any edits made via workspace mutation tools since the most recent read.
+
+**REQ-SES-012** The server caches semantic-analysis artifacts until the session workspace is next mutated; after any mutation the server invalidates the cached artifacts. This is an implementation obligation, not an API-visible behavior.
+
+### Tools and `sources`: session-first with per-call override
+
+**REQ-SES-020** Every tool whose signature includes a `sources` parameter (`parse`, `check`, `format`, `symbols`, `compile`, `verify`) treats that parameter as **optional**. When `sources` is omitted or `null`, the tool operates on the session workspace. When `sources` is provided, the tool operates on that inline source set for that call only and **does not** mutate the session workspace.
+
+**REQ-SES-021** Per-call `sources` overrides are a "what-if" mechanism: they let the agent try an unsaved edit without committing it to the session. The caller that wants subsequent calls to see the edit must first call `workspace_put` (or `workspace_set`).
+
+**REQ-SES-022** Every tool whose signature includes an `options` parameter treats it as optional in the same way: when omitted, the tool uses the session's active options; when provided, the tool uses the per-call options without updating the session.
+
+**REQ-SES-023** A tool call that provides a per-call `sources` override uses only those sources — the session workspace is ignored for that call. The server does not merge per-call `sources` on top of session files.
+
+### Precedence summary
+
+| Call shape                                | Files used      | Options used            |
+|-------------------------------------------|-----------------|-------------------------|
+| tool with no `sources`, no `options`      | session files   | session options         |
+| tool with no `sources`, with `options`    | session files   | per-call options        |
+| tool with `sources`, no `options`         | per-call files  | session options         |
+| tool with `sources` and `options`         | per-call files  | per-call options        |
+
 ## Resources
 
-Resources give the agent contextual knowledge without requiring it to read raw source files.
+Resources give the agent contextual knowledge without requiring it to read raw source files. Every resource reads from the session workspace (see Session State Model).
 
 ### `ironplc://project/manifest`
 
-**REQ-RES-001** The `ironplc://project/manifest` resource returns the list of all source files in the workspace.
+**REQ-RES-001** The `ironplc://project/manifest` resource returns the list of all source files in the session workspace.
 
 **REQ-RES-002** The `ironplc://project/manifest` resource returns the names of all Programs, Functions, and Function Blocks declared across all source files.
 
@@ -73,13 +122,13 @@ Resources give the agent contextual knowledge without requiring it to read raw s
 
 ### `ironplc://source/{file}`
 
-**REQ-RES-040** The `ironplc://source/{file}` resource returns the raw text of the named source file from the project's backing store.
+**REQ-RES-040** The `ironplc://source/{file}` resource returns the raw text of the named source file from the session workspace.
 
 **REQ-RES-041** The `{file}` template parameter matches the file names returned by `ironplc://project/manifest`.
 
 **REQ-RES-042** The source resource returns a JSON object with the fields `file`, `content`, and `length_bytes`.
 
-**REQ-RES-043** When the requested file is not in the manifest, the resource returns `found: false`, a `null` `content`, and a populated `diagnostics` array, rather than an MCP-level error.
+**REQ-RES-043** When the requested file is not in the session workspace, the resource returns `found: false`, a `null` `content`, and a populated `diagnostics` array, rather than an MCP-level error.
 
 This resource exists so an agent editing an existing project does not have to fall back to its own filesystem tools to read source text, which would bypass the MCP boundary and reintroduce path-resolution issues.
 
@@ -158,6 +207,78 @@ DOT is preferred over Mermaid because: the resource is consumed by an AI agent r
 
 ## Tools
 
+Tools are grouped into three categories:
+
+1. **Workspace mutation tools** — `workspace_set`, `workspace_put`, `workspace_remove`, `workspace_clear`, `workspace_set_options`. These modify the session workspace.
+2. **Analysis tools** — `parse`, `check`, `format`, `symbols`, `list_options`, `explain_diagnostic`. These read the session workspace (or a per-call `sources` override) and return structured information.
+3. **Execution tools** — `compile`, `run`, `verify`. These produce or consume bytecode and/or drive the VM.
+
+### `workspace_set`
+
+Replaces the entire session workspace with a new set of sources. This is the "load from scratch" path an agent uses when it receives a user-supplied program text or wants to wipe state between unrelated tasks.
+
+**Inputs:**
+- `sources`: array of `{ name: string, content: string }`
+
+**REQ-TOL-100** The `workspace_set` tool replaces the session workspace's file set with the supplied `sources`; any files previously in the workspace are discarded.
+
+**REQ-TOL-101** The `workspace_set` tool leaves the session's active options unchanged.
+
+**REQ-TOL-102** The `workspace_set` tool returns the resulting `files` list and a `diagnostics` array; diagnostics are only populated if a file name is duplicated or otherwise malformed, not for parse or semantic errors (those are surfaced by `check`).
+
+**Output:**
+```json
+{ "files": ["main.st", "types.st"], "diagnostics": [] }
+```
+
+### `workspace_put`
+
+Adds a single file to the session workspace, or replaces the content of an existing file with the same name. This is the incremental-edit path.
+
+**Inputs:**
+- `name: string`
+- `content: string`
+
+**REQ-TOL-110** The `workspace_put` tool inserts a new file into the session workspace when no file with `name` exists, or replaces the content of the existing file when one does.
+
+**REQ-TOL-111** The `workspace_put` tool invalidates any cached semantic-analysis artifacts so subsequent resource reads reflect the new content.
+
+**REQ-TOL-112** The `workspace_put` tool returns the current `files` list after the mutation and a `diagnostics` array (empty on success).
+
+### `workspace_remove`
+
+Removes a single file from the session workspace.
+
+**Inputs:**
+- `name: string`
+
+**REQ-TOL-120** The `workspace_remove` tool deletes the named file from the session workspace and invalidates cached semantic-analysis artifacts.
+
+**REQ-TOL-121** The `workspace_remove` tool returns `found: false` and a populated `diagnostics` array when no file with the given name is present, rather than raising an MCP-level error.
+
+### `workspace_clear`
+
+Empties the session workspace.
+
+**Inputs:** none.
+
+**REQ-TOL-130** The `workspace_clear` tool removes every file from the session workspace and invalidates cached semantic-analysis artifacts.
+
+**REQ-TOL-131** The `workspace_clear` tool leaves the session's active options unchanged.
+
+### `workspace_set_options`
+
+Updates the session's active compiler options. These options become the defaults for any subsequent analysis or execution tool call that does not pass its own `options`.
+
+**Inputs:**
+- `options`: object with `dialect` and individual feature flags (same schema as `check.options`)
+
+**REQ-TOL-140** The `workspace_set_options` tool replaces the session's active options with the supplied `options` object.
+
+**REQ-TOL-141** The `workspace_set_options` tool rejects unknown option keys with a diagnostic listing the unknown keys and does not modify the session's active options in that case.
+
+**REQ-TOL-142** The `workspace_set_options` tool invalidates any cached semantic-analysis artifacts, because changing options can change parse and analysis outcomes.
+
 ### `parse`
 
 Runs the parse stage only — no semantic analysis. Returns syntax diagnostics (malformed tokens, missing keywords, structural grammar errors).
@@ -165,14 +286,16 @@ Runs the parse stage only — no semantic analysis. Returns syntax diagnostics (
 Use this for rapid iteration on code structure. It is faster than `check` and useful when the agent is drafting code and wants to confirm it parses before investing in semantic correctness.
 
 **Inputs:**
-- `sources`: array of `{ name: string, content: string }`
-- `options`: optional object with `dialect` and individual feature flags, same as `check`
+- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool parses the session workspace (see Session State Model)
+- `options`: optional object with `dialect` and individual feature flags, same as `check` — when omitted, the session's active options are used
 
 **REQ-TOL-010** The `parse` tool runs the parse stage only and does not run semantic analysis.
 
 **REQ-TOL-011** The `parse` tool returns a `diagnostics` array using the same format as `check`.
 
 **REQ-TOL-012** The `parse` tool accepts the same `options` object as `check`, since dialect and feature flags affect the parser.
+
+**REQ-TOL-013** The `parse` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
 
 ### `check`
 
@@ -181,10 +304,11 @@ Runs the full parse and semantic analysis pipeline — the same stages as the CL
 This is the highest-value tool. AI assistants use it to validate code they generate before presenting it to the user. The JSON format enables self-healing loops: the agent reads the diagnostics and fixes the code.
 
 **Inputs:**
-- `sources`: array of `{ name: string, content: string }` — inline source text (no file I/O required from the client)
+- `sources`: optional array of `{ name: string, content: string }` — inline source text for a "what-if" check. When omitted, the tool runs against the session workspace (see Session State Model).
 - `options`: optional object with:
   - `dialect: string` — one of `"iec61131-3-ed2"` (default), `"iec61131-3-ed3"`, `"rusty"`. Selects a preset that enables the appropriate flags in one shot.
   - individual feature flags (e.g. `allow_c_style_comments: bool`) — override specific flags on top of the dialect preset. The full list of flags and their descriptions is returned by `list_options`.
+  - When omitted, the session's active options are used.
 
 **REQ-TOL-020** The `check` tool runs the parse stage and the full semantic analysis stage on the provided sources.
 
@@ -199,6 +323,8 @@ This is the highest-value tool. AI assistants use it to validate code they gener
 **REQ-TOL-025** The `check` tool accepts an optional `dialect` string in `options`; when omitted, `"iec61131-3-ed2"` is used.
 
 **REQ-TOL-026** The `check` tool accepts individual feature flag overrides in `options` that are applied on top of the dialect preset.
+
+**REQ-TOL-027** The `check` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
 
 **Output:**
 ```json
@@ -218,8 +344,8 @@ Parses the provided source and re-renders it in canonical form using the existin
 This keeps agent-authored code stylistically consistent with the rest of a project and removes "did the agent indent this correctly?" from the self-healing loop.
 
 **Inputs:**
-- `sources`: array of `{ name: string, content: string }`
-- `options`: optional object with the same `dialect` and feature flags as `check`
+- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool formats the session workspace
+- `options`: optional object with the same `dialect` and feature flags as `check` — when omitted, the session's active options are used
 
 **REQ-TOL-080** The `format` tool parses each source in the request and, on successful parse, returns the rendered canonical form in a `sources` array whose entries match the input names one-to-one.
 
@@ -228,6 +354,8 @@ This keeps agent-authored code stylistically consistent with the rest of a proje
 **REQ-TOL-082** The `format` tool is idempotent: running `format` on its own output returns byte-identical content.
 
 **REQ-TOL-083** The `format` tool produces the same canonical output that the `plc2plc` crate produces for a given AST and dialect.
+
+**REQ-TOL-084** The `format` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace. In particular, `format` does not write its formatted output back into the session; the caller must call `workspace_put` explicitly if it wants to persist the formatted content.
 
 **Output:**
 ```json
@@ -246,15 +374,18 @@ Parses and analyzes source text, then returns the top-level symbol table: declar
 This lets an AI assistant understand the structure of a program before suggesting changes.
 
 **Inputs:**
-- `sources`: array of `{ name: string, content: string }`
+- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool reads from the session workspace
+- `options`: optional compiler options — when omitted, the session's active options are used
 
-**REQ-TOL-050** The `symbols` tool returns the top-level declarations for programs, functions, function blocks, and types found in the provided sources.
+**REQ-TOL-050** The `symbols` tool returns the top-level declarations for programs, functions, function blocks, and types found in the sources under analysis.
 
 **REQ-TOL-051** Each program entry in the `symbols` response includes the program name and its variable declarations. Each variable entry contains `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), `address` (the direct-variable string such as `"%IX0.0"` when the variable is mapped to a hardware address, otherwise `null`), and `external` (`true` when the variable can be driven from outside the program — i.e. `direction` is `"In"`, `"External"`, or `"Global"`, or `address` is a `%I*` hardware input).
 
 **REQ-TOL-052** Each function entry in the `symbols` response includes the function name, return type, and parameter list.
 
 **REQ-TOL-053** The `symbols` response includes a `diagnostics` array using the same format as `check`.
+
+**REQ-TOL-054** The `symbols` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
 
 **Output:**
 - `programs: [{ name, variables: [{ name, type, direction, address, external }] }]`
@@ -325,8 +456,8 @@ The self-healing loop depends on this: without it, an agent sees `P0042` in a di
 Runs the full pipeline (parse → semantic analysis → codegen) and returns the bytecode container as base64-encoded bytes, or diagnostics on failure. Also returns the task configuration extracted from the compiled program, which the agent can use to determine how many cycles to pass to `run`.
 
 **Inputs:**
-- `sources`: array of `{ name: string, content: string }`
-- `options`: optional compiler options
+- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool compiles the session workspace
+- `options`: optional compiler options — when omitted, the session's active options are used
 
 **REQ-TOL-030** The `compile` tool returns the `.iplc` container encoded as a base64 string in `container_base64` on success.
 
@@ -335,6 +466,8 @@ Runs the full pipeline (parse → semantic analysis → codegen) and returns the
 **REQ-TOL-032** The `compile` tool returns a `tasks` array describing each task declared in the program, including `name`, `priority`, and `interval_ms` (the cyclic interval in milliseconds, or `null` for event-triggered tasks).
 
 **REQ-TOL-033** The `compile` tool returns a `programs` array listing each program name and the task it is bound to.
+
+**REQ-TOL-034** The `compile` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
 
 **Output:**
 ```json
@@ -404,8 +537,8 @@ Compiles the provided sources, runs them in the VM against a caller-supplied sti
 The primary reason this is a dedicated tool rather than a prompt is that expectation evaluation lives on the server side: the agent gets back `{ passed: true }` or a structured list of failures. Agents react reliably to structured pass/fail; reducing a raw trace into assertions in the agent's own reasoning is error-prone and burns tokens.
 
 **Inputs:**
-- `sources`: array of `{ name: string, content: string }`
-- `options`: optional compiler options (same as `check`)
+- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool verifies the session workspace
+- `options`: optional compiler options (same as `check`) — when omitted, the session's active options are used
 - `duration_ms: number`
 - `stimuli: [Stimulus]` — same shape as `run`'s `stimuli`
 - `expectations: [Expectation]`
@@ -431,6 +564,8 @@ The `at` field is either the literal string `"final"` (evaluated at the last rec
 **REQ-TOL-093** The `verify` tool evaluates the `approximately` comparator as `abs(actual - expected) <= tolerance`; both `equals` and `not_equals` on floating-point types are rejected with a diagnostic instructing the caller to use `approximately`.
 
 **REQ-TOL-094** The `verify` tool includes in its returned `trace` at least every variable referenced by an expectation, plus any variable named in `trace_variables`.
+
+**REQ-TOL-095** The `verify` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
 
 **Output:**
 ```json
@@ -471,9 +606,10 @@ This matches how the VS Code extension and CLI are invoked and avoids requiring 
 ### Crate Structure
 
 The `ironplc-mcp` crate depends on:
-- `ironplc-project` — already listed as a dependency; provides `FileBackedProject` and the `Project` trait
-- `ironplc-codegen` — for the `compile` and `run` tools
-- `ironplc-vm` — for the `run` tool
+- `ironplc-project` — provides the `Project` trait (used to back the in-memory session workspace) and `FileBackedProject` (used only by the optional `--project-dir` startup pre-load)
+- `ironplc-plc2plc` — for the `format` tool
+- `ironplc-codegen` — for the `compile` and `verify` tools
+- `ironplc-vm` — for the `run` and `verify` tools
 - `ironplc-problems` — for the `explain_diagnostic` tool
 - An MCP SDK crate (see below)
 
@@ -483,11 +619,19 @@ The server uses [`rmcp`](https://crates.io/crates/rmcp) (the official Rust SDK f
 
 ### Source Handling
 
-**REQ-ARC-010** All tools accept inline source text as `{ name: string, content: string }` objects rather than file paths.
+**REQ-ARC-010** Source text enters the server through one of two paths:
 
-**REQ-ARC-011** Each `{ name, content }` pair maps to a `FileId::from_string(name)` and is loaded via `change_text_document`.
+1. **Session workspace** — populated via `workspace_set`, `workspace_put`, `workspace_remove`, `workspace_clear`, or the optional `--project-dir` startup pre-load. The session workspace is the default subject of every project-scoped resource and every analysis / execution tool that is not given inline `sources` (see Session State Model).
 
-This is intentional: MCP clients (AI assistants) work with text in memory, not files on disk, and it avoids path resolution issues across different environments.
+2. **Per-call `sources` override** — an inline `{ name: string, content: string }` array passed directly to a tool call. Per-call overrides are a "what-if" mechanism and do not mutate the session workspace.
+
+Neither path accepts raw filesystem paths as arguments in any tool or resource. MCP clients (AI assistants) work with text in memory, not files on disk, and the two-path model avoids path-resolution issues across different environments while still supporting quick "what-if" experiments on top of an established project.
+
+**REQ-ARC-011** Each `{ name, content }` pair the server receives — whether from a workspace mutation tool or from a per-call `sources` override — is mapped to a `FileId::from_string(name)` and loaded via `change_text_document` against the appropriate `Project` instance.
+
+**REQ-ARC-012** For per-call `sources` overrides, the server constructs a temporary `Project` instance for the duration of the call and discards it once the response is produced; this prevents override data from leaking into the session workspace.
+
+**REQ-ARC-013** The session workspace is backed by an in-memory `Project` implementation. `FileBackedProject` is used only by the optional `--project-dir` startup pre-load to walk a directory and enumerate files; the resulting files are then copied into the in-memory session workspace. After startup, no tool or resource reads from the on-disk project directory.
 
 ### Variable Naming
 
