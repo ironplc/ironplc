@@ -13,6 +13,46 @@ import { ProblemCode, formatProblem } from './problems';
 import { RunSession, RunState } from './runSession';
 import { findProgramLenses } from './runCodeLensProvider';
 
+/**
+ * Reactive code lens provider for PROGRAM declarations. Shows "Run Program"
+ * when idle and toggles to "Pause"/"Stop" (or "Resume"/"Stop") as the run
+ * session transitions states.
+ */
+class RunProgramCodeLensProvider implements vscode.CodeLensProvider {
+  private _state: RunState = 'idle';
+  private readonly _emitter = new vscode.EventEmitter<void>();
+  readonly onDidChangeCodeLenses = this._emitter.event;
+
+  constructor(private readonly hasCompiler: () => boolean) {}
+
+  setState(state: RunState): void {
+    if (this._state === state) {
+      return;
+    }
+    this._state = state;
+    this._emitter.fire();
+  }
+
+  provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
+    const lenses = findProgramLenses(document.getText(), this._state, this.hasCompiler());
+    return lenses.map((lens) => {
+      const range = new vscode.Range(
+        new vscode.Position(lens.range.start.line, lens.range.start.character),
+        new vscode.Position(lens.range.end.line, lens.range.end.character),
+      );
+      return new vscode.CodeLens(range, lens.command ? {
+        title: lens.command.title,
+        command: lens.command.command,
+        arguments: lens.command.arguments as unknown[] | undefined,
+      } : undefined);
+    });
+  }
+
+  dispose(): void {
+    this._emitter.dispose();
+  }
+}
+
 const VERBOSITY = new Map<string, string[]>([
   ['ERROR', []],
   ['WARN', ['-v']],
@@ -99,6 +139,10 @@ function registerRunSupport(context: vscode.ExtensionContext) {
   stopItem.command = 'ironplc.stopProgram';
   context.subscriptions.push(stopItem);
 
+  // CodeLens provider (reactive — refreshes when the run state changes)
+  const runLensProvider = new RunProgramCodeLensProvider(() => !!client);
+  context.subscriptions.push(runLensProvider);
+
   function updateStatusBar(state: RunState) {
     if (state === 'running') {
       pauseItem.text = '$(debug-pause) Pause';
@@ -114,41 +158,19 @@ function registerRunSupport(context: vscode.ExtensionContext) {
       pauseItem.hide();
       stopItem.hide();
     }
+    runLensProvider.setState(state);
   }
 
   // Initially hidden
   updateStatusBar('idle');
 
-  // CodeLens provider
   const stSelector: vscode.DocumentSelector = [
     { scheme: 'file', language: '61131-3-st' },
     { scheme: 'file', language: 'twincat-pou' },
   ];
 
   context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider(stSelector, {
-      provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
-        const lenses = findProgramLenses(document.getText());
-        const hasCompiler = !!client;
-        return lenses.map(lens => {
-          const range = new vscode.Range(
-            new vscode.Position(lens.range.start.line, lens.range.start.character),
-            new vscode.Position(lens.range.end.line, lens.range.end.character),
-          );
-          if (hasCompiler) {
-            return new vscode.CodeLens(range, lens.command ? {
-              title: lens.command.title,
-              command: lens.command.command,
-              arguments: lens.command.arguments,
-            } : undefined);
-          }
-          return new vscode.CodeLens(range, {
-            title: '$(warning) Run Program (no compiler)',
-            command: 'ironplc.runProgram',
-          });
-        });
-      },
-    }),
+    vscode.languages.registerCodeLensProvider(stSelector, runLensProvider),
   );
 
   // Run command
