@@ -37,7 +37,7 @@
 #     ^^^^^^^^^^^ source.plcopen-xml meta.tag.xml entity.name.tag.xml
 #                ^ source.plcopen-xml meta.tag.xml punctuation.definition.tag.end.xml
 #                 ^^^^^^^^^ source.plcopen-xml punctuation.definition.string.begin.xml
-#                          ^^^^^^^ source.plcopen-xml meta.embedded.block.st keyword.declaration.pou.st
+#                          ^^^^^^^ source.plcopen-xml meta.embedded.block.st keyword.control.st
 #                                 ^ source.plcopen-xml meta.embedded.block.st
 #                                  ^^^^ source.plcopen-xml meta.embedded.block.st entity.name.function.st
 >VAR
