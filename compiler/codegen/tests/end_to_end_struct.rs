@@ -702,3 +702,50 @@ END_PROGRAM
     assert_eq!(bufs.vars[4].as_f32(), 3.0);
     assert_eq!(bufs.vars[5].as_f32(), 4.0);
 }
+
+#[test]
+fn end_to_end_when_struct_2d_string_array_field_compared_then_matches() {
+    // Regression for `compile_expr.rs#L32` TODO on `struct.field[i, j] = x`.
+    // The analyzer previously failed to set `resolved_type` for array
+    // subscripts rooted in a struct field, so codegen's condition path hit
+    // the "missing resolved_type" branch when a 2-D STRING array field was
+    // compared inside an IF.
+    let source = "
+TYPE MY_DATA : STRUCT
+    DIRS : ARRAY[0..2, 0..15] OF STRING[3];
+END_STRUCT;
+END_TYPE
+
+VAR_GLOBAL
+    DATA : MY_DATA;
+END_VAR
+
+FUNCTION FOO : INT
+VAR_INPUT
+    DIR : STRING[3];
+END_VAR
+VAR
+    i : INT;
+    j : INT;
+END_VAR
+    FOO := 0;
+    IF DATA.DIRS[i, j] = DIR THEN
+        FOO := 1;
+    END_IF;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    r_match : INT;
+    r_mismatch : INT;
+END_VAR
+    DATA.DIRS[0, 0] := 'N';
+    r_match := FOO(DIR := 'N');
+    r_mismatch := FOO(DIR := 'S');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // Global DATA is var 0, scratch is var 1, r_match is var 2, r_mismatch is var 3.
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+    assert_eq!(bufs.vars[3].as_i32(), 0);
+}

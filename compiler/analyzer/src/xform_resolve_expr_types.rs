@@ -53,6 +53,26 @@ fn is_generic_type(tn: &TypeName) -> bool {
     GENERIC_TYPES.iter().any(|name| TypeName::from(name) == *tn)
 }
 
+/// Maps an [`IntermediateType`] to its canonical elementary [`TypeName`].
+///
+/// Delegates to [`TypeEnvironment::elementary_type_name_for`] for the simple
+/// cases. That helper does a strict equality lookup against the elementary
+/// types table, which only contains `String { max_len: None }`. A struct
+/// field declared `STRING[n]` resolves to `String { max_len: Some(n) }` and
+/// would otherwise return `None`, so we handle strings explicitly.
+fn intermediate_to_elementary_type_name(
+    env: &TypeEnvironment,
+    it: &IntermediateType,
+) -> Option<TypeName> {
+    if let Some(tn) = env.elementary_type_name_for(it) {
+        return Some(tn);
+    }
+    match it {
+        IntermediateType::String { .. } => Some(TypeName::from("STRING")),
+        _ => None,
+    }
+}
+
 /// Walks a nested [`SymbolicVariableKind`] chain to find the root named variable.
 ///
 /// For example, `pt^[i]` is `Array { Deref { Named("pt") } }` — this returns `"pt"`.
@@ -373,6 +393,24 @@ impl ExprTypeResolver<'_> {
         }
     }
 
+    /// Resolves the element type of an array that lives inside a struct field.
+    ///
+    /// For an expression like `DATA.DIRS[i, j]`, `sv` is the `DATA.DIRS`
+    /// struct field access. Walks the struct chain to find `DIRS`'s
+    /// `IntermediateType::Array`, then returns the element type's
+    /// canonical `TypeName`.
+    fn resolve_struct_field_array_element_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
+        let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
+        let IntermediateType::Structure { fields } = parent_type else {
+            return None;
+        };
+        let field = fields.iter().find(|f| f.name == sv.field)?;
+        let IntermediateType::Array { element_type, .. } = &field.field_type else {
+            return None;
+        };
+        intermediate_to_elementary_type_name(self.type_environment, element_type)
+    }
+
     fn resolve_variable_type(&self, var: &Variable) -> Option<TypeName> {
         match var {
             Variable::Symbolic(SymbolicVariableKind::Named(nv)) => {
@@ -386,6 +424,14 @@ impl ExprTypeResolver<'_> {
                 )
             }
             Variable::Symbolic(SymbolicVariableKind::Array(arr_var)) => {
+                // Array subscript on a struct field (e.g. `DATA.DIRS[i, j]`).
+                // The base variable is a struct, not the array itself, so we
+                // resolve the field's type through the struct chain.
+                if let SymbolicVariableKind::Structured(sv) = arr_var.subscripted_variable.as_ref()
+                {
+                    return self.resolve_struct_field_array_element_type(sv);
+                }
+
                 // Array subscript: walk to base variable, return element type.
                 let base_name = find_base_variable_name(&arr_var.subscripted_variable)?;
                 let elem_type = self.array_element_types.get(base_name)?;
@@ -1258,6 +1304,58 @@ VAR
     result : DINT;
 END_VAR
     result := arr[0];
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "DINT");
+    }
+
+    #[test]
+    fn apply_when_struct_field_2d_string_array_subscript_then_resolves_string() {
+        // Regression for the `compile_expr.rs#L32` TODO that fired when
+        // `struct.field[i, j]` was used in a STRING comparison: the analyzer
+        // previously left `resolved_type` unset for array subscripts whose
+        // base was a struct field.
+        let program = "
+TYPE MY_DATA : STRUCT
+    DIRS : ARRAY[0..2, 0..15] OF STRING[3];
+END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK FB_TEST
+VAR
+    data : MY_DATA;
+    i : INT;
+    j : INT;
+    result : STRING[3];
+END_VAR
+    result := data.DIRS[i, j];
+END_FUNCTION_BLOCK";
+
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_type_eq(&types[0], "STRING");
+    }
+
+    #[test]
+    fn apply_when_struct_field_int_array_subscript_then_resolves_element_type() {
+        // Same fix must also cover numeric array fields, not just strings.
+        let program = "
+TYPE MY_DATA : STRUCT
+    values : ARRAY[0..9] OF DINT;
+END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK FB_TEST
+VAR
+    data : MY_DATA;
+    i : INT;
+    result : DINT;
+END_VAR
+    result := data.values[i];
 END_FUNCTION_BLOCK";
 
         let result = run_pass(program);
