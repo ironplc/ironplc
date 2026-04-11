@@ -156,9 +156,6 @@ pub const DUP: Opcode = 0xA1;
 /// Stack effect: [..., a, b] -> [..., b, a]
 pub const SWAP: Opcode = 0xA2;
 
-/// No operation. Used as padding by the peephole optimizer.
-pub const NOP: u8 = 0xA3;
-
 // --- Function block opcodes ---
 
 /// Push FB instance reference from variable table.
@@ -580,7 +577,7 @@ pub fn instruction_size(op: Opcode) -> usize {
         | EQ_F64 | NE_F64 | LT_F64 | LE_F64 | GT_F64 | GE_F64 | BOOL_AND | BOOL_OR | BOOL_XOR
         | BOOL_NOT | BIT_AND_32 | BIT_OR_32 | BIT_XOR_32 | BIT_NOT_32 | BIT_AND_64 | BIT_OR_64
         | BIT_XOR_64 | BIT_NOT_64 | TRUNC_I8 | TRUNC_U8 | TRUNC_I16 | TRUNC_U16 | LOAD_INDIRECT
-        | STORE_INDIRECT | LOAD_TRUE | LOAD_FALSE | POP | DUP | SWAP | NOP | RET | RET_VOID => 1,
+        | STORE_INDIRECT | LOAD_TRUE | LOAD_FALSE | POP | DUP | SWAP | RET | RET_VOID => 1,
 
         // 2-byte: opcode + u8 field index.
         FB_STORE_PARAM | FB_LOAD_PARAM => 2,

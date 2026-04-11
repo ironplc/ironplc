@@ -41,7 +41,6 @@ END_PROGRAM
             0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0
             0xA1, // DUP (store-load optimization)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0xA3, 0xA3, // NOP, NOP (padding)
             0x35, // NEG_I32
             0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID

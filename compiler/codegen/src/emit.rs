@@ -28,6 +28,8 @@ pub struct Emitter {
     patches: Vec<PendingPatch>,
     /// Tracks the last emitted load for consecutive-load DUP optimization.
     last_load: Option<LastLoad>,
+    /// Tracks the last emitted store for the store-load DUP optimization.
+    last_store: Option<LastStore>,
 }
 
 /// Records the last emitted load instruction for DUP optimization.
@@ -36,6 +38,19 @@ pub struct Emitter {
 #[derive(Clone, PartialEq)]
 struct LastLoad {
     /// The opcode byte (e.g. LOAD_VAR_I32, LOAD_CONST_I32).
+    opcode: u8,
+    /// The 2-byte operand (little-endian).
+    operand: [u8; 2],
+}
+
+/// Records the last emitted store-variable instruction for the store-load
+/// DUP optimization. When the next emission is a matching LOAD_VAR, the
+/// emitter retroactively inserts a DUP before the STORE and skips the LOAD.
+#[derive(Clone)]
+struct LastStore {
+    /// Byte offset of the STORE_VAR opcode in the bytecode buffer.
+    position: usize,
+    /// The STORE_VAR opcode byte (e.g. STORE_VAR_I32).
     opcode: u8,
     /// The 2-byte operand (little-endian).
     operand: [u8; 2],
@@ -72,12 +87,12 @@ macro_rules! emit_load_var_index {
 }
 
 /// Emit a variable store instruction with a VarIndex operand that pops one value.
+/// Records the store in `last_store` so a following matching LOAD_VAR can be
+/// optimized into a DUP inserted before the STORE.
 macro_rules! emit_store_var_index {
     ($name:ident, $opcode:expr) => {
         pub fn $name(&mut self, index: VarIndex) {
-            self.emit_opcode($opcode);
-            self.bytecode.extend_from_slice(&index.to_le_bytes());
-            self.pop_stack(1);
+            self.emit_store_with_tracking($opcode, index.to_le_bytes());
         }
     };
 }
@@ -110,39 +125,106 @@ impl Emitter {
             labels: Vec::new(),
             patches: Vec::new(),
             last_load: None,
+            last_store: None,
         }
     }
 
-    /// Pushes an opcode byte and invalidates the consecutive-load tracker.
+    /// Pushes an opcode byte and invalidates both DUP trackers.
     ///
-    /// Every non-load emission goes through this method, so `last_load` is
-    /// automatically cleared without needing explicit calls at each site.
-    /// The load path (`emit_load_with_dup_check`) bypasses this to manage
-    /// the tracker itself.
+    /// Every non-load, non-store emission goes through this method, so the
+    /// peephole trackers are automatically cleared without needing explicit
+    /// calls at each site. The load path (`emit_load_with_dup_check`) and
+    /// the store path (`emit_store_with_tracking`) bypass this to manage
+    /// the trackers themselves.
     fn emit_opcode(&mut self, op: u8) {
         self.bytecode.push(op);
         self.last_load = None;
+        self.last_store = None;
     }
 
-    /// Checks if the load matches the last emitted load; if so, emits DUP
-    /// instead of the full load instruction. Otherwise emits the load normally
-    /// and records it for future DUP checks.
+    /// Checks peephole opportunities before emitting a load:
+    ///
+    /// 1. **Consecutive identical load:** if the previous instruction was
+    ///    an identical load, emit a 1-byte DUP instead of the 3-byte load.
+    /// 2. **Store-load pair:** if the previous instruction was a matching
+    ///    STORE_VAR (same width, same operand), retroactively insert a DUP
+    ///    before the STORE and skip this load entirely. This eliminates
+    ///    the redundant round-trip through the variable table.
+    ///
+    /// If neither applies, the load is emitted normally and recorded for
+    /// future checks.
     fn emit_load_with_dup_check(&mut self, op: u8, operand: [u8; 2]) {
+        // Case 1: consecutive identical load.
         let candidate = LastLoad {
             opcode: op,
             operand,
         };
         if self.last_load.as_ref() == Some(&candidate) {
-            // Consecutive identical load — emit DUP instead.
             self.emit_opcode(opcode::DUP);
             self.push_stack(1);
             self.last_load = None;
-        } else {
-            self.bytecode.push(op);
-            self.bytecode.extend_from_slice(&operand);
-            self.push_stack(1);
-            self.last_load = Some(candidate);
+            return;
         }
+
+        // Case 2: store-load pair (STORE_VAR N; LOAD_VAR N of same width).
+        if let Some(store) = &self.last_store {
+            if Self::load_matches_store(op, store.opcode) && store.operand == operand {
+                // Retroactively insert DUP before the STORE. This is safe
+                // because `last_store` is cleared by any intervening
+                // emission or label bind, so the STORE is guaranteed to be
+                // the most recently emitted bytes and no patches or labels
+                // reference positions at or after the STORE.
+                let store_pos = store.position;
+                self.bytecode.insert(store_pos, opcode::DUP);
+                // The DUP;STORE sequence has the same net stack effect as
+                // the original LOAD (+1), so advance current_stack_depth
+                // as if the LOAD had been emitted. The runtime peak at the
+                // DUP is one slot above that value.
+                self.push_stack(1);
+                let dup_peak = self.current_stack_depth.saturating_add(1);
+                if dup_peak > self.max_stack_depth {
+                    self.max_stack_depth = dup_peak;
+                }
+                self.last_load = None;
+                self.last_store = None;
+                return;
+            }
+        }
+
+        // Default: emit the load normally.
+        self.bytecode.push(op);
+        self.bytecode.extend_from_slice(&operand);
+        self.push_stack(1);
+        self.last_load = Some(candidate);
+        self.last_store = None;
+    }
+
+    /// Emits a STORE_VAR instruction and records it for the store-load DUP
+    /// optimization. Bypasses `emit_opcode` so `last_store` is set rather
+    /// than cleared.
+    fn emit_store_with_tracking(&mut self, op: u8, operand: [u8; 2]) {
+        let position = self.bytecode.len();
+        self.bytecode.push(op);
+        self.bytecode.extend_from_slice(&operand);
+        self.pop_stack(1);
+        self.last_load = None;
+        self.last_store = Some(LastStore {
+            position,
+            opcode: op,
+            operand,
+        });
+    }
+
+    /// Returns true if `load_op` is the LOAD_VAR counterpart of `store_op`
+    /// (same type width).
+    fn load_matches_store(load_op: u8, store_op: u8) -> bool {
+        matches!(
+            (store_op, load_op),
+            (opcode::STORE_VAR_I32, opcode::LOAD_VAR_I32)
+                | (opcode::STORE_VAR_I64, opcode::LOAD_VAR_I64)
+                | (opcode::STORE_VAR_F32, opcode::LOAD_VAR_F32)
+                | (opcode::STORE_VAR_F64, opcode::LOAD_VAR_F64)
+        )
     }
 
     // --- Push ops (no operand, push 1) ---
@@ -358,10 +440,11 @@ impl Emitter {
 
     /// Binds a label to the current bytecode position.
     /// Binds a label to the current bytecode position.
-    /// Clears the last-load tracker because a jump may land here.
+    /// Clears the peephole trackers because a jump may land here.
     pub fn bind_label(&mut self, label: Label) {
         self.labels[label.0] = Some(self.bytecode.len());
         self.last_load = None;
+        self.last_store = None;
     }
 
     /// Emits JMP with a placeholder offset targeting the given label.
@@ -594,14 +677,13 @@ impl Emitter {
         self.emit_opcode(opcode::RET_VOID);
     }
 
-    /// Returns the accumulated bytecode, resolving all pending jump patches
-    /// and applying peephole optimizations.
+    /// Returns the accumulated bytecode with all pending jump patches resolved.
     ///
-    /// Must be called before `max_stack_depth()` because the peephole pass
-    /// may increase the reported maximum.
+    /// Peephole optimizations (consecutive load → DUP, store-load → insert
+    /// DUP before STORE) are applied inline during emission, so no separate
+    /// pass runs here.
     pub fn bytecode(&mut self) -> &[u8] {
         self.patch_jumps();
-        self.peephole_store_load();
         &self.bytecode
     }
 
@@ -622,95 +704,6 @@ impl Emitter {
             self.bytecode[patch.patch_offset] = bytes[0];
             self.bytecode[patch.patch_offset + 1] = bytes[1];
         }
-    }
-
-    /// Peephole optimization: replace `STORE_VAR_Xx N; LOAD_VAR_Xx N` with
-    /// `DUP; STORE_VAR_Xx N; NOP; NOP`. This avoids a redundant load when a
-    /// value is stored and immediately read back.
-    ///
-    /// Must be called after `patch_jumps` so that jump targets are resolved.
-    /// The rewrite preserves bytecode length (6 bytes → 6 bytes) so all
-    /// jump offsets remain valid.
-    fn peephole_store_load(&mut self) {
-        if self.bytecode.len() < 6 {
-            return;
-        }
-        let jump_targets = self.collect_jump_targets();
-
-        let mut applied = false;
-        let mut i = 0;
-        while i + 5 < self.bytecode.len() {
-            let store_op = self.bytecode[i];
-            if let Some(load_op) = Self::store_to_load(store_op) {
-                let load_start = i + 3;
-                if self.bytecode[load_start] == load_op
-                    && self.bytecode[i + 1] == self.bytecode[load_start + 1]
-                    && self.bytecode[i + 2] == self.bytecode[load_start + 2]
-                    && !Self::range_has_target(&jump_targets, load_start, load_start + 3)
-                {
-                    // Rewrite: [STORE, lo, hi, LOAD, lo, hi]
-                    //       → [DUP, STORE, lo, hi, NOP, NOP]
-                    self.bytecode[i + 5] = opcode::NOP;
-                    self.bytecode[i + 4] = opcode::NOP;
-                    self.bytecode[i + 3] = self.bytecode[i + 2];
-                    self.bytecode[i + 2] = self.bytecode[i + 1];
-                    self.bytecode[i + 1] = store_op;
-                    self.bytecode[i] = opcode::DUP;
-                    applied = true;
-                    i += 6;
-                    continue;
-                }
-            }
-            i += 1;
-        }
-        // DUP temporarily adds one extra value to the stack before the
-        // STORE pops it, so bump the reported max.
-        if applied {
-            self.max_stack_depth += 1;
-        }
-    }
-
-    /// Maps a STORE_VAR opcode to its corresponding LOAD_VAR opcode.
-    fn store_to_load(op: u8) -> Option<u8> {
-        match op {
-            opcode::STORE_VAR_I32 => Some(opcode::LOAD_VAR_I32),
-            opcode::STORE_VAR_I64 => Some(opcode::LOAD_VAR_I64),
-            opcode::STORE_VAR_F32 => Some(opcode::LOAD_VAR_F32),
-            opcode::STORE_VAR_F64 => Some(opcode::LOAD_VAR_F64),
-            _ => None,
-        }
-    }
-
-    /// Returns true if any jump target falls within [start, end).
-    fn range_has_target(targets: &[bool], start: usize, end: usize) -> bool {
-        targets[start..end].iter().any(|&t| t)
-    }
-
-    /// Scans bytecode for JMP and JMP_IF_NOT instructions and returns a
-    /// boolean array marking every address that is a jump target.
-    fn collect_jump_targets(&self) -> Vec<bool> {
-        let bc = &self.bytecode;
-        let mut targets = vec![false; bc.len()];
-        let mut pc = 0;
-        while pc < bc.len() {
-            match bc[pc] {
-                opcode::JMP | opcode::JMP_IF_NOT => {
-                    if pc + 2 < bc.len() {
-                        let offset = i16::from_le_bytes([bc[pc + 1], bc[pc + 2]]);
-                        let next_pc = pc + 3;
-                        let target = (next_pc as isize + offset as isize) as usize;
-                        if target < targets.len() {
-                            targets[target] = true;
-                        }
-                    }
-                    pc += 3;
-                }
-                _ => {
-                    pc += opcode::instruction_size(bc[pc]);
-                }
-            }
-        }
-        targets
     }
 
     fn push_stack(&mut self, count: u16) {

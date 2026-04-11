@@ -91,7 +91,6 @@ END_PROGRAM
             0x02, 0x00, 0x00, // LOAD_CONST_I64 pool:0 (10)
             0xA1, // DUP (store-load optimization)
             0x19, 0x00, 0x00, // STORE_VAR_I64 var:0
-            0xA3, 0xA3, // NOP, NOP (padding)
             0x02, 0x01, 0x00, // LOAD_CONST_I64 pool:1 (1)
             0x38, // ADD_I64
             0x19, 0x01, 0x00, // STORE_VAR_I64 var:1
