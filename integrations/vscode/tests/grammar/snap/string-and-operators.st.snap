@@ -1,5 +1,5 @@
 >FUNCTION_BLOCK MY_EXAMPLE
-#^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^^^^^^^^ source.61131-3-st keyword.control.st
 #              ^ source.61131-3-st
 #               ^^^^^^^^^^ source.61131-3-st entity.name.function.st
 >VAR
@@ -214,5 +214,5 @@
 #                  ^ source.61131-3-st punctuation.separator.st
 >
 >END_FUNCTION_BLOCK
-#^^^^^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^^^^^^^^^^^^ source.61131-3-st keyword.control.st
 >

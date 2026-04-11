@@ -5,7 +5,7 @@
 >(*@KEY@:END_DESCRIPTION*)
 #^^^^^^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.block.annotation.st punctuation.definition.comment.end.st
 >FUNCTION_BLOCK MY_BLOCK
-#^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^^^^^^^^ source.61131-3-st keyword.control.st
 #              ^ source.61131-3-st
 #               ^^^^^^^^ source.61131-3-st entity.name.function.st
 >
@@ -44,5 +44,5 @@
 #        ^ source.61131-3-st punctuation.separator.st
 >
 >END_FUNCTION_BLOCK
-#^^^^^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^^^^^^^^^^^^ source.61131-3-st keyword.control.st
 >

@@ -133,8 +133,15 @@
           "match": "(?i)\\b(?:EXIT|RETURN)\\b"
         },
         {
-          "name": "keyword.declaration.pou.st",
-          "match": "(?i)\\b(?:PROGRAM|END_PROGRAM|FUNCTION|END_FUNCTION|FUNCTION_BLOCK|END_FUNCTION_BLOCK)\\b"
+          "match": "(?i)\\b(PROGRAM|FUNCTION_BLOCK|FUNCTION)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.st" },
+            "2": { "name": "entity.name.function.st" }
+          }
+        },
+        {
+          "name": "keyword.control.st",
+          "match": "(?i)\\b(?:END_PROGRAM|END_FUNCTION_BLOCK|END_FUNCTION)\\b"
         },
         {
           "name": "keyword.declaration.type.st",
@@ -223,10 +230,6 @@
         {
           "name": "variable.other.direct-address.incomplete.st",
           "match": "%[IQM]\\*"
-        },
-        {
-          "name": "entity.name.function.st",
-          "match": "(?i)(?<=(?:PROGRAM|FUNCTION|FUNCTION_BLOCK)\\s+)[A-Za-z_][A-Za-z0-9_]*"
         },
         {
           "name": "entity.name.type.st",
