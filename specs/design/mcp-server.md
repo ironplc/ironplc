@@ -398,6 +398,10 @@ Returns every user-defined type (UDT, enumeration, type alias, array, subrange, 
 }
 ```
 
+## Execution Tools
+
+Execution tools produce or consume compiled bytecode and drive the VM. They depend on `ironplc-codegen` and `ironplc-vm` and ship in Milestone 2.
+
 ### `compile`
 
 Runs the full pipeline (parse → semantic analysis → codegen) on the supplied sources and returns an opaque **container handle** that identifies the compiled `.iplc` bytes inside the server. Also returns the task configuration extracted from the compiled program, which the agent uses to choose a sensible `duration_ms` for `run`.
@@ -623,12 +627,14 @@ This matches how the VS Code extension and CLI are invoked and avoids requiring 
 ### Crate Structure
 
 The `ironplc-mcp` crate depends on:
-- `ironplc-project` — provides the `Project` trait (used to back the in-memory session workspace) and `FileBackedProject` (used only by the optional `--project-dir` startup pre-load)
+- `ironplc-project` — provides the `Project` trait and an in-memory implementation used to hold a single tool call's sources while the compiler runs
 - `ironplc-plc2plc` — for the `format` tool
 - `ironplc-codegen` — for the `compile` and `verify` tools
 - `ironplc-vm` — for the `run` and `verify` tools
 - `ironplc-problems` — for the `explain_diagnostic` tool
 - An MCP SDK crate (see below)
+
+`ironplc-mcp` does **not** depend on `FileBackedProject` or any other filesystem-backed project implementation. REQ-STL-006 forbids filesystem I/O from tool handlers, and the only `Project` instance the server ever constructs is a short-lived in-memory one that holds the `sources` array of the tool call currently in flight.
 
 ### MCP SDK
 
@@ -636,25 +642,37 @@ The server uses [`rmcp`](https://crates.io/crates/rmcp) (the official Rust SDK f
 
 ### Source Handling
 
-**REQ-ARC-010** Source text enters the server through one of two paths:
+**REQ-ARC-010** Source text enters the server exactly once per tool call, as the `sources: [{ name, content }]` array on that call. The server constructs a fresh in-memory `Project` instance, loads every `(name, content)` pair into it, runs the tool's handler, and discards the `Project` when the handler returns. Tool calls never share `Project` instances and never persist them.
 
-1. **Session workspace** — populated via `workspace_set`, `workspace_put`, `workspace_remove`, `workspace_clear`, or the optional `--project-dir` startup pre-load. The session workspace is the default subject of every project-scoped resource and every analysis / execution tool that is not given inline `sources` (see Session State Model).
+**REQ-ARC-011** Each `{ name, content }` pair is mapped to a `FileId::from_string(name)` and loaded via `change_text_document` against the per-call `Project` instance. File names are validated against REQ-STL-004 before any compiler code runs.
 
-2. **Per-call `sources` override** — an inline `{ name: string, content: string }` array passed directly to a tool call. Per-call overrides are a "what-if" mechanism and do not mutate the session workspace.
+**REQ-ARC-012** The server does not accept raw filesystem paths as arguments in any tool, does not read files from the on-disk project directory, and does not write compilation or analysis artifacts to disk. This is the same requirement as REQ-STL-006; it is repeated here so that an implementer browsing the Architecture section cannot miss it.
 
-Neither path accepts raw filesystem paths as arguments in any tool or resource. MCP clients (AI assistants) work with text in memory, not files on disk, and the two-path model avoids path-resolution issues across different environments while still supporting quick "what-if" experiments on top of an established project.
+### Container Cache
 
-**REQ-ARC-011** Each `{ name, content }` pair the server receives — whether from a workspace mutation tool or from a per-call `sources` override — is mapped to a `FileId::from_string(name)` and loaded via `change_text_document` against the appropriate `Project` instance.
+`compile` returns an opaque `container_id` that later `run` and `verify` calls can reference without routing the bytecode through the LLM context. The container cache is the only piece of cross-call server state in this design, and it is explicitly a performance optimization: losing a cached container is never a correctness problem, only a "the agent must call `compile` again" problem.
 
-**REQ-ARC-012** For per-call `sources` overrides, the server constructs a temporary `Project` instance for the duration of the call and discards it once the response is produced; this prevents override data from leaking into the session workspace.
+**REQ-ARC-070** The server maintains a single process-wide container cache keyed by `container_id`. The cache stores the raw `.iplc` bytes, the task and program metadata returned by `compile`, and the symbol table needed by `run` to resolve fully-qualified variable names. It does not store the original `sources` or `options`.
 
-**REQ-ARC-013** The session workspace is backed by an in-memory `Project` implementation. `FileBackedProject` is used only by the optional `--project-dir` startup pre-load to walk a directory and enumerate files; the resulting files are then copied into the in-memory session workspace. After startup, no tool or resource reads from the on-disk project directory.
+**REQ-ARC-071** The cache has a bounded capacity, measured in both entry count (default 64 containers) and total bytes (default 64 MiB). Both bounds are configurable at server startup via `--max-cached-containers` and `--max-cached-container-bytes`. When inserting a new container would exceed either bound, the cache evicts entries in least-recently-used order until the new entry fits; a container that is larger than the entire byte budget on its own causes `compile` to return `ok: false` with a diagnostic rather than pinning an oversized entry.
+
+**REQ-ARC-072** Cached containers never expire on a timer; they are only evicted by LRU pressure, by `container_drop`, or by process exit. Entries are immutable from the moment `compile` inserts them — no tool mutates a cached container in place — which makes REQ-TOL-036's snapshot guarantee trivially implementable.
+
+**REQ-ARC-073** A `run` or `verify` call whose `container_id` is not in the cache returns `ok: false` with a diagnostic that names the unknown `container_id`. The agent's recovery is to re-compile. The diagnostic must distinguish "never existed" from "evicted by LRU" only if doing so is cheap; a single shared error message is acceptable.
 
 ### Variable Naming
 
-**REQ-ARC-020** Variable names appearing in `run.variables`, `run.stimuli[].set`, `verify.trace_variables`, `verify.expectations[].variable`, and the `inputs`/`outputs` arrays of `ironplc://project/io` are fully qualified. The format is `<program_name>.<variable_name>` for program-scoped variables, `<program_name>.<fb_instance>.<variable_name>` for variables inside function-block instances, and the bare variable name (no prefix) for globals and resource-level variables.
+**REQ-ARC-020** Variable names appearing in `run.variables`, `run.stimuli[].set`, `verify.trace_variables`, `verify.expectations[].variable`, and the `inputs`/`outputs` arrays of the `project_io` tool are fully qualified. The format is:
 
-**REQ-ARC-021** When a requested variable name is ambiguous or does not resolve against the loaded container, the server returns a diagnostic identifying the unresolved name and aborts the tool call.
+- `<program>.<variable>` for program-local variables.
+- `<program>.<fb_instance>.<variable>` for variables inside a function-block instance declared directly in a program. Nested function-block instances extend this rule recursively: `<program>.<outer_fb>.<inner_fb>.<variable>`, with one dot separating every level of nesting.
+- `<resource>.<variable>` for resource-scoped globals declared inside a `RESOURCE` block.
+- `<configuration>.<resource>.<program>.<variable>` (and longer forms) when disambiguation across multiple resources or configurations is required.
+- The bare variable name (no prefix) for top-level `VAR_GLOBAL` variables declared directly in a `CONFIGURATION`.
+
+The server resolves a request by scanning from the most specific prefix to the least specific; a bare name first matches top-level globals, then resource-scoped globals if the container has exactly one resource, and so on. An ambiguous match is always rejected — the resolution rule exists to reduce bookkeeping in the common single-configuration, single-resource case, not to paper over ambiguity.
+
+**REQ-ARC-021** When a requested variable name is ambiguous or does not resolve against the loaded container, the server returns `ok: false` with a diagnostic identifying the unresolved name. The tool call does not run and the VM does not start.
 
 Fully-qualified names are required even when only one program exists, so that agent-authored prompts and saved scenarios remain valid as a project grows.
 
@@ -690,33 +708,38 @@ The limits are configured at server startup and exposed as a `LimitOverrides` ob
 
 The MCP server is the first place we get to watch a real AI agent drive the IronPLC toolchain. Understanding how agents actually use it — which tools they reach for, in what sequence, how often `check` diagnostics lead to a successful self-heal on the next call, how often `run`/`verify` terminates on a resource limit rather than completing — is essential for refining the tool surface, the problem-code docs, and the prompts. This observability must be designed in, not grafted on after the fact.
 
-**REQ-ARC-040** The server emits a structured log entry for every tool call and every resource read. Each entry contains at minimum: `session_id` (a UUID assigned when the session starts), `seq` (a monotonic per-session counter), `timestamp` (ISO 8601 UTC), `kind` (`"tool"` or `"resource"`), `name` (the tool name, or the resource URI template such as `"ironplc://pou/{name}/scope"`), `duration_ms` (wall-clock execution time of the handler), `outcome` (`"ok"` or `"error"`), and — when `outcome` is `"error"` — `error_kind` drawn from a stable taxonomy (`"invalid_arguments"`, `"unknown_name"`, `"limit_exceeded"`, `"parse_failed"`, `"analysis_failed"`, `"vm_trap"`, `"internal"`).
+Because the server holds no session state, the "unit of observation" is a single connection: every MCP client connection gets a fresh `connection_id` and every tool call within that connection carries the connection id plus a monotonic per-connection sequence number. An analyst reconstructing agent behavior reads a contiguous log stream for a given `connection_id`.
 
-**REQ-ARC-041** Each log entry additionally includes a small tool-specific or resource-specific summary so that an analyst can reconstruct agent behavior without the payload itself:
-  - Analysis tools (`parse`, `check`, `format`, `symbols`): `source_count`, `source_total_bytes`, `used_session_workspace` (`true` when the call read the session, `false` when it used a per-call `sources` override), `options_override` (`true` when a per-call `options` override was supplied, `false` otherwise), `dialect_override` (the overridden dialect id, or `null`), `diagnostic_count`, `error_count`, `warning_count`, and (for `check`) a sorted deduplicated `problem_codes` array.
-  - Workspace mutation tools (`workspace_set`, `workspace_put`, `workspace_remove`, `workspace_clear`, `workspace_set_options`): `file_count_before`, `file_count_after`, and — for `workspace_set_options` — the list of option keys changed.
+**REQ-ARC-040** The server emits a structured log entry for every tool call. Each entry contains at minimum: `connection_id` (a UUID assigned when the MCP client connects), `seq` (a monotonic per-connection counter), `timestamp` (ISO 8601 UTC), `name` (the tool name), `duration_ms` (wall-clock execution time of the handler), `ok` (the top-level `ok` field from the response, see REQ-STL-005), and — when `ok` is `false` — `error_kind` drawn from a stable taxonomy (`"invalid_arguments"`, `"unknown_container"`, `"limit_exceeded"`, `"parse_failed"`, `"analysis_failed"`, `"vm_trap"`, `"internal"`).
+
+**REQ-ARC-041** Each log entry additionally includes a tool-specific summary so that an analyst can reconstruct agent behavior without the payload itself:
+  - Analysis tools (`parse`, `check`, `format`, `symbols`) and context tools (`project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`): `source_count`, `source_total_bytes`, `dialect` (the dialect id that was used), `diagnostic_count`, `error_count`, `warning_count`, and — for `check` and `parse` — a sorted deduplicated `problem_codes` array.
   - `compile`: `container_id`, `container_size_bytes`, `task_count`, `program_count`, `include_bytes`, plus the analysis-tool fields above.
-  - `run`: `container_id`, `duration_ms_requested`, `duration_ms_simulated` (how far the VM actually got), `fuel_consumed`, `trace_mode`, `trace_samples_emitted`, `truncated`, `terminated_reason`, `stimulus_count`, `task_count`.
-  - `verify`: every field `run` logs, plus `expectation_count`, `failure_count`, and `passed`.
-  - Resources: the resolved URI, the size in bytes of the serialized response, and — for `source/{file}` and `pou/{name}/*` — the template-parameter values that were bound.
+  - `container_drop`: `container_id`, `removed`.
+  - `run`: `container_id`, `duration_ms_requested`, `duration_ms_simulated` (how far the VM actually got), `fuel_consumed`, `trace_mode`, `trace_variable_count`, `trace_samples_emitted`, `truncated`, `terminated_reason`, `stimulus_count`.
+  - `verify`: every field `run` logs, plus `expectation_count`, `failure_count`, and `passed`, plus the analysis-tool fields for the compile stage.
+  - `list_options` and `explain_diagnostic`: `response_size_bytes`.
+  - Every entry also carries `response_size_bytes` so that an analyst can spot an agent pulling large responses repeatedly.
 
-**REQ-ARC-042** The server does **not** log source text, stimulus values, expectation values, trace variable values, or explanation bodies by default. These fields are replaced in the log with fixed-width content hashes (first 12 hex characters of a SHA-256 over the UTF-8 bytes) so that an analyst can detect "the agent sent the same source twice" or "the source changed between `check` calls" without the payload ever leaving the host. A `--log-level=debug` startup flag opts into logging full payloads for local debugging; this mode must print a warning to stderr at session start that payload logging is enabled.
+**REQ-ARC-042** The server does **not** log source text, stimulus values, expectation values, trace variable values, or explanation bodies by default. These fields are replaced in the log with fixed-width content hashes (first 12 hex characters of a SHA-256 over the UTF-8 bytes of the canonical JSON encoding) so that an analyst can detect "the agent sent the same source twice" or "the source changed between `check` calls" without the payload ever leaving the host. A `--log-level=debug` startup flag opts into logging full payloads for local debugging; this mode must print a warning to stderr at connection start that payload logging is enabled.
 
 **REQ-ARC-043** Logs are written to stderr by default, because the stdio transport uses stdout for the MCP JSON-RPC stream and any log output on stdout would corrupt the protocol. The `--log-file <path>` startup flag redirects logs to a file. The `--log-format` startup flag accepts `"json"` (one JSON object per line, the default) or `"text"` (human-readable, not intended for machine analysis).
 
-**REQ-ARC-044** At session start the server emits a `session_start` event containing `session_id`, the server version, the effective resource limits (after applying command-line overrides), the `--project-dir` value if present, the file count of any pre-loaded workspace, and the startup `options` (with any secret-looking fields redacted). At session end the server emits a `session_end` event containing `session_id`, the total session wall-clock, the total number of tool calls and resource reads, per-tool call counts, and the reason for session termination (`"client_disconnect"`, `"signal"`, `"internal_error"`).
+**REQ-ARC-044** At connection start the server emits a `connection_start` event containing `connection_id`, the server version, the effective resource limits (after applying command-line overrides), and the effective container-cache bounds. At connection end the server emits a `connection_end` event containing `connection_id`, the total connection wall-clock, the total number of tool calls, per-tool call counts, and the reason for termination (`"client_disconnect"`, `"signal"`, `"internal_error"`).
 
-**REQ-ARC-045** The log stream is sufficient — without any payload fields — to answer at least: (1) the full ordered sequence of tool and resource calls in a session; (2) which calls used the session workspace vs. a per-call `sources` override; (3) which `check` calls returned which problem codes and whether a subsequent call presented a source with a different content hash; (4) which `verify` calls passed, and for failing ones, the `terminated_reason` and `failure_count`; (5) the distribution of `terminated_reason` values across `run` and `verify` calls in the session.
+**REQ-ARC-045** The log stream is sufficient — without any payload fields — to answer at least: (1) the full ordered sequence of tool calls in a connection; (2) which `check` calls returned which problem codes and whether a subsequent call presented a source with a different content hash; (3) which `verify` calls passed, and for failing ones, the `terminated_reason` and `failure_count`; (4) the distribution of `terminated_reason` values across `run` and `verify` calls in the connection; (5) container-cache pressure, measured as the ratio of `unknown_container` errors to `compile` calls.
 
 ### Diagnostic Mapping
 
-The existing `Diagnostic` type (from `ironplc-dsl`) carries file ID, source span (byte offsets), problem code, and message. The MCP server converts byte offsets to line/column numbers using the source text before serializing to JSON. This is the same conversion the LSP server already performs.
+The existing `Diagnostic` type (from `ironplc-dsl`) carries file ID, source span (byte offsets), problem code, and message. The MCP server converts byte offsets to line/column numbers using the source text supplied in the same call, before serializing to JSON. This is the same conversion the LSP server already performs, and once both servers mature they should share a single implementation (see Future Work).
+
+Line numbers in the serialized diagnostic are 1-indexed. Columns are 1-indexed and count Unicode scalar values — not bytes, not UTF-16 code units — so that a diagnostic's span is identical regardless of how the agent's MCP client encodes strings internally. A tab counts as one column; the server does not interpret tab stops. `end_line`/`end_col` refer to the character immediately after the last character of the span, so an empty span has `start == end`. These are the same semantics as REQ-TOL-023.
 
 ### Error Handling
 
 Tool handlers return structured JSON responses in all cases — they never panic or return MCP-level errors for compiler failures. A parse error is a valid `check` response with `ok: false` and populated diagnostics, not an MCP error.
 
-MCP-level errors (invalid tool name, malformed arguments) are handled by the SDK.
+MCP-level errors (invalid tool name, malformed arguments that the SDK rejects before the handler runs) are handled by the SDK.
 
 ### Tool Descriptions Agents See
 
@@ -726,15 +749,19 @@ Every MCP tool is registered with a short description string that the client han
 
 - `parse`: "Syntax check only. Use while drafting to confirm the source tokenizes and parses. Do NOT use this to validate a change — it does not catch type errors, undeclared symbols, or any other semantic rule. Call `check` for that."
 - `check`: "Primary validator. Runs parse and full semantic analysis and returns structured diagnostics. ALWAYS run this before reporting success to the user and before calling `compile`, `run`, or `verify`. Self-heal by reading the returned diagnostics, fixing the code, and calling `check` again. Call `explain_diagnostic` to understand any unfamiliar problem code BEFORE editing the source."
-- `format`: "Canonical re-rendering using the project's formatter. Safe to call on any parseable source. Does not mutate the session — pair with `workspace_put` to persist the formatted content."
-- `symbols`: "Top-level declarations of programs, functions, function blocks, and types. Use the `pou` filter when you only care about one POU; calling this without the filter can return a large response for a real project."
-- `list_options`: "Enumerates dialects and feature flags you are allowed to pass in `options`. Call this ONCE per session when you need to know which flags exist. Do NOT toggle flags or change dialect to make errors go away — the server emits a warning when you do, and the behavior is logged."
+- `format`: "Canonical re-rendering using the project's formatter. Safe to call on any parseable source. The server holds no state between calls; if you want the formatted content saved anywhere, store it yourself."
+- `symbols`: "Full symbol table for a set of sources. Large responses are capped — prefer the `pou` filter or one of the context tools (`pou_scope`, `project_io`, `types_all`) when you only need part of the answer."
+- `list_options`: "Enumerates dialects and feature flags you are allowed to pass in `options`. Every analysis, context, and execution tool requires an `options` object; unknown keys are rejected. Do NOT toggle flags or change dialect to make errors go away — dialect changes are recorded in the log stream."
 - `explain_diagnostic`: "Look up the human-readable explanation for a problem code (e.g. `P0042`). Call this before editing code in response to a diagnostic you do not fully understand."
-- `get_resource`: "Fetches any `ironplc://` resource as a tool call. Prefer the targeted resource URIs (`pou/{name}/scope`, `project/io`) over the whole-project `symbols` tool when you only need context for one POU."
+- `project_manifest`: "Flat summary of what is declared in a source set (file names, POU names, UDT names by kind). Cheap to call; use it at the start of a task to build a mental model before drilling in."
+- `project_io`: "Inputs the caller can drive and outputs the caller can observe, for planning a `run` or `verify` call. This is the right tool to call before constructing `stimuli` or `expectations`."
+- `pou_scope`: "Every variable visible to a single POU. Prefer this over `symbols` when editing one POU."
+- `pou_lineage`: "Upstream and downstream POU dependencies. Use this to decide which other POUs to pull into context before editing one."
+- `types_all`: "Every user-defined type with enough detail to reference a field or enum value without re-reading the source."
 - `compile`: "Only call this when you need a compiled artifact to `run` or `verify`. For validation, call `check` instead — `check` is faster, produces the same diagnostics, and does not incur codegen cost. A failing `compile` does not give you any information that a failing `check` would not."
-- `run`: "Simulates a compiled container in the VM for a caller-specified duration. Use this only after `check` passes. Drive inputs over time via `stimuli` and observe outputs via `variables`. The returned `trace` is bounded; use `trace.mode: \"final_only\"` or the `summary` object when you only care about outcomes."
+- `container_drop`: "Explicitly releases a compiled container from the cache. Not usually necessary — the cache evicts on LRU pressure — but available for long-running connections."
+- `run`: "Simulates a compiled container in the VM for a caller-specified duration. Use this only after `check` passes. Drive inputs over time via `stimuli` and observe outputs via `variables` (or set `trace_outputs: true` to pull every externally visible variable). The returned `trace` is bounded; use the `summary` object when you only care about outcomes."
 - `verify`: "One-shot compile + run + assertion evaluation. Prefer this over a manual `compile`+`run` when you have concrete expectations. Failed expectations are returned structurally — react to `failures`, not to the raw trace."
-- `workspace_*`: Each workspace tool description must explicitly state that it mutates the session workspace, and that subsequent tool/resource reads (without a per-call `sources` override) will see the change.
 
 **REQ-ARC-051** Tool descriptions must NOT make claims the server cannot verify. In particular, tool descriptions may not promise things like "always faster than X" or "preferred for all use cases"; they must state concrete semantic differences and call out the cases where the wrong tool is tempting.
 
@@ -742,20 +769,30 @@ Every MCP tool is registered with a short description string that the client han
 
 Context scoping is enforced structurally, not by prose recommendations to the agent. Three mechanisms work together to keep token usage lean:
 
-**REQ-ARC-060** The `symbols` tool accepts an optional `pou: string` filter. When present, the response includes only the named POU and any types directly referenced by its variable declarations. Agents editing a single POU call `symbols` with the filter; the server does not need to return the full project symbol table.
+**REQ-ARC-060** The `symbols` tool accepts an optional `pou: string` filter and caps unfiltered responses at `max_symbols_response_bytes` (see REQ-TOL-055). Agents editing a single POU are pushed toward the filter; a server that hits the cap returns an empty set and a diagnostic that names the context tools instead.
 
-**REQ-ARC-061** The `get_resource` tool description (see REQ-ARC-050) explicitly steers the agent toward the scoped resources (`pou/{name}/scope`, `pou/{name}/lineage`, `project/io`) rather than the whole-project `symbols` tool.
+**REQ-ARC-061** The Context Tools group (`project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`) is the blessed path for targeted lookups. The tool descriptions in REQ-ARC-050 explicitly steer the agent toward a context tool over `symbols` whenever the agent's question is narrower than "the whole project".
 
-**REQ-ARC-062** Every tool and resource response carries a `response_size_bytes` field in the structured log (see REQ-ARC-041). An analyst reviewing the session log can trivially spot an agent that is pulling the entire project on every turn instead of scoped context, and use that evidence to refine tool descriptions or add further structural guards.
+**REQ-ARC-062** Every tool response carries a `response_size_bytes` field in the structured log (see REQ-ARC-041). An analyst reviewing the connection log can trivially spot an agent that is pulling the entire project on every turn instead of scoped context, and use that evidence to refine tool descriptions or add further structural guards.
+
+## Milestones
+
+The design above is intentionally split into two milestones so that the first release can ship without codegen or VM integration.
+
+**Milestone 1 — validation surface.** `parse`, `check`, `format`, `symbols`, `list_options`, `explain_diagnostic`, plus every context tool (`project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`). This milestone depends only on the compiler front end, the analyzer, `plc2plc`, and `ironplc-problems`. It covers the highest-value agent use case — "write PLC code, get structured feedback, self-heal" — without pulling in `ironplc-codegen` or `ironplc-vm`.
+
+**Milestone 2 — execution surface.** `compile`, `container_drop`, `run`, `verify`, the container cache (REQ-ARC-070..073), the VM sandboxing limits (REQ-ARC-030..035), and the `verify-logic` prompt. This milestone adds dependencies on `ironplc-codegen` and `ironplc-vm`.
+
+Both milestones obey every REQ in the Design Principle section (REQ-STL-001..006). The milestone split is a delivery schedule, not an architectural boundary: the stateless tool surface is designed so that adding the Milestone 2 tools does not require revisiting any Milestone 1 interface.
 
 ## Future Work
 
-These items are intentionally out of scope for the initial milestone. They are listed here so the surface stays small and so implementers and reviewers know what has been considered and deliberately deferred.
+These items are intentionally out of scope for this design. They are listed here so the surface stays small and so implementers and reviewers know what has been considered and deliberately deferred.
 
-- **Persistent test harness.** The `verify` tool is invocation-scoped: each call carries its own `stimuli` and `expectations`. A future milestone should add a conventional directory (e.g. `tests/`) in the session workspace and a `run_tests` tool that discovers and runs every saved scenario. The agent then curates tests alongside the source instead of re-inventing assertions on every turn.
-- **Aggregate stimulus values for complex types.** The value encoding in REQ-TOL-043 covers reading arrays and structs in `trace[].variables`. Driving them from `stimuli.set` is also specified, but may need refinement for partial-update semantics (for example, setting a single array element by index, or setting one field of a struct without supplying the whole object). A follow-up should pin these down once real agent usage reveals what shapes are needed.
+- **Stateful caching layer.** The current design re-parses and re-analyzes every `check` call. A future revision may add a content-addressed cache keyed by a hash of `(sources, options)` so that repeated calls on unchanged inputs skip analysis. This is purely a performance optimization and must not change any tool's observable behavior.
+- **Persistent test harness.** The `verify` tool is invocation-scoped: each call carries its own `stimuli` and `expectations`. A future milestone should let the agent register named scenarios out-of-band and invoke them by name, so the agent curates tests alongside the source instead of re-inventing assertions on every turn.
+- **Aggregate stimulus values for complex types.** REQ-TOL-043 currently requires the caller to supply a full array or full struct when driving one via `stimuli.set`. A follow-up should define partial-update semantics (for example, setting a single array element by index, or setting one field of a struct without supplying the whole object) once real agent usage reveals what shapes are needed.
 - **Streaming traces.** Long `run` calls currently return the complete trace in a single response. A future revision may offer incremental trace delivery via MCP's streaming facilities, which would let the agent react to intermediate values without extending `duration_ms` conservatively.
-- **Workspace snapshots.** There is currently no way to checkpoint the session workspace and roll it back on a failed edit. A `workspace_snapshot` / `workspace_restore` pair would let an agent try a risky refactor and atomically revert.
-- **Multi-project support.** The server holds a single session workspace per connection. Multi-project scenarios (shared library + application) can be expressed today by loading both into one session, but a proper multi-project layout with per-project dialects and import boundaries would require a different state model.
+- **On-disk workspace management.** The server never touches disk in this design. An agent that wants to persist an edit writes it through its own filesystem tools. A future companion tool or MCP client helper could formalize the "write these sources back to a project directory" workflow, but it deliberately lives outside the MCP boundary — the server itself stays stateless and file-system-free.
 - **IEC 61131-3 Edition 3 dialect semantics.** The `dialect` preset exists but the precise set of Ed. 3 features supported by the MCP server should be documented once the compiler's Ed. 3 support is complete. A future revision of this doc should link directly to a compatibility matrix.
-- **LSP parity for the in-memory analyzer.** The LSP server already converts byte offsets to line/column diagnostics (see Diagnostic Mapping). The MCP server borrows that code; once both mature, they should share a single implementation so that a diagnostic seen in an editor and a diagnostic seen by an agent are byte-identical.
+- **LSP parity for the byte-offset-to-line-column conversion.** The LSP server already converts byte offsets to line/column diagnostics (see Diagnostic Mapping). The MCP server borrows that code; once both mature, they should share a single implementation so that a diagnostic seen in an editor and a diagnostic seen by an agent are byte-identical.
