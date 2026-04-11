@@ -1,5 +1,6 @@
 mod buffers;
 pub(crate) mod builtin;
+pub mod debug_hook;
 pub mod error;
 pub(crate) mod intrinsic;
 #[cfg(feature = "profiling")]
@@ -14,6 +15,7 @@ pub(crate) mod variable_table;
 mod vm;
 
 pub use buffers::VmBuffers;
+pub use debug_hook::{DebugHook, NoopDebugHook};
 #[cfg(feature = "profiling")]
 pub use profile::InstructionProfile;
 pub use scheduler::{ProgramInstanceState, TaskState};
