@@ -4,7 +4,7 @@
 
 This document describes the design for an MCP (Model Context Protocol) server that exposes IronPLC compiler capabilities to AI assistants and other MCP clients. The server lives in the `compiler/mcp` crate (`ironplc-mcp`), which already exists as a placeholder.
 
-The goal is to let AI assistants act as a "resident expert" for IEC 61131-3 Structured Text: writing, validating, simulating, and understanding PLC programs by calling compiler and VM operations as MCP tools and resources. The agent treats the MCP server as its professional engineering toolchain, not just a text generator.
+The goal is to let AI assistants act as a "resident expert" for IEC 61131-3 Structured Text: writing, validating, simulating, and understanding PLC programs by calling compiler and VM operations as MCP tools. The agent treats the MCP server as its professional engineering toolchain, not just a text generator.
 
 ## Background: What MCP Servers Typically Expose for Compilers
 
@@ -17,16 +17,18 @@ MCP servers that front compilers typically provide tools in these categories:
 5. **Execution / evaluation** — run a program and return output or variable values
 6. **Documentation / explanation** — look up what a problem code means, describe a language construct
 
-IronPLC already has all the underlying capabilities. The MCP server maps them to tools and resources.
+IronPLC already has all the underlying capabilities. The MCP server maps them to tools.
 
 ## Guiding Principle: The Agentic Verification Loop
 
 The server is designed to support an autonomous agent workflow:
 
-1. **Draft** — agent writes ST code using Resource context (symbol tables, type info, dependency graph)
-2. **Verify** — agent calls `check` (full parse + semantic analysis) to get structured JSON diagnostics and self-heals
-3. **Simulate** — agent calls `run` to verify logical correctness against expected outputs
-4. **Finalize** — agent commits only when all checks pass
+1. **Draft** — agent assembles the relevant set of source files in its own context and queries the server for structural information (symbol table, I/O surface, dependency graph) as needed
+2. **Verify** — agent calls `check` (full parse + semantic analysis) with the current sources and reads structured JSON diagnostics to self-heal
+3. **Simulate** — agent calls `run` or `verify` to confirm logical correctness against expected outputs
+4. **Finalize** — agent persists the sources on its own side when all checks pass
+
+The agent is the sole owner of project state. The server never writes to disk, never reads the filesystem from a tool handler, and never holds source text between calls; it is a pure compilation and simulation service driven by whatever sources the agent sends on each call.
 
 ## Tool Vocabulary
 
@@ -40,56 +42,23 @@ The MCP tool names are aligned with the existing CLI vocabulary to avoid contrib
 
 Agents familiar with the CLI can use the MCP tools with matching expectations.
 
-Resources provide "background knowledge" (scoped context, type tables, dependency graphs). Tools provide "hands" (actions with structured feedback). This separation keeps context lean: the agent only loads the scope relevant to the POU it is editing.
+## Design Principle: Stateless Tool Surface
 
-## Session State Model
+Every tool in this design is a pure function of its explicit inputs. There is no session workspace, no cached analysis between calls, no `--project-dir` pre-load, and no disk I/O from any tool handler. The single exception is the process-level container cache described under Architecture — it stores compiled `.iplc` bytes keyed by an opaque handle so that `compile → run` and `compile → verify` can hand off without routing bytecode through the LLM context. The cache is a performance optimization, not a source of truth; its contents are never visible to any tool that accepts `sources`.
 
-An MCP client connects to one server process over stdio. For the lifetime of that connection the server holds a single **session workspace**, which is the source of truth for every project-scoped resource and for any tool call that is not given inline `sources`.
+The agent is the sole owner of project state. It holds the files (in its own context, on its own filesystem, or both), decides which subset to send on any given call, and persists edits on its own side. The MCP server's job is to answer one question at a time about whichever sources the agent hands it, and to hand back structured results the agent can react to.
 
-The session workspace contains:
+**REQ-STL-001** Every analysis, context, and execution tool accepts a required `sources` parameter: an array of `{ name: string, content: string }` objects. The tool operates on exactly the supplied sources for that single call. Subsequent calls that want the same inputs must re-send them.
 
-- a set of named source files (`name → content`)
-- the active compiler options (dialect + feature flags)
-- any cached analysis artifacts the server derives from the above
+**REQ-STL-002** Every analysis, context, and execution tool accepts a required `options` object that specifies the compiler dialect and any feature-flag overrides. The tool uses those options for exactly that single call. The server does not carry options across calls and does not apply implicit defaults; callers that want the standard IEC 61131-3 Edition 2 dialect must pass `{ "dialect": "iec61131-3-ed2" }` explicitly. The set of valid keys is the set returned by `list_options`; any other key is rejected with a diagnostic and the tool does not run.
 
-The session workspace is authoritative: when an agent calls a project-scoped resource like `ironplc://pou/Motor/scope`, the server answers from the session workspace, not from disk. This removes the "is this the on-disk file or my edit?" ambiguity — if the agent wants the answer to reflect its edit, it must first write the edit into the session.
+**REQ-STL-003** The server holds no per-client state across tool calls other than the process-level container cache (see Container Cache under Architecture). Two successive calls from the same MCP client that supply identical `sources` and `options` produce identical responses up to non-determinism in wall-clock fields such as log timestamps.
 
-### Lifecycle
+**REQ-STL-004** File identity inside a single call is carried by the `name` field of each `sources` entry. Names must be valid UTF-8, non-empty, at most 256 bytes, and must not contain NUL, `/`, or `\`. Duplicate names within a single `sources` array are rejected with a diagnostic before any analysis runs. The server does not interpret names as filesystem paths and never touches the filesystem with them; they exist so that diagnostics can cite a file identifier the agent already recognizes in its own context.
 
-**REQ-SES-001** When an MCP client connects, the server starts a new session with an empty workspace (no files) and the default options (dialect `"iec61131-3-ed2"`, no feature-flag overrides).
+**REQ-STL-005** Every tool response includes a top-level `ok: boolean` field. `ok` is `true` when the tool produced its primary result (for analysis tools, a diagnostics array with no `error`-severity entries; for `compile`, a non-null `container_id`; for `run`, a completed trace; for `verify`, a decided pass/fail) and `false` when it did not. The `ok` field never replaces a tool's specific result fields; it exists as a single uniform success predicate so that agent code handling many tools can share one success check.
 
-**REQ-SES-002** When the MCP client disconnects, the session and all cached analysis artifacts are dropped.
-
-**REQ-SES-003** The server supports at most one active session per process; the MCP stdio transport naturally enforces this because the process itself is per-connection.
-
-**REQ-SES-004** The server accepts an optional `--project-dir <path>` command-line argument at startup. When present, the server pre-populates the session workspace with every source file that `FileBackedProject` would discover under the given path. The `--project-dir` mode is purely a convenience — no tool, resource, or response depends on the presence of a project directory.
-
-### Resources always read the session workspace
-
-**REQ-SES-010** Every resource under `ironplc://` reads its data from the session workspace. When the workspace is empty, resources return empty collections (empty `files`, empty `variables`, empty `types`) rather than an MCP-level error.
-
-**REQ-SES-011** Resources that depend on semantic analysis (`scope`, `lineage`, `types/all`, `project/io`, any diagnostics surfaced through a resource) reflect the current session workspace state and any edits made via workspace mutation tools since the most recent read.
-
-**REQ-SES-012** The server caches semantic-analysis artifacts until the session workspace is next mutated; after any mutation the server invalidates the cached artifacts. This is an implementation obligation, not an API-visible behavior.
-
-### Tools and `sources`: session-first with per-call override
-
-**REQ-SES-020** Every tool whose signature includes a `sources` parameter (`parse`, `check`, `format`, `symbols`, `compile`, `verify`) treats that parameter as **optional**. When `sources` is omitted or `null`, the tool operates on the session workspace. When `sources` is provided, the tool operates on that inline source set for that call only and **does not** mutate the session workspace.
-
-**REQ-SES-021** Per-call `sources` overrides are a "what-if" mechanism: they let the agent try an unsaved edit without committing it to the session. The caller that wants subsequent calls to see the edit must first call `workspace_put` (or `workspace_set`).
-
-**REQ-SES-022** Every tool whose signature includes an `options` parameter treats it as optional in the same way: when omitted, the tool uses the session's active options; when provided, the tool uses the per-call options without updating the session.
-
-**REQ-SES-023** A tool call that provides a per-call `sources` override uses only those sources — the session workspace is ignored for that call. The server does not merge per-call `sources` on top of session files.
-
-### Precedence summary
-
-| Call shape                                | Files used      | Options used            |
-|-------------------------------------------|-----------------|-------------------------|
-| tool with no `sources`, no `options`      | session files   | session options         |
-| tool with no `sources`, with `options`    | session files   | per-call options        |
-| tool with `sources`, no `options`         | per-call files  | session options         |
-| tool with `sources` and `options`         | per-call files  | per-call options        |
+**REQ-STL-006** The server performs no disk I/O from any tool or resource handler. It does not accept filesystem paths as tool inputs, does not read files relative to any working directory, and does not write compilation or analysis artifacts to disk. The only files the server process ever opens are its own log output (see Logging and Observability) and, optionally, its own binary-embedded problem-code documentation.
 
 ## Resources
 
