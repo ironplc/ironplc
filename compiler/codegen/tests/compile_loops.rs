@@ -78,24 +78,24 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     // x=var:0, constants: pool:0=1, pool:1=5
-    // Bytecode layout:
+    // Bytecode layout (store-load optimization inserts DUP before STORE x):
     //   0: LOAD_VAR_I32 var:0          (body: x)
     //   3: LOAD_CONST_I32 pool:0 (1)   (body: 1)
     //   6: ADD_I32                      (x + 1)
-    //   7: STORE_VAR_I32 var:0         (x := ...)
-    //  10: LOAD_VAR_I32 var:0          (condition: x)
-    //  13: LOAD_CONST_I32 pool:1 (5)   (condition: 5)
-    //  16: GT_I32                       (x > 5)
-    //  17: JMP_IF_NOT offset:-20 -> 0  (back to LOOP if false)
-    //  20: RET_VOID
+    //   7: DUP                          (store-load optimization)
+    //   8: STORE_VAR_I32 var:0         (x := ...)
+    //  11: LOAD_CONST_I32 pool:1 (5)   (condition: 5)
+    //  14: GT_I32                       (x > 5)
+    //  15: JMP_IF_NOT offset:-18 -> 0  (back to LOOP if false)
+    //  18: RET_VOID
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
 
-    // Verify JMP_IF_NOT at offset 17 with backward offset -20
-    assert_eq!(bytecode[17], 0xB2); // JMP_IF_NOT
-    assert_eq!(i16::from_le_bytes([bytecode[18], bytecode[19]]), -20);
+    // Verify JMP_IF_NOT at offset 15 with backward offset -18
+    assert_eq!(bytecode[15], 0xB2); // JMP_IF_NOT
+    assert_eq!(i16::from_le_bytes([bytecode[16], bytecode[17]]), -18);
 
     assert_eq!(
         bytecode,
@@ -105,10 +105,9 @@ END_PROGRAM
             0x30, // ADD_I32
             0xA1, // DUP (store-load optimization)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0xA3, 0xA3, // NOP, NOP (padding)
             0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
             0x6C, // GT_I32
-            0xB2, 0xEC, 0xFF, // JMP_IF_NOT offset:-20
+            0xB2, 0xEE, 0xFF, // JMP_IF_NOT offset:-18
             0xB5, // RET_VOID
         ]
     );
