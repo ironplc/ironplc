@@ -5,7 +5,7 @@
 //! removing them. Jump offsets are adjusted to account for removed bytes.
 //!
 //! This pass runs after the emitter's own in-line peephole optimizations
-//! (consecutive load -> DUP, store-load -> DUP+STORE+NOP) and complements
+//! (consecutive load -> DUP, store-load -> DUP+STORE) and complements
 //! them by handling arithmetic identities that are only visible once the
 //! full instruction stream exists.
 //!
@@ -586,15 +586,6 @@ mod tests {
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
-    #[test]
-    fn optimize_when_bytecode_contains_nop_then_preserves_nop() {
-        // NOP bytes (inserted by the emitter's store-load peephole) must
-        // be preserved as 1-byte instructions.
-        let bytecode = vec![opcode::NOP, opcode::NOP, opcode::RET_VOID];
-        let result = optimize(&bytecode, &[]);
-        assert_eq!(result, bytecode);
-    }
-
     // --- String opcode regression tests (instruction size correctness) ---
 
     #[test]
@@ -606,7 +597,7 @@ mod tests {
         bytecode.extend_from_slice(&str_load_var(100));
         bytecode.push(opcode::POP);
         bytecode.extend_from_slice(&jmp(1));
-        bytecode.push(opcode::NOP);
+        bytecode.push(opcode::POP);
         bytecode.push(opcode::RET_VOID);
 
         let result = optimize(&bytecode, &[]);
@@ -621,7 +612,7 @@ mod tests {
         bytecode.extend_from_slice(&find_str(100, 200));
         bytecode.push(opcode::POP);
         bytecode.extend_from_slice(&jmp(1));
-        bytecode.push(opcode::NOP);
+        bytecode.push(opcode::POP);
         bytecode.push(opcode::RET_VOID);
 
         let result = optimize(&bytecode, &[]);
@@ -635,7 +626,7 @@ mod tests {
         let mut bytecode = Vec::new();
         bytecode.extend_from_slice(&str_init(100, 80));
         bytecode.extend_from_slice(&jmp(1));
-        bytecode.push(opcode::NOP);
+        bytecode.push(opcode::POP);
         bytecode.push(opcode::RET_VOID);
 
         let result = optimize(&bytecode, &[]);

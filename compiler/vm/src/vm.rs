@@ -1638,7 +1638,6 @@ fn execute(
             opcode::SWAP => {
                 stack.swap()?;
             }
-            opcode::NOP => {}
             // --- Function block opcodes ---
             opcode::FB_LOAD_INSTANCE => {
                 let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
