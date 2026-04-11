@@ -60,212 +60,25 @@ The agent is the sole owner of project state. It holds the files (in its own con
 
 **REQ-STL-006** The server performs no disk I/O from any tool or resource handler. It does not accept filesystem paths as tool inputs, does not read files relative to any working directory, and does not write compilation or analysis artifacts to disk. The only files the server process ever opens are its own log output (see Logging and Observability) and, optionally, its own binary-embedded problem-code documentation.
 
-## Resources
-
-Resources give the agent contextual knowledge without requiring it to read raw source files. Every resource reads from the session workspace (see Session State Model).
-
-### `ironplc://project/manifest`
-
-**REQ-RES-001** The `ironplc://project/manifest` resource returns the list of all source files in the session workspace.
-
-**REQ-RES-002** The `ironplc://project/manifest` resource returns the names of all Programs, Functions, and Function Blocks declared across all source files.
-
-**REQ-RES-003** The `ironplc://project/manifest` resource returns each UDT as a top-level named list grouped by kind: `enumerations`, `structures`, `arrays`, `subranges`, `aliases`, `strings`, and `references`.
-
-**Output:**
-```json
-{
-  "files": ["main.st", "types.st"],
-  "programs": ["Main"],
-  "functions": ["Scale"],
-  "function_blocks": ["PID"],
-  "enumerations": ["MotorState", "Direction"],
-  "structures": ["PidParams"],
-  "arrays": [],
-  "subranges": [],
-  "aliases": [],
-  "strings": [],
-  "references": []
-}
-```
-
-### `ironplc://source/{file}`
-
-**REQ-RES-040** The `ironplc://source/{file}` resource returns the raw text of the named source file from the session workspace.
-
-**REQ-RES-041** The `{file}` template parameter matches the file names returned by `ironplc://project/manifest`.
-
-**REQ-RES-042** The source resource returns a JSON object with the fields `file`, `content`, and `length_bytes`.
-
-**REQ-RES-043** When the requested file is not in the session workspace, the resource returns `found: false`, a `null` `content`, and a populated `diagnostics` array, rather than an MCP-level error.
-
-This resource exists so an agent editing an existing project does not have to fall back to its own filesystem tools to read source text, which would bypass the MCP boundary and reintroduce path-resolution issues.
-
-**Output:**
-```json
-{
-  "found": true,
-  "file": "motor.st",
-  "content": "PROGRAM Main ... END_PROGRAM",
-  "length_bytes": 324,
-  "diagnostics": []
-}
-```
-
-### `ironplc://project/io`
-
-**REQ-RES-050** The `ironplc://project/io` resource returns every variable in the project that can be driven from outside the program: `VAR_INPUT` parameters of Programs, `VAR_EXTERNAL` references, global variables, and any variable mapped to a hardware input address (`%I*`).
-
-**REQ-RES-051** The `ironplc://project/io` resource returns every variable that represents an output visible outside the program: `VAR_OUTPUT` parameters of Programs, global variables marked as outputs, and any variable mapped to a hardware output address (`%Q*`).
-
-**REQ-RES-052** Each entry in the `inputs` and `outputs` arrays contains `name` (fully qualified; see Variable Naming in Architecture), `type`, and `address` (the direct-variable string such as `"%IX0.0"` when present, otherwise `null`).
-
-This resource gives the agent a single call that answers "what can I drive?" and "what should I observe?" when planning a `run` or `verify` invocation. Without it, an agent has to synthesize this information by walking `symbols` output and guessing which variables are externally observable.
-
-**Output:**
-```json
-{
-  "inputs":  [{ "name": "Main.Start",    "type": "BOOL", "address": "%IX0.0" }],
-  "outputs": [{ "name": "Main.MotorRun", "type": "BOOL", "address": "%QX0.0" }]
-}
-```
-
-### `ironplc://pou/{name}/scope`
-
-**REQ-RES-010** The `ironplc://pou/{name}/scope` resource returns all variables visible to the named POU, including local variables, input/output parameters, and global variables in scope.
-
-**REQ-RES-011** The scope resource derives variable information from the symbol table built during semantic analysis.
-
-**REQ-RES-012** The scope resource returns a JSON object with a `variables` array. Each entry contains: `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`), and `initial_value` (string representation, or `null` when no initial value is declared).
-
-**Output:**
-```json
-{
-  "pou": "Motor",
-  "variables": [
-    { "name": "Start",    "type": "BOOL", "direction": "In",    "initial_value": "FALSE" },
-    { "name": "Counter",  "type": "DINT", "direction": "Local", "initial_value": "0" },
-    { "name": "MotorRun", "type": "BOOL", "direction": "Out",   "initial_value": null }
-  ]
-}
-```
-
-### `ironplc://types/all`
-
-**REQ-RES-020** The `ironplc://types/all` resource returns all user-defined types (UDTs, enumerations, type aliases) from the type table.
-
-**REQ-RES-021** Each type entry includes at minimum: `name`, `kind`, and kind-specific detail fields (`values` for enumerations, `fields` for structs).
-
-**Output:**
-```json
-{
-  "types": [
-    { "name": "MotorState", "kind": "enum", "values": ["Stopped", "Running", "Fault"] },
-    { "name": "PidParams", "kind": "struct", "fields": [{ "name": "Kp", "type": "REAL" }] }
-  ]
-}
-```
-
-### `ironplc://pou/{name}/lineage`
-
-**REQ-RES-030** The `ironplc://pou/{name}/lineage` resource returns the upstream and downstream dependencies of the named POU derived from the dependency DAG.
-
-**REQ-RES-031** The lineage resource returns a JSON object with three fields: `pou` (the requested POU name), `upstream` (an array of POU names that the requested POU depends on, directly or transitively), and `downstream` (an array of POU names that depend on the requested POU, directly or transitively). This JSON representation is the default because agents parse adjacency-list JSON more reliably than DOT syntax, and the JSON encoding is shorter for the same information.
-
-**REQ-RES-032** The lineage resource accepts an optional `format` query-string parameter (`ironplc://pou/{name}/lineage?format=dot`) that returns the same graph in DOT (Graphviz) syntax instead. DOT remains available for callers that want to render the graph visually, but it is never the default and is never required by any tool in this design.
-
-**Output:**
-```json
-{
-  "pou": "Motor",
-  "upstream":   ["PID", "Scale"],
-  "downstream": ["Main"]
-}
-```
-
 ## Tools
 
 Tools are grouped into three categories:
 
-1. **Workspace mutation tools** — `workspace_set`, `workspace_put`, `workspace_remove`, `workspace_clear`, `workspace_set_options`. These modify the session workspace.
-2. **Analysis tools** — `parse`, `check`, `format`, `symbols`, `list_options`, `explain_diagnostic`. These read the session workspace (or a per-call `sources` override) and return structured information.
-3. **Execution tools** — `compile`, `run`, `verify`. These produce or consume bytecode and/or drive the VM.
+1. **Analysis tools** — `parse`, `check`, `format`, `symbols`, `list_options`, `explain_diagnostic`. Given `sources` and `options`, these run some stage of the compiler and return structured information about the source.
+2. **Context tools** — `project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`. These are lightweight lookups that answer a specific structural question about a source set without requiring the agent to parse the much larger output of `symbols` itself.
+3. **Execution tools** — `compile`, `run`, `verify`. These produce or consume bytecode and drive the VM.
 
-### `workspace_set`
-
-Replaces the entire session workspace with a new set of sources. This is the "load from scratch" path an agent uses when it receives a user-supplied program text or wants to wipe state between unrelated tasks.
-
-**Inputs:**
-- `sources`: array of `{ name: string, content: string }`
-
-**REQ-TOL-100** The `workspace_set` tool replaces the session workspace's file set with the supplied `sources`; any files previously in the workspace are discarded.
-
-**REQ-TOL-101** The `workspace_set` tool leaves the session's active options unchanged.
-
-**REQ-TOL-102** The `workspace_set` tool returns the resulting `files` list and a `diagnostics` array; diagnostics are only populated if a file name is duplicated or otherwise malformed, not for parse or semantic errors (those are surfaced by `check`).
-
-**Output:**
-```json
-{ "files": ["main.st", "types.st"], "diagnostics": [] }
-```
-
-### `workspace_put`
-
-Adds a single file to the session workspace, or replaces the content of an existing file with the same name. This is the incremental-edit path.
-
-**Inputs:**
-- `name: string`
-- `content: string`
-
-**REQ-TOL-110** The `workspace_put` tool inserts a new file into the session workspace when no file with `name` exists, or replaces the content of the existing file when one does.
-
-**REQ-TOL-111** The `workspace_put` tool invalidates any cached semantic-analysis artifacts so subsequent resource reads reflect the new content.
-
-**REQ-TOL-112** The `workspace_put` tool returns the current `files` list after the mutation and a `diagnostics` array (empty on success).
-
-### `workspace_remove`
-
-Removes a single file from the session workspace.
-
-**Inputs:**
-- `name: string`
-
-**REQ-TOL-120** The `workspace_remove` tool deletes the named file from the session workspace and invalidates cached semantic-analysis artifacts.
-
-**REQ-TOL-121** The `workspace_remove` tool returns `found: false` and a populated `diagnostics` array when no file with the given name is present, rather than raising an MCP-level error.
-
-### `workspace_clear`
-
-Empties the session workspace.
-
-**Inputs:** none.
-
-**REQ-TOL-130** The `workspace_clear` tool removes every file from the session workspace and invalidates cached semantic-analysis artifacts.
-
-**REQ-TOL-131** The `workspace_clear` tool leaves the session's active options unchanged.
-
-### `workspace_set_options`
-
-Updates the session's active compiler options. These options become the defaults for any subsequent analysis or execution tool call that does not pass its own `options`.
-
-**Inputs:**
-- `options`: object with `dialect` and individual feature flags (same schema as `check.options`)
-
-**REQ-TOL-140** The `workspace_set_options` tool replaces the session's active options with the supplied `options` object.
-
-**REQ-TOL-141** The `workspace_set_options` tool rejects unknown option keys with a diagnostic listing the unknown keys and does not modify the session's active options in that case.
-
-**REQ-TOL-142** The `workspace_set_options` tool invalidates any cached semantic-analysis artifacts, because changing options can change parse and analysis outcomes.
+Every tool obeys REQ-STL-001..006: `sources` and `options` are required on every analysis, context, and execution tool; there is no implicit session; and every response carries a top-level `ok: boolean` field in addition to its tool-specific fields.
 
 ### `parse`
 
-Runs the parse stage only — no semantic analysis. Returns syntax diagnostics (malformed tokens, missing keywords, structural grammar errors).
+Runs the parse stage only — no semantic analysis. Returns syntax diagnostics (malformed tokens, missing keywords, structural grammar errors) plus a best-effort outline of what the parser could recognize.
 
 Use this for rapid iteration on code structure. It is faster than `check` and useful when the agent is drafting code and wants to confirm it parses before investing in semantic correctness.
 
 **Inputs:**
-- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool parses the session workspace (see Session State Model)
-- `options`: optional object with `dialect` and individual feature flags, same as `check` — when omitted, the session's active options are used
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; see REQ-STL-002
 
 **REQ-TOL-010** The `parse` tool runs the parse stage only and does not run semantic analysis.
 
@@ -273,13 +86,12 @@ Use this for rapid iteration on code structure. It is faster than `check` and us
 
 **REQ-TOL-012** The `parse` tool accepts the same `options` object as `check`, since dialect and feature flags affect the parser.
 
-**REQ-TOL-013** The `parse` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
-
-**REQ-TOL-014** The `parse` tool returns a best-effort `structure` array alongside `diagnostics`, even when `diagnostics` contains errors. Each entry describes a top-level declaration the parser was able to recognize and contains `kind` (`"program"`, `"function"`, `"function_block"`, `"type"`, or `"configuration"`), `name` (string, or `null` when the parser could not recover a name), `file`, `start_line`, and `end_line`. This gives the agent an outline of its own in-progress draft to reason about even when the source is not yet valid — without it, a broken parse leaves the agent with only an opaque diagnostic and no structural context.
+**REQ-TOL-013** The `parse` tool returns a best-effort `structure` array alongside `diagnostics`, even when `diagnostics` contains errors. Each entry describes a top-level declaration the parser was able to recognize and contains `kind` (`"program"`, `"function"`, `"function_block"`, `"type"`, or `"configuration"`), `name` (string, or `null` when the parser could not recover a name), `file`, `start_line`, and `end_line`. This gives the agent an outline of its own in-progress draft to reason about even when the source is not yet valid — without it, a broken parse leaves the agent with only an opaque diagnostic and no structural context.
 
 **Output:**
 ```json
 {
+  "ok": false,
   "structure": [
     { "kind": "program", "name": "Main", "file": "main.st", "start_line": 1, "end_line": 22 },
     { "kind": "function_block", "name": null, "file": "main.st", "start_line": 24, "end_line": 40 }
@@ -295,36 +107,32 @@ Use this for rapid iteration on code structure. It is faster than `check` and us
 
 Runs the full parse and semantic analysis pipeline — the same stages as the CLI `check` command — and returns diagnostics. This covers syntax errors, type errors, undeclared symbols, and all other semantic rules. It stops before code generation, so no bytecode is produced.
 
-This is the highest-value tool. AI assistants use it to validate code they generate before presenting it to the user. The JSON format enables self-healing loops: the agent reads the diagnostics and fixes the code.
+This is the highest-value tool. AI assistants use it to validate code they generate before presenting it to the user. The JSON format enables self-healing loops: the agent reads the diagnostics, calls `explain_diagnostic` for any codes it does not recognize, fixes the code, and calls `check` again.
 
 **Inputs:**
-- `sources`: optional array of `{ name: string, content: string }` — inline source text for a "what-if" check. When omitted, the tool runs against the session workspace (see Session State Model).
-- `options`: optional object with:
-  - `dialect: string` — one of `"iec61131-3-ed2"` (default), `"iec61131-3-ed3"`, `"rusty"`. Selects a preset that enables the appropriate flags in one shot.
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object with:
+  - `dialect: string` — one of `"iec61131-3-ed2"`, `"iec61131-3-ed3"`, or any other dialect id returned by `list_options`. Selects a preset that enables the appropriate flags in one shot.
   - individual feature flags (e.g. `allow_c_style_comments: bool`) — override specific flags on top of the dialect preset. The full list of flags and their descriptions is returned by `list_options`.
-  - When omitted, the session's active options are used.
 
 **REQ-TOL-020** The `check` tool runs the parse stage and the full semantic analysis stage on the provided sources.
 
 **REQ-TOL-021** The `check` tool does not run code generation.
 
-**REQ-TOL-022** The `check` tool returns a `diagnostics` array; an empty array indicates no errors. The caller determines success by checking whether any diagnostic has `severity: "error"`.
+**REQ-TOL-022** The `check` tool returns a `diagnostics` array and a top-level `ok: boolean`. `ok` is `true` when the diagnostics array contains no entries with `severity: "error"`; otherwise `ok` is `false`.
 
-**REQ-TOL-023** Each diagnostic in the `check` response includes: `code`, `message`, `file`, `start_line`, `start_col`, `end_line`, `end_col`, and `severity`.
+**REQ-TOL-023** Each diagnostic in the `check` response includes: `code`, `message`, `file`, `start_line`, `start_col`, `end_line`, `end_col`, and `severity`. Line numbers are 1-indexed. Column numbers are 1-indexed and count Unicode scalar values (not bytes, not UTF-16 code units); a tab counts as one column. `end_line`/`end_col` refer to the character immediately after the last character of the span, so an empty span has `start == end`.
 
 **REQ-TOL-024** The `check` tool never returns an MCP-level error for a compiler failure; parse and semantic errors are returned as diagnostics.
 
-**REQ-TOL-025** The `check` tool accepts an optional `dialect` string in `options`; when omitted, `"iec61131-3-ed2"` is used.
+**REQ-TOL-025** The `check` tool rejects an `options` object that is missing `dialect`, that contains a `dialect` value not returned by `list_options`, or that contains any key not returned by `list_options`. Rejection is surfaced as a diagnostic with `severity: "error"` and `ok: false`; the tool does not run.
 
 **REQ-TOL-026** The `check` tool accepts individual feature flag overrides in `options` that are applied on top of the dialect preset.
-
-**REQ-TOL-027** The `check` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
-
-**REQ-TOL-028** When the `check` tool is called with a per-call `options` override whose `dialect` differs from the session's active dialect, or whose feature flags differ from the session's active flags, the response includes a diagnostic with `severity: "warning"` and `code: "P-MCP-001"` stating that a dialect or feature-flag override is active. This warning is always emitted even when no other diagnostics are present, so that an analyst watching the log stream (see REQ-ARC-045) can detect agents that toggle dialect to erase errors rather than fix them. The same warning is emitted by `parse`, `compile`, and `verify` on per-call options overrides.
 
 **Output:**
 ```json
 {
+  "ok": false,
   "diagnostics": [
     { "code": "P0001", "message": "...", "file": "main.st",
       "start_line": 5, "start_col": 3, "end_line": 5, "end_col": 10,
@@ -340,24 +148,25 @@ Parses the provided source and re-renders it in canonical form using the existin
 This keeps agent-authored code stylistically consistent with the rest of a project and removes "did the agent indent this correctly?" from the self-healing loop.
 
 **Inputs:**
-- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool formats the session workspace
-- `options`: optional object with the same `dialect` and feature flags as `check` — when omitted, the session's active options are used
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; same `dialect` and feature-flag schema as `check`
 
 **REQ-TOL-080** The `format` tool parses each source in the request and, on successful parse, returns the rendered canonical form in a `sources` array whose entries match the input names one-to-one.
 
-**REQ-TOL-081** When any source fails to parse, the `format` tool returns the failing source's original content unchanged in the `sources` array, records the parser's diagnostics in `diagnostics`, and sets `formatted: false` for that entry.
+**REQ-TOL-081** When a source fails to parse, the `format` tool returns the failing source's original content unchanged in its `sources` entry, sets `formatted: false` for that entry, and includes that entry's parser diagnostics in a per-entry `diagnostics` array scoped to the failing file. The top-level `diagnostics` array aggregates every per-entry diagnostic so that callers that do not care which file failed can scan a single list. `ok` is `true` only when every entry formatted successfully.
 
 **REQ-TOL-082** The `format` tool is idempotent: running `format` on its own output returns byte-identical content.
 
 **REQ-TOL-083** The `format` tool produces the same canonical output that the `plc2plc` crate produces for a given AST and dialect.
 
-**REQ-TOL-084** The `format` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace. In particular, `format` does not write its formatted output back into the session; the caller must call `workspace_put` explicitly if it wants to persist the formatted content.
+**REQ-TOL-084** The `format` tool is pure: it does not retain any of the supplied sources, and its output is not cached. Callers that want to persist the formatted content must store it themselves.
 
 **Output:**
 ```json
 {
+  "ok": true,
   "sources": [
-    { "name": "main.st", "content": "PROGRAM Main\n  VAR\n    x : DINT;\n  END_VAR\nEND_PROGRAM\n", "formatted": true }
+    { "name": "main.st", "content": "PROGRAM Main\n  VAR\n    x : DINT;\n  END_VAR\nEND_PROGRAM\n", "formatted": true, "diagnostics": [] }
   ],
   "diagnostics": []
 }
@@ -367,30 +176,32 @@ This keeps agent-authored code stylistically consistent with the rest of a proje
 
 Parses and analyzes source text, then returns the top-level symbol table: declared types, function blocks, functions, and programs with their variable declarations.
 
-This lets an AI assistant understand the structure of a program before suggesting changes.
+This is the full-project answer to "what is declared here?" For questions about a single POU or about the I/O surface, prefer one of the lighter-weight context tools (`pou_scope`, `project_io`, `types_all`) — they return less data and are cheaper on the agent's context window.
 
 **Inputs:**
-- `sources`: optional array of `{ name: string, content: string }` — when omitted, the tool reads from the session workspace
-- `options`: optional compiler options — when omitted, the session's active options are used
-- `pou`: optional string — when present, the response is narrowed to just the named POU and the types its declarations reference (see REQ-ARC-060)
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; same schema as `check`
+- `pou`: optional string — when present, the response is narrowed to just the named POU and the types its declarations reference
 
 **REQ-TOL-050** The `symbols` tool returns the top-level declarations for programs, functions, function blocks, and types found in the sources under analysis.
 
-**REQ-TOL-051** Each program entry in the `symbols` response includes the program name and its variable declarations. Each variable entry contains `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), `address` (the direct-variable string such as `"%IX0.0"` when the variable is mapped to a hardware address, otherwise `null`), and `external` (`true` when the variable can be driven from outside the program — i.e. `direction` is `"In"`, `"External"`, or `"Global"`, or `address` is a `%I*` hardware input).
+**REQ-TOL-051** Each program entry in the `symbols` response includes the program name and its variable declarations. Each variable entry contains `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), `address` (the direct-variable string such as `"%IX0.0"` when the variable is mapped to a hardware address, otherwise `null`), and `external` (`true` when the variable can be driven from outside the program — i.e. `direction` is `"In"`, `"InOut"`, `"External"`, or `"Global"`, or `address` is a `%I*` hardware input).
 
 **REQ-TOL-052** Each function entry in the `symbols` response includes the function name, return type, and parameter list.
 
-**REQ-TOL-053** The `symbols` response includes a `diagnostics` array using the same format as `check`.
+**REQ-TOL-053** The `symbols` response includes a `diagnostics` array using the same format as `check`, and a top-level `ok` following the same rule as `check` (true when no `error`-severity diagnostics).
 
-**REQ-TOL-054** The `symbols` tool operates on the session workspace when `sources` is omitted and on the supplied `sources` otherwise; a per-call `sources` override does not mutate the session workspace (see REQ-SES-020).
+**REQ-TOL-054** When the `pou` input is present, the `symbols` response includes only the matching POU (in exactly one of `programs`, `functions`, or `function_blocks`) and only the types actually referenced by that POU's declarations. When no POU with the given name exists, the response returns `ok: false`, `found: false`, and an empty `programs`/`functions`/`function_blocks`/`types` set along with a diagnostic, rather than raising an MCP-level error.
 
-**REQ-TOL-055** When the `pou` input is present, the `symbols` response includes only the matching POU (in exactly one of `programs`, `functions`, or `function_blocks`) and only the types actually referenced by that POU's declarations. When no POU with the given name exists, the response returns `found: false` and an empty `programs`/`functions`/`function_blocks`/`types` set along with a diagnostic, rather than an MCP-level error.
+**REQ-TOL-055** The `symbols` tool bounds its response by the server-configured `max_symbols_response_bytes` limit (default 256 KiB). When an unfiltered call would exceed the limit, the tool returns `ok: false`, `truncated: true`, an empty `programs`/`functions`/`function_blocks`/`types` set, and a single diagnostic instructing the caller to pass a `pou` filter or to call one of the context tools instead. This prevents a single `symbols` call on a large project from silently consuming the agent's entire context window.
 
 **Output:**
+- `ok: bool`
 - `programs: [{ name, variables: [{ name, type, direction, address, external }] }]`
 - `functions: [{ name, return_type, parameters: [...] }]`
 - `function_blocks: [{ name, variables: [...] }]`
 - `types: [{ name, kind }]`
+- `truncated: bool`
 - `diagnostics: [...]`
 
 ### `list_options`
@@ -432,15 +243,16 @@ The self-healing loop depends on this: without it, an agent sees `P0042` in a di
 **Inputs:**
 - `code: string` — the problem code, case-insensitive (e.g. `"P0001"`).
 
-**REQ-TOL-070** The `explain_diagnostic` tool accepts a `code` string and returns `code`, `title`, `description`, and optionally `suggested_fix`.
+**REQ-TOL-070** The `explain_diagnostic` tool accepts a `code` string and returns `code`, `title`, `description`, and optionally `suggested_fix`. The returned text is plain-text rendering of the source reStructuredText.
 
-**REQ-TOL-071** The `explain_diagnostic` tool returns `found: false` and a populated `diagnostics` array when the code is unknown, rather than raising an MCP-level error.
+**REQ-TOL-071** The `explain_diagnostic` tool returns `ok: false`, `found: false`, and a populated `diagnostics` array when the code is unknown, rather than raising an MCP-level error.
 
-**REQ-TOL-072** The text returned by `explain_diagnostic` is sourced from the same problem-code documentation that is published under `docs/compiler/problems/`.
+**REQ-TOL-072** The text returned by `explain_diagnostic` is embedded in the server binary at build time via `include_str!` from the same problem-code documentation published under `docs/compiler/problems/`. The tool handler performs no filesystem I/O.
 
 **Output:**
 ```json
 {
+  "ok": true,
   "found": true,
   "code": "P0001",
   "title": "...",
@@ -450,33 +262,138 @@ The self-healing loop depends on this: without it, an agent sees `P0042` in a di
 }
 ```
 
-### `get_resource`
+## Context Tools
 
-Returns the content of any `ironplc://` resource as a tool call, so an autonomous agent can reach the project-scoped knowledge surface without relying on MCP-client-specific resource-exposure behavior.
+Context tools are lightweight lookups that answer specific structural questions about a source set. They are what `symbols` would return if narrowed to a single concern, and they exist so the agent can request just the slice it needs instead of paying for the full symbol table every time. Every context tool takes the same required `sources` + `options` that the analysis tools take.
 
-MCP distinguishes between **tools** (freely callable by the model) and **resources** (typically surfaced to the human and selectively attached to turns). In IronPLC's case the project-scoped surfaces — `manifest`, `source/{file}`, `pou/{name}/scope`, `pou/{name}/lineage`, `types/all`, `project/io` — are agent-facing: the agent needs to read them itself to plan an edit or a verification. Exposing them only as resources is a trap, because on several MCP clients the model cannot pull resources autonomously. `get_resource` closes that gap without duplicating every resource as a separate tool.
+These tools replace the resource URIs (`ironplc://project/manifest`, `ironplc://pou/{name}/scope`, etc.) from earlier drafts of this design. MCP resources cannot take caller-supplied parameters at read time, which is incompatible with the stateless model: there is no session to read from, so the only way for a context lookup to know which source set it is describing is to accept the sources as a tool input.
+
+### `project_manifest`
+
+Returns a flat summary of what is declared across the supplied sources: every file name, every top-level POU name, and every user-defined type grouped by kind.
 
 **Inputs:**
-- `uri: string` — any `ironplc://` URI served by this server, with template parameters substituted (for example, `"ironplc://pou/Motor/scope"` or `"ironplc://source/main.st"`)
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; same schema as `check`
 
-**REQ-TOL-160** The `get_resource` tool resolves the `uri` against the server's resource routing table and returns a response object containing `uri` (echoing the input), `content` (the JSON body the resource would have returned), and `diagnostics`.
+**REQ-TOL-200** The `project_manifest` tool returns the list of file names in the supplied `sources`, the names of all Programs, Functions, and Function Blocks declared across those files, and the UDTs grouped by kind (`enumerations`, `structures`, `arrays`, `subranges`, `aliases`, `strings`, `references`).
 
-**REQ-TOL-161** The `get_resource` tool returns `content: null` with a populated `diagnostics` array when the URI does not match any registered resource template, or when required template parameters are missing. It does not raise an MCP-level error.
-
-**REQ-TOL-162** `get_resource` returns the **same** data a direct resource read would have returned for the same URI, computed against the same session workspace state (see REQ-SES-010 / REQ-SES-011). A client that supports both tool calls and resource reads can use them interchangeably.
-
-**REQ-TOL-163** `get_resource` log entries follow REQ-ARC-041's resource-summary shape (resolved URI, response size in bytes, bound template parameters), not the tool-summary shape, so that log analysts see a uniform view of how the project-scoped surface is being consulted regardless of which call path the agent used.
+**REQ-TOL-201** The `project_manifest` tool runs parse and semantic analysis. When analysis fails, the tool returns `ok: false`, the partial manifest for whatever the parser could recognize, and the analysis diagnostics.
 
 **Output:**
 ```json
 {
-  "uri": "ironplc://pou/Motor/scope",
-  "content": {
-    "pou": "Motor",
-    "variables": [
-      { "name": "Start", "type": "BOOL", "direction": "In", "initial_value": "FALSE" }
-    ]
-  },
+  "ok": true,
+  "files": ["main.st", "types.st"],
+  "programs": ["Main"],
+  "functions": ["Scale"],
+  "function_blocks": ["PID"],
+  "enumerations": ["MotorState", "Direction"],
+  "structures": ["PidParams"],
+  "arrays": [],
+  "subranges": [],
+  "aliases": [],
+  "strings": [],
+  "references": [],
+  "diagnostics": []
+}
+```
+
+### `project_io`
+
+Returns every variable the caller can drive (`inputs`) and every variable the caller can observe (`outputs`) across the supplied sources. This is the "what can I stimulate?" / "what should I assert on?" query that callers of `run` and `verify` use to plan a scenario.
+
+**Inputs:**
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; same schema as `check`
+
+**REQ-TOL-210** The `project_io` tool returns every variable that can be driven from outside the program: `VAR_INPUT` parameters of Programs, `VAR_IN_OUT` parameters of Programs, `VAR_EXTERNAL` references, global variables without a direct-variable address, and variables mapped to a hardware input address (`%I*`).
+
+**REQ-TOL-211** The `project_io` tool returns every variable that represents an output visible outside the program: `VAR_OUTPUT` parameters of Programs, `VAR_IN_OUT` parameters of Programs, global variables without a direct-variable address, and variables mapped to a hardware output address (`%Q*`). A `VAR_IN_OUT` variable and a non-addressed global appear in both `inputs` and `outputs`; this reflects the IEC 61131-3 semantics that they can be both driven and observed. Variables mapped to marker memory (`%M*`) are neither inputs nor outputs and do not appear in either list.
+
+**REQ-TOL-212** Each entry in the `inputs` and `outputs` arrays contains `name` (fully qualified; see Variable Naming in Architecture), `type`, and `address` (the direct-variable string such as `"%IX0.0"` when present, otherwise `null`).
+
+**Output:**
+```json
+{
+  "ok": true,
+  "inputs":  [{ "name": "Main.Start",    "type": "BOOL", "address": "%IX0.0" }],
+  "outputs": [{ "name": "Main.MotorRun", "type": "BOOL", "address": "%QX0.0" }],
+  "diagnostics": []
+}
+```
+
+### `pou_scope`
+
+Returns all variables visible to the named POU, derived from the symbol table built during semantic analysis. Use this when editing one POU and wanting to know the names and types you are allowed to reference.
+
+**Inputs:**
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; same schema as `check`
+- `pou`: required string — the POU name to scope the query to
+
+**REQ-TOL-220** The `pou_scope` tool returns a `variables` array for the named POU. Each entry contains: `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), and `initial_value` (opaque string rendering, or `null` when no initial value is declared). The rendering is for display only and is not guaranteed to be a parseable expression.
+
+**REQ-TOL-221** The `pou_scope` tool resolves `pou` against Programs, Functions, and Function Blocks in that order. When no POU with the given name exists, the tool returns `ok: false`, `found: false`, an empty `variables` array, and a diagnostic.
+
+**Output:**
+```json
+{
+  "ok": true,
+  "found": true,
+  "pou": "Motor",
+  "variables": [
+    { "name": "Start",    "type": "BOOL", "direction": "In",    "initial_value": "FALSE" },
+    { "name": "Counter",  "type": "DINT", "direction": "Local", "initial_value": "0" },
+    { "name": "MotorRun", "type": "BOOL", "direction": "Out",   "initial_value": null }
+  ],
+  "diagnostics": []
+}
+```
+
+### `pou_lineage`
+
+Returns the upstream and downstream dependencies of the named POU, derived from the project's dependency DAG.
+
+**Inputs:**
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; same schema as `check`
+- `pou`: required string — the POU name to query
+
+**REQ-TOL-230** The `pou_lineage` tool returns a JSON object with three fields: `pou` (the requested POU name), `upstream` (an array of POU names that the requested POU depends on, directly or transitively), and `downstream` (an array of POU names that depend on the requested POU, directly or transitively). JSON adjacency-list is the only format this tool produces; callers that want a DOT rendering should convert client-side.
+
+**REQ-TOL-231** When no POU with the given name exists, the tool returns `ok: false`, `found: false`, empty `upstream` and `downstream` arrays, and a diagnostic.
+
+**Output:**
+```json
+{
+  "ok": true,
+  "found": true,
+  "pou": "Motor",
+  "upstream":   ["PID", "Scale"],
+  "downstream": ["Main"],
+  "diagnostics": []
+}
+```
+
+### `types_all`
+
+Returns every user-defined type (UDT, enumeration, type alias, array, subrange, string, reference) declared in the supplied sources, with enough detail to reason about field and variant names without re-parsing the source.
+
+**Inputs:**
+- `sources`: required array of `{ name: string, content: string }`
+- `options`: required object; same schema as `check`
+
+**REQ-TOL-240** The `types_all` tool returns a `types` array. Each entry contains `name`, `kind` (`"enum"`, `"struct"`, `"array"`, `"subrange"`, `"alias"`, `"string"`, `"reference"`), and kind-specific detail fields: `values` for enumerations, `fields` for structures, `element_type` + `bounds` for arrays, `base_type` + `low` + `high` for subranges, `target_type` for aliases, `length` for strings, `target_type` for references.
+
+**Output:**
+```json
+{
+  "ok": true,
+  "types": [
+    { "name": "MotorState", "kind": "enum", "values": ["Stopped", "Running", "Fault"] },
+    { "name": "PidParams", "kind": "struct", "fields": [{ "name": "Kp", "type": "REAL" }] }
+  ],
   "diagnostics": []
 }
 ```
