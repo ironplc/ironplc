@@ -75,4 +75,61 @@ suite('RunCodeLensProvider', () => {
 
     assert.ok(lenses[0].command?.title.includes('Run Program'));
   });
+
+  test('findProgramLenses_when_running_state_then_returns_pause_and_stop_lenses', () => {
+    const text = 'PROGRAM main\nEND_PROGRAM';
+    const lenses = findProgramLenses(text, 'running');
+
+    assert.strictEqual(lenses.length, 2);
+    assert.ok(lenses[0].command?.title.includes('Pause'));
+    assert.strictEqual(lenses[0].command?.command, 'ironplc.pauseProgram');
+    assert.ok(lenses[1].command?.title.includes('Stop'));
+    assert.strictEqual(lenses[1].command?.command, 'ironplc.stopProgram');
+    assert.strictEqual(lenses[0].range.start.line, 0);
+    assert.strictEqual(lenses[1].range.start.line, 0);
+  });
+
+  test('findProgramLenses_when_paused_state_then_returns_resume_and_stop_lenses', () => {
+    const text = 'PROGRAM main\nEND_PROGRAM';
+    const lenses = findProgramLenses(text, 'paused');
+
+    assert.strictEqual(lenses.length, 2);
+    assert.ok(lenses[0].command?.title.includes('Resume'));
+    assert.strictEqual(lenses[0].command?.command, 'ironplc.pauseProgram');
+    assert.ok(lenses[1].command?.title.includes('Stop'));
+    assert.strictEqual(lenses[1].command?.command, 'ironplc.stopProgram');
+  });
+
+  test('findProgramLenses_when_error_state_then_returns_run_lens', () => {
+    const text = 'PROGRAM main\nEND_PROGRAM';
+    const lenses = findProgramLenses(text, 'error');
+
+    assert.strictEqual(lenses.length, 1);
+    assert.ok(lenses[0].command?.title.includes('Run Program'));
+    assert.strictEqual(lenses[0].command?.command, 'ironplc.runProgram');
+  });
+
+  test('findProgramLenses_when_no_compiler_and_idle_then_returns_warning_lens', () => {
+    const text = 'PROGRAM main\nEND_PROGRAM';
+    const lenses = findProgramLenses(text, 'idle', false);
+
+    assert.strictEqual(lenses.length, 1);
+    assert.ok(lenses[0].command?.title.includes('no compiler'));
+    assert.strictEqual(lenses[0].command?.command, 'ironplc.runProgram');
+  });
+
+  test('findProgramLenses_when_running_and_multiple_programs_then_each_gets_pause_stop', () => {
+    const text = 'PROGRAM first\nEND_PROGRAM\n\nPROGRAM second\nEND_PROGRAM';
+    const lenses = findProgramLenses(text, 'running');
+
+    assert.strictEqual(lenses.length, 4);
+    assert.strictEqual(lenses[0].range.start.line, 0);
+    assert.strictEqual(lenses[1].range.start.line, 0);
+    assert.strictEqual(lenses[2].range.start.line, 3);
+    assert.strictEqual(lenses[3].range.start.line, 3);
+    assert.strictEqual(lenses[0].command?.command, 'ironplc.pauseProgram');
+    assert.strictEqual(lenses[1].command?.command, 'ironplc.stopProgram');
+    assert.strictEqual(lenses[2].command?.command, 'ironplc.pauseProgram');
+    assert.strictEqual(lenses[3].command?.command, 'ironplc.stopProgram');
+  });
 });
