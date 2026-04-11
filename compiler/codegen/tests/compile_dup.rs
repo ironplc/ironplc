@@ -36,7 +36,7 @@ END_PROGRAM
 }
 
 #[test]
-fn compile_when_store_then_load_same_var_then_emits_dup_store_nop() {
+fn compile_when_store_then_load_same_var_then_emits_dup_before_store() {
     // x := 7; y := x; is the classic store-load pattern
     let source = "
 PROGRAM main
@@ -60,7 +60,6 @@ END_PROGRAM
             0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (7)
             0xA1, // DUP (store-load optimization)
             0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0xA3, 0xA3, // NOP, NOP (padding)
             0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
