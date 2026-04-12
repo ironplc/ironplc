@@ -6,6 +6,14 @@ pub mod logging;
 pub mod server;
 pub mod tools;
 
+// Spec conformance testing infrastructure (test-only)
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;
+
 use rmcp::ServiceExt;
 use server::IronPlcMcp;
 
