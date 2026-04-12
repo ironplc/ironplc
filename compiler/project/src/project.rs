@@ -7,6 +7,7 @@ use std::path::Path;
 
 use ironplc_analyzer::{stages::analyze, SemanticContext};
 use ironplc_dsl::{
+    common::Library,
     core::{FileId, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
@@ -24,7 +25,11 @@ use log::{debug, trace};
 fn run_semantic_analysis(
     source_project: &mut SourceProject,
     compiler_options: &CompilerOptions,
-) -> (Result<(), Vec<Diagnostic>>, Option<SemanticContext>) {
+) -> (
+    Result<(), Vec<Diagnostic>>,
+    Option<SemanticContext>,
+    Option<Library>,
+) {
     let mut all_libraries = vec![];
     let mut all_diagnostics: Vec<Diagnostic> = vec![];
 
@@ -42,7 +47,7 @@ fn run_semantic_analysis(
     }
 
     match analyze(&all_libraries, compiler_options) {
-        Ok((_library, context)) => {
+        Ok((library, context)) => {
             debug!("Semantic analysis completed {context:?}");
             all_diagnostics.extend(context.diagnostics().iter().cloned());
             let result = if all_diagnostics.is_empty() {
@@ -50,12 +55,12 @@ fn run_semantic_analysis(
             } else {
                 Err(all_diagnostics)
             };
-            (result, Some(context))
+            (result, Some(context), Some(library))
         }
         Err(diagnostics) => {
             debug!("Semantic analysis errored {diagnostics:?}");
             all_diagnostics.extend(diagnostics);
-            (Err(all_diagnostics), None)
+            (Err(all_diagnostics), None, None)
         }
     }
 }
@@ -90,6 +95,13 @@ pub trait Project {
     /// has not been called or if foundational type resolution failed.
     fn semantic_context(&self) -> Option<&SemanticContext>;
 
+    /// Gets the analyzed library from the last semantic analysis.
+    ///
+    /// Returns `Some` when the analyzer's type resolution phase succeeded,
+    /// producing a merged and resolved library. Returns `None` if `semantic()`
+    /// has not been called or if foundational type resolution failed.
+    fn analyzed_library(&self) -> Option<&Library>;
+
     /// Gets the sources that are the project.
     fn sources(&self) -> Vec<&Source>;
 
@@ -106,6 +118,8 @@ pub struct FileBackedProject {
     compiler_options: CompilerOptions,
     /// Cached semantic context from the last successful analysis
     semantic_context: Option<SemanticContext>,
+    /// Cached analyzed library from the last successful analysis
+    analyzed_library: Option<Library>,
 }
 
 impl Default for FileBackedProject {
@@ -120,6 +134,7 @@ impl FileBackedProject {
             source_project: SourceProject::new(),
             compiler_options: CompilerOptions::default(),
             semantic_context: None,
+            analyzed_library: None,
         }
     }
 
@@ -128,6 +143,7 @@ impl FileBackedProject {
             source_project: SourceProject::with_options(compiler_options),
             compiler_options,
             semantic_context: None,
+            analyzed_library: None,
         }
     }
 
@@ -177,14 +193,20 @@ impl Project for FileBackedProject {
 
     fn semantic(&mut self) -> Result<(), Vec<Diagnostic>> {
         self.semantic_context = None;
-        let (result, context) =
+        self.analyzed_library = None;
+        let (result, context, library) =
             run_semantic_analysis(&mut self.source_project, &self.compiler_options);
         self.semantic_context = context;
+        self.analyzed_library = library;
         result
     }
 
     fn semantic_context(&self) -> Option<&SemanticContext> {
         self.semantic_context.as_ref()
+    }
+
+    fn analyzed_library(&self) -> Option<&Library> {
+        self.analyzed_library.as_ref()
     }
 
     fn sources(&self) -> Vec<&Source> {
@@ -211,6 +233,8 @@ pub struct MemoryBackedProject {
     compiler_options: CompilerOptions,
     /// Cached semantic context from the last successful analysis
     semantic_context: Option<SemanticContext>,
+    /// Cached analyzed library from the last successful analysis
+    analyzed_library: Option<Library>,
 }
 
 impl MemoryBackedProject {
@@ -220,6 +244,7 @@ impl MemoryBackedProject {
             source_project: SourceProject::with_options(compiler_options),
             compiler_options,
             semantic_context: None,
+            analyzed_library: None,
         }
     }
 
@@ -264,14 +289,20 @@ impl Project for MemoryBackedProject {
 
     fn semantic(&mut self) -> Result<(), Vec<Diagnostic>> {
         self.semantic_context = None;
-        let (result, context) =
+        self.analyzed_library = None;
+        let (result, context, library) =
             run_semantic_analysis(&mut self.source_project, &self.compiler_options);
         self.semantic_context = context;
+        self.analyzed_library = library;
         result
     }
 
     fn semantic_context(&self) -> Option<&SemanticContext> {
         self.semantic_context.as_ref()
+    }
+
+    fn analyzed_library(&self) -> Option<&Library> {
+        self.analyzed_library.as_ref()
     }
 
     fn sources(&self) -> Vec<&Source> {
@@ -537,5 +568,64 @@ END_CONFIGURATION
     fn memory_semantic_context_when_no_analysis_then_none() {
         let project = MemoryBackedProject::new(CompilerOptions::default());
         assert!(project.semantic_context().is_none());
+    }
+
+    #[test]
+    fn memory_analyzed_library_when_no_analysis_then_none() {
+        let project = MemoryBackedProject::new(CompilerOptions::default());
+        assert!(project.analyzed_library().is_none());
+    }
+
+    #[test]
+    fn memory_semantic_when_valid_program_then_analyzed_library_available() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        let content = r#"
+PROGRAM Main
+VAR
+  x : INT;
+END_VAR
+  x := 1;
+END_PROGRAM
+
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM program1 WITH plc_task : Main;
+  END_RESOURCE
+END_CONFIGURATION
+"#;
+        project.add_source(FileId::from_string("main.st"), content.to_owned());
+
+        let result = project.semantic();
+        assert!(result.is_ok());
+        assert!(project.analyzed_library().is_some());
+    }
+
+    #[test]
+    fn memory_semantic_when_syntax_error_then_analyzed_library_none() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        project.add_source(
+            FileId::from_string("bad.st"),
+            "PROGRAM END_PROGRAM".to_owned(),
+        );
+
+        let result = project.semantic();
+        assert!(result.is_err());
+        // Foundational analysis fails when parse produces no valid library elements,
+        // so analyzed_library should be None.
+        assert!(project.analyzed_library().is_none());
+    }
+
+    #[test]
+    fn memory_semantic_when_semantic_error_then_analyzed_library_available() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        let content = "TYPE\nINVALID_RANGE : INT(10..-10);\nEND_TYPE";
+        project.add_source(FileId::from_string("test.st"), content.to_owned());
+
+        let result = project.semantic();
+        assert!(result.is_err());
+        // Type resolution succeeds even with semantic diagnostics, so
+        // the analyzed library should be available.
+        assert!(project.analyzed_library().is_some());
     }
 }

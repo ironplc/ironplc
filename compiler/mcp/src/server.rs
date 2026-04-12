@@ -1,22 +1,32 @@
 //! MCP server handler for IronPLC.
 
+use std::sync::{Arc, Mutex};
+
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Content, ServerCapabilities, ServerInfo};
 use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 
+use crate::cache::ContainerCache;
 use crate::tools;
 use crate::tools::common::ParseCheckInput;
+use crate::tools::compile::CompileInput;
+use crate::tools::container_drop::ContainerDropInput;
 
 #[derive(Clone)]
 pub struct IronPlcMcp {
     tool_router: ToolRouter<Self>,
+    cache: Arc<Mutex<ContainerCache>>,
 }
 
 impl Default for IronPlcMcp {
     fn default() -> Self {
         Self {
             tool_router: Self::tool_router(),
+            cache: Arc::new(Mutex::new(ContainerCache::new(
+                crate::cache::DEFAULT_MAX_ENTRIES,
+                crate::cache::DEFAULT_MAX_BYTES,
+            ))),
         }
     }
 }
@@ -62,6 +72,41 @@ impl IronPlcMcp {
     fn check(&self, params: Parameters<ParseCheckInput>) -> Result<Content, rmcp::ErrorData> {
         let input = params.0;
         let response = tools::check::build_response(&input.sources, &input.options);
+        let json = serde_json::to_string(&response)
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        Ok(Content::text(json))
+    }
+
+    /// Full pipeline: parse, semantic analysis, and codegen.
+    #[tool(
+        name = "compile",
+        description = "Only call this when you need a compiled artifact to `run`. For validation, call `check` instead \u{2014} `check` is faster, produces the same diagnostics, and does not incur codegen cost. A failing `compile` does not give you any information that a failing `check` would not."
+    )]
+    async fn compile(
+        &self,
+        Parameters(input): Parameters<CompileInput>,
+    ) -> Result<Content, rmcp::ErrorData> {
+        let response = tools::compile::build_response(
+            &input.sources,
+            &input.options,
+            input.include_bytes,
+            &self.cache,
+        );
+        let json = serde_json::to_string(&response)
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        Ok(Content::text(json))
+    }
+
+    /// Explicitly releases a compiled container from the cache.
+    #[tool(
+        name = "container_drop",
+        description = "Explicitly releases a compiled container from the cache. Not usually necessary \u{2014} the cache evicts on LRU pressure \u{2014} but available for long-running connections."
+    )]
+    async fn container_drop(
+        &self,
+        Parameters(input): Parameters<ContainerDropInput>,
+    ) -> Result<Content, rmcp::ErrorData> {
+        let response = tools::container_drop::build_response(&input.container_id, &self.cache);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
         Ok(Content::text(json))
