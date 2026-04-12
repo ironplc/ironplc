@@ -152,9 +152,11 @@ Each VarEntry (4 bytes, fixed size):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
-| 0 | var_type | u8 | 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=STRING, 7=WSTRING, 8=FB_INSTANCE, 9=TIME |
+| 0 | var_type | u8 | Type encoding (see below) |
 | 1 | flags | u8 | Bit 0: is array (see array descriptors) |
 | 2 | extra | u16 | For STRING/WSTRING: max length. For FB_INSTANCE: fb_type_id. For arrays: array descriptor index. |
+
+**REQ-CF-009** The `var_type` / `field_type` encoding is: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=STRING, 7=WSTRING, 8=FB_INSTANCE, 9=TIME, 10=SLOT. The SLOT type represents a heterogeneous structure field slot (8-byte slot for flattened struct layouts).
 
 Variable indices are compiler-assigned. The compiler must produce deterministic indices across compilations using the ordering rules in [Deterministic Ordering](#deterministic-ordering) to ensure that the same source program (with only logic changes) produces compatible bytecode.
 
@@ -182,7 +184,7 @@ Each FB type descriptor defines the field layout for a function block type.
 | 3 | reserved | u8 | Reserved; must be zero |
 | 4 | fields | [FieldEntry; num_fields] | Field descriptors |
 
-Each FieldEntry (4 bytes, fixed size):
+**REQ-CF-008** Each FieldEntry is 4 bytes (fixed size):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|

@@ -10,11 +10,14 @@
 //!
 //! See `specs/design/spec-conformance-testing.md` for full design.
 
+use std::vec;
 use std::vec::Vec;
 
 use spec_test_macro::spec_test;
 
 use crate::header::{FileHeader, FLAG_HAS_SYSTEM_UPTIME, FORMAT_VERSION, HEADER_SIZE, MAGIC};
+use crate::id_types::FbTypeId;
+use crate::type_section::{FbTypeDescriptor, FieldEntry, FieldType, TypeSection};
 
 // ---------------------------------------------------------------------------
 // Meta-test: completeness check
@@ -125,4 +128,50 @@ fn container_spec_req_cf_007_flags_bit0_is_system_uptime() {
     let mut buf = Vec::new();
     header.write_to(&mut buf).unwrap();
     assert_eq!(buf[7], 0x01);
+}
+
+// ---------------------------------------------------------------------------
+// Container Format — Type Section (REQ-CF-008 through REQ-CF-009)
+// ---------------------------------------------------------------------------
+
+/// REQ-CF-008: Each FieldEntry is 4 bytes.
+#[spec_test(REQ_CF_008)]
+fn container_spec_req_cf_008_field_entry_is_4_bytes() {
+    let section = TypeSection {
+        fb_types: vec![FbTypeDescriptor {
+            type_id: FbTypeId::new(0),
+            fields: vec![FieldEntry {
+                field_type: FieldType::I32,
+                field_extra: 0,
+            }],
+        }],
+        ..Default::default()
+    };
+    let mut buf = Vec::new();
+    section.write_to(&mut buf).unwrap();
+    // fb_count(2) + type_id(2) + num_fields(1) + reserved(1) + field(4)
+    //   + array_count(2) + user_fb_count(2) = 14
+    // The single field entry occupies exactly 4 bytes (bytes 6..10).
+    assert_eq!(buf.len(), 14);
+}
+
+/// REQ-CF-009: FieldType/var_type encoding values 0 through 10.
+#[spec_test(REQ_CF_009)]
+fn container_spec_req_cf_009_field_type_encoding_values() {
+    assert_eq!(FieldType::I32 as u8, 0);
+    assert_eq!(FieldType::U32 as u8, 1);
+    assert_eq!(FieldType::I64 as u8, 2);
+    assert_eq!(FieldType::U64 as u8, 3);
+    assert_eq!(FieldType::F32 as u8, 4);
+    assert_eq!(FieldType::F64 as u8, 5);
+    assert_eq!(FieldType::String as u8, 6);
+    assert_eq!(FieldType::WString as u8, 7);
+    assert_eq!(FieldType::FbInstance as u8, 8);
+    assert_eq!(FieldType::Time as u8, 9);
+    assert_eq!(FieldType::Slot as u8, 10);
+    // Values 0-10 are valid; 11 is invalid
+    for tag in 0..=10u8 {
+        assert!(FieldType::from_u8(tag).is_ok());
+    }
+    assert!(FieldType::from_u8(11).is_err());
 }
