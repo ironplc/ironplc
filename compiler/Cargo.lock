@@ -922,6 +922,7 @@ name = "ironplc-mcp"
 version = "0.192.0"
 dependencies = [
  "base64",
+ "assert_cmd",
  "env_logger",
  "ironplc-codegen",
  "ironplc-container",
@@ -930,6 +931,7 @@ dependencies = [
  "ironplc-problems",
  "ironplc-project",
  "log",
+ "predicates",
  "rmcp",
  "schemars",
  "serde",
