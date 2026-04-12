@@ -25,7 +25,7 @@ The server is designed to support an autonomous agent workflow:
 
 1. **Draft** — agent assembles the relevant set of source files in its own context and queries the server for structural information (symbol table, I/O surface, dependency graph) as needed
 2. **Verify** — agent calls `check` (full parse + semantic analysis) with the current sources and reads structured JSON diagnostics to self-heal
-3. **Simulate** — agent calls `run` or `verify` to confirm logical correctness against expected outputs
+3. **Simulate** — agent calls `run` to execute the compiled program in the VM and walks the returned trace to confirm logical correctness against expected outputs
 4. **Finalize** — agent persists the sources on its own side when all checks pass
 
 The agent is the sole owner of project state. The server never writes to disk, never reads the filesystem from a tool handler, and never holds source text between calls; it is a pure compilation and simulation service driven by whatever sources the agent sends on each call.
@@ -44,7 +44,7 @@ Agents familiar with the CLI can use the MCP tools with matching expectations.
 
 ## Design Principle: Stateless Tool Surface
 
-Every tool in this design is a pure function of its explicit inputs. There is no session workspace, no cached analysis between calls, no `--project-dir` pre-load, and no disk I/O from any tool handler. The single exception is the process-level container cache described under Architecture — it stores compiled `.iplc` bytes keyed by an opaque handle so that `compile → run` and `compile → verify` can hand off without routing bytecode through the LLM context. The cache is a performance optimization, not a source of truth; its contents are never visible to any tool that accepts `sources`.
+Every tool in this design is a pure function of its explicit inputs. There is no session workspace, no cached analysis between calls, no `--project-dir` pre-load, and no disk I/O from any tool handler. The single exception is the process-level container cache described under Architecture — it stores compiled `.iplc` bytes keyed by an opaque handle so that `compile → run` can hand off without routing bytecode through the LLM context. The cache is a performance optimization, not a source of truth; its contents are never visible to any tool that accepts `sources`.
 
 The agent is the sole owner of project state. It holds the files (in its own context, on its own filesystem, or both), decides which subset to send on any given call, and persists edits on its own side. The MCP server's job is to answer one question at a time about whichever sources the agent hands it, and to hand back structured results the agent can react to.
 
@@ -56,7 +56,7 @@ The agent is the sole owner of project state. It holds the files (in its own con
 
 **REQ-STL-004** File identity inside a single call is carried by the `name` field of each `sources` entry. Names must be valid UTF-8, non-empty, at most 256 bytes, and must not contain NUL, `/`, or `\`. Duplicate names within a single `sources` array are rejected with a diagnostic before any analysis runs. The server does not interpret names as filesystem paths and never touches the filesystem with them; they exist so that diagnostics can cite a file identifier the agent already recognizes in its own context.
 
-**REQ-STL-005** Every tool response includes a top-level `ok: boolean` field. `ok` is `true` when the tool produced its primary result (for analysis tools, a diagnostics array with no `error`-severity entries; for `compile`, a non-null `container_id`; for `run`, a completed trace; for `verify`, a decided pass/fail) and `false` when it did not. The `ok` field never replaces a tool's specific result fields; it exists as a single uniform success predicate so that agent code handling many tools can share one success check.
+**REQ-STL-005** Every tool response includes a top-level `ok: boolean` field. `ok` is `true` when the tool produced its primary result (for analysis tools, a diagnostics array with no `error`-severity entries; for `compile`, a non-null `container_id`; for `run`, a completed trace) and `false` when it did not. The `ok` field never replaces a tool's specific result fields; it exists as a single uniform success predicate so that agent code handling many tools can share one success check.
 
 **REQ-STL-006** The server performs no disk I/O from any tool or resource handler. It does not accept filesystem paths as tool inputs, does not read files relative to any working directory, and does not write compilation or analysis artifacts to disk. The only files the server process ever opens are its own log output (see Logging and Observability) and, optionally, its own binary-embedded problem-code documentation.
 
@@ -66,7 +66,7 @@ Tools are grouped into three categories:
 
 1. **Analysis tools** — `parse`, `check`, `format`, `symbols`, `list_options`, `explain_diagnostic`. Given `sources` and `options`, these run some stage of the compiler and return structured information about the source.
 2. **Context tools** — `project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`. These are lightweight lookups that answer a specific structural question about a source set without requiring the agent to parse the much larger output of `symbols` itself.
-3. **Execution tools** — `compile`, `run`, `verify`. These produce or consume bytecode and drive the VM.
+3. **Execution tools** — `compile`, `container_drop`, `run`. These produce or consume bytecode and drive the VM.
 
 Every tool obeys REQ-STL-001..006: `sources` and `options` are required on every analysis, context, and execution tool; there is no implicit session; and every response carries a top-level `ok: boolean` field in addition to its tool-specific fields.
 
@@ -301,7 +301,7 @@ Returns a flat summary of what is declared across the supplied sources: every fi
 
 ### `project_io`
 
-Returns every variable the caller can drive (`inputs`) and every variable the caller can observe (`outputs`) across the supplied sources. This is the "what can I stimulate?" / "what should I assert on?" query that callers of `run` and `verify` use to plan a scenario.
+Returns every variable the caller can drive (`inputs`) and every variable the caller can observe (`outputs`) across the supplied sources. This is the "what can I stimulate?" / "what should I observe?" query that callers of `run` use to plan a scenario.
 
 **Inputs:**
 - `sources`: required array of `{ name: string, content: string }`
@@ -406,7 +406,7 @@ Execution tools produce or consume compiled bytecode and drive the VM. They depe
 
 Runs the full pipeline (parse → semantic analysis → codegen) on the supplied sources and returns an opaque **container handle** that identifies the compiled `.iplc` bytes inside the server. Also returns the task configuration extracted from the compiled program, which the agent uses to choose a sensible `duration_ms` for `run`.
 
-The container handle is the primary transport: agents pass it back to `run` and `verify` without ever routing the bytecode through the LLM context. Base64-encoded bytes are available on request for clients that need to persist or transmit the artifact.
+The container handle is the primary transport: agents pass it back to `run` without ever routing the bytecode through the LLM context. Base64-encoded bytes are available on request for clients that need to persist or transmit the artifact.
 
 **Inputs:**
 - `sources`: required array of `{ name: string, content: string }`
@@ -421,11 +421,11 @@ The container handle is the primary transport: agents pass it back to `run` and 
 
 **REQ-TOL-033** The `compile` tool returns a `programs` array listing each program name and the task it is bound to. When a program is not bound to any task, its `task` field is `null`.
 
-**REQ-TOL-034** The `compile` tool returns the `.iplc` container encoded as a base64 string in `container_base64` only when the caller sets `include_bytes: true`; otherwise `container_base64` is `null`. This keeps the default response small and lets the agent pass `container_id` back to `run`/`verify` without ever routing the bytecode through the LLM context.
+**REQ-TOL-034** The `compile` tool returns the `.iplc` container encoded as a base64 string in `container_base64` only when the caller sets `include_bytes: true`; otherwise `container_base64` is `null`. This keeps the default response small and lets the agent pass `container_id` back to `run` without ever routing the bytecode through the LLM context.
 
 **REQ-TOL-035** The server stores the compiled container bytes in a process-level container cache keyed by `container_id`. See Container Cache under Architecture for the cache's capacity and eviction policy.
 
-**REQ-TOL-036** A container produced by `compile` is an immutable snapshot of the exact `sources` and `options` used at compile time. Subsequent calls to `compile`, `run`, or `verify` — including calls whose `sources` differ — do not affect any previously cached container. A `container_id` that has not been evicted from the cache can be passed to `run` for the lifetime of the server process.
+**REQ-TOL-036** A container produced by `compile` is an immutable snapshot of the exact `sources` and `options` used at compile time. Subsequent calls to `compile` or `run` — including calls whose `sources` differ — do not affect any previously cached container. A `container_id` that has not been evicted from the cache can be passed to `run` for the lifetime of the server process.
 
 **Output:**
 ```json
@@ -537,85 +537,6 @@ A `TraceOptions` object has these fields (all optional):
 }
 ```
 
-### `verify`
-
-Compiles the provided sources, runs them in the VM against a caller-supplied stimulus schedule, evaluates caller-supplied expectations, and returns a single pass/fail result with the trace. This is the "one call the agent makes when the user says 'make it work'".
-
-The primary reason this is a dedicated tool rather than a prompt is that expectation evaluation lives on the server side: the agent gets back `{ passed: true }` or a structured list of failures. Agents react reliably to structured pass/fail; reducing a raw trace into assertions in the agent's own reasoning is error-prone and burns tokens.
-
-**Inputs:**
-- `sources`: required array of `{ name: string, content: string }`
-- `options`: required object; same schema as `check`
-- `duration_ms: number`
-- `stimuli: [Stimulus]` — same shape as `run`'s `stimuli`
-- `expectations: [Expectation]`
-- `trace_variables: [string]` — optional; additional fully-qualified names to include in the returned trace beyond those referenced by expectations
-- `trace: TraceOptions` — optional; same shape as `run`'s `trace`, with one constraint described in REQ-TOL-094 below
-- `limits: LimitOverrides` — optional; same shape and semantics as `run`'s `limits` (tighten only, never loosen)
-
-An `Expectation` is:
-```json
-{
-  "variable": "Main.MotorRun",
-  "at": "final",
-  "equals": true
-}
-```
-
-The `at` field is either the literal string `"final"` (evaluated at the last completed cycle) or `{ "time_ms": N }` (evaluated at the first cycle whose simulated time is `>= N`). Exactly one comparator field must be present: `equals`, `not_equals`, `greater_than`, `greater_or_equal`, `less_than`, `less_or_equal`, or `approximately` with a required `tolerance` field for floating-point comparisons.
-
-**REQ-TOL-090** The `verify` tool compiles the provided sources, runs them against the supplied stimuli and duration using the same VM semantics, value encoding, and resource limits as `run`, evaluates the supplied expectations, and returns `ok`, `passed`, `failures`, `trace`, `summary`, `truncated`, and `terminated_reason`. `ok` tracks the compile + run outcome (`true` only when the run reached `terminated_reason == "completed"`); `passed` is the logical AND of every expectation's evaluation outcome and is only meaningful when `ok` is `true`.
-
-**REQ-TOL-091** The `verify` tool sets `passed: false` and returns the full list of unsatisfied expectations in `failures` when any expectation is not met. Each failure entry includes the original expectation, the `actual` value observed, and the `time_ms` at which the comparison was evaluated.
-
-**REQ-TOL-092** The `verify` tool returns `ok: false`, `passed: false`, and compile or run diagnostics in `diagnostics` when the sources fail to compile, when the VM traps, or when the run terminates early due to a resource limit. In these cases `failures` is empty, `trace` is empty or partial up to the point of termination, and `terminated_reason` carries the specific cause inherited from `run` (`"error"`, `"duration"`, `"fuel"`, `"wall_clock"`, or `"sample_cap"`).
-
-**REQ-TOL-093** The `verify` tool evaluates the `approximately` comparator as `abs(actual - expected) <= tolerance`; both `equals` and `not_equals` on any expectation whose resolved variable type is `REAL` or `LREAL`, or whose resolved type contains a `REAL`/`LREAL` leaf, are rejected with a diagnostic instructing the caller to use `approximately`.
-
-**REQ-TOL-094** The `verify` tool guarantees that the sample required by every expectation's `at` field is recorded and available for evaluation, regardless of the caller-supplied `trace.mode`. Concretely:
-  - Every variable referenced by any expectation is added to the effective trace set, in addition to any variable named in `trace_variables`.
-  - Every simulated cycle whose `time_ms` matches the resolution rule for an `at: "final"` or `at: { time_ms: N }` field is force-recorded even under `"on_change"` or `"final_only"`. The returned `trace` surfaces these force-recorded samples so the caller can see exactly which cycle every expectation was evaluated against.
-  - If the caller-supplied `trace.mode` and `trace.max_samples` would prevent a required sample from being recorded, the `verify` tool returns `ok: false` before the VM starts and a diagnostic identifying the conflicting expectation and trace option. The tool never silently fails an expectation because a required sample was dropped.
-
-**REQ-TOL-095** The `verify` tool does not populate the process container cache — the compiled artifact it produces internally is discarded at the end of the call. Agents that want to re-run the same compiled artifact with different stimuli should call `compile` once and then call `run` or `verify` repeatedly, passing the `container_id`.
-
-**Output:**
-```json
-{
-  "ok": true,
-  "passed": false,
-  "failures": [
-    {
-      "expectation": { "variable": "Main.MotorRun", "at": "final", "equals": true },
-      "actual": false,
-      "time_ms": 1000
-    }
-  ],
-  "trace": [
-    { "time_ms": 10, "task": "Main", "variables": { "Main.Start": false, "Main.MotorRun": false } }
-  ],
-  "truncated": false,
-  "terminated_reason": "completed",
-  "summary": {
-    "final_values": { "Main.Start": false, "Main.MotorRun": false },
-    "completed_cycles": { "Main": 100 }
-  },
-  "diagnostics": []
-}
-```
-
-## Prompts
-
-Prompts are instructional templates the agent can invoke to perform structured multi-step workflows.
-
-### `verify-logic`
-
-**REQ-PRM-001** The `verify-logic` prompt instructs the agent to: (1) call the `project_io` tool with the current sources to identify the externally drivable inputs and the observable outputs of the program under test; (2) derive a stimulus schedule and a set of expectations from the user's natural-language specification, using fully-qualified variable names; (3) call the `verify` tool with the sources, `options`, `duration_ms`, `stimuli`, and `expectations`; and (4) report pass/fail to the user, including the returned `failures` and an excerpt of the `trace` on failure.
-
-**REQ-PRM-002** The `verify-logic` prompt instructs the agent, on a failed verification, to inspect the `failures` and `trace` returned by `verify`, edit the sources, and retry the `verify` call. The prompt instructs the agent to give up after three consecutive failed iterations and surface the last failure to the user rather than continuing to edit.
-
-**REQ-PRM-003** The `verify-logic` prompt instructs the agent, on any diagnostic whose `code` is not already familiar, to call `explain_diagnostic` before editing the sources. This is the self-heal path for unfamiliar problem codes and is the only sanctioned way for the agent to learn what a compiler error means mid-loop.
-
 ## Architecture
 
 ### Transport
@@ -629,8 +550,8 @@ This matches how the VS Code extension and CLI are invoked and avoids requiring 
 The `ironplc-mcp` crate depends on:
 - `ironplc-project` — provides the `Project` trait and an in-memory implementation used to hold a single tool call's sources while the compiler runs
 - `ironplc-plc2plc` — for the `format` tool
-- `ironplc-codegen` — for the `compile` and `verify` tools
-- `ironplc-vm` — for the `run` and `verify` tools
+- `ironplc-codegen` — for the `compile` tool
+- `ironplc-vm` — for the `run` tool
 - `ironplc-problems` — for the `explain_diagnostic` tool
 - An MCP SDK crate (see below)
 
@@ -650,7 +571,7 @@ The server uses [`rmcp`](https://crates.io/crates/rmcp) (the official Rust SDK f
 
 ### Container Cache
 
-`compile` returns an opaque `container_id` that later `run` and `verify` calls can reference without routing the bytecode through the LLM context. The container cache is the only piece of cross-call server state in this design, and it is explicitly a performance optimization: losing a cached container is never a correctness problem, only a "the agent must call `compile` again" problem.
+`compile` returns an opaque `container_id` that later `run` calls can reference without routing the bytecode through the LLM context. The container cache is the only piece of cross-call server state in this design, and it is explicitly a performance optimization: losing a cached container is never a correctness problem, only a "the agent must call `compile` again" problem.
 
 **REQ-ARC-070** The server maintains a single process-wide container cache keyed by `container_id`. The cache stores the raw `.iplc` bytes, the task and program metadata returned by `compile`, and the symbol table needed by `run` to resolve fully-qualified variable names. It does not store the original `sources` or `options`.
 
@@ -658,11 +579,11 @@ The server uses [`rmcp`](https://crates.io/crates/rmcp) (the official Rust SDK f
 
 **REQ-ARC-072** Cached containers never expire on a timer; they are only evicted by LRU pressure, by `container_drop`, or by process exit. Entries are immutable from the moment `compile` inserts them — no tool mutates a cached container in place — which makes REQ-TOL-036's snapshot guarantee trivially implementable.
 
-**REQ-ARC-073** A `run` or `verify` call whose `container_id` is not in the cache returns `ok: false` with a diagnostic that names the unknown `container_id`. The agent's recovery is to re-compile. The diagnostic must distinguish "never existed" from "evicted by LRU" only if doing so is cheap; a single shared error message is acceptable.
+**REQ-ARC-073** A `run` call whose `container_id` is not in the cache returns `ok: false` with a diagnostic that names the unknown `container_id`. The agent's recovery is to re-compile. The diagnostic must distinguish "never existed" from "evicted by LRU" only if doing so is cheap; a single shared error message is acceptable.
 
 ### Variable Naming
 
-**REQ-ARC-020** Variable names appearing in `run.variables`, `run.stimuli[].set`, `verify.trace_variables`, `verify.expectations[].variable`, and the `inputs`/`outputs` arrays of the `project_io` tool are fully qualified. The format is:
+**REQ-ARC-020** Variable names appearing in `run.variables`, `run.stimuli[].set`, and the `inputs`/`outputs` arrays of the `project_io` tool are fully qualified. The format is:
 
 - `<program>.<variable>` for program-local variables.
 - `<program>.<fb_instance>.<variable>` for variables inside a function-block instance declared directly in a program. Nested function-block instances extend this rule recursively: `<program>.<outer_fb>.<inner_fb>.<variable>`, with one dot separating every level of nesting.
@@ -678,9 +599,9 @@ Fully-qualified names are required even when only one program exists, so that ag
 
 ### VM Sandboxing and Resource Limits
 
-`run` and `verify` execute agent-supplied code in the IronPLC VM. Without explicit bounds, a pathological program (infinite loop, runaway counter, arbitrarily long simulation) can pin a CPU and blow out the agent's context with an unbounded trace. The server therefore enforces a set of resource limits on every VM invocation.
+`run` executes agent-supplied code in the IronPLC VM. Without explicit bounds, a pathological program (infinite loop, runaway counter, arbitrarily long simulation) can pin a CPU and blow out the agent's context with an unbounded trace. The server therefore enforces a set of resource limits on every VM invocation.
 
-The limits are configured at server startup and exposed as a `LimitOverrides` object that `run` and `verify` callers may use to **tighten** the bounds for a single call. Callers cannot loosen them: a per-call value that exceeds the server-configured default is rejected with a diagnostic.
+The limits are configured at server startup and exposed as a `LimitOverrides` object that `run` callers may use to **tighten** the bounds for a single call. Callers cannot loosen them: a per-call value that exceeds the server-configured default is rejected with a diagnostic.
 
 ```json
 {
@@ -692,11 +613,11 @@ The limits are configured at server startup and exposed as a `LimitOverrides` ob
 }
 ```
 
-**REQ-ARC-030** The server imposes a `max_duration_ms` (simulated time), a `max_fuel` (VM instruction budget), a `max_wall_clock_ms` (real-world execution time), a `max_samples` (trace entry cap), and a `max_variables_per_run` (maximum length of the `variables` input to `run` and `verify`) on every VM invocation. The defaults are configurable at server startup via command-line arguments (e.g. `--max-duration-ms`, `--max-fuel`, `--max-wall-clock-ms`, `--max-samples`, `--max-variables-per-run`) and have sane defaults for an interactive agent session: 60000 ms simulated, 50000000 fuel, 5000 ms wall-clock, 1000 samples, 64 variables per run.
+**REQ-ARC-030** The server imposes a `max_duration_ms` (simulated time), a `max_fuel` (VM instruction budget), a `max_wall_clock_ms` (real-world execution time), a `max_samples` (trace entry cap), and a `max_variables_per_run` (maximum length of the effective trace set in `run`) on every VM invocation. The defaults are configurable at server startup via command-line arguments (e.g. `--max-duration-ms`, `--max-fuel`, `--max-wall-clock-ms`, `--max-samples`, `--max-variables-per-run`) and have sane defaults for an interactive agent session: 60000 ms simulated, 50000000 fuel, 5000 ms wall-clock, 1000 samples, 64 variables per run.
 
-**REQ-ARC-031** The server rejects any `limits` override in `run.limits` or `verify.limits` whose field exceeds the server-configured default for that field, returning a diagnostic that names the offending field and does not start the VM.
+**REQ-ARC-031** The server rejects any `limits` override in `run.limits` whose field exceeds the server-configured default for that field, returning a diagnostic that names the offending field and does not start the VM.
 
-**REQ-ARC-032** When a VM invocation would exceed a limit, the VM terminates cleanly at the end of the most recent completed task cycle. The `run`/`verify` response includes a diagnostic identifying the exceeded limit and sets `terminated_reason` to `"duration"`, `"fuel"`, `"wall_clock"`, or `"sample_cap"` as appropriate.
+**REQ-ARC-032** When a VM invocation would exceed a limit, the VM terminates cleanly at the end of the most recent completed task cycle. The `run` response includes a diagnostic identifying the exceeded limit and sets `terminated_reason` to `"duration"`, `"fuel"`, `"wall_clock"`, or `"sample_cap"` as appropriate.
 
 **REQ-ARC-033** The `max_fuel` budget is shared across all tasks for a single VM invocation; fuel consumed by any task counts against the same budget. Stimulus application is billed against fuel.
 
@@ -706,7 +627,7 @@ The limits are configured at server startup and exposed as a `LimitOverrides` ob
 
 ### Logging and Observability
 
-The MCP server is the first place we get to watch a real AI agent drive the IronPLC toolchain. Understanding how agents actually use it — which tools they reach for, in what sequence, how often `check` diagnostics lead to a successful self-heal on the next call, how often `run`/`verify` terminates on a resource limit rather than completing — is essential for refining the tool surface, the problem-code docs, and the prompts. This observability must be designed in, not grafted on after the fact.
+The MCP server is the first place we get to watch a real AI agent drive the IronPLC toolchain. Understanding how agents actually use it — which tools they reach for, in what sequence, how often `check` diagnostics lead to a successful self-heal on the next call, how often `run` terminates on a resource limit rather than completing — is essential for refining the tool surface, the problem-code docs, and the tool descriptions. This observability must be designed in, not grafted on after the fact.
 
 Because the server holds no session state, the "unit of observation" is a single connection: every MCP client connection gets a fresh `connection_id` and every tool call within that connection carries the connection id plus a monotonic per-connection sequence number. An analyst reconstructing agent behavior reads a contiguous log stream for a given `connection_id`.
 
@@ -717,7 +638,6 @@ Because the server holds no session state, the "unit of observation" is a single
   - `compile`: `container_id`, `container_size_bytes`, `task_count`, `program_count`, `include_bytes`, plus the analysis-tool fields above.
   - `container_drop`: `container_id`, `removed`.
   - `run`: `container_id`, `duration_ms_requested`, `duration_ms_simulated` (how far the VM actually got), `fuel_consumed`, `trace_mode`, `trace_variable_count`, `trace_samples_emitted`, `truncated`, `terminated_reason`, `stimulus_count`.
-  - `verify`: every field `run` logs, plus `expectation_count`, `failure_count`, and `passed`, plus the analysis-tool fields for the compile stage.
   - `list_options` and `explain_diagnostic`: `response_size_bytes`.
   - Every entry also carries `response_size_bytes` so that an analyst can spot an agent pulling large responses repeatedly.
 
@@ -727,7 +647,7 @@ Because the server holds no session state, the "unit of observation" is a single
 
 **REQ-ARC-044** At connection start the server emits a `connection_start` event containing `connection_id`, the server version, the effective resource limits (after applying command-line overrides), and the effective container-cache bounds. At connection end the server emits a `connection_end` event containing `connection_id`, the total connection wall-clock, the total number of tool calls, per-tool call counts, and the reason for termination (`"client_disconnect"`, `"signal"`, `"internal_error"`).
 
-**REQ-ARC-045** The log stream is sufficient — without any payload fields — to answer at least: (1) the full ordered sequence of tool calls in a connection; (2) which `check` calls returned which problem codes and whether a subsequent call presented a source with a different content hash; (3) which `verify` calls passed, and for failing ones, the `terminated_reason` and `failure_count`; (4) the distribution of `terminated_reason` values across `run` and `verify` calls in the connection; (5) container-cache pressure, measured as the ratio of `unknown_container` errors to `compile` calls.
+**REQ-ARC-045** The log stream is sufficient — without any payload fields — to answer at least: (1) the full ordered sequence of tool calls in a connection; (2) which `check` calls returned which problem codes and whether a subsequent call presented a source with a different content hash; (3) the distribution of `terminated_reason` values across `run` calls in the connection; (4) container-cache pressure, measured as the ratio of `unknown_container` errors to `compile` calls.
 
 ### Diagnostic Mapping
 
@@ -748,20 +668,19 @@ Every MCP tool is registered with a short description string that the client han
 **REQ-ARC-050** The MCP tool descriptions shipped with the server must follow the guidance below. These are contractual, not flavor text; any change requires a design-note update in this document.
 
 - `parse`: "Syntax check only. Use while drafting to confirm the source tokenizes and parses. Do NOT use this to validate a change — it does not catch type errors, undeclared symbols, or any other semantic rule. Call `check` for that."
-- `check`: "Primary validator. Runs parse and full semantic analysis and returns structured diagnostics. ALWAYS run this before reporting success to the user and before calling `compile`, `run`, or `verify`. Self-heal by reading the returned diagnostics, fixing the code, and calling `check` again. Call `explain_diagnostic` to understand any unfamiliar problem code BEFORE editing the source."
+- `check`: "Primary validator. Runs parse and full semantic analysis and returns structured diagnostics. ALWAYS run this before reporting success to the user and before calling `compile` or `run`. Self-heal by reading the returned diagnostics, fixing the code, and calling `check` again. Call `explain_diagnostic` to understand any unfamiliar problem code BEFORE editing the source."
 - `format`: "Canonical re-rendering using the project's formatter. Safe to call on any parseable source. The server holds no state between calls; if you want the formatted content saved anywhere, store it yourself."
 - `symbols`: "Full symbol table for a set of sources. Large responses are capped — prefer the `pou` filter or one of the context tools (`pou_scope`, `project_io`, `types_all`) when you only need part of the answer."
 - `list_options`: "Enumerates dialects and feature flags you are allowed to pass in `options`. Every analysis, context, and execution tool requires an `options` object; unknown keys are rejected. Do NOT toggle flags or change dialect to make errors go away — dialect changes are recorded in the log stream."
 - `explain_diagnostic`: "Look up the human-readable explanation for a problem code (e.g. `P0042`). Call this before editing code in response to a diagnostic you do not fully understand."
 - `project_manifest`: "Flat summary of what is declared in a source set (file names, POU names, UDT names by kind). Cheap to call; use it at the start of a task to build a mental model before drilling in."
-- `project_io`: "Inputs the caller can drive and outputs the caller can observe, for planning a `run` or `verify` call. This is the right tool to call before constructing `stimuli` or `expectations`."
+- `project_io`: "Inputs the caller can drive and outputs the caller can observe, for planning a `run` call. This is the right tool to call before constructing `stimuli` or deciding which variables to `trace`."
 - `pou_scope`: "Every variable visible to a single POU. Prefer this over `symbols` when editing one POU."
 - `pou_lineage`: "Upstream and downstream POU dependencies. Use this to decide which other POUs to pull into context before editing one."
 - `types_all`: "Every user-defined type with enough detail to reference a field or enum value without re-reading the source."
-- `compile`: "Only call this when you need a compiled artifact to `run` or `verify`. For validation, call `check` instead — `check` is faster, produces the same diagnostics, and does not incur codegen cost. A failing `compile` does not give you any information that a failing `check` would not."
+- `compile`: "Only call this when you need a compiled artifact to `run`. For validation, call `check` instead — `check` is faster, produces the same diagnostics, and does not incur codegen cost. A failing `compile` does not give you any information that a failing `check` would not."
 - `container_drop`: "Explicitly releases a compiled container from the cache. Not usually necessary — the cache evicts on LRU pressure — but available for long-running connections."
-- `run`: "Simulates a compiled container in the VM for a caller-specified duration. Use this only after `check` passes. Drive inputs over time via `stimuli` and observe outputs via `variables` (or set `trace_outputs: true` to pull every externally visible variable). The returned `trace` is bounded; use the `summary` object when you only care about outcomes."
-- `verify`: "One-shot compile + run + assertion evaluation. Prefer this over a manual `compile`+`run` when you have concrete expectations. Failed expectations are returned structurally — react to `failures`, not to the raw trace."
+- `run`: "Simulates a compiled container in the VM for a caller-specified duration. Use this only after `check` passes. Drive inputs over time via `stimuli` and observe outputs via `variables` (or set `trace_outputs: true` to pull every externally visible variable). The returned `trace` is bounded; use the `summary` object when you only care about outcomes. Evaluate pass/fail conditions yourself against the returned trace and `summary.final_values`."
 
 **REQ-ARC-051** Tool descriptions must NOT make claims the server cannot verify. In particular, tool descriptions may not promise things like "always faster than X" or "preferred for all use cases"; they must state concrete semantic differences and call out the cases where the wrong tool is tempting.
 
@@ -781,7 +700,7 @@ The design above is intentionally split into two milestones so that the first re
 
 **Milestone 1 — validation surface.** `parse`, `check`, `format`, `symbols`, `list_options`, `explain_diagnostic`, plus every context tool (`project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`). This milestone depends only on the compiler front end, the analyzer, `plc2plc`, and `ironplc-problems`. It covers the highest-value agent use case — "write PLC code, get structured feedback, self-heal" — without pulling in `ironplc-codegen` or `ironplc-vm`.
 
-**Milestone 2 — execution surface.** `compile`, `container_drop`, `run`, `verify`, the container cache (REQ-ARC-070..073), the VM sandboxing limits (REQ-ARC-030..035), and the `verify-logic` prompt. This milestone adds dependencies on `ironplc-codegen` and `ironplc-vm`.
+**Milestone 2 — execution surface.** `compile`, `container_drop`, `run`, the container cache (REQ-ARC-070..073), and the VM sandboxing limits (REQ-ARC-030..035). This milestone adds dependencies on `ironplc-codegen` and `ironplc-vm`.
 
 Both milestones obey every REQ in the Design Principle section (REQ-STL-001..006). The milestone split is a delivery schedule, not an architectural boundary: the stateless tool surface is designed so that adding the Milestone 2 tools does not require revisiting any Milestone 1 interface.
 
@@ -790,7 +709,8 @@ Both milestones obey every REQ in the Design Principle section (REQ-STL-001..006
 These items are intentionally out of scope for this design. They are listed here so the surface stays small and so implementers and reviewers know what has been considered and deliberately deferred.
 
 - **Stateful caching layer.** The current design re-parses and re-analyzes every `check` call. A future revision may add a content-addressed cache keyed by a hash of `(sources, options)` so that repeated calls on unchanged inputs skip analysis. This is purely a performance optimization and must not change any tool's observable behavior.
-- **Persistent test harness.** The `verify` tool is invocation-scoped: each call carries its own `stimuli` and `expectations`. A future milestone should let the agent register named scenarios out-of-band and invoke them by name, so the agent curates tests alongside the source instead of re-inventing assertions on every turn.
+- **Server-side assertion evaluation.** This design deliberately omits a `verify` tool that would compile + run + evaluate caller-supplied expectations and return a structured pass/fail result. The decision is to let real agent usage tell us how badly we need it: agents can currently drive `compile` + `run` themselves and evaluate pass/fail against the returned `trace` and `summary.final_values` in their own reasoning. If that workflow produces unreliable pass/fail conclusions in practice — hallucinated passes, missed regressions, float-comparison bugs — a future milestone should add `verify` with a stripped-down expectation grammar (at-final comparisons, `equals` / `not_equals` / `approximately` with tolerance for floats) and the trace-sample guarantees needed to evaluate time-indexed expectations reliably.
+- **Persistent test harness.** A future milestone should let the agent register named scenarios out-of-band and invoke them by name, so the agent curates tests alongside the source instead of re-inventing assertions on every turn. This work sits on top of the `verify` deferral above and should not be started before `verify` exists.
 - **Aggregate stimulus values for complex types.** REQ-TOL-043 currently requires the caller to supply a full array or full struct when driving one via `stimuli.set`. A follow-up should define partial-update semantics (for example, setting a single array element by index, or setting one field of a struct without supplying the whole object) once real agent usage reveals what shapes are needed.
 - **Streaming traces.** Long `run` calls currently return the complete trace in a single response. A future revision may offer incremental trace delivery via MCP's streaming facilities, which would let the agent react to intermediate values without extending `duration_ms` conservatively.
 - **On-disk workspace management.** The server never touches disk in this design. An agent that wants to persist an edit writes it through its own filesystem tools. A future companion tool or MCP client helper could formalize the "write these sources back to a project directory" workflow, but it deliberately lives outside the MCP boundary — the server itself stays stateless and file-system-free.
