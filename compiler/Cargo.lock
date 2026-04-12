@@ -927,6 +927,7 @@ dependencies = [
  "rmcp",
  "serde",
  "serde_json",
+ "spec_test_macro",
  "tokio",
 ]
 
