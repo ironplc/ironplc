@@ -11,10 +11,14 @@ repository.workspace = true
 maintenance = { status = "experimental" }
 
 [dependencies]
+ironplc-codegen = { path = "../codegen", version = "0.192.0" }
+ironplc-container = { path = "../container", version = "0.192.0" }
 ironplc-dsl = { path = "../dsl", version = "0.192.0" }
 ironplc-parser = { path = "../parser", version = "0.192.0" }
 ironplc-problems = { path = "../problems", version = "0.192.0" }
 ironplc-project = { path = "../project", version = "0.192.0" }
+
+base64 = "0.22"
 schemars = "1"
 
 rmcp = { version = "1.4", features = ["server", "transport-io"] }
