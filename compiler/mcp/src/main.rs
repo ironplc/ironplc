@@ -1,9 +1,7 @@
-//! Placeholder binary for a future Model Context Protocol server.
+//! Entry point for the IronPLC MCP server.
 
-use ironplc_project::FileBackedProject;
-
-fn main() {
-    // Keep `ironplc-project` linked; the real MCP server will build on this crate.
-    let _ = FileBackedProject::new();
-    eprintln!("ironplcmcp: MCP server not yet implemented");
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), String> {
+    ironplc_mcp::logging::init();
+    ironplc_mcp::run_server().await
 }
