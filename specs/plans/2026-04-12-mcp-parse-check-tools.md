@@ -6,7 +6,8 @@ Implement the `parse` and `check` MCP tools from the MCP server design (`specs/d
 
 ## Design doc reference
 
-`specs/design/mcp-server.md` — requirements REQ-STL-001 through REQ-STL-006, REQ-TOL-010 through REQ-TOL-026, REQ-ARC-010, REQ-ARC-011, REQ-ARC-050.
+- `specs/design/mcp-server.md` — requirements REQ-STL-001 through REQ-STL-006, REQ-TOL-010 through REQ-TOL-026, REQ-ARC-010, REQ-ARC-011, REQ-ARC-050.
+- `specs/design/spec-conformance-testing.md` — the `#[spec_test]` / `build.rs` enforcement mechanism used to link design requirements to conformance tests.
 
 ## Architecture
 
@@ -97,12 +98,15 @@ Using `serde_json::Value` for `options` allows us to do manual validation of key
 
 | File | Action |
 |------|--------|
-| `compiler/mcp/Cargo.toml` | Modify: add `ironplc-project` and `ironplc-dsl` dependencies |
+| `compiler/mcp/Cargo.toml` | Modify: add `ironplc-project`, `ironplc-dsl`, and `spec_test_macro` dependencies |
+| `compiler/mcp/build.rs` | New: scans `specs/design/mcp-server.md` for `**REQ-*-NNN**` markers, generates `spec_requirements.rs` with constants, `ALL`, and `UNTESTED` arrays (same pattern as `container/build.rs`) |
+| `compiler/mcp/src/lib.rs` | Modify: add `#[cfg(test)] mod spec_requirements` (include from OUT_DIR) and `#[cfg(test)] mod spec_conformance` |
 | `compiler/mcp/src/tools/mod.rs` | Modify: add `pub mod common;`, `pub mod parse;`, `pub mod check;` |
 | `compiler/mcp/src/tools/common.rs` | New: shared types (`SourceInput`, `McpDiagnostic`, `StructureEntry`), validation (`validate_sources`, `parse_options`), diagnostic mapping (`map_diagnostic`, `map_diagnostics`) |
 | `compiler/mcp/src/tools/parse.rs` | New: `ParseResponse`, `build_response()`, handler logic, structure extraction, tests |
 | `compiler/mcp/src/tools/check.rs` | New: `CheckResponse`, `build_response()`, handler logic, tests |
 | `compiler/mcp/src/server.rs` | Modify: add `#[tool]` methods for `parse` and `check` in the `#[tool_router]` block |
+| `compiler/mcp/src/spec_conformance.rs` | New: `#[spec_test]` conformance tests for implemented requirements; `#[ignore]` stubs for future-milestone requirements |
 
 ## Tasks
 
@@ -188,7 +192,58 @@ Using `serde_json::Value` for `options` allows us to do manual validation of key
 - [ ] Both tool methods: deserialize input, call `build_response`, serialize result to JSON `Content::text`
 - [ ] Tool methods must never return MCP-level errors for compiler failures (REQ-TOL-024); only return `Err(ErrorData)` for truly internal errors (serialization failure)
 
-### Step 6: Run full CI
+### Step 6: Set up spec conformance testing infrastructure
+
+The MCP design document (`specs/design/mcp-server.md`) contains 90 requirements (REQ-STL-*, REQ-TOL-*, REQ-ARC-*). This step wires up the same `#[spec_test]` / `build.rs` infrastructure used by the container crate (see `specs/design/spec-conformance-testing.md`) so that every requirement has a linked test. Requirements implemented in this plan get real tests; future-milestone requirements get `#[ignore]` stubs.
+
+- [ ] Add `spec_test_macro` as a dev-dependency in `compiler/mcp/Cargo.toml`
+- [ ] Create `compiler/mcp/build.rs`:
+  - Scan `specs/design/mcp-server.md` for `**REQ-*-NNN**` bold markers
+  - Generate `spec_requirements.rs` with one constant per requirement, an `ALL` array, and an `UNTESTED` array (same logic as `compiler/container/build.rs`)
+  - Add `cargo:rerun-if-changed` for the spec file and all `src/*.rs` files
+- [ ] Add `#[cfg(test)] mod spec_requirements` and `#[cfg(test)] mod spec_conformance` to `compiler/mcp/src/lib.rs`
+- [ ] Create `compiler/mcp/src/spec_conformance.rs` with:
+  - Completeness meta-test: `all_spec_requirements_have_tests` (asserts `UNTESTED` is empty)
+  - Real `#[spec_test]` tests for requirements covered by this plan (see list below)
+  - `#[ignore]` stubs for all remaining requirements (milestone 2, context tools, logging, etc.)
+
+**Real spec tests** (requirements testable after this plan is implemented):
+
+Stateless surface:
+- `REQ_STL_001` — `parse` and `check` accept `sources` parameter
+- `REQ_STL_002` — `parse` and `check` accept `options` parameter
+- `REQ_STL_004` — source names validated (empty, too long, NUL, slash, backslash, duplicates rejected)
+- `REQ_STL_005` — every response includes `ok: bool`
+
+`list_options` tool (already implemented):
+- `REQ_TOL_060` — takes no inputs
+- `REQ_TOL_061` — returns `dialects` array with `id`, `display_name`, `description`
+- `REQ_TOL_062` — returns `flags` array with `id`, `type`, `default`, `description`
+- `REQ_TOL_063` — option `id` values are exact keys accepted in `options`
+
+`parse` tool:
+- `REQ_TOL_010` — runs parse only, does not catch semantic errors
+- `REQ_TOL_011` — returns `diagnostics` array with same fields as `check`
+- `REQ_TOL_012` — accepts same `options` object as `check`
+- `REQ_TOL_013` — returns `structure` array with `kind`, `name`, `file`, `start_line`, `end_line`
+
+`check` tool:
+- `REQ_TOL_020` — runs parse and full semantic analysis
+- `REQ_TOL_021` — does not run code generation (no `container_id` in response)
+- `REQ_TOL_022` — returns `diagnostics` + `ok`; `ok` true iff no error-severity diagnostics
+- `REQ_TOL_023` — diagnostics have `code`, `message`, `file`, `start_line`, `start_col`, `end_line`, `end_col`, `severity`; line/col are 1-indexed Unicode scalar values
+- `REQ_TOL_024` — compiler failures returned as diagnostics, not MCP-level errors
+- `REQ_TOL_025` — rejects missing `dialect`, unknown `dialect`, unknown keys in `options`
+- `REQ_TOL_026` — feature flag overrides applied on top of dialect preset
+
+Architecture:
+- `REQ_ARC_001` — server uses stdio transport
+- `REQ_ARC_010` — fresh project per call, sources loaded from `sources` array
+- `REQ_ARC_011` — `FileId::from_string(name)`, names validated before compiler runs
+
+**`#[ignore]` stubs** for all other requirements (REQ-STL-003, REQ-STL-006, REQ-TOL-030..048, REQ-TOL-050..055, REQ-TOL-070..084, REQ-TOL-150..151, REQ-TOL-200..240, REQ-ARC-012, REQ-ARC-020..073, REQ-ARC-040..062). These are features from milestone 2, context tools, execution tools, logging, and the container cache — all out of scope for this plan. They satisfy the completeness check while documenting what remains.
+
+### Step 7: Run full CI
 
 - [ ] Run `cd compiler && just` to verify compile, tests, coverage, clippy, fmt all pass
 - [ ] Fix any issues and re-run until clean
@@ -196,6 +251,6 @@ Using `serde_json::Value` for `options` allows us to do manual validation of key
 ## Verification
 
 1. `cargo build -p ironplc-mcp` succeeds with zero warnings
-2. `cargo test -p ironplc-mcp` — all unit tests pass (list_options + common + parse + check)
+2. `cargo test -p ironplc-mcp` — all tests pass: unit tests (list_options + common + parse + check) **and** spec conformance tests (completeness meta-test + all `#[spec_test]` tests)
 3. `cd compiler && just` — full CI passes
 4. Manual smoke test: pipe MCP `tools/list` request into `ironplcmcp` on stdin, verify `parse` and `check` appear alongside `list_options`; call `parse` with a valid program and verify structured response; call `check` with a semantic error and verify diagnostic with line/col info
