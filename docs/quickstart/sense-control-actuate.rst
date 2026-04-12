@@ -51,8 +51,7 @@ enhance it:
 
 - Write the control logic in **Structured Text**, the programming language
   defined by IEC 61131-3.
-- **Compile** it into bytecode using the IronPLC compiler.
-- **Run** it in the IronPLC virtual machine and inspect the results.
+- **Run** it directly from the editor and inspect the results.
 - **Configure** the application with a task schedule.
 - **Connect** it to hardware inputs and outputs.
 

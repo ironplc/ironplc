@@ -8,5 +8,6 @@ and IEC 61131-3.
 .. toctree::
    :maxdepth: 1
 
+   Check, Compile, and Run from the CLI <check-compile-run-from-cli>
    Structure a Multi-File Project <structure-a-multi-file-project>
    Read Compiler Error Messages <read-compiler-error-messages>

@@ -82,7 +82,7 @@ Over the course of this tutorial, you have:
 1. **Installed** IronPLC and the development environment extension.
 2. **Learned** the sense-control-actuate cycle that drives PLC programs.
 3. **Written** a doorbell program with boolean logic and a timer.
-4. **Compiled** and **run** the program from the command line.
+4. **Run** the program directly from the editor.
 5. **Configured** the application with a task schedule.
 6. **Organized** the code across multiple files.
 7. **Connected** variables to hardware I/O addresses.

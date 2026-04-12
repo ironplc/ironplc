@@ -2,9 +2,9 @@
 Your First Program
 ==================
 
-Now it's time to write, compile, and run your first IEC 61131-3 program.
-By the end of this chapter, you will have a working doorbell program running
-in the IronPLC virtual machine.
+Now it's time to write and run your first IEC 61131-3 program. By the end
+of this chapter, you will have a working doorbell program running in the
+IronPLC virtual machine.
 
 --------------------------------------
 Create a Project Directory
@@ -77,78 +77,43 @@ Let's break it down:
   (sounding).
 
 --------------------------------------
-Open a Terminal
---------------------------------------
-
-The next steps use the IronPLC command line tools. Open a terminal inside
-your development environment:
-
-- In Visual Studio Code or Cursor, select
-  :menuselection:`Terminal --> New Terminal` from the main menu.
-
-The terminal should open in your :file:`doorbell` project directory.
-
---------------------------------------
-Check the Program
---------------------------------------
-
-Run the following command to check your program for errors:
-
-.. code-block:: shell
-   :caption: Check Syntax
-
-   ironplcc check main.st
-
-On success, the command produces no output. If there are errors, IronPLC
-prints diagnostics with the file name, line number, and a description of
-the problem.
-
-.. include:: ../includes/requires-compiler.rst
-
---------------------------------------
-Compile the Program
---------------------------------------
-
-Compile your program into a bytecode container:
-
-.. code-block:: shell
-   :caption: Compile to Bytecode
-
-   ironplcc compile main.st --output main.iplc
-
-On success, the command creates the :file:`main.iplc` file. This file
-contains the compiled bytecode that the IronPLC virtual machine can execute.
-
---------------------------------------
 Run the Program
 --------------------------------------
 
-Run the compiled program in the IronPLC virtual machine:
+Look for the :guilabel:`Run Program` link that appears above the
+``PROGRAM main`` line in the editor. This is a code lens provided by the
+IronPLC extension.
 
-.. code-block:: shell
-   :caption: Run and Inspect Variables
+#. Click :guilabel:`Run Program`.
+#. The :guilabel:`IronPLC Run` output panel opens automatically. It shows
+   the current scan cycle number and the value of every variable, updating
+   as the program runs. You should see output like:
 
-   ironplcvm run main.iplc --scans 1 --dump-vars
+   .. code-block:: text
 
-The ``--scans 1`` flag runs one scan cycle, and ``--dump-vars`` prints the
-value of every variable after execution. You should see output like:
+      Scan cycle: 1
+      ---
+        Button : BOOL = FALSE
+        Buzzer : BOOL = TRUE
 
-.. code-block:: text
-
-   Button: FALSE
-   Buzzer: TRUE
+#. Click :guilabel:`Stop` above the ``PROGRAM`` line to end execution.
 
 ``Button`` starts as ``FALSE`` (the default for :code:`BOOL`), so
 ``NOT Button`` evaluates to ``TRUE``, and the buzzer sounds. This is
 exactly the sense-control-actuate cycle in action — even though there is
 no physical hardware connected yet.
 
+.. tip::
+
+   You can also check, compile, and run from the command line. See
+   :doc:`/how-to-guides/getting-started/check-compile-run-from-cli`.
+
 --------------------------------------
 Next Steps
 --------------------------------------
 
-You now have a working program, but it runs only once and exits. In the
-next chapter, you will configure the application to run on a repeating
-schedule and add a timer to make the buzzer pulse automatically.
+You now have a working program. In the next chapter, you will add a timer
+to make the buzzer pulse automatically and learn how the configuration
+block controls the scheduling.
 
 Continue to :doc:`configuring`.
