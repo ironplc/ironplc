@@ -46,19 +46,7 @@ pub fn build_response() -> ListOptionsResponse {
         })
         .collect();
 
-    let mut flags = Vec::with_capacity(15);
-
-    // The special non-vendor flag (not in FEATURE_DESCRIPTORS but a real
-    // CompilerOptions field that callers can override).
-    flags.push(FlagInfo {
-        id: "allow_iec_61131_3_2013".into(),
-        flag_type: "bool".into(),
-        default: serde_json::Value::Bool(false),
-        description: "Recognise IEC 61131-3:2013 keywords (LTIME, LDATE, LTOD, LDT, REF_TO, \
-                       REF, NULL). Enabled by the iec61131-3-ed3 dialect."
-            .into(),
-        allowed_values: None,
-    });
+    let mut flags = Vec::with_capacity(14);
 
     // All vendor-extension flags from the macro-generated descriptors.
     for fd in CompilerOptions::FEATURE_DESCRIPTORS {
@@ -96,8 +84,7 @@ mod tests {
     #[test]
     fn build_response_when_called_then_contains_all_flags() {
         let resp = build_response();
-        // 14 vendor flags + 1 special (allow_iec_61131_3_2013) = 15
-        assert_eq!(resp.flags.len(), 15);
+        assert_eq!(resp.flags.len(), 14);
     }
 
     #[test]
@@ -119,12 +106,6 @@ mod tests {
     fn build_response_when_called_then_contains_c_style_comments_flag() {
         let resp = build_response();
         assert!(resp.flags.iter().any(|f| f.id == "allow_c_style_comments"));
-    }
-
-    #[test]
-    fn build_response_when_called_then_contains_iec_2013_flag() {
-        let resp = build_response();
-        assert!(resp.flags.iter().any(|f| f.id == "allow_iec_61131_3_2013"));
     }
 
     #[test]

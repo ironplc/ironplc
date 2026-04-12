@@ -30,7 +30,7 @@ impl IronPlcMcp {
     /// Enumerates dialects and feature flags accepted in the `options` object.
     #[tool(
         name = "list_options",
-        description = "Enumerates dialects and feature flags you are allowed to pass in `options`. Every analysis, context, and execution tool requires an `options` object; unknown keys are rejected. Do NOT toggle flags or change dialect to make errors go away \u{2014} dialect changes are recorded in the log stream."
+        description = "Enumerates dialects and feature flags accepted in the options object of analysis and execution tools."
     )]
     fn list_options(&self) -> Result<Content, rmcp::ErrorData> {
         let response = tools::list_options::build_response();
