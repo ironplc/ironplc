@@ -11,7 +11,11 @@ repository.workspace = true
 maintenance = { status = "experimental" }
 
 [dependencies]
+ironplc-dsl = { path = "../dsl", version = "0.192.0" }
 ironplc-parser = { path = "../parser", version = "0.192.0" }
+ironplc-problems = { path = "../problems", version = "0.192.0" }
+ironplc-project = { path = "../project", version = "0.192.0" }
+schemars = "1"
 
 rmcp = { version = "1.4", features = ["server", "transport-io"] }
 tokio = { version = "1", features = ["rt", "macros", "io-std"] }
@@ -27,3 +31,4 @@ path = "src/main.rs"
 [dev-dependencies]
 assert_cmd = { version = "2.0" }
 predicates = { version = "3.0" }
+spec_test_macro = { path = "../spec_test_macro" }

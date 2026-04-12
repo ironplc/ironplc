@@ -55,18 +55,22 @@ together, so it will still validate that the configuration references a
 valid program.
 
 --------------------------------------
-Compile with Multiple Files
+Run with Multiple Files
 --------------------------------------
 
-When compiling multiple files, pass all of them to the compiler:
+Open :file:`main.st` in the editor and click :guilabel:`Run Program` above
+the ``PROGRAM main`` line. The extension compiles all :file:`.st` files in
+the workspace together before running, so the configuration in
+:file:`config.st` is included automatically.
 
-.. code-block:: shell
-   :caption: Compile Multiple Files
+Verify the output in the :guilabel:`IronPLC Run` panel matches what you saw
+before, then click :guilabel:`Stop` to end execution.
 
-   ironplcc compile main.st config.st --output main.iplc
+.. tip::
 
-The compiled output is the same — IronPLC merges all source files before
-compiling.
+   When using the command line, you must pass all source files explicitly.
+   See :doc:`/how-to-guides/getting-started/check-compile-run-from-cli`
+   for details.
 
 --------------------------------------
 Why Split Files?

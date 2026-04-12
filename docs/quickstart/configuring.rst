@@ -116,27 +116,27 @@ runtime reads the inputs, runs ``main``, and writes the outputs.
    :doc:`/explanation/program-organization`.
 
 --------------------------------------
-Compile and Run
+Run the Updated Program
 --------------------------------------
 
-Compile and run the updated program:
+Now that the timer and configuration are in place, run the updated program:
 
-.. code-block:: shell
+#. Click :guilabel:`Run Program` above the ``PROGRAM main`` line.
+#. The :guilabel:`IronPLC Run` output panel shows the variables updating
+   in real time. After a moment, you should see output like:
 
-   ironplcc compile main.st --output main.iplc
-   ironplcvm run main.iplc --scans 10 --dump-vars
+   .. code-block:: text
 
-With 10 scan cycles at 100 ms intervals, the timer accumulates time.
-You should see output showing the timer's state:
+      Scan cycle: 10
+      ---
+        Button : BOOL = FALSE
+        Buzzer : BOOL = TRUE
+        PulseTimer.IN : BOOL = TRUE
+        PulseTimer.PT : TIME = T#500ms
+        PulseTimer.Q : BOOL = TRUE
+        PulseTimer.ET : TIME = T#1000ms
 
-.. code-block:: text
-
-   Button: FALSE
-   Buzzer: TRUE
-   PulseTimer.IN: TRUE
-   PulseTimer.PT: T#500ms
-   PulseTimer.Q: TRUE
-   PulseTimer.ET: T#1000ms
+#. Click :guilabel:`Stop` above the ``PROGRAM`` line to end execution.
 
 The timer's elapsed time (``ET``) shows how long it has been running.
 After enough scan cycles, ``Q`` becomes ``TRUE`` and the buzzer turns on.

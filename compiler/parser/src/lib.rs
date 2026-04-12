@@ -2,6 +2,7 @@
 #![allow(clippy::result_large_err)]
 extern crate ironplc_dsl as dsl;
 
+pub mod declarations;
 mod lexer;
 pub mod options;
 mod parser;

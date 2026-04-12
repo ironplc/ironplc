@@ -923,12 +923,17 @@ version = "0.192.0"
 dependencies = [
  "assert_cmd",
  "env_logger",
+ "ironplc-dsl",
  "ironplc-parser",
+ "ironplc-problems",
+ "ironplc-project",
  "log",
  "predicates",
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
+ "spec_test_macro",
  "tokio",
 ]
 
