@@ -12,12 +12,12 @@ Implement the `parse` and `check` MCP tools from the MCP server design (`specs/d
 
 ### Approach
 
-Both tools bypass the `Project` trait and `FileBackedProject`. Instead they call the parser and analyzer libraries directly:
+Both tools use `MemoryBackedProject` from `ironplc-project` — the same `Project` trait abstraction that the CLI uses via `FileBackedProject`. The MCP server constructs a fresh `MemoryBackedProject` per tool call, loads the `sources` array via `add_source()`, runs the appropriate pipeline method, and discards the project when the handler returns.
 
-- **`parse`**: calls `ironplc_parser::parse_program()` per source, collects diagnostics and extracts structure from the parsed `Library`.
-- **`check`**: calls `parse_program()` per source, merges the resulting `Library` values, then calls `ironplc_analyzer::stages::analyze()` on the combined library. Collects parse diagnostics and analysis diagnostics.
+- **`parse`**: constructs a `MemoryBackedProject`, adds sources, calls `sources_mut()` to parse each source via `library()`, collects diagnostics and extracts structure from the parsed `Library`.
+- **`check`**: constructs a `MemoryBackedProject`, adds sources, calls `semantic()` which runs parse + full semantic analysis. Collects all diagnostics.
 
-This matches the design's intent (REQ-ARC-010: construct a fresh in-memory project per call, discard it when done) without importing `FileBackedProject` or any filesystem-backed implementation (REQ-STL-006).
+This matches the design's intent (REQ-ARC-010: construct a fresh in-memory project per call, discard it when done) and satisfies REQ-STL-006 (no disk I/O) since `MemoryBackedProject` never touches the filesystem.
 
 ### Shared infrastructure (`tools/common.rs`)
 
@@ -52,20 +52,20 @@ The `structure` array entries have: `kind` (one of `"program"`, `"function"`, `"
 The handler:
 1. Deserializes `sources` and `options`.
 2. Validates sources and options (same as `parse`).
-3. For each source: calls `parse_program()`. Collects parse errors. Collects successfully parsed `Library` values.
-4. Merges all parsed libraries into a single `Library` (same approach as `FileBackedProject::semantic()` and `cli::compile()`).
-5. Calls `ironplc_analyzer::stages::analyze(&[&combined], &options)`.
-6. Collects analysis diagnostics from both the `Err` case and the `Ok` case (where diagnostics live in `context.diagnostics()`).
+3. Constructs a `MemoryBackedProject` with the parsed `CompilerOptions`.
+4. Loads each source via `project.add_source(FileId::from_string(name), content)`.
+5. Calls `project.semantic()` — this runs parse + full semantic analysis internally.
+6. On `Err`, collects all diagnostics (parse errors, type resolution failures, and semantic rule violations).
 7. Converts all diagnostics to `McpDiagnostic`.
 8. Returns `CheckResponse { ok, diagnostics }` where `ok` is `true` when no diagnostic has `severity: "error"`.
 
 ### New crate dependencies
 
 `compiler/mcp/Cargo.toml` gains:
+- `ironplc-project` — for `MemoryBackedProject`, `Project` trait (parse + semantic analysis)
 - `ironplc-dsl` — for `Diagnostic`, `Library`, `FileId`, `LibraryElementKind`, `SourceSpan`
-- `ironplc-analyzer` — for `stages::analyze`
 
-Both are workspace-local path dependencies, same pattern as other crates.
+Both are workspace-local path dependencies, same pattern as other crates. The MCP crate does **not** depend on `ironplc-analyzer` directly; it accesses semantic analysis through `MemoryBackedProject::semantic()` from `ironplc-project`.
 
 ### Tool descriptions
 
@@ -97,7 +97,7 @@ Using `serde_json::Value` for `options` allows us to do manual validation of key
 
 | File | Action |
 |------|--------|
-| `compiler/mcp/Cargo.toml` | Modify: add `ironplc-dsl` and `ironplc-analyzer` dependencies |
+| `compiler/mcp/Cargo.toml` | Modify: add `ironplc-project` and `ironplc-dsl` dependencies |
 | `compiler/mcp/src/tools/mod.rs` | Modify: add `pub mod common;`, `pub mod parse;`, `pub mod check;` |
 | `compiler/mcp/src/tools/common.rs` | New: shared types (`SourceInput`, `McpDiagnostic`, `StructureEntry`), validation (`validate_sources`, `parse_options`), diagnostic mapping (`map_diagnostic`, `map_diagnostics`) |
 | `compiler/mcp/src/tools/parse.rs` | New: `ParseResponse`, `build_response()`, handler logic, structure extraction, tests |
@@ -108,7 +108,7 @@ Using `serde_json::Value` for `options` allows us to do manual validation of key
 
 ### Step 1: Add crate dependencies
 
-- [ ] Add `ironplc-dsl` and `ironplc-analyzer` to `compiler/mcp/Cargo.toml` as path dependencies with matching version
+- [ ] Add `ironplc-project` and `ironplc-dsl` to `compiler/mcp/Cargo.toml` as path dependencies with matching version
 - [ ] Verify `cargo check -p ironplc-mcp` still compiles
 
 ### Step 2: Implement shared infrastructure (`tools/common.rs`)
@@ -164,9 +164,9 @@ Using `serde_json::Value` for `options` allows us to do manual validation of key
 - [ ] Define `CheckResponse { ok: bool, diagnostics: Vec<McpDiagnostic> }` with Serialize
 - [ ] Implement `build_response(sources, options_value)` function:
   - Validate sources and options
-  - Parse each source, collect parse errors, merge successful libraries
-  - Run `analyze()` on the combined library
-  - Collect analysis diagnostics from both error and success paths
+  - Construct `MemoryBackedProject`, load sources via `add_source()`
+  - Call `project.semantic()` to run parse + full semantic analysis
+  - Collect diagnostics from the `Err` result
   - Map all diagnostics to `McpDiagnostic`
   - Set `ok` based on whether any diagnostic has `severity: "error"`
 - [ ] Write tests:

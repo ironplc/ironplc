@@ -5,4 +5,4 @@ pub mod disassemble;
 pub mod project;
 pub mod tokenizer;
 
-pub use project::{FileBackedProject, Project};
+pub use project::{FileBackedProject, MemoryBackedProject, Project};
