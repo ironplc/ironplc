@@ -20,6 +20,7 @@ Use these commands for common development tasks. Each skill includes fallback co
 - `/project:test` - Run tests (with coverage options)
 - `/project:ci` - **Full CI pipeline (REQUIRED before creating any PR)**
 - `/project:format` - Auto-fix formatting and lint issues
+- `/project:reconcile-spec` - Reconcile one spec section with implementation (add REQ IDs and tests)
 
 For full details, see [specs/steering/common-tasks.md](specs/steering/common-tasks.md).
 
