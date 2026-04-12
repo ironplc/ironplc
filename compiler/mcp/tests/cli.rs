@@ -26,7 +26,8 @@ fn initialize_when_valid_handshake_then_ok() -> Result<(), Box<dyn std::error::E
 }
 
 #[test]
-fn tools_list_when_valid_handshake_then_contains_list_options() -> Result<(), Box<dyn std::error::Error>> {
+fn tools_list_when_valid_handshake_then_contains_list_options(
+) -> Result<(), Box<dyn std::error::Error>> {
     Command::cargo_bin("ironplcmcp")?
         .write_stdin(MCP_TOOLS_LIST)
         .assert()
@@ -35,7 +36,8 @@ fn tools_list_when_valid_handshake_then_contains_list_options() -> Result<(), Bo
 }
 
 #[test]
-fn initialize_when_valid_handshake_then_returns_protocol_version() -> Result<(), Box<dyn std::error::Error>> {
+fn initialize_when_valid_handshake_then_returns_protocol_version(
+) -> Result<(), Box<dyn std::error::Error>> {
     Command::cargo_bin("ironplcmcp")?
         .write_stdin(MCP_TOOLS_LIST)
         .assert()
