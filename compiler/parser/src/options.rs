@@ -31,6 +31,28 @@ impl Dialect {
         Dialect::Iec61131_3Ed3,
         Dialect::Rusty,
     ];
+
+    /// A short human-readable name suitable for display in UIs and tool output.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Dialect::Iec61131_3Ed2 => "IEC 61131-3 Ed. 2",
+            Dialect::Iec61131_3Ed3 => "IEC 61131-3 Ed. 3",
+            Dialect::Rusty => "RuSTy-compatible",
+        }
+    }
+
+    /// A one-line description of what this dialect enables.
+    pub fn description(&self) -> &'static str {
+        match self {
+            Dialect::Iec61131_3Ed2 => {
+                "Strict IEC 61131-3:2003 (Edition 2). No vendor extensions. [default]"
+            }
+            Dialect::Iec61131_3Ed3 => "Strict IEC 61131-3:2013 (Edition 3). No vendor extensions.",
+            Dialect::Rusty => {
+                "RuSTy-compatible: Edition 2 base with REF_TO and all vendor extensions."
+            }
+        }
+    }
 }
 
 impl fmt::Display for Dialect {
@@ -47,6 +69,9 @@ impl fmt::Display for Dialect {
 pub struct FeatureDescriptor {
     /// The CLI flag name (e.g. `"--allow-c-style-comments"`).
     pub cli_flag: &'static str,
+    /// The option key used in the MCP `options` object (e.g. `"allow_c_style_comments"`).
+    /// Matches the corresponding [`CompilerOptions`] field name.
+    pub option_key: &'static str,
     /// A short human-readable description.
     pub description: &'static str,
     /// Dialects that enable this feature by default.
@@ -98,6 +123,7 @@ macro_rules! define_compiler_options {
                 $(
                     FeatureDescriptor {
                         cli_flag: $cli_flag,
+                        option_key: stringify!($vendor_field),
                         description: $desc,
                         dialects: &[$(Dialect::$dialect),*],
                     },
@@ -184,16 +210,7 @@ define_compiler_options! {
 pub fn describe_dialects() -> String {
     let mut out = String::from("Dialects:\n");
     for dialect in Dialect::ALL {
-        let summary = match dialect {
-            Dialect::Iec61131_3Ed2 => {
-                "Strict IEC 61131-3:2003 (Edition 2). No vendor extensions. [default]"
-            }
-            Dialect::Iec61131_3Ed3 => "Strict IEC 61131-3:2013 (Edition 3). No vendor extensions.",
-            Dialect::Rusty => {
-                "RuSTy-compatible: Edition 2 base with REF_TO and all vendor extensions."
-            }
-        };
-        out.push_str(&format!("  {:<20} {}\n", dialect, summary));
+        out.push_str(&format!("  {:<20} {}\n", dialect, dialect.description()));
     }
 
     for dialect in Dialect::ALL {
@@ -335,5 +352,32 @@ mod tests {
     #[test]
     fn dialect_display_when_rusty_then_cli_name() {
         assert_eq!(format!("{}", Dialect::Rusty), "rusty");
+    }
+
+    #[test]
+    fn feature_descriptors_when_called_then_option_key_matches_field_name() {
+        let fd = &CompilerOptions::FEATURE_DESCRIPTORS[0];
+        assert_eq!(fd.option_key, "allow_c_style_comments");
+    }
+
+    #[test]
+    fn feature_descriptors_when_called_then_all_option_keys_start_with_allow() {
+        for fd in CompilerOptions::FEATURE_DESCRIPTORS {
+            assert!(
+                fd.option_key.starts_with("allow_"),
+                "option_key {} does not start with allow_",
+                fd.option_key
+            );
+        }
+    }
+
+    #[test]
+    fn dialect_display_name_when_ed2_then_human_readable() {
+        assert_eq!(Dialect::Iec61131_3Ed2.display_name(), "IEC 61131-3 Ed. 2");
+    }
+
+    #[test]
+    fn dialect_description_when_ed2_then_contains_edition_2() {
+        assert!(Dialect::Iec61131_3Ed2.description().contains("Edition 2"));
     }
 }
