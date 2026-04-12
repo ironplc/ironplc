@@ -30,5 +30,6 @@ class Ironplc < Formula
     def install
       bin.install "ironplcc"
       bin.install "ironplcvm"
+      bin.install "ironplcmcp"
     end
   end

@@ -921,9 +921,11 @@ dependencies = [
 name = "ironplc-mcp"
 version = "0.192.0"
 dependencies = [
+ "assert_cmd",
  "env_logger",
  "ironplc-parser",
  "log",
+ "predicates",
  "rmcp",
  "serde",
  "serde_json",
