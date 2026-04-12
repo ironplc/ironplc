@@ -13,6 +13,7 @@ maintenance = { status = "experimental" }
 [dependencies]
 ironplc-dsl = { path = "../dsl", version = "0.192.0" }
 ironplc-parser = { path = "../parser", version = "0.192.0" }
+ironplc-problems = { path = "../problems", version = "0.192.0" }
 ironplc-project = { path = "../project", version = "0.192.0" }
 schemars = "1"
 

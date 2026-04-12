@@ -86,19 +86,19 @@ Use this for rapid iteration on code structure. It is faster than `check` and us
 
 **REQ-TOL-012** The `parse` tool accepts the same `options` object as `check`, since dialect and feature flags affect the parser.
 
-**REQ-TOL-013** The `parse` tool returns a best-effort `structure` array alongside `diagnostics`, even when `diagnostics` contains errors. Each entry describes a top-level declaration the parser was able to recognize and contains `kind` (`"program"`, `"function"`, `"function_block"`, `"type"`, or `"configuration"`), `name` (string, or `null` when the parser could not recover a name), `file`, `start_line`, and `end_line`. This gives the agent an outline of its own in-progress draft to reason about even when the source is not yet valid — without it, a broken parse leaves the agent with only an opaque diagnostic and no structural context.
+**REQ-TOL-013** The `parse` tool returns a best-effort `structure` array alongside `diagnostics`, even when `diagnostics` contains errors. Each entry describes a top-level declaration the parser was able to recognize and contains `kind` (`"program"`, `"function"`, `"function_block"`, `"type"`, or `"configuration"`), `name` (string, or `null` when the parser could not recover a name), `file`, `start` (0-indexed byte offset of the declaration's name), and `end` (0-indexed byte offset one past the last byte of the name). This gives the agent an outline of its own in-progress draft to reason about even when the source is not yet valid — without it, a broken parse leaves the agent with only an opaque diagnostic and no structural context.
 
 **Output:**
 ```json
 {
   "ok": false,
   "structure": [
-    { "kind": "program", "name": "Main", "file": "main.st", "start_line": 1, "end_line": 22 },
-    { "kind": "function_block", "name": null, "file": "main.st", "start_line": 24, "end_line": 40 }
+    { "kind": "program", "name": "Main", "file": "main.st", "start": 8, "end": 12 },
+    { "kind": "function_block", "name": null, "file": "main.st", "start": 250, "end": 260 }
   ],
   "diagnostics": [
     { "code": "P0001", "message": "expected `;`", "file": "main.st",
-      "start_line": 18, "start_col": 10, "end_line": 18, "end_col": 11, "severity": "error" }
+      "start": 142, "end": 143, "severity": "error" }
   ]
 }
 ```
@@ -121,7 +121,7 @@ This is the highest-value tool. AI assistants use it to validate code they gener
 
 **REQ-TOL-022** The `check` tool returns a `diagnostics` array and a top-level `ok: boolean`. `ok` is `true` when the diagnostics array contains no entries with `severity: "error"`; otherwise `ok` is `false`.
 
-**REQ-TOL-023** Each diagnostic in the `check` response includes: `code`, `message`, `file`, `start_line`, `start_col`, `end_line`, `end_col`, and `severity`. Line numbers are 1-indexed. Column numbers are 1-indexed and count Unicode scalar values (not bytes, not UTF-16 code units); a tab counts as one column. `end_line`/`end_col` refer to the character immediately after the last character of the span, so an empty span has `start == end`.
+**REQ-TOL-023** Each diagnostic in the `check` response includes: `code`, `message`, `file`, `start`, `end`, and `severity`. `start` and `end` are 0-indexed byte offsets into the source text of the file identified by `file`. `end` points one past the last byte of the span, so an empty span has `start == end`. Byte offsets are the same offsets the compiler stores internally; no line/column conversion is applied.
 
 **REQ-TOL-024** The `check` tool never returns an MCP-level error for a compiler failure; parse and semantic errors are returned as diagnostics.
 
@@ -135,8 +135,7 @@ This is the highest-value tool. AI assistants use it to validate code they gener
   "ok": false,
   "diagnostics": [
     { "code": "P0001", "message": "...", "file": "main.st",
-      "start_line": 5, "start_col": 3, "end_line": 5, "end_col": 10,
-      "severity": "error" }
+      "start": 42, "end": 49, "severity": "error" }
   ]
 }
 ```

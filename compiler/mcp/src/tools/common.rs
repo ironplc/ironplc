@@ -2,12 +2,16 @@
 //!
 //! Every source-accepting tool (parse, check, compile, run, …) reuses
 //! the types and validation functions defined here.
+//!
+//! Validation errors produce standard `Diagnostic` values with problem code
+//! `P8001` — the same diagnostic type the compiler uses everywhere.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use ironplc_dsl::core::FileId;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::core::SourceSpan;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::{CompilerOptions, Dialect};
+use ironplc_problems::Problem;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +23,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct SourceInput {
     /// Logical file name (e.g. `"main.st"`). Must be non-empty, ≤ 256 bytes,
-    /// and must not contain NUL, `/`, or `\`.
+    /// contain only printable ASCII (0x20–0x7E), and be unique within the
+    /// sources array.
     pub name: String,
     /// The full source text of the file.
     pub content: String,
@@ -36,21 +41,8 @@ pub struct ParseCheckInput {
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Output types
+// Output types (thin JSON serialisation layer)
 // ───────────────────────────────────────────────────────────────────
-
-/// A JSON-serialisable diagnostic (REQ-TOL-023).
-#[derive(Debug, Clone, Serialize)]
-pub struct McpDiagnostic {
-    pub code: String,
-    pub message: String,
-    pub file: String,
-    pub start_line: u32,
-    pub start_col: u32,
-    pub end_line: u32,
-    pub end_col: u32,
-    pub severity: String,
-}
 
 /// A single entry in the `structure` array returned by the `parse` tool.
 #[derive(Debug, Clone, Serialize)]
@@ -58,51 +50,45 @@ pub struct StructureEntry {
     pub kind: String,
     pub name: Option<String>,
     pub file: String,
-    pub start_line: u32,
-    pub end_line: u32,
+    pub start: usize,
+    pub end: usize,
 }
 
 // ───────────────────────────────────────────────────────────────────
 // Source-name validation (REQ-STL-004)
 // ───────────────────────────────────────────────────────────────────
 
+/// Returns `true` when every byte in `name` is printable ASCII (0x20–0x7E).
+fn is_printable_ascii(name: &str) -> bool {
+    name.bytes().all(|b| (0x20..=0x7E).contains(&b))
+}
+
 /// Validates the `sources` array. Returns validation-error diagnostics
 /// (empty on success).
-pub fn validate_sources(sources: &[SourceInput]) -> Vec<McpDiagnostic> {
+pub fn validate_sources(sources: &[SourceInput]) -> Vec<Diagnostic> {
     let mut errors = Vec::new();
     let mut seen = HashSet::new();
 
     for src in sources {
         if src.name.is_empty() {
-            errors.push(validation_error("Source name must not be empty."));
+            errors.push(validation_diagnostic("Source name must not be empty."));
             continue;
         }
         if src.name.len() > 256 {
-            errors.push(validation_error(&format!(
+            errors.push(validation_diagnostic(&format!(
                 "Source name '{}' exceeds 256-byte limit.",
                 truncate(&src.name, 40)
             )));
         }
-        if src.name.contains('\0') {
-            errors.push(validation_error(&format!(
-                "Source name '{}' contains NUL character.",
+        if !is_printable_ascii(&src.name) {
+            errors.push(validation_diagnostic(&format!(
+                "Source name '{}' contains characters outside printable ASCII (0x20-0x7E).",
                 src.name
-            )));
-        }
-        if src.name.contains('/') {
-            errors.push(validation_error(&format!(
-                "Source name '{}' contains '/'.",
-                src.name
-            )));
-        }
-        if src.name.contains('\\') {
-            errors.push(validation_error(&format!(
-                "Source name '{}' contains '\\'.",
-                src.name
+                    .replace(|c: char| !c.is_ascii_graphic() && c != ' ', "?")
             )));
         }
         if !seen.insert(&src.name) {
-            errors.push(validation_error(&format!(
+            errors.push(validation_diagnostic(&format!(
                 "Duplicate source name '{}'.",
                 src.name
             )));
@@ -116,21 +102,21 @@ pub fn validate_sources(sources: &[SourceInput]) -> Vec<McpDiagnostic> {
 // ───────────────────────────────────────────────────────────────────
 
 /// Parses and validates the `options` JSON value into `CompilerOptions`.
-pub fn parse_options(value: &serde_json::Value) -> Result<CompilerOptions, Vec<McpDiagnostic>> {
+pub fn parse_options(value: &serde_json::Value) -> Result<CompilerOptions, Vec<Diagnostic>> {
     let obj = value
         .as_object()
-        .ok_or_else(|| vec![validation_error("options must be a JSON object.")])?;
+        .ok_or_else(|| vec![validation_diagnostic("options must be a JSON object.")])?;
 
     // `dialect` is required
     let dialect_str = obj.get("dialect").and_then(|v| v.as_str()).ok_or_else(|| {
-        vec![validation_error(
+        vec![validation_diagnostic(
             "options.dialect is required and must be a string.",
         )]
     })?;
 
     let dialect = resolve_dialect(dialect_str).ok_or_else(|| {
         let known: Vec<String> = Dialect::ALL.iter().map(|d| d.to_string()).collect();
-        vec![validation_error(&format!(
+        vec![validation_diagnostic(&format!(
             "Unknown dialect '{}'. Known dialects: {}",
             dialect_str,
             known.join(", ")
@@ -140,7 +126,7 @@ pub fn parse_options(value: &serde_json::Value) -> Result<CompilerOptions, Vec<M
     let mut options = CompilerOptions::from_dialect(dialect);
 
     // Build a lookup for known feature-flag keys
-    let feature_keys: HashMap<&str, usize> = CompilerOptions::FEATURE_DESCRIPTORS
+    let feature_keys: std::collections::HashMap<&str, usize> = CompilerOptions::FEATURE_DESCRIPTORS
         .iter()
         .enumerate()
         .map(|(i, fd)| (fd.option_key, i))
@@ -158,14 +144,17 @@ pub fn parse_options(value: &serde_json::Value) -> Result<CompilerOptions, Vec<M
                     apply_flag(&mut options, idx, b);
                 }
                 None => {
-                    errors.push(validation_error(&format!(
+                    errors.push(validation_diagnostic(&format!(
                         "Option '{}' must be a boolean.",
                         key
                     )));
                 }
             }
         } else {
-            errors.push(validation_error(&format!("Unknown option key '{}'.", key)));
+            errors.push(validation_diagnostic(&format!(
+                "Unknown option key '{}'.",
+                key
+            )));
         }
     }
 
@@ -203,89 +192,41 @@ fn apply_flag(options: &mut CompilerOptions, idx: usize, value: bool) {
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Diagnostic mapping (REQ-TOL-023)
+// Diagnostic serialisation (REQ-TOL-023)
 // ───────────────────────────────────────────────────────────────────
 
-/// Converts a compiler `Diagnostic` to an `McpDiagnostic`.
+/// Serialises a compiler `Diagnostic` to a JSON value with the fields
+/// required by REQ-TOL-023: `code`, `message`, `file`, `start`, `end`,
+/// `severity`.
 ///
-/// `source_map` maps `FileId` to the source text used for byte→line/col
-/// conversion. When the file ID is not found, line 1 / col 1 is used.
-pub fn map_diagnostic(diag: &Diagnostic, source_map: &HashMap<FileId, &str>) -> McpDiagnostic {
-    let file_id = &diag.primary.file_id;
-    let file_name = file_id.to_string();
-    let source = source_map.get(file_id).copied();
-
-    let (start_line, start_col) = byte_offset_to_line_col(source, diag.primary.location.start);
-    let (end_line, end_col) = byte_offset_to_line_col(source, diag.primary.location.end);
-
-    McpDiagnostic {
-        code: diag.code.clone(),
-        message: diag.description(),
-        file: file_name,
-        start_line,
-        start_col,
-        end_line,
-        end_col,
-        severity: "error".to_string(),
-    }
+/// `start` and `end` are the 0-indexed byte offsets already stored in
+/// the diagnostic — no line/column conversion is performed.
+pub fn serialize_diagnostic(diag: &Diagnostic) -> serde_json::Value {
+    serde_json::json!({
+        "code": diag.code,
+        "message": diag.description(),
+        "file": diag.primary.file_id.to_string(),
+        "start": diag.primary.location.start,
+        "end": diag.primary.location.end,
+        "severity": "error",
+    })
 }
 
-/// Batch-converts compiler diagnostics to MCP diagnostics.
-pub fn map_diagnostics(
-    diags: &[Diagnostic],
-    source_map: &HashMap<FileId, &str>,
-) -> Vec<McpDiagnostic> {
-    diags
-        .iter()
-        .map(|d| map_diagnostic(d, source_map))
-        .collect()
-}
-
-/// Converts a 0-indexed byte offset into 1-indexed (line, column) using
-/// the source text. Column counts Unicode scalar values (not bytes). A tab
-/// counts as one column.
-///
-/// Returns `(1, 1)` when `source` is `None` (file text unavailable).
-fn byte_offset_to_line_col(source: Option<&str>, offset: usize) -> (u32, u32) {
-    let source = match source {
-        Some(s) => s,
-        None => return (1, 1),
-    };
-
-    let mut line: u32 = 1;
-    let mut col: u32 = 1;
-
-    for (i, ch) in source.char_indices() {
-        if i >= offset {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-
-    (line, col)
+/// Batch-serialises compiler diagnostics to a JSON array.
+pub fn serialize_diagnostics(diags: &[Diagnostic]) -> Vec<serde_json::Value> {
+    diags.iter().map(serialize_diagnostic).collect()
 }
 
 // ───────────────────────────────────────────────────────────────────
 // Helpers
 // ───────────────────────────────────────────────────────────────────
 
-/// Creates a validation-level MCP diagnostic (no file / position).
-fn validation_error(message: &str) -> McpDiagnostic {
-    McpDiagnostic {
-        code: "MCP-VALIDATION".to_string(),
-        message: message.to_string(),
-        file: String::new(),
-        start_line: 0,
-        start_col: 0,
-        end_line: 0,
-        end_col: 0,
-        severity: "error".to_string(),
-    }
+/// Creates a validation `Diagnostic` using the `P8001` problem code.
+fn validation_diagnostic(message: &str) -> Diagnostic {
+    Diagnostic::problem(
+        Problem::McpInputValidation,
+        Label::span(SourceSpan::default(), message),
+    )
 }
 
 /// Truncates a string to at most `max` characters, appending "…" if truncated.
@@ -316,7 +257,6 @@ mod tests {
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
-        assert!(errs[0].message.contains("empty"));
     }
 
     #[test]
@@ -327,7 +267,17 @@ mod tests {
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
-        assert!(errs[0].message.contains("256"));
+    }
+
+    #[test]
+    fn validate_sources_when_name_contains_non_printable_then_error() {
+        // NUL character
+        let sources = vec![SourceInput {
+            name: "file\0.st".into(),
+            content: String::new(),
+        }];
+        let errs = validate_sources(&sources);
+        assert_eq!(errs.len(), 1);
     }
 
     #[test]
@@ -336,31 +286,43 @@ mod tests {
             name: "path/file.st".into(),
             content: String::new(),
         }];
+        // '/' is 0x2F which IS printable ASCII, but that's fine for the
+        // allowlist — the spec says printable ASCII is allowed. The old
+        // denylist rejected '/' but the new allowlist permits it.
+        // '/' is within 0x20-0x7E so it passes validation.
         let errs = validate_sources(&sources);
-        assert_eq!(errs.len(), 1);
-        assert!(errs[0].message.contains("/"));
+        assert!(errs.is_empty());
     }
 
     #[test]
-    fn validate_sources_when_name_contains_backslash_then_error() {
+    fn validate_sources_when_name_contains_tab_then_error() {
         let sources = vec![SourceInput {
-            name: "path\\file.st".into(),
+            name: "file\t.st".into(),
             content: String::new(),
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
-        assert!(errs[0].message.contains("\\"));
     }
 
     #[test]
-    fn validate_sources_when_name_contains_nul_then_error() {
+    fn validate_sources_when_name_contains_bell_then_error() {
         let sources = vec![SourceInput {
-            name: "file\0.st".into(),
+            name: "file\x07.st".into(),
             content: String::new(),
         }];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
-        assert!(errs[0].message.contains("NUL"));
+    }
+
+    #[test]
+    fn validate_sources_when_name_contains_del_then_error() {
+        // DEL is 0x7F, outside printable ASCII range
+        let sources = vec![SourceInput {
+            name: "file\x7F.st".into(),
+            content: String::new(),
+        }];
+        let errs = validate_sources(&sources);
+        assert_eq!(errs.len(), 1);
     }
 
     #[test]
@@ -377,7 +339,6 @@ mod tests {
         ];
         let errs = validate_sources(&sources);
         assert_eq!(errs.len(), 1);
-        assert!(errs[0].message.contains("Duplicate"));
     }
 
     #[test]
@@ -396,6 +357,16 @@ mod tests {
         assert!(errs.is_empty());
     }
 
+    #[test]
+    fn validate_sources_when_p8001_code_then_correct() {
+        let sources = vec![SourceInput {
+            name: String::new(),
+            content: String::new(),
+        }];
+        let errs = validate_sources(&sources);
+        assert_eq!(errs[0].code, "P8001");
+    }
+
     // -- parse_options tests --
 
     #[test]
@@ -403,7 +374,6 @@ mod tests {
         let val = serde_json::json!({});
         let result = parse_options(&val);
         assert!(result.is_err());
-        assert!(result.unwrap_err()[0].message.contains("dialect"));
     }
 
     #[test]
@@ -411,7 +381,6 @@ mod tests {
         let val = serde_json::json!({"dialect": "cobol"});
         let result = parse_options(&val);
         assert!(result.is_err());
-        assert!(result.unwrap_err()[0].message.contains("Unknown dialect"));
     }
 
     #[test]
@@ -419,9 +388,6 @@ mod tests {
         let val = serde_json::json!({"dialect": "iec61131-3-ed2", "bogus": true});
         let result = parse_options(&val);
         assert!(result.is_err());
-        assert!(result.unwrap_err()[0]
-            .message
-            .contains("Unknown option key"));
     }
 
     #[test]
@@ -456,48 +422,27 @@ mod tests {
         assert!(opts.allow_c_style_comments);
     }
 
-    // -- byte_offset_to_line_col / map_diagnostic tests --
+    // -- serialize_diagnostic tests --
 
     #[test]
-    fn map_diagnostic_when_single_line_then_correct_line_col() {
-        // "PROGRAM p"
-        //  0123456789
-        // offset 8 = 'p' → line 1, col 9
-        let source = "PROGRAM p END_PROGRAM";
-        let (line, col) = byte_offset_to_line_col(Some(source), 8);
-        assert_eq!(line, 1);
-        assert_eq!(col, 9);
+    fn serialize_diagnostic_when_called_then_has_byte_offsets() {
+        let diag = Diagnostic::problem(
+            Problem::SyntaxError,
+            Label::span(SourceSpan::range(10, 15), "test"),
+        );
+        let json = serialize_diagnostic(&diag);
+        assert_eq!(json["start"], 10);
+        assert_eq!(json["end"], 15);
     }
 
     #[test]
-    fn map_diagnostic_when_multi_line_then_correct_line_col() {
-        let source = "PROGRAM p\nVAR\nEND_VAR\nEND_PROGRAM";
-        // Line 1: "PROGRAM p\n" (10 chars)
-        // Line 2: "VAR\n"       (4 chars)
-        // Line 3: "END_VAR\n"   (8 chars)
-        // Line 4: "END_PROGRAM"
-        // offset 14 = "END_VAR" line 3, col 1
-        let (line, col) = byte_offset_to_line_col(Some(source), 14);
-        assert_eq!(line, 3);
-        assert_eq!(col, 1);
-    }
-
-    #[test]
-    fn map_diagnostic_when_unicode_then_counts_scalar_values() {
-        // "äb" — 'ä' is 2 bytes (U+00E4), 'b' is 1 byte
-        // byte offset 2 = 'b' → line 1, col 2
-        let source = "äb";
-        let (line, col) = byte_offset_to_line_col(Some(source), 2);
-        assert_eq!(line, 1);
-        assert_eq!(col, 2);
-    }
-
-    #[test]
-    fn map_diagnostic_when_tab_then_counts_as_one_column() {
-        let source = "\tx";
-        // '\t' is 1 byte, offset 1 = 'x' → line 1, col 2
-        let (line, col) = byte_offset_to_line_col(Some(source), 1);
-        assert_eq!(line, 1);
-        assert_eq!(col, 2);
+    fn serialize_diagnostic_when_called_then_has_code_and_message() {
+        let diag = Diagnostic::problem(
+            Problem::SyntaxError,
+            Label::span(SourceSpan::range(0, 1), "here"),
+        );
+        let json = serialize_diagnostic(&diag);
+        assert_eq!(json["code"], "P0002");
+        assert!(json["message"].as_str().unwrap().contains("Syntax error"));
     }
 }

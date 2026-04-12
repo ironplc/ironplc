@@ -97,23 +97,16 @@ fn mcp_spec_req_stl_004_source_name_validation() {
     }]);
     assert!(!errs.is_empty());
 
-    // NUL rejected
+    // Non-printable ASCII rejected (NUL)
     let errs = validate_sources(&[SourceInput {
         name: "f\0.st".into(),
         content: String::new(),
     }]);
     assert!(!errs.is_empty());
 
-    // Slash rejected
+    // Non-printable ASCII rejected (tab)
     let errs = validate_sources(&[SourceInput {
-        name: "a/b".into(),
-        content: String::new(),
-    }]);
-    assert!(!errs.is_empty());
-
-    // Backslash rejected
-    let errs = validate_sources(&[SourceInput {
-        name: "a\\b".into(),
+        name: "a\tb".into(),
         content: String::new(),
     }]);
     assert!(!errs.is_empty());
@@ -242,8 +235,8 @@ fn mcp_spec_req_tol_013_parse_returns_structure_array() {
     assert_eq!(entry["kind"], "program");
     assert_eq!(entry["name"], "p");
     assert!(entry.get("file").is_some());
-    assert!(entry.get("start_line").is_some());
-    assert!(entry.get("end_line").is_some());
+    assert!(entry.get("start").is_some());
+    assert!(entry.get("end").is_some());
 }
 
 // ===========================================================================
@@ -312,7 +305,7 @@ fn mcp_spec_req_tol_022_check_returns_diagnostics_and_ok() {
     assert!(!json["diagnostics"].as_array().unwrap().is_empty());
 }
 
-/// REQ-TOL-023: Diagnostic format with 1-indexed line/col numbers.
+/// REQ-TOL-023: Diagnostic format with byte offsets.
 #[spec_test(REQ_TOL_023)]
 fn mcp_spec_req_tol_023_diagnostic_format() {
     use crate::tools::common::SourceInput;
@@ -327,21 +320,18 @@ fn mcp_spec_req_tol_023_diagnostic_format() {
     assert!(!resp.diagnostics.is_empty());
 
     let d = &resp.diagnostics[0];
-    let json = serde_json::to_value(d).unwrap();
 
     // All required fields are present
-    assert!(json.get("code").is_some());
-    assert!(json.get("message").is_some());
-    assert!(json.get("file").is_some());
-    assert!(json.get("start_line").is_some());
-    assert!(json.get("start_col").is_some());
-    assert!(json.get("end_line").is_some());
-    assert!(json.get("end_col").is_some());
-    assert!(json.get("severity").is_some());
+    assert!(d.get("code").is_some());
+    assert!(d.get("message").is_some());
+    assert!(d.get("file").is_some());
+    assert!(d.get("start").is_some());
+    assert!(d.get("end").is_some());
+    assert!(d.get("severity").is_some());
 
-    // Line/col are 1-indexed (>= 1)
-    assert!(d.start_line >= 1, "start_line should be 1-indexed");
-    assert!(d.start_col >= 1, "start_col should be 1-indexed");
+    // start/end are 0-indexed byte offsets (numeric)
+    assert!(d["start"].is_number());
+    assert!(d["end"].is_number());
 }
 
 /// REQ-TOL-024: The `check` tool never returns an MCP-level error for
@@ -741,7 +731,7 @@ fn mcp_spec_req_arc_011_file_id_from_string() {
 
     let resp = tools::parse::build_response(&sources, &options);
     assert!(!resp.ok);
-    assert_eq!(resp.diagnostics[0].file, "my_file.st");
+    assert_eq!(resp.diagnostics[0]["file"], "my_file.st");
 }
 
 #[spec_test(REQ_ARC_012)]

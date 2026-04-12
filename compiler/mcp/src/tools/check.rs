@@ -2,19 +2,17 @@
 //!
 //! Runs parse and full semantic analysis, returning structured diagnostics.
 
-use std::collections::HashMap;
-
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use serde::Serialize;
 
-use super::common::{map_diagnostics, parse_options, validate_sources, McpDiagnostic, SourceInput};
+use super::common::{parse_options, serialize_diagnostics, validate_sources, SourceInput};
 
 /// Response returned by the `check` tool.
 #[derive(Debug, Serialize)]
 pub struct CheckResponse {
     pub ok: bool,
-    pub diagnostics: Vec<McpDiagnostic>,
+    pub diagnostics: Vec<serde_json::Value>,
 }
 
 /// Builds the check response from raw inputs.
@@ -24,7 +22,7 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
     if !source_errors.is_empty() {
         return CheckResponse {
             ok: false,
-            diagnostics: source_errors,
+            diagnostics: serialize_diagnostics(&source_errors),
         };
     }
 
@@ -34,7 +32,7 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
         Err(errs) => {
             return CheckResponse {
                 ok: false,
-                diagnostics: errs,
+                diagnostics: serialize_diagnostics(&errs),
             };
         }
     };
@@ -55,13 +53,11 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
             diagnostics: vec![],
         },
         Err(diags) => {
-            let source_map: HashMap<FileId, &str> = sources
-                .iter()
-                .map(|s| (FileId::from_string(&s.name), s.content.as_str()))
-                .collect();
-            let diagnostics = map_diagnostics(&diags, &source_map);
-            let ok = !diagnostics.iter().any(|d| d.severity == "error");
-            CheckResponse { ok, diagnostics }
+            let diagnostics = serialize_diagnostics(&diags);
+            CheckResponse {
+                ok: false,
+                diagnostics,
+            }
         }
     }
 }
@@ -98,8 +94,6 @@ mod tests {
 
     #[test]
     fn build_response_when_semantic_error_then_ok_false() {
-        // Use an undeclared variable in a program body — semantic analysis
-        // should flag it.
         let sources = vec![SourceInput {
             name: "main.st".into(),
             content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
@@ -117,13 +111,14 @@ mod tests {
         }];
         let resp = build_response(&sources, &ed2_options());
         assert!(!resp.ok);
-        // Should have at least one diagnostic about undeclared variable
-        assert!(resp.diagnostics.iter().any(|d| !d.code.is_empty()));
+        assert!(resp
+            .diagnostics
+            .iter()
+            .any(|d| d["code"].as_str().is_some_and(|c| !c.is_empty())));
     }
 
     #[test]
     fn build_response_when_type_error_then_diagnostic() {
-        // Use a function block as a type — triggers semantic error
         let sources = vec![SourceInput {
             name: "main.st".into(),
             content: "FUNCTION_BLOCK fb\nEND_FUNCTION_BLOCK\nPROGRAM p\nVAR x : fb; END_VAR\nx(invalid_param := 1);\nEND_PROGRAM".into(),
@@ -189,5 +184,19 @@ mod tests {
         let resp = build_response(&sources, &ed2_options());
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn build_response_when_error_then_diagnostics_have_byte_offsets() {
+        let sources = vec![SourceInput {
+            name: "main.st".into(),
+            content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
+        }];
+        let resp = build_response(&sources, &ed2_options());
+        assert!(!resp.ok);
+        let d = &resp.diagnostics[0];
+        // Verify byte offset fields exist
+        assert!(d.get("start").is_some());
+        assert!(d.get("end").is_some());
     }
 }

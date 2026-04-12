@@ -3,15 +3,14 @@
 //! Syntax-checks source files and returns diagnostics plus a best-effort
 //! `structure` array describing the top-level declarations found.
 
-use std::collections::HashMap;
-
-use ironplc_dsl::common::LibraryElementKind;
-use ironplc_dsl::core::{FileId, Located, SourceSpan};
+use ironplc_dsl::core::FileId;
+use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_parser::declarations::extract_declarations;
 use ironplc_parser::parse_program;
 use serde::Serialize;
 
 use super::common::{
-    map_diagnostic, parse_options, validate_sources, McpDiagnostic, SourceInput, StructureEntry,
+    parse_options, serialize_diagnostics, validate_sources, SourceInput, StructureEntry,
 };
 
 /// Response returned by the `parse` tool.
@@ -19,7 +18,7 @@ use super::common::{
 pub struct ParseResponse {
     pub ok: bool,
     pub structure: Vec<StructureEntry>,
-    pub diagnostics: Vec<McpDiagnostic>,
+    pub diagnostics: Vec<serde_json::Value>,
 }
 
 /// Builds the parse response from raw inputs.
@@ -30,7 +29,7 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
         return ParseResponse {
             ok: false,
             structure: vec![],
-            diagnostics: source_errors,
+            diagnostics: serialize_diagnostics(&source_errors),
         };
     }
 
@@ -41,166 +40,41 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
             return ParseResponse {
                 ok: false,
                 structure: vec![],
-                diagnostics: errs,
+                diagnostics: serialize_diagnostics(&errs),
             };
         }
     };
 
     let mut structure = Vec::new();
-    let mut diagnostics = Vec::new();
-
-    // Build source map for diagnostic line/col conversion
-    let source_map: HashMap<FileId, &str> = sources
-        .iter()
-        .map(|s| (FileId::from_string(&s.name), s.content.as_str()))
-        .collect();
+    let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
     for src in sources {
         let file_id = FileId::from_string(&src.name);
         match parse_program(&src.content, &file_id, &options) {
             Ok(library) => {
-                for element in &library.elements {
-                    if let Some(entry) =
-                        element_to_structure_entry(element, &src.name, &src.content)
-                    {
-                        structure.push(entry);
-                    }
+                for decl in extract_declarations(&library) {
+                    structure.push(StructureEntry {
+                        kind: decl.kind.to_string(),
+                        name: decl.name,
+                        file: src.name.clone(),
+                        start: decl.start,
+                        end: decl.end,
+                    });
                 }
             }
             Err(diag) => {
-                diagnostics.push(map_diagnostic(&diag, &source_map));
+                diagnostics.push(diag);
             }
         }
     }
 
-    let ok = !diagnostics.iter().any(|d| d.severity == "error");
+    let ok = diagnostics.is_empty();
 
     ParseResponse {
         ok,
         structure,
-        diagnostics,
+        diagnostics: serialize_diagnostics(&diagnostics),
     }
-}
-
-/// Converts a `LibraryElementKind` into a `StructureEntry`.
-fn element_to_structure_entry(
-    element: &LibraryElementKind,
-    file_name: &str,
-    source: &str,
-) -> Option<StructureEntry> {
-    match element {
-        LibraryElementKind::ProgramDeclaration(decl) => {
-            let span = decl.name.span();
-            let (start_line, end_line) = span_to_lines(source, &span);
-            Some(StructureEntry {
-                kind: "program".to_string(),
-                name: Some(decl.name.to_string()),
-                file: file_name.to_string(),
-                start_line,
-                end_line,
-            })
-        }
-        LibraryElementKind::FunctionDeclaration(decl) => {
-            let span = decl.name.span();
-            let (start_line, end_line) = span_to_lines(source, &span);
-            Some(StructureEntry {
-                kind: "function".to_string(),
-                name: Some(decl.name.to_string()),
-                file: file_name.to_string(),
-                start_line,
-                end_line,
-            })
-        }
-        LibraryElementKind::FunctionBlockDeclaration(decl) => {
-            let span = decl.span();
-            let (start_line, end_line) = span_to_lines(source, &span);
-            Some(StructureEntry {
-                kind: "function_block".to_string(),
-                name: Some(decl.name.to_string()),
-                file: file_name.to_string(),
-                start_line,
-                end_line,
-            })
-        }
-        LibraryElementKind::DataTypeDeclaration(decl) => {
-            let name = data_type_name(decl);
-            let span = data_type_span(decl);
-            let (start_line, end_line) = span_to_lines(source, &span);
-            Some(StructureEntry {
-                kind: "type".to_string(),
-                name,
-                file: file_name.to_string(),
-                start_line,
-                end_line,
-            })
-        }
-        LibraryElementKind::ConfigurationDeclaration(decl) => {
-            let span = decl.name.span();
-            let (start_line, end_line) = span_to_lines(source, &span);
-            Some(StructureEntry {
-                kind: "configuration".to_string(),
-                name: Some(decl.name.to_string()),
-                file: file_name.to_string(),
-                start_line,
-                end_line,
-            })
-        }
-        LibraryElementKind::GlobalVarDeclarations(_) => None,
-    }
-}
-
-/// Extracts the name from a `DataTypeDeclarationKind`.
-fn data_type_name(decl: &ironplc_dsl::common::DataTypeDeclarationKind) -> Option<String> {
-    use ironplc_dsl::common::DataTypeDeclarationKind;
-    match decl {
-        DataTypeDeclarationKind::Enumeration(d) => Some(d.type_name.to_string()),
-        DataTypeDeclarationKind::Subrange(d) => Some(d.type_name.to_string()),
-        DataTypeDeclarationKind::Simple(d) => Some(d.type_name.to_string()),
-        DataTypeDeclarationKind::Array(d) => Some(d.type_name.to_string()),
-        DataTypeDeclarationKind::Structure(d) => Some(d.type_name.to_string()),
-        DataTypeDeclarationKind::StructureInitialization(d) => Some(d.type_name.to_string()),
-        DataTypeDeclarationKind::String(d) => Some(d.type_name.to_string()),
-        DataTypeDeclarationKind::Reference(d) => Some(d.type_name.to_string()),
-        DataTypeDeclarationKind::LateBound(d) => Some(d.data_type_name.to_string()),
-    }
-}
-
-/// Extracts the span from a `DataTypeDeclarationKind` using its type name.
-fn data_type_span(decl: &ironplc_dsl::common::DataTypeDeclarationKind) -> SourceSpan {
-    use ironplc_dsl::common::DataTypeDeclarationKind;
-    match decl {
-        DataTypeDeclarationKind::Enumeration(d) => d.type_name.span(),
-        DataTypeDeclarationKind::Subrange(d) => d.type_name.span(),
-        DataTypeDeclarationKind::Simple(d) => d.type_name.span(),
-        DataTypeDeclarationKind::Array(d) => d.type_name.span(),
-        DataTypeDeclarationKind::Structure(d) => d.type_name.span(),
-        DataTypeDeclarationKind::StructureInitialization(d) => d.type_name.span(),
-        DataTypeDeclarationKind::String(d) => d.type_name.span(),
-        DataTypeDeclarationKind::Reference(d) => d.type_name.span(),
-        DataTypeDeclarationKind::LateBound(d) => d.span(),
-    }
-}
-
-/// Converts a `SourceSpan` to 1-indexed (start_line, end_line) using the
-/// source text.
-fn span_to_lines(source: &str, span: &SourceSpan) -> (u32, u32) {
-    let start_line = byte_offset_to_line(source, span.start);
-    let end_line = byte_offset_to_line(source, span.end);
-    (start_line, end_line)
-}
-
-/// Converts a 0-indexed byte offset into a 1-indexed line number.
-fn byte_offset_to_line(source: &str, offset: usize) -> u32 {
-    let mut line: u32 = 1;
-    for (i, ch) in source.char_indices() {
-        if i >= offset {
-            break;
-        }
-        if ch == '\n' {
-            line += 1;
-        }
-    }
-    line
 }
 
 #[cfg(test)]
@@ -319,5 +193,17 @@ mod tests {
         let resp = build_response(&sources, &ed2_options());
         assert!(resp.ok);
         assert_eq!(resp.structure.len(), 2);
+    }
+
+    #[test]
+    fn build_response_when_valid_then_structure_has_byte_offsets() {
+        let sources = vec![SourceInput {
+            name: "main.st".into(),
+            content: "PROGRAM p\nEND_PROGRAM".into(),
+        }];
+        let resp = build_response(&sources, &ed2_options());
+        let entry = &resp.structure[0];
+        // "PROGRAM p" — 'p' starts at byte 8
+        assert_eq!(entry.start, 8);
     }
 }
