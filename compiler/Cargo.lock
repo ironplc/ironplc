@@ -922,9 +922,13 @@ name = "ironplc-mcp"
 version = "0.192.0"
 dependencies = [
  "env_logger",
+ "ironplc-dsl",
  "ironplc-parser",
+ "ironplc-problems",
+ "ironplc-project",
  "log",
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "spec_test_macro",

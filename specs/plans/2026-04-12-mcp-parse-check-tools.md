@@ -25,15 +25,10 @@ This matches the design's intent (REQ-ARC-010: construct a fresh in-memory proje
 A new module provides types and helpers reused by every source-accepting tool:
 
 1. **`SourceInput`** — `{ name: String, content: String }`, serde-deserializable. Represents one entry in the `sources` array.
-2. **`validate_sources()`** — enforces REQ-STL-004: names must be non-empty, at most 256 bytes, no NUL/`/`/`\`, no duplicates. Returns a `Vec<McpDiagnostic>` on validation failure.
-3. **`parse_options()`** — accepts a `serde_json::Value`, extracts `dialect`, validates it against `Dialect::ALL`, extracts and validates feature flag overrides against `CompilerOptions::FEATURE_DESCRIPTORS`, rejects unknown keys (REQ-TOL-025). Returns `Result<CompilerOptions, Vec<McpDiagnostic>>`.
-4. **`McpDiagnostic`** — the JSON-serializable diagnostic type with `code`, `message`, `file`, `start_line`, `start_col`, `end_line`, `end_col`, `severity`. Satisfies REQ-TOL-023.
-5. **`map_diagnostic()`** — converts `ironplc_dsl::diagnostic::Diagnostic` into `McpDiagnostic` using the source text to convert byte offsets to 1-indexed line/column numbers counting Unicode scalar values. Mirrors the existing LSP conversion in `lsp_project.rs:569-608` but produces 1-indexed values per REQ-TOL-023.
-6. **`map_diagnostics()`** — batch conversion that takes a `&[Diagnostic]` and a lookup map from `FileId` to source content.
-
-### Diagnostic mapping detail
-
-The `map_diagnostic` function receives the source text for the file referenced by the diagnostic's `FileId`. It walks the source text up to the byte offset, counting newlines and Unicode scalar values (not bytes). Line and column numbers are 1-indexed. A tab counts as one column. `end_line`/`end_col` point to the character immediately after the span. When the file ID cannot be found (should not happen in normal operation), the function falls back to line 1, column 1.
+2. **`validate_sources()`** — enforces REQ-STL-004: names must be non-empty, at most 256 bytes, only printable ASCII (`0x20`–`0x7E`), no duplicates. Returns validation errors as `Vec<Diagnostic>` using the `P8001` problem code.
+3. **`parse_options()`** — accepts a `serde_json::Value`, extracts `dialect`, validates it against `Dialect::ALL`, extracts and validates feature flag overrides against `CompilerOptions::FEATURE_DESCRIPTORS`, rejects unknown keys (REQ-TOL-025). Returns `Result<CompilerOptions, Vec<Diagnostic>>` using the `P8001` problem code for validation errors.
+4. **`serialize_diagnostic()`** — converts `ironplc_dsl::diagnostic::Diagnostic` into a `serde_json::Value` with fields `code`, `message`, `file`, `start`, `end`, `severity`. The `start`/`end` values are the 0-indexed byte offsets already stored in the `Diagnostic`'s `Location` — no line/column conversion is needed (REQ-TOL-023). There is no separate `McpDiagnostic` type; the existing `Diagnostic` is the single diagnostic concept throughout.
+5. **`serialize_diagnostics()`** — batch conversion that takes a `&[Diagnostic]` and produces a JSON array.
 
 ### `parse` tool
 
@@ -42,11 +37,27 @@ The handler:
 2. Validates sources (`validate_sources`).
 3. Parses options (`parse_options`).
 4. For each source: constructs a `FileId::from_string(name)` and calls `parse_program(content, &file_id, &options)`.
-5. On success: walks the `Library.elements` to build the `structure` array. On failure: records the diagnostic and contributes no structure entries for that source.
-6. Converts all diagnostics to `McpDiagnostic` via `map_diagnostics`.
+5. On success: calls `extract_declarations(&library)` (a new function in the **parser crate**) to build the `structure` array. On failure: records the diagnostic and contributes no structure entries for that source. The MCP crate does not walk `LibraryElementKind` directly — it delegates to the parser crate so that new DSL variants can be added without changing the MCP server.
+6. Serializes all diagnostics via `serialize_diagnostics`.
 7. Returns `ParseResponse { ok, structure, diagnostics }`.
 
-The `structure` array entries have: `kind` (one of `"program"`, `"function"`, `"function_block"`, `"type"`, `"configuration"`), `name` (string or `null`), `file`, `start_line`, `end_line`. The `start_line`/`end_line` are derived from the declaration's `SourceSpan` (for `ProgramDeclaration` via `name.span`, for `FunctionBlockDeclaration` via `span`, etc.).
+The `structure` array entries have: `kind` (one of `"program"`, `"function"`, `"function_block"`, `"type"`, `"configuration"`), `name` (string or `null`), `file`, `start` (0-indexed byte offset), `end` (0-indexed byte offset). These come directly from the `SourceSpan` stored in the parsed declarations.
+
+### `extract_declarations` (parser crate)
+
+A new public function in `ironplc-parser` (`src/declarations.rs`) that extracts declaration summaries from a `Library`. This keeps the DSL-variant-specific matching inside the parser crate boundary:
+
+```rust
+pub struct DeclarationSummary {
+    pub kind: &'static str,
+    pub name: Option<String>,
+    pub file_id: FileId,
+    pub start: usize,
+    pub end: usize,
+}
+
+pub fn extract_declarations(library: &Library) -> Vec<DeclarationSummary>
+```
 
 ### `check` tool
 
@@ -57,16 +68,16 @@ The handler:
 4. Loads each source via `project.add_source(FileId::from_string(name), content)`.
 5. Calls `project.semantic()` — this runs parse + full semantic analysis internally.
 6. On `Err`, collects all diagnostics (parse errors, type resolution failures, and semantic rule violations).
-7. Converts all diagnostics to `McpDiagnostic`.
-8. Returns `CheckResponse { ok, diagnostics }` where `ok` is `true` when no diagnostic has `severity: "error"`.
+7. Serializes diagnostics via `serialize_diagnostics`.
+8. Returns `CheckResponse { ok, diagnostics }` where `ok` is `true` when the diagnostics array is empty.
 
 ### New crate dependencies
 
 `compiler/mcp/Cargo.toml` gains:
 - `ironplc-project` — for `MemoryBackedProject`, `Project` trait (parse + semantic analysis)
-- `ironplc-dsl` — for `Diagnostic`, `Library`, `FileId`, `LibraryElementKind`, `SourceSpan`
+- `ironplc-dsl` — for `Diagnostic`, `FileId`, `SourceSpan`
 
-Both are workspace-local path dependencies, same pattern as other crates. The MCP crate does **not** depend on `ironplc-analyzer` directly; it accesses semantic analysis through `MemoryBackedProject::semantic()` from `ironplc-project`.
+Both are workspace-local path dependencies, same pattern as other crates. The MCP crate does **not** depend on `ironplc-analyzer` directly; it accesses semantic analysis through `MemoryBackedProject::semantic()` from `ironplc-project`. The MCP crate does **not** match on `LibraryElementKind` variants directly; it calls `extract_declarations()` from `ironplc-parser` to keep DSL details encapsulated.
 
 ### Tool descriptions
 

@@ -1,0 +1,26 @@
+=====
+P8001
+=====
+
+.. problem-summary:: P8001
+
+This error occurs when an MCP tool receives inputs that fail validation
+before the compiler runs. The tool returns this diagnostic with ``ok: false``
+and does not proceed to parsing or analysis.
+
+Common causes
+-------------
+
+1. A source entry has an empty ``name``.
+2. A source ``name`` exceeds 256 bytes.
+3. A source ``name`` contains characters outside the allowed set
+   (printable ASCII: ``0x20``--``0x7E``).
+4. Two source entries share the same ``name``.
+5. The ``options`` object is missing the required ``dialect`` key.
+6. The ``options.dialect`` value is not a known dialect
+   (use ``list_options`` to see valid values).
+7. The ``options`` object contains an unrecognised key.
+
+To fix this error, correct the tool input and call the tool again.
+Use the ``list_options`` tool to discover the valid dialect identifiers and
+feature-flag keys.

@@ -35,14 +35,43 @@ fn all_spec_requirements_have_tests() {
 /// REQ-STL-001: Every analysis, context, and execution tool accepts a
 /// required `sources` parameter.
 #[spec_test(REQ_STL_001)]
-#[ignore] // Covered when parse/check tools are implemented
-fn mcp_spec_req_stl_001_tools_accept_sources_parameter() {}
+fn mcp_spec_req_stl_001_tools_accept_sources_parameter() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    // parse accepts sources
+    let parse_resp = tools::parse::build_response(&sources, &options);
+    assert!(parse_resp.ok);
+
+    // check accepts sources
+    let check_resp = tools::check::build_response(&sources, &options);
+    assert!(check_resp.ok);
+}
 
 /// REQ-STL-002: Every analysis, context, and execution tool accepts a
 /// required `options` object.
 #[spec_test(REQ_STL_002)]
-#[ignore] // Covered when parse/check tools are implemented
-fn mcp_spec_req_stl_002_tools_accept_options_parameter() {}
+fn mcp_spec_req_stl_002_tools_accept_options_parameter() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nEND_PROGRAM".into(),
+    }];
+    // Both parse and check accept an options object with dialect
+    let options = serde_json::json!({"dialect": "rusty"});
+
+    let parse_resp = tools::parse::build_response(&sources, &options);
+    assert!(parse_resp.ok);
+
+    let check_resp = tools::check::build_response(&sources, &options);
+    assert!(check_resp.ok);
+}
 
 /// REQ-STL-003: The server holds no per-client state across tool calls.
 #[spec_test(REQ_STL_003)]
@@ -51,13 +80,72 @@ fn mcp_spec_req_stl_003_no_per_client_state_across_calls() {}
 
 /// REQ-STL-004: File name validation constraints.
 #[spec_test(REQ_STL_004)]
-#[ignore] // Covered when source validation is implemented
-fn mcp_spec_req_stl_004_source_name_validation() {}
+fn mcp_spec_req_stl_004_source_name_validation() {
+    use crate::tools::common::{validate_sources, SourceInput};
+
+    // Empty name rejected
+    let errs = validate_sources(&[SourceInput {
+        name: String::new(),
+        content: String::new(),
+    }]);
+    assert!(!errs.is_empty());
+
+    // Name > 256 bytes rejected
+    let errs = validate_sources(&[SourceInput {
+        name: "a".repeat(257),
+        content: String::new(),
+    }]);
+    assert!(!errs.is_empty());
+
+    // Non-printable ASCII rejected (NUL)
+    let errs = validate_sources(&[SourceInput {
+        name: "f\0.st".into(),
+        content: String::new(),
+    }]);
+    assert!(!errs.is_empty());
+
+    // Non-printable ASCII rejected (tab)
+    let errs = validate_sources(&[SourceInput {
+        name: "a\tb".into(),
+        content: String::new(),
+    }]);
+    assert!(!errs.is_empty());
+
+    // Duplicates rejected
+    let errs = validate_sources(&[
+        SourceInput {
+            name: "f.st".into(),
+            content: String::new(),
+        },
+        SourceInput {
+            name: "f.st".into(),
+            content: String::new(),
+        },
+    ]);
+    assert!(!errs.is_empty());
+}
 
 /// REQ-STL-005: Every tool response includes a top-level `ok: boolean` field.
 #[spec_test(REQ_STL_005)]
-#[ignore] // Covered when parse/check tools are implemented
-fn mcp_spec_req_stl_005_response_includes_ok_field() {}
+fn mcp_spec_req_stl_005_response_includes_ok_field() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    // parse response has ok field
+    let parse_resp = tools::parse::build_response(&sources, &options);
+    let json = serde_json::to_value(&parse_resp).unwrap();
+    assert!(json.get("ok").is_some());
+
+    // check response has ok field
+    let check_resp = tools::check::build_response(&sources, &options);
+    let json = serde_json::to_value(&check_resp).unwrap();
+    assert!(json.get("ok").is_some());
+}
 
 /// REQ-STL-006: The server performs no disk I/O from any tool handler.
 #[spec_test(REQ_STL_006)]
@@ -70,24 +158,86 @@ fn mcp_spec_req_stl_006_no_disk_io() {}
 
 /// REQ-TOL-010: The `parse` tool runs the parse stage only (no semantic analysis).
 #[spec_test(REQ_TOL_010)]
-#[ignore] // Covered when parse tool is implemented
-fn mcp_spec_req_tol_010_parse_runs_parse_only() {}
+fn mcp_spec_req_tol_010_parse_runs_parse_only() {
+    use crate::tools::common::SourceInput;
+
+    // This program parses fine but has a semantic error (undeclared variable y).
+    // parse should succeed because it doesn't run semantic analysis.
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::parse::build_response(&sources, &options);
+    assert!(resp.ok, "parse should not catch semantic errors");
+}
 
 /// REQ-TOL-011: The `parse` tool returns a `diagnostics` array using the same
 /// format as `check`.
 #[spec_test(REQ_TOL_011)]
-#[ignore] // Covered when parse tool is implemented
-fn mcp_spec_req_tol_011_parse_returns_diagnostics_array() {}
+fn mcp_spec_req_tol_011_parse_returns_diagnostics_array() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM".into(), // parse error
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::parse::build_response(&sources, &options);
+    let json = serde_json::to_value(&resp).unwrap();
+    let diags = json["diagnostics"].as_array().unwrap();
+    assert!(!diags.is_empty());
+    // Verify diagnostic format matches check's format
+    let d = &diags[0];
+    assert!(d.get("code").is_some());
+    assert!(d.get("message").is_some());
+    assert!(d.get("file").is_some());
+    assert!(d.get("severity").is_some());
+}
 
 /// REQ-TOL-012: The `parse` tool accepts the same `options` object as `check`.
 #[spec_test(REQ_TOL_012)]
-#[ignore] // Covered when parse tool is implemented
-fn mcp_spec_req_tol_012_parse_accepts_same_options_as_check() {}
+fn mcp_spec_req_tol_012_parse_accepts_same_options_as_check() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nEND_PROGRAM".into(),
+    }];
+    // Same options accepted by both
+    let options = serde_json::json!({"dialect": "rusty", "allow_c_style_comments": true});
+
+    let parse_resp = tools::parse::build_response(&sources, &options);
+    assert!(parse_resp.ok);
+
+    let check_resp = tools::check::build_response(&sources, &options);
+    assert!(check_resp.ok);
+}
 
 /// REQ-TOL-013: The `parse` tool returns a best-effort `structure` array.
 #[spec_test(REQ_TOL_013)]
-#[ignore] // Covered when parse tool is implemented
-fn mcp_spec_req_tol_013_parse_returns_structure_array() {}
+fn mcp_spec_req_tol_013_parse_returns_structure_array() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::parse::build_response(&sources, &options);
+    let json = serde_json::to_value(&resp).unwrap();
+    let structure = json["structure"].as_array().unwrap();
+    assert_eq!(structure.len(), 1);
+    let entry = &structure[0];
+    assert_eq!(entry["kind"], "program");
+    assert_eq!(entry["name"], "p");
+    assert!(entry.get("file").is_some());
+    assert!(entry.get("start").is_some());
+    assert!(entry.get("end").is_some());
+}
 
 // ===========================================================================
 // `check` tool (REQ-TOL-020..026)
@@ -95,39 +245,163 @@ fn mcp_spec_req_tol_013_parse_returns_structure_array() {}
 
 /// REQ-TOL-020: The `check` tool runs parse and full semantic analysis.
 #[spec_test(REQ_TOL_020)]
-#[ignore] // Covered when check tool is implemented
-fn mcp_spec_req_tol_020_check_runs_semantic_analysis() {}
+fn mcp_spec_req_tol_020_check_runs_semantic_analysis() {
+    use crate::tools::common::SourceInput;
+
+    // This program has a semantic error (undeclared variable y).
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::check::build_response(&sources, &options);
+    assert!(!resp.ok, "check should catch semantic errors");
+    assert!(!resp.diagnostics.is_empty());
+}
 
 /// REQ-TOL-021: The `check` tool does not run code generation.
 #[spec_test(REQ_TOL_021)]
-#[ignore] // Covered when check tool is implemented
-fn mcp_spec_req_tol_021_check_no_codegen() {}
+fn mcp_spec_req_tol_021_check_no_codegen() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::check::build_response(&sources, &options);
+    // Response has no container_id — check does not produce codegen output
+    let json = serde_json::to_value(&resp).unwrap();
+    assert!(json.get("container_id").is_none());
+}
 
 /// REQ-TOL-022: The `check` tool returns `diagnostics` and `ok`.
 #[spec_test(REQ_TOL_022)]
-#[ignore] // Covered when check tool is implemented
-fn mcp_spec_req_tol_022_check_returns_diagnostics_and_ok() {}
+fn mcp_spec_req_tol_022_check_returns_diagnostics_and_ok() {
+    use crate::tools::common::SourceInput;
 
-/// REQ-TOL-023: Diagnostic format with 1-indexed line/col numbers.
+    // Valid program: ok = true, diagnostics empty
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::check::build_response(&sources, &options);
+    let json = serde_json::to_value(&resp).unwrap();
+    assert_eq!(json["ok"], true);
+    assert!(json["diagnostics"].as_array().unwrap().is_empty());
+
+    // Invalid program: ok = false, diagnostics non-empty
+    let bad_sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
+    }];
+    let resp = tools::check::build_response(&bad_sources, &options);
+    let json = serde_json::to_value(&resp).unwrap();
+    assert_eq!(json["ok"], false);
+    assert!(!json["diagnostics"].as_array().unwrap().is_empty());
+}
+
+/// REQ-TOL-023: Diagnostic format with byte offsets.
 #[spec_test(REQ_TOL_023)]
-#[ignore] // Covered when check tool is implemented
-fn mcp_spec_req_tol_023_diagnostic_format() {}
+fn mcp_spec_req_tol_023_diagnostic_format() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::check::build_response(&sources, &options);
+    assert!(!resp.diagnostics.is_empty());
+
+    let d = &resp.diagnostics[0];
+
+    // All required fields are present
+    assert!(d.get("code").is_some());
+    assert!(d.get("message").is_some());
+    assert!(d.get("file").is_some());
+    assert!(d.get("start").is_some());
+    assert!(d.get("end").is_some());
+    assert!(d.get("severity").is_some());
+
+    // start/end are 0-indexed byte offsets (numeric)
+    assert!(d["start"].is_number());
+    assert!(d["end"].is_number());
+}
 
 /// REQ-TOL-024: The `check` tool never returns an MCP-level error for
 /// compiler failures.
 #[spec_test(REQ_TOL_024)]
-#[ignore] // Covered when check tool is implemented
-fn mcp_spec_req_tol_024_no_mcp_error_for_compiler_failures() {}
+fn mcp_spec_req_tol_024_no_mcp_error_for_compiler_failures() {
+    use crate::tools::common::SourceInput;
+
+    // Syntax error — should produce diagnostics, not panic or MCP error
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    // build_response returns a CheckResponse (not Err), even for broken input
+    let resp = tools::check::build_response(&sources, &options);
+    assert!(!resp.ok);
+    assert!(!resp.diagnostics.is_empty());
+}
 
 /// REQ-TOL-025: The `check` tool rejects invalid `options`.
 #[spec_test(REQ_TOL_025)]
-#[ignore] // Covered when check tool is implemented
-fn mcp_spec_req_tol_025_rejects_invalid_options() {}
+fn mcp_spec_req_tol_025_rejects_invalid_options() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nEND_PROGRAM".into(),
+    }];
+
+    // Missing dialect
+    let resp = tools::check::build_response(&sources, &serde_json::json!({}));
+    assert!(!resp.ok);
+
+    // Unknown dialect
+    let resp = tools::check::build_response(&sources, &serde_json::json!({"dialect": "cobol"}));
+    assert!(!resp.ok);
+
+    // Unknown key
+    let resp = tools::check::build_response(
+        &sources,
+        &serde_json::json!({"dialect": "iec61131-3-ed2", "bogus_key": true}),
+    );
+    assert!(!resp.ok);
+}
 
 /// REQ-TOL-026: The `check` tool accepts individual feature flag overrides.
 #[spec_test(REQ_TOL_026)]
-#[ignore] // Covered when check tool is implemented
-fn mcp_spec_req_tol_026_accepts_flag_overrides() {}
+fn mcp_spec_req_tol_026_accepts_flag_overrides() {
+    use crate::tools::common::SourceInput;
+
+    // C-style comments are not allowed in ed2, but allowed with override
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "// C-style comment\nPROGRAM p\nEND_PROGRAM".into(),
+    }];
+
+    // Without override — should fail (ed2 doesn't allow C-style comments)
+    let resp =
+        tools::check::build_response(&sources, &serde_json::json!({"dialect": "iec61131-3-ed2"}));
+    assert!(!resp.ok, "ed2 should reject C-style comments");
+
+    // With flag override — should succeed
+    let resp = tools::check::build_response(
+        &sources,
+        &serde_json::json!({"dialect": "iec61131-3-ed2", "allow_c_style_comments": true}),
+    );
+    assert!(resp.ok, "flag override should enable C-style comments");
+}
 
 // ===========================================================================
 // `compile` tool (REQ-TOL-030..036) — Milestone 2
@@ -422,13 +696,43 @@ fn mcp_spec_req_arc_001_stdio_transport() {
     let _server = crate::server::IronPlcMcp::new();
 }
 
+/// REQ-ARC-010: Each tool call constructs a fresh in-memory project from
+/// the supplied sources.
 #[spec_test(REQ_ARC_010)]
-#[ignore] // Covered when parse/check tools are implemented
-fn mcp_spec_req_arc_010_fresh_project_per_call() {}
+fn mcp_spec_req_arc_010_fresh_project_per_call() {
+    use crate::tools::common::SourceInput;
 
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    // Two independent calls both succeed — no state leaks between them
+    let resp1 = tools::check::build_response(&sources, &options);
+    assert!(resp1.ok);
+
+    let resp2 = tools::check::build_response(&sources, &options);
+    assert!(resp2.ok);
+}
+
+/// REQ-ARC-011: Source names become FileId via `FileId::from_string`,
+/// and names are validated before the compiler runs.
 #[spec_test(REQ_ARC_011)]
-#[ignore] // Covered when parse/check tools are implemented
-fn mcp_spec_req_arc_011_file_id_from_string() {}
+fn mcp_spec_req_arc_011_file_id_from_string() {
+    use crate::tools::common::SourceInput;
+
+    // Diagnostic file field should match the source name we provided
+    let sources = vec![SourceInput {
+        name: "my_file.st".into(),
+        content: "PROGRAM".into(), // parse error
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::parse::build_response(&sources, &options);
+    assert!(!resp.ok);
+    assert_eq!(resp.diagnostics[0]["file"], "my_file.st");
+}
 
 #[spec_test(REQ_ARC_012)]
 #[ignore]
