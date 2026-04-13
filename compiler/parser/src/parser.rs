@@ -1115,8 +1115,38 @@ parser! {
 
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = identifier()
+
+    // A single declaration inside a program VAR block. Tries located first
+    // (unambiguous due to the AT keyword) then falls back to non-located.
+    rule program_var_decl() -> Vec<VarDecl> =
+      l:located_var_decl() { vec![l] }
+      / v:var_init_decl() { v.into_iter().map(|u| u.into_var_decl(VariableType::Var)).collect() }
+
+    // A VAR block in a program that may contain both located and non-located
+    // declarations (e.g. `Motor : FB; xStart AT %IX0.0 : BOOL;`).
+    rule program_var_declarations() -> Vec<VarDeclarations> = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain } / tok(TokenType::NonRetain) { DeclarationQualifier::NonRetain })? _ declarations:semisep_or_empty(<program_var_decl()>) _ tok(TokenType::EndVar) {
+      let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
+      let mut located = Vec::new();
+      let mut regular = Vec::new();
+      for decl in declarations.into_iter().flatten() {
+        let decl = decl.with_qualifier(qualifier.clone());
+        match &decl.identifier {
+          VariableIdentifier::Direct(_) => located.push(decl),
+          VariableIdentifier::Symbol(_) => regular.push(decl),
+        }
+      }
+      let mut result = Vec::new();
+      if !regular.is_empty() {
+        result.push(VarDeclarations::Var(regular));
+      }
+      if !located.is_empty() {
+        result.push(VarDeclarations::Located(located));
+      }
+      result
+    }
+
     // TODO program_access_decls
-    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(access:program_access_decls() { vec![access] } / io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / located:located_var_declarations() { vec![located] }) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
+    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(access:program_access_decls() { vec![access] } / io:io_var_declarations() { io } / mixed:program_var_declarations() { mixed } / other:other_var_declarations() { vec![other] } / located:located_var_declarations() { vec![located] }) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (access_variables, _) = VarDeclarations::drain_access(remainder);
