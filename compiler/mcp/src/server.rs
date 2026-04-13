@@ -12,6 +12,7 @@ use crate::tools;
 use crate::tools::common::ParseCheckInput;
 use crate::tools::compile::CompileInput;
 use crate::tools::container_drop::ContainerDropInput;
+use crate::tools::explain_diagnostic::ExplainDiagnosticInput;
 
 #[derive(Clone)]
 pub struct IronPlcMcp {
@@ -46,6 +47,21 @@ impl IronPlcMcp {
     )]
     fn list_options(&self) -> Result<Content, rmcp::ErrorData> {
         let response = tools::list_options::build_response();
+        let json = serde_json::to_string(&response)
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        Ok(Content::text(json))
+    }
+
+    /// Look up the explanation for a problem code.
+    #[tool(
+        name = "explain_diagnostic",
+        description = "Look up the human-readable explanation for a problem code (e.g. `P0042`). Call this before editing code in response to a diagnostic you do not fully understand."
+    )]
+    fn explain_diagnostic(
+        &self,
+        Parameters(input): Parameters<ExplainDiagnosticInput>,
+    ) -> Result<Content, rmcp::ErrorData> {
+        let response = tools::explain_diagnostic::build_response(&input.code);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
         Ok(Content::text(json))
