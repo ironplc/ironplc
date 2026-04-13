@@ -199,10 +199,7 @@ endtoend-smoke-test compiler-version extension-version extension-name:
   $mcpBin = "{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcmcp.exe"
   $mcpInput = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"0.1"}}}' + "`n" + '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' + "`n" + '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
   $mcpResponse = $mcpInput | & $mcpBin
-  if ($mcpResponse -notmatch "list_options") {
-    Write-Error "ironplcmcp did not return expected tools/list response. Got: $mcpResponse"
-    exit 1
-  }
+  if ($mcpResponse -notmatch "list_options") { Write-Error "ironplcmcp did not return expected tools/list response. Got: $mcpResponse"; exit 1 }
 
   IF (Test-Path "C:\\ironplcc.log" -PathType Leaf) { exit 0 } ELSE { exit 1 }
 
