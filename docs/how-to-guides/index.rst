@@ -29,6 +29,14 @@ you are coming from.
 
       Use IronPLC alongside Beckhoff TwinCAT 3.
 
+   .. grid-item-card:: Using AI Agents
+      :link: ai-agents/index
+      :link-type: doc
+
+      Use an AI coding agent with IronPLC's MCP server.
+
+.. grid:: 2
+
    .. grid-item-card:: General
       :link: update
       :link-type: doc
@@ -42,5 +50,6 @@ you are coming from.
    Getting Started <getting-started/index>
    Coming from Beremiz <beremiz/index>
    Coming from TwinCAT <twincat/index>
+   Using AI Agents <ai-agents/index>
    Update IronPLC on your computer <update>
    Troubleshoot the Editor Extension <troubleshoot-editor>
