@@ -404,36 +404,181 @@ fn mcp_spec_req_tol_026_accepts_flag_overrides() {
 }
 
 // ===========================================================================
-// `compile` tool (REQ-TOL-030..036) — Milestone 2
+// `compile` tool (REQ-TOL-030..036)
 // ===========================================================================
 
+/// REQ-TOL-030: The `compile` tool returns a `container_id` on success.
 #[spec_test(REQ_TOL_030)]
-#[ignore]
-fn mcp_spec_req_tol_030_compile_returns_container_id() {}
+fn mcp_spec_req_tol_030_compile_returns_container_id() {
+    use std::sync::Mutex;
 
+    use crate::cache::ContainerCache;
+    use crate::tools::common::SourceInput;
+
+    let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    assert!(resp.container_id.is_some());
+    assert!(resp.container_id.unwrap().starts_with("c_"));
+}
+
+/// REQ-TOL-031: The `compile` tool returns diagnostics on failure.
 #[spec_test(REQ_TOL_031)]
-#[ignore]
-fn mcp_spec_req_tol_031_compile_returns_diagnostics_on_failure() {}
+fn mcp_spec_req_tol_031_compile_returns_diagnostics_on_failure() {
+    use std::sync::Mutex;
 
+    use crate::cache::ContainerCache;
+    use crate::tools::common::SourceInput;
+
+    let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(!resp.ok);
+    assert!(!resp.diagnostics.is_empty());
+    assert!(resp.container_id.is_none());
+}
+
+/// REQ-TOL-032: The `compile` tool returns a `tasks` array with metadata
+/// for each task in the configuration.
 #[spec_test(REQ_TOL_032)]
-#[ignore]
-fn mcp_spec_req_tol_032_compile_returns_tasks_array() {}
+fn mcp_spec_req_tol_032_compile_returns_tasks_array() {
+    use std::sync::Mutex;
 
+    use crate::cache::ContainerCache;
+    use crate::tools::common::SourceInput;
+
+    let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM\n\nCONFIGURATION config\n  RESOURCE resource1 ON PLC\n    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\n    PROGRAM program1 WITH plc_task : Main;\n  END_RESOURCE\nEND_CONFIGURATION".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    assert!(!resp.tasks.is_empty());
+    assert_eq!(resp.tasks[0].name, "plc_task");
+    assert_eq!(resp.tasks[0].kind, "cyclic");
+}
+
+/// REQ-TOL-033: The `compile` tool returns a `programs` array with metadata
+/// for each program assignment in the configuration.
 #[spec_test(REQ_TOL_033)]
-#[ignore]
-fn mcp_spec_req_tol_033_compile_returns_programs_array() {}
+fn mcp_spec_req_tol_033_compile_returns_programs_array() {
+    use std::sync::Mutex;
 
+    use crate::cache::ContainerCache;
+    use crate::tools::common::SourceInput;
+
+    let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM\n\nCONFIGURATION config\n  RESOURCE resource1 ON PLC\n    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\n    PROGRAM program1 WITH plc_task : Main;\n  END_RESOURCE\nEND_CONFIGURATION".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    assert!(!resp.programs.is_empty());
+    assert_eq!(resp.programs[0].name, "program1");
+    assert_eq!(resp.programs[0].task.as_deref(), Some("plc_task"));
+}
+
+/// REQ-TOL-034: When `include_bytes` is true, the response includes
+/// `container_base64` with the compiled bytecode.
 #[spec_test(REQ_TOL_034)]
-#[ignore]
-fn mcp_spec_req_tol_034_compile_returns_base64_when_requested() {}
+fn mcp_spec_req_tol_034_compile_returns_base64_when_requested() {
+    use std::sync::Mutex;
 
+    use crate::cache::ContainerCache;
+    use crate::tools::common::SourceInput;
+
+    let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::compile::build_response(&sources, &options, true, &cache);
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    assert!(resp.container_base64.is_some());
+}
+
+/// REQ-TOL-035: The `compile` tool stores the compiled container in the
+/// process-level cache, retrievable by `container_id`.
 #[spec_test(REQ_TOL_035)]
-#[ignore]
-fn mcp_spec_req_tol_035_compile_stores_container_in_cache() {}
+fn mcp_spec_req_tol_035_compile_stores_container_in_cache() {
+    use std::sync::Mutex;
 
+    use crate::cache::ContainerCache;
+    use crate::tools::common::SourceInput;
+
+    let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    let container_id = resp.container_id.unwrap();
+
+    let mut guard = cache.lock().unwrap();
+    assert!(guard.get(&container_id).is_some());
+}
+
+/// REQ-TOL-036: A cached container is an immutable snapshot — compiling
+/// a different program does not mutate previously cached containers.
 #[spec_test(REQ_TOL_036)]
-#[ignore]
-fn mcp_spec_req_tol_036_cached_container_is_immutable_snapshot() {}
+fn mcp_spec_req_tol_036_cached_container_is_immutable_snapshot() {
+    use std::sync::Mutex;
+
+    use crate::cache::ContainerCache;
+    use crate::tools::common::SourceInput;
+
+    let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    // Compile once and snapshot the bytes
+    let resp1 = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(resp1.ok, "diagnostics: {:?}", resp1.diagnostics);
+    let id1 = resp1.container_id.unwrap();
+    let bytes_before = {
+        let mut guard = cache.lock().unwrap();
+        guard.get(&id1).unwrap().iplc_bytes.clone()
+    };
+
+    // Compile a different program
+    let other_sources = vec![SourceInput {
+        name: "other.st".into(),
+        content: "PROGRAM Other\nVAR\n  y : INT;\nEND_VAR\n  y := 2;\nEND_PROGRAM".into(),
+    }];
+    let _resp2 = tools::compile::build_response(&other_sources, &options, false, &cache);
+
+    // Original container bytes must be unchanged
+    let bytes_after = {
+        let mut guard = cache.lock().unwrap();
+        guard.get(&id1).unwrap().iplc_bytes.clone()
+    };
+    assert_eq!(bytes_before, bytes_after);
+}
 
 // ===========================================================================
 // `run` tool (REQ-TOL-040..048) — Milestone 2

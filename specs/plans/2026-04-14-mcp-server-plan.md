@@ -582,3 +582,15 @@ End-to-end test: start `ironplcmcp` as a subprocess, send MCP `initialize`, then
 
 Each phase should also have its own focused tests (unit tests for shared infrastructure, integration tests for each tool handler).
 
+
+
+### CI Integration Tests
+
+CLI integration tests in `compiler/mcp/tests/cli.rs` spawn the `ironplcmcp` binary as a subprocess and drive the MCP protocol over stdin/stdout. For each implemented tool, these tests should cover:
+
+1. **Success path** — valid input produces `"ok": true` and expected response fields
+2. **Error path** — syntax errors, semantic errors produce `"ok": false` with diagnostics
+3. **Validation path** — empty source names, missing dialect produce `P8001` diagnostics
+
+These tests verify the full MCP protocol wiring (JSON-RPC deserialization, tool routing, response serialization) beyond what unit tests and spec conformance tests cover.
+
