@@ -41,7 +41,7 @@
 
 use std::collections::HashMap;
 
-use ironplc_container::debug_section::{FuncNameEntry, VarNameEntry};
+use ironplc_container::debug_section::{EnumDefEntry, FuncNameEntry, VarNameEntry};
 use ironplc_container::{
     Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
     STRING_HEADER_BYTES,
@@ -538,6 +538,12 @@ fn compile_program_with_functions(
     }
     for entry in ctx.debug_var_names {
         builder = builder.add_var_name(entry);
+    }
+    for (type_name, values) in &ctx.enum_map.definitions {
+        builder = builder.add_enum_def(EnumDefEntry {
+            type_name: type_name.clone(),
+            values: values.clone(),
+        });
     }
 
     Ok(builder.build())
