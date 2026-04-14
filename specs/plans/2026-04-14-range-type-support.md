@@ -62,17 +62,17 @@ The approach treats subrange variables as their base type for storage and operat
 
 ### Phase 1: Late-Bound Type Resolution
 
-- [ ] **1.1** In `xform_resolve_late_bound_type_initializer.rs`, add a `TypeDefinitionKind::Subrange` arm to the match at line ~180 that produces `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(name))`
-- [ ] **1.2** Add a unit test: `fold_initial_value_when_subrange_type_then_resolves_to_subrange`
+- [x] **1.1** In `xform_resolve_late_bound_type_initializer.rs`, add a `TypeDefinitionKind::Subrange` arm to the match at line ~180 that produces `InitialValueAssignmentKind::Subrange(SpecificationKind::Named(name))`
+- [x] **1.2** Add a unit test: `fold_initial_value_when_subrange_type_then_resolves_to_subrange`
 
 ### Phase 2: Type Environment Helper
 
-- [ ] **2.1** In `type_environment.rs`, add `resolve_subrange_type(&self, type_name: &TypeName) -> Option<&IntermediateType>` following the same pattern as `resolve_struct_type` and `resolve_array_type`
-- [ ] **2.2** Add unit tests for the new method
+- [x] **2.1** In `type_environment.rs`, add `resolve_subrange_type(&self, type_name: &TypeName) -> Option<&IntermediateType>` following the same pattern as `resolve_struct_type` and `resolve_array_type`
+- [x] **2.2** Add unit tests for the new method
 
 ### Phase 3: Codegen — Variable Allocation
 
-- [ ] **3.1** In `compile_setup.rs::assign_variables()`, add an `InitialValueAssignmentKind::Subrange` arm that:
+- [x] **3.1** In `compile_setup.rs::assign_variables()`, add an `InitialValueAssignmentKind::Subrange` arm that:
   - Resolves the subrange type from the type environment (both `Named` and `Inline` variants)
   - Extracts the `IntermediateType::Subrange { base_type, .. }` 
   - Calls `resolve_field_op_type(base_type)` to get the correct `VarTypeInfo`
@@ -81,16 +81,16 @@ The approach treats subrange variables as their base type for storage and operat
 
 ### Phase 4: Codegen — Variable Initialization
 
-- [ ] **4.1** In `compile_setup.rs::emit_initial_values()`, add an `InitialValueAssignmentKind::Subrange` arm that:
+- [x] **4.1** In `compile_setup.rs::emit_initial_values()`, add an `InitialValueAssignmentKind::Subrange` arm that:
   - For inline subrange specs with a declared default: emits the constant
   - For named subrange types: looks up the `IntermediateType::Subrange { min_value, .. }` and emits `min_value` as the default (per IEC 61131-3 §2.4.3.1 — leftmost value)
   - Emits truncation if the base type is narrower than the register width
   - Stores the value into the variable
-- [ ] **4.2** Handle the `emit_function_local_prologue` path for subrange variables in function locals
+- [x] **4.2** Handle the `emit_function_local_prologue` path for subrange variables in function locals
 
 ### Phase 5: End-to-End Tests
 
-- [ ] **5.1** Create `compiler/codegen/tests/end_to_end_subrange.rs` with tests:
+- [x] **5.1** Create `compiler/codegen/tests/end_to_end_subrange.rs` with tests:
   - `end_to_end_when_subrange_var_no_init_then_default_is_lower_bound` — verifies default = min_value
   - `end_to_end_when_subrange_var_with_init_then_uses_init_value` — verifies explicit initial value
   - `end_to_end_when_subrange_var_assigned_then_stores_value` — verifies assignment works
@@ -100,7 +100,7 @@ The approach treats subrange variables as their base type for storage and operat
 
 ### Phase 6: CI Verification
 
-- [ ] **6.1** Run `cd compiler && just` to verify all checks pass
+- [x] **6.1** Run `cd compiler && just` to verify all checks pass
 
 ## Design Decisions
 
