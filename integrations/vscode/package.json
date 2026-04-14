@@ -2,7 +2,7 @@
   "name": "ironplc",
   "displayName": "IronPLC",
   "publisher": "ironplc",
-  "description": "Open-source IEC 61131-3 language support with real-time error checking, auto-completion, syntax highlighting, and a runtime for executing programs.",
+  "description": "IEC 61131-3 Structured Text language support with real-time error checking, syntax highlighting, and build tools for PLC programs.",
   "version": "0.200.0",
   "icon": "images/logo.png",
   "engines": {
