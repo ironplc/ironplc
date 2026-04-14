@@ -10,7 +10,7 @@ An array is a fixed-size indexed collection of elements of the same type.
    * - **IEC 61131-3**
      - Section 2.3.3.1
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Syntax
 ------
@@ -24,7 +24,7 @@ Arrays can be declared inline in variable declarations or as named types.
 Example
 -------
 
-.. code-block::
+.. playground::
 
    TYPE
        TenInts : ARRAY [1..10] OF INT;
