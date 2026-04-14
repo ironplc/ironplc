@@ -42,3 +42,11 @@ mod emit;
 mod optimize;
 
 pub use compile::{compile, CodegenOptions};
+
+// Spec conformance testing infrastructure (test-only)
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;

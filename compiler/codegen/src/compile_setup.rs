@@ -209,12 +209,21 @@ pub(crate) fn assign_variables(
                     let type_name_str = struct_init.type_name.to_string().to_uppercase();
                     (iec_type_tag::OTHER, type_name_str)
                 }
+                InitialValueAssignmentKind::EnumeratedType(enum_init) => {
+                    // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-010.
+                    let type_info = crate::compile_enum::enum_var_type_info();
+                    ctx.var_types.insert(id.clone(), type_info);
+                    // Debug tag is DINT per REQ-EN-012; type_name is the
+                    // user-defined enum name (e.g. "COLOR").
+                    let name = enum_init.type_name.to_string().to_uppercase();
+                    (iec_type_tag::DINT, name)
+                }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     // LateResolvedType should have been resolved before codegen.
                     // If we reach here, it indicates a bug in the compiler.
                     return Err(Diagnostic::internal_error(file!(), line!()));
                 }
-                // Other initializer kinds (EnumeratedType, etc.)
+                // Other initializer kinds (EnumeratedValues, etc.)
                 // do not yet have type info tracked in codegen.
                 _ => (iec_type_tag::OTHER, String::new()),
             };
@@ -475,7 +484,25 @@ pub(crate) fn emit_initial_values(
                         )?;
                     }
                 }
-                // Other initializer kinds (EnumeratedType, etc.)
+                InitialValueAssignmentKind::EnumeratedType(enum_init) => {
+                    // Emit LOAD_CONST_I32(ordinal) + STORE_VAR_I32 per REQ-EN-020.
+                    let var_index = ctx.var_index(id)?;
+                    let op_type = DEFAULT_OP_TYPE;
+                    let ordinal = if let Some(ev) = &enum_init.initial_value {
+                        crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?
+                    } else {
+                        // No explicit init: use type declaration default (REQ-EN-021/022).
+                        let type_upper = enum_init.type_name.to_string().to_uppercase();
+                        crate::compile_enum::resolve_enum_default_ordinal(
+                            &ctx.enum_map,
+                            &type_upper,
+                        )
+                    };
+                    let pool_index = ctx.add_i32_constant(ordinal);
+                    emitter.emit_load_const_i32(pool_index);
+                    emit_store_var(emitter, var_index, op_type);
+                }
+                // Other initializer kinds (EnumeratedValues, etc.)
                 // do not yet support initial values in codegen.
                 _ => {}
             }
@@ -555,6 +582,21 @@ pub(crate) fn emit_function_local_prologue(
                         }
                     }
                     emitter.emit_store_var_i64(var_index);
+                }
+                InitialValueAssignmentKind::EnumeratedType(enum_init) => {
+                    // Re-initialize enum locals per REQ-EN-023.
+                    let ordinal = if let Some(ev) = &enum_init.initial_value {
+                        crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?
+                    } else {
+                        let type_upper = enum_init.type_name.to_string().to_uppercase();
+                        crate::compile_enum::resolve_enum_default_ordinal(
+                            &ctx.enum_map,
+                            &type_upper,
+                        )
+                    };
+                    let pool_index = ctx.add_i32_constant(ordinal);
+                    emitter.emit_load_const_i32(pool_index);
+                    emit_store_var(emitter, var_index, op_type);
                 }
                 _ => {
                     // Other initializer kinds (FunctionBlock, etc.)

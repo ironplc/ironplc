@@ -895,6 +895,7 @@ dependencies = [
  "ironplc-problems",
  "ironplc-vm",
  "proptest",
+ "spec_test_macro",
 ]
 
 [[package]]
