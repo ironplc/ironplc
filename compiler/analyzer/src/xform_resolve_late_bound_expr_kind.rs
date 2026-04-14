@@ -10,7 +10,7 @@ use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::{common::*, core::Id};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::type_environment::TypeEnvironment;
 
@@ -18,12 +18,15 @@ pub fn apply(
     lib: Library,
     type_environment: &mut TypeEnvironment,
 ) -> Result<Library, Vec<Diagnostic>> {
+    let enum_values = collect_enum_values(&lib);
+
     // Resolve the types. This is a single fold of the library
     let mut resolver = DeclarationResolver {
         names_to_types: HashMap::new(),
         current_type: VariableType::None,
         diagnostics: Vec::new(),
         type_environment,
+        enum_values,
     };
     let result = resolver.fold_library(lib).map_err(|e| vec![e]);
 
@@ -32,6 +35,49 @@ pub fn apply(
     }
 
     result
+}
+
+/// Pre-scans the library to collect all known enumeration value names.
+///
+/// This enables resolving unqualified enum values (e.g., `RUNNING`) in
+/// expression contexts where no enum type context is available, such as
+/// comparisons (`State = RUNNING`) or boolean expressions.
+fn collect_enum_values(lib: &Library) -> HashSet<Id> {
+    let mut values = HashSet::new();
+
+    for element in &lib.elements {
+        match element {
+            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Enumeration(decl)) => {
+                if let SpecificationKind::Inline(spec) = &decl.spec_init.spec {
+                    for v in &spec.values {
+                        values.insert(v.value.clone());
+                    }
+                }
+            }
+            LibraryElementKind::FunctionBlockDeclaration(fb) => {
+                collect_enum_values_from_vars(&fb.variables, &mut values);
+            }
+            LibraryElementKind::ProgramDeclaration(prog) => {
+                collect_enum_values_from_vars(&prog.variables, &mut values);
+            }
+            LibraryElementKind::FunctionDeclaration(func) => {
+                collect_enum_values_from_vars(&func.variables, &mut values);
+            }
+            _ => {}
+        }
+    }
+
+    values
+}
+
+fn collect_enum_values_from_vars(variables: &[VarDecl], values: &mut HashSet<Id>) {
+    for var in variables {
+        if let InitialValueAssignmentKind::EnumeratedValues(init) = &var.initializer {
+            for v in &init.values {
+                values.insert(v.value.clone());
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -56,6 +102,8 @@ struct DeclarationResolver<'a> {
     current_type: VariableType,
     diagnostics: Vec<Diagnostic>,
     type_environment: &'a TypeEnvironment,
+    // Known enumeration value names collected from type declarations
+    enum_values: HashSet<Id>,
 }
 
 impl DeclarationResolver<'_> {
@@ -89,6 +137,24 @@ impl DeclarationResolver<'_> {
 
     fn find_type(&self, name: &Id) -> &VariableType {
         self.names_to_types.get(name).unwrap_or(&VariableType::None)
+    }
+
+    /// Resolves a late-bound identifier as either an enum value or variable.
+    ///
+    /// If the identifier is not a declared variable in the current scope but
+    /// is a known enumeration value, resolves as `EnumeratedValue`. Otherwise,
+    /// resolves as a variable reference.
+    fn resolve_late_bound(&self, value: Id) -> ExprKind {
+        if !self.names_to_types.contains_key(&value) && self.enum_values.contains(&value) {
+            ExprKind::EnumeratedValue(EnumeratedValue {
+                type_name: None,
+                value,
+            })
+        } else {
+            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(
+                NamedVariable { name: value },
+            )))
+        }
     }
 }
 
@@ -212,21 +278,9 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
             }
             ExprKind::Null(span) => Ok(ExprKind::Null(span)),
             ExprKind::LateBound(node) => match self.current_type {
-                VariableType::None => {
-                    // When no type information is available, assume a variable reference
-                    Ok(ExprKind::Variable(Variable::Symbolic(
-                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                    )))
-                }
-                VariableType::Simple => Ok(ExprKind::Variable(Variable::Symbolic(
-                    SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                ))),
-                VariableType::String => {
-                    // String assignment from another string variable
-                    Ok(ExprKind::Variable(Variable::Symbolic(
-                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                    )))
-                }
+                VariableType::None => Ok(self.resolve_late_bound(node.value)),
+                VariableType::Simple => Ok(self.resolve_late_bound(node.value)),
+                VariableType::String => Ok(self.resolve_late_bound(node.value)),
                 VariableType::EnumeratedValues => {
                     // Inline enumeration like (Red, Green) - the value is an enum constant
                     Ok(ExprKind::EnumeratedValue(EnumeratedValue {
@@ -243,24 +297,10 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                     // If we reach this branch, it indicates an internal error.
                     Err(Diagnostic::internal_error(file!(), line!()))
                 }
-                VariableType::Subrange => {
-                    // Subrange assignment from another integer variable
-                    Ok(ExprKind::Variable(Variable::Symbolic(
-                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                    )))
-                }
-                VariableType::Structure => {
-                    // Structure assignment from another structure variable
-                    Ok(ExprKind::Variable(Variable::Symbolic(
-                        SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                    )))
-                }
-                VariableType::Array => Ok(ExprKind::Variable(Variable::Symbolic(
-                    SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                ))),
-                VariableType::Reference => Ok(ExprKind::Variable(Variable::Symbolic(
-                    SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                ))),
+                VariableType::Subrange => Ok(self.resolve_late_bound(node.value)),
+                VariableType::Structure => Ok(self.resolve_late_bound(node.value)),
+                VariableType::Array => Ok(self.resolve_late_bound(node.value)),
+                VariableType::Reference => Ok(self.resolve_late_bound(node.value)),
                 VariableType::LateResolvedType(ref type_name) => {
                     // Look up the type in the type environment to determine how to
                     // handle the late-bound expression.
@@ -271,10 +311,8 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                             value: node.value,
                         }))
                     } else {
-                        // Not an enumeration (or type not found), treat as variable reference
-                        Ok(ExprKind::Variable(Variable::Symbolic(
-                            SymbolicVariableKind::Named(NamedVariable { name: node.value }),
-                        )))
+                        // Not an enumeration (or type not found), check enum values
+                        Ok(self.resolve_late_bound(node.value))
                     }
                 }
             },
@@ -504,6 +542,61 @@ END_FUNCTION_BLOCK";
         // This succeeds because FB variables are parsed as LateResolvedType,
         // and we handle that by treating the RHS as a variable reference.
         // Semantic analysis later will catch invalid FB assignments.
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_enum_value_in_comparison_then_ok() {
+        let program = "
+TYPE
+    MotorState : (STOPPED, RUNNING, FAULTED);
+END_TYPE
+
+FUNCTION_BLOCK FB_MotorControl
+    VAR
+        State : MotorState := STOPPED;
+        CONTACTOR : BOOL;
+        Seal : BOOL;
+    END_VAR
+    CONTACTOR := (State = RUNNING) AND Seal;
+END_FUNCTION_BLOCK";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(library, &mut type_environment);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_enum_value_in_if_condition_then_ok() {
+        let program = "
+TYPE
+    COLOR : (RED, GREEN, BLUE);
+END_TYPE
+
+FUNCTION_BLOCK FB_TEST
+    VAR
+        c : COLOR;
+        result : INT;
+    END_VAR
+    IF c = GREEN THEN
+        result := 1;
+    END_IF;
+END_FUNCTION_BLOCK";
+
+        let library =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(library, &mut type_environment);
         assert!(result.is_ok());
     }
 }

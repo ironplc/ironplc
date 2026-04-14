@@ -300,6 +300,29 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
+    fn apply_when_enum_value_in_comparison_then_ok() {
+        let program = "
+TYPE
+    MotorState : (STOPPED, RUNNING, FAULTED);
+END_TYPE
+
+FUNCTION_BLOCK FB_MotorControl
+    VAR
+        State : MotorState := STOPPED;
+        CONTACTOR : BOOL;
+        Seal : BOOL;
+    END_VAR
+    CONTACTOR := (State = RUNNING) AND Seal;
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context, &CompilerOptions::default());
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn apply_when_system_uptime_global_enabled_then_direct_access_ok() {
         let program = "
 PROGRAM main
