@@ -287,6 +287,66 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32(), 42);
 }
 
+// --- PR 4.5: Enum comparison in expressions ---
+
+#[test]
+fn end_to_end_when_enum_comparison_in_if_then_correct_result() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+    result : DINT;
+  END_VAR
+  c := GREEN;
+  IF c = GREEN THEN
+    result := 42;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_enum_comparison_not_equal_then_skips() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+    result : DINT;
+  END_VAR
+  c := RED;
+  IF c = GREEN THEN
+    result := 42;
+  END_IF;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_enum_comparison_in_bool_expression_then_correct_result() {
+    let source = "
+TYPE MotorState : (STOPPED, RUNNING, FAULTED) := STOPPED; END_TYPE
+PROGRAM main
+  VAR
+    State : MotorState;
+    Seal : BOOL;
+    CONTACTOR : BOOL;
+  END_VAR
+  State := RUNNING;
+  Seal := TRUE;
+  CONTACTOR := (State = RUNNING) AND Seal;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // State=RUNNING (TRUE) AND Seal=TRUE → CONTACTOR=TRUE (1)
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+}
+
 // --- PR 5: Debug section enum definitions ---
 
 #[test]
