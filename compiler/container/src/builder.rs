@@ -6,7 +6,7 @@ use crate::code_section::{CodeSection, FuncEntry};
 use crate::const_type::ConstType;
 use crate::constant_pool::{ConstEntry, ConstantPool};
 use crate::container::Container;
-use crate::debug_section::{DebugSection, FuncNameEntry, LineMapEntry, VarNameEntry};
+use crate::debug_section::{DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, VarNameEntry};
 use crate::header::FileHeader;
 use crate::id_types::{FunctionId, InstanceId, TaskId, VarIndex};
 use crate::task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
@@ -35,6 +35,7 @@ pub struct ContainerBuilder {
     debug_var_names: Vec<VarNameEntry>,
     debug_func_names: Vec<FuncNameEntry>,
     debug_line_map: Vec<LineMapEntry>,
+    debug_enum_defs: Vec<EnumDefEntry>,
 }
 
 impl ContainerBuilder {
@@ -60,6 +61,7 @@ impl ContainerBuilder {
             debug_var_names: Vec::new(),
             debug_func_names: Vec::new(),
             debug_line_map: Vec::new(),
+            debug_enum_defs: Vec::new(),
         }
     }
 
@@ -206,6 +208,12 @@ impl ContainerBuilder {
         self
     }
 
+    /// Adds an enumeration definition entry to the debug section.
+    pub fn add_enum_def(mut self, entry: EnumDefEntry) -> Self {
+        self.debug_enum_defs.push(entry);
+        self
+    }
+
     /// Adds an FB type descriptor to the type section.
     pub fn add_fb_type(mut self, desc: FbTypeDescriptor) -> Self {
         self.fb_types.push(desc);
@@ -308,6 +316,7 @@ impl ContainerBuilder {
         let debug_section = if self.debug_var_names.is_empty()
             && self.debug_func_names.is_empty()
             && self.debug_line_map.is_empty()
+            && self.debug_enum_defs.is_empty()
         {
             None
         } else {
@@ -315,6 +324,7 @@ impl ContainerBuilder {
                 var_names: self.debug_var_names,
                 func_names: self.debug_func_names,
                 line_map: self.debug_line_map,
+                enum_defs: self.debug_enum_defs,
             })
         };
 

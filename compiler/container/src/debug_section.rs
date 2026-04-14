@@ -10,6 +10,7 @@ use crate::ContainerError;
 const TAG_LINE_MAP: u16 = 1;
 const TAG_VAR_NAME: u16 = 2;
 const TAG_FUNC_NAME: u16 = 3;
+const TAG_ENUM_DEF: u16 = 9;
 
 /// Size of each LineMapEntry on disk: function_id(2) + bytecode_offset(2)
 /// + source_line(2) + source_column(2) = 8 bytes.
@@ -104,6 +105,18 @@ pub struct FuncNameEntry {
     pub name: String,
 }
 
+/// An enumeration type definition entry (debug section Tag 9).
+///
+/// Maps a named enumeration type to its value names in ordinal order.
+/// See `specs/design/enumeration-codegen.md`, REQ-EN-060 through REQ-EN-064.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnumDefEntry {
+    /// The user-defined type name (e.g., "COLOR").
+    pub type_name: String,
+    /// Value names in ordinal order (e.g., ["RED", "GREEN", "BLUE"]).
+    pub values: Vec<String>,
+}
+
 /// The debug section of a bytecode container.
 #[derive(Clone, Debug, Default)]
 pub struct DebugSection {
@@ -112,6 +125,9 @@ pub struct DebugSection {
     /// Bytecode-offset → source-location mappings (debug section Tag 1).
     /// Empty when no source map is present.
     pub line_map: Vec<LineMapEntry>,
+    /// Enumeration type definitions (debug section Tag 9).
+    /// Maps enum type names to their value names in ordinal order.
+    pub enum_defs: Vec<EnumDefEntry>,
 }
 
 impl DebugSection {
@@ -124,6 +140,7 @@ impl DebugSection {
             + self.line_map_payload_size()
             + self.var_name_payload_size()
             + self.func_name_payload_size()
+            + self.enum_def_payload_size()
     }
 
     /// Writes the debug section to the given writer.
@@ -147,6 +164,11 @@ impl DebugSection {
             w.write_all(&0u16.to_le_bytes())?; // reserved
             w.write_all(&self.func_name_payload_size().to_le_bytes())?;
         }
+        if !self.enum_defs.is_empty() {
+            w.write_all(&TAG_ENUM_DEF.to_le_bytes())?;
+            w.write_all(&0u16.to_le_bytes())?; // reserved
+            w.write_all(&self.enum_def_payload_size().to_le_bytes())?;
+        }
 
         // Write payloads in directory order.
         if !self.line_map.is_empty() {
@@ -157,6 +179,9 @@ impl DebugSection {
         }
         if !self.func_names.is_empty() {
             self.write_func_names(w)?;
+        }
+        if !self.enum_defs.is_empty() {
+            self.write_enum_defs(w)?;
         }
 
         Ok(())
@@ -182,6 +207,7 @@ impl DebugSection {
         let mut var_names = Vec::new();
         let mut func_names = Vec::new();
         let mut line_map = Vec::new();
+        let mut enum_defs = Vec::new();
 
         // Read payloads in directory order, skipping unknown tags.
         for (tag, size) in &directory {
@@ -195,6 +221,9 @@ impl DebugSection {
                 TAG_FUNC_NAME => {
                     func_names = Self::read_func_names(r, *size)?;
                 }
+                TAG_ENUM_DEF => {
+                    enum_defs = Self::read_enum_defs(r)?;
+                }
                 _ => {
                     // Skip unknown tags by reading and discarding their payload.
                     let mut skip_buf = vec![0u8; *size as usize];
@@ -207,6 +236,7 @@ impl DebugSection {
             var_names,
             func_names,
             line_map,
+            enum_defs,
         })
     }
 
@@ -219,6 +249,9 @@ impl DebugSection {
             count += 1;
         }
         if !self.func_names.is_empty() {
+            count += 1;
+        }
+        if !self.enum_defs.is_empty() {
             count += 1;
         }
         count
@@ -408,6 +441,70 @@ impl DebugSection {
         }
         Ok(entries)
     }
+
+    fn enum_def_payload_size(&self) -> u32 {
+        if self.enum_defs.is_empty() {
+            return 0;
+        }
+        let mut size: u32 = 2; // count
+        for entry in &self.enum_defs {
+            // type_name_len(1) + type_name + value_count(2)
+            size += 1 + entry.type_name.len() as u32 + 2;
+            for value in &entry.values {
+                // name_len(1) + name
+                size += 1 + value.len() as u32;
+            }
+        }
+        size
+    }
+
+    fn write_enum_defs(&self, w: &mut impl Write) -> Result<(), ContainerError> {
+        w.write_all(&(self.enum_defs.len() as u16).to_le_bytes())?;
+        for entry in &self.enum_defs {
+            w.write_all(&[entry.type_name.len() as u8])?;
+            w.write_all(entry.type_name.as_bytes())?;
+            w.write_all(&(entry.values.len() as u16).to_le_bytes())?;
+            for value in &entry.values {
+                w.write_all(&[value.len() as u8])?;
+                w.write_all(value.as_bytes())?;
+            }
+        }
+        Ok(())
+    }
+
+    fn read_enum_defs(r: &mut impl Read) -> Result<Vec<EnumDefEntry>, ContainerError> {
+        let mut buf2 = [0u8; 2];
+        r.read_exact(&mut buf2)?;
+        let count = u16::from_le_bytes(buf2) as usize;
+
+        let mut entries = Vec::with_capacity(count);
+        for _ in 0..count {
+            let mut len_buf = [0u8; 1];
+            r.read_exact(&mut len_buf)?;
+            let type_name_len = len_buf[0] as usize;
+            let mut type_name_buf = vec![0u8; type_name_len];
+            r.read_exact(&mut type_name_buf)?;
+            let type_name = String::from_utf8(type_name_buf)
+                .map_err(|_| ContainerError::InvalidDebugSection)?;
+
+            r.read_exact(&mut buf2)?;
+            let value_count = u16::from_le_bytes(buf2) as usize;
+
+            let mut values = Vec::with_capacity(value_count);
+            for _ in 0..value_count {
+                r.read_exact(&mut len_buf)?;
+                let name_len = len_buf[0] as usize;
+                let mut name_buf = vec![0u8; name_len];
+                r.read_exact(&mut name_buf)?;
+                let name =
+                    String::from_utf8(name_buf).map_err(|_| ContainerError::InvalidDebugSection)?;
+                values.push(name);
+            }
+
+            entries.push(EnumDefEntry { type_name, values });
+        }
+        Ok(entries)
+    }
 }
 
 #[cfg(test)]
@@ -438,6 +535,7 @@ mod tests {
             ],
             func_names: vec![],
             line_map: vec![],
+            enum_defs: vec![],
         };
 
         let mut buf = Vec::new();
@@ -468,6 +566,7 @@ mod tests {
                 },
             ],
             line_map: vec![],
+            enum_defs: vec![],
         };
 
         let mut buf = Vec::new();
@@ -498,6 +597,7 @@ mod tests {
                 name: "MAIN".into(),
             }],
             line_map: vec![],
+            enum_defs: vec![],
         };
 
         let mut buf = Vec::new();
@@ -573,6 +673,7 @@ mod tests {
                     source_column: 0,
                 },
             ],
+            enum_defs: vec![],
         };
 
         let mut buf = Vec::new();
@@ -610,6 +711,7 @@ mod tests {
                     source_column: 1,
                 },
             ],
+            enum_defs: vec![],
         };
 
         // Exact match
@@ -652,6 +754,7 @@ mod tests {
                 name: "MAIN".into(),
             }],
             line_map: vec![],
+            enum_defs: vec![],
         };
 
         let mut buf = Vec::new();
