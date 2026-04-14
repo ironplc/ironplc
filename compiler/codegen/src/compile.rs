@@ -204,6 +204,8 @@ pub fn compile(
         })
         .collect();
 
+    let enum_map = crate::compile_enum::build_enum_ordinal_map(library);
+
     let mut container = compile_program_with_functions(
         program,
         &func_decls,
@@ -211,6 +213,7 @@ pub fn compile(
         global_vars,
         context.functions(),
         context.types(),
+        enum_map,
     )?;
 
     if options.system_uptime_global {
@@ -272,8 +275,10 @@ fn compile_program_with_functions(
     global_vars: &[VarDecl],
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
+    enum_map: crate::compile_enum::EnumOrdinalMap,
 ) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
+    ctx.enum_map = enum_map;
     let mut builder = ContainerBuilder::new();
 
     // Assign global variable indices first (indices 0..G).
@@ -627,6 +632,8 @@ pub(crate) struct CompileContext {
     pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     /// Maps structure variable identifiers to their metadata.
     pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
+    /// Pre-computed ordinal mappings for named enumeration types.
+    pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
     /// Next available byte offset in the data region.
     pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
@@ -661,6 +668,7 @@ impl CompileContext {
             user_functions: HashMap::new(),
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
+            enum_map: crate::compile_enum::EnumOrdinalMap::default(),
         }
     }
 
