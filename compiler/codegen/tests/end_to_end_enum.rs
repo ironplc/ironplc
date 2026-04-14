@@ -286,3 +286,43 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 42);
 }
+
+// --- PR 5: Debug section enum definitions ---
+
+#[test]
+fn end_to_end_when_enum_type_then_debug_section_has_enum_def() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let debug = container.debug_section.as_ref().unwrap();
+    let color_def = debug
+        .enum_defs
+        .iter()
+        .find(|e| e.type_name == "COLOR")
+        .expect("COLOR enum def should be present");
+    assert_eq!(color_def.values, vec!["RED", "GREEN", "BLUE"]);
+}
+
+#[test]
+fn end_to_end_when_multiple_enum_types_then_debug_has_all_defs() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+TYPE LEVEL : (LOW, MEDIUM, HIGH) := LOW; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+    l : LEVEL;
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let debug = container.debug_section.as_ref().unwrap();
+    assert!(debug.enum_defs.iter().any(|e| e.type_name == "COLOR"));
+    assert!(debug.enum_defs.iter().any(|e| e.type_name == "LEVEL"));
+}

@@ -50,7 +50,7 @@ pub use constant_pool::{ConstEntry, ConstantPool};
 #[cfg(feature = "std")]
 pub use container::Container;
 #[cfg(feature = "std")]
-pub use debug_section::{DebugSection, FuncNameEntry, LineMapEntry, VarNameEntry};
+pub use debug_section::{DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, VarNameEntry};
 #[cfg(feature = "std")]
 pub use task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
 #[cfg(feature = "std")]

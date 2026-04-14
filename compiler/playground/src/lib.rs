@@ -139,6 +139,44 @@ fn build_var_debug_map(container: &Container) -> HashMap<u16, VarDebugInfo> {
     map
 }
 
+/// Maps (type_name, ordinal) → value_name for enum display.
+type EnumValueMap = HashMap<(String, i32), String>;
+
+/// Builds a lookup map from enum definitions in the container's debug section.
+fn build_enum_value_map(container: &Container) -> EnumValueMap {
+    let mut map = HashMap::new();
+    if let Some(debug) = &container.debug_section {
+        for entry in &debug.enum_defs {
+            for (ordinal, value_name) in entry.values.iter().enumerate() {
+                map.insert(
+                    (entry.type_name.clone(), ordinal as i32),
+                    value_name.clone(),
+                );
+            }
+        }
+    }
+    map
+}
+
+/// Formats a raw 64-bit slot value according to the IEC type tag,
+/// with optional enum value name lookup.
+fn format_variable_value_with_enum(
+    raw: u64,
+    tag: u8,
+    type_name: &str,
+    enum_map: &EnumValueMap,
+) -> String {
+    // Check if this variable is an enum type with a known value name.
+    if !type_name.is_empty() {
+        let ordinal = raw as i32;
+        if let Some(value_name) = enum_map.get(&(type_name.to_string(), ordinal)) {
+            return format!("{value_name} ({ordinal})");
+        }
+    }
+    // Fall back to standard formatting.
+    format_variable_value(raw, tag)
+}
+
 /// Formats a raw 64-bit slot value according to the IEC type tag.
 fn format_variable_value(raw: u64, tag: u8) -> String {
     match tag {
@@ -459,12 +497,13 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     };
 
     let debug_map = build_var_debug_map(&container);
+    let enum_map = build_enum_value_map(&container);
 
     for round in 0..scans {
         let current_us = (round as u64) * 1000;
         if let Err(ctx) = running.run_round(current_us) {
             let faulted = running.fault(ctx);
-            let variables = read_all_variables_faulted(&faulted, &debug_map);
+            let variables = read_all_variables_faulted(&faulted, &debug_map, &enum_map);
             return RunResult {
                 ok: false,
                 variables,
@@ -480,7 +519,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     }
 
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars, &debug_map);
+    let variables = read_all_variables_running(&running, num_vars, &debug_map, &enum_map);
     let scans_completed = running.scan_count();
     running.stop();
 
@@ -532,6 +571,7 @@ fn read_all_variables_running(
     vm: &ironplc_vm::VmRunning,
     num_vars: u16,
     debug_map: &HashMap<u16, VarDebugInfo>,
+    enum_map: &EnumValueMap,
 ) -> Vec<VariableInfo> {
     (0..num_vars)
         .filter_map(|i| {
@@ -542,7 +582,12 @@ fn read_all_variables_running(
                         (
                             info.name.clone(),
                             info.type_name.clone(),
-                            format_variable_value(raw, info.iec_type_tag),
+                            format_variable_value_with_enum(
+                                raw,
+                                info.iec_type_tag,
+                                &info.type_name,
+                                enum_map,
+                            ),
                         )
                     } else {
                         (String::new(), String::new(), format!("{}", raw as i32))
@@ -561,6 +606,7 @@ fn read_all_variables_running(
 fn read_all_variables_faulted(
     vm: &ironplc_vm::VmFaulted,
     debug_map: &HashMap<u16, VarDebugInfo>,
+    enum_map: &EnumValueMap,
 ) -> Vec<VariableInfo> {
     let num_vars = vm.num_variables();
     (0..num_vars)
@@ -572,7 +618,12 @@ fn read_all_variables_faulted(
                         (
                             info.name.clone(),
                             info.type_name.clone(),
-                            format_variable_value(raw, info.iec_type_tag),
+                            format_variable_value_with_enum(
+                                raw,
+                                info.iec_type_tag,
+                                &info.type_name,
+                                enum_map,
+                            ),
                         )
                     } else {
                         (String::new(), String::new(), format!("{}", raw as i32))
@@ -789,7 +840,8 @@ fn run_vm_scans(
             let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
             let debug_map = build_var_debug_map(container);
-            let variables = read_all_variables_faulted(&faulted, &debug_map);
+            let enum_map = build_enum_value_map(container);
+            let variables = read_all_variables_faulted(&faulted, &debug_map, &enum_map);
             let error = format!(
                 "VM trap: {} (task {}, instance {})",
                 faulted.trap(),
@@ -801,8 +853,9 @@ fn run_vm_scans(
     }
 
     let debug_map = build_var_debug_map(container);
+    let enum_map = build_enum_value_map(container);
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars, &debug_map);
+    let variables = read_all_variables_running(&running, num_vars, &debug_map, &enum_map);
     let total_scans = running.scan_count();
     running.stop();
     (variables, total_scans, None)

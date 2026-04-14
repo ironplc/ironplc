@@ -34,7 +34,6 @@ pub(crate) struct EnumOrdinalMap {
     defaults: HashMap<String, i32>,
 
     /// Maps type_name_upper → ordered list of value names (for debug output).
-    #[allow(dead_code)] // Used in PR 5 (enum definition table in debug section).
     pub(crate) definitions: HashMap<String, Vec<String>>,
 }
 
