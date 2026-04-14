@@ -140,3 +140,149 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 2); // BLUE
     assert_eq!(bufs.vars[1].as_i32(), 2); // HIGH
 }
+
+// --- PR 3: Enum value expressions + CASE selectors ---
+
+#[test]
+fn end_to_end_when_enum_assignment_in_body_then_stores_ordinal() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+  END_VAR
+  c := BLUE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[0].as_i32(), 2); // BLUE = ordinal 2
+}
+
+#[test]
+fn end_to_end_when_enum_case_then_matches_correct_arm() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+    result : DINT;
+  END_VAR
+  c := GREEN;
+  CASE c OF
+    RED: result := 10;
+    GREEN: result := 20;
+    BLUE: result := 30;
+  END_CASE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 20);
+}
+
+#[test]
+fn end_to_end_when_enum_case_with_else_then_falls_through() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+    result : DINT;
+  END_VAR
+  c := BLUE;
+  CASE c OF
+    RED: result := 10;
+    GREEN: result := 20;
+  ELSE
+    result := 99;
+  END_CASE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 99);
+}
+
+#[test]
+fn end_to_end_when_enum_case_first_value_then_matches() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+    result : DINT;
+  END_VAR
+  c := RED;
+  CASE c OF
+    RED: result := 10;
+    GREEN: result := 20;
+    BLUE: result := 30;
+  END_CASE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 10);
+}
+
+#[test]
+fn end_to_end_when_enum_case_last_value_then_matches() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+    result : DINT;
+  END_VAR
+  c := BLUE;
+  CASE c OF
+    RED: result := 10;
+    GREEN: result := 20;
+    BLUE: result := 30;
+  END_CASE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 30);
+}
+
+#[test]
+fn end_to_end_when_enum_case_multi_value_arm_then_matches() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+PROGRAM main
+  VAR
+    c : COLOR;
+    result : DINT;
+  END_VAR
+  c := RED;
+  CASE c OF
+    RED, GREEN: result := 10;
+    BLUE: result := 20;
+  END_CASE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 10);
+}
+
+// --- PR 4: Struct field enum initialization ---
+
+#[test]
+fn end_to_end_when_struct_with_enum_field_init_then_stores_ordinal() {
+    let source = "
+TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
+TYPE MyStruct :
+  STRUCT
+    c : COLOR;
+    v : DINT;
+  END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct := (c := GREEN, v := 42);
+    result : DINT;
+  END_VAR
+  result := s.v;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+}

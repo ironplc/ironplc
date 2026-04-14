@@ -412,11 +412,16 @@ fn compile_struct_field_init(
         StructInitialValueAssignmentKind::Constant(constant) => {
             compile_constant(emitter, ctx, constant, op_type)
         }
-        StructInitialValueAssignmentKind::EnumeratedValue(_)
-        | StructInitialValueAssignmentKind::Array(_)
+        StructInitialValueAssignmentKind::EnumeratedValue(ev) => {
+            // REQ-EN-050: Resolve enum value to ordinal and push as i32 constant.
+            let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
+            let pool_index = ctx.add_i32_constant(ordinal);
+            emitter.emit_load_const_i32(pool_index);
+            Ok(())
+        }
+        StructInitialValueAssignmentKind::Array(_)
         | StructInitialValueAssignmentKind::Structure(_) => {
-            // Nested structures, arrays, and enums in struct init are not yet supported.
-            // Enum support could be added by resolving the enum value to an integer constant.
+            // Nested structures and arrays in struct init are not yet supported.
             Ok(())
         }
     }
