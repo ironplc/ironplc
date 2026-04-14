@@ -30,8 +30,11 @@ pub(crate) fn op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
         .resolved_type
         .as_ref()
         .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+    // Enum types resolve to user-defined names (e.g. "COLOR") which
+    // resolve_type_name doesn't handle. Fall back to DINT since all
+    // enums use W32/Signed at codegen level (REQ-EN-003).
     let info =
-        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+        resolve_type_name(&resolved.name).unwrap_or(crate::compile_enum::enum_var_type_info());
     Ok((info.op_width, info.signedness))
 }
 
@@ -198,11 +201,13 @@ pub(crate) fn compile_expr(
             }
             Ok(())
         }
-        ExprKind::EnumeratedValue(enum_val) => Err(Diagnostic::todo_with_span(
-            enum_val.span(),
-            file!(),
-            line!(),
-        )),
+        ExprKind::EnumeratedValue(enum_val) => {
+            // REQ-EN-030: Push the enum value's ordinal as an i32 constant.
+            let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, enum_val)?;
+            let pool_index = ctx.add_i32_constant(ordinal);
+            emitter.emit_load_const_i32(pool_index);
+            Ok(())
+        }
         ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
         ExprKind::Ref(variable) => {
             // REF(var) → push the variable's table index as a u64 constant.
