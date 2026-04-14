@@ -21,7 +21,6 @@ use super::compile::{OpWidth, Signedness, VarTypeInfo};
 /// Built once at codegen entry from the library's type declarations
 /// and stored in `CompileContext` for use by all codegen phases.
 #[derive(Default)]
-#[allow(dead_code)] // Fields consumed incrementally as enum codegen PRs land.
 pub(crate) struct EnumOrdinalMap {
     /// Maps (type_name_upper, value_name_upper) → 0-based ordinal.
     ordinals: HashMap<(String, String), i32>,
@@ -35,6 +34,7 @@ pub(crate) struct EnumOrdinalMap {
     defaults: HashMap<String, i32>,
 
     /// Maps type_name_upper → ordered list of value names (for debug output).
+    #[allow(dead_code)] // Used in PR 5 (enum definition table in debug section).
     pub(crate) definitions: HashMap<String, Vec<String>>,
 }
 
@@ -96,7 +96,6 @@ pub(crate) fn build_enum_ordinal_map(library: &Library) -> EnumOrdinalMap {
 ///
 /// For qualified values (`COLOR#GREEN`), uses the explicit type name.
 /// For unqualified values (`GREEN`), uses the reverse lookup.
-#[allow(dead_code)] // Used starting from PR 2 (variable initialization).
 pub(crate) fn resolve_enum_ordinal(
     map: &EnumOrdinalMap,
     ev: &EnumeratedValue,
@@ -133,7 +132,6 @@ pub(crate) fn resolve_enum_ordinal(
 ///
 /// Uses the type declaration's default value if present, otherwise 0
 /// (the first declared value).
-#[allow(dead_code)] // Used starting from PR 2 (variable initialization).
 pub(crate) fn resolve_enum_default_ordinal(map: &EnumOrdinalMap, type_name: &str) -> i32 {
     let type_upper = type_name.to_uppercase();
     map.defaults.get(&type_upper).copied().unwrap_or(0)
@@ -144,7 +142,6 @@ pub(crate) fn resolve_enum_default_ordinal(map: &EnumOrdinalMap, type_name: &str
 /// All enumerations use DINT (W32, Signed, 32-bit) at the codegen level,
 /// regardless of the analyzer's underlying type sizing (B8/B16). This avoids
 /// unnecessary truncation opcodes since every VM slot is 64 bits wide.
-#[allow(dead_code)] // Used starting from PR 2 (variable allocation).
 pub(crate) fn enum_var_type_info() -> VarTypeInfo {
     VarTypeInfo {
         op_width: OpWidth::W32,
