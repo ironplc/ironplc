@@ -16,7 +16,7 @@ to write your first PLC program.
 
 * [**Real-time diagnostics**](https://www.ironplc.com/reference/editor/overview.html) — syntax and semantic errors reported as you type
 * [**Syntax highlighting**](https://www.ironplc.com/reference/compiler/source-formats/index.html) — Structured Text, PLCopen XML, and TwinCAT files
-* [**Build tasks**](https://www.ironplc.com/reference/editor/build-tasks.html) — compile to `.iplc` bytecode from the editor
+* [**Build and run**](https://www.ironplc.com/reference/editor/build-tasks.html) — compile and execute programs from the editor
 * [**Bytecode viewer**](https://www.ironplc.com/reference/editor/bytecode-viewer.html) — inspect compiled programs
 * [**AI agent support**](https://www.ironplc.com/how-to-guides/ai-agents/index.html) — use with MCP-compatible tools like Claude
 
