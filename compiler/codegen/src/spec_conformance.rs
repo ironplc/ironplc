@@ -320,9 +320,7 @@ fn enum_spec_req_en_032_unqualified_reference_resolves() {
 }
 
 /// REQ-EN-033: Enum equality comparison uses integer comparison.
-/// Note: unqualified enum values in IF conditions are not yet supported
-/// by the parser (they parse as variable references). We test equality
-/// through CASE matching, which exercises the same EQ_I32 comparison.
+/// Tests both IF equality expressions and CASE matching.
 #[spec_test(REQ_EN_033)]
 fn enum_spec_req_en_033_equality_comparison_works() {
     let source = "
@@ -333,9 +331,9 @@ PROGRAM main
     result : DINT;
   END_VAR
   c := GREEN;
-  CASE c OF
-    GREEN: result := 42;
-  END_CASE;
+  IF c = GREEN THEN
+    result := 42;
+  END_IF;
 END_PROGRAM
 ";
     let (_c, bufs) = compile_and_run(source);
