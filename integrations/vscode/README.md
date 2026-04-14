@@ -1,110 +1,31 @@
-# IronPLC Visual Studio Code Extension
+# IronPLC
 
-IronPLC brings IEC 61131-3 support to your development environment, providing
-real-time code analysis, syntax highlighting, build tasks, and a bytecode
-viewer for programs written in the IEC 61131-3 Structured Text language.
+IronPLC provides IEC 61131-3 Structured Text language support for VS Code.
+Get real-time error checking, syntax highlighting, and build tools for PLC
+programs — no proprietary IDE required.
 
 ## Quick Start
 
-* **Step 1.** [Install the IronPLC compiler and extension](https://www.ironplc.com/quickstart/installation.html)
-on your system.
-* **Step 2.** Open or create an IEC 61131-3 file and start coding.
+1. [Install the IronPLC compiler and extension](https://www.ironplc.com/quickstart/installation.html)
+2. Open or create a `.st` file and start coding
 
-## Supported File Types
+See the [quick start tutorial](https://www.ironplc.com/quickstart/index.html)
+to write your first PLC program.
 
-| **File Type** | **Extensions** | **Description** |
-|---------------|----------------|-----------------|
-| Structured Text | `.st`, `.iec` | IEC 61131-3 Structured Text source files |
-| PLCopen XML | Auto-detected | PLCopen TC6 XML project files with embedded Structured Text |
-| TwinCAT | `.TcPOU`, `.TcGVL`, `.TcDUT` | Beckhoff TwinCAT 3 project files with embedded Structured Text |
+## Capabilities
 
-## Features
+* [**Real-time diagnostics**](https://www.ironplc.com/reference/editor/overview.html) — syntax and semantic errors reported as you type
+* [**Syntax highlighting**](https://www.ironplc.com/reference/compiler/source-formats/index.html) — Structured Text, PLCopen XML, and TwinCAT files
+* [**Build and run**](https://www.ironplc.com/reference/editor/build-tasks.html) — compile and execute programs from the editor
+* [**Bytecode viewer**](https://www.ironplc.com/reference/editor/bytecode-viewer.html) — inspect compiled programs
+* [**AI agent support**](https://www.ironplc.com/how-to-guides/ai-agents/index.html) — use with MCP-compatible tools like Claude
 
-### Syntax Highlighting
-
-Full syntax highlighting for IEC 61131-3 Structured Text including:
-
-* Keywords (PROGRAM, FUNCTION, FUNCTION_BLOCK, VAR, IF, FOR, WHILE, etc.)
-* Data types (BOOL, INT, REAL, STRING, TIME, etc.)
-* Operators and literals
-* Comments (`(* block comments *)`)
-
-PLCopen XML files are also highlighted with embedded Structured Text support.
-
-### Real-Time Analysis
-
-As you type, IronPLC analyzes your code and reports:
-
-* Syntax errors
-* Semantic errors (type mismatches, undefined variables, etc.)
-* Warnings for potential issues
-
-Diagnostics appear inline and in the Problems panel.
-
-### Auto-Closing Pairs
-
-The extension automatically closes:
-
-* **Brackets and strings**: `[]`, `()`, `''`, `""`
-* **Comments**: `(* *)`
-* **Control structures**: `IF`/`END_IF`, `FOR`/`END_FOR`, `WHILE`/`END_WHILE`, `CASE`/`END_CASE`, `REPEAT`/`END_REPEAT`
-* **Program units**: `PROGRAM`/`END_PROGRAM`, `FUNCTION`/`END_FUNCTION`, `FUNCTION_BLOCK`/`END_FUNCTION_BLOCK`
-* **Variable blocks**: `VAR`/`END_VAR`, `VAR_INPUT`/`END_VAR`, `VAR_OUTPUT`/`END_VAR`, and other VAR types
-* **Other blocks**: `STRUCT`/`END_STRUCT`, `ACTION`/`END_ACTION`, `CONFIGURATION`/`END_CONFIGURATION`
-
-### Bracket Colorization
-
-Matching brackets are colorized to help visualize nesting levels.
-
-### Build Tasks
-
-The extension integrates with the build system to compile IEC 61131-3
-projects into bytecode container (`.iplc`) files without leaving the
-development environment.
-
-* Press `Ctrl+Shift+B` (or `Cmd+Shift+B` on macOS) and select **ironplc: compile**
-* Output is written to a `.iplc` file in the workspace root
-
-### Bytecode Viewer
-
-Opening an `.iplc` bytecode file displays a human-readable disassembly of
-the compiled program, including the file header, constant pool, task table,
-and function instructions with color-coded opcodes.
-
-## Commands
-
-Open the Command Palette (Command+Shift+P on macOS and Ctrl+Shift+P
-on Windows) and type in one of the following commands:
-
-| **Command** | **Description** |
-|-------------|-----------------|
-| `IronPLC: New Structured Text File` | Create a new IEC 61131-3 structured text file |
-
-## Extension Settings
-
-| **Setting** | **Description** | **Default** |
-|-------------|-----------------|-------------|
-| `ironplc.path` | Path to the IronPLC compiler executable. If empty, discovers based on PATH. | (empty) |
-| `ironplc.logLevel` | Log level for the compiler: ERROR, WARN, INFO, DEBUG, or TRACE | ERROR |
-| `ironplc.logFile` | Path to write compiler logs. If empty, logs are not written to file. | (empty) |
-
-## Platform Support
-
-The extension works on:
-
-* Windows
-* macOS
-* Linux
-
-## Supported Development Environments
-
-This extension is published to both the Visual Studio Code Marketplace and the
-Open VSX Registry. It works with any development environment that supports
-VS Code extensions, including:
-
-* [Visual Studio Code](https://code.visualstudio.com/)
-* [Cursor](https://www.cursor.com/)
+Works with Structured Text (`.st`, `.iec`), PLCopen XML, and
+TwinCAT (`.TcPOU`, `.TcGVL`, `.TcDUT`) files.
 
 ## Learn More
 
-Visit [ironplc.com](https://www.ironplc.com) for documentation, tutorials, and guides.
+* [Documentation](https://www.ironplc.com)
+* [Playground](https://playground.ironplc.com)
+* [Troubleshooting](https://www.ironplc.com/how-to-guides/troubleshoot-editor.html)
+* [Source](https://github.com/ironplc/ironplc)
