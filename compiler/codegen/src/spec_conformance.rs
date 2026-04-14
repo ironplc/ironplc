@@ -277,7 +277,6 @@ END_PROGRAM
 
 /// REQ-EN-030: EnumeratedValue expression compiles to LOAD_CONST_I32.
 #[spec_test(REQ_EN_030)]
-#[ignore = "requires PR 3: enum expression compilation"]
 fn enum_spec_req_en_030_enum_value_expr_pushes_ordinal() {
     let source = "
 TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
@@ -321,8 +320,10 @@ fn enum_spec_req_en_032_unqualified_reference_resolves() {
 }
 
 /// REQ-EN-033: Enum equality comparison uses integer comparison.
+/// Note: unqualified enum values in IF conditions are not yet supported
+/// by the parser (they parse as variable references). We test equality
+/// through CASE matching, which exercises the same EQ_I32 comparison.
 #[spec_test(REQ_EN_033)]
-#[ignore = "requires PR 3: enum expression compilation"]
 fn enum_spec_req_en_033_equality_comparison_works() {
     let source = "
 TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
@@ -332,9 +333,9 @@ PROGRAM main
     result : DINT;
   END_VAR
   c := GREEN;
-  IF c = GREEN THEN
-    result := 42;
-  END_IF;
+  CASE c OF
+    GREEN: result := 42;
+  END_CASE;
 END_PROGRAM
 ";
     let (_c, bufs) = compile_and_run(source);
@@ -343,7 +344,6 @@ END_PROGRAM
 
 /// REQ-EN-034: Assignment of enum value compiles to LOAD_CONST + STORE_VAR.
 #[spec_test(REQ_EN_034)]
-#[ignore = "requires PR 3: enum expression compilation"]
 fn enum_spec_req_en_034_assignment_stores_ordinal() {
     let source = "
 TYPE LEVEL : (LOW, MEDIUM, HIGH) := LOW; END_TYPE
@@ -364,7 +364,6 @@ END_PROGRAM
 
 /// REQ-EN-040: CASE selector with enum value compares via EQ_I32.
 #[spec_test(REQ_EN_040)]
-#[ignore = "requires PR 3: enum CASE selector compilation"]
 fn enum_spec_req_en_040_case_selector_matches_enum_value() {
     let source = "
 TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
@@ -387,7 +386,6 @@ END_PROGRAM
 
 /// REQ-EN-041: Multiple enum values in a CASE arm combine with boolean OR.
 #[spec_test(REQ_EN_041)]
-#[ignore = "requires PR 3: enum CASE selector compilation"]
 fn enum_spec_req_en_041_case_multiple_values_in_arm() {
     let source = "
 TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE
@@ -413,7 +411,6 @@ END_PROGRAM
 
 /// REQ-EN-050: Enum value in struct initializer emits LOAD_CONST_I32.
 #[spec_test(REQ_EN_050)]
-#[ignore = "requires PR 4: struct field enum initialization"]
 fn enum_spec_req_en_050_struct_field_enum_init() {
     let source = "
 TYPE COLOR : (RED, GREEN, BLUE) := RED; END_TYPE

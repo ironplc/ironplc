@@ -520,7 +520,10 @@ fn compile_case(
     case_stmt: &ironplc_dsl::textual::Case,
 ) -> Result<(), Diagnostic> {
     let end_label = emitter.create_label();
-    let op_type = op_type(&case_stmt.selector)?;
+    // Enum selectors have a resolved type that is the enum name (e.g. "COLOR"),
+    // which resolve_type_name doesn't handle. Fall back to W32/Signed (DINT)
+    // since all enums use DINT at codegen level (REQ-EN-003).
+    let op_type = op_type(&case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE);
 
     for group in &case_stmt.statement_groups {
         let next_label = emitter.create_label();
@@ -624,7 +627,13 @@ fn compile_case_selector(
             Ok(())
         }
         CaseSelectionKind::EnumeratedValue(ev) => {
-            Err(Diagnostic::todo_with_span(ev.span(), file!(), line!()))
+            // REQ-EN-040: Load selector, load ordinal constant, compare with EQ_I32.
+            compile_expr(emitter, ctx, selector_expr, op_type)?;
+            let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
+            let pool_index = ctx.add_i32_constant(ordinal);
+            emitter.emit_load_const_i32(pool_index);
+            emitter.emit_eq_i32();
+            Ok(())
         }
     }
 }
