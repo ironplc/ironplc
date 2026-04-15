@@ -36,7 +36,7 @@ Branding images are duplicated across three locations:
 
 | Consumer | How it references `assets/` |
 |---|---|
-| Sphinx website | `html_static_path` in `conf.py` includes `../assets` |
+| Sphinx website | `index.rst` image directive uses `../assets/ironplc-banner.svg` directly |
 | NSIS installer | `setup.nsi` paths changed to `..\assets\nsis-*` |
 | VS Code extension | `copy-assets` justfile recipe copies to local `assets/` dir; `package.json` references `assets/vscode-logo.png` |
 
@@ -71,7 +71,7 @@ Branding images are duplicated across three locations:
 1. Create `assets/` directory
 2. Move files to `assets/` with new names
 3. Remove original directories (`docs/images/`, `compiler/nsis/assets/`, `integrations/vscode/images/`)
-4. Update `docs/conf.py` to include `../assets` in `html_static_path`
+4. Update `docs/index.rst` image directive to reference `../assets/ironplc-banner.svg`
 5. Update `compiler/setup.nsi` to reference `../assets/nsis-*`
 6. Update `integrations/vscode/package.json` to reference `assets/vscode-logo.png`
 7. Add `copy-assets` recipe to `integrations/vscode/justfile`
