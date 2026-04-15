@@ -1,0 +1,38 @@
+=====
+P4033
+=====
+
+.. problem-summary:: P4033
+
+This error occurs when a source uses the IEC 61131-3:2013 partial-access bit
+syntax (``.%Xn``) without enabling it. Partial-access syntax is standardized
+in Edition 3 of IEC 61131-3 but is not part of Edition 2, so it is gated
+behind the ``--allow-partial-access-syntax`` flag (also enabled by the
+``rusty`` and ``iec61131-3-ed3`` dialect presets).
+
+Example
+-------
+
+The following code will generate error P4033:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       b : BYTE;
+       r : BOOL;
+   END_VAR
+       r := b.%X0;
+   END_PROGRAM
+
+To fix this error, either use the Edition 2 short form ``.n``:
+
+.. code-block::
+
+   r := b.0;
+
+Or enable partial-access syntax with one of:
+
+- ``--allow-partial-access-syntax``
+- ``--dialect=iec61131-3-ed3``
+- ``--dialect=rusty``

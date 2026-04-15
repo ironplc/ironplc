@@ -147,6 +147,13 @@ features — they never disable features that a dialect already includes.
    parameter is expected. This is a vendor extension supported by CODESYS,
    TwinCAT, and RuSTy.
 
+``--allow-partial-access-syntax``
+   Allow IEC 61131-3:2013 partial-access bit syntax ``.%Xn`` (e.g.,
+   ``myByte.%X3`` to access bit 3 of a ``BYTE``). Semantically equivalent to
+   the short form ``.n``. Enabled by ``--dialect=iec61131-3-ed3`` and
+   ``--dialect=rusty``. Byte/word/dword/lword partial access (``.%Bn``,
+   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell

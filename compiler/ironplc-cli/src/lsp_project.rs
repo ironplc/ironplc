@@ -382,6 +382,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Constant => Some(MODIFIER_INDEX),
             TokenType::At => Some(KEYWORD_INDEX),
             TokenType::DirectAddress => Some(OPERATOR_INDEX),
+            TokenType::PartialAccessBit => Some(OPERATOR_INDEX),
             TokenType::DirectAddressIncomplete => Some(OPERATOR_INDEX),
             TokenType::Function => Some(KEYWORD_INDEX),
             TokenType::EndFunction => Some(KEYWORD_INDEX),
