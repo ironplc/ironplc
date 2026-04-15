@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/data-types/derived/structure-types.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="A structure type defines a record with named fields of potentially different types.,, IEC 61131-3, Section 2.3.3.1,, Support, Partial,,,, Syntax: Example: Fields are accessed using dot notation. Ea..." />
-<meta name="description" content="A structure type defines a record with named fields of potentially different types.,, IEC 61131-3, Section 2.3.3.1,, Support, Partial,,,, Syntax: Example: Fields are accessed using dot notation. Ea..." />
+<meta property="og:description" content="A structure type defines a record with named fields of potentially different types.,, IEC 61131-3, Section 2.3.3.1,, Support, Supported,,,, Syntax: Example: Fields are accessed using dot notation. ..." />
+<meta name="description" content="A structure type defines a record with named fields of potentially different types.,, IEC 61131-3, Section 2.3.3.1,, Support, Supported,,,, Syntax: Example: Fields are accessed using dot notation. ..." />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="Reference Types" href="reference-types.html"><link rel="prev" title="Array Types" href="array-types.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/data-types/derived/structure-types.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.200.0">
+<meta name="ironplc-version" content="0.201.0">
 </head>
   <body>
     
@@ -627,7 +627,7 @@
         <article role="main" id="furo-main-content">
           <div class="admonition attention">
 <p class="admonition-title">Attention</p>
-<p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include ranges, enum and I/O mapping.</p>
+<p>IronPLC supports IEC 61131-3 Structured Text excluding I/O mapping.</p>
 </div>
 <section id="structure-types">
 <h1>Structure Types<a class="headerlink" href="#structure-types" title="Link to this heading">¶</a></h1>
@@ -644,7 +644,7 @@ different types.</p>
 <td><p>Section 2.3.3.1</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Partial</p></td>
+<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -662,24 +662,7 @@ END_TYPE
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
-    <span class="n">Point</span> <span class="p">:</span> <span class="n">STRUCT</span>
-        <span class="n">X</span> <span class="p">:</span> <span class="n">REAL</span><span class="p">;</span>
-        <span class="n">Y</span> <span class="p">:</span> <span class="n">REAL</span><span class="p">;</span>
-    <span class="n">END_STRUCT</span><span class="p">;</span>
-<span class="n">END_TYPE</span>
-
-<span class="n">PROGRAM</span> <span class="n">main</span>
-    <span class="n">VAR</span>
-        <span class="n">origin</span> <span class="p">:</span> <span class="n">Point</span><span class="p">;</span>
-    <span class="n">END_VAR</span>
-
-    <span class="n">origin</span><span class="o">.</span><span class="n">X</span> <span class="o">:=</span> <span class="mf">0.0</span><span class="p">;</span>
-    <span class="n">origin</span><span class="o">.</span><span class="n">Y</span> <span class="o">:=</span> <span class="mf">0.0</span><span class="p">;</span>
-<span class="n">END_PROGRAM</span>
-</pre></div>
-</div>
-<p>Fields are accessed using dot notation. Each field name must be unique
+<iframe src="https://playground.ironplc.com/?embed=true&code=VFlQRQogICAgUG9pbnQgOiBTVFJVQ1QKICAgICAgICBYIDogUkVBTDsKICAgICAgICBZIDogUkVBTDsKICAgIEVORF9TVFJVQ1Q7CkVORF9UWVBFCgpQUk9HUkFNIG1haW4KICAgIFZBUgogICAgICAgIG9yaWdpbiA6IFBvaW50OwogICAgRU5EX1ZBUgoKICAgIG9yaWdpbi5YIDo9IDAuMDsKICAgIG9yaWdpbi5ZIDo9IDAuMDsKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:529px;border:1px solid #3e3e5e;border-radius:4px;"></iframe><p>Fields are accessed using dot notation. Each field name must be unique
 within the structure.</p>
 </section>
 <section id="related-problem-codes">

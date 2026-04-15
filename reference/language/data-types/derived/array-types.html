@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/data-types/derived/array-types.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="An array is a fixed-size indexed collection of elements of the same type.,, IEC 61131-3, Section 2.3.3.1,, Support, Not yet supported,,,, Syntax: Arrays can be declared inline in variable declarati..." />
-<meta name="description" content="An array is a fixed-size indexed collection of elements of the same type.,, IEC 61131-3, Section 2.3.3.1,, Support, Not yet supported,,,, Syntax: Arrays can be declared inline in variable declarati..." />
+<meta property="og:description" content="An array is a fixed-size indexed collection of elements of the same type.,, IEC 61131-3, Section 2.3.3.1,, Support, Supported,,,, Syntax: Arrays can be declared inline in variable declarations or a..." />
+<meta name="description" content="An array is a fixed-size indexed collection of elements of the same type.,, IEC 61131-3, Section 2.3.3.1,, Support, Supported,,,, Syntax: Arrays can be declared inline in variable declarations or a..." />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="Structure Types" href="structure-types.html"><link rel="prev" title="Subrange Types" href="subrange-types.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/data-types/derived/array-types.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.200.0">
+<meta name="ironplc-version" content="0.201.0">
 </head>
   <body>
     
@@ -627,7 +627,7 @@
         <article role="main" id="furo-main-content">
           <div class="admonition attention">
 <p class="admonition-title">Attention</p>
-<p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include ranges, enum and I/O mapping.</p>
+<p>IronPLC supports IEC 61131-3 Structured Text excluding I/O mapping.</p>
 </div>
 <section id="array-types">
 <h1>Array Types<a class="headerlink" href="#array-types" title="Link to this heading">¶</a></h1>
@@ -643,7 +643,7 @@
 <td><p>Section 2.3.3.1</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Not yet supported</p></td>
+<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -657,22 +657,7 @@
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
-    <span class="n">TenInts</span> <span class="p">:</span> <span class="n">ARRAY</span> <span class="p">[</span><span class="mf">1..10</span><span class="p">]</span> <span class="n">OF</span> <span class="n">INT</span><span class="p">;</span>
-<span class="n">END_TYPE</span>
-
-<span class="n">PROGRAM</span> <span class="n">main</span>
-    <span class="n">VAR</span>
-        <span class="n">values</span> <span class="p">:</span> <span class="n">ARRAY</span> <span class="p">[</span><span class="mf">0..9</span><span class="p">]</span> <span class="n">OF</span> <span class="n">DINT</span><span class="p">;</span>
-        <span class="n">matrix</span> <span class="p">:</span> <span class="n">ARRAY</span> <span class="p">[</span><span class="mf">1..3</span><span class="p">,</span> <span class="mf">1..3</span><span class="p">]</span> <span class="n">OF</span> <span class="n">REAL</span><span class="p">;</span>
-    <span class="n">END_VAR</span>
-
-    <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">:=</span> <span class="mi">42</span><span class="p">;</span>
-    <span class="n">values</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span> <span class="o">:=</span> <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
-<span class="n">END_PROGRAM</span>
-</pre></div>
-</div>
-<p>Multi-dimensional arrays use comma-separated ranges in the index
+<iframe src="https://playground.ironplc.com/?embed=true&code=VFlQRQogICAgVGVuSW50cyA6IEFSUkFZIFsxLi4xMF0gT0YgSU5UOwpFTkRfVFlQRQoKUFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICB2YWx1ZXMgOiBBUlJBWSBbMC4uOV0gT0YgRElOVDsKICAgICAgICBtYXRyaXggOiBBUlJBWSBbMS4uMywgMS4uM10gT0YgUkVBTDsKICAgIEVORF9WQVIKCiAgICB2YWx1ZXNbMF0gOj0gNDI7CiAgICB2YWx1ZXNbNV0gOj0gdmFsdWVzWzBdICsgMTsKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:472px;border:1px solid #3e3e5e;border-radius:4px;"></iframe><p>Multi-dimensional arrays use comma-separated ranges in the index
 specification.</p>
 </section>
 <section id="constant-bounds-vendor-extension">

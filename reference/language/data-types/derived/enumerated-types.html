@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/data-types/derived/enumerated-types.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="An enumerated type defines a named set of values.,, IEC 61131-3, Section 2.3.3.1,, Support, Partial,,,, Syntax: Example: Enumerated values must be unique within the type. Values can optionally incl..." />
-<meta name="description" content="An enumerated type defines a named set of values.,, IEC 61131-3, Section 2.3.3.1,, Support, Partial,,,, Syntax: Example: Enumerated values must be unique within the type. Values can optionally incl..." />
+<meta property="og:description" content="An enumerated type defines a named set of values.,, IEC 61131-3, Section 2.3.3.1,, Support, Supported,,,, Syntax: Example: Enumerated values must be unique within the type. Values can optionally in..." />
+<meta name="description" content="An enumerated type defines a named set of values.,, IEC 61131-3, Section 2.3.3.1,, Support, Supported,,,, Syntax: Example: Enumerated values must be unique within the type. Values can optionally in..." />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="Subrange Types" href="subrange-types.html"><link rel="prev" title="LDATE_AND_TIME" href="../elementary/ldate-and-time.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/data-types/derived/enumerated-types.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.200.0">
+<meta name="ironplc-version" content="0.201.0">
 </head>
   <body>
     
@@ -627,7 +627,7 @@
         <article role="main" id="furo-main-content">
           <div class="admonition attention">
 <p class="admonition-title">Attention</p>
-<p>IronPLC implements many parts of the IEC 61131-3 standard and is working toward full Structured Text support. Key features still missing include ranges, enum and I/O mapping.</p>
+<p>IronPLC supports IEC 61131-3 Structured Text excluding I/O mapping.</p>
 </div>
 <section id="enumerated-types">
 <h1>Enumerated Types<a class="headerlink" href="#enumerated-types" title="Link to this heading">¶</a></h1>
@@ -643,7 +643,7 @@
 <td><p>Section 2.3.3.1</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Partial</p></td>
+<td><p>Supported</p></td>
 </tr>
 </tbody>
 </table>
@@ -658,22 +658,7 @@ END_TYPE
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
-    <span class="n">TrafficLight</span> <span class="p">:</span> <span class="p">(</span><span class="n">Red</span><span class="p">,</span> <span class="n">Yellow</span><span class="p">,</span> <span class="n">Green</span><span class="p">);</span>
-<span class="n">END_TYPE</span>
-
-<span class="n">PROGRAM</span> <span class="n">main</span>
-    <span class="n">VAR</span>
-        <span class="n">state</span> <span class="p">:</span> <span class="n">TrafficLight</span> <span class="o">:=</span> <span class="n">Red</span><span class="p">;</span>
-    <span class="n">END_VAR</span>
-
-    <span class="n">IF</span> <span class="n">state</span> <span class="o">=</span> <span class="n">Green</span> <span class="n">THEN</span>
-        <span class="n">state</span> <span class="o">:=</span> <span class="n">Yellow</span><span class="p">;</span>
-    <span class="n">END_IF</span><span class="p">;</span>
-<span class="n">END_PROGRAM</span>
-</pre></div>
-</div>
-<p>Enumerated values must be unique within the type. Values can optionally
+<iframe src="https://playground.ironplc.com/?embed=true&code=VFlQRQogICAgVHJhZmZpY0xpZ2h0IDogKFJlZCwgWWVsbG93LCBHcmVlbik7CkVORF9UWVBFCgpQUk9HUkFNIG1haW4KICAgIFZBUgogICAgICAgIHN0YXRlIDogVHJhZmZpY0xpZ2h0IDo9IFJlZDsKICAgIEVORF9WQVIKCiAgICBJRiBzdGF0ZSA9IEdyZWVuIFRIRU4KICAgICAgICBzdGF0ZSA6PSBZZWxsb3c7CiAgICBFTkRfSUY7CkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:472px;border:1px solid #3e3e5e;border-radius:4px;"></iframe><p>Enumerated values must be unique within the type. Values can optionally
 include a type qualifier:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
     <span class="n">Color</span> <span class="p">:</span> <span class="p">(</span><span class="n">Red</span><span class="p">,</span> <span class="n">Green</span><span class="p">,</span> <span class="n">Blue</span><span class="p">)</span> <span class="n">INT</span><span class="p">;</span>
