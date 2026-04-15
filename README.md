@@ -2,54 +2,46 @@
 
 ![](docs/_static/ironplc-banner.svg)
 
-IronPLC is a SoftPLC written entirely in safe Rust for embedded
-devices running programs written in the IEC 61131-3 language.
+An open-source toolchain and runtime for IEC 61131-3, written in safe Rust.
 
 [![IronPLC Integration](https://github.com/ironplc/ironplc/actions/workflows/integration.yaml/badge.svg)](https://github.com/ironplc/ironplc/actions/workflows/integration.yaml)
 [![IronPLC Deployment](https://github.com/ironplc/ironplc/actions/workflows/deployment.yaml/badge.svg)](https://github.com/ironplc/ironplc/actions/workflows/deployment.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-SoftPLCs enable embedded and other computers to operate as programmable logic
-controllers (PLCs) that execute all sorts of processes from home automation
-and factories machines to industrial process and electrical power grid control.
-PLC devices do this by implementing control algorithms that connect to sensors,
-transducers and actuators through analog/digital IO, industrial protocols such as
-I²C and Modbus, or even common internet protocol such as HTTP.
+IronPLC is a compiler (`ironplcc`), runtime (`ironplcvm`), VS Code extension,
+browser playground, and MCP server for writing and running IEC 61131-3
+programs on off-the-shelf hardware — no proprietary IDE required.
 
-## Mission
+## Quick Start
 
-A complete runtime and development environment for IEC 61131-3. The runtime aims
-to be written entirely in safe Rust to prevent security issues. The development
-environment aims to be available via Visual Studio Code to provide
-a first class environment.
+1. [Install IronPLC](https://www.ironplc.com/quickstart/installation.html), or
+   try it in the browser at [playground.ironplc.com](https://playground.ironplc.com)
+2. Follow the [quick start tutorial](https://www.ironplc.com/quickstart/index.html)
+   to write your first PLC program
 
-### What Works Today
+## Capabilities
 
-* ✅ **Compiler** (`ironplcc`) — parses and analyzes IEC 61131-3 Structured Text with 60+ diagnostic checks
-* ✅ **Code Generation** — compiles programs to a bytecode container (`.iplc`) format
-* ✅ **Runtime** (`ironplcvm`) — executes compiled bytecode with task scheduling
-* ✅ **Visual Studio Code Extension** — syntax highlighting, real-time diagnostics, build tasks, and bytecode viewer
-* ✅ **Multiple Source Formats** — Structured Text (`.st`, `.iec`), PLCopen XML (`.xml`), and TwinCAT (`.TcPOU`, `.TcGVL`, `.TcDUT`)
-* ✅ **Interactive Playground** — try IronPLC in the browser at [playground.ironplc.com](https://playground.ironplc.com)
-* ✅ **Documentation website**
+* [**Compiler**](https://www.ironplc.com/reference/compiler/index.html) —
+  parses and analyzes IEC 61131-3 Structured Text with a large and growing
+  set of diagnostic checks
+* [**Runtime**](https://www.ironplc.com/reference/runtime/index.html) —
+  executes compiled bytecode with task scheduling
+* [**VS Code extension**](https://www.ironplc.com/reference/editor/overview.html) —
+  syntax highlighting, real-time diagnostics, build tasks, and a bytecode viewer
+* [**Multiple source formats**](https://www.ironplc.com/reference/compiler/source-formats/index.html) —
+  Structured Text (`.st`, `.iec`), PLCopen XML (`.xml`), and TwinCAT
+  (`.TcPOU`, `.TcGVL`, `.TcDUT`)
+* [**AI agent support**](https://www.ironplc.com/how-to-guides/ai-agents/index.html) —
+  an MCP server that lets tools like Claude call the IronPLC compiler
+* [**Interactive playground**](https://playground.ironplc.com) —
+  try IronPLC in the browser with no install
 
-### Limitations
+## What's in this repo
 
-Code generation and the runtime currently support a minimal subset of the language:
-`PROGRAM` declarations, `INT` variable declarations, assignment statements,
-integer literal constants, and arithmetic operators (`+`, `-`, `*`, `/`).
-The full IEC 61131-3 language is supported by the parser and semantic analyzer.
-
-### Platform Support
-
-* ✅ Windows
-* ✅ macOS
-* ✅ Linux
-
-## Usage
-
-Go to [ironplc.com](https://www.ironplc.com) and follow the instructions
-to get started.
+* `compiler/` — Rust workspace (compiler, runtime, MCP server, playground WASM)
+* `integrations/vscode/` — VS Code extension
+* `docs/` — Sphinx documentation site ([ironplc.com](https://www.ironplc.com))
+* `playground/` — browser playground
 
 ## Contributing
 
