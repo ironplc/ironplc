@@ -314,6 +314,18 @@ impl TypeEnvironment {
         }
     }
 
+    /// Returns the intermediate type for a named subrange type.
+    ///
+    /// Returns `Some` with the `IntermediateType::Subrange` if the type is found
+    /// and is a subrange type, or `None` if the type is not found or is not a subrange.
+    pub fn resolve_subrange_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
+        let attrs = self.get(type_name)?;
+        match &attrs.representation {
+            it @ IntermediateType::Subrange { .. } => Some(it),
+            _ => None,
+        }
+    }
+
     /// Returns the intermediate type for a named structure type.
     ///
     /// Returns `Some` with the `IntermediateType::Structure` if the type is found

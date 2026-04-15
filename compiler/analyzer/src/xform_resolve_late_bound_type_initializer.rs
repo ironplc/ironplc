@@ -161,6 +161,12 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                             },
                         ));
                     }
+                    // Subrange types (e.g., MY_RANGE : INT (1..100))
+                    if ty.representation.is_subrange() {
+                        return Ok(InitialValueAssignmentKind::Subrange(
+                            SpecificationKind::Named(name),
+                        ));
+                    }
                 }
 
                 // Unsupported standard types resolve to a known type that we will detect later.
@@ -220,6 +226,9 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                                 initial_value: None,
                             }),
                         ),
+                        TypeDefinitionKind::Subrange => Ok(InitialValueAssignmentKind::Subrange(
+                            SpecificationKind::Named(name),
+                        )),
                         _ => Err(Diagnostic::todo_with_type(&name, file!(), line!())),
                     },
                     None => {
@@ -386,6 +395,42 @@ END_FUNCTION_BLOCK
         };
 
         assert_eq!(result, expected)
+    }
+
+    #[test]
+    fn apply_when_has_subrange_type_then_resolves_type() {
+        let program = "
+TYPE
+    my_range : INT (1..100);
+END_TYPE
+
+FUNCTION_BLOCK caller
+    VAR
+        the_var : my_range;
+    END_VAR
+
+END_FUNCTION_BLOCK
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let result = apply(input, &mut type_environment).unwrap();
+
+        // Find the caller function block and check the variable initializer
+        let caller_fb = result.elements.iter().find(|e| {
+            matches!(e, LibraryElementKind::FunctionBlockDeclaration(fb) if fb.name == TypeName::from("caller"))
+        });
+        assert!(caller_fb.is_some());
+
+        if let LibraryElementKind::FunctionBlockDeclaration(fb) = caller_fb.unwrap() {
+            assert_eq!(fb.variables.len(), 1);
+            assert!(matches!(
+                &fb.variables[0].initializer,
+                InitialValueAssignmentKind::Subrange(SpecificationKind::Named(tn))
+                if *tn == TypeName::from("my_range")
+            ));
+        }
     }
 
     #[test]
