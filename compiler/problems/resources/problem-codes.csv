@@ -77,6 +77,7 @@ P4029,ConstantTypeParamNotAllowed,Constant reference in type parameter requires 
 P4030,UndefinedConstantReference,Constant referenced in type parameter is not defined
 P4031,ConstantNotIntegerType,Constant referenced in type parameter is not an integer type
 P4032,ConstantMissingInitializer,Constant referenced in type parameter has no initializer
+P4033,PartialAccessSyntaxDisabled,Partial-access syntax (.%Xn) requires --allow-partial-access-syntax flag
 P6001,CannotCanonicalizePath,Unable to canonicalize the path
 P6002,CannotReadMetadata,Unable to read metadata for the path
 P6003,CannotReadDirectory,Unable to read directory

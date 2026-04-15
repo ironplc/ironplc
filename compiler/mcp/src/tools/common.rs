@@ -187,6 +187,7 @@ fn apply_flag(options: &mut CompilerOptions, idx: usize, value: bool) {
         "allow_sizeof" => options.allow_sizeof = value,
         "allow_system_uptime_global" => options.allow_system_uptime_global = value,
         "allow_cross_family_widening" => options.allow_cross_family_widening = value,
+        "allow_partial_access_syntax" => options.allow_partial_access_syntax = value,
         _ => {} // unreachable if FEATURE_DESCRIPTORS is consistent
     }
 }
