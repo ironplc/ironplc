@@ -71,6 +71,7 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
         options.allow_sizeof |= flag("allowSizeof");
         options.allow_system_uptime_global |= flag("allowSystemUptimeGlobal");
         options.allow_cross_family_widening |= flag("allowCrossFamilyWidening");
+        options.allow_partial_access_syntax |= flag("allowPartialAccessSyntax");
         options
     } else {
         CompilerOptions::default()

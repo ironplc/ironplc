@@ -1591,4 +1591,14 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         Ok(())
     }
+
+    fn visit_bit_access_variable(
+        &mut self,
+        node: &dsl::textual::BitAccessVariable,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_symbolic_variable_kind(&node.variable)?;
+        self.write(".");
+        self.write(&node.index.value.to_string());
+        Ok(())
+    }
 }

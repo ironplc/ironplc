@@ -203,6 +203,11 @@ define_compiler_options! {
     "--allow-cross-family-widening",
     [Rusty],
     allow_cross_family_widening,
+
+    "Allow IEC 61131-3:2013 partial-access bit syntax (.%Xn) as an alias for .n",
+    "--allow-partial-access-syntax",
+    [Rusty, Iec61131_3Ed3],
+    allow_partial_access_syntax,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -258,6 +263,7 @@ mod tests {
         assert!(!options.allow_sizeof);
         assert!(!options.allow_system_uptime_global);
         assert!(!options.allow_cross_family_widening);
+        assert!(!options.allow_partial_access_syntax);
     }
 
     #[test]
@@ -279,6 +285,8 @@ mod tests {
         assert!(!options.allow_sizeof);
         assert!(!options.allow_system_uptime_global);
         assert!(!options.allow_cross_family_widening);
+        // Edition 3 standardized partial-access syntax (.%Xn).
+        assert!(options.allow_partial_access_syntax);
     }
 
     #[test]
@@ -300,6 +308,21 @@ mod tests {
         assert!(options.allow_sizeof);
         assert!(options.allow_system_uptime_global);
         assert!(options.allow_cross_family_widening);
+        assert!(options.allow_partial_access_syntax);
+    }
+
+    /// REQ-PAB-051: The `rusty` dialect preset enables partial-access syntax.
+    #[test]
+    fn options_spec_req_pab_051_rusty_dialect_enables_partial_access_syntax() {
+        let options = CompilerOptions::from_dialect(Dialect::Rusty);
+        assert!(options.allow_partial_access_syntax);
+    }
+
+    /// REQ-PAB-052: The `iec61131-3-ed3` dialect preset enables partial-access syntax.
+    #[test]
+    fn options_spec_req_pab_052_ed3_dialect_enables_partial_access_syntax() {
+        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        assert!(options.allow_partial_access_syntax);
     }
 
     #[test]
@@ -312,7 +335,7 @@ mod tests {
 
     #[test]
     fn feature_descriptors_when_called_then_contains_all_vendor_flags() {
-        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 14);
+        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 15);
         assert_eq!(
             CompilerOptions::FEATURE_DESCRIPTORS[0].cli_flag,
             "--allow-c-style-comments"
@@ -326,7 +349,7 @@ mod tests {
             .filter(|f| f.dialects.contains(&Dialect::Rusty))
             .map(|f| f.cli_flag)
             .collect();
-        assert_eq!(rusty_features.len(), 14);
+        assert_eq!(rusty_features.len(), 15);
     }
 
     #[test]

@@ -132,6 +132,12 @@ struct FileArgs {
     /// (e.g. BYTE→INT, literal 0→BYTE). This is a vendor extension.
     #[arg(long)]
     allow_cross_family_widening: bool,
+
+    /// Allow IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) as an alias
+    /// for the short form `.n`. Enabled by `--dialect=iec61131-3-ed3` and
+    /// `--dialect=rusty`.
+    #[arg(long)]
+    allow_partial_access_syntax: bool,
 }
 
 impl FileArgs {
@@ -151,6 +157,7 @@ impl FileArgs {
         options.allow_sizeof |= self.allow_sizeof;
         options.allow_system_uptime_global |= self.allow_system_uptime_global;
         options.allow_cross_family_widening |= self.allow_cross_family_widening;
+        options.allow_partial_access_syntax |= self.allow_partial_access_syntax;
         options
     }
 }

@@ -11,7 +11,8 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    BitAccessVariable, CompareOp, Expr, ExprKind, Operator, SymbolicVariableKind, UnaryOp, Variable,
+    ArrayVariable, BitAccessVariable, CompareOp, Expr, ExprKind, Operator, SymbolicVariableKind,
+    UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -491,13 +492,34 @@ pub(crate) fn compile_variable_read(
 ) -> Result<(), Diagnostic> {
     match variable {
         Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access)) => {
-            let base_name = resolve_symbolic_variable_name(&bit_access.variable)?;
-            let base_index = ctx.var_index(base_name)?;
-            let base_op_type = ctx.var_op_type(base_name);
             let bit_index = bit_access.index.value;
 
-            // Load the base variable
-            emit_load_var(emitter, base_index, base_op_type);
+            // Determine the op_type of the inner integer value that we are
+            // bit-accessing. For a named scalar, look it up in var_types. For
+            // an array element, the element type is stored on ArrayVarInfo.
+            // For a struct field we fall back to DEFAULT_OP_TYPE because
+            // struct field reads produce a value already in the right width.
+            let base_op_type: OpType = match bit_access.variable.as_ref() {
+                SymbolicVariableKind::Named(named) => ctx.var_op_type(&named.name),
+                SymbolicVariableKind::Array(array) => {
+                    let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
+                    match ctx.array_vars.get(root_name) {
+                        Some(info) => (
+                            info.element_var_type_info.op_width,
+                            info.element_var_type_info.signedness,
+                        ),
+                        None => DEFAULT_OP_TYPE,
+                    }
+                }
+                _ => DEFAULT_OP_TYPE,
+            };
+
+            // Compile the inner variable read. For a named variable this is
+            // emit_load_var; for an array element it is emit_flat_index +
+            // emit_load_array; etc. The existing compile_variable_read path
+            // already handles each of these.
+            let inner_variable: Variable = (*bit_access.variable.clone()).into();
+            compile_variable_read(emitter, ctx, &inner_variable, base_op_type)?;
 
             // Load the bit index and shift right
             match base_op_type.0 {
@@ -771,6 +793,13 @@ pub(crate) fn compile_bit_access_assignment(
     bit_access: &BitAccessVariable,
     value: &Expr,
 ) -> Result<(), Diagnostic> {
+    // Array-element base: use the array read/write opcodes which take the
+    // flat index on the stack. The index is emitted twice (once for the
+    // load, once for the store) because no DUP opcode is available.
+    if let SymbolicVariableKind::Array(array) = bit_access.variable.as_ref() {
+        return compile_bit_access_assignment_on_array(emitter, ctx, array, bit_access, value);
+    }
+
     let base_name = resolve_symbolic_variable_name(&bit_access.variable)?;
     let var_index = ctx.var_index(base_name)?;
     let base_op_type = ctx.var_op_type(base_name);
@@ -828,6 +857,91 @@ pub(crate) fn compile_bit_access_assignment(
         emit_truncation(emitter, ti);
     }
     emit_store_var(emitter, var_index, base_op_type);
+    Ok(())
+}
+
+/// Compiles a bit-access assignment where the base is an array element:
+/// `arr[i].n := rhs;`. Uses LOAD_ARRAY/STORE_ARRAY; the flat index is emitted
+/// twice (once for the read, once for the write) because no DUP opcode is
+/// available. Only W32 element widths (BYTE/WORD/DWORD, INT/DINT) are
+/// supported here; LWORD/LINT array-element bit writes fall through to the
+/// generic path and produce a NotImplemented for the array case.
+fn compile_bit_access_assignment_on_array(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    array: &ArrayVariable,
+    bit_access: &BitAccessVariable,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    let bit_index = bit_access.index.value as u32;
+
+    let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
+    let info = ctx.array_vars.get(root_name).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                bit_access.span(),
+                "Bit access on non-trivial array base is not yet supported",
+            ),
+        )
+    })?;
+    // Copy scalar fields out of the borrow so ctx can be used mutably.
+    let arr_var_index = info.var_index;
+    let arr_desc_index = info.desc_index;
+    let element_vti = info.element_var_type_info;
+    let dim_info: Vec<crate::compile_array::DimensionInfo> = info
+        .dimensions
+        .iter()
+        .map(|d| crate::compile_array::DimensionInfo {
+            lower_bound: d.lower_bound,
+            size: d.size,
+            stride: d.stride,
+        })
+        .collect();
+    let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
+
+    if element_vti.op_width == OpWidth::W64 {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                bit_access.span(),
+                "Bit write on 64-bit array elements is not yet supported",
+            ),
+        ));
+    }
+    let base_op_type: OpType = (element_vti.op_width, element_vti.signedness);
+
+    let span = bit_access.span();
+
+    // 1. Compute flat index and load the element.
+    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
+    emitter.emit_load_array(arr_var_index, arr_desc_index);
+
+    // 2. Clear the target bit.
+    let clear_mask = !(1i32 << bit_index);
+    let clear_pool = ctx.add_i32_constant(clear_mask);
+    emitter.emit_load_const_i32(clear_pool);
+    emitter.emit_bit_and_32();
+
+    // 3. Compile RHS, mask to 1 bit, shift into position, OR.
+    compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+    let one_pool = ctx.add_i32_constant(1);
+    emitter.emit_load_const_i32(one_pool);
+    emitter.emit_bit_and_32();
+    let shift_pool = ctx.add_i32_constant(bit_index as i32);
+    emitter.emit_load_const_i32(shift_pool);
+    emitter.emit_builtin(opcode::builtin::SHL_I32);
+    emitter.emit_bit_or_32();
+
+    // 4. Truncate the new element value to fit its storage width.
+    emit_truncation(emitter, element_vti);
+
+    // 5. Recompute the flat index and STORE back.
+    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
+    emitter.emit_store_array(arr_var_index, arr_desc_index);
+
+    // Silence unused warnings on base_op_type (kept for future W64 support).
+    let _ = base_op_type;
     Ok(())
 }
 

@@ -318,3 +318,86 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 8); // x = 8
     assert_eq!(bufs.vars[1].as_i32(), 1); // y = TRUE
 }
+
+// --- IEC 61131-3:2013 partial-access syntax (.%Xn) — see REQ-PAB in
+//     specs/design/partial-access-bit-syntax.md.
+//     These tests gate on --allow-partial-access-syntax.
+
+fn opts_with_partial_access() -> CompilerOptions {
+    CompilerOptions {
+        allow_partial_access_syntax: true,
+        ..CompilerOptions::default()
+    }
+}
+
+/// REQ-PAB-040: Reading `x.%Xn` on a BYTE returns the value of bit n.
+#[test]
+fn codegen_spec_req_pab_040_read_percent_x_on_byte_returns_bit() {
+    let source = "
+PROGRAM main
+  VAR
+    x : BYTE;
+    r0 : BOOL;
+    r2 : BOOL;
+  END_VAR
+  x := BYTE#16#05;
+  r0 := x.%X0;
+  r2 := x.%X2;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &opts_with_partial_access());
+    // 0x05 = 0b00000101 — bits 0 and 2 are set.
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+}
+
+/// REQ-PAB-041: Reading `arr[i].%Xn` returns bit n of element i. This is the
+/// user's exact failing program (from a rusty source).
+#[test]
+fn codegen_spec_req_pab_041_read_percent_x_on_byte_array_element_returns_bit() {
+    let source = "
+PROGRAM main
+  VAR
+    myByteArray : ARRAY[0..1] OF BYTE := [2#00000101, 2#00000000];
+    r0 : BOOL;
+    r1 : BOOL;
+    r2 : BOOL;
+  END_VAR
+  r0 := myByteArray[0].%X0;
+  r1 := myByteArray[0].%X1;
+  r2 := myByteArray[0].%X2;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &opts_with_partial_access());
+    // myByteArray[0] = 0b00000101
+    // bit 0 = 1, bit 1 = 0, bit 2 = 1
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    assert_eq!(bufs.vars[2].as_i32(), 0);
+    assert_eq!(bufs.vars[3].as_i32(), 1);
+}
+
+/// REQ-PAB-042: Writing `arr[i].%Xn := TRUE/FALSE` updates bit n without
+/// altering other bits or other elements. Array contents live in the data
+/// region, so the test copies the updated bytes out to scalar vars for
+/// verification.
+#[test]
+fn codegen_spec_req_pab_042_write_percent_x_on_byte_array_preserves_other_bits() {
+    let source = "
+PROGRAM main
+  VAR
+    arr : ARRAY[0..1] OF BYTE := [2#10101010, 2#00000000];
+    b0 : BYTE;
+    b1 : BYTE;
+  END_VAR
+  arr[0].%X0 := TRUE;
+  arr[1].%X7 := TRUE;
+  b0 := arr[0];
+  b1 := arr[1];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &opts_with_partial_access());
+    // arr[0]: 0b10101010 | 0b00000001 = 0b10101011 = 171
+    // arr[1]: 0b00000000 | 0b10000000 = 0b10000000 = 128
+    assert_eq!(bufs.vars[1].as_i32(), 171);
+    assert_eq!(bufs.vars[2].as_i32(), 128);
+}

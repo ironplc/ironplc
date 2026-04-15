@@ -162,6 +162,7 @@ Current flags in `CompilerOptions` (`parser/src/options.rs`):
 | `allow_sizeof` | `--allow-sizeof` | SIZEOF() operator (returns size in bytes) |
 | `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) |
 | `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
+| `allow_partial_access_syntax` | `--allow-partial-access-syntax` | IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) |
 
 ### Dialects
 

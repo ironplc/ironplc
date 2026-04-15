@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn build_response_when_called_then_contains_all_flags() {
         let resp = build_response();
-        assert_eq!(resp.flags.len(), 14);
+        assert_eq!(resp.flags.len(), 15);
     }
 
     #[test]

@@ -790,4 +790,35 @@ END_VAR
 END_PROGRAM",
         );
     }
+
+    // ---------------------------------------------------------------------
+    // REQ-PAB-030: the bit-range analyzer applies to .%Xn identically to .n.
+    // See specs/design/partial-access-bit-syntax.md.
+    // ---------------------------------------------------------------------
+
+    /// REQ-PAB-030: `b.%X8` on a BYTE is rejected (bit 8 out of range).
+    #[test]
+    fn analyzer_spec_req_pab_030_dot_percent_x_bit_out_of_range_is_rejected() {
+        use ironplc_parser::options::CompilerOptions;
+        use ironplc_parser::parse_program;
+
+        let opts = CompilerOptions {
+            allow_partial_access_syntax: true,
+            ..CompilerOptions::default()
+        };
+        let program = "FUNCTION_BLOCK FB1
+VAR
+    b : BYTE;
+    y : BOOL;
+END_VAR
+    y := b.%X8;
+END_FUNCTION_BLOCK";
+        let library = parse_program(program, &FileId::default(), &opts).unwrap();
+        let result = analyze(&[&library], &opts);
+        let (_library, context) = result.unwrap();
+        assert!(
+            context.has_diagnostics(),
+            "Expected BitAccessOutOfRange diagnostic but got none"
+        );
+    }
 }

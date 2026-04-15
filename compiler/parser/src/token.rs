@@ -397,6 +397,12 @@ pub enum TokenType {
     DirectAddressIncomplete,
     #[regex(r"%[IQM]([XBWDL])?(\d(\.\d)*)", ignore(case))]
     DirectAddress,
+    /// Partial-access bit selector: `%X<digits>` (case-insensitive), used as
+    /// `var.%Xn` to access bit `n` of an integer variable. IEC 61131-3:2013
+    /// equivalent of the vendor short form `var.n`. Gated behind
+    /// `--allow-partial-access-syntax`.
+    #[regex(r"%[Xx]\d+")]
+    PartialAccessBit,
 
     // Expressions
     #[token("OR", ignore(case))]
@@ -578,6 +584,7 @@ impl TokenType {
             TokenType::AnyDate => "'ANY_DATE'",
             TokenType::DirectAddressIncomplete => "'%I*' | '%Q*' | '%M*' (incomplete address)",
             TokenType::DirectAddress => "%[IQM]([XBWDL])?(\\d(\\.\\d)*) (direct address)",
+            TokenType::PartialAccessBit => "'%X<n>' (partial-access bit selector)",
             TokenType::Or => "'OR'",
             TokenType::Xor => "'XOR'",
             TokenType::And => "'AND' | '&'",
@@ -783,6 +790,7 @@ mod tests {
             (AnyDate, "ANY_DATE"),
             (DirectAddressIncomplete, "%I*"),
             (DirectAddress, "%I0.0"),
+            (PartialAccessBit, "%X0"),
             (Or, "OR"),
             (Xor, "XOR"),
             (And, "AND"),

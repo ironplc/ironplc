@@ -717,7 +717,7 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
+    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
       // Start by assuming that the top is just a named variable
       let mut head = SymbolicVariableKind::Named(NamedVariable { name });
 
