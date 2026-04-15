@@ -57,6 +57,17 @@ pub(crate) fn assign_variables(
                         )?;
                         let type_name_str = simple.type_name.to_string().to_uppercase();
                         (iec_type_tag::OTHER, type_name_str)
+                    } else if let Some(subrange_type) =
+                        types.resolve_subrange_type(&simple.type_name)
+                    {
+                        // Named subrange type with explicit init (e.g., x : MY_RANGE := 75)
+                        if let Some(type_info) =
+                            crate::compile_struct::var_type_info_for_field(subrange_type)
+                        {
+                            ctx.var_types.insert(id.clone(), type_info);
+                        }
+                        let name = simple.type_name.to_string().to_uppercase();
+                        (iec_type_tag::OTHER, name)
                     } else {
                         if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
                             ctx.var_types.insert(id.clone(), type_info);
@@ -217,6 +228,33 @@ pub(crate) fn assign_variables(
                     // user-defined enum name (e.g. "COLOR").
                     let name = enum_init.type_name.to_string().to_uppercase();
                     (iec_type_tag::DINT, name)
+                }
+                InitialValueAssignmentKind::Subrange(ref spec) => {
+                    // Subrange variable (e.g., x : MY_RANGE or x : INT (1..100))
+                    // Resolve VarTypeInfo from the subrange's base type.
+                    let subrange_type = match spec {
+                        SpecificationKind::Named(type_name) => {
+                            types.resolve_subrange_type(type_name)
+                        }
+                        SpecificationKind::Inline(inline_spec) => {
+                            let base_tn: ironplc_dsl::common::TypeName =
+                                inline_spec.type_name.clone().into();
+                            types.get(&base_tn).map(|attrs| &attrs.representation)
+                        }
+                    };
+                    if let Some(st) = subrange_type {
+                        if let Some(type_info) = crate::compile_struct::var_type_info_for_field(st)
+                        {
+                            ctx.var_types.insert(id.clone(), type_info);
+                        }
+                    }
+                    let name = match spec {
+                        SpecificationKind::Named(tn) => tn.to_string().to_uppercase(),
+                        SpecificationKind::Inline(inline) => {
+                            format!("{}", inline.type_name)
+                        }
+                    };
+                    (iec_type_tag::OTHER, name)
                 }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     // LateResolvedType should have been resolved before codegen.
@@ -501,6 +539,62 @@ pub(crate) fn emit_initial_values(
                     let pool_index = ctx.add_i32_constant(ordinal);
                     emitter.emit_load_const_i32(pool_index);
                     emit_store_var(emitter, var_index, op_type);
+                }
+                InitialValueAssignmentKind::Subrange(ref spec) => {
+                    // Initialize subrange variable to its lower bound (min_value)
+                    // per IEC 61131-3 §2.4.3.1 (default is the "leftmost value").
+                    let var_index = ctx.var_index(id)?;
+                    let type_info = ctx.var_type_info(id);
+                    let op_type = type_info
+                        .map(|ti| (ti.op_width, ti.signedness))
+                        .unwrap_or(DEFAULT_OP_TYPE);
+
+                    // Extract min_value from the type environment or inline spec
+                    let min_value: Option<i128> = match spec {
+                        SpecificationKind::Named(type_name) => {
+                            _types.get(type_name).and_then(|attrs| {
+                                if let IntermediateType::Subrange { min_value, .. } =
+                                    &attrs.representation
+                                {
+                                    Some(*min_value)
+                                } else {
+                                    None
+                                }
+                            })
+                        }
+                        SpecificationKind::Inline(inline_spec) => {
+                            inline_spec.subrange.start.as_signed_integer().map(|si| {
+                                if si.is_neg {
+                                    -(si.value.value as i128)
+                                } else {
+                                    si.value.value as i128
+                                }
+                            })
+                        }
+                    };
+
+                    if let Some(min_val) = min_value {
+                        match op_type.0 {
+                            OpWidth::W32 => {
+                                let pool_index = ctx.add_i32_constant(min_val as i32);
+                                emitter.emit_load_const_i32(pool_index);
+                            }
+                            OpWidth::W64 => {
+                                let pool_index = ctx.add_i64_constant(min_val as i64);
+                                emitter.emit_load_const_i64(pool_index);
+                            }
+                            _ => {
+                                let pool_index = ctx.add_i32_constant(min_val as i32);
+                                emitter.emit_load_const_i32(pool_index);
+                            }
+                        }
+
+                        if let Some(ti) = type_info {
+                            emit_truncation(emitter, ti);
+                        }
+
+                        emit_store_var(emitter, var_index, op_type);
+                    }
                 }
                 // Other initializer kinds (EnumeratedValues, etc.)
                 // do not yet support initial values in codegen.

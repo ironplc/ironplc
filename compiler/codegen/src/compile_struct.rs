@@ -332,7 +332,7 @@ pub(crate) fn walk_struct_chain(
 ///
 /// This is needed because struct fields are identified by `IntermediateType`, not
 /// by variable-table entries.
-fn var_type_info_for_field(field_type: &IntermediateType) -> Option<VarTypeInfo> {
+pub(crate) fn var_type_info_for_field(field_type: &IntermediateType) -> Option<VarTypeInfo> {
     let (op_width, signedness) = resolve_field_op_type(field_type)?;
     let storage_bits = match field_type {
         IntermediateType::Bool => 1,
