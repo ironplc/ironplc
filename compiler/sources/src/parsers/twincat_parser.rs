@@ -596,4 +596,227 @@ END_VAR]]></Declaration>
             "END_FUNCTION"
         );
     }
+
+    #[test]
+    fn closing_keyword_when_unknown_keyword_then_returns_empty() {
+        // Unknown POU type — fallback returns empty string
+        assert_eq!(closing_keyword("UNKNOWN_TYPE Something"), "");
+    }
+
+    #[test]
+    fn closing_keyword_when_leading_whitespace_then_still_detects() {
+        assert_eq!(closing_keyword("  PROGRAM MAIN\nVAR\nEND_VAR"), "END_PROGRAM");
+    }
+
+    #[test]
+    fn parse_when_pou_with_no_implementation_then_succeeds() {
+        // POU with declaration only, no Implementation element
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    myVar : INT;
+END_VAR]]></Declaration>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+        let library = result.unwrap();
+        assert_eq!(library.elements.len(), 1);
+    }
+
+    #[test]
+    fn parse_when_pou_with_empty_implementation_then_succeeds() {
+        // Implementation exists but has no ST or other language child
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    myVar : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+    </Implementation>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_when_ld_implementation_then_returns_unsupported() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    myVar : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <LD/>
+    </Implementation>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_err());
+        let diag = result.unwrap_err();
+        assert_eq!(diag.code, Problem::XmlBodyTypeNotSupported.code());
+        assert!(diag.primary.message.contains("LD"));
+    }
+
+    #[test]
+    fn parse_when_il_implementation_then_returns_unsupported() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    myVar : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <IL/>
+    </Implementation>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_err());
+        let diag = result.unwrap_err();
+        assert_eq!(diag.code, Problem::XmlBodyTypeNotSupported.code());
+        assert!(diag.primary.message.contains("IL"));
+    }
+
+    #[test]
+    fn parse_when_sfc_implementation_then_returns_unsupported() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    myVar : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <SFC/>
+    </Implementation>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_err());
+        let diag = result.unwrap_err();
+        assert_eq!(diag.code, Problem::XmlBodyTypeNotSupported.code());
+        assert!(diag.primary.message.contains("SFC"));
+    }
+
+    #[test]
+    fn parse_when_dut_with_invalid_syntax_then_returns_error_with_adjusted_position() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <DUT Name="ST_Bad" Id="{00000000-0000-0000-0000-000000000000}">
+    <Declaration><![CDATA[TYPE ST_Bad :
+INVALID SYNTAX HERE
+END_TYPE]]></Declaration>
+  </DUT>
+</TcPlcObject>"#;
+
+        let file_id = FileId::from_string("test.TcDUT");
+        let result = parse(xml, &file_id, &CompilerOptions::default());
+        assert!(result.is_err());
+
+        let diag = result.unwrap_err();
+        // Position should point into the CDATA section in the XML
+        let cdata_start = xml.find("<![CDATA[").unwrap() + "<![CDATA[".len();
+        assert!(
+            diag.primary.location.start >= cdata_start,
+            "Error position {} should be >= CDATA start {}",
+            diag.primary.location.start,
+            cdata_start
+        );
+    }
+
+    #[test]
+    fn parse_when_pou_syntax_error_in_declaration_then_position_in_declaration() {
+        // Syntax error in the declaration section (not implementation)
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    BAD SYNTAX : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[x := 1;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_err());
+
+        let diag = result.unwrap_err();
+        // Should point into the first CDATA (declaration)
+        let decl_cdata_start = xml.find("<![CDATA[").unwrap() + "<![CDATA[".len();
+        assert!(
+            diag.primary.location.start >= decl_cdata_start,
+            "Error position {} should be >= declaration CDATA start {}",
+            diag.primary.location.start,
+            decl_cdata_start
+        );
+    }
+
+    #[test]
+    fn adjust_byte_offset_when_pos_in_implementation_then_adjusts_correctly() {
+        let offsets = CdataOffsets {
+            declaration_start: 100,
+            declaration_len: 50,
+            implementation_start: Some(200),
+        };
+
+        // Position 0 is in declaration: 0 + 100 = 100
+        assert_eq!(adjust_byte_offset(&offsets, 0), 100);
+
+        // Position 50 (= declaration_len) is in declaration: 50 + 100 = 150
+        assert_eq!(adjust_byte_offset(&offsets, 50), 150);
+
+        // Position 52 is in implementation: (52 - 50 - 1) + 200 = 201
+        assert_eq!(adjust_byte_offset(&offsets, 52), 201);
+    }
+
+    #[test]
+    fn adjust_byte_offset_when_no_implementation_and_pos_past_declaration_then_points_to_end() {
+        let offsets = CdataOffsets {
+            declaration_start: 100,
+            declaration_len: 50,
+            implementation_start: None,
+        };
+
+        // Position beyond declaration with no impl: returns declaration_start + declaration_len
+        assert_eq!(adjust_byte_offset(&offsets, 60), 150);
+    }
+
+    #[test]
+    fn parse_when_pou_with_function_declaration_then_succeeds() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FC_Add" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION FC_Add : INT
+VAR_INPUT
+    a : INT;
+    b : INT;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[FC_Add := a + b;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+        let library = result.unwrap();
+        assert_eq!(library.elements.len(), 1);
+    }
 }
