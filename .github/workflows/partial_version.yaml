@@ -1,24 +1,5 @@
 name: Version
 on:
-  # Allow triggering directly
-  workflow_dispatch:
-    inputs:
-      commit-tag:
-        required: false
-        type: string
-        description: 'If not empty, then run for the specified tag'
-      gh-release-tag:
-        required: false
-        type: string
-        default: ""
-        description: 'The Github Release tag to publish to (empty value disables publishing)'
-      version:
-        required: false
-        type: string
-        default: "0.0.0"
-        description: "The version number, such as 1.2.3"
-  
-  # Allow using this workflow from another workflow
   workflow_call:
     inputs:
       dryrun:
