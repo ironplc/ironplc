@@ -1,4 +1,4 @@
-"""Unit tests for agents/issue_triage/requirements.py.
+"""Unit tests for agents/compatibility_resolver/requirements.py.
 
 All network calls are mocked — no real HTTP or Anthropic API calls.
 """

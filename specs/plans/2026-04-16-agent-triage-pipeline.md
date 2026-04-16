@@ -29,7 +29,7 @@ an issue cannot add this label — GitHub's permission model prevents it.
 
 1. **Issue template** (`.github/ISSUE_TEMPLATE/compatibility_gap.md`)
 2. **GitHub Actions workflow** (`.github/workflows/agent-triage.yaml`)
-3. **Python script** (`agents/issue_triage/requirements.py`)
+3. **Python script** (`agents/compatibility_resolver/requirements.py`)
 
 ## Label Lifecycle
 
