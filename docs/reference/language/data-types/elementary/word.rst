@@ -37,9 +37,18 @@ Example
    mask := WORD#16#00FF;
    masked := status_reg AND mask;  (* masked = 16#0003 *)
 
+Bit Access
+----------
+
+Individual bits can be read and written using ``.n`` or ``.%Xn`` syntax
+(for example, ``status_reg.5`` or ``status_reg.%X5``). Valid indices are
+``0..15``. See :doc:`/reference/language/structured-text/bit-access`.
+
 See Also
 --------
 
 - :doc:`byte` — 8-bit bit string
 - :doc:`dword` — 32-bit bit string
 - :doc:`uint` — 16-bit unsigned integer
+- :doc:`/reference/language/structured-text/bit-access` — selecting an
+  individual bit of a bit-string value

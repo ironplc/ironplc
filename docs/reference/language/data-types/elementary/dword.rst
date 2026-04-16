@@ -36,9 +36,18 @@ Example
    flag_bit := DWORD#16#00000001;
    updated := config OR flag_bit;  (* updated = 16#00FF0001 *)
 
+Bit Access
+----------
+
+Individual bits can be read and written using ``.n`` or ``.%Xn`` syntax
+(for example, ``config.12`` or ``config.%X12``). Valid indices are
+``0..31``. See :doc:`/reference/language/structured-text/bit-access`.
+
 See Also
 --------
 
 - :doc:`word` — 16-bit bit string
 - :doc:`lword` — 64-bit bit string
 - :doc:`udint` — 32-bit unsigned integer
+- :doc:`/reference/language/structured-text/bit-access` — selecting an
+  individual bit of a bit-string value
