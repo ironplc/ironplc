@@ -36,3 +36,15 @@ Or enable partial-access syntax with one of:
 - ``--allow-partial-access-syntax``
 - ``--dialect=iec61131-3-ed3``
 - ``--dialect=rusty``
+
+Scope
+-----
+
+IEC 61131-3:2013 defines partial access at five granularities — ``.%Xn``
+(bit), ``.%Bn`` (byte), ``.%Wn`` (word), ``.%Dn`` (double word), and
+``.%Ln`` (long word). IronPLC currently implements only the bit form
+``.%Xn`` behind this flag. The wider forms are recognized as partial-access
+syntax and therefore also raise ``P4033`` when the flag is off; they are not
+yet accepted when the flag is on and still produce a lexer error there. See
+:doc:`/reference/language/structured-text/bit-access` for the full feature
+description and current support status.
