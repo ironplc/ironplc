@@ -11,8 +11,8 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    ArrayVariable, BitAccessVariable, CompareOp, Expr, ExprKind, Operator, SymbolicVariableKind,
-    UnaryOp, Variable,
+    ArrayVariable, BitAccessVariable, CompareOp, Expr, ExprKind, Operator, StructuredVariable,
+    SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -497,8 +497,8 @@ pub(crate) fn compile_variable_read(
             // Determine the op_type of the inner integer value that we are
             // bit-accessing. For a named scalar, look it up in var_types. For
             // an array element, the element type is stored on ArrayVarInfo.
-            // For a struct field we fall back to DEFAULT_OP_TYPE because
-            // struct field reads produce a value already in the right width.
+            // For a struct field, walk the struct chain and derive the op
+            // type from the leaf field's IntermediateType.
             let base_op_type: OpType = match bit_access.variable.as_ref() {
                 SymbolicVariableKind::Named(named) => ctx.var_op_type(&named.name),
                 SymbolicVariableKind::Array(array) => {
@@ -510,6 +510,16 @@ pub(crate) fn compile_variable_read(
                         ),
                         None => DEFAULT_OP_TYPE,
                     }
+                }
+                SymbolicVariableKind::Structured(structured) => {
+                    let (_root, _slot, field_type) = crate::compile_struct::walk_struct_chain(
+                        ctx,
+                        &structured.record,
+                        &structured.field,
+                        0,
+                    )?;
+                    crate::compile_struct::resolve_field_op_type(&field_type)
+                        .unwrap_or(DEFAULT_OP_TYPE)
                 }
                 _ => DEFAULT_OP_TYPE,
             };
@@ -800,6 +810,14 @@ pub(crate) fn compile_bit_access_assignment(
         return compile_bit_access_assignment_on_array(emitter, ctx, array, bit_access, value);
     }
 
+    // Struct-field base: `s.field.n := rhs;`. Uses LOAD_ARRAY/STORE_ARRAY on
+    // the underlying struct-as-flat-slot-array with a compile-time slot index.
+    if let SymbolicVariableKind::Structured(structured) = bit_access.variable.as_ref() {
+        return compile_bit_access_assignment_on_struct_field(
+            emitter, ctx, structured, bit_access, value,
+        );
+    }
+
     let base_name = resolve_symbolic_variable_name(&bit_access.variable)?;
     let var_index = ctx.var_index(base_name)?;
     let base_op_type = ctx.var_op_type(base_name);
@@ -863,9 +881,8 @@ pub(crate) fn compile_bit_access_assignment(
 /// Compiles a bit-access assignment where the base is an array element:
 /// `arr[i].n := rhs;`. Uses LOAD_ARRAY/STORE_ARRAY; the flat index is emitted
 /// twice (once for the read, once for the write) because no DUP opcode is
-/// available. Only W32 element widths (BYTE/WORD/DWORD, INT/DINT) are
-/// supported here; LWORD/LINT array-element bit writes fall through to the
-/// generic path and produce a NotImplemented for the array case.
+/// available. Supports both W32 element widths (BYTE/WORD/DWORD, INT/DINT)
+/// and W64 element widths (LWORD/LINT/ULINT).
 fn compile_bit_access_assignment_on_array(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -900,38 +917,46 @@ fn compile_bit_access_assignment_on_array(
         .collect();
     let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
 
-    if element_vti.op_width == OpWidth::W64 {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                bit_access.span(),
-                "Bit write on 64-bit array elements is not yet supported",
-            ),
-        ));
-    }
-    let base_op_type: OpType = (element_vti.op_width, element_vti.signedness);
-
     let span = bit_access.span();
 
     // 1. Compute flat index and load the element.
     crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
     emitter.emit_load_array(arr_var_index, arr_desc_index);
 
-    // 2. Clear the target bit.
-    let clear_mask = !(1i32 << bit_index);
-    let clear_pool = ctx.add_i32_constant(clear_mask);
-    emitter.emit_load_const_i32(clear_pool);
-    emitter.emit_bit_and_32();
+    // 2/3. Clear the target bit, then OR in the shifted RHS bit. Width-
+    //      dependent: LWORD/LINT elements use 64-bit ops; everything else
+    //      (BYTE/WORD/DWORD/INT/DINT) uses 32-bit ops.
+    if element_vti.op_width == OpWidth::W64 {
+        let clear_mask = !(1i64 << bit_index);
+        let clear_pool = ctx.add_i64_constant(clear_mask);
+        emitter.emit_load_const_i64(clear_pool);
+        emitter.emit_bit_and_64();
 
-    // 3. Compile RHS, mask to 1 bit, shift into position, OR.
-    compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-    let one_pool = ctx.add_i32_constant(1);
-    emitter.emit_load_const_i32(one_pool);
-    emitter.emit_bit_and_32();
-    let shift_pool = ctx.add_i32_constant(bit_index as i32);
-    emitter.emit_load_const_i32(shift_pool);
-    emitter.emit_builtin(opcode::builtin::SHL_I32);
-    emitter.emit_bit_or_32();
+        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+        let one_pool = ctx.add_i32_constant(1);
+        emitter.emit_load_const_i32(one_pool);
+        emitter.emit_bit_and_32();
+        // Widen to 64-bit before shifting into a high bit position.
+        emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
+        let shift_pool = ctx.add_i32_constant(bit_index as i32);
+        emitter.emit_load_const_i32(shift_pool);
+        emitter.emit_builtin(opcode::builtin::SHL_I64);
+        emitter.emit_bit_or_64();
+    } else {
+        let clear_mask = !(1i32 << bit_index);
+        let clear_pool = ctx.add_i32_constant(clear_mask);
+        emitter.emit_load_const_i32(clear_pool);
+        emitter.emit_bit_and_32();
+
+        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+        let one_pool = ctx.add_i32_constant(1);
+        emitter.emit_load_const_i32(one_pool);
+        emitter.emit_bit_and_32();
+        let shift_pool = ctx.add_i32_constant(bit_index as i32);
+        emitter.emit_load_const_i32(shift_pool);
+        emitter.emit_builtin(opcode::builtin::SHL_I32);
+        emitter.emit_bit_or_32();
+    }
 
     // 4. Truncate the new element value to fit its storage width.
     emit_truncation(emitter, element_vti);
@@ -940,8 +965,82 @@ fn compile_bit_access_assignment_on_array(
     crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
     emitter.emit_store_array(arr_var_index, arr_desc_index);
 
-    // Silence unused warnings on base_op_type (kept for future W64 support).
-    let _ = base_op_type;
+    Ok(())
+}
+
+/// Compiles a bit-access assignment where the base is a struct field:
+/// `s.field.n := rhs;`. Uses LOAD_ARRAY/STORE_ARRAY on the struct's flat
+/// slot-array with the field's compile-time slot offset as the index.
+fn compile_bit_access_assignment_on_struct_field(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    structured: &StructuredVariable,
+    bit_access: &BitAccessVariable,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    let bit_index = bit_access.index.value as u32;
+
+    let (var_index, desc_index, slot_offset, _op_type, field_type) =
+        crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
+    let field_vti =
+        crate::compile_struct::var_type_info_for_field(&field_type).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(
+                    structured.field.span(),
+                    "Bit access on non-integer struct field is not supported",
+                ),
+            )
+        })?;
+
+    // Index constant is the same for load and store; add once and reuse
+    // across both emitter calls.
+    let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
+
+    // 1. Load the current field value.
+    emitter.emit_load_const_i32(idx_const);
+    emitter.emit_load_array(var_index, desc_index);
+
+    // 2/3. Clear target bit and OR in the shifted RHS bit.
+    if field_vti.op_width == OpWidth::W64 {
+        let clear_mask = !(1i64 << bit_index);
+        let clear_pool = ctx.add_i64_constant(clear_mask);
+        emitter.emit_load_const_i64(clear_pool);
+        emitter.emit_bit_and_64();
+
+        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+        let one_pool = ctx.add_i32_constant(1);
+        emitter.emit_load_const_i32(one_pool);
+        emitter.emit_bit_and_32();
+        emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
+        let shift_pool = ctx.add_i32_constant(bit_index as i32);
+        emitter.emit_load_const_i32(shift_pool);
+        emitter.emit_builtin(opcode::builtin::SHL_I64);
+        emitter.emit_bit_or_64();
+    } else {
+        let clear_mask = !(1i32 << bit_index);
+        let clear_pool = ctx.add_i32_constant(clear_mask);
+        emitter.emit_load_const_i32(clear_pool);
+        emitter.emit_bit_and_32();
+
+        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+        let one_pool = ctx.add_i32_constant(1);
+        emitter.emit_load_const_i32(one_pool);
+        emitter.emit_bit_and_32();
+        let shift_pool = ctx.add_i32_constant(bit_index as i32);
+        emitter.emit_load_const_i32(shift_pool);
+        emitter.emit_builtin(opcode::builtin::SHL_I32);
+        emitter.emit_bit_or_32();
+    }
+
+    // 4. Truncate the new field value to fit its storage width (e.g., SINT
+    //    stored in a W32 slot needs sign-extension/truncation).
+    emit_truncation(emitter, field_vti);
+
+    // 5. Re-emit the slot index and STORE back.
+    emitter.emit_load_const_i32(idx_const);
+    emitter.emit_store_array(var_index, desc_index);
+
     Ok(())
 }
 
