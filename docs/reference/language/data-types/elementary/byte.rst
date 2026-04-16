@@ -37,8 +37,17 @@ Example
    mask := BYTE#16#0F;
    result := flags AND mask;  (* result = 16#05 *)
 
+Bit Access
+----------
+
+Individual bits can be read and written using ``.n`` or ``.%Xn`` syntax
+(for example, ``flags.3`` or ``flags.%X3``). Valid indices are ``0..7``.
+See :doc:`/reference/language/structured-text/bit-access`.
+
 See Also
 --------
 
 - :doc:`word` — 16-bit bit string
 - :doc:`usint` — 8-bit unsigned integer
+- :doc:`/reference/language/structured-text/bit-access` — selecting an
+  individual bit of a bit-string value

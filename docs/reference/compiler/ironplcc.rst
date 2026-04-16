@@ -157,7 +157,8 @@ Options
 ``--allow-partial-access-syntax``
    Allow IEC 61131-3:2013 partial-access bit syntax (``.%Xn``) as an alias
    for the short form ``.n``. Enabled by ``--dialect=iec61131-3-ed3`` and
-   ``--dialect=rusty``.
+   ``--dialect=rusty``. Byte/word/dword/lword partial access (``.%Bn``,
+   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
 
 Examples
 ========
