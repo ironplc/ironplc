@@ -1,29 +1,5 @@
 name: VS Code Extension
 on:
-  # Allow triggering directly
-  workflow_dispatch:
-    inputs:
-      commit-ref:
-        required: false
-        type: string
-        description: 'If not empty, then run for the specified branch name or tag'
-      gh-release-tag:
-        required: false
-        type: string
-        default: ""
-        description: 'The Github Release tag to publish to (empty value disables publishing)'
-      artifact-name:
-        required: false
-        type: string
-        default: ""
-        description: 'The name of the VSIX artifact to create (empty value disables publishing)'
-      install-deps:
-        required: false
-        type: boolean
-        default: false
-        description: Set to true running with Act to install extra dependencies
-
-  # Allow using this workflow from another workflow
   workflow_call:
     inputs:
       commit-ref:

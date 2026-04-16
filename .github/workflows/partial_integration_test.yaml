@@ -1,37 +1,5 @@
 name: End to End Smoke Test
 on:
-  # Allow triggering directly
-  workflow_dispatch:
-    inputs:
-      extension-version:
-        required: true
-        type: string
-        description: 'The version number to test with (without the "v" prefix)'
-
-      compiler-version:
-        required: true
-        type: string
-        description: 'Usually the version number to test with (without the "v" prefix)'
-
-      ironplcc-installer-x86_64-windows-filename:
-        required: true
-        type: string
-        description: "File name of the IronPLC compiler installer artifact from GitHub releases"
-        default: "ironplcc-x86_64-windows.exe"
-
-      ironplc-vscode-extension-filename:
-        required: true
-        type: string
-        description: "File name of the VS Code Extension artifact from GitHub releases"
-        default: "ironplc-vscode-extension.vsix"
-
-      ironplc-vscode-extension-name:
-        required: true
-        type: string
-        description: "The identifier for the Visual Studio Code extension"
-        default: "garretfick.ironplc"
-
-  # Allow using this workflow from another workflow
   workflow_call:
     inputs:
       extension-version:

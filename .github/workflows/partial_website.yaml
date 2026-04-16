@@ -1,19 +1,5 @@
 name: Website
 on:
-  # Allow triggering directly
-  workflow_dispatch:
-    inputs:
-      publish:
-        required: true
-        type: boolean
-        default: false
-        description: 'If set true, then publish the website'
-      commit-ref:
-        required: false
-        type: string
-        description: 'If not empty, then run for the specified branch name or tag'
-  
-  # Allow using this workflow from another workflow
   workflow_call:
     inputs:
       publish:
