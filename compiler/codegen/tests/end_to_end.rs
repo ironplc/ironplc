@@ -20,53 +20,40 @@
 mod common;
 use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
 use common::{parse_and_compile, parse_and_run, VmBuffers};
 use ironplc_vm::Vm;
 
-#[test]
-fn end_to_end_when_simple_assignment_then_variable_has_value() {
-    let source = "
+#[rstest]
+#[case::simple_assignment("DINT", "x := 42;", 42)]
+#[case::negative_constant("DINT", "x := -5;", -5)]
+#[case::zero("DINT", "x := 0;", 0)]
+#[case::dint_initial_value("DINT := 100", "", 100)]
+#[case::lint_initial_value("LINT := 1000000", "", 1_000_000)]
+#[case::sint_initial_value("SINT := 42", "", 42)]
+#[case::usint_initial_value("USINT := 200", "", 200)]
+#[case::uint_initial_value("UINT := 50000", "", 50_000)]
+#[case::udint_initial_value("UDINT := 100000", "", 100_000)]
+#[case::ulint_initial_value("ULINT := 5000000", "", 5_000_000)]
+fn end_to_end_single_var_scalar(
+    #[case] decl: &str,
+    #[case] body: &str,
+    #[case] expected: i64,
+) {
+    let source = format!(
+        "
 PROGRAM main
   VAR
-    x : DINT;
+    x : {decl};
   END_VAR
-  x := 42;
+  {body}
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
 
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_negative_constant_then_variable_is_negative() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-  END_VAR
-  x := -5;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), -5);
-}
-
-#[test]
-fn end_to_end_when_zero_then_variable_is_zero() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-  END_VAR
-  x := 0;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 0);
+    assert_eq!(bufs.vars[0].as_i64(), expected);
 }
 
 #[test]
@@ -105,20 +92,6 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_dint_initial_value_then_variable_initialized() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT := 100;
-  END_VAR
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 100);
-}
-
-#[test]
 fn end_to_end_when_mixed_initialized_and_uninitialized_then_correct() {
     let source = "
 PROGRAM main
@@ -134,90 +107,6 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 5);
     assert_eq!(bufs.vars[1].as_i32(), 0);
     assert_eq!(bufs.vars[2].as_i32(), 15);
-}
-
-#[test]
-fn end_to_end_when_lint_initial_value_then_variable_initialized() {
-    let source = "
-PROGRAM main
-  VAR
-    x : LINT := 1000000;
-  END_VAR
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i64(), 1000000);
-}
-
-#[test]
-fn end_to_end_when_sint_initial_value_then_truncated() {
-    let source = "
-PROGRAM main
-  VAR
-    x : SINT := 42;
-  END_VAR
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_usint_initial_value_then_truncated() {
-    let source = "
-PROGRAM main
-  VAR
-    x : USINT := 200;
-  END_VAR
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 200);
-}
-
-#[test]
-fn end_to_end_when_uint_initial_value_then_variable_initialized() {
-    let source = "
-PROGRAM main
-  VAR
-    x : UINT := 50000;
-  END_VAR
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 50000);
-}
-
-#[test]
-fn end_to_end_when_udint_initial_value_then_variable_initialized() {
-    let source = "
-PROGRAM main
-  VAR
-    x : UDINT := 100000;
-  END_VAR
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 100000);
-}
-
-#[test]
-fn end_to_end_when_ulint_initial_value_then_variable_initialized() {
-    let source = "
-PROGRAM main
-  VAR
-    x : ULINT := 5000000;
-  END_VAR
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i64(), 5000000);
 }
 
 #[test]
