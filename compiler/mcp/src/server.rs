@@ -110,6 +110,21 @@ impl IronPlcMcp {
         Ok(Content::text(json))
     }
 
+    /// Project manifest: files, POU names, and UDTs grouped by kind.
+    #[tool(
+        name = "project_manifest",
+        description = "Flat summary of what is declared across the supplied sources: file names, Program/Function/Function-Block names, and user-defined types grouped by kind (enumerations, structures, arrays, subranges, aliases, strings, references). Use this to orient yourself in an unfamiliar project before calling `symbols` or `pou_scope`."
+    )]
+    fn project_manifest(
+        &self,
+        Parameters(input): Parameters<ParseCheckInput>,
+    ) -> Result<Content, rmcp::ErrorData> {
+        let response = tools::project_manifest::build_response(&input.sources, &input.options);
+        let json = serde_json::to_string(&response)
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        Ok(Content::text(json))
+    }
+
     /// Full pipeline: parse, semantic analysis, and codegen.
     #[tool(
         name = "compile",
