@@ -198,6 +198,13 @@ mod test {
     }
 
     #[test]
+    fn plc2plc_when_partial_access_multi_then_round_trips() {
+        let rendered = parse_and_render_resource_with_partial_access("partial_access_multi.st");
+        let expected = read_resource("partial_access_multi_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
+    #[test]
     fn write_to_string_when_ref_to_var_decl_then_preserves_ref_to() {
         let rendered = parse_and_render_edition3(
             "PROGRAM main

@@ -11,8 +11,8 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    ArrayVariable, BitAccessVariable, CompareOp, Expr, ExprKind, Operator, StructuredVariable,
-    SymbolicVariableKind, UnaryOp, Variable,
+    ArrayVariable, BitAccessVariable, CompareOp, Expr, ExprKind, Operator, PartialAccessVariable,
+    StructuredVariable, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 
@@ -508,7 +508,8 @@ pub(crate) fn compile_variable_read(
                             info.element_var_type_info.op_width,
                             info.element_var_type_info.signedness,
                         ),
-                        None => DEFAULT_OP_TYPE,
+                        None => resolve_struct_field_array_element_op_type(ctx, array)
+                            .unwrap_or(DEFAULT_OP_TYPE),
                     }
                 }
                 SymbolicVariableKind::Structured(structured) => {
@@ -550,6 +551,69 @@ pub(crate) fn compile_variable_read(
                     let one_index = ctx.add_i32_constant(1);
                     emitter.emit_load_const_i32(one_index);
                     emitter.emit_bit_and_32();
+                }
+            }
+            Ok(())
+        }
+        Variable::Symbolic(SymbolicVariableKind::PartialAccess(pa)) => {
+            let access_bits = pa.size.bit_width();
+            let bit_offset = pa.index.value as u32 * access_bits;
+
+            let base_op_type: OpType = match pa.variable.as_ref() {
+                SymbolicVariableKind::Named(named) => ctx.var_op_type(&named.name),
+                SymbolicVariableKind::Array(array) => {
+                    let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
+                    match ctx.array_vars.get(root_name) {
+                        Some(info) => (
+                            info.element_var_type_info.op_width,
+                            info.element_var_type_info.signedness,
+                        ),
+                        None => resolve_struct_field_array_element_op_type(ctx, array)
+                            .unwrap_or(DEFAULT_OP_TYPE),
+                    }
+                }
+                SymbolicVariableKind::Structured(structured) => {
+                    let (_root, _slot, field_type) = crate::compile_struct::walk_struct_chain(
+                        ctx,
+                        &structured.record,
+                        &structured.field,
+                        0,
+                    )?;
+                    crate::compile_struct::resolve_field_op_type(&field_type)
+                        .unwrap_or(DEFAULT_OP_TYPE)
+                }
+                _ => DEFAULT_OP_TYPE,
+            };
+
+            let inner_variable: Variable = (*pa.variable.clone()).into();
+            compile_variable_read(emitter, ctx, &inner_variable, base_op_type)?;
+
+            match base_op_type.0 {
+                OpWidth::W64 => {
+                    if bit_offset > 0 {
+                        let shift_pool = ctx.add_i64_constant(bit_offset as i64);
+                        emitter.emit_load_const_i64(shift_pool);
+                        emitter.emit_builtin(opcode::builtin::SHR_I64);
+                    }
+                    if access_bits < 64 {
+                        let mask = (1i64 << access_bits) - 1;
+                        let mask_pool = ctx.add_i64_constant(mask);
+                        emitter.emit_load_const_i64(mask_pool);
+                        emitter.emit_bit_and_64();
+                    }
+                }
+                _ => {
+                    if bit_offset > 0 {
+                        let shift_pool = ctx.add_i32_constant(bit_offset as i32);
+                        emitter.emit_load_const_i32(shift_pool);
+                        emitter.emit_builtin(opcode::builtin::SHR_I32);
+                    }
+                    if access_bits < 32 {
+                        let mask = (1i32 << access_bits) - 1;
+                        let mask_pool = ctx.add_i32_constant(mask);
+                        emitter.emit_load_const_i32(mask_pool);
+                        emitter.emit_bit_and_32();
+                    }
                 }
             }
             Ok(())
@@ -720,6 +784,9 @@ pub(crate) fn resolve_symbolic_variable_name(
         SymbolicVariableKind::BitAccess(bit_access) => {
             resolve_symbolic_variable_name(&bit_access.variable)
         }
+        SymbolicVariableKind::PartialAccess(partial) => {
+            resolve_symbolic_variable_name(&partial.variable)
+        }
         SymbolicVariableKind::Array(array) => {
             resolve_symbolic_variable_name(&array.subscripted_variable)
         }
@@ -751,6 +818,9 @@ pub(crate) fn resolve_variable(
                 file!(),
                 line!(),
             )),
+            SymbolicVariableKind::PartialAccess(pa) => {
+                Err(Diagnostic::todo_with_span(pa.span(), file!(), line!()))
+            }
             SymbolicVariableKind::Deref(deref) => {
                 Err(Diagnostic::todo_with_span(deref.span(), file!(), line!()))
             }
@@ -783,6 +853,14 @@ pub(crate) fn variable_span(variable: &Variable) -> ironplc_dsl::core::SourceSpa
 pub(crate) fn extract_bit_access_target(variable: &Variable) -> Option<&BitAccessVariable> {
     match variable {
         Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access)) => Some(bit_access),
+        _ => None,
+    }
+}
+
+/// Extracts a `PartialAccessVariable` from an assignment target.
+pub(crate) fn extract_partial_access_target(variable: &Variable) -> Option<&PartialAccessVariable> {
+    match variable {
+        Variable::Symbolic(SymbolicVariableKind::PartialAccess(pa)) => Some(pa),
         _ => None,
     }
 }
@@ -891,6 +969,14 @@ fn compile_bit_access_assignment_on_array(
     value: &Expr,
 ) -> Result<(), Diagnostic> {
     let bit_index = bit_access.index.value as u32;
+
+    // If the array base is a struct field, delegate to the struct-field-array
+    // handler which uses flat_index + field_slot_offset addressing.
+    if let SymbolicVariableKind::Structured(structured) = array.subscripted_variable.as_ref() {
+        return compile_bit_access_assignment_on_struct_field_array(
+            emitter, ctx, structured, array, bit_access, value,
+        );
+    }
 
     let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
     let info = ctx.array_vars.get(root_name).ok_or_else(|| {
@@ -1041,6 +1127,398 @@ fn compile_bit_access_assignment_on_struct_field(
     emitter.emit_load_const_i32(idx_const);
     emitter.emit_store_array(var_index, desc_index);
 
+    Ok(())
+}
+
+/// Resolves the element op_type for an array that is a struct field.
+///
+/// Used by the bit-access read path when the bit-access base is
+/// `Array(Structured(...))` — the array is not in `ctx.array_vars` so we
+/// derive the element type from the struct field's `IntermediateType::Array`.
+fn resolve_struct_field_array_element_op_type(
+    ctx: &CompileContext,
+    array: &ArrayVariable,
+) -> Option<OpType> {
+    if let SymbolicVariableKind::Structured(structured) = array.subscripted_variable.as_ref() {
+        let (_root, _slot, field_type) =
+            crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)
+                .ok()?;
+        if let ironplc_analyzer::intermediate_type::IntermediateType::Array {
+            element_type, ..
+        } = &field_type
+        {
+            return crate::compile_struct::resolve_field_op_type(element_type);
+        }
+    }
+    None
+}
+
+/// Compiles a bit-access assignment where the base is an array element
+/// nested inside a struct field: `s.arr[i].n := rhs;`.
+///
+/// Combines the struct-field-array resolution (flat_index + slot_offset)
+/// with the bit-level read-modify-write pattern.
+fn compile_bit_access_assignment_on_struct_field_array(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    structured: &StructuredVariable,
+    array: &ArrayVariable,
+    bit_access: &BitAccessVariable,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    let bit_index = bit_access.index.value as u32;
+    let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
+
+    let access = crate::compile_array::resolve_struct_field_array(ctx, structured, subscripts)?;
+
+    let crate::compile_array::ResolvedAccess::StructFieldArrayElement {
+        var_index,
+        desc_index,
+        field_slot_offset,
+        ref dimensions,
+        subscripts,
+        element_type,
+        ..
+    } = access
+    else {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                bit_access.span(),
+                "Bit access on struct-field STRING array is not supported",
+            ),
+        ));
+    };
+
+    let element_vti =
+        crate::compile_struct::var_type_info_for_field(&element_type).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(
+                    bit_access.span(),
+                    "Bit access on non-integer array element type",
+                ),
+            )
+        })?;
+
+    let span = bit_access.span();
+
+    // 1. Load the current element: flat_index + field_slot_offset → LOAD_ARRAY.
+    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, dimensions, &span)?;
+    let offset_const = ctx.add_i64_constant(field_slot_offset.raw() as i64);
+    emitter.emit_load_const_i64(offset_const);
+    emitter.emit_add_i64();
+    emitter.emit_load_array(var_index, desc_index);
+
+    // 2/3. Clear target bit, then OR in the shifted RHS bit.
+    if element_vti.op_width == OpWidth::W64 {
+        let clear_mask = !(1i64 << bit_index);
+        let clear_pool = ctx.add_i64_constant(clear_mask);
+        emitter.emit_load_const_i64(clear_pool);
+        emitter.emit_bit_and_64();
+
+        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+        let one_pool = ctx.add_i32_constant(1);
+        emitter.emit_load_const_i32(one_pool);
+        emitter.emit_bit_and_32();
+        emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
+        let shift_pool = ctx.add_i32_constant(bit_index as i32);
+        emitter.emit_load_const_i32(shift_pool);
+        emitter.emit_builtin(opcode::builtin::SHL_I64);
+        emitter.emit_bit_or_64();
+    } else {
+        let clear_mask = !(1i32 << bit_index);
+        let clear_pool = ctx.add_i32_constant(clear_mask);
+        emitter.emit_load_const_i32(clear_pool);
+        emitter.emit_bit_and_32();
+
+        compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+        let one_pool = ctx.add_i32_constant(1);
+        emitter.emit_load_const_i32(one_pool);
+        emitter.emit_bit_and_32();
+        let shift_pool = ctx.add_i32_constant(bit_index as i32);
+        emitter.emit_load_const_i32(shift_pool);
+        emitter.emit_builtin(opcode::builtin::SHL_I32);
+        emitter.emit_bit_or_32();
+    }
+
+    // 4. Truncate the new element value.
+    emit_truncation(emitter, element_vti);
+
+    // 5. Re-compute flat_index + field_slot_offset and STORE back.
+    let subscripts_again: Vec<&Expr> = array.subscripts.iter().collect();
+    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts_again, dimensions, &span)?;
+    emitter.emit_load_const_i64(offset_const);
+    emitter.emit_add_i64();
+    emitter.emit_store_array(var_index, desc_index);
+
+    Ok(())
+}
+
+/// Compiles a partial-access assignment using read-modify-write.
+///
+/// `target.%Bn := value` clears the byte at position n and ORs in the RHS.
+/// Supports named scalars; array elements and struct fields dispatch the
+/// same logic used by bit access.
+pub(crate) fn compile_partial_access_assignment(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    pa: &PartialAccessVariable,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    let access_bits = pa.size.bit_width();
+    let bit_offset = pa.index.value as u32 * access_bits;
+
+    // Delegate to sub-handlers for array and struct bases, mirroring the
+    // bit-access dispatch structure.
+    if let SymbolicVariableKind::Array(array) = pa.variable.as_ref() {
+        if let SymbolicVariableKind::Structured(structured) = array.subscripted_variable.as_ref() {
+            return compile_partial_access_assignment_on_struct_field_array(
+                emitter, ctx, structured, array, pa, value,
+            );
+        }
+        return compile_partial_access_assignment_on_array(emitter, ctx, array, pa, value);
+    }
+    if let SymbolicVariableKind::Structured(structured) = pa.variable.as_ref() {
+        return compile_partial_access_assignment_on_struct_field(
+            emitter, ctx, structured, pa, value,
+        );
+    }
+
+    let base_name = resolve_symbolic_variable_name(&pa.variable)?;
+    let var_index = ctx.var_index(base_name)?;
+    let base_op_type = ctx.var_op_type(base_name);
+
+    emit_load_var(emitter, var_index, base_op_type);
+    emit_partial_access_read_modify_write(
+        emitter,
+        ctx,
+        base_op_type.0,
+        access_bits,
+        bit_offset,
+        value,
+    )?;
+
+    if let Some(ti) = ctx.var_type_info(base_name) {
+        emit_truncation(emitter, ti);
+    }
+    emit_store_var(emitter, var_index, base_op_type);
+    Ok(())
+}
+
+fn compile_partial_access_assignment_on_array(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    array: &ArrayVariable,
+    pa: &PartialAccessVariable,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    let access_bits = pa.size.bit_width();
+    let bit_offset = pa.index.value as u32 * access_bits;
+
+    let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
+    let info = ctx.array_vars.get(root_name).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(pa.span(), "Partial access on non-trivial array base"),
+        )
+    })?;
+    let arr_var_index = info.var_index;
+    let arr_desc_index = info.desc_index;
+    let element_vti = info.element_var_type_info;
+    let dim_info: Vec<crate::compile_array::DimensionInfo> = info
+        .dimensions
+        .iter()
+        .map(|d| crate::compile_array::DimensionInfo {
+            lower_bound: d.lower_bound,
+            size: d.size,
+            stride: d.stride,
+        })
+        .collect();
+    let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
+    let span = pa.span();
+
+    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
+    emitter.emit_load_array(arr_var_index, arr_desc_index);
+
+    emit_partial_access_read_modify_write(
+        emitter,
+        ctx,
+        element_vti.op_width,
+        access_bits,
+        bit_offset,
+        value,
+    )?;
+    emit_truncation(emitter, element_vti);
+
+    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, &dim_info, &span)?;
+    emitter.emit_store_array(arr_var_index, arr_desc_index);
+    Ok(())
+}
+
+fn compile_partial_access_assignment_on_struct_field(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    structured: &StructuredVariable,
+    pa: &PartialAccessVariable,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    let access_bits = pa.size.bit_width();
+    let bit_offset = pa.index.value as u32 * access_bits;
+
+    let (var_index, desc_index, slot_offset, _op_type, field_type) =
+        crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
+    let field_vti =
+        crate::compile_struct::var_type_info_for_field(&field_type).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(
+                    structured.field.span(),
+                    "Partial access on non-integer struct field",
+                ),
+            )
+        })?;
+
+    let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
+
+    emitter.emit_load_const_i32(idx_const);
+    emitter.emit_load_array(var_index, desc_index);
+
+    emit_partial_access_read_modify_write(
+        emitter,
+        ctx,
+        field_vti.op_width,
+        access_bits,
+        bit_offset,
+        value,
+    )?;
+    emit_truncation(emitter, field_vti);
+
+    emitter.emit_load_const_i32(idx_const);
+    emitter.emit_store_array(var_index, desc_index);
+    Ok(())
+}
+
+fn compile_partial_access_assignment_on_struct_field_array(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    structured: &StructuredVariable,
+    array: &ArrayVariable,
+    pa: &PartialAccessVariable,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    let access_bits = pa.size.bit_width();
+    let bit_offset = pa.index.value as u32 * access_bits;
+    let subscripts: Vec<&Expr> = array.subscripts.iter().collect();
+
+    let access = crate::compile_array::resolve_struct_field_array(ctx, structured, subscripts)?;
+    let crate::compile_array::ResolvedAccess::StructFieldArrayElement {
+        var_index,
+        desc_index,
+        field_slot_offset,
+        ref dimensions,
+        subscripts,
+        element_type,
+        ..
+    } = access
+    else {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(pa.span(), "Partial access on struct-field STRING array"),
+        ));
+    };
+
+    let element_vti =
+        crate::compile_struct::var_type_info_for_field(&element_type).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(pa.span(), "Partial access on non-integer array element"),
+            )
+        })?;
+    let span = pa.span();
+
+    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts, dimensions, &span)?;
+    let offset_const = ctx.add_i64_constant(field_slot_offset.raw() as i64);
+    emitter.emit_load_const_i64(offset_const);
+    emitter.emit_add_i64();
+    emitter.emit_load_array(var_index, desc_index);
+
+    emit_partial_access_read_modify_write(
+        emitter,
+        ctx,
+        element_vti.op_width,
+        access_bits,
+        bit_offset,
+        value,
+    )?;
+    emit_truncation(emitter, element_vti);
+
+    let subscripts_again: Vec<&Expr> = array.subscripts.iter().collect();
+    crate::compile_array::emit_flat_index(emitter, ctx, &subscripts_again, dimensions, &span)?;
+    emitter.emit_load_const_i64(offset_const);
+    emitter.emit_add_i64();
+    emitter.emit_store_array(var_index, desc_index);
+    Ok(())
+}
+
+/// Emits the read-modify-write sequence for partial access: clear the
+/// target region and OR in the shifted RHS value.
+///
+/// Assumes the current base value is already on the stack.
+fn emit_partial_access_read_modify_write(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    base_width: OpWidth,
+    access_bits: u32,
+    bit_offset: u32,
+    value: &Expr,
+) -> Result<(), Diagnostic> {
+    match base_width {
+        OpWidth::W64 => {
+            let clear_mask = !((((1u128 << access_bits) - 1) << bit_offset) as u64 as i64);
+            let clear_pool = ctx.add_i64_constant(clear_mask);
+            emitter.emit_load_const_i64(clear_pool);
+            emitter.emit_bit_and_64();
+
+            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+            if access_bits <= 32 {
+                let slice_mask = (1i32 << access_bits) - 1;
+                let mask_pool = ctx.add_i32_constant(slice_mask);
+                emitter.emit_load_const_i32(mask_pool);
+                emitter.emit_bit_and_32();
+                emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
+            } else {
+                let slice_mask = (1i64 << access_bits) - 1;
+                let mask_pool = ctx.add_i64_constant(slice_mask);
+                emitter.emit_load_const_i64(mask_pool);
+                emitter.emit_bit_and_64();
+            }
+            if bit_offset > 0 {
+                let shift_pool = ctx.add_i32_constant(bit_offset as i32);
+                emitter.emit_load_const_i32(shift_pool);
+                emitter.emit_builtin(opcode::builtin::SHL_I64);
+            }
+            emitter.emit_bit_or_64();
+        }
+        _ => {
+            let clear_mask = !(((1i64 << access_bits) - 1) << bit_offset) as i32;
+            let clear_pool = ctx.add_i32_constant(clear_mask);
+            emitter.emit_load_const_i32(clear_pool);
+            emitter.emit_bit_and_32();
+
+            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+            let slice_mask = (1i32 << access_bits) - 1;
+            let mask_pool = ctx.add_i32_constant(slice_mask);
+            emitter.emit_load_const_i32(mask_pool);
+            emitter.emit_bit_and_32();
+            if bit_offset > 0 {
+                let shift_pool = ctx.add_i32_constant(bit_offset as i32);
+                emitter.emit_load_const_i32(shift_pool);
+                emitter.emit_builtin(opcode::builtin::SHL_I32);
+            }
+            emitter.emit_bit_or_32();
+        }
+    }
     Ok(())
 }
 

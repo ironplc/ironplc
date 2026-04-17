@@ -363,5 +363,7 @@ pub trait Fold<E> {
 
     dispatch!(BitAccessVariable);
 
+    dispatch!(PartialAccessVariable);
+
     dispatch!(DerefVariable);
 }
