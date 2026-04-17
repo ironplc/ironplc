@@ -20,9 +20,10 @@ use super::compile::{
     CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH_U16,
 };
 use super::compile_expr::{
-    compile_bit_access_assignment, compile_expr, condition_op_type, emit_add, emit_ge, emit_gt,
-    emit_le, emit_load_var, emit_lt, emit_store_var, emit_truncation, extract_bit_access_target,
-    op_type, resolve_variable, resolve_variable_name, signed_integer_to_i64, variable_span,
+    compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
+    condition_op_type, emit_add, emit_ge, emit_gt, emit_le, emit_load_var, emit_lt, emit_store_var,
+    emit_truncation, extract_bit_access_target, extract_partial_access_target, op_type,
+    resolve_variable, resolve_variable_name, signed_integer_to_i64, variable_span,
 };
 use crate::emit::Emitter;
 
@@ -84,6 +85,16 @@ fn compile_statement(
             // Check if the target is a bit access variable (read-modify-write).
             if let Some(bit_access) = extract_bit_access_target(&assignment.target) {
                 return compile_bit_access_assignment(emitter, ctx, bit_access, &assignment.value);
+            }
+
+            // Check if the target is a partial access variable (read-modify-write).
+            if let Some(partial_access) = extract_partial_access_target(&assignment.target) {
+                return compile_partial_access_assignment(
+                    emitter,
+                    ctx,
+                    partial_access,
+                    &assignment.value,
+                );
             }
 
             // Check if the target is a structured variable (struct field write).

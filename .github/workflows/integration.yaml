@@ -35,6 +35,15 @@ jobs:
       gh-release-tag: ""
       artifact-name: vscode-extension
 
+  agents:
+    name: Test Agents
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    uses: ./.github/workflows/partial_agents.yaml
+    with:
+      commit-ref: ""
+
   docs:
     name: Build Website
     if: >-

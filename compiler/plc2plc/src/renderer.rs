@@ -1601,4 +1601,15 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write(&node.index.value.to_string());
         Ok(())
     }
+
+    fn visit_partial_access_variable(
+        &mut self,
+        node: &dsl::textual::PartialAccessVariable,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_symbolic_variable_kind(&node.variable)?;
+        self.write(".");
+        self.write(node.size.prefix());
+        self.write(&node.index.value.to_string());
+        Ok(())
+    }
 }

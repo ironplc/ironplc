@@ -1,0 +1,44 @@
+name: Agents
+
+on:
+  # Allow triggering directly
+  workflow_dispatch:
+    inputs:
+      commit-ref:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified branch name or tag'
+
+  # Allow using this workflow from another workflow
+  workflow_call:
+    inputs:
+      commit-ref:
+        required: false
+        type: string
+        description: 'If not empty, then run for the specified branch name or tag'
+
+jobs:
+  agents:
+    name: Test Agents
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./agents
+    steps:
+      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        if: ${{ inputs.commit-ref }}
+        with:
+          ref: ${{ inputs.commit-ref }}
+      - name: Checkout HEAD
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        if: ${{ !inputs.commit-ref }}
+
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+      - name: Set up Python 3.x
+        uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4
+        with:
+          python-version: '3.x'
+
+      - name: Build and Test
+        run: just ci
