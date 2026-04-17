@@ -1,4 +1,4 @@
-use ironplc_dsl::common::TypeName;
+use ironplc_dsl::common::{TypeName, VariableType};
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
 use std::collections::HashMap;
@@ -60,6 +60,10 @@ pub struct SymbolInfo {
     pub enum_type: Option<TypeName>,
     /// For structure fields, the type name of the structure
     pub struct_type: Option<TypeName>,
+    /// The variable type qualifier (VAR, VAR_INPUT, VAR_OUTPUT, etc.)
+    pub variable_type: Option<VariableType>,
+    /// Formatted hardware address (e.g. "%IX0.0") for direct variables
+    pub address: Option<String>,
     /// Source location information
     pub span: ironplc_dsl::core::SourceSpan,
 }
@@ -74,6 +78,8 @@ impl SymbolInfo {
             data_type: None,
             enum_type: None,
             struct_type: None,
+            variable_type: None,
+            address: None,
             span,
         }
     }
@@ -104,6 +110,16 @@ impl SymbolInfo {
     /// Set the structure type for structure field symbols
     pub fn with_struct_type(mut self, struct_type: TypeName) -> Self {
         self.struct_type = Some(struct_type);
+        self
+    }
+
+    pub fn with_variable_type(mut self, vt: VariableType) -> Self {
+        self.variable_type = Some(vt);
+        self
+    }
+
+    pub fn with_address(mut self, addr: String) -> Self {
+        self.address = Some(addr);
         self
     }
 }
@@ -157,6 +173,40 @@ impl SymbolEnvironment {
                     // TODO: Implement proper duplicate detection
                 }
 
+                scope_symbols.insert(name.clone(), symbol_info);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Insert a variable with direction and optional hardware address.
+    pub fn insert_variable(
+        &mut self,
+        name: &Id,
+        kind: SymbolKind,
+        scope: &ScopeKind,
+        variable_type: VariableType,
+        address: Option<String>,
+    ) -> Result<(), Diagnostic> {
+        let mut symbol_info = SymbolInfo::new(kind, scope.clone(), name.span())
+            .with_variable_type(variable_type.clone());
+        if let Some(addr) = address {
+            symbol_info = symbol_info.with_address(addr);
+        }
+        if variable_type == VariableType::External {
+            symbol_info = symbol_info.with_external(true);
+        }
+
+        match scope {
+            ScopeKind::Global => {
+                self.global_symbols.insert(name.clone(), symbol_info);
+            }
+            ScopeKind::Named(scope_name) => {
+                let scope_symbols = self
+                    .scoped_symbols
+                    .entry(ScopeKind::Named(scope_name.clone()))
+                    .or_default();
                 scope_symbols.insert(name.clone(), symbol_info);
             }
         }
@@ -441,6 +491,42 @@ impl SymbolEnvironment {
         } else {
             None
         }
+    }
+
+    /// Returns all program declarations from the global scope.
+    pub fn get_programs(&self) -> Vec<(&Id, &SymbolInfo)> {
+        self.global_symbols
+            .iter()
+            .filter(|(_, info)| info.kind == SymbolKind::Program)
+            .collect()
+    }
+
+    /// Returns all function block declarations from the global scope.
+    pub fn get_function_blocks(&self) -> Vec<(&Id, &SymbolInfo)> {
+        self.global_symbols
+            .iter()
+            .filter(|(_, info)| info.kind == SymbolKind::FunctionBlock)
+            .collect()
+    }
+
+    /// Returns all variable-like symbols in the given scope (variables,
+    /// parameters, output parameters, and in-out parameters).
+    pub fn get_variables_in_scope(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
+        let Some(scope_symbols) = self.scoped_symbols.get(scope) else {
+            return vec![];
+        };
+        scope_symbols
+            .iter()
+            .filter(|(_, info)| {
+                matches!(
+                    info.kind,
+                    SymbolKind::Variable
+                        | SymbolKind::Parameter
+                        | SymbolKind::OutputParameter
+                        | SymbolKind::InOutParameter
+                )
+            })
+            .collect()
     }
 
     /// Get all symbols that are accessible from a given scope

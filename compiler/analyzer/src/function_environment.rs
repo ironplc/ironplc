@@ -162,6 +162,11 @@ impl FunctionEnvironment {
         self.table.iter()
     }
 
+    /// Returns an iterator over user-defined (non-stdlib) function signatures.
+    pub fn iter_user_defined(&self) -> impl Iterator<Item = (&String, &FunctionSignature)> {
+        self.table.iter().filter(|(_, sig)| !sig.is_stdlib())
+    }
+
     /// Returns the number of functions in the environment.
     #[allow(dead_code)]
     pub fn len(&self) -> usize {

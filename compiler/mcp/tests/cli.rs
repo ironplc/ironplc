@@ -353,3 +353,78 @@ fn compile_when_missing_dialect_then_validation_error() -> Result<(), Box<dyn st
         .stdout(predicate::str::contains("P8001"));
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// symbols tool
+// ---------------------------------------------------------------------------
+
+#[test]
+fn symbols_when_valid_program_then_ok_true() -> Result<(), Box<dyn std::error::Error>> {
+    let stdin = mcp_tool_call(
+        "symbols",
+        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
+    );
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#"\"ok\":true"#));
+    Ok(())
+}
+
+#[test]
+fn symbols_when_valid_program_then_programs_populated() -> Result<(), Box<dyn std::error::Error>> {
+    let stdin = mcp_tool_call(
+        "symbols",
+        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
+    );
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#"\"name\":\"p\""#));
+    Ok(())
+}
+
+#[test]
+fn symbols_when_semantic_error_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
+    let stdin = mcp_tool_call(
+        "symbols",
+        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
+    );
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#"\"ok\":false"#));
+    Ok(())
+}
+
+#[test]
+fn symbols_when_empty_source_name_then_validation_error() -> Result<(), Box<dyn std::error::Error>>
+{
+    let stdin = mcp_tool_call(
+        "symbols",
+        r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
+    );
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("P8001"));
+    Ok(())
+}
+
+#[test]
+fn symbols_when_missing_dialect_then_validation_error() -> Result<(), Box<dyn std::error::Error>> {
+    let stdin = mcp_tool_call(
+        "symbols",
+        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{}}"#,
+    );
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("P8001"));
+    Ok(())
+}

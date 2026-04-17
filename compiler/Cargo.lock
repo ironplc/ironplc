@@ -938,6 +938,7 @@ dependencies = [
  "assert_cmd",
  "base64",
  "env_logger",
+ "ironplc-analyzer",
  "ironplc-codegen",
  "ironplc-container",
  "ironplc-dsl",
