@@ -440,7 +440,10 @@ mod tests {
         .unwrap();
 
         let result = discover(dir.path());
-        assert!(result.is_err(), "Expected error for missing referenced file");
+        assert!(
+            result.is_err(),
+            "Expected error for missing referenced file"
+        );
     }
 
     #[test]

@@ -605,7 +605,10 @@ END_VAR]]></Declaration>
 
     #[test]
     fn closing_keyword_when_leading_whitespace_then_still_detects() {
-        assert_eq!(closing_keyword("  PROGRAM MAIN\nVAR\nEND_VAR"), "END_PROGRAM");
+        assert_eq!(
+            closing_keyword("  PROGRAM MAIN\nVAR\nEND_VAR"),
+            "END_PROGRAM"
+        );
     }
 
     #[test]
