@@ -22,3 +22,5 @@ fixedbitset = { version = "0.5" }
 
 [dev-dependencies]
 ironplc-parser = { path = "../parser", version = "0.201.0" }
+ctor = "0.2"
+env_logger = "0.10"

@@ -4,6 +4,15 @@
 extern crate ironplc_dsl;
 extern crate ironplc_parser;
 
+#[cfg(test)]
+#[ctor::ctor]
+fn init_test_logger() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Trace)
+        .try_init();
+}
+
 mod function_environment;
 pub mod intermediate_type;
 mod result;

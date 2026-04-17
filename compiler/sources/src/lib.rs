@@ -60,3 +60,12 @@ pub use file_type::FileType;
 pub use parsers::parse_source;
 pub use project::SourceProject;
 pub use source::Source;
+
+#[cfg(test)]
+#[ctor::ctor]
+fn init_test_logger() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Trace)
+        .try_init();
+}
