@@ -1,5 +1,5 @@
 use ironplc_analyzer::symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind};
-use ironplc_analyzer::{IntermediateType, SemanticContext, TypeCategory};
+use ironplc_analyzer::{IntermediateType, SemanticContext};
 use ironplc_dsl::common::VariableType;
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
@@ -156,9 +156,8 @@ pub fn build_response(
 fn extract_programs(context: &SemanticContext) -> Vec<ProgramSymbol> {
     context
         .symbols()
-        .get_global_symbols()
-        .iter()
-        .filter(|(_, info)| info.kind == SymbolKind::Program)
+        .get_programs()
+        .into_iter()
         .map(|(name, _)| {
             let scope = ScopeKind::Named(name.clone());
             let variables = extract_variables_from_scope(context.symbols(), &scope);
@@ -173,8 +172,7 @@ fn extract_programs(context: &SemanticContext) -> Vec<ProgramSymbol> {
 fn extract_functions(context: &SemanticContext) -> Vec<FunctionSymbol> {
     context
         .functions()
-        .iter()
-        .filter(|(_, sig)| !sig.is_stdlib())
+        .iter_user_defined()
         .map(|(_, sig)| {
             let params: Vec<VariableInfo> = sig
                 .parameters
@@ -212,9 +210,8 @@ fn extract_functions(context: &SemanticContext) -> Vec<FunctionSymbol> {
 fn extract_function_blocks(context: &SemanticContext) -> Vec<FunctionBlockSymbol> {
     context
         .symbols()
-        .get_global_symbols()
-        .iter()
-        .filter(|(_, info)| info.kind == SymbolKind::FunctionBlock)
+        .get_function_blocks()
+        .into_iter()
         .map(|(name, _)| {
             let scope = ScopeKind::Named(name.clone());
             let variables = extract_variables_from_scope(context.symbols(), &scope);
@@ -229,12 +226,7 @@ fn extract_function_blocks(context: &SemanticContext) -> Vec<FunctionBlockSymbol
 fn extract_types(context: &SemanticContext) -> Vec<TypeSymbol> {
     context
         .types()
-        .iter()
-        .filter(|(_, attrs)| attrs.type_category != TypeCategory::Elementary)
-        .filter(|(_, attrs)| {
-            !matches!(attrs.representation, IntermediateType::FunctionBlock { .. })
-        })
-        .filter(|(_, attrs)| !matches!(attrs.representation, IntermediateType::Function { .. }))
+        .iter_user_defined()
         .map(|(name, attrs)| {
             let kind = match &attrs.representation {
                 IntermediateType::Enumeration { .. } => "enumeration",
@@ -257,20 +249,9 @@ fn extract_variables_from_scope(
     symbols: &SymbolEnvironment,
     scope: &ScopeKind,
 ) -> Vec<VariableInfo> {
-    let Some(scope_symbols) = symbols.get_scope_symbols(scope) else {
-        return vec![];
-    };
-    scope_symbols
-        .iter()
-        .filter(|(_, info)| {
-            matches!(
-                info.kind,
-                SymbolKind::Variable
-                    | SymbolKind::Parameter
-                    | SymbolKind::OutputParameter
-                    | SymbolKind::InOutParameter
-            )
-        })
+    symbols
+        .get_variables_in_scope(scope)
+        .into_iter()
         .map(|(name, info)| {
             let direction = match &info.variable_type {
                 Some(VariableType::Input) => "In",

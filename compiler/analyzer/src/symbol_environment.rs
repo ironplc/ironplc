@@ -493,6 +493,42 @@ impl SymbolEnvironment {
         }
     }
 
+    /// Returns all program declarations from the global scope.
+    pub fn get_programs(&self) -> Vec<(&Id, &SymbolInfo)> {
+        self.global_symbols
+            .iter()
+            .filter(|(_, info)| info.kind == SymbolKind::Program)
+            .collect()
+    }
+
+    /// Returns all function block declarations from the global scope.
+    pub fn get_function_blocks(&self) -> Vec<(&Id, &SymbolInfo)> {
+        self.global_symbols
+            .iter()
+            .filter(|(_, info)| info.kind == SymbolKind::FunctionBlock)
+            .collect()
+    }
+
+    /// Returns all variable-like symbols in the given scope (variables,
+    /// parameters, output parameters, and in-out parameters).
+    pub fn get_variables_in_scope(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
+        let Some(scope_symbols) = self.scoped_symbols.get(scope) else {
+            return vec![];
+        };
+        scope_symbols
+            .iter()
+            .filter(|(_, info)| {
+                matches!(
+                    info.kind,
+                    SymbolKind::Variable
+                        | SymbolKind::Parameter
+                        | SymbolKind::OutputParameter
+                        | SymbolKind::InOutParameter
+                )
+            })
+            .collect()
+    }
+
     /// Get all symbols that are accessible from a given scope
     #[allow(dead_code)]
     pub fn get_accessible_symbols(&self, scope: &ScopeKind) -> Vec<(&Id, &SymbolInfo)> {
