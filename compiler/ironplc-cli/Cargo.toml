@@ -42,6 +42,7 @@ encoding_rs = "0.8"
 assert_cmd = { version = "2.0" }
 predicates = { version = "3.0" }
 tempfile = "3"
+ctor = "0.2"
 
 [[bin]]
 name = "ironplcc"

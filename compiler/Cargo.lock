@@ -435,6 +435,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctor"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32a2785755761f3ddc1492979ce1e48d2c00d09311c39e4466429188f3dd6501"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "ctrlc"
 version = "3.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -830,6 +840,8 @@ dependencies = [
 name = "ironplc-analyzer"
 version = "0.201.0"
 dependencies = [
+ "ctor",
+ "env_logger",
  "fixedbitset",
  "ironplc-dsl",
  "ironplc-parser",
@@ -861,6 +873,7 @@ dependencies = [
  "clap",
  "codespan-reporting",
  "crossbeam-channel",
+ "ctor",
  "encoding_rs",
  "env_logger",
  "ironplc-analyzer",
@@ -996,6 +1009,8 @@ dependencies = [
 name = "ironplc-project"
 version = "0.201.0"
 dependencies = [
+ "ctor",
+ "env_logger",
  "ironplc-analyzer",
  "ironplc-container",
  "ironplc-dsl",
@@ -1011,7 +1026,9 @@ dependencies = [
 name = "ironplc-sources"
 version = "0.201.0"
 dependencies = [
+ "ctor",
  "encoding_rs",
+ "env_logger",
  "ironplc-dsl",
  "ironplc-parser",
  "ironplc-problems",
@@ -1043,6 +1060,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "csv",
+ "ctor",
  "ctrlc",
  "env_logger",
  "ironplc-container",
