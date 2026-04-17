@@ -36,11 +36,7 @@ use ironplc_vm::Vm;
 #[case::uint_initial_value("UINT := 50000", "", 50_000)]
 #[case::udint_initial_value("UDINT := 100000", "", 100_000)]
 #[case::ulint_initial_value("ULINT := 5000000", "", 5_000_000)]
-fn end_to_end_single_var_scalar(
-    #[case] decl: &str,
-    #[case] body: &str,
-    #[case] expected: i64,
-) {
+fn end_to_end_single_var_scalar(#[case] decl: &str, #[case] body: &str, #[case] expected: i64) {
     let source = format!(
         "
 PROGRAM main

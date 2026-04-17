@@ -887,15 +887,19 @@ END_PROGRAM";
     /// pipeline and asserts the RHS resolves to the expected type name.
     /// This replaces 27 near-identical hand-written tests.
     #[rstest]
-    #[case::simple_int_var("
+    #[case::simple_int_var(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     x : INT;
     y : INT;
 END_VAR
     y := x;
-END_FUNCTION_BLOCK", "INT")]
-    #[case::type_alias_to_elementary("
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
+    #[case::type_alias_to_elementary(
+        "
 TYPE
     MyByte : BYTE := 0;
 END_TYPE
@@ -906,84 +910,114 @@ VAR
     y : BYTE;
 END_VAR
     y := x;
-END_FUNCTION_BLOCK", "BYTE")]
-    #[case::bool_literal("
+END_FUNCTION_BLOCK",
+        "BYTE"
+    )]
+    #[case::bool_literal(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     y : BOOL;
 END_VAR
     y := TRUE;
-END_FUNCTION_BLOCK", "BOOL")]
-    #[case::typed_integer_literal("
+END_FUNCTION_BLOCK",
+        "BOOL"
+    )]
+    #[case::typed_integer_literal(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     y : INT;
 END_VAR
     y := INT#42;
-END_FUNCTION_BLOCK", "INT")]
-    #[case::comparison_resolves_bool("
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
+    #[case::comparison_resolves_bool(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     x : INT;
     y : BOOL;
 END_VAR
     y := x > 0;
-END_FUNCTION_BLOCK", "BOOL")]
-    #[case::binary_op_inherits_operand_type("
+END_FUNCTION_BLOCK",
+        "BOOL"
+    )]
+    #[case::binary_op_inherits_operand_type(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     x : INT;
     y : INT;
 END_VAR
     y := x + x;
-END_FUNCTION_BLOCK", "INT")]
-    #[case::unary_op_inherits_operand_type("
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
+    #[case::unary_op_inherits_operand_type(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     x : INT;
     y : INT;
 END_VAR
     y := -x;
-END_FUNCTION_BLOCK", "INT")]
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
     // ABS has generic return type ANY_NUM; should resolve to concrete input type.
-    #[case::function_call_resolves_return_type("
+    #[case::function_call_resolves_return_type(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     x : INT;
     y : INT;
 END_VAR
     y := ABS(x);
-END_FUNCTION_BLOCK", "INT")]
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
     // SHR has generic return type ANY_BIT; ABS(a) resolves to DINT,
     // so the outer SHR should also resolve to DINT.
-    #[case::nested_function_call_resolves_concrete_type("
+    #[case::nested_function_call_resolves_concrete_type(
+        "
 PROGRAM test
   VAR
     a : DINT;
     result : DINT;
   END_VAR
     result := SHR(ABS(a), 1);
-END_PROGRAM", "DINT")]
+END_PROGRAM",
+        "DINT"
+    )]
     // The RHS expression type reflects the expression itself, not the target.
     // Here TRUE is BOOL even though the target y is INT.
-    #[case::bool_assigned_to_int_var_rhs_resolves_bool("
+    #[case::bool_assigned_to_int_var_rhs_resolves_bool(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     y : INT;
 END_VAR
     y := TRUE;
-END_FUNCTION_BLOCK", "BOOL")]
+END_FUNCTION_BLOCK",
+        "BOOL"
+    )]
     // The expression type is determined by the expression, not the target.
-    #[case::int_assigned_to_bool_var_rhs_resolves_int("
+    #[case::int_assigned_to_bool_var_rhs_resolves_int(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     x : INT;
     y : BOOL;
 END_VAR
     y := x;
-END_FUNCTION_BLOCK", "INT")]
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
     // In x + y where x is DINT and y is INT, the result inherits the left operand type.
-    #[case::mixed_type_binary_op_inherits_left_operand_type("
+    #[case::mixed_type_binary_op_inherits_left_operand_type(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     x : DINT;
@@ -991,42 +1025,57 @@ VAR
     result : DINT;
 END_VAR
     result := x + y;
-END_FUNCTION_BLOCK", "DINT")]
+END_FUNCTION_BLOCK",
+        "DINT"
+    )]
     // In 5 + x where x is INT, the result should be INT (concrete wins over ANY_INT).
-    #[case::binary_op_literal_plus_concrete("
+    #[case::binary_op_literal_plus_concrete(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     x : INT;
     result : INT;
 END_VAR
     result := 5 + x;
-END_FUNCTION_BLOCK", "INT")]
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
     // In x + 5 where x is INT, the result should be INT (left is concrete).
-    #[case::binary_op_concrete_plus_literal("
+    #[case::binary_op_concrete_plus_literal(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     x : INT;
     result : INT;
 END_VAR
     result := x + 5;
-END_FUNCTION_BLOCK", "INT")]
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
     // In 5 + 10, both are ANY_INT, so the result is ANY_INT.
-    #[case::binary_op_two_literals_resolves_any_int("
+    #[case::binary_op_two_literals_resolves_any_int(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     result : DINT;
 END_VAR
     result := 5 + 10;
-END_FUNCTION_BLOCK", "ANY_INT")]
-    #[case::real_literal_without_type_resolves_any_real("
+END_FUNCTION_BLOCK",
+        "ANY_INT"
+    )]
+    #[case::real_literal_without_type_resolves_any_real(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     y : REAL;
 END_VAR
     y := 3.14;
-END_FUNCTION_BLOCK", "ANY_REAL")]
+END_FUNCTION_BLOCK",
+        "ANY_REAL"
+    )]
     // A subrange variable like INT(-100..100) should resolve to INT.
-    #[case::subrange_var_resolves_base_type("
+    #[case::subrange_var_resolves_base_type(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR_IN_OUT
     x : INT(-100..100);
@@ -1035,29 +1084,41 @@ VAR
     y : INT;
 END_VAR
     y := x;
-END_FUNCTION_BLOCK", "INT")]
-    #[case::string_literal("
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
+    #[case::string_literal(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     s : STRING;
 END_VAR
     s := 'hello';
-END_FUNCTION_BLOCK", "STRING")]
-    #[case::untyped_integer_literal_resolves_any_int("
+END_FUNCTION_BLOCK",
+        "STRING"
+    )]
+    #[case::untyped_integer_literal_resolves_any_int(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     y : DINT;
 END_VAR
     y := 42;
-END_FUNCTION_BLOCK", "ANY_INT")]
-    #[case::time_literal("
+END_FUNCTION_BLOCK",
+        "ANY_INT"
+    )]
+    #[case::time_literal(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     t : TIME;
 END_VAR
     t := T#5s;
-END_FUNCTION_BLOCK", "TIME")]
-    #[case::sel_resolves_value_type_not_selector("
+END_FUNCTION_BLOCK",
+        "TIME"
+    )]
+    #[case::sel_resolves_value_type_not_selector(
+        "
 PROGRAM test
   VAR
     g : BOOL;
@@ -1066,8 +1127,11 @@ PROGRAM test
     result : INT;
   END_VAR
     result := SEL(g, a, b);
-END_PROGRAM", "INT")]
-    #[case::mux_resolves_value_type_not_selector("
+END_PROGRAM",
+        "INT"
+    )]
+    #[case::mux_resolves_value_type_not_selector(
+        "
 PROGRAM test
   VAR
     k : INT;
@@ -1076,8 +1140,11 @@ PROGRAM test
     result : DINT;
   END_VAR
     result := MUX(k, a, b);
-END_PROGRAM", "DINT")]
-    #[case::sel_nested_in_function("
+END_PROGRAM",
+        "DINT"
+    )]
+    #[case::sel_nested_in_function(
+        "
 PROGRAM test
   VAR
     g : BOOL;
@@ -1086,8 +1153,11 @@ PROGRAM test
     result : INT;
   END_VAR
     result := ABS(SEL(g, a, b));
-END_PROGRAM", "INT")]
-    #[case::named_array_subscript("
+END_PROGRAM",
+        "INT"
+    )]
+    #[case::named_array_subscript(
+        "
 TYPE MyArr : ARRAY[0..10] OF INT; END_TYPE
 
 FUNCTION_BLOCK FB_TEST
@@ -1096,20 +1166,26 @@ VAR
     result : INT;
 END_VAR
     result := arr[0];
-END_FUNCTION_BLOCK", "INT")]
-    #[case::inline_array_subscript("
+END_FUNCTION_BLOCK",
+        "INT"
+    )]
+    #[case::inline_array_subscript(
+        "
 FUNCTION_BLOCK FB_TEST
 VAR
     arr : ARRAY[0..10] OF DINT;
     result : DINT;
 END_VAR
     result := arr[0];
-END_FUNCTION_BLOCK", "DINT")]
+END_FUNCTION_BLOCK",
+        "DINT"
+    )]
     // Regression for the `compile_expr.rs#L32` TODO that fired when
     // `struct.field[i, j]` was used in a STRING comparison: the analyzer
     // previously left `resolved_type` unset for array subscripts whose
     // base was a struct field.
-    #[case::struct_field_2d_string_array_subscript("
+    #[case::struct_field_2d_string_array_subscript(
+        "
 TYPE MY_DATA : STRUCT
     DIRS : ARRAY[0..2, 0..15] OF STRING[3];
 END_STRUCT;
@@ -1123,9 +1199,12 @@ VAR
     result : STRING[3];
 END_VAR
     result := data.DIRS[i, j];
-END_FUNCTION_BLOCK", "STRING")]
+END_FUNCTION_BLOCK",
+        "STRING"
+    )]
     // Same fix must also cover numeric array fields, not just strings.
-    #[case::struct_field_int_array_subscript("
+    #[case::struct_field_int_array_subscript(
+        "
 TYPE MY_DATA : STRUCT
     values : ARRAY[0..9] OF DINT;
 END_STRUCT;
@@ -1138,7 +1217,9 @@ VAR
     result : DINT;
 END_VAR
     result := data.values[i];
-END_FUNCTION_BLOCK", "DINT")]
+END_FUNCTION_BLOCK",
+        "DINT"
+    )]
     fn apply_when_single_assignment_then_resolves_expected_type(
         #[case] program: &str,
         #[case] expected: &str,
