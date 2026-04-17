@@ -856,6 +856,7 @@ dependencies = [
  "log",
  "petgraph",
  "phf",
+ "rstest",
 ]
 
 [[package]]

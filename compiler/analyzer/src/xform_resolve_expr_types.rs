@@ -580,6 +580,7 @@ mod tests {
     use ironplc_dsl::fold::Fold;
     use ironplc_dsl::textual::*;
     use ironplc_parser::options::{CompilerOptions, Dialect};
+    use rstest::rstest;
 
     /// Runs the prerequisite passes and then the expression type resolution pass.
     fn run_pass(program: &str) -> Library {
@@ -640,164 +641,6 @@ mod tests {
         let mut collector = ResolvedTypeCollector::new();
         let _ = collector.fold_library(library.clone());
         collector.types
-    }
-
-    #[test]
-    fn apply_when_simple_int_var_then_resolves_type() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    y := x;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_type_alias_then_resolves_to_elementary() {
-        let program = "
-TYPE
-    MyByte : BYTE := 0;
-END_TYPE
-
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : MyByte;
-    y : BYTE;
-END_VAR
-    y := x;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "BYTE");
-    }
-
-    #[test]
-    fn apply_when_bool_literal_then_resolves_bool() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : BOOL;
-END_VAR
-    y := TRUE;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "BOOL");
-    }
-
-    #[test]
-    fn apply_when_typed_integer_literal_then_resolves_type() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : INT;
-END_VAR
-    y := INT#42;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_comparison_then_resolves_bool() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : BOOL;
-END_VAR
-    y := x > 0;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "BOOL");
-    }
-
-    #[test]
-    fn apply_when_binary_op_then_inherits_operand_type() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    y := x + x;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_unary_op_then_inherits_operand_type() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    y := -x;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_function_call_then_resolves_return_type() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : INT;
-END_VAR
-    y := ABS(x);
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        // ABS has generic return type ANY_NUM; should resolve to concrete input type
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_nested_function_call_then_resolves_concrete_type() {
-        let program = "
-PROGRAM test
-  VAR
-    a : DINT;
-    result : DINT;
-  END_VAR
-    result := SHR(ABS(a), 1);
-END_PROGRAM";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        // SHR has generic return type ANY_BIT; ABS(a) resolves to DINT,
-        // so the outer SHR should also resolve to DINT
-        assert_type_eq(&types[0], "DINT");
     }
 
     /// Collects resolved_type from every Expr node in the tree.
@@ -963,151 +806,6 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_bool_assigned_to_int_var_then_rhs_resolves_bool() {
-        // The RHS expression type reflects the expression itself, not the target.
-        // Here TRUE is BOOL even though the target y is INT.
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : INT;
-END_VAR
-    y := TRUE;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        // The expression TRUE resolves to BOOL regardless of the target variable type
-        assert_type_eq(&types[0], "BOOL");
-    }
-
-    #[test]
-    fn apply_when_int_assigned_to_bool_var_then_rhs_resolves_int() {
-        // The expression type is determined by the expression, not the target.
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    y : BOOL;
-END_VAR
-    y := x;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_mixed_type_binary_op_then_inherits_left_operand_type() {
-        // In x + y where x is DINT and y is INT, the result inherits the left operand type.
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : DINT;
-    y : INT;
-    result : DINT;
-END_VAR
-    result := x + y;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "DINT");
-    }
-
-    #[test]
-    fn apply_when_binary_op_literal_plus_concrete_then_resolves_concrete() {
-        // In 5 + x where x is INT, the result should be INT (concrete wins over ANY_INT)
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    result : INT;
-END_VAR
-    result := 5 + x;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_binary_op_concrete_plus_literal_then_resolves_concrete() {
-        // In x + 5 where x is INT, the result should be INT (left is concrete)
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    x : INT;
-    result : INT;
-END_VAR
-    result := x + 5;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_binary_op_two_literals_then_resolves_any_int() {
-        // In 5 + 10, both are ANY_INT, so the result is ANY_INT
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    result : DINT;
-END_VAR
-    result := 5 + 10;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "ANY_INT");
-    }
-
-    #[test]
-    fn apply_when_real_literal_without_type_then_resolves_any_real() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : REAL;
-END_VAR
-    y := 3.14;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "ANY_REAL");
-    }
-
-    #[test]
-    fn apply_when_subrange_var_then_resolves_base_type() {
-        // A subrange variable like INT(-100..100) should resolve to INT.
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR_IN_OUT
-    x : INT(-100..100);
-END_VAR
-VAR
-    y : INT;
-END_VAR
-    y := x;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
     fn apply_when_multiple_assignments_then_each_resolves_independently() {
         let program = "
 FUNCTION_BLOCK FB_TEST
@@ -1126,38 +824,6 @@ END_FUNCTION_BLOCK";
         assert_eq!(types.len(), 2);
         assert_type_eq(&types[0], "INT");
         assert_type_eq(&types[1], "BOOL");
-    }
-
-    #[test]
-    fn apply_when_string_literal_then_resolves_string() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    s : STRING;
-END_VAR
-    s := 'hello';
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "STRING");
-    }
-
-    #[test]
-    fn apply_when_untyped_integer_literal_then_resolves_any_int() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    y : DINT;
-END_VAR
-    y := 42;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "ANY_INT");
     }
 
     #[test]
@@ -1190,79 +856,6 @@ END_PROGRAM";
     }
 
     #[test]
-    fn apply_when_time_literal_then_resolves_time() {
-        let program = "
-FUNCTION_BLOCK FB_TEST
-VAR
-    t : TIME;
-END_VAR
-    t := T#5s;
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "TIME");
-    }
-
-    #[test]
-    fn apply_when_sel_then_resolves_value_type_not_selector() {
-        let program = "
-PROGRAM test
-  VAR
-    g : BOOL;
-    a : INT;
-    b : INT;
-    result : INT;
-  END_VAR
-    result := SEL(g, a, b);
-END_PROGRAM";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_mux_then_resolves_value_type_not_selector() {
-        let program = "
-PROGRAM test
-  VAR
-    k : INT;
-    a : DINT;
-    b : DINT;
-    result : DINT;
-  END_VAR
-    result := MUX(k, a, b);
-END_PROGRAM";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "DINT");
-    }
-
-    #[test]
-    fn apply_when_sel_nested_in_function_then_resolves_correctly() {
-        let program = "
-PROGRAM test
-  VAR
-    g : BOOL;
-    a : INT;
-    b : INT;
-    result : INT;
-  END_VAR
-    result := ABS(SEL(g, a, b));
-END_PROGRAM";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
     fn apply_when_ref_to_inline_array_deref_subscript_then_resolves_element_type() {
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
         let program = "
@@ -1287,9 +880,214 @@ END_PROGRAM";
         assert_type_eq(&types[0], "BYTE");
     }
 
-    #[test]
-    fn apply_when_named_array_subscript_then_resolves_element_type() {
-        let program = "
+    /// Parameterized tests for the "single assignment, resolves to type T" shape.
+    ///
+    /// Each case is a complete IEC 61131-3 program containing exactly one
+    /// top-level assignment; the test runs the expression-type-resolution
+    /// pipeline and asserts the RHS resolves to the expected type name.
+    /// This replaces 27 near-identical hand-written tests.
+    #[rstest]
+    #[case::simple_int_var("
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    y := x;
+END_FUNCTION_BLOCK", "INT")]
+    #[case::type_alias_to_elementary("
+TYPE
+    MyByte : BYTE := 0;
+END_TYPE
+
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : MyByte;
+    y : BYTE;
+END_VAR
+    y := x;
+END_FUNCTION_BLOCK", "BYTE")]
+    #[case::bool_literal("
+FUNCTION_BLOCK FB_TEST
+VAR
+    y : BOOL;
+END_VAR
+    y := TRUE;
+END_FUNCTION_BLOCK", "BOOL")]
+    #[case::typed_integer_literal("
+FUNCTION_BLOCK FB_TEST
+VAR
+    y : INT;
+END_VAR
+    y := INT#42;
+END_FUNCTION_BLOCK", "INT")]
+    #[case::comparison_resolves_bool("
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : BOOL;
+END_VAR
+    y := x > 0;
+END_FUNCTION_BLOCK", "BOOL")]
+    #[case::binary_op_inherits_operand_type("
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    y := x + x;
+END_FUNCTION_BLOCK", "INT")]
+    #[case::unary_op_inherits_operand_type("
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    y := -x;
+END_FUNCTION_BLOCK", "INT")]
+    // ABS has generic return type ANY_NUM; should resolve to concrete input type.
+    #[case::function_call_resolves_return_type("
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    y := ABS(x);
+END_FUNCTION_BLOCK", "INT")]
+    // SHR has generic return type ANY_BIT; ABS(a) resolves to DINT,
+    // so the outer SHR should also resolve to DINT.
+    #[case::nested_function_call_resolves_concrete_type("
+PROGRAM test
+  VAR
+    a : DINT;
+    result : DINT;
+  END_VAR
+    result := SHR(ABS(a), 1);
+END_PROGRAM", "DINT")]
+    // The RHS expression type reflects the expression itself, not the target.
+    // Here TRUE is BOOL even though the target y is INT.
+    #[case::bool_assigned_to_int_var_rhs_resolves_bool("
+FUNCTION_BLOCK FB_TEST
+VAR
+    y : INT;
+END_VAR
+    y := TRUE;
+END_FUNCTION_BLOCK", "BOOL")]
+    // The expression type is determined by the expression, not the target.
+    #[case::int_assigned_to_bool_var_rhs_resolves_int("
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    y : BOOL;
+END_VAR
+    y := x;
+END_FUNCTION_BLOCK", "INT")]
+    // In x + y where x is DINT and y is INT, the result inherits the left operand type.
+    #[case::mixed_type_binary_op_inherits_left_operand_type("
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : DINT;
+    y : INT;
+    result : DINT;
+END_VAR
+    result := x + y;
+END_FUNCTION_BLOCK", "DINT")]
+    // In 5 + x where x is INT, the result should be INT (concrete wins over ANY_INT).
+    #[case::binary_op_literal_plus_concrete("
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    result : INT;
+END_VAR
+    result := 5 + x;
+END_FUNCTION_BLOCK", "INT")]
+    // In x + 5 where x is INT, the result should be INT (left is concrete).
+    #[case::binary_op_concrete_plus_literal("
+FUNCTION_BLOCK FB_TEST
+VAR
+    x : INT;
+    result : INT;
+END_VAR
+    result := x + 5;
+END_FUNCTION_BLOCK", "INT")]
+    // In 5 + 10, both are ANY_INT, so the result is ANY_INT.
+    #[case::binary_op_two_literals_resolves_any_int("
+FUNCTION_BLOCK FB_TEST
+VAR
+    result : DINT;
+END_VAR
+    result := 5 + 10;
+END_FUNCTION_BLOCK", "ANY_INT")]
+    #[case::real_literal_without_type_resolves_any_real("
+FUNCTION_BLOCK FB_TEST
+VAR
+    y : REAL;
+END_VAR
+    y := 3.14;
+END_FUNCTION_BLOCK", "ANY_REAL")]
+    // A subrange variable like INT(-100..100) should resolve to INT.
+    #[case::subrange_var_resolves_base_type("
+FUNCTION_BLOCK FB_TEST
+VAR_IN_OUT
+    x : INT(-100..100);
+END_VAR
+VAR
+    y : INT;
+END_VAR
+    y := x;
+END_FUNCTION_BLOCK", "INT")]
+    #[case::string_literal("
+FUNCTION_BLOCK FB_TEST
+VAR
+    s : STRING;
+END_VAR
+    s := 'hello';
+END_FUNCTION_BLOCK", "STRING")]
+    #[case::untyped_integer_literal_resolves_any_int("
+FUNCTION_BLOCK FB_TEST
+VAR
+    y : DINT;
+END_VAR
+    y := 42;
+END_FUNCTION_BLOCK", "ANY_INT")]
+    #[case::time_literal("
+FUNCTION_BLOCK FB_TEST
+VAR
+    t : TIME;
+END_VAR
+    t := T#5s;
+END_FUNCTION_BLOCK", "TIME")]
+    #[case::sel_resolves_value_type_not_selector("
+PROGRAM test
+  VAR
+    g : BOOL;
+    a : INT;
+    b : INT;
+    result : INT;
+  END_VAR
+    result := SEL(g, a, b);
+END_PROGRAM", "INT")]
+    #[case::mux_resolves_value_type_not_selector("
+PROGRAM test
+  VAR
+    k : INT;
+    a : DINT;
+    b : DINT;
+    result : DINT;
+  END_VAR
+    result := MUX(k, a, b);
+END_PROGRAM", "DINT")]
+    #[case::sel_nested_in_function("
+PROGRAM test
+  VAR
+    g : BOOL;
+    a : INT;
+    b : INT;
+    result : INT;
+  END_VAR
+    result := ABS(SEL(g, a, b));
+END_PROGRAM", "INT")]
+    #[case::named_array_subscript("
 TYPE MyArr : ARRAY[0..10] OF INT; END_TYPE
 
 FUNCTION_BLOCK FB_TEST
@@ -1298,38 +1096,20 @@ VAR
     result : INT;
 END_VAR
     result := arr[0];
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "INT");
-    }
-
-    #[test]
-    fn apply_when_inline_array_subscript_then_resolves_element_type() {
-        let program = "
+END_FUNCTION_BLOCK", "INT")]
+    #[case::inline_array_subscript("
 FUNCTION_BLOCK FB_TEST
 VAR
     arr : ARRAY[0..10] OF DINT;
     result : DINT;
 END_VAR
     result := arr[0];
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "DINT");
-    }
-
-    #[test]
-    fn apply_when_struct_field_2d_string_array_subscript_then_resolves_string() {
-        // Regression for the `compile_expr.rs#L32` TODO that fired when
-        // `struct.field[i, j]` was used in a STRING comparison: the analyzer
-        // previously left `resolved_type` unset for array subscripts whose
-        // base was a struct field.
-        let program = "
+END_FUNCTION_BLOCK", "DINT")]
+    // Regression for the `compile_expr.rs#L32` TODO that fired when
+    // `struct.field[i, j]` was used in a STRING comparison: the analyzer
+    // previously left `resolved_type` unset for array subscripts whose
+    // base was a struct field.
+    #[case::struct_field_2d_string_array_subscript("
 TYPE MY_DATA : STRUCT
     DIRS : ARRAY[0..2, 0..15] OF STRING[3];
 END_STRUCT;
@@ -1343,18 +1123,9 @@ VAR
     result : STRING[3];
 END_VAR
     result := data.DIRS[i, j];
-END_FUNCTION_BLOCK";
-
-        let result = run_pass(program);
-        let types = collect_assignment_types(&result);
-        assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "STRING");
-    }
-
-    #[test]
-    fn apply_when_struct_field_int_array_subscript_then_resolves_element_type() {
-        // Same fix must also cover numeric array fields, not just strings.
-        let program = "
+END_FUNCTION_BLOCK", "STRING")]
+    // Same fix must also cover numeric array fields, not just strings.
+    #[case::struct_field_int_array_subscript("
 TYPE MY_DATA : STRUCT
     values : ARRAY[0..9] OF DINT;
 END_STRUCT;
@@ -1367,11 +1138,14 @@ VAR
     result : DINT;
 END_VAR
     result := data.values[i];
-END_FUNCTION_BLOCK";
-
+END_FUNCTION_BLOCK", "DINT")]
+    fn apply_when_single_assignment_then_resolves_expected_type(
+        #[case] program: &str,
+        #[case] expected: &str,
+    ) {
         let result = run_pass(program);
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
-        assert_type_eq(&types[0], "DINT");
+        assert_type_eq(&types[0], expected);
     }
 }
