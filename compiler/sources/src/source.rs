@@ -262,4 +262,85 @@ mod tests {
         // Verify the library is cached by checking it's not None
         assert!(source.library.is_some());
     }
+
+    #[test]
+    fn try_from_file_id_with_existing_file_succeeds() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut tmp = NamedTempFile::with_suffix(".st").unwrap();
+        write!(tmp, "PROGRAM Main\nEND_PROGRAM").unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+
+        let file_id = FileId::from_string(&path);
+        let result = Source::try_from_file_id(&file_id, CompilerOptions::default());
+        assert!(result.is_ok());
+
+        let source = result.unwrap();
+        assert_eq!(source.file_type(), FileType::StructuredText);
+        assert!(source.as_string().contains("PROGRAM Main"));
+    }
+
+    #[test]
+    fn try_from_file_id_with_xml_file_succeeds() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types><dataTypes/><pous/></types>
+</project>"#;
+
+        let mut tmp = NamedTempFile::with_suffix(".xml").unwrap();
+        write!(tmp, "{}", xml_content).unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+
+        let file_id = FileId::from_string(&path);
+        let result = Source::try_from_file_id(&file_id, CompilerOptions::default());
+        assert!(result.is_ok());
+
+        let source = result.unwrap();
+        assert_eq!(source.file_type(), FileType::Xml);
+    }
+
+    #[test]
+    fn source_library_error_is_returned_as_vec() {
+        // Parsing invalid ST returns Err with the diagnostic wrapped in a Vec
+        let file_id = FileId::from_string("bad.st");
+        let mut source = Source::new(
+            "NOT VALID STRUCTURED TEXT !!!".to_string(),
+            &file_id,
+            CompilerOptions::default(),
+        );
+
+        let result = source.library();
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn source_library_cached_error_is_returned_on_second_call() {
+        let file_id = FileId::from_string("bad.st");
+        let mut source = Source::new(
+            "INVALID !!!".to_string(),
+            &file_id,
+            CompilerOptions::default(),
+        );
+
+        // First call parses and caches the error
+        assert!(source.library().is_err());
+        // Second call returns the cached error
+        assert!(source.library().is_err());
+        // Verify it is cached
+        assert!(source.library.is_some());
+    }
 }

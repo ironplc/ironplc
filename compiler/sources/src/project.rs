@@ -247,6 +247,78 @@ mod tests {
     }
 
     #[test]
+    fn with_options_creates_project_with_compiler_options() {
+        use ironplc_parser::options::CompilerOptions;
+        let options = CompilerOptions::default();
+        let project = SourceProject::with_options(options);
+        assert!(project.is_empty());
+        assert_eq!(project.len(), 0);
+    }
+
+    #[test]
+    fn initialize_from_directory_with_st_files_loads_them() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let st_path = dir.path().join("main.st");
+        fs::write(&st_path, "PROGRAM Main\nEND_PROGRAM").unwrap();
+
+        let mut project = SourceProject::new();
+        let errors = project.initialize_from_directory(dir.path());
+
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+        assert_eq!(project.len(), 1);
+    }
+
+    #[test]
+    fn initialize_from_directory_clears_existing_sources() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), "PROGRAM Main\nEND_PROGRAM").unwrap();
+
+        let mut project = SourceProject::new();
+        // Pre-populate
+        project.add_source(FileId::from_string("old.st"), "old content".to_string());
+        assert_eq!(project.len(), 1);
+
+        let errors = project.initialize_from_directory(dir.path());
+        assert!(errors.is_empty());
+        // Old source should be gone, replaced by the discovered file
+        assert_eq!(project.len(), 1);
+        assert!(project.get_source(&FileId::from_string("old.st")).is_none());
+    }
+
+    #[test]
+    fn initialize_from_directory_with_empty_directory_returns_empty_project() {
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let mut project = SourceProject::new();
+        let errors = project.initialize_from_directory(dir.path());
+
+        assert!(errors.is_empty());
+        assert!(project.is_empty());
+    }
+
+    #[test]
+    fn add_file_when_file_exists_then_succeeds() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut tmp = NamedTempFile::with_suffix(".st").unwrap();
+        write!(tmp, "PROGRAM Main\nEND_PROGRAM").unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+
+        let mut project = SourceProject::new();
+        let result = project.add_file(FileId::from_string(&path));
+        assert!(result.is_ok());
+        assert_eq!(project.len(), 1);
+    }
+
+    #[test]
     fn mixed_xml_and_st_sources_parse_successfully() {
         let mut project = SourceProject::new();
 

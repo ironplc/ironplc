@@ -407,4 +407,67 @@ mod tests {
         let result = discover(dir.path()).unwrap();
         assert_eq!(result.project_type, ProjectType::Beremiz);
     }
+
+    #[test]
+    fn discover_when_plcproj_with_malformed_xml_then_returns_diagnostic() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            "THIS IS NOT VALID XML <><>",
+        )
+        .unwrap();
+
+        let result = discover(dir.path());
+        assert!(result.is_err());
+
+        let diag = result.unwrap_err();
+        assert_eq!(diag.code, "P0006"); // XmlMalformed
+    }
+
+    #[test]
+    fn discover_when_twincat_and_plcproj_error_propagates() {
+        // A .plcproj that references a missing file should propagate the error
+        // through the detect_twincat -> discover path (covers the `result?` on line 77)
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="DOES_NOT_EXIST.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path());
+        assert!(
+            result.is_err(),
+            "Expected error for missing referenced file"
+        );
+    }
+
+    #[test]
+    fn discover_when_plcproj_with_no_compile_entries_then_returns_empty_twincat() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <PropertyGroup>
+    <Name>EmptyProject</Name>
+  </PropertyGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert!(result.files.is_empty());
+    }
+
+    #[test]
+    fn detect_fallback_root_dir_is_set_correctly() {
+        let dir = TempDir::new().unwrap();
+        let result = detect_fallback(dir.path());
+        assert_eq!(result.root_dir, dir.path());
+    }
 }
