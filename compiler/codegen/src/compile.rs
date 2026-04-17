@@ -291,9 +291,8 @@ fn compile_program_with_functions(
     // The actual FB body compilation happens after program-local variables are
     // assigned, once var_offsets are known.
     let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
-    let mut next_function_id: u16 = 2;
 
-    for fb_decl in fb_decls {
+    for (next_function_id, fb_decl) in (2_u16..).zip(fb_decls.iter()) {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
         let mut field_op_types: HashMap<String, OpType> = HashMap::new();
@@ -343,7 +342,6 @@ fn compile_program_with_functions(
                 field_op_types,
             },
         );
-        next_function_id += 1;
     }
 
     // Collect program-local variables, skipping VAR_EXTERNAL declarations
@@ -362,7 +360,6 @@ fn compile_program_with_functions(
 
     // Now compile the FB bodies with correct var_offsets.
     let mut compiled_functions = Vec::new();
-    let mut next_function_id: u16 = 2;
     let mut var_offset = VarIndex::new(program_var_count);
 
     // Compile user FUNCTIONs before FUNCTION_BLOCK bodies so that FB bodies
@@ -370,7 +367,7 @@ fn compile_program_with_functions(
     // register themselves at the end of `compile_user_function`). Per
     // IEC 61131-3 functions cannot instantiate FBs, so they don't require FB
     // bodies to have been compiled first.
-    for func_decl in func_decls {
+    for (next_function_id, func_decl) in (2_u16..).zip(func_decls.iter()) {
         let compiled = compile_user_function(
             func_decl,
             next_function_id,
@@ -382,7 +379,6 @@ fn compile_program_with_functions(
             num_globals,
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
-        next_function_id += 1;
         compiled_functions.push(compiled);
     }
 
