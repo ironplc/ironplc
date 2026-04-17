@@ -1,0 +1,31 @@
+name: Install Script Smoke Test
+on:
+  workflow_call:
+    inputs:
+      compiler-version:
+        required: true
+        type: string
+        description: 'The version number to test with (without the "v" prefix). Empty string uses the latest release.'
+
+jobs:
+  install-script-smoke:
+    name: Install Script Smoke Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # Fetch input artifacts and code
+      - name: Checkout HEAD
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      # Configure the execution environment
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+
+      # Execute the install script against a real GitHub release and verify
+      # that the installed binaries are functional. The recipe re-runs the
+      # installer to confirm idempotency.
+      - name: Install script smoke test
+        run: just install-script-smoke "${{ inputs.compiler-version }}"
