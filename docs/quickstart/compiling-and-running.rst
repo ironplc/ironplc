@@ -1,67 +1,77 @@
-=======================
-Compiling and Running
-=======================
+========================
+Connecting to Hardware
+========================
 
-So far you have been writing code and letting the development environment extension check it
-for correctness. In this chapter, you will use the command line to compile
-your program into a bytecode container and run it.
+So far, your doorbell program uses regular variables with no connection to
+physical hardware. On a real PLC, variables are mapped to specific input
+and output pins. In this chapter, you will learn how to make that
+connection.
 
-.. include:: ../includes/requires-compiler.rst
+--------------------------------------
+Directly Represented Variables
+--------------------------------------
+
+IEC 61131-3 uses the :code:`AT` keyword to bind a variable to a physical
+I/O address. Open :file:`main.st` and update the variable declarations:
+
+.. code-block::
+   :caption: main.st — With Hardware Addresses
+   :name: hardware-doorbell
+
+   PROGRAM main
+      VAR
+         Button AT %IX1 : BOOL;
+         Buzzer AT %QX1 : BOOL;
+         PulseTimer : TON;
+      END_VAR
+
+      PulseTimer(IN := NOT Button, PT := T#500ms);
+      Buzzer := PulseTimer.Q;
+
+   END_PROGRAM
+
+--------------------------------------
+What Changed
+--------------------------------------
+
+We added :code:`AT` addresses to the ``Button`` and ``Buzzer`` variables:
+
+- ``Button AT %IX1 : BOOL`` — a Boolean **input** variable. The ``I``
+  means input, ``X`` means single bit, and ``1`` is the address number.
+  On a real PLC, ``%IX1`` corresponds to a digital input pin connected
+  to the button.
+
+- ``Buzzer AT %QX1 : BOOL`` — a Boolean **output** variable. The ``Q``
+  means output. On a real PLC, ``%QX1`` corresponds to a digital output
+  pin connected to the buzzer.
+
+These are called **directly represented variables** because they are tied
+to specific hardware I/O points. The address format follows a pattern:
+
+- ``%I`` — input, ``%Q`` — output, ``%M`` — memory
+- ``X`` — single bit, ``B`` — byte, ``W`` — word (16-bit), ``D`` — double word (32-bit)
+- The number is the address within that region
 
 --------------------------------------
 Check the Program
 --------------------------------------
 
-Open a terminal in your :file:`helloworld` directory and run:
+You can verify the updated program is correct:
 
 .. code-block:: shell
-   :caption: Check Syntax
-   :name: qs-check-syntax
 
    ironplcc check main.st config.st
 
-On success, the command produces no output. If there are errors, IronPLC
-prints diagnostics with the file name, line number, and a description of
-the problem.
+The IronPLC checker validates the hardware addresses and ensures the
+program is well-formed.
 
---------------------------------------
-Compile to Bytecode
---------------------------------------
+.. note::
 
-To compile your source files into a bytecode container (:file:`.iplc` file),
-run:
-
-.. code-block:: shell
-   :caption: Compile Program
-   :name: qs-compile-program
-
-   ironplcc compile main.st --output main.iplc
-
-You can also use the short form ``-o`` for the output flag:
-
-.. code-block:: shell
-
-   ironplcc compile main.st -o main.iplc
-
-On success, the command creates the :file:`.iplc` file at the specified path.
-
---------------------------------------
-Run the Program
---------------------------------------
-
-Use the IronPLC virtual machine runtime to execute the compiled program:
-
-.. code-block:: shell
-   :caption: Run Program
-   :name: qs-run-program
-
-   ironplcvm run main.iplc
-
-You can inspect variable values after execution by specifying a dump file:
-
-.. code-block:: shell
-
-   ironplcvm run main.iplc --dump-vars output.txt
+   The IronPLC compiler does not yet support compiling programs with
+   directly represented variables to bytecode. You can check these
+   programs for correctness, but compiling and running them requires a
+   future release. For now, remove the :code:`AT` addresses to compile
+   and run in the virtual machine.
 
 --------------------------------------
 What You Have Learned
@@ -70,11 +80,12 @@ What You Have Learned
 Over the course of this tutorial, you have:
 
 1. **Installed** IronPLC and the development environment extension.
-2. **Written** a minimal IEC 61131-3 program.
-3. **Connected** it to inputs and outputs with directly represented variables.
-4. **Configured** the application with a task, resource, and configuration.
-5. **Organized** the code across multiple files.
-6. **Compiled** and **run** the program from the command line.
+2. **Learned** the sense-control-actuate cycle that drives PLC programs.
+3. **Written** a doorbell program with boolean logic and a timer.
+4. **Run** the program directly from the editor.
+5. **Configured** the application with a task schedule.
+6. **Organized** the code across multiple files.
+7. **Connected** variables to hardware I/O addresses.
 
 --------------------------------------
 Where to Go from Here

@@ -149,6 +149,17 @@ Options
    variable or type. This is a vendor extension supported by CODESYS,
    TwinCAT, and RuSTy.
 
+``--allow-cross-family-widening``
+   Allow implicit widening between bit-string and integer type families
+   (e.g. ``BYTE`` to ``INT``, literal ``0`` to ``BYTE``). This is a vendor
+   extension supported by CODESYS, TwinCAT, and RuSTy.
+
+``--allow-partial-access-syntax``
+   Allow IEC 61131-3:2013 partial-access bit syntax (``.%Xn``) as an alias
+   for the short form ``.n``. Enabled by ``--dialect=iec61131-3-ed3`` and
+   ``--dialect=rusty``. Byte/word/dword/lword partial access (``.%Bn``,
+   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
+
 Examples
 ========
 

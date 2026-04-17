@@ -1,24 +1,5 @@
 name: IronPLC Compiler
 on:
-  # Allow triggering directly
-  workflow_dispatch:
-    inputs:
-      commit-ref:
-        required: false
-        type: string
-        description: 'If not empty, then run for the specified tag'
-      gh-release-tag:
-        required: false
-        type: string
-        default: ""
-        description: 'The Github Release tag to publish to (empty value disables publishing)'
-      version:
-        required: false
-        type: string
-        default: "0.0.0"
-        description: "The version number, such as 1.2.3"
-  
-  # Allow using this workflow from another workflow
   workflow_call:
     inputs:
       commit-ref:
@@ -86,6 +67,8 @@ jobs:
           # Include target triple in cache key for cross-compilation
           key: ${{ matrix.rust_target }}
       - uses: taiki-e/install-action@03e268b84870ac3cfa58a44d9b504511b732a857 # cargo-llvm-cov
+      - name: Install cargo-dupes
+        run: cargo install cargo-dupes
       - name: Cache NSIS
         if: ${{ matrix.os == 'windows-2025' }}
         id: cache-nsis

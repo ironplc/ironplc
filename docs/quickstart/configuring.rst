@@ -2,29 +2,74 @@
 Configuring Your Application
 ==============================
 
-In the previous chapter, you wrote a program with inputs and outputs. But
-a program alone is not a complete IEC 61131-3 application — you need to
-tell the runtime *how often* to run it and *on what hardware*. That is the
-job of a configuration.
+In the previous chapter, you compiled and ran a doorbell program. But it
+only ran once. On a real PLC, the sense-control-actuate cycle repeats
+continuously on a fixed schedule. In this chapter, you will add a
+configuration to schedule the program and a timer to make the buzzer
+pulse automatically.
+
+--------------------------------------
+Add a Timer
+--------------------------------------
+
+A doorbell that buzzes constantly is not very useful. Let's add a timer
+so the buzzer pulses — turning on for a short duration, then turning off.
+
+Open :file:`main.st` and replace its contents with:
+
+.. code-block::
+   :caption: main.st — Doorbell with Timer
+   :name: doorbell-timer
+
+   PROGRAM main
+      VAR
+         Button : BOOL;
+         Buzzer : BOOL;
+         PulseTimer : TON;
+      END_VAR
+
+      PulseTimer(IN := NOT Button, PT := T#500ms);
+      Buzzer := PulseTimer.Q;
+
+   END_PROGRAM
+
+--------------------------------------
+What Changed
+--------------------------------------
+
+We added a **timer on delay** (``TON``) function block:
+
+- ``PulseTimer : TON`` declares an instance of the standard ``TON``
+  function block. ``TON`` turns its output ``Q`` to ``TRUE`` after a
+  specified delay.
+
+- ``PulseTimer(IN := NOT Button, PT := T#500ms)`` calls the timer.
+  ``IN`` is the enable input (``TRUE`` when the button is not pressed),
+  and ``PT`` is the delay duration (500 milliseconds).
+
+- ``Buzzer := PulseTimer.Q`` reads the timer's output. ``Q`` becomes
+  ``TRUE`` once the timer has been running for 500 ms.
 
 --------------------------------------
 Add a Configuration Block
 --------------------------------------
 
-Open :file:`main.st` and add the following **below** the existing
-:code:`END_PROGRAM`:
+Now add a **configuration** to tell the runtime how to schedule the
+program. Add the following **below** the existing :code:`END_PROGRAM`:
 
 .. code-block::
-   :caption: Complete Application
+   :caption: main.st — Complete Application
    :name: complete-app
 
    PROGRAM main
       VAR
-         Button AT %IX1: BOOL;
-         Buzzer AT %QX1: BOOL;
+         Button : BOOL;
+         Buzzer : BOOL;
+         PulseTimer : TON;
       END_VAR
 
-      Buzzer := NOT Button;
+      PulseTimer(IN := NOT Button, PT := T#500ms);
+      Buzzer := PulseTimer.Q;
 
    END_PROGRAM
 
@@ -35,13 +80,11 @@ Open :file:`main.st` and add the following **below** the existing
       END_RESOURCE
    END_CONFIGURATION
 
-Save the file. The IronPLC extension should show no errors.
-
 --------------------------------------
 What the Configuration Does
 --------------------------------------
 
-The new block introduces three layers:
+The configuration block introduces three layers:
 
 **CONFIGURATION**
    The top-level container for your application. Every IEC 61131-3
@@ -73,16 +116,37 @@ runtime reads the inputs, runs ``main``, and writes the outputs.
    :doc:`/explanation/program-organization`.
 
 --------------------------------------
-You Now Have a Complete Application
+Run the Updated Program
 --------------------------------------
 
-Your :file:`main.st` file now contains everything needed for a deployable
-IEC 61131-3 application:
+Now that the timer and configuration are in place, run the updated program:
 
-- A **program** that reads a button and controls a buzzer.
-- A **configuration** that runs the program every 100 ms.
+#. Click :guilabel:`Run Program` above the ``PROGRAM main`` line.
+#. The :guilabel:`IronPLC Run` output panel shows the variables updating
+   in real time. After a moment, you should see output like:
 
-In the next chapter, you will learn how to split this into multiple files
-as your project grows.
+   .. code-block:: text
+
+      Scan cycle: 10
+      ---
+        Button : BOOL = FALSE
+        Buzzer : BOOL = TRUE
+        PulseTimer.IN : BOOL = TRUE
+        PulseTimer.PT : TIME = T#500ms
+        PulseTimer.Q : BOOL = TRUE
+        PulseTimer.ET : TIME = T#1000ms
+
+#. Click :guilabel:`Stop` above the ``PROGRAM`` line to end execution.
+
+The timer's elapsed time (``ET``) shows how long it has been running.
+After enough scan cycles, ``Q`` becomes ``TRUE`` and the buzzer turns on.
+
+--------------------------------------
+Next Steps
+--------------------------------------
+
+Your :file:`main.st` file now contains everything needed for a working
+IEC 61131-3 application. As your project grows, you will want to organize
+code across multiple files.
 
 Continue to :doc:`multiple-files`.

@@ -349,3 +349,170 @@ END_PROGRAM
     // check (var[2]) should be 42 (written through REF)
     assert_eq!(bufs.vars[2].as_i32(), 42);
 }
+
+#[test]
+fn end_to_end_when_function_with_local_ref_to_array_deref_subscript_then_writes_through_ref() {
+    // Verifies that a local REF_TO ARRAY variable (not a parameter) can be used
+    // with deref array subscript syntax (local_pt^[0]).
+    let source = "
+FUNCTION fill_first : INT
+  VAR_INPUT
+      arr_ref : REF_TO ARRAY[0..4] OF INT;
+  END_VAR
+  VAR
+      local_pt : REF_TO ARRAY[0..4] OF INT;
+  END_VAR
+      local_pt := arr_ref;
+      local_pt^[0] := 77;
+      fill_first := 1;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    arr : ARRAY[0..4] OF INT;
+    result : INT;
+    check : INT;
+END_VAR
+    result := fill_first(arr_ref := REF(arr));
+    check := arr[0];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
+    // result (var[1]) should be 1 (function return value)
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    // check (var[2]) should be 77 (written through local REF)
+    assert_eq!(bufs.vars[2].as_i32(), 77);
+}
+
+#[test]
+fn end_to_end_when_program_ref_to_array_deref_subscript_then_reads_element() {
+    // Verifies that a program-level REF_TO ARRAY variable can be used
+    // with deref array subscript syntax (pt^[i]) to read array elements.
+    // This is the pattern used in OSCAT buffer/list functions.
+    let source = "
+FUNCTION GET_ELEMENT : REAL
+VAR_INPUT
+    pt : REF_TO ARRAY[0..100] OF REAL;
+    i : INT;
+END_VAR
+    GET_ELEMENT := pt^[i];
+END_FUNCTION
+
+PROGRAM main
+VAR
+    arr : ARRAY[0..100] OF REAL;
+    r : REAL;
+END_VAR
+    arr[0] := 42.0;
+    r := GET_ELEMENT(pt := REF(arr), i := 0);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
+    // r (var[1]) should be 42.0 (REAL is 32-bit float)
+    assert_eq!(bufs.vars[1].as_f32(), 42.0);
+}
+
+#[test]
+fn end_to_end_when_ref_to_byte_array_deref_subscript_in_comparison_then_correct() {
+    // Verifies that pt^[i] used in a comparison context works end-to-end.
+    // This exercises the resolved_type on deref+array subscript expressions,
+    // which is needed for op_type() in comparison codegen.
+    let source = "
+FUNCTION READ_ELEM : BYTE
+VAR_INPUT
+    pt : REF_TO ARRAY[0..10] OF BYTE;
+    i : INT;
+END_VAR
+    READ_ELEM := pt^[i];
+END_FUNCTION
+
+PROGRAM main
+VAR
+    arr : ARRAY[0..10] OF BYTE;
+    b : BYTE;
+    found : BOOL;
+END_VAR
+    arr[0] := BYTE#42;
+    b := READ_ELEM(pt := REF(arr), i := 0);
+    found := b > BYTE#0;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
+    // b (var[1]) should be 42
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+    // found (var[2]) should be TRUE (42 > 0)
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_fb_with_deref_array_subscript_then_writes_through_ref() {
+    // Verifies that PT^[0] syntax (dereference + array subscript) works
+    // inside a FUNCTION_BLOCK, not just inside a FUNCTION.
+    let source = "
+FUNCTION_BLOCK ARRAY_WRITER
+  VAR_INPUT
+      PT : REF_TO ARRAY[0..10] OF BYTE;
+  END_VAR
+      PT^[0] := BYTE#42;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    arr : ARRAY[0..10] OF BYTE;
+    fb : ARRAY_WRITER;
+    check : BYTE;
+END_VAR
+    fb(PT := REF(arr));
+    check := arr[0];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
+    // check (var[2]) should be 42 (written through REF in FB)
+    assert_eq!(bufs.vars[2].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_fb_with_local_ref_to_array_deref_subscript_then_writes_through_ref() {
+    // Verifies that a local REF_TO ARRAY variable inside a FUNCTION_BLOCK
+    // can be used with deref array subscript syntax (local_pt^[0]).
+    let source = "
+FUNCTION_BLOCK COPY_FB
+  VAR_INPUT
+      src : REF_TO ARRAY[0..4] OF INT;
+  END_VAR
+  VAR
+      local_pt : REF_TO ARRAY[0..4] OF INT;
+  END_VAR
+      local_pt := src;
+      local_pt^[0] := 99;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    arr : ARRAY[0..4] OF INT;
+    fb : COPY_FB;
+    check : INT;
+END_VAR
+    fb(src := REF(arr));
+    check := arr[0];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
+    // check (var[2]) should be 99 (written through local REF in FB)
+    assert_eq!(bufs.vars[2].as_i32(), 99);
+}

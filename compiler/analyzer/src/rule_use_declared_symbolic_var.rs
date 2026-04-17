@@ -57,9 +57,15 @@ use ironplc_parser::options::CompilerOptions;
 pub fn apply(
     lib: &Library,
     _context: &SemanticContext,
-    _options: &CompilerOptions,
+    options: &CompilerOptions,
 ) -> SemanticResult {
     let mut visitor: ScopedTable<Id, DummyNode> = scoped_table::ScopedTable::new();
+
+    // Seed implicit system globals so direct references don't trigger P4007.
+    if options.allow_system_uptime_global {
+        visitor.add(&Id::from("__SYSTEM_UP_TIME"), DummyNode {});
+        visitor.add(&Id::from("__SYSTEM_UP_LTIME"), DummyNode {});
+    }
 
     visitor.walk(lib).map_err(|e| vec![e])
 }
@@ -291,5 +297,66 @@ END_FUNCTION_BLOCK";
             .described
             .iter()
             .any(|d| d.starts_with("did you mean")));
+    }
+
+    #[test]
+    fn apply_when_enum_value_in_comparison_then_ok() {
+        let program = "
+TYPE
+    MotorState : (STOPPED, RUNNING, FAULTED);
+END_TYPE
+
+FUNCTION_BLOCK FB_MotorControl
+    VAR
+        State : MotorState := STOPPED;
+        CONTACTOR : BOOL;
+        Seal : BOOL;
+    END_VAR
+    CONTACTOR := (State = RUNNING) AND Seal;
+END_FUNCTION_BLOCK";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context, &CompilerOptions::default());
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_system_uptime_global_enabled_then_direct_access_ok() {
+        let program = "
+PROGRAM main
+VAR
+    t : TIME;
+END_VAR
+
+t := __SYSTEM_UP_TIME;
+END_PROGRAM";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let mut options = CompilerOptions::default();
+        options.allow_system_uptime_global = true;
+        let result = apply(&library, &context, &options);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_system_uptime_global_disabled_then_direct_access_error() {
+        let program = "
+PROGRAM main
+VAR
+    t : TIME;
+END_VAR
+
+t := __SYSTEM_UP_TIME;
+END_PROGRAM";
+
+        let library = parse_and_resolve_types(program);
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&library, &context, &CompilerOptions::default());
+
+        assert!(result.is_err());
     }
 }

@@ -30,7 +30,23 @@
 
 mod compile;
 mod compile_array;
+mod compile_call;
+mod compile_enum;
+mod compile_expr;
+mod compile_fn;
+mod compile_setup;
+mod compile_stmt;
+mod compile_string;
 mod compile_struct;
 mod emit;
+mod optimize;
 
-pub use compile::compile;
+pub use compile::{compile, CodegenOptions};
+
+// Spec conformance testing infrastructure (test-only)
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;

@@ -36,7 +36,7 @@
 //! PROGRAM main
 //! VAR
 //!     result : REAL;
-//!     x : INT;
+//!     x : DINT;
 //! END_VAR
 //!     result := ADD_REALS(x);
 //! END_PROGRAM
@@ -65,7 +65,7 @@ use ironplc_parser::options::CompilerOptions;
 /// Bare integer literals (ANY_INT) are also accepted where REAL or LREAL
 /// is expected. This is type inference for untyped literals, not implicit
 /// widening of typed expressions (see ADR-0028).
-fn are_types_compatible(expected: &TypeName, actual: &TypeName) -> bool {
+fn are_types_compatible(expected: &TypeName, actual: &TypeName, options: &CompilerOptions) -> bool {
     if *expected == *actual {
         return true;
     }
@@ -84,6 +84,35 @@ fn are_types_compatible(expected: &TypeName, actual: &TypeName) -> bool {
             {
                 return true;
             }
+            // Bare integer literals (ANY_INT) to ANY_BIT types (BYTE, WORD, etc.)
+            // requires --allow-cross-family-widening. See ADR-0031.
+            if options.allow_cross_family_widening
+                && generic == GenericTypeName::AnyInt
+                && matches!(
+                    elementary,
+                    ElementaryTypeName::BYTE
+                        | ElementaryTypeName::WORD
+                        | ElementaryTypeName::DWORD
+                        | ElementaryTypeName::LWORD
+                )
+            {
+                return true;
+            }
+        }
+    }
+    // Implicit widening: integer-to-integer, integer-to-real (lossless),
+    // bit-string-to-bit-string. See ADR-0029 and ADR-0031.
+    if let Ok(actual_elem) = ElementaryTypeName::try_from(&actual.name) {
+        if let Ok(expected_elem) = ElementaryTypeName::try_from(&expected.name) {
+            if actual_elem.can_widen_to(&expected_elem) {
+                return true;
+            }
+            // Cross-family widening (bit-string → integer) requires flag.
+            if options.allow_cross_family_widening
+                && actual_elem.can_widen_cross_family_to(&expected_elem)
+            {
+                return true;
+            }
         }
     }
     false
@@ -92,10 +121,11 @@ fn are_types_compatible(expected: &TypeName, actual: &TypeName) -> bool {
 pub fn apply(
     lib: &Library,
     context: &SemanticContext,
-    _options: &CompilerOptions,
+    options: &CompilerOptions,
 ) -> SemanticResult {
     let mut visitor = RuleFunctionCallTypeCheck {
         context,
+        options,
         diagnostics: vec![],
         var_types: HashMap::new(),
     };
@@ -111,6 +141,7 @@ pub fn apply(
 
 struct RuleFunctionCallTypeCheck<'a> {
     context: &'a SemanticContext,
+    options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
     /// Maps variable name to declared type for the current scope.
     var_types: HashMap<Id, TypeName>,
@@ -128,7 +159,7 @@ impl RuleFunctionCallTypeCheck<'_> {
                 if let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target {
                     if let Some(target_type) = self.var_types.get(&nv.name) {
                         if let Some(ref return_type) = value.resolved_type {
-                            if !are_types_compatible(target_type, return_type) {
+                            if !are_types_compatible(target_type, return_type, self.options) {
                                 self.diagnostics.push(
                                     Diagnostic::problem(
                                         Problem::FunctionCallReturnTypeMismatch,
@@ -234,7 +265,7 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
                 let param = &input_params[i];
 
                 if let Some(ref arg_type) = arg_expr.resolved_type {
-                    if !are_types_compatible(&param.param_type, arg_type) {
+                    if !are_types_compatible(&param.param_type, arg_type, self.options) {
                         self.diagnostics.push(
                             Diagnostic::problem(
                                 Problem::FunctionCallArgTypeMismatch,
@@ -285,7 +316,7 @@ END_PROGRAM";
     }
 
     #[test]
-    fn apply_when_arg_type_mismatch_then_error() {
+    fn apply_when_int_arg_to_real_param_lossless_then_ok() {
         let program = "
 FUNCTION DOUBLE_REAL : REAL
 VAR_INPUT
@@ -298,6 +329,29 @@ PROGRAM main
 VAR
     result : REAL;
     x : INT;
+END_VAR
+    result := DOUBLE_REAL(x);
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_dint_arg_to_real_param_lossy_then_error() {
+        let program = "
+FUNCTION DOUBLE_REAL : REAL
+VAR_INPUT
+    A : REAL;
+END_VAR
+    DOUBLE_REAL := A;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+    x : DINT;
 END_VAR
     result := DOUBLE_REAL(x);
 END_PROGRAM";
@@ -335,7 +389,7 @@ END_PROGRAM";
 FUNCTION MY_FUNC : INT
 VAR_INPUT
     A : INT;
-    B : DINT;
+    B : SINT;
 END_VAR
     MY_FUNC := A;
 END_FUNCTION
@@ -586,65 +640,81 @@ END_PROGRAM";
 
     #[test]
     fn are_types_compatible_when_exact_match_then_true() {
+        let opts = CompilerOptions::default();
         assert!(are_types_compatible(
             &TypeName::from("INT"),
-            &TypeName::from("INT")
+            &TypeName::from("INT"),
+            &opts,
         ));
     }
 
     #[test]
     fn are_types_compatible_when_any_int_to_int_then_true() {
+        let opts = CompilerOptions::default();
         assert!(are_types_compatible(
             &TypeName::from("INT"),
-            &TypeName::from("ANY_INT")
+            &TypeName::from("ANY_INT"),
+            &opts,
         ));
     }
 
     #[test]
     fn are_types_compatible_when_any_int_to_dint_then_true() {
+        let opts = CompilerOptions::default();
         assert!(are_types_compatible(
             &TypeName::from("DINT"),
-            &TypeName::from("ANY_INT")
+            &TypeName::from("ANY_INT"),
+            &opts,
         ));
     }
 
     #[test]
     fn are_types_compatible_when_any_real_to_real_then_true() {
+        let opts = CompilerOptions::default();
         assert!(are_types_compatible(
             &TypeName::from("REAL"),
-            &TypeName::from("ANY_REAL")
+            &TypeName::from("ANY_REAL"),
+            &opts,
         ));
     }
 
     #[test]
     fn are_types_compatible_when_any_real_to_lreal_then_true() {
+        let opts = CompilerOptions::default();
         assert!(are_types_compatible(
             &TypeName::from("LREAL"),
-            &TypeName::from("ANY_REAL")
+            &TypeName::from("ANY_REAL"),
+            &opts,
         ));
     }
 
     #[test]
     fn are_types_compatible_when_any_int_to_real_then_true() {
+        let opts = CompilerOptions::default();
         assert!(are_types_compatible(
             &TypeName::from("REAL"),
-            &TypeName::from("ANY_INT")
+            &TypeName::from("ANY_INT"),
+            &opts,
         ));
     }
 
     #[test]
     fn are_types_compatible_when_any_int_to_lreal_then_true() {
+        let opts = CompilerOptions::default();
         assert!(are_types_compatible(
             &TypeName::from("LREAL"),
-            &TypeName::from("ANY_INT")
+            &TypeName::from("ANY_INT"),
+            &opts,
         ));
     }
 
     #[test]
     fn are_types_compatible_when_dint_to_int_then_false() {
+        let opts = CompilerOptions::default();
         assert!(!are_types_compatible(
             &TypeName::from("INT"),
-            &TypeName::from("DINT")
+            &TypeName::from("DINT"),
+            &opts,
         ));
     }
 
@@ -690,5 +760,532 @@ END_PROGRAM
         let (library, context) = parse_and_resolve_types_with_context(program);
         let result = apply(&library, &context, &CompilerOptions::default());
         assert!(result.is_ok());
+    }
+
+    // --- Implicit integer widening tests (ADR-0029) ---
+
+    #[test]
+    fn apply_when_sint_arg_to_int_param_then_ok() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : SINT;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_int_arg_to_dint_param_then_ok() {
+        let program = "
+FUNCTION TAKES_DINT : DINT
+VAR_INPUT
+    x : DINT;
+END_VAR
+    TAKES_DINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    y : INT;
+END_VAR
+    result := TAKES_DINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_sint_arg_to_lint_param_then_ok() {
+        let program = "
+FUNCTION TAKES_LINT : LINT
+VAR_INPUT
+    x : LINT;
+END_VAR
+    TAKES_LINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : LINT;
+    y : SINT;
+END_VAR
+    result := TAKES_LINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_usint_arg_to_uint_param_then_ok() {
+        let program = "
+FUNCTION TAKES_UINT : UINT
+VAR_INPUT
+    x : UINT;
+END_VAR
+    TAKES_UINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : UINT;
+    y : USINT;
+END_VAR
+    result := TAKES_UINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_usint_arg_to_int_param_then_ok() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : USINT;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_uint_arg_to_dint_param_then_ok() {
+        let program = "
+FUNCTION TAKES_DINT : DINT
+VAR_INPUT
+    x : DINT;
+END_VAR
+    TAKES_DINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    y : UINT;
+END_VAR
+    result := TAKES_DINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_sint_return_to_dint_var_then_ok() {
+        let program = "
+FUNCTION GET_SINT : SINT
+VAR_INPUT
+    x : SINT;
+END_VAR
+    GET_SINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    y : SINT;
+END_VAR
+    result := GET_SINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_dint_arg_to_int_param_then_error() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : DINT;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_int_arg_to_uint_param_then_error() {
+        let program = "
+FUNCTION TAKES_UINT : UINT
+VAR_INPUT
+    x : UINT;
+END_VAR
+    TAKES_UINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : UINT;
+    y : INT;
+END_VAR
+    result := TAKES_UINT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_byte_arg_to_int_param_then_error() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : BYTE;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn are_types_compatible_when_int_to_dint_then_true() {
+        let opts = CompilerOptions::default();
+        assert!(are_types_compatible(
+            &TypeName::from("DINT"),
+            &TypeName::from("INT"),
+            &opts,
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_usint_to_int_then_true() {
+        let opts = CompilerOptions::default();
+        assert!(are_types_compatible(
+            &TypeName::from("INT"),
+            &TypeName::from("USINT"),
+            &opts,
+        ));
+    }
+
+    // --- Standard widening tests (ADR-0031) ---
+
+    #[test]
+    fn are_types_compatible_when_int_to_real_then_true() {
+        let opts = CompilerOptions::default();
+        assert!(are_types_compatible(
+            &TypeName::from("REAL"),
+            &TypeName::from("INT"),
+            &opts,
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_dint_to_real_then_false() {
+        let opts = CompilerOptions::default();
+        assert!(!are_types_compatible(
+            &TypeName::from("REAL"),
+            &TypeName::from("DINT"),
+            &opts,
+        ));
+    }
+
+    #[test]
+    fn are_types_compatible_when_byte_to_word_then_true() {
+        let opts = CompilerOptions::default();
+        assert!(are_types_compatible(
+            &TypeName::from("WORD"),
+            &TypeName::from("BYTE"),
+            &opts,
+        ));
+    }
+
+    // --- Integration tests for new widening cases ---
+
+    #[test]
+    fn apply_when_int_arg_to_real_param_then_ok() {
+        let program = "
+FUNCTION TAKES_REAL : REAL
+VAR_INPUT
+    x : REAL;
+END_VAR
+    TAKES_REAL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+    y : INT;
+END_VAR
+    result := TAKES_REAL(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_dint_arg_to_real_param_then_error() {
+        let program = "
+FUNCTION TAKES_REAL : REAL
+VAR_INPUT
+    x : REAL;
+END_VAR
+    TAKES_REAL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+    y : DINT;
+END_VAR
+    result := TAKES_REAL(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_byte_arg_to_word_param_then_ok() {
+        let program = "
+FUNCTION TAKES_WORD : WORD
+VAR_INPUT
+    x : WORD;
+END_VAR
+    TAKES_WORD := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : WORD;
+    y : BYTE;
+END_VAR
+    result := TAKES_WORD(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_word_arg_to_byte_param_then_error() {
+        let program = "
+FUNCTION TAKES_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    TAKES_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : BYTE;
+    y : WORD;
+END_VAR
+    result := TAKES_BYTE(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_real_arg_to_int_param_then_error() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : REAL;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    // --- Cross-family widening tests (ADR-0031, requires flag) ---
+
+    #[test]
+    fn apply_when_byte_arg_to_int_param_with_flag_then_ok() {
+        let program = "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : BYTE;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let mut opts = CompilerOptions::default();
+        opts.allow_cross_family_widening = true;
+        let result = apply(&library, &context, &opts);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_literal_zero_to_byte_param_with_flag_then_ok() {
+        let program = "
+FUNCTION TAKES_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    TAKES_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : BYTE;
+END_VAR
+    result := TAKES_BYTE(0);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let mut opts = CompilerOptions::default();
+        opts.allow_cross_family_widening = true;
+        let result = apply(&library, &context, &opts);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_literal_zero_to_byte_param_without_flag_then_error() {
+        let program = "
+FUNCTION TAKES_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    TAKES_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : BYTE;
+END_VAR
+    result := TAKES_BYTE(0);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_byte_return_to_int_var_with_flag_then_ok() {
+        let program = "
+FUNCTION GET_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    GET_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : BYTE;
+END_VAR
+    result := GET_BYTE(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let mut opts = CompilerOptions::default();
+        opts.allow_cross_family_widening = true;
+        let result = apply(&library, &context, &opts);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_byte_return_to_int_var_without_flag_then_error() {
+        let program = "
+FUNCTION GET_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    GET_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : BYTE;
+END_VAR
+    result := GET_BYTE(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_int_arg_to_byte_param_with_flag_then_error() {
+        // Integer → bit-string is never allowed, even with flag
+        let program = "
+FUNCTION TAKES_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    TAKES_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : BYTE;
+    y : INT;
+END_VAR
+    result := TAKES_BYTE(y);
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let mut opts = CompilerOptions::default();
+        opts.allow_cross_family_widening = true;
+        let result = apply(&library, &context, &opts);
+        assert!(result.is_err());
     }
 }

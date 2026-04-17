@@ -2,8 +2,8 @@
   "name": "ironplc",
   "displayName": "IronPLC",
   "publisher": "ironplc",
-  "description": "Open-source IEC 61131-3 language support with real-time error checking, auto-completion, syntax highlighting, and a runtime for executing programs.",
-  "version": "0.184.0",
+  "description": "IEC 61131-3 Structured Text language support with real-time error checking, syntax highlighting, and build tools for PLC programs.",
+  "version": "0.201.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -38,6 +38,24 @@
         "title": "New Structured Text File",
         "shortTitle": "Structured Text File",
         "category": "IronPLC"
+      },
+      {
+        "command": "ironplc.runProgram",
+        "title": "Run Program",
+        "category": "IronPLC",
+        "icon": "$(play)"
+      },
+      {
+        "command": "ironplc.stopProgram",
+        "title": "Stop Program",
+        "category": "IronPLC",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "ironplc.pauseProgram",
+        "title": "Pause/Resume Program",
+        "category": "IronPLC",
+        "icon": "$(debug-pause)"
       }
     ],
     "menus": {

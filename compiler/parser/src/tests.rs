@@ -1957,6 +1957,40 @@ END_PROGRAM";
     }
 
     #[test]
+    fn parse_when_time_function_declaration_and_flag_enabled_then_ok() {
+        let source = "FUNCTION TIME : TIME
+VAR
+    t : TIME;
+END_VAR
+TIME := T#0s;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    t : TIME;
+END_VAR
+t := TIME();
+END_PROGRAM";
+
+        let options = CompilerOptions {
+            allow_time_as_function_name: true,
+            ..Default::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_when_time_function_declaration_and_flag_disabled_then_err() {
+        let source = "FUNCTION TIME : TIME
+TIME := T#0s;
+END_FUNCTION";
+
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn parse_when_function_with_var_temp_then_succeeds() {
         let lib = parse_text(
             "FUNCTION my_func : DINT
@@ -2004,5 +2038,267 @@ END_VAR
 END_PROGRAM";
         let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_when_program_mixed_located_and_non_located_vars_then_ok() {
+        let lib = parse_text(
+            "PROGRAM main
+VAR
+    Motor : BOOL;
+    xStart AT %IX0.0 : BOOL;
+    xStop AT %IX0.1 : BOOL;
+END_VAR
+END_PROGRAM",
+        );
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 3);
+        assert!(matches!(
+            &prog.variables[0].identifier,
+            VariableIdentifier::Symbol(_)
+        ));
+        assert!(matches!(
+            &prog.variables[1].identifier,
+            VariableIdentifier::Direct(_)
+        ));
+        assert!(matches!(
+            &prog.variables[2].identifier,
+            VariableIdentifier::Direct(_)
+        ));
+    }
+
+    #[test]
+    fn parse_when_program_mixed_vars_with_retain_qualifier_then_ok() {
+        let lib = parse_text(
+            "PROGRAM main
+VAR RETAIN
+    counter : INT;
+    saved AT %MW0 : INT;
+END_VAR
+END_PROGRAM",
+        );
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 2);
+        assert_eq!(prog.variables[0].qualifier, DeclarationQualifier::Retain);
+        assert_eq!(prog.variables[1].qualifier, DeclarationQualifier::Retain);
+    }
+
+    #[test]
+    fn parse_when_program_motor_control_style_then_ok() {
+        let lib = parse_text(
+            "TYPE
+  MotorState : (STOPPED, RUNNING, FAULTED);
+END_TYPE
+
+FUNCTION_BLOCK FB_MotorControl
+  VAR_INPUT
+    START_PB : BOOL;
+    STOP_PB : BOOL;
+    OL_CONTACT : BOOL;
+    FAULT_RESET : BOOL;
+  END_VAR
+  VAR_OUTPUT
+    CONTACTOR : BOOL;
+    RUN_LAMP : BOOL;
+    FAULT_LAMP : BOOL;
+  END_VAR
+  VAR
+    Seal : BOOL;
+  END_VAR
+
+  IF NOT OL_CONTACT THEN
+    Seal := FALSE;
+  ELSE
+    IF START_PB AND STOP_PB THEN
+      Seal := TRUE;
+    END_IF;
+    IF NOT STOP_PB THEN
+      Seal := FALSE;
+    END_IF;
+  END_IF;
+
+  CONTACTOR := Seal;
+  RUN_LAMP := CONTACTOR;
+  FAULT_LAMP := NOT OL_CONTACT;
+END_FUNCTION_BLOCK
+
+PROGRAM PLC_PRG
+  VAR
+    Motor : FB_MotorControl;
+    xStart AT %IX0.0 : BOOL;
+    xStop AT %IX0.1 : BOOL;
+    xOverload AT %IX0.2 : BOOL;
+    xReset AT %IX0.3 : BOOL;
+    yContactor AT %QX0.0 : BOOL;
+    yRunLamp AT %QX0.1 : BOOL;
+    yFaultLamp AT %QX0.2 : BOOL;
+  END_VAR
+
+  Motor(
+    START_PB := xStart,
+    STOP_PB := xStop,
+    OL_CONTACT := xOverload,
+    FAULT_RESET := xReset,
+    CONTACTOR => yContactor,
+    RUN_LAMP => yRunLamp,
+    FAULT_LAMP => yFaultLamp
+  );
+END_PROGRAM",
+        );
+        let prog = cast!(&lib.elements[2], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 8);
+        assert!(matches!(
+            &prog.variables[0].identifier,
+            VariableIdentifier::Symbol(_)
+        ));
+        assert!(matches!(
+            &prog.variables[1].identifier,
+            VariableIdentifier::Direct(_)
+        ));
+    }
+
+    // ---------------------------------------------------------------------
+    // REQ-PAB: IEC 61131-3:2013 partial-access bit syntax (.%Xn).
+    // See specs/design/partial-access-bit-syntax.md.
+    // ---------------------------------------------------------------------
+
+    fn opts_with_partial_access() -> CompilerOptions {
+        CompilerOptions {
+            allow_partial_access_syntax: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    fn wrap_program(body: &str) -> String {
+        format!(
+            "PROGRAM main\nVAR\n  b : BYTE;\n  r : BOOL;\n  arr : ARRAY[0..1] OF BYTE;\n  s : MY_STRUCT;\nEND_VAR\n{}\nEND_PROGRAM",
+            body
+        )
+    }
+
+    /// REQ-PAB-001: The lexer tokenizes `%X<digits>` as `PartialAccessBit`.
+    #[test]
+    fn lexer_spec_req_pab_001_percent_x_digits_tokenizes_as_partial_access_bit() {
+        use crate::token::TokenType;
+        let (tokens, _) = crate::tokenize_program(
+            "PROGRAM p VAR b : BYTE; END_VAR b.%X3; END_PROGRAM",
+            &FileId::default(),
+            &opts_with_partial_access(),
+            0,
+            0,
+        );
+        let uppercase_hit = tokens
+            .iter()
+            .any(|t| t.token_type == TokenType::PartialAccessBit && t.text == "%X3");
+        assert!(uppercase_hit, "tokens = {:?}", tokens);
+
+        // Case insensitivity.
+        let (tokens_lower, _) = crate::tokenize_program(
+            "PROGRAM p VAR b : BYTE; END_VAR b.%x3; END_PROGRAM",
+            &FileId::default(),
+            &opts_with_partial_access(),
+            0,
+            0,
+        );
+        assert!(tokens_lower
+            .iter()
+            .any(|t| t.token_type == TokenType::PartialAccessBit && t.text == "%x3"));
+    }
+
+    /// REQ-PAB-002: `%X0` does not cannibalize `DirectAddress` tokens like `%IX0.0`.
+    #[test]
+    fn lexer_spec_req_pab_002_direct_address_still_takes_precedence() {
+        use crate::token::TokenType;
+        let (tokens, _) = crate::tokenize_program(
+            "PROGRAM p VAR x AT %IX0.0 : BOOL; END_VAR END_PROGRAM",
+            &FileId::default(),
+            &opts_with_partial_access(),
+            0,
+            0,
+        );
+        assert!(tokens
+            .iter()
+            .any(|t| t.token_type == TokenType::DirectAddress && t.text == "%IX0.0"));
+        assert!(!tokens
+            .iter()
+            .any(|t| t.token_type == TokenType::PartialAccessBit));
+    }
+
+    /// REQ-PAB-010: `.%Xn` is accepted on a simple variable.
+    #[test]
+    fn parser_spec_req_pab_010_dot_percent_x_accepted_on_simple_var() {
+        let src = wrap_program("r := b.%X0;");
+        let result = parse_program(&src, &FileId::default(), &opts_with_partial_access());
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+    }
+
+    /// REQ-PAB-011: `.%Xn` is accepted after an array subscript — the user's case.
+    #[test]
+    fn parser_spec_req_pab_011_dot_percent_x_accepted_after_array_subscript() {
+        let src = wrap_program("r := arr[0].%X0;");
+        let result = parse_program(&src, &FileId::default(), &opts_with_partial_access());
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+    }
+
+    /// REQ-PAB-012: `.%Xn` is accepted after a struct field access.
+    #[test]
+    fn parser_spec_req_pab_012_dot_percent_x_accepted_after_struct_field() {
+        // Define MY_STRUCT with a BYTE field so the program type-checks later,
+        // though this test only exercises the parser surface.
+        let src = "
+TYPE MY_STRUCT : STRUCT f : BYTE; END_STRUCT; END_TYPE
+PROGRAM main
+VAR
+  s : MY_STRUCT;
+  r : BOOL;
+END_VAR
+  r := s.f.%X0;
+END_PROGRAM
+";
+        let result = parse_program(src, &FileId::default(), &opts_with_partial_access());
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+    }
+
+    /// REQ-PAB-020: `x.%Xn` and `x.n` produce equal AST subtrees.
+    #[test]
+    fn parser_spec_req_pab_020_dot_percent_x_and_dot_n_produce_equal_ast() {
+        let long = wrap_program("r := b.%X3;");
+        let short = wrap_program("r := b.3;");
+        let long_lib =
+            parse_program(&long, &FileId::default(), &opts_with_partial_access()).unwrap();
+        let short_lib =
+            parse_program(&short, &FileId::default(), &CompilerOptions::default()).unwrap();
+
+        // Dig out the single assignment's RHS symbolic variable from each AST
+        // and compare structurally.
+        let long_prog = cast!(
+            &long_lib.elements[0],
+            LibraryElementKind::ProgramDeclaration
+        );
+        let short_prog = cast!(
+            &short_lib.elements[0],
+            LibraryElementKind::ProgramDeclaration
+        );
+        assert_eq!(long_prog.body, short_prog.body);
+    }
+
+    /// REQ-PAB-050: When the flag is off, `.%Xn` produces
+    /// `PartialAccessSyntaxDisabled` (P4033) — not a lexer-level P0003.
+    #[test]
+    fn parser_spec_req_pab_050_disabled_flag_produces_partial_access_syntax_disabled() {
+        let src = wrap_program("r := b.%X0;");
+        let result = parse_program(&src, &FileId::default(), &CompilerOptions::default());
+        match result {
+            Ok(_) => panic!("expected error, got Ok"),
+            Err(d) => {
+                assert_eq!(
+                    d.code,
+                    "P4033",
+                    "expected P4033 PartialAccessSyntaxDisabled, got {}: {}",
+                    d.code,
+                    d.description(),
+                );
+            }
+        }
     }
 }

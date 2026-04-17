@@ -2,12 +2,14 @@
 #![allow(clippy::result_large_err)]
 extern crate ironplc_dsl as dsl;
 
+pub mod declarations;
 mod lexer;
 pub mod options;
 mod parser;
 mod preprocessor;
 mod rule_no_empty_var_blocks;
 mod rule_token_no_c_style_comment;
+mod rule_token_no_partial_access_syntax;
 mod vars;
 mod xform_assign_file_id;
 mod xform_demote_edition3_keywords;
@@ -65,6 +67,7 @@ fn check_tokens(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<D
     let rules: Vec<fn(&[Token], &CompilerOptions) -> Result<(), Vec<Diagnostic>>> = vec![
         rule_token_no_c_style_comment::apply,
         rule_no_empty_var_blocks::apply,
+        rule_token_no_partial_access_syntax::apply,
     ];
 
     let mut errors = vec![];

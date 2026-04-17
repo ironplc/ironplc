@@ -414,6 +414,8 @@ pub trait Visitor<E> {
 
     dispatch!(BitAccessVariable);
 
+    dispatch!(PartialAccessVariable);
+
     dispatch!(DerefVariable);
 }
 

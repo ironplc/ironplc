@@ -77,6 +77,7 @@ P4029,ConstantTypeParamNotAllowed,Constant reference in type parameter requires 
 P4030,UndefinedConstantReference,Constant referenced in type parameter is not defined
 P4031,ConstantNotIntegerType,Constant referenced in type parameter is not an integer type
 P4032,ConstantMissingInitializer,Constant referenced in type parameter has no initializer
+P4033,PartialAccessSyntaxDisabled,Partial-access syntax (.%Xn) requires --allow-partial-access-syntax flag
 P6001,CannotCanonicalizePath,Unable to canonicalize the path
 P6002,CannotReadMetadata,Unable to read metadata for the path
 P6003,CannotReadDirectory,Unable to read directory
@@ -85,6 +86,7 @@ P6005,SymlinkUnsupported,Symlinks are not supported
 P6006,UnsupportedEncoding,File encoding is not supported
 P6007,UnsupportedFileType,File type is not supported
 P6008,XmlUnsupportedVersion,PLCopen XML version is not supported
+P8001,McpInputValidation,MCP tool input validation error
 P9001,UnsupportedStdLibType,Referenced type is valid but not implemented
 P9002,NoContent,Set of valid source files has no content
 P9003,XmlBodyTypeNotSupported,POU body language is not supported

@@ -4,7 +4,9 @@ members = [
     "benchmarks",
     "codegen",
     "container",
-    "plc2x",
+    "ironplc-cli",
+    "mcp",
+    "project",
     "plc2plc",
     "dsl",
     "dsl_macro_derive",
@@ -14,7 +16,8 @@ members = [
     "test",
     "vm",
     "vm-cli",
-    "playground"
+    "playground",
+    "spec_test_macro"
 ]
 resolver = "2"
 

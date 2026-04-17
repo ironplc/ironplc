@@ -4,16 +4,19 @@
 //! array read/write compilation. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_dsl::common::{ArrayInitialElementKind, ConstantKind};
+use ironplc_dsl::common::{
+    ArrayInitialElementKind, ConstantKind, ReferenceInitializer, ReferenceTarget,
+};
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{Expr, ExprKind, SymbolicVariableKind, UnaryOp, Variable};
 use ironplc_problems::Problem;
 
 use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
-use ironplc_container::{ContainerBuilder, VarIndex};
+use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 
-use super::compile::{compile_expr, CompileContext, OpWidth, Signedness, VarTypeInfo};
+use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
 
 /// Normalized array specification, independent of AST representation.
@@ -74,6 +77,41 @@ pub(crate) enum ResolvedAccess<'ctx, 'ast> {
     /// Array element through a dereferenced reference — use LOAD_ARRAY_DEREF/STORE_ARRAY_DEREF.
     DerefArrayElement {
         info: &'ctx ArrayVarInfo,
+        subscripts: Vec<&'ast Expr>,
+    },
+    /// Array element within a struct field — compute flat index + struct field offset,
+    /// then use the struct's LOAD_ARRAY/STORE_ARRAY descriptor.
+    StructFieldArrayElement {
+        /// Struct variable table index.
+        var_index: VarIndex,
+        /// Struct array descriptor index (treats struct as flat slot array).
+        desc_index: u16,
+        /// Compile-time slot offset of the array field within the struct.
+        field_slot_offset: SlotIndex,
+        /// Dimension info for computing the flat index from subscripts.
+        dimensions: Vec<DimensionInfo>,
+        /// Subscript expressions.
+        subscripts: Vec<&'ast Expr>,
+        /// Element op type for compile_expr width.
+        element_op_type: OpType,
+        /// Element intermediate type for truncation on store.
+        element_type: IntermediateType,
+    },
+    /// STRING array element within a struct field — uses a scratch variable
+    /// to hold `struct_data_offset + field_byte_offset` and a STRING-specific
+    /// array descriptor for STR_LOAD/STORE_ARRAY_ELEM.
+    StructFieldStringArrayElement {
+        /// Struct variable table index (holds struct data_offset).
+        var_index: VarIndex,
+        /// Scratch variable for the adjusted base offset.
+        scratch_var_index: VarIndex,
+        /// STRING array descriptor index (element_extra = max_str_len).
+        string_desc_index: u16,
+        /// Byte offset of the array field within the struct (slot_offset * 8).
+        field_byte_offset: u32,
+        /// Dimension info for computing the flat index from subscripts.
+        dimensions: Vec<DimensionInfo>,
+        /// Subscript expressions.
         subscripts: Vec<&'ast Expr>,
     },
 }
@@ -151,6 +189,11 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                             }
                         }
                     }
+                    SymbolicVariableKind::Structured(structured) => {
+                        levels.reverse();
+                        let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
+                        return resolve_struct_field_array(ctx, structured, all_subscripts);
+                    }
                     other => {
                         return Err(Diagnostic::todo_with_span(other.span(), file!(), line!()));
                     }
@@ -159,10 +202,135 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
         }
         _ => {
             // Fall through to existing resolve_variable() for scalars.
-            let var_index = super::compile::resolve_variable(ctx, variable)?;
+            let var_index = super::compile_expr::resolve_variable(ctx, variable)?;
             Ok(ResolvedAccess::Scalar { var_index })
         }
     }
+}
+
+/// Resolves an array subscript whose base is a struct field.
+///
+/// For `math.FACTS[x]`, the struct field `FACTS` is an array. We resolve the
+/// struct chain to get the field's slot offset and type, extract array dimension
+/// info, and return a `StructFieldArrayElement` that the caller uses to emit
+/// `flat_index + slot_offset` followed by the struct's LOAD_ARRAY/STORE_ARRAY.
+pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
+    ctx: &'ctx CompileContext,
+    structured: &ironplc_dsl::textual::StructuredVariable,
+    subscripts: Vec<&'ast Expr>,
+) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    let (root_name, slot_offset, field_type) =
+        crate::compile_struct::walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
+
+    let IntermediateType::Array {
+        element_type,
+        dimensions: array_dims,
+    } = &field_type
+    else {
+        return Err(Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                structured.field.span(),
+                format!("Field '{}' is not an array type", structured.field),
+            ),
+        ));
+    };
+
+    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+        Diagnostic::problem(
+            Problem::NotImplemented,
+            Label::span(
+                structured.span(),
+                format!("Variable '{}' is not a structure", root_name),
+            ),
+        )
+    })?;
+
+    // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
+    // with a scratch variable and a STRING-specific array descriptor.
+    if let IntermediateType::String { .. } = element_type.as_ref() {
+        let field_name = structured.field.to_string().to_lowercase();
+        let &(str_desc_index, _, _) =
+            struct_info
+                .string_array_descs
+                .get(&field_name)
+                .ok_or_else(|| {
+                    Diagnostic::problem(
+                        Problem::NotImplemented,
+                        Label::span(
+                            structured.field.span(),
+                            "STRING array descriptor not registered for field",
+                        ),
+                    )
+                })?;
+        let scratch = struct_info.scratch_var_index.ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(
+                    structured.field.span(),
+                    "Scratch variable not allocated for struct",
+                ),
+            )
+        })?;
+        let dimensions = dimensions_from_intermediate(array_dims);
+        let field_byte_offset = slot_offset.raw() * 8;
+        return Ok(ResolvedAccess::StructFieldStringArrayElement {
+            var_index: struct_info.var_index,
+            scratch_var_index: scratch,
+            string_desc_index: str_desc_index,
+            field_byte_offset,
+            dimensions,
+            subscripts,
+        });
+    }
+
+    let element_op_type =
+        crate::compile_struct::resolve_field_op_type(element_type).ok_or_else(|| {
+            Diagnostic::problem(
+                Problem::NotImplemented,
+                Label::span(
+                    structured.field.span(),
+                    "Array element type is not a primitive (nested struct/array elements not supported)",
+                ),
+            )
+        })?;
+
+    let dimensions = dimensions_from_intermediate(array_dims);
+
+    Ok(ResolvedAccess::StructFieldArrayElement {
+        var_index: struct_info.var_index,
+        desc_index: struct_info.desc_index,
+        field_slot_offset: slot_offset,
+        dimensions,
+        subscripts,
+        element_op_type,
+        element_type: element_type.as_ref().clone(),
+    })
+}
+
+/// Converts `ArrayDimension` bounds into `DimensionInfo` with computed strides.
+///
+/// Strides follow row-major order: the last dimension has stride 1, each
+/// preceding dimension's stride is the product of all subsequent dimension sizes.
+fn dimensions_from_intermediate(dims: &[ArrayDimension]) -> Vec<DimensionInfo> {
+    let sizes: Vec<u32> = dims
+        .iter()
+        .map(|d| (d.upper as i64 - d.lower as i64 + 1).max(0) as u32)
+        .collect();
+
+    let mut strides = vec![1u32; sizes.len()];
+    for i in (0..sizes.len().saturating_sub(1)).rev() {
+        strides[i] = strides[i + 1].saturating_mul(sizes[i + 1]);
+    }
+
+    dims.iter()
+        .zip(sizes.iter().zip(strides.iter()))
+        .map(|(d, (&size, &stride))| DimensionInfo {
+            lower_bound: d.lower,
+            size,
+            stride,
+        })
+        .collect()
 }
 
 /// Converts an inline array specification (from the AST) to a normalized ArraySpec.
@@ -174,10 +342,11 @@ pub(crate) fn array_spec_from_inline(
         .ranges
         .iter()
         .map(|range| {
-            let lower =
-                super::compile::signed_integer_to_i32(range.start.as_signed_integer().unwrap())?;
+            let lower = super::compile_stmt::signed_integer_to_i32(
+                range.start.as_signed_integer().unwrap(),
+            )?;
             let upper =
-                super::compile::signed_integer_to_i32(range.end.as_signed_integer().unwrap())?;
+                super::compile_stmt::signed_integer_to_i32(range.end.as_signed_integer().unwrap())?;
             Ok((lower, upper))
         })
         .collect::<Result<Vec<_>, Diagnostic>>()?;
@@ -342,7 +511,7 @@ pub(crate) fn register_array_variable(
             storage_bits: 0,
         }
     } else {
-        super::compile::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
+        super::compile_setup::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::NotImplemented,
                 Label::span(span.clone(), "Unsupported array element type"),
@@ -458,6 +627,73 @@ pub(crate) fn register_array_variable(
         )
     };
     Ok((type_tag, type_name_str))
+}
+
+/// Registers array metadata for a `REF_TO ARRAY` variable so that
+/// `PT^[idx]` can be compiled with deref array opcodes.
+///
+/// No data region space is allocated — the reference parameter
+/// points to an array in the caller's scope.
+pub(crate) fn register_ref_to_array_metadata(
+    ctx: &mut CompileContext,
+    builder: &mut ContainerBuilder,
+    id: &Id,
+    var_index: VarIndex,
+    ref_init: &ReferenceInitializer,
+) -> Result<(), Diagnostic> {
+    if let ReferenceTarget::Array(subranges) = &ref_init.target {
+        let span = id.span();
+        let spec = array_spec_from_inline(subranges, &span)?;
+        let element_vti = if spec.ref_to {
+            VarTypeInfo {
+                op_width: OpWidth::W64,
+                signedness: Signedness::Unsigned,
+                storage_bits: 64,
+            }
+        } else {
+            super::compile_setup::resolve_type_name(&spec.element_type_name).unwrap_or(
+                VarTypeInfo {
+                    op_width: OpWidth::W32,
+                    signedness: Signedness::Unsigned,
+                    storage_bits: 32,
+                },
+            )
+        };
+        let element_type_byte = var_type_info_to_type_byte(&element_vti);
+        let mut dimensions = Vec::new();
+        let mut total_elements: u32 = 1;
+        for &(lower, upper) in &spec.dimensions {
+            let size = (upper as i64 - lower as i64 + 1) as u32;
+            dimensions.push(DimensionInfo {
+                lower_bound: lower,
+                size,
+                stride: 0,
+            });
+            total_elements *= size;
+        }
+        let n = dimensions.len();
+        if n > 0 {
+            dimensions[n - 1].stride = 1;
+            for k in (0..n - 1).rev() {
+                dimensions[k].stride = dimensions[k + 1].stride * dimensions[k + 1].size;
+            }
+        }
+        let desc_index = builder.add_array_descriptor(element_type_byte, total_elements, 0);
+        ctx.array_vars.insert(
+            id.clone(),
+            ArrayVarInfo {
+                var_index,
+                desc_index,
+                data_offset: 0,
+                element_var_type_info: element_vti,
+                total_elements,
+                dimensions,
+                is_string_element: false,
+                string_max_len: 0,
+            },
+        );
+    }
+    Ok(())
 }
 
 /// Recursively walks the `ArrayInitialElementKind` tree and produces

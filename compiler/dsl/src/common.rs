@@ -752,6 +752,15 @@ pub enum ElementaryTypeName {
     WSTRING,
 }
 
+/// Type family for widening classification. See ADR-0031.
+#[derive(Debug, PartialEq)]
+enum TypeFamily {
+    SignedInteger,
+    UnsignedInteger,
+    Real,
+    BitString,
+}
+
 impl ElementaryTypeName {
     pub fn as_id(&self) -> Id {
         match self {
@@ -796,6 +805,93 @@ impl ElementaryTypeName {
                 | ElementaryTypeName::UDINT
                 | ElementaryTypeName::ULINT
         )
+    }
+
+    /// Returns the type family and bit width, or `None` for types that do
+    /// not participate in implicit widening (BOOL, TIME, DATE, STRING, etc.).
+    fn type_properties(&self) -> Option<(TypeFamily, u8)> {
+        use TypeFamily::*;
+        match self {
+            ElementaryTypeName::SINT => Some((SignedInteger, 8)),
+            ElementaryTypeName::INT => Some((SignedInteger, 16)),
+            ElementaryTypeName::DINT => Some((SignedInteger, 32)),
+            ElementaryTypeName::LINT => Some((SignedInteger, 64)),
+            ElementaryTypeName::USINT => Some((UnsignedInteger, 8)),
+            ElementaryTypeName::UINT => Some((UnsignedInteger, 16)),
+            ElementaryTypeName::UDINT => Some((UnsignedInteger, 32)),
+            ElementaryTypeName::ULINT => Some((UnsignedInteger, 64)),
+            ElementaryTypeName::REAL => Some((Real, 32)),
+            ElementaryTypeName::LREAL => Some((Real, 64)),
+            ElementaryTypeName::BYTE => Some((BitString, 8)),
+            ElementaryTypeName::WORD => Some((BitString, 16)),
+            ElementaryTypeName::DWORD => Some((BitString, 32)),
+            ElementaryTypeName::LWORD => Some((BitString, 64)),
+            _ => None,
+        }
+    }
+
+    /// Returns true if `self` can be implicitly widened to `target` under
+    /// standard IEC 61131-3 rules (no flag required). See ADR-0029/0031.
+    ///
+    /// Allowed widening conversions:
+    /// - Signed integer chain: SINT → INT → DINT → LINT
+    /// - Unsigned integer chain: USINT → UINT → UDINT → ULINT
+    /// - Cross-sign: unsigned n-bit → signed m-bit where m > n
+    /// - Integer → REAL (lossless only): src ≤ 16 bits → REAL, any → LREAL
+    /// - Bit-string chain: BYTE → WORD → DWORD → LWORD (BOOL excluded)
+    ///
+    /// Not allowed: signed → unsigned, narrowing, cross-family (bit-string ↔ integer).
+    pub fn can_widen_to(&self, target: &ElementaryTypeName) -> bool {
+        use TypeFamily::*;
+        let Some((src_family, src_bits)) = self.type_properties() else {
+            return false;
+        };
+        let Some((tgt_family, tgt_bits)) = target.type_properties() else {
+            return false;
+        };
+        match (&src_family, &tgt_family) {
+            // Same-family integer widening
+            (SignedInteger, SignedInteger) | (UnsignedInteger, UnsignedInteger) => {
+                tgt_bits > src_bits
+            }
+            // Unsigned → signed: target must be strictly wider
+            (UnsignedInteger, SignedInteger) => tgt_bits > src_bits,
+            // Signed → unsigned: never allowed
+            (SignedInteger, UnsignedInteger) => false,
+            // Integer → Real (lossless only, ADR-0031):
+            //   LREAL (64-bit, 52-bit mantissa) covers all integers up to 52 bits
+            //   REAL (32-bit, 23-bit mantissa) covers integers up to 16 bits
+            (SignedInteger | UnsignedInteger, Real) => {
+                if tgt_bits == 64 {
+                    true // Any integer → LREAL
+                } else {
+                    src_bits <= 16 // Only ≤16-bit integers → REAL
+                }
+            }
+            // Bit-string widening within ANY_BIT family
+            (BitString, BitString) => tgt_bits > src_bits,
+            // Everything else (cross-family, Real→Int, etc.): not standard
+            _ => false,
+        }
+    }
+
+    /// Returns true if `self` can be implicitly widened to `target` under
+    /// cross-family rules (requires `--allow-cross-family-widening`).
+    ///
+    /// Allowed: bit-string → integer where target is strictly wider.
+    /// Not allowed: integer → bit-string (always requires explicit conversion).
+    pub fn can_widen_cross_family_to(&self, target: &ElementaryTypeName) -> bool {
+        use TypeFamily::*;
+        let Some((src_family, src_bits)) = self.type_properties() else {
+            return false;
+        };
+        let Some((tgt_family, tgt_bits)) = target.type_properties() else {
+            return false;
+        };
+        match (&src_family, &tgt_family) {
+            (BitString, SignedInteger | UnsignedInteger) => tgt_bits > src_bits,
+            _ => false,
+        }
     }
 }
 
@@ -3115,5 +3211,250 @@ mod tests {
         let si: SignedInteger = i.into();
         assert!(!si.is_neg);
         assert_eq!(si.value.value, 7);
+    }
+
+    #[test]
+    fn can_widen_to_when_sint_to_int_then_true() {
+        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_sint_to_dint_then_true() {
+        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_sint_to_lint_then_true() {
+        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::LINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_int_to_dint_then_true() {
+        assert!(ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_dint_to_lint_then_true() {
+        assert!(ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::LINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_usint_to_uint_then_true() {
+        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::UINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_usint_to_ulint_then_true() {
+        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::ULINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_uint_to_udint_then_true() {
+        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::UDINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_usint_to_int_then_true() {
+        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_uint_to_dint_then_true() {
+        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_udint_to_lint_then_true() {
+        assert!(ElementaryTypeName::UDINT.can_widen_to(&ElementaryTypeName::LINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_dint_to_int_then_false() {
+        assert!(!ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_lint_to_dint_then_false() {
+        assert!(!ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_int_to_uint_then_false() {
+        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::UINT));
+    }
+
+    #[test]
+    fn can_widen_to_when_int_to_int_then_false() {
+        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_uint_to_int_then_false() {
+        assert!(!ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    // Integer → REAL (lossless: ≤16-bit integers)
+
+    #[test]
+    fn can_widen_to_when_sint_to_real_then_true() {
+        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_int_to_real_then_true() {
+        assert!(ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_usint_to_real_then_true() {
+        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_uint_to_real_then_true() {
+        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_dint_to_real_then_false() {
+        assert!(!ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_lint_to_real_then_false() {
+        assert!(!ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_udint_to_real_then_false() {
+        assert!(!ElementaryTypeName::UDINT.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_ulint_to_real_then_false() {
+        assert!(!ElementaryTypeName::ULINT.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    // Integer → LREAL (always lossless)
+
+    #[test]
+    fn can_widen_to_when_sint_to_lreal_then_true() {
+        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::LREAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_lint_to_lreal_then_true() {
+        assert!(ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::LREAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_ulint_to_lreal_then_true() {
+        assert!(ElementaryTypeName::ULINT.can_widen_to(&ElementaryTypeName::LREAL));
+    }
+
+    // Real → Integer: never allowed
+
+    #[test]
+    fn can_widen_to_when_real_to_int_then_false() {
+        assert!(!ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_lreal_to_dint_then_false() {
+        assert!(!ElementaryTypeName::LREAL.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    // Bit-string widening within ANY_BIT
+
+    #[test]
+    fn can_widen_to_when_byte_to_word_then_true() {
+        assert!(ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::WORD));
+    }
+
+    #[test]
+    fn can_widen_to_when_byte_to_dword_then_true() {
+        assert!(ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::DWORD));
+    }
+
+    #[test]
+    fn can_widen_to_when_byte_to_lword_then_true() {
+        assert!(ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::LWORD));
+    }
+
+    #[test]
+    fn can_widen_to_when_word_to_dword_then_true() {
+        assert!(ElementaryTypeName::WORD.can_widen_to(&ElementaryTypeName::DWORD));
+    }
+
+    #[test]
+    fn can_widen_to_when_dword_to_lword_then_true() {
+        assert!(ElementaryTypeName::DWORD.can_widen_to(&ElementaryTypeName::LWORD));
+    }
+
+    #[test]
+    fn can_widen_to_when_word_to_byte_then_false() {
+        assert!(!ElementaryTypeName::WORD.can_widen_to(&ElementaryTypeName::BYTE));
+    }
+
+    #[test]
+    fn can_widen_to_when_byte_to_byte_then_false() {
+        assert!(!ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::BYTE));
+    }
+
+    #[test]
+    fn can_widen_to_when_bool_to_byte_then_false() {
+        assert!(!ElementaryTypeName::BOOL.can_widen_to(&ElementaryTypeName::BYTE));
+    }
+
+    // Cross-family: not allowed in standard can_widen_to
+
+    #[test]
+    fn can_widen_to_when_byte_to_int_then_false() {
+        assert!(!ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_to_when_int_to_byte_then_false() {
+        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::BYTE));
+    }
+
+    // Cross-family widening (separate method, requires flag)
+
+    #[test]
+    fn can_widen_cross_family_to_when_byte_to_int_then_true() {
+        assert!(ElementaryTypeName::BYTE.can_widen_cross_family_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_byte_to_uint_then_true() {
+        assert!(ElementaryTypeName::BYTE.can_widen_cross_family_to(&ElementaryTypeName::UINT));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_word_to_dint_then_true() {
+        assert!(ElementaryTypeName::WORD.can_widen_cross_family_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_dword_to_lint_then_true() {
+        assert!(ElementaryTypeName::DWORD.can_widen_cross_family_to(&ElementaryTypeName::LINT));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_byte_to_sint_then_false() {
+        // Same width, not strictly wider
+        assert!(!ElementaryTypeName::BYTE.can_widen_cross_family_to(&ElementaryTypeName::SINT));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_word_to_int_then_false() {
+        // Same width, not strictly wider
+        assert!(!ElementaryTypeName::WORD.can_widen_cross_family_to(&ElementaryTypeName::INT));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_int_to_byte_then_false() {
+        // Integer → bit-string: never allowed
+        assert!(!ElementaryTypeName::INT.can_widen_cross_family_to(&ElementaryTypeName::BYTE));
     }
 }

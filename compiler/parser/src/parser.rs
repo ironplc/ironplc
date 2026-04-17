@@ -109,6 +109,7 @@ enum Element {
     Struct(Id),
     Array(Vec<Expr>),
     Bit(Integer),
+    PartialAccess(PartialAccessSize, Integer),
     Deref,
 }
 
@@ -717,7 +718,7 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
+    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessByte) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Byte, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
       // Start by assuming that the top is just a named variable
       let mut head = SymbolicVariableKind::Named(NamedVariable { name });
 
@@ -739,6 +740,13 @@ parser! {
             Element::Bit(idx) => {
               head = SymbolicVariableKind::BitAccess(BitAccessVariable{
                 variable: Box::new(head),
+                index: idx,
+              });
+            },
+            Element::PartialAccess(size, idx) => {
+              head = SymbolicVariableKind::PartialAccess(PartialAccessVariable{
+                variable: Box::new(head),
+                size,
                 index: idx,
               });
             },
@@ -1115,8 +1123,38 @@ parser! {
 
     // B.1.5.3 Program declaration
     rule program_type_name() -> Id = identifier()
+
+    // A single declaration inside a program VAR block. Tries located first
+    // (unambiguous due to the AT keyword) then falls back to non-located.
+    rule program_var_decl() -> Vec<VarDecl> =
+      l:located_var_decl() { vec![l] }
+      / v:var_init_decl() { v.into_iter().map(|u| u.into_var_decl(VariableType::Var)).collect() }
+
+    // A VAR block in a program that may contain both located and non-located
+    // declarations (e.g. `Motor : FB; xStart AT %IX0.0 : BOOL;`).
+    rule program_var_declarations() -> Vec<VarDeclarations> = tok(TokenType::Var) _ qualifier:(tok(TokenType::Constant) { DeclarationQualifier::Constant } / tok(TokenType::Retain) { DeclarationQualifier::Retain } / tok(TokenType::NonRetain) { DeclarationQualifier::NonRetain })? _ declarations:semisep_or_empty(<program_var_decl()>) _ tok(TokenType::EndVar) {
+      let qualifier = qualifier.unwrap_or(DeclarationQualifier::Unspecified);
+      let mut located = Vec::new();
+      let mut regular = Vec::new();
+      for decl in declarations.into_iter().flatten() {
+        let decl = decl.with_qualifier(qualifier.clone());
+        match &decl.identifier {
+          VariableIdentifier::Direct(_) => located.push(decl),
+          VariableIdentifier::Symbol(_) => regular.push(decl),
+        }
+      }
+      let mut result = Vec::new();
+      if !regular.is_empty() {
+        result.push(VarDeclarations::Var(regular));
+      }
+      if !located.is_empty() {
+        result.push(VarDeclarations::Located(located));
+      }
+      result
+    }
+
     // TODO program_access_decls
-    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(access:program_access_decls() { vec![access] } / io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / located:located_var_declarations() { vec![located] }) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
+    pub rule program_declaration() -> ProgramDeclaration = tok(TokenType::Program) _ p:program_type_name() _ decls:(access:program_access_decls() { vec![access] } / io:io_var_declarations() { io } / mixed:program_var_declarations() { mixed } / other:other_var_declarations() { vec![other] } / located:located_var_declarations() { vec![located] }) ** _ _ body:function_block_body() _ tok(TokenType::EndProgram) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (access_variables, _) = VarDeclarations::drain_access(remainder);

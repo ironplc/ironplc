@@ -44,6 +44,10 @@ Edition 3 introduced the following features, which require
    * - ``NULL``
      - Literal
      - Null reference value
+   * - :doc:`.%Xn <structured-text/bit-access>`
+     - Partial access
+     - Bit access via explicit partial-access syntax (equivalent to the
+       ``.n`` short form; byte/word/dword/lword forms are not yet supported)
 
 Edition 2 (2003) Features
 =========================

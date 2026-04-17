@@ -6,7 +6,7 @@
 #^^^^^^^^^^^^^^^^^^^^ source.61131-3-st comment.line.double-slash.st punctuation.definition.comment.st
 >
 >PROGRAM TestProgram
-#^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^ source.61131-3-st keyword.control.st
 #       ^ source.61131-3-st
 #        ^^^^^^^^^^^ source.61131-3-st entity.name.function.st
 >VAR
@@ -487,10 +487,10 @@
 #                    ^ source.61131-3-st punctuation.separator.st
 >
 >END_PROGRAM
-#^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^^^^^ source.61131-3-st keyword.control.st
 >
 >FUNCTION MyFunction : BOOL
-#^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^^ source.61131-3-st keyword.control.st
 #        ^ source.61131-3-st
 #         ^^^^^^^^^^ source.61131-3-st entity.name.function.st
 #                   ^ source.61131-3-st
@@ -540,10 +540,10 @@
 #    ^^^^^^ source.61131-3-st keyword.control.conditional.st
 #          ^ source.61131-3-st punctuation.separator.st
 >END_FUNCTION
-#^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^^^^^^ source.61131-3-st keyword.control.st
 >
 >FUNCTION_BLOCK MyFB
-#^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^^^^^^^^ source.61131-3-st keyword.control.st
 #              ^ source.61131-3-st
 #               ^^^^ source.61131-3-st entity.name.function.st
 >VAR
@@ -571,7 +571,7 @@
 #                         ^ source.61131-3-st constant.numeric.decimal.st
 #                          ^ source.61131-3-st punctuation.separator.st
 >END_FUNCTION_BLOCK
-#^^^^^^^^^^^^^^^^^^ source.61131-3-st keyword.declaration.pou.st
+#^^^^^^^^^^^^^^^^^^ source.61131-3-st keyword.control.st
 >
 >TYPE MyStruct :
 #^^^^ source.61131-3-st keyword.declaration.type.st
@@ -601,4 +601,38 @@
 #^^^^^^^^^^ source.61131-3-st keyword.declaration.type.st
 >END_TYPE
 #^^^^^^^^ source.61131-3-st keyword.declaration.type.st
+>
+>PROGRAM main
+#^^^^^^^ source.61131-3-st keyword.control.st
+#       ^ source.61131-3-st
+#        ^^^^ source.61131-3-st entity.name.function.st
+>VAR
+#^^^ source.61131-3-st keyword.declaration.variable.st
+>Button : BOOL;
+#^^^^^^ source.61131-3-st variable.other.st
+#      ^ source.61131-3-st
+#       ^ source.61131-3-st punctuation.separator.st
+#        ^ source.61131-3-st
+#         ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#             ^ source.61131-3-st punctuation.separator.st
+>Buzzer : BOOL;
+#^^^^^^ source.61131-3-st variable.other.st
+#      ^ source.61131-3-st
+#       ^ source.61131-3-st punctuation.separator.st
+#        ^ source.61131-3-st
+#         ^^^^ source.61131-3-st storage.type.primitive.integer.st
+#             ^ source.61131-3-st punctuation.separator.st
+>END_VAR
+#^^^^^^^ source.61131-3-st keyword.declaration.variable.st
+>Buzzer := NOT Button;
+#^^^^^^ source.61131-3-st variable.other.st
+#      ^ source.61131-3-st
+#       ^^ source.61131-3-st keyword.operator.assignment.st
+#         ^ source.61131-3-st
+#          ^^^ source.61131-3-st keyword.operator.logical.st
+#             ^ source.61131-3-st
+#              ^^^^^^ source.61131-3-st variable.other.st
+#                    ^ source.61131-3-st punctuation.separator.st
+>END_PROGRAM
+#^^^^^^^^^^^ source.61131-3-st keyword.control.st
 >

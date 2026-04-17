@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the FIND standard function.
 
 mod common;
-use ironplc_parser::options::CompilerOptions;
+use ironplc_parser::options::{CompilerOptions, Dialect};
 
 use common::parse_and_run;
 
@@ -124,4 +124,51 @@ END_PROGRAM
 
     // 'DE' starts at position 4 (1-based).
     assert_eq!(bufs.vars[2].as_i32(), 4);
+}
+
+#[test]
+fn end_to_end_when_find_with_nested_mid_then_returns_position() {
+    let source = "
+PROGRAM main
+  VAR
+    s1 : STRING := 'hello world';
+    s2 : STRING := 'world';
+    n : INT;
+  END_VAR
+  n := FIND(s1, MID(s2, 3, 1));
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    // MID('world', L=3, P=1) = 'wor', FIND('hello world', 'wor') = 7 (1-based).
+    assert_eq!(bufs.vars[2].as_i32(), 7);
+}
+
+#[test]
+fn end_to_end_when_find_with_struct_array_field_then_returns_position() {
+    let source = "
+TYPE MY_SETUP :
+  STRUCT
+    NAMES : ARRAY[1..3] OF STRING[20];
+  END_STRUCT;
+END_TYPE
+
+VAR_GLOBAL
+    setup : MY_SETUP;
+END_VAR
+
+PROGRAM main
+VAR
+    pos : INT;
+END_VAR
+    setup.NAMES[1] := 'alpha';
+    setup.NAMES[2] := 'beta';
+    pos := FIND(setup.NAMES[2], 'bet');
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    // 'bet' starts at position 1 in 'beta'.
+    // Rusty dialect: var 0-1 system, var 2 struct, var 3 scratch, var 4 pos.
+    assert_eq!(bufs.vars[4].as_i32(), 1);
 }

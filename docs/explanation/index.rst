@@ -13,6 +13,8 @@ them later when you want to understand *why* things work the way they do.
    IronPLC and the IEC 61131-3 Ecosystem <ironplc-ecosystem>
    Structured Text Basics <structured-text-basics>
    Program Organization <program-organization>
+   Execution Cycle <execution-cycle>
    Variables and I/O <variables-and-io>
    References and Indirection <references>
+   Type Conversions <type-conversions>
    Enabling Dialects and Features <enabling-dialects-and-features>

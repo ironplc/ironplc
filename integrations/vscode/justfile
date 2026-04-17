@@ -56,7 +56,7 @@ update-grammar-snapshots:
 
 # Build the VSIX package for this component.
 package filename:
-  npx vsce package --out {{filename}} --pre-release
+  npx vsce package --out {{filename}}
 
 # Sets the version number for this component.
 version version:
@@ -72,14 +72,14 @@ publish vsixfilename:
   #
   # VSCE_PAT: The personal access token for publishing (read from environment)
   ls
-  npx vsce publish -p $VSCE_PAT --packagePath {{vsixfilename}} --pre-release
+  npx vsce publish -p $VSCE_PAT --packagePath {{vsixfilename}}
 
 # Publishes a VSIX archive to the Open VSX Registry (for Cursor, Windsurf, etc.)
 publish-openvsx vsixfilename:
   # vsixfilename: The name of the VSIX archive to publish.
   #
   # OVSX_PAT: The personal access token for Open VSX publishing (read from environment)
-  npx ovsx publish {{vsixfilename}} -p $OVSX_PAT --pre-release
+  npx ovsx publish {{vsixfilename}} -p $OVSX_PAT
 
 # Capture VS Code extension screenshots for documentation.
 # Requires `just compile` first. macOS runs natively; Linux uses Xvfb.

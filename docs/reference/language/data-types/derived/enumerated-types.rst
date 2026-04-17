@@ -10,7 +10,7 @@ An enumerated type defines a named set of values.
    * - **IEC 61131-3**
      - Section 2.3.3.1
    * - **Support**
-     - Partial
+     - Supported
 
 Syntax
 ------
@@ -24,7 +24,7 @@ Syntax
 Example
 -------
 
-.. code-block::
+.. playground::
 
    TYPE
        TrafficLight : (Red, Yellow, Green);

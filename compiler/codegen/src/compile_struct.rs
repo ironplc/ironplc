@@ -19,13 +19,13 @@ use ironplc_container::FieldType;
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit, TypeName};
 
-use super::compile::{
-    compile_constant, emit_truncation, emit_zero_const, CompileContext, OpType, OpWidth,
-    Signedness, VarTypeInfo,
-};
+use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile_expr::{compile_constant, emit_truncation};
+use super::compile_setup::emit_zero_const;
 use crate::emit::Emitter;
 
 /// Metadata for a structure variable, stored in CompileContext.
+#[derive(Clone)]
 pub(crate) struct StructVarInfo {
     /// Variable table index holding the data region offset.
     pub var_index: VarIndex,
@@ -42,9 +42,17 @@ pub(crate) struct StructVarInfo {
     pub fields: Vec<StructFieldInfo>,
     /// Maps field name (lowercase) to index in `fields` Vec for O(1) lookup.
     pub field_index: HashMap<String, usize>,
+    /// Scratch variable for STRING array field access. Allocated lazily
+    /// only when the struct has at least one STRING array field. Holds
+    /// `struct_data_offset + field_byte_offset` during STR_LOAD/STORE_ARRAY_ELEM.
+    pub scratch_var_index: Option<VarIndex>,
+    /// Per-field STRING array descriptor info. Maps field name (lowercase) to
+    /// `(desc_index, total_elements, max_string_len)`.
+    pub string_array_descs: HashMap<String, (u16, u32, u16)>,
 }
 
 /// Metadata for a single structure field.
+#[derive(Clone)]
 pub(crate) struct StructFieldInfo {
     /// Field name (lowercase, for matching against access chains).
     pub name: String,
@@ -55,6 +63,8 @@ pub(crate) struct StructFieldInfo {
     /// Op type for leaf (primitive/enum) fields. `None` for structure/array
     /// fields (which are accessed via further resolution).
     pub op_type: Option<OpType>,
+    /// For STRING fields, the maximum character length. `None` for non-STRING fields.
+    pub string_max_length: Option<u16>,
 }
 
 /// Maps an IntermediateType to its OpType for leaf fields.
@@ -131,6 +141,10 @@ pub(crate) fn build_struct_fields(
         })?;
         let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
+        let string_max_length = match &field.field_type {
+            IntermediateType::String { max_len } => Some(max_len.unwrap_or(254) as u16),
+            _ => None,
+        };
 
         // Defense-in-depth: detect duplicate field names (case-insensitive).
         // The analyzer should reject these, but if one slips through, silently
@@ -154,6 +168,7 @@ pub(crate) fn build_struct_fields(
             slot_offset,
             field_type: field.field_type.clone(),
             op_type,
+            string_max_length,
         });
         slot_offset = SlotIndex::new(slot_offset.raw() + field_slots);
     }
@@ -245,7 +260,7 @@ pub(crate) fn resolve_struct_field_access(
 /// - **Recursive case** (`Structured`): recurses to resolve the parent, then
 ///   uses `find_field_in_type` to resolve the current field within the parent
 ///   type, accumulating slot offsets.
-fn walk_struct_chain(
+pub(crate) fn walk_struct_chain(
     ctx: &CompileContext,
     record: &SymbolicVariableKind,
     field: &Id,
@@ -317,7 +332,7 @@ fn walk_struct_chain(
 ///
 /// This is needed because struct fields are identified by `IntermediateType`, not
 /// by variable-table entries.
-fn var_type_info_for_field(field_type: &IntermediateType) -> Option<VarTypeInfo> {
+pub(crate) fn var_type_info_for_field(field_type: &IntermediateType) -> Option<VarTypeInfo> {
     let (op_width, signedness) = resolve_field_op_type(field_type)?;
     let storage_bits = match field_type {
         IntermediateType::Bool => 1,
@@ -397,11 +412,16 @@ fn compile_struct_field_init(
         StructInitialValueAssignmentKind::Constant(constant) => {
             compile_constant(emitter, ctx, constant, op_type)
         }
-        StructInitialValueAssignmentKind::EnumeratedValue(_)
-        | StructInitialValueAssignmentKind::Array(_)
+        StructInitialValueAssignmentKind::EnumeratedValue(ev) => {
+            // REQ-EN-050: Resolve enum value to ordinal and push as i32 constant.
+            let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
+            let pool_index = ctx.add_i32_constant(ordinal);
+            emitter.emit_load_const_i32(pool_index);
+            Ok(())
+        }
+        StructInitialValueAssignmentKind::Array(_)
         | StructInitialValueAssignmentKind::Structure(_) => {
-            // Nested structures, arrays, and enums in struct init are not yet supported.
-            // Enum support could be added by resolving the enum value to an integer constant.
+            // Nested structures and arrays in struct init are not yet supported.
             Ok(())
         }
     }
@@ -416,6 +436,8 @@ pub(crate) struct FieldInitInfo {
     pub slot_offset: SlotIndex,
     pub field_type: IntermediateType,
     pub op_type: Option<OpType>,
+    /// For STRING fields, the maximum character length. `None` for non-STRING fields.
+    pub string_max_length: Option<u16>,
 }
 
 /// Initializes fields of a structure variable.
@@ -428,6 +450,7 @@ pub(crate) fn initialize_struct_fields(
     ctx: &mut CompileContext,
     var_index: VarIndex,
     desc_index: u16,
+    struct_data_offset: u32,
     fields: &[FieldInitInfo],
     element_inits: &[StructureElementInit],
 ) -> Result<(), Diagnostic> {
@@ -480,6 +503,7 @@ pub(crate) fn initialize_struct_fields(
                     slot_offset: SlotIndex::new(slot_idx.raw() + f.slot_offset.raw()),
                     field_type: f.field_type.clone(),
                     op_type: f.op_type,
+                    string_max_length: f.string_max_length,
                 })
                 .collect();
 
@@ -488,11 +512,35 @@ pub(crate) fn initialize_struct_fields(
                 ctx,
                 var_index,
                 desc_index,
+                struct_data_offset,
                 &inner_field_infos,
                 &nested_inits,
             )?;
+        } else if let IntermediateType::String { .. } = &field_info.field_type {
+            // STRING field — initialize the header in the data region.
+            if let Some(max_length) = field_info.string_max_length {
+                let byte_offset = struct_data_offset + slot_idx.raw() * 8;
+                emitter.emit_str_init(byte_offset, max_length);
+            }
+        } else if let IntermediateType::Array {
+            element_type,
+            dimensions: array_dims,
+        } = &field_info.field_type
+        {
+            if let IntermediateType::String { max_len } = element_type.as_ref() {
+                // STRING array field — initialize headers for each string element.
+                let max_length = max_len.unwrap_or(254) as u16;
+                let total_elements = array_dims
+                    .iter()
+                    .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
+                let stride = super::compile::STRING_HEADER_BYTES_U32 + max_length as u32;
+                let field_byte_offset = struct_data_offset + slot_idx.raw() * 8;
+                for i in 0..total_elements {
+                    let elem_byte_offset = field_byte_offset + i * stride;
+                    emitter.emit_str_init(elem_byte_offset, max_length);
+                }
+            }
         }
-        // else: array field — not yet supported
     }
     Ok(())
 }
@@ -576,6 +624,61 @@ pub(crate) fn allocate_struct_variable(
     // Build field metadata (returns error for unsupported field types)
     let (fields_vec, field_index) = build_struct_fields(fields, span)?;
 
+    // Track max STRING capacity for temp buffer sizing.
+    for f in &fields_vec {
+        if let Some(max_len) = f.string_max_length {
+            if max_len > ctx.max_string_capacity {
+                ctx.max_string_capacity = max_len;
+            }
+        }
+    }
+
+    // Register STRING array descriptors and scratch variable for fields
+    // that are ARRAY OF STRING.
+    let mut string_array_descs: HashMap<String, (u16, u32, u16)> = HashMap::new();
+    let mut scratch_var_index: Option<VarIndex> = None;
+    for f in &fields_vec {
+        if let IntermediateType::Array {
+            element_type,
+            dimensions: array_dims,
+        } = &f.field_type
+        {
+            if let IntermediateType::String { max_len } = element_type.as_ref() {
+                let max_str_len = max_len.unwrap_or(254) as u16;
+                let total_elements = array_dims
+                    .iter()
+                    .try_fold(1u32, |acc, d| {
+                        let size = (d.upper as i64 - d.lower as i64 + 1).max(0) as u32;
+                        acc.checked_mul(size)
+                    })
+                    .ok_or_else(|| {
+                        Diagnostic::problem(
+                            Problem::NotImplemented,
+                            Label::span(span.clone(), "Array too large"),
+                        )
+                    })?;
+                // Allocate scratch variable once for all STRING array fields.
+                if scratch_var_index.is_none() {
+                    let scratch_idx = ctx.allocate_scratch_variable(&id.to_string());
+                    scratch_var_index = Some(scratch_idx);
+                }
+                let str_desc_index = builder.add_array_descriptor(
+                    FieldType::String as u8,
+                    total_elements,
+                    max_str_len,
+                );
+                string_array_descs.insert(
+                    f.name.clone(),
+                    (str_desc_index, total_elements, max_str_len),
+                );
+                // Track max string capacity for temp buffer sizing.
+                if max_str_len > ctx.max_string_capacity {
+                    ctx.max_string_capacity = max_str_len;
+                }
+            }
+        }
+    }
+
     // Store metadata
     ctx.struct_vars.insert(
         id.clone(),
@@ -586,6 +689,8 @@ pub(crate) fn allocate_struct_variable(
             desc_index,
             fields: fields_vec,
             field_index,
+            scratch_var_index,
+            string_array_descs,
         },
     );
     Ok(())
@@ -663,13 +768,35 @@ mod tests {
     }
 
     #[test]
-    fn build_struct_fields_when_string_field_then_returns_error() {
+    fn build_struct_fields_when_string_field_then_computes_slots() {
+        // STRING[255] needs ceil((4 + 255) / 8) = 33 slots
         let fields = vec![make_field(
             "s",
             IntermediateType::String { max_len: Some(255) },
         )];
-        let result = build_struct_fields(&fields, &SourceSpan::default());
-        assert!(result.is_err());
+        let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
+        assert_eq!(field_list.len(), 1);
+        assert_eq!(field_list[0].name, "s");
+        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
+        assert_eq!(field_list[0].string_max_length, Some(255));
+        assert!(field_list[0].op_type.is_none());
+    }
+
+    #[test]
+    fn build_struct_fields_when_string_and_int_then_correct_offsets() {
+        // STRING[30] needs ceil((4 + 30) / 8) = 5 slots, then INT at offset 5
+        let fields = vec![
+            make_field("s", IntermediateType::String { max_len: Some(30) }),
+            make_field(
+                "n",
+                IntermediateType::Int {
+                    size: ByteSized::B32,
+                },
+            ),
+        ];
+        let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
+        assert_eq!(field_list[0].slot_offset, SlotIndex::new(0));
+        assert_eq!(field_list[1].slot_offset, SlotIndex::new(5));
     }
 
     #[test]

@@ -1,5 +1,5 @@
-//! Semantic rule that checks bit access indices are within the valid
-//! range for the variable's declared type.
+//! Semantic rule that checks bit access and partial access indices are
+//! within the valid range for the variable's declared type.
 //!
 //! See section B.1.4.2.
 //!
@@ -75,6 +75,68 @@ impl RuleBitAccessRange<'_> {
                 self.var_initializers
                     .insert(id.clone(), var.initializer.clone());
             }
+        }
+    }
+
+    fn check_partial_access(&mut self, node: &PartialAccessVariable) {
+        let resolved_type = match resolve_variable_type(
+            &node.variable,
+            &self.var_initializers,
+            self.type_environment,
+        ) {
+            Some(t) => t,
+            None => return,
+        };
+
+        let base_bytes = match resolved_type.size_in_bytes() {
+            Some(bytes) => bytes as u128,
+            None => return,
+        };
+
+        let access_bytes: u128 = match node.size {
+            PartialAccessSize::Byte => 1,
+            PartialAccessSize::Word => 2,
+            PartialAccessSize::DWord => 4,
+            PartialAccessSize::LWord => 8,
+        };
+
+        if access_bytes > base_bytes {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::BitAccessOutOfRange,
+                    Label::span(
+                        node.index.span(),
+                        format!(
+                            "Partial access {}0 requires at least {} bytes but type has only {} bytes",
+                            node.size.prefix(),
+                            access_bytes,
+                            base_bytes,
+                        ),
+                    ),
+                )
+                .with_context("access_bytes", &access_bytes.to_string())
+                .with_context("base_bytes", &base_bytes.to_string()),
+            );
+            return;
+        }
+
+        let max_index = base_bytes / access_bytes - 1;
+        let index = node.index.value;
+        if index > max_index {
+            self.diagnostics.push(
+                Diagnostic::problem(
+                    Problem::BitAccessOutOfRange,
+                    Label::span(
+                        node.index.span(),
+                        format!(
+                            "Partial access index {} is out of range. Valid range is 0..{} for type",
+                            index, max_index,
+                        ),
+                    ),
+                )
+                .with_context("index", &index.to_string())
+                .with_context("max_index", &max_index.to_string()),
+            );
         }
     }
 
@@ -175,6 +237,9 @@ fn resolve_variable_type(
         SymbolicVariableKind::BitAccess(bit_access) => {
             resolve_variable_type(&bit_access.variable, var_initializers, type_env)
         }
+        SymbolicVariableKind::PartialAccess(partial) => {
+            resolve_variable_type(&partial.variable, var_initializers, type_env)
+        }
         SymbolicVariableKind::Deref(deref) => {
             resolve_variable_type(&deref.variable, var_initializers, type_env)
         }
@@ -229,6 +294,14 @@ impl Visitor<Diagnostic> for RuleBitAccessRange<'_> {
 
     fn visit_bit_access_variable(&mut self, node: &BitAccessVariable) -> Result<(), Diagnostic> {
         self.check_bit_access(node);
+        node.recurse_visit(self)
+    }
+
+    fn visit_partial_access_variable(
+        &mut self,
+        node: &PartialAccessVariable,
+    ) -> Result<(), Diagnostic> {
+        self.check_partial_access(node);
         node.recurse_visit(self)
     }
 }
@@ -788,6 +861,37 @@ VAR
 END_VAR
     result := FOO(A := 5);
 END_PROGRAM",
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // REQ-PAB-030: the bit-range analyzer applies to .%Xn identically to .n.
+    // See specs/design/partial-access-bit-syntax.md.
+    // ---------------------------------------------------------------------
+
+    /// REQ-PAB-030: `b.%X8` on a BYTE is rejected (bit 8 out of range).
+    #[test]
+    fn analyzer_spec_req_pab_030_dot_percent_x_bit_out_of_range_is_rejected() {
+        use ironplc_parser::options::CompilerOptions;
+        use ironplc_parser::parse_program;
+
+        let opts = CompilerOptions {
+            allow_partial_access_syntax: true,
+            ..CompilerOptions::default()
+        };
+        let program = "FUNCTION_BLOCK FB1
+VAR
+    b : BYTE;
+    y : BOOL;
+END_VAR
+    y := b.%X8;
+END_FUNCTION_BLOCK";
+        let library = parse_program(program, &FileId::default(), &opts).unwrap();
+        let result = analyze(&[&library], &opts);
+        let (_library, context) = result.unwrap();
+        assert!(
+            context.has_diagnostics(),
+            "Expected BitAccessOutOfRange diagnostic but got none"
         );
     }
 }

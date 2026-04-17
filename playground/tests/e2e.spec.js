@@ -248,7 +248,7 @@ END_PROGRAM
 
     // Wait for sparkline canvases to appear (need at least 2 data points)
     const variablesPanel = page.locator('[data-testid="variables-panel"]');
-    await expect(variablesPanel.locator("canvas")).toBeVisible({ timeout: 10000 });
+    await expect(variablesPanel.locator("canvas").first()).toBeVisible({ timeout: 10000 });
 
     await page.click('[data-testid="stop-btn"]');
   });

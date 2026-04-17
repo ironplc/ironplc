@@ -21,11 +21,13 @@ First, edit :file:`main.st` so it contains **only** the program:
 
    PROGRAM main
       VAR
-         Button AT %IX1: BOOL;
-         Buzzer AT %QX1: BOOL;
+         Button : BOOL;
+         Buzzer : BOOL;
+         PulseTimer : TON;
       END_VAR
 
-      Buzzer := NOT Button;
+      PulseTimer(IN := NOT Button, PT := T#500ms);
+      Buzzer := PulseTimer.Q;
 
    END_PROGRAM
 
@@ -53,6 +55,24 @@ together, so it will still validate that the configuration references a
 valid program.
 
 --------------------------------------
+Run with Multiple Files
+--------------------------------------
+
+Open :file:`main.st` in the editor and click :guilabel:`Run Program` above
+the ``PROGRAM main`` line. The extension compiles all :file:`.st` files in
+the workspace together before running, so the configuration in
+:file:`config.st` is included automatically.
+
+Verify the output in the :guilabel:`IronPLC Run` panel matches what you saw
+before, then click :guilabel:`Stop` to end execution.
+
+.. tip::
+
+   When using the command line, you must pass all source files explicitly.
+   See :doc:`/how-to-guides/getting-started/check-compile-run-from-cli`
+   for details.
+
+--------------------------------------
 Why Split Files?
 --------------------------------------
 
@@ -73,6 +93,7 @@ Next Steps
 --------------------------------------
 
 You now have a complete, multi-file IEC 61131-3 application. In the final
-chapter, you will compile it into a bytecode container and run it.
+chapter, you will learn how to connect your program to physical hardware
+inputs and outputs.
 
 Continue to :doc:`compiling-and-running`.

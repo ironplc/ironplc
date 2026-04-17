@@ -4,7 +4,7 @@
 //! are accessible from a PROGRAM via VAR_EXTERNAL declarations.
 
 mod common;
-use ironplc_parser::options::CompilerOptions;
+use ironplc_parser::options::{CompilerOptions, Dialect};
 
 use common::parse_and_run;
 
@@ -238,4 +238,215 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
     assert_eq!(bufs.vars[0].as_i32(), 99);
+}
+
+#[test]
+fn end_to_end_when_top_level_global_struct_then_field_readable_from_program() {
+    let source = "
+TYPE MY_CONSTANTS :
+  STRUCT
+    T0 : DINT;
+    T1 : DINT;
+  END_STRUCT;
+END_TYPE
+
+VAR_GLOBAL
+  phys : MY_CONSTANTS;
+END_VAR
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  phys.T0 := 100;
+  phys.T1 := 200;
+  result := phys.T0 + phys.T1;
+END_PROGRAM
+";
+    // Rusty dialect prepends 2 system uptime globals, so:
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: phys (global struct), var 3: result (program local)
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[3].as_i32(), 300);
+}
+
+#[test]
+fn end_to_end_when_top_level_global_struct_then_field_readable_from_function() {
+    let source = "
+TYPE MY_CONSTANTS :
+  STRUCT
+    T0 : DINT;
+  END_STRUCT;
+END_TYPE
+
+VAR_GLOBAL
+  phys : MY_CONSTANTS;
+END_VAR
+
+FUNCTION GET_T0 : DINT
+VAR_INPUT
+  dummy : DINT;
+END_VAR
+  GET_T0 := phys.T0;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  phys.T0 := 273;
+  result := GET_T0(dummy := 0);
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: phys (global struct), var 3: result (program local)
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[3].as_i32(), 273);
+}
+
+#[test]
+fn end_to_end_when_top_level_global_scalar_then_readable_from_program() {
+    let source = "
+VAR_GLOBAL
+  counter : DINT := 42;
+END_VAR
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := counter;
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: counter (global), var 3: result (program local)
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[2].as_i32(), 42);
+    assert_eq!(bufs.vars[3].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_top_level_global_scalar_then_readable_from_function() {
+    let source = "
+VAR_GLOBAL
+  counter : DINT := 42;
+END_VAR
+
+FUNCTION read_counter : DINT
+  read_counter := counter;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := read_counter();
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: counter (global), var 3: result (program local)
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[2].as_i32(), 42);
+    assert_eq!(bufs.vars[3].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_top_level_global_constant_then_readable_from_function() {
+    let source = "
+VAR_GLOBAL CONSTANT
+  MY_CONST : DINT := 100;
+END_VAR
+
+FUNCTION use_const : DINT
+  use_const := MY_CONST;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := use_const();
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: MY_CONST (global constant), var 3: result (program local)
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[2].as_i32(), 100);
+    assert_eq!(bufs.vars[3].as_i32(), 100);
+}
+
+#[test]
+fn end_to_end_when_top_level_global_then_writable_from_function_block() {
+    let source = "
+VAR_GLOBAL
+  scale_factor : DINT := 5;
+  fb_result : DINT := 0;
+END_VAR
+
+FUNCTION_BLOCK Scaler
+  VAR_INPUT
+    value : DINT;
+  END_VAR
+  fb_result := value * scale_factor;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    s : Scaler;
+  END_VAR
+  s(value := 10);
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: scale_factor (global), var 3: fb_result (global), var 4: s
+    // After FB call: fb_result = 10 * 5 = 50
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[2].as_i32(), 5);
+    assert_eq!(bufs.vars[3].as_i32(), 50);
+}
+
+#[test]
+fn end_to_end_when_global_struct_field_used_as_condition_then_branch_works() {
+    let source = "
+TYPE SETUP_DATA :
+STRUCT
+    FLAG : BOOL;
+END_STRUCT
+END_TYPE
+
+VAR_GLOBAL
+    setup : SETUP_DATA;
+END_VAR
+
+FUNCTION USE_GLOBAL_STRUCT : DINT
+VAR_INPUT
+    x : DINT;
+END_VAR
+    IF setup.FLAG THEN
+        USE_GLOBAL_STRUCT := x;
+    ELSE
+        USE_GLOBAL_STRUCT := 0;
+    END_IF;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+END_VAR
+    setup.FLAG := TRUE;
+    result := USE_GLOBAL_STRUCT(x := 42);
+END_PROGRAM
+";
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
+    // var 2: setup (global struct), var 3: result (program local)
+    // setup.FLAG is set to TRUE, so the IF branch returns x=42
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
+
+    assert_eq!(bufs.vars[3].as_i32(), 42);
 }

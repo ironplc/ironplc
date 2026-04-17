@@ -41,33 +41,27 @@
 
 use std::collections::HashMap;
 
-use ironplc_container::debug_section::{
-    function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
-};
+use ironplc_container::debug_section::{EnumDefEntry, FuncNameEntry, VarNameEntry};
 use ironplc_container::{
-    opcode, Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
+    Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
     STRING_HEADER_BYTES,
 };
 use ironplc_dsl::common::{
-    Boolean, ConstantKind, ElementaryTypeName, FunctionBlockBodyKind, FunctionBlockDeclaration,
-    FunctionDeclaration, FunctionReturnType, GenericTypeName, InitialValueAssignmentKind,
-    IntegerRef, Library, LibraryElementKind, ProgramDeclaration, ReferenceInitialValue,
-    ReferenceTarget, SignedInteger, SignedIntegerRef, SpecificationKind, StringInitializer,
-    StringSpecification, VarDecl, VariableType,
+    FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
+    LibraryElementKind, ProgramDeclaration, VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_dsl::textual::{
-    BitAccessVariable, CaseSelectionKind, CompareOp, Expr, ExprKind, FbCall, Function, Operator,
-    ParamAssignmentKind, Statements, StmtKind, SymbolicVariableKind, UnaryOp, Variable,
-};
 use ironplc_problems::Problem;
 
-use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::{FunctionEnvironment, SemanticContext, TypeEnvironment};
 
 use crate::emit::Emitter;
+
+use super::compile_fn::{compile_user_function, compile_user_function_block};
+use super::compile_setup::{assign_variables, emit_initial_values, resolve_type_name};
+use super::compile_stmt::compile_body;
 
 /// The native operation width used for arithmetic and comparisons.
 #[derive(Clone, Copy, PartialEq)]
@@ -104,14 +98,14 @@ pub(crate) struct VarTypeInfo {
 pub(crate) type OpType = (OpWidth, Signedness);
 
 /// The default operation type: 32-bit signed (used for pure-constant expressions).
-const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
+pub(crate) const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
 
 /// Maximum number of data-region slots (or array elements) that a single variable
 /// may occupy. Keeps flat-index arithmetic within i32 range.
 pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
 
 /// A constant in the pool: integer, float, or string.
-enum PoolConstant {
+pub(crate) enum PoolConstant {
     I32(i32),
     I64(i64),
     F32(f32),
@@ -126,11 +120,12 @@ pub(crate) const DEFAULT_STRING_MAX_LENGTH_U16: u16 = 254;
 pub(crate) const STRING_HEADER_BYTES_U32: u32 = STRING_HEADER_BYTES as u32;
 
 /// Metadata for a STRING variable allocated in the data region.
-struct StringVarInfo {
+#[derive(Clone)]
+pub(crate) struct StringVarInfo {
     /// Byte offset into the data region where this string starts.
-    data_offset: u32,
+    pub(crate) data_offset: u32,
     /// Maximum number of characters this string can hold.
-    max_length: u16,
+    pub(crate) max_length: u16,
 }
 
 /// Compiles a library into a bytecode container.
@@ -142,10 +137,42 @@ struct StringVarInfo {
 ///
 /// Returns an error if no program is found or if the program contains
 /// unsupported constructs.
-pub fn compile(library: &Library, context: &SemanticContext) -> Result<Container, Diagnostic> {
+/// Options that affect code generation.
+#[derive(Default)]
+pub struct CodegenOptions {
+    /// When `true`, inject `__SYSTEM_UP_TIME` (TIME) and `__SYSTEM_UP_LTIME`
+    /// (LTIME) as implicit globals at the start of the variable table.
+    pub system_uptime_global: bool,
+}
+
+pub fn compile(
+    library: &Library,
+    context: &SemanticContext,
+    options: &CodegenOptions,
+) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
     let config = find_configuration(library);
-    let global_vars: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
+    let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
+
+    // Prepend system uptime globals when the feature is enabled.
+    let mut synthetic_globals: Vec<VarDecl> = Vec::new();
+    if options.system_uptime_global {
+        synthetic_globals
+            .push(VarDecl::simple("__SYSTEM_UP_TIME", "TIME").with_type(VariableType::Global));
+        synthetic_globals
+            .push(VarDecl::simple("__SYSTEM_UP_LTIME", "LTIME").with_type(VariableType::Global));
+    }
+
+    // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
+    // These are common in the RuSTy dialect and OSCAT libraries.
+    for element in &library.elements {
+        if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
+            synthetic_globals.extend_from_slice(decls);
+        }
+    }
+
+    synthetic_globals.extend_from_slice(user_globals);
+    let global_vars = &synthetic_globals;
 
     let reachable = context.reachable();
 
@@ -177,14 +204,23 @@ pub fn compile(library: &Library, context: &SemanticContext) -> Result<Container
         })
         .collect();
 
-    compile_program_with_functions(
+    let enum_map = crate::compile_enum::build_enum_ordinal_map(library);
+
+    let mut container = compile_program_with_functions(
         program,
         &func_decls,
         &fb_decls,
         global_vars,
         context.functions(),
         context.types(),
-    )
+        enum_map,
+    )?;
+
+    if options.system_uptime_global {
+        container.header.flags |= ironplc_container::FLAG_HAS_SYSTEM_UPTIME;
+    }
+
+    Ok(container)
 }
 
 /// Finds the first PROGRAM declaration in the library.
@@ -215,13 +251,13 @@ fn find_configuration(library: &Library) -> Option<&ConfigurationDeclaration> {
 }
 
 /// Holds the compiled bytecode and metadata for a user-defined function.
-struct CompiledFunction {
-    function_id: u16,
-    bytecode: Vec<u8>,
-    max_stack_depth: u16,
-    num_locals: u16,
-    num_params: u16,
-    name: String,
+pub(crate) struct CompiledFunction {
+    pub(crate) function_id: u16,
+    pub(crate) bytecode: Vec<u8>,
+    pub(crate) max_stack_depth: u16,
+    pub(crate) num_locals: u16,
+    pub(crate) num_params: u16,
+    pub(crate) name: String,
 }
 
 /// Compiles a PROGRAM and its user-defined functions into a container.
@@ -239,12 +275,15 @@ fn compile_program_with_functions(
     global_vars: &[VarDecl],
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
+    enum_map: crate::compile_enum::EnumOrdinalMap,
 ) -> Result<Container, Diagnostic> {
     let mut ctx = CompileContext::new();
+    ctx.enum_map = enum_map;
     let mut builder = ContainerBuilder::new();
 
     // Assign global variable indices first (indices 0..G).
     assign_variables(&mut ctx, &mut builder, global_vars, types)?;
+    let num_globals = ctx.variables.len() as u16;
 
     // Pre-scan user-defined FB declarations to register type metadata
     // (field indices, field op types, type IDs) before assign_variables runs.
@@ -252,9 +291,8 @@ fn compile_program_with_functions(
     // The actual FB body compilation happens after program-local variables are
     // assigned, once var_offsets are known.
     let mut compiled_fb_bodies: Vec<CompiledFunction> = Vec::new();
-    let mut next_function_id: u16 = 2;
 
-    for fb_decl in fb_decls {
+    for (next_function_id, fb_decl) in (2_u16..).zip(fb_decls.iter()) {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let mut field_indices: HashMap<String, u8> = HashMap::new();
         let mut field_op_types: HashMap<String, OpType> = HashMap::new();
@@ -304,7 +342,6 @@ fn compile_program_with_functions(
                 field_op_types,
             },
         );
-        next_function_id += 1;
     }
 
     // Collect program-local variables, skipping VAR_EXTERNAL declarations
@@ -323,8 +360,27 @@ fn compile_program_with_functions(
 
     // Now compile the FB bodies with correct var_offsets.
     let mut compiled_functions = Vec::new();
-    let mut next_function_id: u16 = 2;
     let mut var_offset = VarIndex::new(program_var_count);
+
+    // Compile user FUNCTIONs before FUNCTION_BLOCK bodies so that FB bodies
+    // can resolve calls to user functions via `ctx.user_functions` (functions
+    // register themselves at the end of `compile_user_function`). Per
+    // IEC 61131-3 functions cannot instantiate FBs, so they don't require FB
+    // bodies to have been compiled first.
+    for (next_function_id, func_decl) in (2_u16..).zip(func_decls.iter()) {
+        let compiled = compile_user_function(
+            func_decl,
+            next_function_id,
+            var_offset,
+            &mut ctx,
+            functions,
+            &mut builder,
+            types,
+            num_globals,
+        )?;
+        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
+        compiled_functions.push(compiled);
+    }
 
     for fb_decl in fb_decls {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
@@ -333,24 +389,17 @@ fn compile_program_with_functions(
         // Update the var_offset in the registered type info.
         ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = var_offset.raw();
 
-        let compiled =
-            compile_user_function_block(fb_decl, fb_func_id, var_offset.raw(), &mut ctx, types)?;
-        var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
-        compiled_fb_bodies.push(compiled);
-    }
-
-    for func_decl in func_decls {
-        let compiled = compile_user_function(
-            func_decl,
-            next_function_id,
-            var_offset,
+        let compiled = compile_user_function_block(
+            fb_decl,
+            fb_func_id,
+            var_offset.raw(),
             &mut ctx,
-            functions,
             &mut builder,
+            types,
+            num_globals,
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
-        next_function_id += 1;
-        compiled_functions.push(compiled);
+        compiled_fb_bodies.push(compiled);
     }
 
     let total_variables = var_offset;
@@ -400,21 +449,23 @@ fn compile_program_with_functions(
         .unwrap_or(0);
 
     // Function 0: init, Function 1: scan
+    // bytecode() must be called before max_stack_depth() because the
+    // peephole optimizer (run inside bytecode()) may increase max_stack_depth.
+    let init_bytecode = crate::optimize::optimize(init_emitter.bytecode(), &ctx.constants);
     let init_stack = init_emitter.max_stack_depth();
-    let init_bytecode = init_emitter.bytecode();
     builder = builder.add_function(
         FunctionId::INIT,
-        init_bytecode,
+        &init_bytecode,
         init_stack,
         program_var_count,
         0,
     );
 
+    let scan_bytecode = crate::optimize::optimize(scan_emitter.bytecode(), &ctx.constants);
     let scan_stack = scan_emitter.max_stack_depth() + max_fb_body_stack;
-    let scan_bytecode = scan_emitter.bytecode();
     builder = builder.add_function(
         FunctionId::SCAN,
-        scan_bytecode,
+        &scan_bytecode,
         scan_stack,
         program_var_count,
         0,
@@ -484,473 +535,22 @@ fn compile_program_with_functions(
     for entry in ctx.debug_var_names {
         builder = builder.add_var_name(entry);
     }
+    for (type_name, values) in &ctx.enum_map.definitions {
+        builder = builder.add_enum_def(EnumDefEntry {
+            type_name: type_name.clone(),
+            values: values.clone(),
+        });
+    }
 
     Ok(builder.build())
 }
 
-/// Compiles a single user-defined function body.
-///
-/// Saves and restores the context's variable mappings so that function-local
-/// variables don't interfere with the program's namespace.
-///
-/// Variable layout within the function's region (starting at `var_offset`):
-/// - Input parameters (in declaration order)
-/// - Local variables (VAR)
-/// - Return value variable (named same as function)
-fn compile_user_function(
-    func_decl: &FunctionDeclaration,
-    function_id: u16,
-    var_offset: VarIndex,
-    ctx: &mut CompileContext,
-    functions: &FunctionEnvironment,
-    builder: &mut ContainerBuilder,
-) -> Result<CompiledFunction, Diagnostic> {
-    // Save the program's variable mappings.
-    let saved_variables = std::mem::take(&mut ctx.variables);
-    let saved_var_types = std::mem::take(&mut ctx.var_types);
-    let saved_string_vars = std::mem::take(&mut ctx.string_vars);
-    let saved_array_vars = std::mem::take(&mut ctx.array_vars);
-
-    // Assign variable slots for the function's parameters and locals,
-    // starting at var_offset. Input parameters come first (declaration order),
-    // then local variables.
-    let mut current_index = var_offset;
-    let mut num_params: u16 = 0;
-
-    // First pass: input-compatible parameters (VAR_INPUT and VAR_IN_OUT)
-    // must come first for CALL arg passing.
-    for decl in &func_decl.variables {
-        if !decl.var_type.is_input_compatible() {
-            continue;
-        }
-        if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
-            match &decl.initializer {
-                InitialValueAssignmentKind::Simple(simple) => {
-                    if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
-                        ctx.var_types.insert(id.clone(), type_info);
-                    }
-                }
-                InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-
-                    let data_offset = ctx.data_region_offset;
-                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
-                    ctx.data_region_offset = ctx
-                        .data_region_offset
-                        .checked_add(total_bytes)
-                        .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::NotImplemented,
-                                Label::span(string_init.span(), "Data region overflow"),
-                            )
-                        })?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                        },
-                    );
-                }
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    ctx.var_types.insert(
-                        id.clone(),
-                        VarTypeInfo {
-                            op_width: OpWidth::W64,
-                            signedness: Signedness::Unsigned,
-                            storage_bits: 64,
-                        },
-                    );
-                    // If the reference target is an inline array type
-                    // (REF_TO ARRAY[...] OF T), register an array descriptor
-                    // so that PT^[idx] can be compiled with deref array opcodes.
-                    // No data region space is allocated — the reference parameter
-                    // points to an array in the caller's scope.
-                    if let ReferenceTarget::Array(subranges) = &ref_init.target {
-                        let span = id.span();
-                        let spec = crate::compile_array::array_spec_from_inline(subranges, &span)?;
-                        let element_vti = if spec.ref_to {
-                            VarTypeInfo {
-                                op_width: OpWidth::W64,
-                                signedness: Signedness::Unsigned,
-                                storage_bits: 64,
-                            }
-                        } else {
-                            resolve_type_name(&spec.element_type_name).unwrap_or(VarTypeInfo {
-                                op_width: OpWidth::W32,
-                                signedness: Signedness::Unsigned,
-                                storage_bits: 32,
-                            })
-                        };
-                        let element_type_byte =
-                            crate::compile_array::var_type_info_to_type_byte(&element_vti);
-                        let mut dimensions = Vec::new();
-                        let mut total_elements: u32 = 1;
-                        for &(lower, upper) in &spec.dimensions {
-                            let size = (upper as i64 - lower as i64 + 1) as u32;
-                            dimensions.push(crate::compile_array::DimensionInfo {
-                                lower_bound: lower,
-                                size,
-                                stride: 0,
-                            });
-                            total_elements *= size;
-                        }
-                        let n = dimensions.len();
-                        if n > 0 {
-                            dimensions[n - 1].stride = 1;
-                            for k in (0..n - 1).rev() {
-                                dimensions[k].stride =
-                                    dimensions[k + 1].stride * dimensions[k + 1].size;
-                            }
-                        }
-                        let desc_index =
-                            builder.add_array_descriptor(element_type_byte, total_elements, 0);
-                        ctx.array_vars.insert(
-                            id.clone(),
-                            crate::compile_array::ArrayVarInfo {
-                                var_index: current_index,
-                                desc_index,
-                                data_offset: 0,
-                                element_var_type_info: element_vti,
-                                total_elements,
-                                dimensions,
-                                is_string_element: false,
-                                string_max_len: 0,
-                            },
-                        );
-                    }
-                }
-                _ => {}
-            }
-            current_index = VarIndex::new(current_index.raw() + 1);
-            num_params += 1;
-        }
-    }
-
-    // Second pass: local variables (VAR, VAR_TEMP).
-    for decl in &func_decl.variables {
-        if !decl.var_type.is_local() {
-            continue;
-        }
-        if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
-            match &decl.initializer {
-                InitialValueAssignmentKind::Simple(simple) => {
-                    if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
-                        ctx.var_types.insert(id.clone(), type_info);
-                    }
-                }
-                InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-
-                    let data_offset = ctx.data_region_offset;
-                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
-                    ctx.data_region_offset = ctx
-                        .data_region_offset
-                        .checked_add(total_bytes)
-                        .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::NotImplemented,
-                                Label::span(string_init.span(), "Data region overflow"),
-                            )
-                        })?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                        },
-                    );
-                }
-                InitialValueAssignmentKind::Reference(_) => {
-                    ctx.var_types.insert(
-                        id.clone(),
-                        VarTypeInfo {
-                            op_width: OpWidth::W64,
-                            signedness: Signedness::Unsigned,
-                            storage_bits: 64,
-                        },
-                    );
-                }
-                _ => {}
-            }
-            current_index = VarIndex::new(current_index.raw() + 1);
-        }
-    }
-
-    // Assign the return variable (named same as the function).
-    let return_var_index = current_index;
-    let return_id = func_decl.name.clone();
-    ctx.variables.insert(return_id.clone(), return_var_index);
-
-    // Check if this function returns a STRING/WSTRING.
-    let return_string_info = match &func_decl.return_type {
-        FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
-            let max_length = resolve_string_spec_max_length(spec)?;
-
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            ctx.string_vars.insert(
-                return_id.clone(),
-                StringVarInfo {
-                    data_offset,
-                    max_length,
-                },
-            );
-            Some(StringReturnInfo {
-                data_offset,
-                max_length,
-            })
-        }
-        FunctionReturnType::Named(_) => {
-            let return_type_name = func_decl.return_type.to_type_name();
-            if let Some(type_info) = resolve_type_name(&return_type_name.name) {
-                ctx.var_types.insert(return_id.clone(), type_info);
-            }
-            None
-        }
-    };
-    current_index = VarIndex::new(current_index.raw() + 1);
-
-    let num_locals = current_index.raw() - var_offset.raw();
-
-    // Determine return type's OpType.
-    let return_type_name = func_decl.return_type.to_type_name();
-    let return_op_type = resolve_type_name(&return_type_name.name)
-        .map(|info| (info.op_width, info.signedness))
-        .unwrap_or(DEFAULT_OP_TYPE);
-
-    // Compile the function body.
-    let mut func_emitter = Emitter::new();
-
-    // Emit initialization prologue: IEC 61131-3 functions are stateless, so
-    // local variables must be re-initialized on every call. The flat variable
-    // table (ADR-0021) retains stale values between calls, so the prologue
-    // resets non-parameter locals to their declared initial values (or zero).
-    emit_function_local_prologue(
-        &mut func_emitter,
-        ctx,
-        func_decl,
-        return_var_index,
-        return_op_type,
-    )?;
-
-    let body = ironplc_dsl::textual::Statements {
-        body: func_decl.body.clone(),
-    };
-    compile_statements(&mut func_emitter, ctx, &body)?;
-
-    // Load the return value and emit RET.
-    if let Some(ref str_info) = return_string_info {
-        // For STRING return: load the return string from the data region into
-        // a temp buffer, leaving buf_idx on the stack for the caller.
-        ctx.num_temp_bufs += 1;
-        func_emitter.emit_str_load_var(str_info.data_offset);
-    } else {
-        emit_load_var(&mut func_emitter, return_var_index, return_op_type);
-    }
-    func_emitter.emit_ret();
-
-    let max_stack_depth = func_emitter.max_stack_depth();
-    let bytecode = func_emitter.bytecode().to_vec();
-
-    // Record function metadata for use at call sites.
-    let func_name = func_decl.name.lower_case();
-
-    // Record parameter OpTypes and STRING info from the function's declarations.
-    let mut param_op_types: Vec<OpType> = Vec::new();
-    let mut param_string_info: Vec<Option<StringParamInfo>> = Vec::new();
-    for decl in &func_decl.variables {
-        if !decl.var_type.is_input_compatible() {
-            continue;
-        }
-        match &decl.initializer {
-            InitialValueAssignmentKind::String(_) => {
-                param_op_types.push(DEFAULT_OP_TYPE);
-                if let Some(id) = decl.identifier.symbolic_id() {
-                    if let Some(info) = ctx.string_vars.get(id) {
-                        param_string_info.push(Some(StringParamInfo {
-                            data_offset: info.data_offset,
-                            max_length: info.max_length,
-                        }));
-                    } else {
-                        param_string_info.push(None);
-                    }
-                } else {
-                    param_string_info.push(None);
-                }
-            }
-            InitialValueAssignmentKind::Reference(_) => {
-                param_op_types.push((OpWidth::W64, Signedness::Unsigned));
-                param_string_info.push(None);
-            }
-            _ => {
-                if let Some(sig) = functions.get(&func_decl.name) {
-                    if let Some(param) = sig
-                        .parameters
-                        .iter()
-                        .filter(|p| p.is_input)
-                        .nth(param_op_types.len())
-                    {
-                        param_op_types.push(
-                            resolve_type_name(&param.param_type.name)
-                                .map(|info| (info.op_width, info.signedness))
-                                .unwrap_or(DEFAULT_OP_TYPE),
-                        );
-                    } else {
-                        param_op_types.push(DEFAULT_OP_TYPE);
-                    }
-                } else {
-                    param_op_types.push(DEFAULT_OP_TYPE);
-                }
-                param_string_info.push(None);
-            }
-        }
-    }
-
-    ctx.user_functions.insert(
-        func_name.to_string(),
-        UserFunctionInfo {
-            function_id,
-            var_offset,
-            num_params,
-            param_op_types,
-            param_string_info,
-            return_string_info,
-            max_stack_depth,
-        },
-    );
-
-    // Restore the program's variable mappings.
-    ctx.variables = saved_variables;
-    ctx.var_types = saved_var_types;
-    ctx.string_vars = saved_string_vars;
-    ctx.array_vars = saved_array_vars;
-
-    Ok(CompiledFunction {
-        function_id,
-        bytecode,
-        max_stack_depth,
-        num_locals,
-        num_params,
-        name: func_name.to_string(),
-    })
-}
-
-/// Compiles a single user-defined function block body.
-///
-/// Saves and restores the context's variable mappings so that FB-local
-/// variables don't interfere with the program's namespace.
-///
-/// All FB fields (VAR_INPUT, VAR_OUTPUT, VAR) are mapped to contiguous
-/// variable table slots starting at `var_offset`, in declaration order.
-/// The VM's copy-in/copy-out logic mirrors this ordering.
-fn compile_user_function_block(
-    fb_decl: &FunctionBlockDeclaration,
-    function_id: u16,
-    var_offset: u16,
-    ctx: &mut CompileContext,
-    _types: &TypeEnvironment,
-) -> Result<CompiledFunction, Diagnostic> {
-    let fb_name = fb_decl.name.name.to_string().to_uppercase();
-
-    // Collect fields in a stable order: inputs first, then outputs, then locals.
-    // This matches the data-region layout used by the VM's copy-in/copy-out.
-    let mut field_decls: Vec<&VarDecl> = Vec::new();
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Input {
-            field_decls.push(decl);
-        }
-    }
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Output {
-            field_decls.push(decl);
-        }
-    }
-    for decl in &fb_decl.variables {
-        if decl.var_type == VariableType::Var {
-            field_decls.push(decl);
-        }
-    }
-
-    // Save the program's variable mappings.
-    let saved_variables = std::mem::take(&mut ctx.variables);
-    let saved_var_types = std::mem::take(&mut ctx.var_types);
-    let saved_string_vars = std::mem::take(&mut ctx.string_vars);
-    let saved_array_vars = std::mem::take(&mut ctx.array_vars);
-    let saved_fb_instances = std::mem::take(&mut ctx.fb_instances);
-
-    // Assign variable slots for all FB fields, in the same order as field_decls.
-    let mut current_index = VarIndex::new(var_offset);
-    for decl in &field_decls {
-        if let Some(id) = decl.identifier.symbolic_id() {
-            ctx.variables.insert(id.clone(), current_index);
-            if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer {
-                if let Some(vti) = resolve_type_name(&simple.type_name.name) {
-                    ctx.var_types.insert(id.clone(), vti);
-                }
-            }
-            current_index = VarIndex::new(current_index.raw() + 1);
-        }
-    }
-
-    let num_locals = current_index.raw() - var_offset;
-
-    // Compile the FB body.
-    let mut fb_emitter = Emitter::new();
-    compile_body(&mut fb_emitter, ctx, &fb_decl.body)?;
-    fb_emitter.emit_ret_void();
-
-    let max_stack_depth = fb_emitter.max_stack_depth();
-    let bytecode = fb_emitter.bytecode().to_vec();
-
-    // Restore the program's variable mappings.
-    ctx.variables = saved_variables;
-    ctx.var_types = saved_var_types;
-    ctx.string_vars = saved_string_vars;
-    ctx.array_vars = saved_array_vars;
-    ctx.fb_instances = saved_fb_instances;
-
-    Ok(CompiledFunction {
-        function_id,
-        bytecode,
-        max_stack_depth,
-        num_locals,
-        num_params: 0,
-        name: fb_name,
-    })
-}
-
-/// Metadata for a STRING parameter in a user-defined function.
-///
-/// Used at call sites to copy the caller's string data into the function's
-/// allocated data region space before executing the CALL instruction.
 #[derive(Clone)]
-struct StringParamInfo {
+pub(crate) struct StringParamInfo {
     /// Byte offset in the data region where this parameter's string is stored.
-    data_offset: u32,
+    pub(crate) data_offset: u32,
     /// Maximum number of characters this parameter can hold.
-    max_length: u16,
+    pub(crate) max_length: u16,
 }
 
 /// Metadata for a STRING return value in a user-defined function.
@@ -958,94 +558,96 @@ struct StringParamInfo {
 /// When a function returns STRING/WSTRING, the return value lives in the
 /// data region rather than on the operand stack.
 #[derive(Clone)]
-struct StringReturnInfo {
+pub(crate) struct StringReturnInfo {
     /// Byte offset in the data region where the return string is stored.
-    data_offset: u32,
+    pub(crate) data_offset: u32,
     /// Maximum number of characters the return string can hold.
-    max_length: u16,
+    pub(crate) max_length: u16,
 }
 
 /// Metadata for a compiled user-defined function.
 #[derive(Clone)]
-struct UserFunctionInfo {
+pub(crate) struct UserFunctionInfo {
     /// The function ID assigned in the container.
-    function_id: u16,
+    pub(crate) function_id: u16,
     /// The absolute variable table offset where this function's parameters start.
-    var_offset: VarIndex,
+    pub(crate) var_offset: VarIndex,
     /// Number of input parameters.
-    num_params: u16,
+    pub(crate) num_params: u16,
     /// OpTypes for each input parameter, in declaration order.
-    param_op_types: Vec<OpType>,
+    pub(crate) param_op_types: Vec<OpType>,
     /// For each input parameter (in order), `Some(info)` if it is a STRING
     /// parameter that needs copy-in at the call site, `None` for scalar params.
-    param_string_info: Vec<Option<StringParamInfo>>,
+    pub(crate) param_string_info: Vec<Option<StringParamInfo>>,
     /// If the function returns STRING/WSTRING, info about the return string
     /// in the data region. Used at call sites to initialize the return string
     /// header before CALL.
-    return_string_info: Option<StringReturnInfo>,
+    pub(crate) return_string_info: Option<StringReturnInfo>,
     /// Maximum stack depth used by this function's body.
-    max_stack_depth: u16,
+    pub(crate) max_stack_depth: u16,
 }
 
 /// Tracks state during compilation of a single program.
 /// Metadata for a function block instance variable.
-struct FbInstanceInfo {
+pub(crate) struct FbInstanceInfo {
     /// Variable table index holding the data region offset.
-    var_index: VarIndex,
+    pub(crate) var_index: VarIndex,
     /// Type ID for FB_CALL dispatch.
-    type_id: u16,
+    pub(crate) type_id: u16,
     /// Data region byte offset where this instance's fields start.
-    data_offset: u32,
+    pub(crate) data_offset: u32,
     /// Maps field name (lowercase) to field index.
-    field_indices: HashMap<String, u8>,
+    pub(crate) field_indices: HashMap<String, u8>,
 }
 
 /// Metadata for a compiled user-defined function block type.
-struct UserFbTypeInfo {
+pub(crate) struct UserFbTypeInfo {
     /// Unique type ID for FB_CALL dispatch (starts at 0x1000).
-    type_id: u16,
+    pub(crate) type_id: u16,
     /// Number of data-region fields in each instance.
-    num_fields: usize,
+    pub(crate) num_fields: usize,
     /// Maps field name (lowercase) to field index (ordinal position).
-    field_indices: HashMap<String, u8>,
+    pub(crate) field_indices: HashMap<String, u8>,
     /// Function ID of the compiled FB body in the container.
-    function_id: u16,
+    pub(crate) function_id: u16,
     /// Variable table offset where the FB body's slots start.
-    var_offset: u16,
+    pub(crate) var_offset: u16,
     /// Maps field name (lowercase) to its op type for codegen at call sites.
-    field_op_types: HashMap<String, OpType>,
+    pub(crate) field_op_types: HashMap<String, OpType>,
 }
 
 pub(crate) struct CompileContext {
     /// Maps variable identifiers to their variable table indices.
-    variables: HashMap<Id, VarIndex>,
+    pub(crate) variables: HashMap<Id, VarIndex>,
     /// Maps variable identifiers to their type information.
-    var_types: HashMap<Id, VarTypeInfo>,
+    pub(crate) var_types: HashMap<Id, VarTypeInfo>,
     /// Ordered list of constants added to the constant pool.
-    constants: Vec<PoolConstant>,
+    pub(crate) constants: Vec<PoolConstant>,
     /// Stack of loop exit labels for EXIT statement compilation.
     /// Each enclosing loop pushes its end label; EXIT jumps to the top.
-    loop_exit_labels: Vec<crate::emit::Label>,
+    pub(crate) loop_exit_labels: Vec<crate::emit::Label>,
     /// Maps STRING variable identifiers to their data region metadata.
-    string_vars: HashMap<Id, StringVarInfo>,
+    pub(crate) string_vars: HashMap<Id, StringVarInfo>,
     /// Maps FB instance variable identifiers to their metadata.
-    fb_instances: HashMap<Id, FbInstanceInfo>,
+    pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
     /// Maps array variable identifiers to their metadata.
     pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     /// Maps structure variable identifiers to their metadata.
     pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
+    /// Pre-computed ordinal mappings for named enumeration types.
+    pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
     /// Next available byte offset in the data region.
     pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
     pub(crate) max_string_capacity: u16,
     /// Number of temp buffers needed (one per string load in the init function).
-    num_temp_bufs: u16,
+    pub(crate) num_temp_bufs: u16,
     /// Debug info: variable name entries collected during assign_variables.
-    debug_var_names: Vec<VarNameEntry>,
+    pub(crate) debug_var_names: Vec<VarNameEntry>,
     /// Maps user-defined function name (lowercase) to compilation metadata.
-    user_functions: HashMap<String, UserFunctionInfo>,
+    pub(crate) user_functions: HashMap<String, UserFunctionInfo>,
     /// Maps user-defined FB type name (uppercase) to compilation metadata.
-    user_fb_types: HashMap<String, UserFbTypeInfo>,
+    pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
     /// Next available type ID for user-defined function blocks.
     next_user_fb_type_id: u16,
 }
@@ -1068,16 +670,17 @@ impl CompileContext {
             user_functions: HashMap::new(),
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
+            enum_map: crate::compile_enum::EnumOrdinalMap::default(),
         }
     }
 
     /// Returns the exit label for the innermost enclosing loop, if any.
-    fn current_loop_exit(&self) -> Option<crate::emit::Label> {
+    pub(crate) fn current_loop_exit(&self) -> Option<crate::emit::Label> {
         self.loop_exit_labels.last().copied()
     }
 
     /// Looks up a variable index by identifier, using the provided span for error reporting.
-    fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
+    pub(crate) fn var_index(&self, name: &Id) -> Result<VarIndex, Diagnostic> {
         self.variables.get(name).copied().ok_or_else(|| {
             Diagnostic::problem(
                 Problem::VariableUndefined,
@@ -1088,16 +691,27 @@ impl CompileContext {
     }
 
     /// Looks up type information for a variable by identifier.
-    fn var_type_info(&self, name: &Id) -> Option<VarTypeInfo> {
+    pub(crate) fn var_type_info(&self, name: &Id) -> Option<VarTypeInfo> {
         self.var_types.get(name).copied()
     }
 
     /// Returns the op_type for a variable by identifier, falling back to defaults.
-    fn var_op_type(&self, name: &Id) -> OpType {
+    pub(crate) fn var_op_type(&self, name: &Id) -> OpType {
         self.var_types
             .get(name)
             .map(|info| (info.op_width, info.signedness))
             .unwrap_or(DEFAULT_OP_TYPE)
+    }
+
+    /// Allocates a scratch variable with a synthetic name and returns its index.
+    ///
+    /// The name uses a `$` prefix which is illegal in IEC 61131-3 identifiers,
+    /// guaranteeing no collision with user-defined variables.
+    pub(crate) fn allocate_scratch_variable(&mut self, suffix: &str) -> VarIndex {
+        let idx = VarIndex::new(self.variables.len() as u16);
+        self.variables
+            .insert(Id::from(&format!("$scratch_{}", suffix)), idx);
+        idx
     }
 
     /// Adds an i32 constant to the pool and returns its index.
@@ -1115,7 +729,7 @@ impl CompileContext {
     }
 
     /// Adds an f32 constant to the pool and returns its index.
-    fn add_f32_constant(&mut self, value: f32) -> u16 {
+    pub(crate) fn add_f32_constant(&mut self, value: f32) -> u16 {
         for (i, existing) in self.constants.iter().enumerate() {
             if let PoolConstant::F32(v) = existing {
                 if v.to_bits() == value.to_bits() {
@@ -1129,7 +743,7 @@ impl CompileContext {
     }
 
     /// Adds an f64 constant to the pool and returns its index.
-    fn add_f64_constant(&mut self, value: f64) -> u16 {
+    pub(crate) fn add_f64_constant(&mut self, value: f64) -> u16 {
         for (i, existing) in self.constants.iter().enumerate() {
             if let PoolConstant::F64(v) = existing {
                 if v.to_bits() == value.to_bits() {
@@ -1157,7 +771,7 @@ impl CompileContext {
     }
 
     /// Adds a string constant (raw bytes) to the pool and returns its index.
-    fn add_str_constant(&mut self, value: Vec<u8>) -> u16 {
+    pub(crate) fn add_str_constant(&mut self, value: Vec<u8>) -> u16 {
         for (i, existing) in self.constants.iter().enumerate() {
             if let PoolConstant::Str(v) = existing {
                 if *v == value {
@@ -1168,3841 +782,6 @@ impl CompileContext {
         let index = self.constants.len() as u16;
         self.constants.push(PoolConstant::Str(value));
         index
-    }
-}
-
-/// Assigns variable table indices and type info for all variable declarations.
-fn assign_variables(
-    ctx: &mut CompileContext,
-    builder: &mut ContainerBuilder,
-    declarations: &[VarDecl],
-    types: &TypeEnvironment,
-) -> Result<(), Diagnostic> {
-    for decl in declarations {
-        if let Some(id) = decl.identifier.symbolic_id() {
-            let index = VarIndex::new(ctx.variables.len() as u16);
-            ctx.variables.insert(id.clone(), index);
-
-            // Resolve type info and collect debug metadata.
-            let (type_tag, type_name_str) = match &decl.initializer {
-                InitialValueAssignmentKind::Simple(simple) => {
-                    if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
-                        ctx.var_types.insert(id.clone(), type_info);
-                    }
-                    let tag = resolve_iec_type_tag(&simple.type_name.name);
-                    let name = simple.type_name.name.to_string().to_uppercase();
-                    (tag, name)
-                }
-                InitialValueAssignmentKind::String(string_init) => {
-                    let max_length = resolve_string_max_length(string_init)?;
-
-                    // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
-                    let data_offset = ctx.data_region_offset;
-                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
-                    ctx.data_region_offset = ctx
-                        .data_region_offset
-                        .checked_add(total_bytes)
-                        .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::NotImplemented,
-                                Label::span(string_init.span(), "Data region overflow"),
-                            )
-                        })?;
-
-                    if max_length > ctx.max_string_capacity {
-                        ctx.max_string_capacity = max_length;
-                    }
-
-                    ctx.string_vars.insert(
-                        id.clone(),
-                        StringVarInfo {
-                            data_offset,
-                            max_length,
-                        },
-                    );
-                    (iec_type_tag::STRING, "STRING".into())
-                }
-                InitialValueAssignmentKind::FunctionBlock(fb_init) => {
-                    let fb_name = fb_init.type_name.to_string().to_uppercase();
-                    if let Some((type_id, num_fields, field_map)) = resolve_fb_type(&fb_name) {
-                        // Standard library function block.
-                        let instance_size = num_fields as u32 * 8;
-                        let data_offset = ctx.data_region_offset;
-                        ctx.data_region_offset = ctx
-                            .data_region_offset
-                            .checked_add(instance_size)
-                            .ok_or_else(|| {
-                                Diagnostic::problem(
-                                    Problem::NotImplemented,
-                                    Label::span(decl.identifier.span(), "Data region overflow"),
-                                )
-                            })?;
-
-                        ctx.fb_instances.insert(
-                            id.clone(),
-                            FbInstanceInfo {
-                                var_index: index,
-                                type_id,
-                                data_offset,
-                                field_indices: field_map,
-                            },
-                        );
-                    } else if let Some(user_fb) = ctx.user_fb_types.get(&fb_name) {
-                        // User-defined function block.
-                        let instance_size = user_fb.num_fields as u32 * 8;
-                        let data_offset = ctx.data_region_offset;
-                        ctx.data_region_offset = ctx
-                            .data_region_offset
-                            .checked_add(instance_size)
-                            .ok_or_else(|| {
-                                Diagnostic::problem(
-                                    Problem::NotImplemented,
-                                    Label::span(decl.identifier.span(), "Data region overflow"),
-                                )
-                            })?;
-
-                        ctx.fb_instances.insert(
-                            id.clone(),
-                            FbInstanceInfo {
-                                var_index: index,
-                                type_id: user_fb.type_id,
-                                data_offset,
-                                field_indices: user_fb.field_indices.clone(),
-                            },
-                        );
-                    }
-                    (iec_type_tag::OTHER, fb_name)
-                }
-                InitialValueAssignmentKind::Array(array_init) => {
-                    let spec = match &array_init.spec {
-                        SpecificationKind::Inline(array_subranges) => {
-                            crate::compile_array::array_spec_from_inline(
-                                array_subranges,
-                                &decl.identifier.span(),
-                            )?
-                        }
-                        SpecificationKind::Named(type_name) => {
-                            let array_type =
-                                types.resolve_array_type(type_name).ok_or_else(|| {
-                                    Diagnostic::problem(
-                                        Problem::NotImplemented,
-                                        Label::span(type_name.span(), "Unknown array type"),
-                                    )
-                                })?;
-                            let IntermediateType::Array {
-                                element_type,
-                                dimensions,
-                            } = array_type
-                            else {
-                                unreachable!("resolve_array_type guarantees Array variant");
-                            };
-                            crate::compile_array::array_spec_from_named(element_type, dimensions)?
-                        }
-                    };
-                    crate::compile_array::register_array_variable(
-                        ctx,
-                        builder,
-                        id,
-                        index,
-                        &spec,
-                        &decl.identifier.span(),
-                    )?
-                }
-                InitialValueAssignmentKind::Reference(_) => {
-                    // References are stored as 64-bit variable-table indices (unsigned).
-                    ctx.var_types.insert(
-                        id.clone(),
-                        VarTypeInfo {
-                            op_width: OpWidth::W64,
-                            signedness: Signedness::Unsigned,
-                            storage_bits: 64,
-                        },
-                    );
-                    (iec_type_tag::OTHER, "REF_TO".into())
-                }
-                InitialValueAssignmentKind::Structure(struct_init) => {
-                    crate::compile_struct::allocate_struct_variable(
-                        ctx,
-                        builder,
-                        types,
-                        &struct_init.type_name,
-                        id,
-                        index,
-                        &decl.identifier.span(),
-                    )?;
-                    let type_name_str = struct_init.type_name.to_string().to_uppercase();
-                    (iec_type_tag::OTHER, type_name_str)
-                }
-                InitialValueAssignmentKind::LateResolvedType(_) => {
-                    // LateResolvedType should have been resolved before codegen.
-                    // If we reach here, it indicates a bug in the compiler.
-                    return Err(Diagnostic::internal_error(file!(), line!()));
-                }
-                // Other initializer kinds (EnumeratedType, etc.)
-                // do not yet have type info tracked in codegen.
-                _ => (iec_type_tag::OTHER, String::new()),
-            };
-
-            ctx.debug_var_names.push(VarNameEntry {
-                var_index: index,
-                function_id: function_id::GLOBAL_SCOPE,
-                var_section: map_var_section(&decl.var_type),
-                iec_type_tag: type_tag,
-                name: id.to_string(),
-                type_name: type_name_str,
-            });
-        }
-    }
-    Ok(())
-}
-
-/// Maps a DSL VariableType to the debug section var_section encoding.
-fn map_var_section(vt: &VariableType) -> u8 {
-    match vt {
-        VariableType::Var => var_section::VAR,
-        VariableType::VarTemp => var_section::VAR_TEMP,
-        VariableType::Input => var_section::VAR_INPUT,
-        VariableType::Output => var_section::VAR_OUTPUT,
-        VariableType::InOut => var_section::VAR_IN_OUT,
-        VariableType::External => var_section::VAR_EXTERNAL,
-        VariableType::Global => var_section::VAR_GLOBAL,
-        VariableType::Access => var_section::VAR,
-    }
-}
-
-/// Maps an IEC 61131-3 type name to its debug type tag.
-fn resolve_iec_type_tag(name: &Id) -> u8 {
-    match ElementaryTypeName::try_from(name) {
-        Ok(elem) => match elem {
-            ElementaryTypeName::BOOL => iec_type_tag::BOOL,
-            ElementaryTypeName::SINT => iec_type_tag::SINT,
-            ElementaryTypeName::INT => iec_type_tag::INT,
-            ElementaryTypeName::DINT => iec_type_tag::DINT,
-            ElementaryTypeName::LINT => iec_type_tag::LINT,
-            ElementaryTypeName::USINT => iec_type_tag::USINT,
-            ElementaryTypeName::UINT => iec_type_tag::UINT,
-            ElementaryTypeName::UDINT => iec_type_tag::UDINT,
-            ElementaryTypeName::ULINT => iec_type_tag::ULINT,
-            ElementaryTypeName::REAL => iec_type_tag::REAL,
-            ElementaryTypeName::LREAL => iec_type_tag::LREAL,
-            ElementaryTypeName::BYTE => iec_type_tag::BYTE,
-            ElementaryTypeName::WORD => iec_type_tag::WORD,
-            ElementaryTypeName::DWORD => iec_type_tag::DWORD,
-            ElementaryTypeName::LWORD => iec_type_tag::LWORD,
-            ElementaryTypeName::STRING => iec_type_tag::STRING,
-            ElementaryTypeName::WSTRING => iec_type_tag::WSTRING,
-            ElementaryTypeName::TIME => iec_type_tag::TIME,
-            ElementaryTypeName::LTIME => iec_type_tag::LTIME,
-            ElementaryTypeName::DATE => iec_type_tag::DATE,
-            ElementaryTypeName::LDATE => iec_type_tag::LDATE,
-            ElementaryTypeName::TimeOfDay => iec_type_tag::TIME_OF_DAY,
-            ElementaryTypeName::LTimeOfDay => iec_type_tag::LTOD,
-            ElementaryTypeName::DateAndTime => iec_type_tag::DATE_AND_TIME,
-            ElementaryTypeName::LDateAndTime => iec_type_tag::LDT,
-        },
-        Err(()) => iec_type_tag::OTHER,
-    }
-}
-
-/// Emits bytecode to initialize variables that have declared initial values.
-///
-/// For scalar variables with a `SimpleInitializer`, emits load-constant +
-/// truncate (if narrow) + store-variable instructions.
-///
-/// For STRING variables, emits STR_INIT to set up the data region header,
-/// then optionally LOAD_CONST_STR + STR_STORE_VAR for the initial value.
-fn emit_initial_values(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    declarations: &[VarDecl],
-    _types: &TypeEnvironment,
-) -> Result<(), Diagnostic> {
-    for decl in declarations {
-        if let Some(id) = decl.identifier.symbolic_id() {
-            match &decl.initializer {
-                InitialValueAssignmentKind::Simple(simple) => {
-                    if let Some(constant) = &simple.initial_value {
-                        let var_index = ctx.var_index(id)?;
-                        let type_info = ctx.var_type_info(id);
-                        let op_type = type_info
-                            .map(|ti| (ti.op_width, ti.signedness))
-                            .unwrap_or(DEFAULT_OP_TYPE);
-
-                        compile_constant(emitter, ctx, constant, op_type)?;
-
-                        if let Some(ti) = type_info {
-                            emit_truncation(emitter, ti);
-                        }
-
-                        emit_store_var(emitter, var_index, op_type);
-                    }
-                }
-                InitialValueAssignmentKind::String(string_init) => {
-                    if let Some(info) = ctx.string_vars.get(id) {
-                        let data_offset = info.data_offset;
-                        let max_length = info.max_length;
-
-                        // Initialize the string header in the data region.
-                        emitter.emit_str_init(data_offset, max_length);
-
-                        // If there's an initial value, load and store it.
-                        if let Some(chars) = &string_init.initial_value {
-                            // Convert chars to Latin-1 bytes (STRING encoding per ADR-0016).
-                            let bytes: Vec<u8> = chars.iter().map(|&ch| ch as u8).collect();
-                            let pool_index = ctx.add_str_constant(bytes);
-                            ctx.num_temp_bufs += 1;
-                            emitter.emit_load_const_str(pool_index);
-                            emitter.emit_str_store_var(data_offset);
-                        }
-                    }
-                }
-                InitialValueAssignmentKind::FunctionBlock(_) => {
-                    if let Some(fb_info) = ctx.fb_instances.get(id) {
-                        let data_offset = fb_info.data_offset;
-                        let var_index = fb_info.var_index;
-                        // Store the data region byte offset into the variable slot.
-                        let offset_const = ctx.add_i32_constant(data_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_store_var_i32(var_index);
-                    }
-                }
-                InitialValueAssignmentKind::Array(array_init) => {
-                    if let Some(array_info) = ctx.array_vars.get(id) {
-                        let data_offset = array_info.data_offset;
-                        let var_index = array_info.var_index;
-                        let desc_index = array_info.desc_index;
-                        let element_vti = array_info.element_var_type_info;
-                        let is_string = array_info.is_string_element;
-
-                        // Store data_offset into the variable slot (like FB instances).
-                        let offset_const = ctx.add_i32_constant(data_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_store_var_i32(var_index);
-
-                        if is_string {
-                            // Initialize all string headers in the array.
-                            emitter.emit_str_init_array(var_index, desc_index);
-
-                            // Emit STR_STORE_ARRAY_ELEM for each initial string value.
-                            if !array_init.initial_values.is_empty() {
-                                let values = crate::compile_array::flatten_array_initial_values(
-                                    &array_init.initial_values,
-                                )?;
-                                for (i, value) in values.iter().enumerate() {
-                                    compile_constant(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-                                    let idx_const = ctx.add_i32_constant(i as i32);
-                                    emitter.emit_load_const_i32(idx_const);
-                                    emitter.emit_str_store_array_elem(var_index, desc_index);
-                                }
-                            }
-                        } else {
-                            // Emit STORE_ARRAY for each initial value.
-                            if !array_init.initial_values.is_empty() {
-                                let values = crate::compile_array::flatten_array_initial_values(
-                                    &array_init.initial_values,
-                                )?;
-                                let element_op_type =
-                                    (element_vti.op_width, element_vti.signedness);
-                                for (i, value) in values.iter().enumerate() {
-                                    compile_constant(emitter, ctx, value, element_op_type)?;
-                                    emit_truncation(emitter, element_vti);
-                                    let idx_const = ctx.add_i32_constant(i as i32);
-                                    emitter.emit_load_const_i32(idx_const);
-                                    emitter.emit_store_array(var_index, desc_index);
-                                }
-                            }
-                        }
-                    }
-                }
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    let var_index = ctx.var_index(id)?;
-                    match &ref_init.initial_value {
-                        Some(ReferenceInitialValue::Ref(target_var)) => {
-                            // REF(var) → load the target variable's index as a u64 constant.
-                            let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index.into());
-                            emitter.emit_load_const_i64(pool_index);
-                        }
-                        _ => {
-                            // NULL or no initializer → store null sentinel (u64::MAX).
-                            let pool_index = ctx.add_i64_constant(u64::MAX as i64);
-                            emitter.emit_load_const_i64(pool_index);
-                        }
-                    }
-                    emitter.emit_store_var_i64(var_index);
-                }
-                InitialValueAssignmentKind::Structure(struct_init) => {
-                    if let Some(struct_info) = ctx.struct_vars.get(id) {
-                        // Extract needed values before mutable borrow of ctx.
-                        let data_offset = struct_info.data_offset;
-                        let var_index = struct_info.var_index;
-                        let desc_index = struct_info.desc_index;
-                        let fields: Vec<_> = struct_info
-                            .fields
-                            .iter()
-                            .map(|f| crate::compile_struct::FieldInitInfo {
-                                name: f.name.clone(),
-                                slot_offset: f.slot_offset,
-                                field_type: f.field_type.clone(),
-                                op_type: f.op_type,
-                            })
-                            .collect();
-
-                        // Store data_offset into the variable slot
-                        let offset_const = ctx.add_i32_constant(data_offset as i32);
-                        emitter.emit_load_const_i32(offset_const);
-                        emitter.emit_store_var_i32(var_index);
-
-                        // Initialize each field
-                        crate::compile_struct::initialize_struct_fields(
-                            emitter,
-                            ctx,
-                            var_index,
-                            desc_index,
-                            &fields,
-                            &struct_init.elements_init,
-                        )?;
-                    }
-                }
-                // Other initializer kinds (EnumeratedType, etc.)
-                // do not yet support initial values in codegen.
-                _ => {}
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Emits a bytecode prologue that re-initializes a function's non-parameter
-/// local variables and return variable on every call. IEC 61131-3 requires
-/// functions to be stateless (locals must not retain values between calls).
-///
-/// For locals with a declared initial value, emits the same LOAD_CONST +
-/// TRUNC + STORE_VAR sequence that `emit_initial_values()` uses. For locals
-/// without an initializer and for the return variable, emits a zero-store.
-fn emit_function_local_prologue(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func_decl: &FunctionDeclaration,
-    return_var_index: VarIndex,
-    return_op_type: OpType,
-) -> Result<(), Diagnostic> {
-    // Re-initialize VAR locals (not Input parameters).
-    for decl in &func_decl.variables {
-        if decl.var_type != VariableType::Var {
-            continue;
-        }
-        if let Some(id) = decl.identifier.symbolic_id() {
-            let var_index = ctx.var_index(id)?;
-            let type_info = ctx.var_type_info(id);
-            let op_type = type_info
-                .map(|ti| (ti.op_width, ti.signedness))
-                .unwrap_or(DEFAULT_OP_TYPE);
-
-            match &decl.initializer {
-                InitialValueAssignmentKind::Simple(simple) => {
-                    if let Some(constant) = &simple.initial_value {
-                        // Has an explicit initial value: emit LOAD_CONST + TRUNC + STORE.
-                        compile_constant(emitter, ctx, constant, op_type)?;
-                        if let Some(ti) = type_info {
-                            emit_truncation(emitter, ti);
-                        }
-                    } else {
-                        // No initializer: zero-fill.
-                        emit_zero_const(emitter, ctx, op_type);
-                    }
-                    emit_store_var(emitter, var_index, op_type);
-                }
-                InitialValueAssignmentKind::String(string_init) => {
-                    // Re-initialize STRING locals: emit STR_INIT to reset the
-                    // header, then optionally load the initial value.
-                    if let Some(info) = ctx.string_vars.get(id) {
-                        let data_offset = info.data_offset;
-                        let max_length = info.max_length;
-                        emitter.emit_str_init(data_offset, max_length);
-
-                        if let Some(chars) = &string_init.initial_value {
-                            let bytes: Vec<u8> = chars.iter().map(|&ch| ch as u8).collect();
-                            let pool_index = ctx.add_str_constant(bytes);
-                            ctx.num_temp_bufs += 1;
-                            emitter.emit_load_const_str(pool_index);
-                            emitter.emit_str_store_var(data_offset);
-                        }
-                    }
-                }
-                InitialValueAssignmentKind::Reference(ref_init) => {
-                    match &ref_init.initial_value {
-                        Some(ReferenceInitialValue::Ref(target_var)) => {
-                            let target_index = resolve_variable(ctx, target_var)?;
-                            let pool_index = ctx.add_i64_constant(target_index.into());
-                            emitter.emit_load_const_i64(pool_index);
-                        }
-                        _ => {
-                            // NULL or no initializer: store null sentinel (u64::MAX).
-                            let pool_index = ctx.add_i64_constant(u64::MAX as i64);
-                            emitter.emit_load_const_i64(pool_index);
-                        }
-                    }
-                    emitter.emit_store_var_i64(var_index);
-                }
-                _ => {
-                    // Other initializer kinds (FunctionBlock, etc.)
-                    // are not expected in function locals; zero-fill as default.
-                    emit_zero_const(emitter, ctx, op_type);
-                    emit_store_var(emitter, var_index, op_type);
-                }
-            }
-        }
-    }
-
-    // Zero-initialize the return variable.
-    if let Some(info) = ctx.string_vars.get(&func_decl.name) {
-        // STRING return: initialize the string header in the data region.
-        emitter.emit_str_init(info.data_offset, info.max_length);
-    } else {
-        emit_zero_const(emitter, ctx, return_op_type);
-        emit_store_var(emitter, return_var_index, return_op_type);
-    }
-
-    Ok(())
-}
-
-/// Emits a LOAD_CONST instruction that pushes a zero value of the given type.
-pub(crate) fn emit_zero_const(emitter: &mut Emitter, ctx: &mut CompileContext, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => {
-            let pool_index = ctx.add_i32_constant(0);
-            emitter.emit_load_const_i32(pool_index);
-        }
-        OpWidth::W64 => {
-            let pool_index = ctx.add_i64_constant(0);
-            emitter.emit_load_const_i64(pool_index);
-        }
-        OpWidth::F32 => {
-            let pool_index = ctx.add_f32_constant(0.0);
-            emitter.emit_load_const_f32(pool_index);
-        }
-        OpWidth::F64 => {
-            let pool_index = ctx.add_f64_constant(0.0);
-            emitter.emit_load_const_f64(pool_index);
-        }
-    }
-}
-
-/// Maps an IEC 61131-3 type name to its `VarTypeInfo`.
-///
-/// Returns `None` for unrecognized type names (e.g., user-defined types)
-/// and for STRING/WSTRING which are handled separately.
-pub(crate) fn resolve_type_name(name: &Id) -> Option<VarTypeInfo> {
-    // Try as elementary type first (the common case), then fall back to
-    // generic types mapped to their default concrete representation.
-    // Generic types may reach codegen for expressions like `5 + 5` where
-    // no concrete type context was available during type resolution.
-    let elem = ElementaryTypeName::try_from(name)
-        .or_else(|_| match GenericTypeName::try_from(name)? {
-            GenericTypeName::AnyInt | GenericTypeName::AnyNum | GenericTypeName::AnyMagnitude => {
-                Ok(ElementaryTypeName::DINT)
-            }
-            GenericTypeName::AnyReal => Ok(ElementaryTypeName::REAL),
-            _ => Err(()),
-        })
-        .ok()?;
-    match elem {
-        ElementaryTypeName::SINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 8,
-        }),
-        ElementaryTypeName::INT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 16,
-        }),
-        ElementaryTypeName::DINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LINT => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Signed,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::USINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 8,
-        }),
-        ElementaryTypeName::UINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 16,
-        }),
-        ElementaryTypeName::UDINT => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::ULINT => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::REAL => Some(VarTypeInfo {
-            op_width: OpWidth::F32,
-            signedness: Signedness::Signed,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LREAL => Some(VarTypeInfo {
-            op_width: OpWidth::F64,
-            signedness: Signedness::Signed,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::BOOL => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 1,
-        }),
-        ElementaryTypeName::BYTE => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 8,
-        }),
-        ElementaryTypeName::WORD => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 16,
-        }),
-        ElementaryTypeName::DWORD => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LWORD => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::TIME => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Signed,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LTIME => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Signed,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::DATE => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::TimeOfDay => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::DateAndTime => Some(VarTypeInfo {
-            op_width: OpWidth::W32,
-            signedness: Signedness::Unsigned,
-            storage_bits: 32,
-        }),
-        ElementaryTypeName::LDATE => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::LTimeOfDay => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        ElementaryTypeName::LDateAndTime => Some(VarTypeInfo {
-            op_width: OpWidth::W64,
-            signedness: Signedness::Unsigned,
-            storage_bits: 64,
-        }),
-        // STRING and WSTRING are handled separately in codegen
-        ElementaryTypeName::STRING | ElementaryTypeName::WSTRING => None,
-    }
-}
-
-/// Resolves a standard FB type name to its (type_id, total_num_fields, field_name->index map).
-/// Returns None for unknown FB types.
-fn resolve_fb_type(name: &str) -> Option<(u16, usize, HashMap<String, u8>)> {
-    match name {
-        "TON" => Some((opcode::fb_type::TON, 6, timer_fb_fields())),
-        "TOF" => Some((opcode::fb_type::TOF, 6, timer_fb_fields())),
-        "TP" => Some((opcode::fb_type::TP, 6, timer_fb_fields())),
-        "CTU" | "CTU_INT" | "CTU_DINT" | "CTU_LINT" | "CTU_UDINT" | "CTU_ULINT" => {
-            Some((opcode::fb_type::CTU, 6, ctu_fb_fields()))
-        }
-        "CTD" | "CTD_INT" | "CTD_DINT" | "CTD_LINT" | "CTD_UDINT" | "CTD_ULINT" => {
-            Some((opcode::fb_type::CTD, 6, ctd_fb_fields()))
-        }
-        "CTUD" | "CTUD_INT" | "CTUD_DINT" | "CTUD_LINT" | "CTUD_UDINT" | "CTUD_ULINT" => {
-            Some((opcode::fb_type::CTUD, 10, ctud_fb_fields()))
-        }
-        "SR" => Some((opcode::fb_type::SR, 3, sr_fb_fields())),
-        "RS" => Some((opcode::fb_type::RS, 3, rs_fb_fields())),
-        "R_TRIG" => Some((opcode::fb_type::R_TRIG, 3, edge_trig_fb_fields())),
-        "F_TRIG" => Some((opcode::fb_type::F_TRIG, 3, edge_trig_fb_fields())),
-        _ => None,
-    }
-}
-
-/// Returns the shared field map for timer FBs (TON, TOF, TP).
-/// Fields 4-5 are hidden (start_time, running) and not included.
-fn timer_fb_fields() -> HashMap<String, u8> {
-    let mut fields = HashMap::new();
-    fields.insert("in".to_string(), 0);
-    fields.insert("pt".to_string(), 1);
-    fields.insert("q".to_string(), 2);
-    fields.insert("et".to_string(), 3);
-    fields
-}
-
-/// Returns the field map for CTU (count up) FBs.
-/// Field 5 is hidden (prev_cu) and not included.
-fn ctu_fb_fields() -> HashMap<String, u8> {
-    let mut fields = HashMap::new();
-    fields.insert("cu".to_string(), 0);
-    fields.insert("r".to_string(), 1);
-    fields.insert("pv".to_string(), 2);
-    fields.insert("q".to_string(), 3);
-    fields.insert("cv".to_string(), 4);
-    fields
-}
-
-/// Returns the field map for CTD (count down) FBs.
-/// Field 5 is hidden (prev_cd) and not included.
-fn ctd_fb_fields() -> HashMap<String, u8> {
-    let mut fields = HashMap::new();
-    fields.insert("cd".to_string(), 0);
-    fields.insert("ld".to_string(), 1);
-    fields.insert("pv".to_string(), 2);
-    fields.insert("q".to_string(), 3);
-    fields.insert("cv".to_string(), 4);
-    fields
-}
-
-/// Returns the field map for CTUD (count up/down) FBs.
-/// Fields 8-9 are hidden (prev_cu, prev_cd) and not included.
-fn ctud_fb_fields() -> HashMap<String, u8> {
-    let mut fields = HashMap::new();
-    fields.insert("cu".to_string(), 0);
-    fields.insert("cd".to_string(), 1);
-    fields.insert("r".to_string(), 2);
-    fields.insert("ld".to_string(), 3);
-    fields.insert("pv".to_string(), 4);
-    fields.insert("qu".to_string(), 5);
-    fields.insert("qd".to_string(), 6);
-    fields.insert("cv".to_string(), 7);
-    fields
-}
-
-/// Returns the field map for SR (set-reset) FBs.
-fn sr_fb_fields() -> HashMap<String, u8> {
-    let mut fields = HashMap::new();
-    fields.insert("s1".to_string(), 0);
-    fields.insert("r".to_string(), 1);
-    fields.insert("q1".to_string(), 2);
-    fields
-}
-
-/// Returns the field map for RS (reset-set) FBs.
-fn rs_fb_fields() -> HashMap<String, u8> {
-    let mut fields = HashMap::new();
-    fields.insert("s".to_string(), 0);
-    fields.insert("r1".to_string(), 1);
-    fields.insert("q1".to_string(), 2);
-    fields
-}
-
-/// Returns the field map for edge trigger FBs (R_TRIG, F_TRIG).
-/// Field 2 is hidden (M / previous CLK) and not included.
-fn edge_trig_fb_fields() -> HashMap<String, u8> {
-    let mut fields = HashMap::new();
-    fields.insert("clk".to_string(), 0);
-    fields.insert("q".to_string(), 1);
-    fields
-}
-
-/// Checks if a function name is a type conversion (e.g., "int_to_real").
-/// Returns `Some((source_type_info, target_type_info))` if both parts are
-/// recognized type names, `None` otherwise.
-fn parse_type_conversion(name: &str) -> Option<(VarTypeInfo, VarTypeInfo)> {
-    let upper = name.to_uppercase();
-    let parts: Vec<&str> = upper.splitn(2, "_TO_").collect();
-    if parts.len() != 2 {
-        return None;
-    }
-    let source = resolve_type_name(&Id::from(parts[0]))?;
-    let target = resolve_type_name(&Id::from(parts[1]))?;
-    Some((source, target))
-}
-
-/// Returns the operation type from an expression's resolved type annotation.
-///
-/// The analyzer must have populated `expr.resolved_type`. A missing or
-/// unrecognized resolved type is a compiler bug.
-fn op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
-    let resolved = expr
-        .resolved_type
-        .as_ref()
-        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-    let info =
-        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-    Ok((info.op_width, info.signedness))
-}
-
-/// Returns the operation type from an expression's resolved type, if available.
-///
-/// Unlike [`op_type`] this returns `None` instead of an error when the
-/// resolved type is missing or unrecognized, making it safe to use as a
-/// best-effort fallback.
-fn op_type_from_expr(expr: &Expr) -> Option<OpType> {
-    let resolved = expr.resolved_type.as_ref()?;
-    let info = resolve_type_name(&resolved.name)?;
-    Some((info.op_width, info.signedness))
-}
-
-/// Returns the storage bit width from an expression's resolved type annotation.
-///
-/// The analyzer must have populated `expr.resolved_type`. A missing or
-/// unrecognized resolved type is a compiler bug.
-fn storage_bits(expr: &Expr) -> Result<u8, Diagnostic> {
-    let resolved = expr
-        .resolved_type
-        .as_ref()
-        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-    let info =
-        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-    Ok(info.storage_bits)
-}
-
-/// Returns the operation type for compiling a condition expression.
-///
-/// For comparison operators (`>`, `<`, `=`, etc.), returns the type of the
-/// left operand since the comparison's own resolved type is BOOL but we need
-/// the operand type for correct signedness. For boolean combinations (AND,
-/// OR, XOR), recurses into the first operand. For other expressions (bare
-/// boolean variables, parenthesized expressions), returns the expression's
-/// own resolved type.
-fn condition_op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
-    match &expr.kind {
-        ExprKind::Compare(compare) => match compare.op {
-            CompareOp::And | CompareOp::Or | CompareOp::Xor => condition_op_type(&compare.left),
-            _ => op_type(&compare.left),
-        },
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Not => condition_op_type(&unary.term),
-        ExprKind::Expression(inner) => condition_op_type(inner),
-        _ => op_type(expr),
-    }
-}
-
-/// Compiles a function block body.
-fn compile_body(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    body: &FunctionBlockBodyKind,
-) -> Result<(), Diagnostic> {
-    match body {
-        FunctionBlockBodyKind::Statements(statements) => {
-            compile_statements(emitter, ctx, statements)
-        }
-        FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo(file!(), line!())),
-    }
-}
-
-/// Compiles a sequence of statements.
-fn compile_statements(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    statements: &Statements,
-) -> Result<(), Diagnostic> {
-    for stmt in &statements.body {
-        compile_statement(emitter, ctx, stmt)?;
-    }
-    Ok(())
-}
-
-/// Compiles a single statement.
-fn compile_statement(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    stmt: &StmtKind,
-) -> Result<(), Diagnostic> {
-    match stmt {
-        StmtKind::Assignment(assignment) => {
-            // Dereference assignment: myRef^ := expr
-            // Compile the RHS, load the reference variable, emit STORE_INDIRECT.
-            if assignment.deref {
-                let target_name = resolve_variable_name(&assignment.target);
-                let target_index = target_name
-                    .and_then(|name| ctx.variables.get(name).copied())
-                    .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-
-                // Compile the value expression (use DEFAULT_OP_TYPE; the referenced
-                // type determines the actual width at runtime).
-                compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-
-                // Load the reference (variable index stored in the ref variable).
-                emitter.emit_load_var_i64(target_index);
-
-                // STORE_INDIRECT pops both value and ref.
-                emitter.emit_store_indirect();
-                return Ok(());
-            }
-
-            // Check if the target is a bit access variable (read-modify-write).
-            if let Some(bit_access) = extract_bit_access_target(&assignment.target) {
-                return compile_bit_access_assignment(emitter, ctx, bit_access, &assignment.value);
-            }
-
-            // Check if the target is a structured variable (struct field write).
-            if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) =
-                &assignment.target
-            {
-                let (var_index, desc_index, slot_offset, op_type, field_type) =
-                    crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
-                compile_expr(emitter, ctx, &assignment.value, op_type)?;
-                crate::compile_struct::emit_truncation_for_field(emitter, &field_type);
-                let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
-                emitter.emit_load_const_i32(idx_const);
-                emitter.emit_store_array(var_index, desc_index);
-                return Ok(());
-            }
-
-            // Look up the target variable's type info.
-            let target_name = resolve_variable_name(&assignment.target);
-
-            // Check if the target is a STRING variable (stored in data region).
-            let string_info =
-                target_name.and_then(|name| ctx.string_vars.get(name).map(|info| info.data_offset));
-
-            if let Some(data_offset) = string_info {
-                // String target: compile RHS (produces buf_idx), then STR_STORE_VAR.
-                let op_type = DEFAULT_OP_TYPE;
-                compile_expr(emitter, ctx, &assignment.value, op_type)?;
-                emitter.emit_str_store_var(data_offset);
-            } else {
-                match crate::compile_array::resolve_access(ctx, &assignment.target)? {
-                    crate::compile_array::ResolvedAccess::Scalar { var_index } => {
-                        let type_info = target_name.and_then(|name| ctx.var_type_info(name));
-                        let op_type = type_info
-                            .map(|ti| (ti.op_width, ti.signedness))
-                            .unwrap_or(DEFAULT_OP_TYPE);
-                        compile_expr(emitter, ctx, &assignment.value, op_type)?;
-                        if let Some(ti) = type_info {
-                            emit_truncation(emitter, ti);
-                        }
-                        emit_store_var(emitter, var_index, op_type);
-                    }
-                    crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
-                        // Copy scalar fields from info (borrows ctx) before using ctx mutably.
-                        let element_vti = info.element_var_type_info;
-                        let arr_var_index = info.var_index;
-                        let arr_desc_index = info.desc_index;
-                        let is_string_elem = info.is_string_element;
-                        let dim_info: Vec<_> = info
-                            .dimensions
-                            .iter()
-                            .map(|d| crate::compile_array::DimensionInfo {
-                                lower_bound: d.lower_bound,
-                                size: d.size,
-                                stride: d.stride,
-                            })
-                            .collect();
-                        // info is no longer used; subscripts borrows from AST, not ctx.
-                        let target_span = variable_span(&assignment.target);
-
-                        if is_string_elem {
-                            // String array: compile RHS (produces buf_idx), then flat index,
-                            // then STR_STORE_ARRAY_ELEM.
-                            compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-                            crate::compile_array::emit_flat_index(
-                                emitter,
-                                ctx,
-                                &subscripts,
-                                &dim_info,
-                                &target_span,
-                            )?;
-                            emitter.emit_str_store_array_elem(arr_var_index, arr_desc_index);
-                        } else {
-                            let element_op_type = (element_vti.op_width, element_vti.signedness);
-                            // 1. Compile the RHS value.
-                            compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
-                            // 2. Truncate for sub-32-bit types.
-                            emit_truncation(emitter, element_vti);
-                            // 3. Compute the flat index.
-                            crate::compile_array::emit_flat_index(
-                                emitter,
-                                ctx,
-                                &subscripts,
-                                &dim_info,
-                                &target_span,
-                            )?;
-                            // Stack: [..., value, index]. STORE_ARRAY pops both.
-                            emitter.emit_store_array(arr_var_index, arr_desc_index);
-                        }
-                    }
-                    crate::compile_array::ResolvedAccess::DerefArrayElement {
-                        info,
-                        subscripts,
-                    } => {
-                        let element_vti = info.element_var_type_info;
-                        let ref_var_index = info.var_index;
-                        let arr_desc_index = info.desc_index;
-                        let dim_info: Vec<_> = info
-                            .dimensions
-                            .iter()
-                            .map(|d| crate::compile_array::DimensionInfo {
-                                lower_bound: d.lower_bound,
-                                size: d.size,
-                                stride: d.stride,
-                            })
-                            .collect();
-                        let element_op_type = (element_vti.op_width, element_vti.signedness);
-                        let target_span = variable_span(&assignment.target);
-
-                        compile_expr(emitter, ctx, &assignment.value, element_op_type)?;
-                        emit_truncation(emitter, element_vti);
-                        crate::compile_array::emit_flat_index(
-                            emitter,
-                            ctx,
-                            &subscripts,
-                            &dim_info,
-                            &target_span,
-                        )?;
-                        emitter.emit_store_array_deref(ref_var_index, arr_desc_index);
-                    }
-                }
-            }
-            Ok(())
-        }
-        StmtKind::FbCall(fb_call) => compile_fb_call(emitter, ctx, fb_call),
-        StmtKind::If(if_stmt) => compile_if(emitter, ctx, if_stmt),
-        StmtKind::Case(case_stmt) => compile_case(emitter, ctx, case_stmt),
-        StmtKind::For(for_stmt) => compile_for(emitter, ctx, for_stmt),
-        StmtKind::While(while_stmt) => compile_while(emitter, ctx, while_stmt),
-        StmtKind::Repeat(repeat_stmt) => compile_repeat(emitter, ctx, repeat_stmt),
-        StmtKind::Return => {
-            emitter.emit_ret_void();
-            Ok(())
-        }
-        StmtKind::Exit(span) => {
-            let label = ctx.current_loop_exit().ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::ExitOutsideLoop,
-                    Label::span(
-                        span.clone(),
-                        "EXIT must be inside a FOR, WHILE, or REPEAT loop",
-                    ),
-                )
-            })?;
-            emitter.emit_jmp(label);
-            Ok(())
-        }
-    }
-}
-
-/// Returns the op_type for an FB field, checking user-defined FBs first,
-/// then falling back to the stdlib hardcoded mapping.
-fn resolve_fb_field_op_type(ctx: &CompileContext, type_id: u16, field_name: &str) -> OpType {
-    // Check user-defined FBs by type_id.
-    for user_fb in ctx.user_fb_types.values() {
-        if user_fb.type_id == type_id {
-            if let Some(op_type) = user_fb.field_op_types.get(field_name) {
-                return *op_type;
-            }
-        }
-    }
-    // Fall back to stdlib field names.
-    fb_field_op_type(field_name)
-}
-
-/// Compiles a function block invocation: stores inputs, calls FB, reads outputs.
-fn compile_fb_call(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    fb_call: &FbCall,
-) -> Result<(), Diagnostic> {
-    let fb_info = ctx
-        .fb_instances
-        .get(&fb_call.var_name)
-        .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span(), file!(), line!()))?;
-    let type_id = fb_info.type_id;
-    let field_indices = fb_info.field_indices.clone();
-    let var_index = fb_info.var_index;
-
-    // Push FB instance reference.
-    emitter.emit_fb_load_instance(var_index);
-
-    // Store input parameters.
-    for param in &fb_call.params {
-        if let ParamAssignmentKind::NamedInput(input) = param {
-            let field_name = input.name.to_string().to_lowercase();
-            let field_idx = field_indices
-                .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(input.name.span(), file!(), line!()))?;
-            let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
-            compile_expr(emitter, ctx, &input.expr, op_type)?;
-            emitter.emit_fb_store_param(*field_idx);
-        }
-    }
-
-    // Call the function block.
-    emitter.emit_fb_call(type_id);
-
-    // Read output parameters.
-    for param in &fb_call.params {
-        if let ParamAssignmentKind::Output(output) = param {
-            let field_name = output.src.to_string().to_lowercase();
-            let field_idx = field_indices
-                .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(output.src.span(), file!(), line!()))?;
-            emitter.emit_fb_load_param(*field_idx);
-            let target_index = resolve_variable(ctx, &output.tgt)?;
-            let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
-            emit_store_var(emitter, target_index, op_type);
-        }
-    }
-
-    // Discard fb_ref.
-    emitter.emit_pop();
-    Ok(())
-}
-
-/// Returns the op_type for a standard FB field by name.
-fn fb_field_op_type(field_name: &str) -> OpType {
-    match field_name {
-        "in" | "q" => (OpWidth::W32, Signedness::Signed),
-        "pt" | "et" => (OpWidth::W32, Signedness::Signed),
-        _ => DEFAULT_OP_TYPE,
-    }
-}
-
-/// Compiles a slice of statements.
-fn compile_stmts(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    stmts: &[StmtKind],
-) -> Result<(), Diagnostic> {
-    for stmt in stmts {
-        compile_statement(emitter, ctx, stmt)?;
-    }
-    Ok(())
-}
-
-/// Compiles an IF/ELSIF/ELSE statement.
-fn compile_if(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    if_stmt: &ironplc_dsl::textual::If,
-) -> Result<(), Diagnostic> {
-    let has_else_ifs = !if_stmt.else_ifs.is_empty();
-    let has_else = !if_stmt.else_body.is_empty();
-    let needs_end_label = has_else_ifs || has_else;
-
-    let end_label = if needs_end_label {
-        Some(emitter.create_label())
-    } else {
-        None
-    };
-
-    // Compile the IF condition at its inferred operation type.
-    let cond_type = condition_op_type(&if_stmt.expr)?;
-    compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
-
-    // Jump past the then-body if condition is false.
-    let next_label = emitter.create_label();
-    emitter.emit_jmp_if_not(next_label);
-
-    // Compile the then-body.
-    compile_stmts(emitter, ctx, &if_stmt.body)?;
-
-    // If there are more branches, jump to end.
-    if needs_end_label {
-        emitter.emit_jmp(end_label.unwrap());
-    }
-
-    emitter.bind_label(next_label);
-
-    // Compile ELSIF clauses.
-    for elsif in &if_stmt.else_ifs {
-        let elsif_op_type = condition_op_type(&elsif.expr)?;
-        compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
-        let elsif_next = emitter.create_label();
-        emitter.emit_jmp_if_not(elsif_next);
-
-        compile_stmts(emitter, ctx, &elsif.body)?;
-
-        emitter.emit_jmp(end_label.unwrap());
-
-        emitter.bind_label(elsif_next);
-    }
-
-    // Compile ELSE body (if present).
-    if has_else {
-        compile_stmts(emitter, ctx, &if_stmt.else_body)?;
-    }
-
-    // Bind the end label.
-    if let Some(end) = end_label {
-        emitter.bind_label(end);
-    }
-
-    Ok(())
-}
-
-/// Compiles a CASE statement.
-///
-/// Each `CaseStatementGroup` is compiled as a chain of comparisons (like
-/// IF/ELSIF/ELSE). Multi-value selectors are OR'd together.
-///
-/// ```text
-///   // For each arm:
-///   compile(selector)
-///   LOAD_CONST case_value
-///   EQ_I32
-///   JMP_IF_NOT → next_arm
-///   compile(body)
-///   JMP → END
-/// next_arm:
-///   // ... next arm / ELSE body ...
-/// END:
-/// ```
-fn compile_case(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    case_stmt: &ironplc_dsl::textual::Case,
-) -> Result<(), Diagnostic> {
-    let end_label = emitter.create_label();
-    let op_type = op_type(&case_stmt.selector)?;
-
-    for group in &case_stmt.statement_groups {
-        let next_label = emitter.create_label();
-
-        // Compile selector comparisons with OR logic.
-        for (i, selection) in group.selectors.iter().enumerate() {
-            compile_case_selector(emitter, ctx, &case_stmt.selector, selection, op_type)?;
-            if i > 0 {
-                emitter.emit_bool_or();
-            }
-        }
-
-        emitter.emit_jmp_if_not(next_label);
-
-        // Compile body.
-        compile_stmts(emitter, ctx, &group.statements)?;
-
-        emitter.emit_jmp(end_label);
-
-        emitter.bind_label(next_label);
-    }
-
-    // Compile ELSE body if present.
-    compile_stmts(emitter, ctx, &case_stmt.else_body)?;
-
-    emitter.bind_label(end_label);
-
-    Ok(())
-}
-
-/// Compiles a single case selector, leaving a boolean result on the stack.
-///
-/// - `SignedInteger`: `selector == value`
-/// - `Subrange`: `(selector >= start) AND (selector <= end)`
-/// - `EnumeratedValue`: not yet supported (returns todo diagnostic)
-fn compile_case_selector(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    selector_expr: &Expr,
-    selection: &CaseSelectionKind,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    match selection {
-        CaseSelectionKind::SignedInteger(si) => {
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
-            match op_type.0 {
-                OpWidth::W32 => {
-                    let value = signed_integer_to_i32(si)?;
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
-                    emitter.emit_eq_i32();
-                }
-                OpWidth::W64 => {
-                    let value = signed_integer_to_i64(si)?;
-                    let pool_index = ctx.add_i64_constant(value);
-                    emitter.emit_load_const_i64(pool_index);
-                    emitter.emit_eq_i64();
-                }
-                // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo(file!(), line!())),
-            }
-            Ok(())
-        }
-        CaseSelectionKind::Subrange(sr) => {
-            // (selector >= start) AND (selector <= end)
-            compile_expr(emitter, ctx, selector_expr, op_type)?;
-            match op_type.0 {
-                OpWidth::W32 => {
-                    let start_si = resolve_signed_integer_ref(&sr.start)?;
-                    let start = signed_integer_to_i32(start_si)?;
-                    let start_index = ctx.add_i32_constant(start);
-                    emitter.emit_load_const_i32(start_index);
-                    emit_ge(emitter, op_type);
-
-                    compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end_si = resolve_signed_integer_ref(&sr.end)?;
-                    let end = signed_integer_to_i32(end_si)?;
-                    let end_index = ctx.add_i32_constant(end);
-                    emitter.emit_load_const_i32(end_index);
-                    emit_le(emitter, op_type);
-                }
-                OpWidth::W64 => {
-                    let start_si = resolve_signed_integer_ref(&sr.start)?;
-                    let start = signed_integer_to_i64(start_si)?;
-                    let start_index = ctx.add_i64_constant(start);
-                    emitter.emit_load_const_i64(start_index);
-                    emit_ge(emitter, op_type);
-
-                    compile_expr(emitter, ctx, selector_expr, op_type)?;
-                    let end_si = resolve_signed_integer_ref(&sr.end)?;
-                    let end = signed_integer_to_i64(end_si)?;
-                    let end_index = ctx.add_i64_constant(end);
-                    emitter.emit_load_const_i64(end_index);
-                    emit_le(emitter, op_type);
-                }
-                // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo(file!(), line!())),
-            }
-
-            emitter.emit_bool_and();
-            Ok(())
-        }
-        CaseSelectionKind::EnumeratedValue(ev) => {
-            Err(Diagnostic::todo_with_span(ev.span(), file!(), line!()))
-        }
-    }
-}
-
-/// Converts a `SignedInteger` AST node to an `i32` value.
-/// Extracts the max length from a `StringInitializer`, returning a
-/// not-implemented diagnostic if the length is an unresolved constant reference.
-fn resolve_string_max_length(string_init: &StringInitializer) -> Result<u16, Diagnostic> {
-    match &string_init.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
-        Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
-    }
-}
-
-/// Extracts the max length from a `StringSpecification` (used for function
-/// return types), returning a not-implemented diagnostic if the length is an
-/// unresolved constant reference.
-fn resolve_string_spec_max_length(spec: &StringSpecification) -> Result<u16, Diagnostic> {
-    match &spec.length {
-        None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
-        Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
-    }
-}
-
-/// Extracts a concrete `SignedInteger` from a `SignedIntegerRef`, returning a
-/// not-implemented diagnostic if it is an unresolved constant reference.
-fn resolve_signed_integer_ref(sir: &SignedIntegerRef) -> Result<&SignedInteger, Diagnostic> {
-    match sir {
-        SignedIntegerRef::Literal(si) => Ok(si),
-        SignedIntegerRef::Constant(id) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
-    }
-}
-
-pub(crate) fn signed_integer_to_i32(si: &SignedInteger) -> Result<i32, Diagnostic> {
-    if si.is_neg {
-        let unsigned = si.value.value as i128;
-        let signed = -unsigned;
-        i32::try_from(signed).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &signed.to_string())
-        })
-    } else {
-        i32::try_from(si.value.value).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &si.value.value.to_string())
-        })
-    }
-}
-
-/// Compiles a WHILE statement.
-///
-/// ```text
-/// LOOP:
-///   compile(condition)
-///   JMP_IF_NOT → END
-///   compile(body)
-///   JMP → LOOP
-/// END:
-/// ```
-fn compile_while(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    while_stmt: &ironplc_dsl::textual::While,
-) -> Result<(), Diagnostic> {
-    let loop_label = emitter.create_label();
-    let end_label = emitter.create_label();
-
-    emitter.bind_label(loop_label);
-    let cond_type = condition_op_type(&while_stmt.condition)?;
-    compile_expr(emitter, ctx, &while_stmt.condition, cond_type)?;
-    emitter.emit_jmp_if_not(end_label);
-    ctx.loop_exit_labels.push(end_label);
-    compile_stmts(emitter, ctx, &while_stmt.body)?;
-    ctx.loop_exit_labels.pop();
-    emitter.emit_jmp(loop_label);
-    emitter.bind_label(end_label);
-
-    Ok(())
-}
-
-/// Compiles a REPEAT statement.
-///
-/// ```text
-/// LOOP:
-///   compile(body)
-///   compile(condition)
-///   JMP_IF_NOT → LOOP
-/// ```
-fn compile_repeat(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    repeat_stmt: &ironplc_dsl::textual::Repeat,
-) -> Result<(), Diagnostic> {
-    let loop_label = emitter.create_label();
-    let end_label = emitter.create_label();
-
-    emitter.bind_label(loop_label);
-    ctx.loop_exit_labels.push(end_label);
-    compile_stmts(emitter, ctx, &repeat_stmt.body)?;
-    ctx.loop_exit_labels.pop();
-    let cond_type = condition_op_type(&repeat_stmt.until)?;
-    compile_expr(emitter, ctx, &repeat_stmt.until, cond_type)?;
-    emitter.emit_jmp_if_not(loop_label);
-    emitter.bind_label(end_label);
-
-    Ok(())
-}
-
-/// Whether a compile-time constant step is positive or negative.
-enum StepSign {
-    Positive,
-    Negative,
-}
-
-/// Inspects an expression and returns its sign if it is a compile-time constant
-/// integer literal (positive or negative). Returns `None` for non-constant
-/// expressions.
-fn try_constant_sign(expr: &Expr) -> Option<StepSign> {
-    match &expr.kind {
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            if lit.value.is_neg {
-                Some(StepSign::Negative)
-            } else {
-                Some(StepSign::Positive)
-            }
-        }
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => {
-            // -<literal> is negative
-            if matches!(
-                &unary.term.kind,
-                ExprKind::Const(ConstantKind::IntegerLiteral(_))
-            ) {
-                Some(StepSign::Negative)
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
-}
-
-/// Compiles a FOR statement.
-///
-/// ```text
-///   compile(from)
-///   STORE_VAR control
-/// LOOP:
-///   LOAD_VAR control
-///   compile(to)
-///   GT_I32 (or LT_I32 for negative step)
-///   JMP_IF_NOT → BODY
-///   JMP → END
-/// BODY:
-///   compile(body)
-///   LOAD_VAR control
-///   compile(step)  // default: LOAD_CONST 1
-///   ADD_I32
-///   STORE_VAR control
-///   JMP → LOOP
-/// END:
-/// ```
-fn compile_for(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    for_stmt: &ironplc_dsl::textual::For,
-) -> Result<(), Diagnostic> {
-    let var_index = ctx.var_index(&for_stmt.control)?;
-    let op_type = ctx.var_op_type(&for_stmt.control);
-    let type_info = ctx.var_type_info(&for_stmt.control);
-
-    // Determine step sign.
-    let step_sign = match &for_stmt.step {
-        None => StepSign::Positive,
-        Some(step_expr) => match try_constant_sign(step_expr) {
-            Some(sign) => sign,
-            None => {
-                return Err(Diagnostic::problem(
-                    Problem::NotImplemented,
-                    Label::span(
-                        for_stmt.control.span(),
-                        "FOR loop step must be a constant expression",
-                    ),
-                ))
-            }
-        },
-    };
-
-    // Initialize: compile(from), STORE_VAR control
-    compile_expr(emitter, ctx, &for_stmt.from, op_type)?;
-    if let Some(ti) = type_info {
-        emit_truncation(emitter, ti);
-    }
-    emit_store_var(emitter, var_index, op_type);
-
-    let loop_label = emitter.create_label();
-    let body_label = emitter.create_label();
-    let end_label = emitter.create_label();
-
-    // LOOP: check termination condition
-    emitter.bind_label(loop_label);
-    emit_load_var(emitter, var_index, op_type);
-    compile_expr(emitter, ctx, &for_stmt.to, op_type)?;
-    match step_sign {
-        StepSign::Positive => emit_gt(emitter, op_type),
-        StepSign::Negative => emit_lt(emitter, op_type),
-    }
-    emitter.emit_jmp_if_not(body_label);
-    emitter.emit_jmp(end_label);
-
-    // BODY:
-    emitter.bind_label(body_label);
-    ctx.loop_exit_labels.push(end_label);
-    compile_stmts(emitter, ctx, &for_stmt.body)?;
-    ctx.loop_exit_labels.pop();
-
-    // Increment: LOAD_VAR control, compile(step), ADD, truncate, STORE_VAR control
-    emit_load_var(emitter, var_index, op_type);
-    match &for_stmt.step {
-        Some(step_expr) => compile_expr(emitter, ctx, step_expr, op_type)?,
-        None => match op_type.0 {
-            OpWidth::W32 => {
-                let one_index = ctx.add_i32_constant(1);
-                emitter.emit_load_const_i32(one_index);
-            }
-            OpWidth::W64 => {
-                let one_index = ctx.add_i64_constant(1);
-                emitter.emit_load_const_i64(one_index);
-            }
-            OpWidth::F32 => {
-                let one_index = ctx.add_f32_constant(1.0);
-                emitter.emit_load_const_f32(one_index);
-            }
-            OpWidth::F64 => {
-                let one_index = ctx.add_f64_constant(1.0);
-                emitter.emit_load_const_f64(one_index);
-            }
-        },
-    }
-    emit_add(emitter, op_type);
-    if let Some(ti) = type_info {
-        emit_truncation(emitter, ti);
-    }
-    emit_store_var(emitter, var_index, op_type);
-    emitter.emit_jmp(loop_label);
-
-    // END:
-    emitter.bind_label(end_label);
-
-    Ok(())
-}
-
-/// Returns the builtin opcode for a named standard library function, if known.
-///
-/// The `op_width` selects the correct width variant and `signedness` selects
-/// the signed/unsigned variant for functions that distinguish them.
-fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Option<u16> {
-    match name.to_uppercase().as_str() {
-        "EXPT" => Some(match op_width {
-            OpWidth::W32 => opcode::builtin::EXPT_I32,
-            OpWidth::W64 => opcode::builtin::EXPT_I64,
-            OpWidth::F32 => opcode::builtin::EXPT_F32,
-            OpWidth::F64 => opcode::builtin::EXPT_F64,
-        }),
-        "ABS" => Some(match op_width {
-            OpWidth::W32 => opcode::builtin::ABS_I32,
-            OpWidth::W64 => opcode::builtin::ABS_I64,
-            OpWidth::F32 => opcode::builtin::ABS_F32,
-            OpWidth::F64 => opcode::builtin::ABS_F64,
-        }),
-        "MIN" => Some(match (op_width, signedness) {
-            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MIN_I32,
-            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MIN_U32,
-            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MIN_I64,
-            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MIN_U64,
-            (OpWidth::F32, _) => opcode::builtin::MIN_F32,
-            (OpWidth::F64, _) => opcode::builtin::MIN_F64,
-        }),
-        "MAX" => Some(match (op_width, signedness) {
-            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MAX_I32,
-            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MAX_U32,
-            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MAX_I64,
-            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MAX_U64,
-            (OpWidth::F32, _) => opcode::builtin::MAX_F32,
-            (OpWidth::F64, _) => opcode::builtin::MAX_F64,
-        }),
-        "LIMIT" => Some(match (op_width, signedness) {
-            (OpWidth::W32, Signedness::Signed) => opcode::builtin::LIMIT_I32,
-            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::LIMIT_U32,
-            (OpWidth::W64, Signedness::Signed) => opcode::builtin::LIMIT_I64,
-            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::LIMIT_U64,
-            (OpWidth::F32, _) => opcode::builtin::LIMIT_F32,
-            (OpWidth::F64, _) => opcode::builtin::LIMIT_F64,
-        }),
-        "SEL" => Some(match op_width {
-            OpWidth::W32 => opcode::builtin::SEL_I32,
-            OpWidth::W64 => opcode::builtin::SEL_I64,
-            OpWidth::F32 => opcode::builtin::SEL_F32,
-            OpWidth::F64 => opcode::builtin::SEL_F64,
-        }),
-        "SQRT" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::SQRT_F32),
-            OpWidth::F64 => Some(opcode::builtin::SQRT_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "LN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::LN_F32),
-            OpWidth::F64 => Some(opcode::builtin::LN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "LOG" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::LOG_F32),
-            OpWidth::F64 => Some(opcode::builtin::LOG_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "EXP" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::EXP_F32),
-            OpWidth::F64 => Some(opcode::builtin::EXP_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "SIN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::SIN_F32),
-            OpWidth::F64 => Some(opcode::builtin::SIN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "COS" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::COS_F32),
-            OpWidth::F64 => Some(opcode::builtin::COS_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "TAN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::TAN_F32),
-            OpWidth::F64 => Some(opcode::builtin::TAN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ASIN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ASIN_F32),
-            OpWidth::F64 => Some(opcode::builtin::ASIN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ACOS" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ACOS_F32),
-            OpWidth::F64 => Some(opcode::builtin::ACOS_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ATAN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ATAN_F32),
-            OpWidth::F64 => Some(opcode::builtin::ATAN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        _ => None,
-    }
-}
-
-/// Compiles an expression, leaving the result on the stack.
-///
-/// The `op_type` determines which width (i32/i64) and signedness to use
-/// for arithmetic, comparison, and load/store instructions.
-pub(crate) fn compile_expr(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    expr: &Expr,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    match &expr.kind {
-        ExprKind::Const(constant) => compile_constant(emitter, ctx, constant, op_type),
-        ExprKind::Variable(variable) => compile_variable_read(emitter, ctx, variable, op_type),
-        ExprKind::BinaryOp(binary) => {
-            compile_expr(emitter, ctx, &binary.left, op_type)?;
-            compile_expr(emitter, ctx, &binary.right, op_type)?;
-            match binary.op {
-                Operator::Add => emit_add(emitter, op_type),
-                Operator::Sub => emit_sub(emitter, op_type),
-                Operator::Mul => emit_mul(emitter, op_type),
-                Operator::Div => emit_div(emitter, op_type),
-                Operator::Mod => emit_mod(emitter, op_type),
-                Operator::Pow => emit_pow(emitter, op_type),
-            }
-            Ok(())
-        }
-        ExprKind::UnaryOp(unary) => match unary.op {
-            UnaryOp::Neg => {
-                // Constant folding: if the operand is an integer literal,
-                // emit the negated constant directly.
-                if let ExprKind::Const(ConstantKind::IntegerLiteral(lit)) = &unary.term.kind {
-                    let unsigned = lit.value.value.value as i128;
-                    let signed = -unsigned;
-                    match op_type.0 {
-                        OpWidth::W32 => {
-                            let value = i32::try_from(signed).map_err(|_| {
-                                Diagnostic::problem(
-                                    Problem::ConstantOverflow,
-                                    Label::span(lit.value.value.span(), "Integer literal"),
-                                )
-                                .with_context("value", &format!("-{}", unsigned))
-                            })?;
-                            let pool_index = ctx.add_i32_constant(value);
-                            emitter.emit_load_const_i32(pool_index);
-                        }
-                        OpWidth::W64 => {
-                            let value = i64::try_from(signed).map_err(|_| {
-                                Diagnostic::problem(
-                                    Problem::ConstantOverflow,
-                                    Label::span(lit.value.value.span(), "Integer literal"),
-                                )
-                                .with_context("value", &format!("-{}", unsigned))
-                            })?;
-                            let pool_index = ctx.add_i64_constant(value);
-                            emitter.emit_load_const_i64(pool_index);
-                        }
-                        OpWidth::F32 => {
-                            let value = -(unsigned as f32);
-                            let pool_index = ctx.add_f32_constant(value);
-                            emitter.emit_load_const_f32(pool_index);
-                        }
-                        OpWidth::F64 => {
-                            let value = -(unsigned as f64);
-                            let pool_index = ctx.add_f64_constant(value);
-                            emitter.emit_load_const_f64(pool_index);
-                        }
-                    }
-                    Ok(())
-                } else {
-                    compile_expr(emitter, ctx, &unary.term, op_type)?;
-                    emit_neg(emitter, op_type);
-                    Ok(())
-                }
-            }
-            UnaryOp::Not => {
-                compile_expr(emitter, ctx, &unary.term, op_type)?;
-                match op_type {
-                    (OpWidth::W32, Signedness::Unsigned) => {
-                        emitter.emit_bit_not_32();
-                        match storage_bits(&unary.term)? {
-                            8 => emitter.emit_trunc_u8(),
-                            16 => emitter.emit_trunc_u16(),
-                            _ => {}
-                        }
-                    }
-                    (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_not_64(),
-                    _ => emitter.emit_bool_not(),
-                }
-                Ok(())
-            }
-        },
-        ExprKind::LateBound(late_bound) => {
-            let var_index = ctx.var_index(&late_bound.value)?;
-            emit_load_var(emitter, var_index, op_type);
-            Ok(())
-        }
-        ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
-        ExprKind::Compare(compare) => {
-            // A comparison's result is BOOL, but its operands may be a different
-            // type (e.g. REAL for `in < 0.0`). Derive the operand type from the
-            // left operand's resolved type so that literals are compiled with the
-            // correct width. For boolean connectives (AND/OR/XOR), keep the
-            // incoming op_type since both sides are already BOOL.
-            let operand_op_type = match compare.op {
-                CompareOp::And | CompareOp::Or | CompareOp::Xor => op_type,
-                _ => op_type_from_expr(&compare.left).unwrap_or(op_type),
-            };
-            compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
-            compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
-            match compare.op {
-                CompareOp::Eq => emit_eq(emitter, operand_op_type),
-                CompareOp::Ne => emit_ne(emitter, operand_op_type),
-                CompareOp::Lt => emit_lt(emitter, operand_op_type),
-                CompareOp::Gt => emit_gt(emitter, operand_op_type),
-                CompareOp::LtEq => emit_le(emitter, operand_op_type),
-                CompareOp::GtEq => emit_ge(emitter, operand_op_type),
-                CompareOp::And => emit_and(emitter, operand_op_type),
-                CompareOp::Or => emit_or(emitter, operand_op_type),
-                CompareOp::Xor => emit_xor(emitter, operand_op_type),
-            }
-            Ok(())
-        }
-        ExprKind::EnumeratedValue(enum_val) => Err(Diagnostic::todo_with_span(
-            enum_val.span(),
-            file!(),
-            line!(),
-        )),
-        ExprKind::Function(func) => compile_function_call(emitter, ctx, func, op_type),
-        ExprKind::Ref(variable) => {
-            // REF(var) → push the variable's table index as a u64 constant.
-            let var_index = resolve_variable(ctx, variable)?;
-            let pool_index = ctx.add_i64_constant(var_index.into());
-            emitter.emit_load_const_i64(pool_index);
-            Ok(())
-        }
-        ExprKind::Deref(inner) => {
-            // var^ → compile the reference expression (produces a var index),
-            // then emit LOAD_INDIRECT to load the referenced variable's value.
-            compile_expr(emitter, ctx, inner, (OpWidth::W64, Signedness::Unsigned))?;
-            emitter.emit_load_indirect();
-            Ok(())
-        }
-        ExprKind::Null(_) => {
-            // NULL → push null sentinel (u64::MAX) as a u64 constant.
-            let pool_index = ctx.add_i64_constant(u64::MAX as i64);
-            emitter.emit_load_const_i64(pool_index);
-            Ok(())
-        }
-    }
-}
-
-/// Compiles a standard library function call.
-///
-/// Dispatches shift/rotate functions to a width-aware handler, and other
-/// known builtins to the generic lookup path.
-fn compile_function_call(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let name = func.name.lower_case();
-    match name.as_str() {
-        "shl" | "shr" | "rol" | "ror" => {
-            compile_shift_rotate(emitter, ctx, func, op_type, name.as_str())
-        }
-        "mux" => compile_mux(emitter, ctx, func, op_type),
-        // Arithmetic function forms (equivalent to +, -, *, /, MOD operators)
-        "add" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_add),
-        "sub" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_sub),
-        "mul" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mul),
-        "div" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_div),
-        "mod" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_mod),
-        // Comparison function forms (equivalent to >, >=, =, <=, <, <> operators)
-        "gt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_gt),
-        "ge" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ge),
-        "eq" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_eq),
-        "le" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_le),
-        "lt" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_lt),
-        "ne" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_ne),
-        // Boolean function forms (equivalent to AND, OR, XOR, NOT operators)
-        "and" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_and),
-        "or" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_or),
-        "xor" => compile_two_arg_operator(emitter, ctx, func, op_type, emit_xor),
-        "not" => compile_not_function(emitter, ctx, func, op_type),
-        // Assignment function (equivalent to := operator)
-        "move" => compile_move(emitter, ctx, func, op_type),
-        // Truncation function
-        "trunc" => compile_trunc(emitter, ctx, func, op_type),
-        // SIZEOF operator (vendor extension)
-        "sizeof" => compile_sizeof(emitter, ctx, func),
-        // BCD conversion functions
-        "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),
-        "int_to_bcd" => compile_int_to_bcd(emitter, ctx, func, op_type),
-        // String functions
-        "len" => compile_len(emitter, ctx, func),
-        "find" => compile_find(emitter, ctx, func),
-        "replace" => compile_replace(emitter, ctx, func),
-        "insert" => compile_insert(emitter, ctx, func),
-        "delete" => compile_delete(emitter, ctx, func),
-        "left" => compile_left(emitter, ctx, func),
-        "right" => compile_right(emitter, ctx, func),
-        "mid" => compile_mid(emitter, ctx, func),
-        "concat" => compile_concat(emitter, ctx, func),
-        // Time functions — Group 1: direct i32 operations (same units)
-        "add_time" | "add_tod_time" => compile_two_arg_operator(
-            emitter,
-            ctx,
-            func,
-            (OpWidth::W32, Signedness::Signed),
-            emit_add,
-        ),
-        "sub_time" | "sub_tod_time" | "sub_tod_tod" => compile_two_arg_operator(
-            emitter,
-            ctx,
-            func,
-            (OpWidth::W32, Signedness::Signed),
-            emit_sub,
-        ),
-        // Time functions — Group 2: ms-to-seconds conversion before add/sub
-        "add_dt_time" | "concat_date_tod" => compile_dt_time_add_sub(emitter, ctx, func, emit_add),
-        "sub_dt_time" => compile_dt_time_add_sub(emitter, ctx, func, emit_sub),
-        // Time functions — Group 3: seconds-to-ms conversion after sub
-        "sub_dt_dt" | "sub_date_date" => compile_sub_to_time(emitter, ctx, func),
-        // Time functions — Group 4: type-dependent MUL/DIV
-        "mul_time" => compile_mul_div_time(emitter, ctx, func, true),
-        "div_time" => compile_mul_div_time(emitter, ctx, func, false),
-        _ => {
-            // Check user-defined functions first.
-            if let Some(func_info) = ctx.user_functions.get(name.as_str()).cloned() {
-                compile_user_function_call(emitter, ctx, func, &func_info)
-            } else if let Some((source, target)) = parse_type_conversion(name) {
-                compile_type_conversion(emitter, ctx, func, source, target)
-            } else {
-                compile_generic_builtin(emitter, ctx, func, op_type)
-            }
-        }
-    }
-}
-
-/// Compiles a call to a user-defined function.
-///
-/// For STRING parameters, copies the caller's string data into the function's
-/// pre-allocated data region space before the CALL. For scalar parameters,
-/// compiles the argument expression normally. The CALL opcode pops scalar
-/// arguments (and dummy values for STRING params) from the stack, stores them
-/// into the function's variable slots, executes the function, and pushes
-/// the return value onto the stack.
-fn compile_user_function_call(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    func_info: &UserFunctionInfo,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    // Compile each argument with the corresponding parameter's OpType.
-    // STRING parameters are copied into the function's data region before CALL;
-    // a dummy zero is pushed for the stack pop count.
-    for (i, arg) in args.iter().enumerate() {
-        if let Some(Some(str_info)) = func_info.param_string_info.get(i) {
-            // Copy the string argument into the function's parameter space.
-            // Initialize the destination header, then copy the string data.
-            emitter.emit_str_init(str_info.data_offset, str_info.max_length);
-            let src_offset = resolve_string_arg(emitter, ctx, arg, &func.name.span())?;
-            ctx.num_temp_bufs += 1;
-            emitter.emit_str_load_var(src_offset);
-            emitter.emit_str_store_var(str_info.data_offset);
-
-            // Push a dummy value for the CALL stack pop.
-            let zero_idx = ctx.add_i32_constant(0);
-            emitter.emit_load_const_i32(zero_idx);
-        } else {
-            let arg_op_type = func_info
-                .param_op_types
-                .get(i)
-                .copied()
-                .unwrap_or(DEFAULT_OP_TYPE);
-            compile_expr(emitter, ctx, arg, arg_op_type)?;
-        }
-    }
-
-    // If the function returns STRING, initialize the return string's header
-    // in the data region before CALL so the function body can write to it.
-    if let Some(ref ret_str) = func_info.return_string_info {
-        emitter.emit_str_init(ret_str.data_offset, ret_str.max_length);
-    }
-
-    emitter.emit_call(
-        func_info.function_id,
-        func_info.num_params,
-        func_info.var_offset,
-        func_info.max_stack_depth,
-    );
-    // For STRING-returning functions, the CALL leaves a buf_idx on the stack
-    // (from emit_str_load_var in the function epilogue). The caller's
-    // assignment path will consume it via emit_str_store_var.
-    Ok(())
-}
-
-/// Compiles a generic builtin function call via `lookup_builtin`.
-///
-/// All arguments are compiled with the same `op_type` and the function ID
-/// is looked up by name.
-fn compile_generic_builtin(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let func_name = func.name.original().to_uppercase();
-    let func_id = lookup_builtin(&func_name, op_type.0, op_type.1)
-        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
-
-    let expected_args = opcode::builtin::arg_count(func_id) as usize;
-
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != expected_args {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let is_sel = func_name == "SEL";
-    for (i, arg) in args.iter().enumerate() {
-        // SEL's first argument (G) is always a BOOL/integer selector,
-        // even when the remaining arguments are float.
-        let arg_op_type = if is_sel && i == 0 {
-            DEFAULT_OP_TYPE
-        } else {
-            op_type
-        };
-        compile_expr(emitter, ctx, arg, arg_op_type)?;
-    }
-
-    emitter.emit_builtin(func_id);
-    Ok(())
-}
-
-/// Compiles a two-argument function form that maps to an existing operator.
-///
-/// Extracts the two positional arguments, compiles them with the given `op_type`,
-/// and calls the provided emit function. This is used for function forms like
-/// ADD(a, b) which are equivalent to the operator form a + b.
-fn compile_two_arg_operator(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-    emit_fn: fn(&mut Emitter, OpType),
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    compile_expr(emitter, ctx, args[1], op_type)?;
-    emit_fn(emitter, op_type);
-    Ok(())
-}
-
-/// Extracts two positional input arguments from a function call.
-fn extract_two_positional_args(func: &Function) -> Result<(&Expr, &Expr), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    Ok((args[0], args[1]))
-}
-
-/// Compiles ADD_DT_TIME, SUB_DT_TIME, and CONCAT_DATE_TOD.
-///
-/// IN2 (TIME or TOD) is in milliseconds while IN1 (DT or DATE) is in seconds.
-/// Converts IN2 from ms to seconds by dividing by 1000, then adds or subtracts.
-fn compile_dt_time_add_sub(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    emit_fn: fn(&mut Emitter, OpType),
-) -> Result<(), Diagnostic> {
-    let (in1, in2) = extract_two_positional_args(func)?;
-    let op_type = (OpWidth::W32, Signedness::Signed);
-    compile_expr(emitter, ctx, in1, op_type)?;
-    compile_expr(emitter, ctx, in2, op_type)?;
-    let pool_idx = ctx.add_i32_constant(1000);
-    emitter.emit_load_const_i32(pool_idx);
-    emit_div(emitter, op_type);
-    emit_fn(emitter, op_type);
-    Ok(())
-}
-
-/// Compiles SUB_DT_DT and SUB_DATE_DATE.
-///
-/// Subtracts two values in seconds, then multiplies by 1000 to produce TIME
-/// in milliseconds.
-fn compile_sub_to_time(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let (in1, in2) = extract_two_positional_args(func)?;
-    let op_type = (OpWidth::W32, Signedness::Signed);
-    compile_expr(emitter, ctx, in1, op_type)?;
-    compile_expr(emitter, ctx, in2, op_type)?;
-    emit_sub(emitter, op_type);
-    let pool_idx = ctx.add_i32_constant(1000);
-    emitter.emit_load_const_i32(pool_idx);
-    emit_mul(emitter, op_type);
-    Ok(())
-}
-
-/// Compiles MUL_TIME and DIV_TIME.
-///
-/// IN1 is TIME (i32 ms). IN2 is ANY_NUM — codegen inspects IN2's resolved type
-/// to select the appropriate instruction sequence. For integer IN2 we use
-/// direct i32 multiply/divide. For float IN2 we convert TIME to float, operate,
-/// and convert back.
-fn compile_mul_div_time(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    is_mul: bool,
-) -> Result<(), Diagnostic> {
-    let (in1, in2) = extract_two_positional_args(func)?;
-    let time_op = (OpWidth::W32, Signedness::Signed);
-
-    let in2_op = op_type_from_expr(in2).unwrap_or(time_op);
-
-    match in2_op.0 {
-        OpWidth::W32 => {
-            compile_expr(emitter, ctx, in1, time_op)?;
-            compile_expr(emitter, ctx, in2, time_op)?;
-            if is_mul {
-                emit_mul(emitter, time_op);
-            } else {
-                emit_div(emitter, time_op);
-            }
-        }
-        OpWidth::F32 => {
-            compile_expr(emitter, ctx, in1, time_op)?;
-            emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F32);
-            compile_expr(emitter, ctx, in2, (OpWidth::F32, Signedness::Signed))?;
-            let f32_op = (OpWidth::F32, Signedness::Signed);
-            if is_mul {
-                emit_mul(emitter, f32_op);
-            } else {
-                emit_div(emitter, f32_op);
-            }
-            emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I32);
-        }
-        OpWidth::F64 => {
-            compile_expr(emitter, ctx, in1, time_op)?;
-            emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64);
-            compile_expr(emitter, ctx, in2, (OpWidth::F64, Signedness::Signed))?;
-            let f64_op = (OpWidth::F64, Signedness::Signed);
-            if is_mul {
-                emit_mul(emitter, f64_op);
-            } else {
-                emit_div(emitter, f64_op);
-            }
-            emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32);
-        }
-        OpWidth::W64 => {
-            // LINT/ULINT: promote TIME to f64, convert IN2 to f64, operate, convert back.
-            // This avoids needing an i64→i32 truncation opcode.
-            compile_expr(emitter, ctx, in1, time_op)?;
-            emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64);
-            compile_expr(emitter, ctx, in2, (OpWidth::W64, in2_op.1))?;
-            emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64);
-            let f64_op = (OpWidth::F64, Signedness::Signed);
-            if is_mul {
-                emit_mul(emitter, f64_op);
-            } else {
-                emit_div(emitter, f64_op);
-            }
-            emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32);
-        }
-    }
-
-    Ok(())
-}
-
-/// Compiles the NOT function form.
-///
-/// NOT(IN) is equivalent to the NOT operator. Takes a single BOOL argument.
-fn compile_not_function(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    emitter.emit_bool_not();
-    Ok(())
-}
-
-/// Compiles the MOVE function form.
-///
-/// MOVE(IN) is equivalent to assignment. Takes a single argument and returns
-/// it unchanged. No opcode is needed since the value is already on the stack.
-fn compile_move(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    // No additional opcode needed - the value is already on the stack
-
-    Ok(())
-}
-
-/// Compiles TRUNC(IN) — truncates a real value toward zero.
-///
-/// The argument is compiled using its own (float) op_type derived from the
-/// argument's resolved type. The result is converted to the target integer
-/// type using the existing conversion opcodes.
-fn compile_trunc(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    target_op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    // Determine the argument's float type from its resolved type.
-    let arg_op_type = op_type(args[0])?;
-    compile_expr(emitter, ctx, args[0], arg_op_type)?;
-
-    // Build VarTypeInfo for source (float) and target (integer) to reuse
-    // the existing conversion opcode emission.
-    let source = VarTypeInfo {
-        op_width: arg_op_type.0,
-        signedness: arg_op_type.1,
-        storage_bits: match arg_op_type.0 {
-            OpWidth::F32 => 32,
-            OpWidth::F64 => 64,
-            _ => 32,
-        },
-    };
-    let target = VarTypeInfo {
-        op_width: target_op_type.0,
-        signedness: target_op_type.1,
-        storage_bits: match target_op_type.0 {
-            OpWidth::W32 => 32,
-            OpWidth::W64 => 64,
-            _ => 32,
-        },
-    };
-    emit_conversion_opcode(emitter, &source, &target);
-
-    Ok(())
-}
-
-/// Compiles SIZEOF(IN) — returns the size in bytes of the argument's type.
-///
-/// SIZEOF is a compile-time constant: the argument is never evaluated at runtime.
-/// For elementary types, the size is derived from the storage bit width.
-/// For array variables, the total byte count is computed from element size × element count.
-fn compile_sizeof(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    // Check if the argument is a variable that maps to an array.
-    let size: u32 =
-        if let ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(ref named))) =
-            args[0].kind
-        {
-            if let Some(array_info) = ctx.array_vars.get(&named.name) {
-                let elem_bytes = array_info.element_var_type_info.storage_bits as u32 / 8;
-                array_info.total_elements * elem_bytes
-            } else {
-                sizeof_from_resolved_type(args[0])?
-            }
-        } else {
-            sizeof_from_resolved_type(args[0])?
-        };
-
-    let pool_index = ctx.add_i32_constant(size as i32);
-    emitter.emit_load_const_i32(pool_index);
-    Ok(())
-}
-
-/// Returns the size in bytes from an expression's resolved type annotation.
-fn sizeof_from_resolved_type(expr: &Expr) -> Result<u32, Diagnostic> {
-    let resolved = expr
-        .resolved_type
-        .as_ref()
-        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-    let info =
-        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-    // Ceiling division: types like BOOL (1 bit) still occupy 1 byte.
-    Ok((info.storage_bits as u32).div_ceil(8))
-}
-
-/// Compiles BCD_TO_INT(IN) — converts a BCD-encoded bit string to an integer.
-///
-/// The argument is compiled using its own (bit-string) op_type. The BCD
-/// decoding opcode is selected based on the argument's storage bit width.
-fn compile_bcd_to_int(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    _target_op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let arg_op_type = op_type(args[0])?;
-    let bits = storage_bits(args[0])?;
-    compile_expr(emitter, ctx, args[0], arg_op_type)?;
-
-    let func_id = match bits {
-        8 => opcode::builtin::BCD_TO_INT_8,
-        16 => opcode::builtin::BCD_TO_INT_16,
-        32 => opcode::builtin::BCD_TO_INT_32,
-        64 => opcode::builtin::BCD_TO_INT_64,
-        _ => {
-            return Err(Diagnostic::todo_with_span(
-                func.name.span(),
-                file!(),
-                line!(),
-            ))
-        }
-    };
-    emitter.emit_builtin(func_id);
-    Ok(())
-}
-
-/// Compiles INT_TO_BCD(IN) — converts an integer to a BCD-encoded bit string.
-///
-/// The argument is compiled using its own (integer) op_type. The BCD
-/// encoding opcode is selected based on the target's operation width.
-fn compile_int_to_bcd(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    target_op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let arg_op_type = op_type(args[0])?;
-    let bits = storage_bits(args[0])?;
-    compile_expr(emitter, ctx, args[0], arg_op_type)?;
-
-    let func_id = match (arg_op_type.0, bits) {
-        (OpWidth::W32, 8) => opcode::builtin::INT_TO_BCD_8,
-        (OpWidth::W32, 16) => opcode::builtin::INT_TO_BCD_16,
-        (OpWidth::W32, 32) => opcode::builtin::INT_TO_BCD_32,
-        (OpWidth::W64, 64) => opcode::builtin::INT_TO_BCD_64,
-        _ => {
-            // For wider target than source, select based on target width
-            match target_op_type.0 {
-                OpWidth::W32 => opcode::builtin::INT_TO_BCD_32,
-                OpWidth::W64 => opcode::builtin::INT_TO_BCD_64,
-                _ => {
-                    return Err(Diagnostic::todo_with_span(
-                        func.name.span(),
-                        file!(),
-                        line!(),
-                    ))
-                }
-            }
-        }
-    };
-    emitter.emit_builtin(func_id);
-    Ok(())
-}
-
-/// Compiles a MUX (multiplexer) function call.
-///
-/// MUX(K, IN0, IN1, ..., INn) selects one of the IN values based on the
-/// integer selector K. The first argument K is always compiled as I32
-/// (integer selector), while the remaining IN arguments use the caller's op_type.
-///
-/// The opcode encodes the number of IN arguments: `MUX_<WIDTH>_BASE + num_inputs`.
-fn compile_mux(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    // Must have at least 3 args (K + 2 IN values)
-    if args.len() < 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let num_inputs = (args.len() - 1) as u16; // subtract K
-
-    if num_inputs > opcode::builtin::MUX_MAX_INPUTS {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let base = match op_type.0 {
-        OpWidth::W32 => opcode::builtin::MUX_I32_BASE,
-        OpWidth::W64 => opcode::builtin::MUX_I64_BASE,
-        OpWidth::F32 => opcode::builtin::MUX_F32_BASE,
-        OpWidth::F64 => opcode::builtin::MUX_F64_BASE,
-    };
-    let func_id = base + num_inputs;
-
-    // Compile K (first arg) as integer
-    compile_expr(emitter, ctx, args[0], DEFAULT_OP_TYPE)?;
-
-    // Compile IN0..INn with the caller's op_type
-    for arg in &args[1..] {
-        compile_expr(emitter, ctx, arg, op_type)?;
-    }
-
-    emitter.emit_builtin(func_id);
-    Ok(())
-}
-
-/// Compiles the LEN standard function call.
-///
-/// LEN takes a single STRING variable argument and returns its current length
-/// as an i32. Instead of going through the BUILTIN dispatch, LEN uses the
-/// dedicated `LEN_STR` opcode which reads `cur_length` directly from the
-/// string's data region header.
-fn compile_len(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    // The argument must be a string variable so we can look up its data_offset.
-    let var_name = match &args[0].kind {
-        ExprKind::Variable(variable) => resolve_variable_name(variable),
-        _ => None,
-    };
-
-    let name =
-        var_name.ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
-
-    let info = ctx
-        .string_vars
-        .get(name)
-        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
-
-    emitter.emit_len_str(info.data_offset);
-    Ok(())
-}
-
-/// Resolves a string argument to its data_offset in the data region.
-///
-/// Handles both variable references (looked up in `string_vars`) and
-/// string literals (allocated inline in the data region with initialization
-/// code emitted at the point of use).
-fn resolve_string_arg(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    arg: &Expr,
-    func_span: &ironplc_dsl::core::SourceSpan,
-) -> Result<u32, Diagnostic> {
-    match &arg.kind {
-        ExprKind::Variable(variable) => {
-            let var_name = resolve_variable_name(variable)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-            let info = ctx
-                .string_vars
-                .get(var_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-            Ok(info.data_offset)
-        }
-        ExprKind::Const(ConstantKind::CharacterString(lit)) => {
-            // Allocate space in the data region for this string literal.
-            let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
-            let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
-            let data_offset = ctx.data_region_offset;
-            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
-            ctx.data_region_offset = ctx
-                .data_region_offset
-                .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
-
-            if max_length > ctx.max_string_capacity {
-                ctx.max_string_capacity = max_length;
-            }
-
-            // Emit initialization: header + value.
-            emitter.emit_str_init(data_offset, max_length);
-
-            let pool_index = ctx.add_str_constant(bytes);
-            ctx.num_temp_bufs += 1;
-            emitter.emit_load_const_str(pool_index);
-            emitter.emit_str_store_var(data_offset);
-
-            Ok(data_offset)
-        }
-        _ => Err(Diagnostic::todo_with_span(
-            func_span.clone(),
-            file!(),
-            line!(),
-        )),
-    }
-}
-
-/// Collects positional input arguments from a function call.
-fn collect_positional_args(func: &Function) -> Vec<&Expr> {
-    func.param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect()
-}
-
-/// Compiles the FIND standard function call.
-///
-/// FIND(IN1, IN2) returns the 1-based position of the first occurrence
-/// of IN2 within IN1, or 0 if not found. Both arguments must be STRING
-/// variables.
-fn compile_find(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
-
-    emitter.emit_find_str(in1_offset, in2_offset);
-    Ok(())
-}
-
-/// Compiles the REPLACE standard function call.
-///
-/// REPLACE(IN1, IN2, L, P) deletes L characters from IN1 starting at
-/// position P (1-based), inserts IN2 in their place, and returns the
-/// result as a new string. IN1 and IN2 must be STRING variables; L and P
-/// are integer expressions compiled onto the stack.
-fn compile_replace(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 4 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
-
-    // Compile L and P integer expressions onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[2], op_type)?;
-    compile_expr(emitter, ctx, args[3], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_replace_str(in1_offset, in2_offset);
-    Ok(())
-}
-
-/// Compiles the INSERT standard function call.
-///
-/// INSERT(IN1, IN2, P) inserts string IN2 into IN1 after position P
-/// (1-based) and returns the result as a new string. IN1 and IN2 must
-/// be STRING variables; P is an integer expression compiled onto the stack.
-fn compile_insert(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
-
-    // Compile P integer expression onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[2], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_insert_str(in1_offset, in2_offset);
-    Ok(())
-}
-
-/// Compiles the DELETE standard function call.
-///
-/// DELETE(IN1, L, P) deletes L characters from IN1 starting at position
-/// P (1-based) and returns the result as a new string. IN1 must be a
-/// STRING variable; L and P are integer expressions compiled onto the stack.
-fn compile_delete(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-
-    // Compile L and P integer expressions onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[1], op_type)?;
-    compile_expr(emitter, ctx, args[2], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_delete_str(in1_offset);
-    Ok(())
-}
-
-/// Compiles the LEFT standard function call.
-///
-/// LEFT(IN, L) returns the leftmost L characters of IN. IN must be a
-/// STRING variable; L is an integer expression compiled onto the stack.
-fn compile_left(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-
-    // Compile L integer expression onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[1], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_left_str(in_offset);
-    Ok(())
-}
-
-/// Compiles the RIGHT standard function call.
-///
-/// RIGHT(IN, L) returns the rightmost L characters of IN. IN must be a
-/// STRING variable; L is an integer expression compiled onto the stack.
-fn compile_right(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-
-    // Compile L integer expression onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[1], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_right_str(in_offset);
-    Ok(())
-}
-
-/// Compiles the MID standard function call.
-///
-/// MID(IN, L, P) returns L characters from IN starting at position P
-/// (1-based). IN must be a STRING variable; L and P are integer
-/// expressions compiled onto the stack.
-fn compile_mid(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-
-    // Compile L and P integer expressions onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[1], op_type)?;
-    compile_expr(emitter, ctx, args[2], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_mid_str(in_offset);
-    Ok(())
-}
-
-/// Compiles the CONCAT standard function call.
-///
-/// CONCAT(IN1, IN2) concatenates IN1 and IN2. Both arguments must be
-/// STRING variables.
-fn compile_concat(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-    let in2_offset = resolve_string_arg(emitter, ctx, args[1], &func.name.span())?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_concat_str(in1_offset, in2_offset);
-    Ok(())
-}
-
-/// Compiles a type conversion function call (e.g., INT_TO_REAL).
-///
-/// Unlike generic builtins, conversion functions have different source and
-/// target types. The argument is compiled with the source type's OpType,
-/// then a conversion opcode (if needed) transforms the value to the target
-/// representation.
-fn compile_type_conversion(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    source: VarTypeInfo,
-    target: VarTypeInfo,
-) -> Result<(), Diagnostic> {
-    let source_op_type: OpType = (source.op_width, source.signedness);
-
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    compile_expr(emitter, ctx, args[0], source_op_type)?;
-
-    // Integer-to-boolean needs a dedicated opcode (non-zero → 1, zero → 0)
-    // rather than the generic conversion + truncation path, because
-    // truncation would only keep the lowest bit instead of testing for zero.
-    if target.storage_bits == 1 {
-        match source.op_width {
-            OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL),
-            OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
-            _ => {
-                return Err(Diagnostic::todo_with_span(
-                    func.name.span(),
-                    file!(),
-                    line!(),
-                ));
-            }
-        }
-    } else {
-        emit_conversion_opcode(emitter, &source, &target);
-        emit_truncation(emitter, target);
-    }
-
-    Ok(())
-}
-
-/// Emits the appropriate conversion BUILTIN opcode for the source->target
-/// type transition. Does nothing for same-domain integer conversions that
-/// are handled by the Slot's sign-extension and truncation.
-fn emit_conversion_opcode(emitter: &mut Emitter, source: &VarTypeInfo, target: &VarTypeInfo) {
-    use OpWidth::*;
-    use Signedness::*;
-
-    match (
-        source.op_width,
-        source.signedness,
-        target.op_width,
-        target.signedness,
-    ) {
-        // Same OpWidth: no conversion needed (truncation handles sub-width)
-        (W32, _, W32, _) | (W64, _, W64, _) => {}
-
-        // W32 signed -> W64: sign extension already in Slot, no-op
-        (W32, Signed, W64, _) => {}
-
-        // W32 unsigned -> W64: need zero-extension
-        (W32, Unsigned, W64, _) => {
-            emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-        }
-
-        // W64 -> W32: as_i32() truncation at store time, no-op
-        (W64, _, W32, _) => {}
-
-        // Integer -> Float
-        (W32, Signed, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F32),
-        (W32, Signed, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_F64),
-        (W64, Signed, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F32),
-        (W64, Signed, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_F64),
-        (W32, Unsigned, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_U32_TO_F32),
-        (W32, Unsigned, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_U32_TO_F64),
-        (W64, Unsigned, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_U64_TO_F32),
-        (W64, Unsigned, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_U64_TO_F64),
-
-        // Float -> Integer
-        (F32, _, W32, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I32),
-        (F32, _, W64, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_I64),
-        (F64, _, W32, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I32),
-        (F64, _, W64, Signed) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_I64),
-        (F32, _, W32, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_U32),
-        (F32, _, W64, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_U64),
-        (F64, _, W32, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_U32),
-        (F64, _, W64, Unsigned) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_U64),
-
-        // Float -> Float
-        (F32, _, F64, _) => emitter.emit_builtin(opcode::builtin::CONV_F32_TO_F64),
-        (F64, _, F32, _) => emitter.emit_builtin(opcode::builtin::CONV_F64_TO_F32),
-
-        // Same float width (shouldn't happen, but handle gracefully)
-        (F32, _, F32, _) | (F64, _, F64, _) => {}
-    }
-}
-
-/// Compiles a bit shift or rotate function call (SHL, SHR, ROL, ROR).
-///
-/// Expects two positional arguments: IN (value) and N (shift count).
-/// Emits the appropriate BUILTIN opcode based on function name and operand width.
-/// For ROL/ROR on narrow types (BYTE, WORD), emits width-specific builtins
-/// to ensure bits wrap correctly within the narrow type.
-fn compile_shift_rotate(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    func: &Function,
-    op_type: OpType,
-    name: &str,
-) -> Result<(), Diagnostic> {
-    let args: Vec<&Expr> = func
-        .param_assignment
-        .iter()
-        .filter_map(|p| match p {
-            ParamAssignmentKind::PositionalInput(pos) => Some(&pos.expr),
-            _ => None,
-        })
-        .collect();
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    // Compile IN (value) with the inferred op_type
-    compile_expr(emitter, ctx, args[0], op_type)?;
-    // Compile N (shift count) — always as i32 for W32, i64 for W64
-    let n_op_type = match op_type.0 {
-        OpWidth::W64 => (OpWidth::W64, Signedness::Signed),
-        _ => DEFAULT_OP_TYPE,
-    };
-    compile_expr(emitter, ctx, args[1], n_op_type)?;
-
-    // Determine storage bits for narrow-type ROL/ROR selection
-    let bits = storage_bits(args[0])?;
-
-    let func_id = match (name, op_type.0) {
-        ("shl", OpWidth::W64) => opcode::builtin::SHL_I64,
-        ("shl", _) => opcode::builtin::SHL_I32,
-        ("shr", OpWidth::W64) => opcode::builtin::SHR_I64,
-        ("shr", _) => opcode::builtin::SHR_I32,
-        ("rol", OpWidth::W64) => opcode::builtin::ROL_I64,
-        ("rol", _) => match bits {
-            8 => opcode::builtin::ROL_U8,
-            16 => opcode::builtin::ROL_U16,
-            _ => opcode::builtin::ROL_I32,
-        },
-        ("ror", OpWidth::W64) => opcode::builtin::ROR_I64,
-        ("ror", _) => match bits {
-            8 => opcode::builtin::ROR_U8,
-            16 => opcode::builtin::ROR_U16,
-            _ => opcode::builtin::ROR_I32,
-        },
-        _ => {
-            return Err(Diagnostic::todo_with_span(
-                func.name.span(),
-                file!(),
-                line!(),
-            ))
-        }
-    };
-
-    emitter.emit_builtin(func_id);
-    Ok(())
-}
-
-/// Compiles a constant literal, pushing it onto the stack.
-pub(crate) fn compile_constant(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    constant: &ConstantKind,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    match constant {
-        ConstantKind::IntegerLiteral(lit) => {
-            let span = lit.value.value.span();
-            match op_type {
-                (OpWidth::W32, Signedness::Signed) => {
-                    let value = if lit.value.is_neg {
-                        let unsigned = lit.value.value.value as i128;
-                        let signed = -unsigned;
-                        i32::try_from(signed).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &signed.to_string())
-                        })?
-                    } else {
-                        i32::try_from(lit.value.value.value).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &lit.value.value.value.to_string())
-                        })?
-                    };
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-                (OpWidth::W32, Signedness::Unsigned) => {
-                    // Unsigned 32-bit: values up to u32::MAX are valid.
-                    // Store the bit-pattern as i32.
-                    let value = if lit.value.is_neg {
-                        return Err(Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Integer literal"),
-                        )
-                        .with_context("value", &format!("-{}", lit.value.value.value)));
-                    } else {
-                        u32::try_from(lit.value.value.value).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &lit.value.value.value.to_string())
-                        })? as i32
-                    };
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-                (OpWidth::W64, Signedness::Signed) => {
-                    let value = if lit.value.is_neg {
-                        let unsigned = lit.value.value.value as i128;
-                        let signed = -unsigned;
-                        i64::try_from(signed).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &signed.to_string())
-                        })?
-                    } else {
-                        i64::try_from(lit.value.value.value).map_err(|_| {
-                            Diagnostic::problem(
-                                Problem::ConstantOverflow,
-                                Label::span(span.clone(), "Integer literal"),
-                            )
-                            .with_context("value", &lit.value.value.value.to_string())
-                        })?
-                    };
-                    let pool_index = ctx.add_i64_constant(value);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                (OpWidth::W64, Signedness::Unsigned) => {
-                    // Unsigned 64-bit: values up to u64::MAX are valid.
-                    // Store the bit-pattern as i64.
-                    let value = if lit.value.is_neg {
-                        return Err(Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Integer literal"),
-                        )
-                        .with_context("value", &format!("-{}", lit.value.value.value)));
-                    } else {
-                        lit.value.value.value as i64
-                    };
-                    let pool_index = ctx.add_i64_constant(value);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                (OpWidth::F32, _) => {
-                    // Integer literal in float context: convert to f32.
-                    let int_val = if lit.value.is_neg {
-                        -(lit.value.value.value as f32)
-                    } else {
-                        lit.value.value.value as f32
-                    };
-                    let pool_index = ctx.add_f32_constant(int_val);
-                    emitter.emit_load_const_f32(pool_index);
-                }
-                (OpWidth::F64, _) => {
-                    // Integer literal in float context: convert to f64.
-                    let int_val = if lit.value.is_neg {
-                        -(lit.value.value.value as f64)
-                    } else {
-                        lit.value.value.value as f64
-                    };
-                    let pool_index = ctx.add_f64_constant(int_val);
-                    emitter.emit_load_const_f64(pool_index);
-                }
-            }
-            Ok(())
-        }
-        ConstantKind::RealLiteral(lit) => match op_type.0 {
-            OpWidth::F32 => {
-                let value = lit.value as f32;
-                let pool_index = ctx.add_f32_constant(value);
-                emitter.emit_load_const_f32(pool_index);
-                Ok(())
-            }
-            OpWidth::F64 => {
-                let pool_index = ctx.add_f64_constant(lit.value);
-                emitter.emit_load_const_f64(pool_index);
-                Ok(())
-            }
-            _ => Err(Diagnostic::todo(file!(), line!())),
-        },
-        ConstantKind::Boolean(lit) => {
-            match lit.value {
-                Boolean::True => emitter.emit_load_true(),
-                Boolean::False => emitter.emit_load_false(),
-            }
-            Ok(())
-        }
-        ConstantKind::CharacterString(lit) => {
-            // Load the string literal into a temp buffer, leaving buf_idx on the stack.
-            // The caller (e.g., string assignment path) will consume the buf_idx via
-            // emit_str_store_var to copy the value into the target data region.
-            let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
-            let pool_index = ctx.add_str_constant(bytes);
-            ctx.num_temp_bufs += 1;
-            emitter.emit_load_const_str(pool_index);
-            Ok(())
-        }
-        ConstantKind::Duration(lit) => {
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let milliseconds = lit.interval.whole_milliseconds() as i64;
-                    let pool_index = ctx.add_i64_constant(milliseconds);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let milliseconds = lit.interval.whole_milliseconds() as i32;
-                    let pool_index = ctx.add_i32_constant(milliseconds);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
-        ConstantKind::TimeOfDay(lit) => {
-            let ms = lit.whole_milliseconds();
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(ms as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(ms as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
-        ConstantKind::Date(lit) => {
-            let secs = lit.seconds_since_epoch();
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(secs as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(secs as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
-        ConstantKind::DateAndTime(lit) => {
-            let secs = lit.seconds_since_epoch();
-            match op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(secs as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(secs as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-            }
-            Ok(())
-        }
-        ConstantKind::BitStringLiteral(lit) => {
-            let span = lit.value.span();
-            match op_type {
-                (OpWidth::W32, _) => {
-                    let value = u32::try_from(lit.value.value).map_err(|_| {
-                        Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Bit string literal"),
-                        )
-                        .with_context("value", &lit.value.value.to_string())
-                    })? as i32;
-                    let pool_index = ctx.add_i32_constant(value);
-                    emitter.emit_load_const_i32(pool_index);
-                }
-                (OpWidth::W64, _) => {
-                    let value = u64::try_from(lit.value.value).map_err(|_| {
-                        Diagnostic::problem(
-                            Problem::ConstantOverflow,
-                            Label::span(span.clone(), "Bit string literal"),
-                        )
-                        .with_context("value", &lit.value.value.to_string())
-                    })? as i64;
-                    let pool_index = ctx.add_i64_constant(value);
-                    emitter.emit_load_const_i64(pool_index);
-                }
-                (OpWidth::F32, _) => {
-                    let value = lit.value.value as f32;
-                    let pool_index = ctx.add_f32_constant(value);
-                    emitter.emit_load_const_f32(pool_index);
-                }
-                (OpWidth::F64, _) => {
-                    let value = lit.value.value as f64;
-                    let pool_index = ctx.add_f64_constant(value);
-                    emitter.emit_load_const_f64(pool_index);
-                }
-            }
-            Ok(())
-        }
-    }
-}
-
-/// Compiles a variable read expression, handling bit access.
-///
-/// For simple named variables, loads the variable value onto the stack.
-/// For bit access (e.g., `a.0`), loads the base variable, shifts right
-/// by the bit index, and masks with 1 to extract the single bit as a
-/// BOOL (0 or 1).
-fn compile_variable_read(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    variable: &Variable,
-    op_type: OpType,
-) -> Result<(), Diagnostic> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access)) => {
-            let base_name = resolve_symbolic_variable_name(&bit_access.variable)?;
-            let base_index = ctx.var_index(base_name)?;
-            let base_op_type = ctx.var_op_type(base_name);
-            let bit_index = bit_access.index.value;
-
-            // Load the base variable
-            emit_load_var(emitter, base_index, base_op_type);
-
-            // Load the bit index and shift right
-            match base_op_type.0 {
-                OpWidth::W64 => {
-                    let pool_index = ctx.add_i64_constant(bit_index as i64);
-                    emitter.emit_load_const_i64(pool_index);
-                    emitter.emit_builtin(opcode::builtin::SHR_I64);
-                    // AND with 1 to isolate the bit
-                    let one_index = ctx.add_i64_constant(1);
-                    emitter.emit_load_const_i64(one_index);
-                    emitter.emit_bit_and_64();
-                }
-                _ => {
-                    let pool_index = ctx.add_i32_constant(bit_index as i32);
-                    emitter.emit_load_const_i32(pool_index);
-                    emitter.emit_builtin(opcode::builtin::SHR_I32);
-                    // AND with 1 to isolate the bit
-                    let one_index = ctx.add_i32_constant(1);
-                    emitter.emit_load_const_i32(one_index);
-                    emitter.emit_bit_and_32();
-                }
-            }
-            Ok(())
-        }
-        Variable::Symbolic(SymbolicVariableKind::Structured(structured)) => {
-            let (var_index, desc_index, slot_offset, _op_type, _field_type) =
-                crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
-            let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
-            emitter.emit_load_const_i32(idx_const);
-            emitter.emit_load_array(var_index, desc_index);
-            Ok(())
-        }
-        _ => {
-            // Check if this is a string variable (stored in data region).
-            // String reads emit str_load_var to produce a buf_idx on the stack,
-            // which is consumed by string assignment or string function args.
-            if let Some(var_name) = resolve_variable_name(variable) {
-                if let Some(info) = ctx.string_vars.get(var_name) {
-                    let data_offset = info.data_offset;
-                    ctx.num_temp_bufs += 1;
-                    emitter.emit_str_load_var(data_offset);
-                    return Ok(());
-                }
-            }
-
-            match crate::compile_array::resolve_access(ctx, variable)? {
-                crate::compile_array::ResolvedAccess::Scalar { var_index } => {
-                    emit_load_var(emitter, var_index, op_type);
-                }
-                crate::compile_array::ResolvedAccess::ArrayElement { info, subscripts } => {
-                    let arr_var_index = info.var_index;
-                    let arr_desc_index = info.desc_index;
-                    let is_string_elem = info.is_string_element;
-                    let dim_info: Vec<_> = info
-                        .dimensions
-                        .iter()
-                        .map(|d| crate::compile_array::DimensionInfo {
-                            lower_bound: d.lower_bound,
-                            size: d.size,
-                            stride: d.stride,
-                        })
-                        .collect();
-                    let span = variable_span(variable);
-                    crate::compile_array::emit_flat_index(
-                        emitter,
-                        ctx,
-                        &subscripts,
-                        &dim_info,
-                        &span,
-                    )?;
-                    if is_string_elem {
-                        ctx.num_temp_bufs += 1;
-                        emitter.emit_str_load_array_elem(arr_var_index, arr_desc_index);
-                    } else {
-                        emitter.emit_load_array(arr_var_index, arr_desc_index);
-                    }
-                }
-                crate::compile_array::ResolvedAccess::DerefArrayElement { info, subscripts } => {
-                    let ref_var_index = info.var_index;
-                    let arr_desc_index = info.desc_index;
-                    let dim_info: Vec<_> = info
-                        .dimensions
-                        .iter()
-                        .map(|d| crate::compile_array::DimensionInfo {
-                            lower_bound: d.lower_bound,
-                            size: d.size,
-                            stride: d.stride,
-                        })
-                        .collect();
-                    let span = variable_span(variable);
-                    crate::compile_array::emit_flat_index(
-                        emitter,
-                        ctx,
-                        &subscripts,
-                        &dim_info,
-                        &span,
-                    )?;
-                    emitter.emit_load_array_deref(ref_var_index, arr_desc_index);
-                }
-            }
-            Ok(())
-        }
-    }
-}
-
-/// Resolves the name of the innermost named variable from a symbolic variable kind.
-fn resolve_symbolic_variable_name(kind: &SymbolicVariableKind) -> Result<&Id, Diagnostic> {
-    match kind {
-        SymbolicVariableKind::Named(named) => Ok(&named.name),
-        SymbolicVariableKind::BitAccess(bit_access) => {
-            resolve_symbolic_variable_name(&bit_access.variable)
-        }
-        SymbolicVariableKind::Array(array) => {
-            resolve_symbolic_variable_name(&array.subscripted_variable)
-        }
-        SymbolicVariableKind::Structured(structured) => {
-            resolve_symbolic_variable_name(&structured.record)
-        }
-        SymbolicVariableKind::Deref(deref) => resolve_symbolic_variable_name(&deref.variable),
-    }
-}
-
-/// Resolves a variable reference to its variable table index.
-pub(crate) fn resolve_variable(
-    ctx: &CompileContext,
-    variable: &Variable,
-) -> Result<VarIndex, Diagnostic> {
-    match variable {
-        Variable::Symbolic(symbolic) => match symbolic {
-            SymbolicVariableKind::Named(named) => ctx.var_index(&named.name),
-            SymbolicVariableKind::Array(array) => {
-                Err(Diagnostic::todo_with_span(array.span(), file!(), line!()))
-            }
-            SymbolicVariableKind::Structured(structured) => Err(Diagnostic::todo_with_span(
-                structured.span(),
-                file!(),
-                line!(),
-            )),
-            SymbolicVariableKind::BitAccess(bit_access) => Err(Diagnostic::todo_with_span(
-                bit_access.span(),
-                file!(),
-                line!(),
-            )),
-            SymbolicVariableKind::Deref(deref) => {
-                Err(Diagnostic::todo_with_span(deref.span(), file!(), line!()))
-            }
-        },
-        Variable::Direct(direct) => Err(Diagnostic::todo_with_span(
-            direct.position.clone(),
-            file!(),
-            line!(),
-        )),
-    }
-}
-
-/// Extracts the variable name `Id` from a variable reference, if it is a named symbolic variable.
-fn resolve_variable_name(variable: &Variable) -> Option<&Id> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::Named(named)) => Some(&named.name),
-        _ => None,
-    }
-}
-
-/// Extracts a SourceSpan from a Variable for diagnostic messages.
-fn variable_span(variable: &Variable) -> ironplc_dsl::core::SourceSpan {
-    match variable {
-        Variable::Symbolic(kind) => kind.span(),
-        Variable::Direct(addr) => addr.position.clone(),
-    }
-}
-
-/// Extracts a `BitAccessVariable` from an assignment target, if it is a bit access.
-fn extract_bit_access_target(variable: &Variable) -> Option<&BitAccessVariable> {
-    match variable {
-        Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access)) => Some(bit_access),
-        _ => None,
-    }
-}
-
-/// Compiles a bit access assignment using read-modify-write.
-///
-/// `target.N := value` is compiled as:
-///   1. Load the base variable
-///   2. AND with clear mask (~(1 << N)) to clear the target bit
-///   3. Compile the RHS value
-///   4. AND with 1 to ensure it's 0 or 1
-///   5. Left-shift by N
-///   6. OR with the cleared variable to set the bit
-///   7. Store back to the base variable
-fn compile_bit_access_assignment(
-    emitter: &mut Emitter,
-    ctx: &mut CompileContext,
-    bit_access: &BitAccessVariable,
-    value: &Expr,
-) -> Result<(), Diagnostic> {
-    let base_name = resolve_symbolic_variable_name(&bit_access.variable)?;
-    let var_index = ctx.var_index(base_name)?;
-    let base_op_type = ctx.var_op_type(base_name);
-    let bit_index = bit_access.index.value as u32;
-
-    match base_op_type.0 {
-        OpWidth::W64 => {
-            let clear_mask = !(1i64 << bit_index);
-            let clear_pool = ctx.add_i64_constant(clear_mask);
-
-            // Load base var and clear the target bit.
-            emit_load_var(emitter, var_index, base_op_type);
-            emitter.emit_load_const_i64(clear_pool);
-            emitter.emit_bit_and_64();
-
-            // Compile the RHS, mask to 1 bit, shift into position.
-            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-            let one_pool = ctx.add_i32_constant(1);
-            emitter.emit_load_const_i32(one_pool);
-            emitter.emit_bit_and_32();
-            // Widen to 64-bit before shifting.
-            emitter.emit_builtin(opcode::builtin::CONV_U32_TO_I64);
-            let shift_pool = ctx.add_i32_constant(bit_index as i32);
-            emitter.emit_load_const_i32(shift_pool);
-            emitter.emit_builtin(opcode::builtin::SHL_I64);
-
-            // OR the shifted bit into the cleared variable.
-            emitter.emit_bit_or_64();
-        }
-        _ => {
-            let clear_mask = !(1i32 << bit_index);
-            let clear_pool = ctx.add_i32_constant(clear_mask);
-
-            // Load base var and clear the target bit.
-            emit_load_var(emitter, var_index, base_op_type);
-            emitter.emit_load_const_i32(clear_pool);
-            emitter.emit_bit_and_32();
-
-            // Compile the RHS, mask to 1 bit, shift into position.
-            compile_expr(emitter, ctx, value, DEFAULT_OP_TYPE)?;
-            let one_pool = ctx.add_i32_constant(1);
-            emitter.emit_load_const_i32(one_pool);
-            emitter.emit_bit_and_32();
-            let shift_pool = ctx.add_i32_constant(bit_index as i32);
-            emitter.emit_load_const_i32(shift_pool);
-            emitter.emit_builtin(opcode::builtin::SHL_I32);
-
-            // OR the shifted bit into the cleared variable.
-            emitter.emit_bit_or_32();
-        }
-    }
-
-    // Truncate if needed and store back.
-    if let Some(ti) = ctx.var_type_info(base_name) {
-        emit_truncation(emitter, ti);
-    }
-    emit_store_var(emitter, var_index, base_op_type);
-    Ok(())
-}
-
-/// Converts a `SignedInteger` AST node to an `i64` value.
-fn signed_integer_to_i64(si: &SignedInteger) -> Result<i64, Diagnostic> {
-    if si.is_neg {
-        let unsigned = si.value.value as i128;
-        let signed = -unsigned;
-        i64::try_from(signed).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &signed.to_string())
-        })
-    } else {
-        i64::try_from(si.value.value).map_err(|_| {
-            Diagnostic::problem(
-                Problem::ConstantOverflow,
-                Label::span(si.value.span(), "Integer literal"),
-            )
-            .with_context("value", &si.value.value.to_string())
-        })
-    }
-}
-
-// --- Typed opcode emission helpers ---
-//
-// Each helper selects the correct opcode based on the operation type
-// (width and/or signedness).
-
-pub(crate) fn emit_truncation(emitter: &mut Emitter, type_info: VarTypeInfo) {
-    match (
-        type_info.op_width,
-        type_info.signedness,
-        type_info.storage_bits,
-    ) {
-        (OpWidth::W32, Signedness::Signed, 8) => emitter.emit_trunc_i8(),
-        (OpWidth::W32, Signedness::Signed, 16) => emitter.emit_trunc_i16(),
-        (OpWidth::W32, Signedness::Unsigned, 8) => emitter.emit_trunc_u8(),
-        (OpWidth::W32, Signedness::Unsigned, 16) => emitter.emit_trunc_u16(),
-        // 32-bit and 64-bit types fill their native width; no truncation needed.
-        _ => {}
-    }
-}
-
-fn emit_load_var(emitter: &mut Emitter, var_index: VarIndex, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_load_var_i32(var_index),
-        OpWidth::W64 => emitter.emit_load_var_i64(var_index),
-        OpWidth::F32 => emitter.emit_load_var_f32(var_index),
-        OpWidth::F64 => emitter.emit_load_var_f64(var_index),
-    }
-}
-
-fn emit_store_var(emitter: &mut Emitter, var_index: VarIndex, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_store_var_i32(var_index),
-        OpWidth::W64 => emitter.emit_store_var_i64(var_index),
-        OpWidth::F32 => emitter.emit_store_var_f32(var_index),
-        OpWidth::F64 => emitter.emit_store_var_f64(var_index),
-    }
-}
-
-fn emit_add(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_add_i32(),
-        OpWidth::W64 => emitter.emit_add_i64(),
-        OpWidth::F32 => emitter.emit_add_f32(),
-        OpWidth::F64 => emitter.emit_add_f64(),
-    }
-}
-
-fn emit_sub(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_sub_i32(),
-        OpWidth::W64 => emitter.emit_sub_i64(),
-        OpWidth::F32 => emitter.emit_sub_f32(),
-        OpWidth::F64 => emitter.emit_sub_f64(),
-    }
-}
-
-fn emit_mul(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_mul_i32(),
-        OpWidth::W64 => emitter.emit_mul_i64(),
-        OpWidth::F32 => emitter.emit_mul_f32(),
-        OpWidth::F64 => emitter.emit_mul_f64(),
-    }
-}
-
-fn emit_div(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_div_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_div_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_div_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_div_u64(),
-        (OpWidth::F32, _) => emitter.emit_div_f32(),
-        (OpWidth::F64, _) => emitter.emit_div_f64(),
-    }
-}
-
-fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_mod_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_mod_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_mod_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_mod_u64(),
-        // Float MOD is not supported (IEC 61131-3 MOD is integer-only).
-        // The analyzer should catch this before codegen.
-        (OpWidth::F32, _) | (OpWidth::F64, _) => {}
-    }
-}
-
-fn emit_neg(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_neg_i32(),
-        OpWidth::W64 => emitter.emit_neg_i64(),
-        OpWidth::F32 => emitter.emit_neg_f32(),
-        OpWidth::F64 => emitter.emit_neg_f64(),
-    }
-}
-
-fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
-        OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I64),
-        OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
-        OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
-    }
-}
-
-fn emit_and(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_and_32(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_and_64(),
-        _ => emitter.emit_bool_and(),
-    }
-}
-
-fn emit_or(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_or_32(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_or_64(),
-        _ => emitter.emit_bool_or(),
-    }
-}
-
-fn emit_xor(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_xor_32(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_xor_64(),
-        _ => emitter.emit_bool_xor(),
-    }
-}
-
-fn emit_eq(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_eq_i32(),
-        OpWidth::W64 => emitter.emit_eq_i64(),
-        OpWidth::F32 => emitter.emit_eq_f32(),
-        OpWidth::F64 => emitter.emit_eq_f64(),
-    }
-}
-
-fn emit_ne(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_ne_i32(),
-        OpWidth::W64 => emitter.emit_ne_i64(),
-        OpWidth::F32 => emitter.emit_ne_f32(),
-        OpWidth::F64 => emitter.emit_ne_f64(),
-    }
-}
-
-fn emit_lt(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_lt_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_lt_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_lt_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_lt_u64(),
-        (OpWidth::F32, _) => emitter.emit_lt_f32(),
-        (OpWidth::F64, _) => emitter.emit_lt_f64(),
-    }
-}
-
-fn emit_le(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_le_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_le_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_le_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_le_u64(),
-        (OpWidth::F32, _) => emitter.emit_le_f32(),
-        (OpWidth::F64, _) => emitter.emit_le_f64(),
-    }
-}
-
-fn emit_gt(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_gt_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_gt_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_gt_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_gt_u64(),
-        (OpWidth::F32, _) => emitter.emit_gt_f32(),
-        (OpWidth::F64, _) => emitter.emit_gt_f64(),
-    }
-}
-
-fn emit_ge(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_ge_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_ge_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_ge_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_ge_u64(),
-        (OpWidth::F32, _) => emitter.emit_ge_f32(),
-        (OpWidth::F64, _) => emitter.emit_ge_f64(),
     }
 }
 
@@ -5039,7 +818,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 2);
@@ -5076,7 +855,7 @@ FUNCTION_BLOCK MyBlock
 END_FUNCTION_BLOCK
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context);
+        let result = compile(&library, &context, &CodegenOptions::default());
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -5093,7 +872,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         // Should have two functions (init + scan), both just RET_VOID
         assert_eq!(container.header.num_functions, 2);
@@ -5122,7 +901,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         // Should only have one constant (10 is deduplicated)
         assert_eq!(container.constant_pool.len(), 1);
@@ -5141,14 +920,15 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 2);
 
         // Function 1 (scan):
-        // x := 10: LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0
-        // y := x:  LOAD_VAR_I32 var:0, STORE_VAR_I32 var:1
+        // x := 10: LOAD_CONST_I32 pool:0
+        // (store-load peephole): DUP, STORE_VAR_I32 var:0, NOP, NOP
+        // y := x:  STORE_VAR_I32 var:1
         // RET_VOID
         let bytecode = container
             .code
@@ -5158,8 +938,8 @@ END_PROGRAM
             bytecode,
             &[
                 0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0
+                0xA1, // DUP (store-load optimization)
                 0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-                0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
                 0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
                 0xB5, // RET_VOID
             ]
@@ -5177,7 +957,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(
             container
@@ -5208,7 +988,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context);
+        let result = compile(&library, &context, &CodegenOptions::default());
 
         assert!(result.is_ok());
     }
@@ -5225,7 +1005,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context);
+        let result = compile(&library, &context, &CodegenOptions::default());
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -5246,7 +1026,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context);
+        let result = compile(&library, &context, &CodegenOptions::default());
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -5264,7 +1044,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -5287,7 +1067,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -5316,7 +1096,7 @@ END_VAR
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context).unwrap();
+        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
 
         // Should have 3 functions: init, scan, SIGN_R
         assert_eq!(container.header.num_functions, 3);

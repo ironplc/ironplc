@@ -42,6 +42,38 @@ impl<'a> OperandStack<'a> {
         }
         Ok(self.data[self.len - 1])
     }
+
+    /// Returns the slot at `depth` slots below the top (depth 0 = top).
+    pub fn peek_at(&self, depth: usize) -> Result<Slot, Trap> {
+        if depth >= self.len {
+            return Err(Trap::StackUnderflow);
+        }
+        Ok(self.data[self.len - 1 - depth])
+    }
+
+    /// Removes `n` slots from the top of the stack.
+    pub fn truncate_by(&mut self, n: usize) -> Result<(), Trap> {
+        if n > self.len {
+            return Err(Trap::StackUnderflow);
+        }
+        self.len -= n;
+        Ok(())
+    }
+
+    /// Duplicates the top value on the stack.
+    pub fn dup(&mut self) -> Result<(), Trap> {
+        let top = self.peek()?;
+        self.push(top)
+    }
+
+    /// Swaps the top two values on the stack.
+    pub fn swap(&mut self) -> Result<(), Trap> {
+        if self.len < 2 {
+            return Err(Trap::StackUnderflow);
+        }
+        self.data.swap(self.len - 1, self.len - 2);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -93,5 +125,62 @@ mod tests {
 
         assert_eq!(stack.pop().unwrap().as_i32(), 20);
         assert_eq!(stack.pop().unwrap().as_i32(), 10);
+    }
+
+    #[test]
+    fn stack_dup_when_value_present_then_duplicates_top() {
+        let mut buf = [Slot::default(); 4];
+        let mut stack = OperandStack::new(&mut buf);
+        stack.push(Slot::from_i32(42)).unwrap();
+
+        stack.dup().unwrap();
+        assert_eq!(stack.pop().unwrap().as_i32(), 42);
+        assert_eq!(stack.pop().unwrap().as_i32(), 42);
+    }
+
+    #[test]
+    fn stack_dup_when_empty_then_stack_underflow() {
+        let mut buf = [Slot::default(); 4];
+        let mut stack = OperandStack::new(&mut buf);
+
+        assert_eq!(stack.dup(), Err(Trap::StackUnderflow));
+    }
+
+    #[test]
+    fn stack_dup_when_full_then_stack_overflow() {
+        let mut buf = [Slot::default(); 1];
+        let mut stack = OperandStack::new(&mut buf);
+        stack.push(Slot::from_i32(1)).unwrap();
+
+        assert_eq!(stack.dup(), Err(Trap::StackOverflow));
+    }
+
+    #[test]
+    fn stack_swap_when_two_values_then_swaps() {
+        let mut buf = [Slot::default(); 4];
+        let mut stack = OperandStack::new(&mut buf);
+        stack.push(Slot::from_i32(10)).unwrap();
+        stack.push(Slot::from_i32(20)).unwrap();
+
+        stack.swap().unwrap();
+        assert_eq!(stack.pop().unwrap().as_i32(), 10);
+        assert_eq!(stack.pop().unwrap().as_i32(), 20);
+    }
+
+    #[test]
+    fn stack_swap_when_one_value_then_stack_underflow() {
+        let mut buf = [Slot::default(); 4];
+        let mut stack = OperandStack::new(&mut buf);
+        stack.push(Slot::from_i32(1)).unwrap();
+
+        assert_eq!(stack.swap(), Err(Trap::StackUnderflow));
+    }
+
+    #[test]
+    fn stack_swap_when_empty_then_stack_underflow() {
+        let mut buf = [Slot::default(); 4];
+        let mut stack = OperandStack::new(&mut buf);
+
+        assert_eq!(stack.swap(), Err(Trap::StackUnderflow));
     }
 }

@@ -628,10 +628,21 @@ impl IntermediateType {
                     .ok_or(SlotCountError::Overflow)
             }
 
+            // STRING: header (4 bytes) + character data, rounded up to 8-byte slots.
+            // IEC 61131-3 default max length is 254 characters.
+            IntermediateType::String { max_len } => {
+                const DEFAULT_STRING_MAX_LEN: u128 = 254;
+                const HEADER_BYTES: u128 = 4; // [max_len: u16][cur_len: u16]
+                let len = max_len.unwrap_or(DEFAULT_STRING_MAX_LEN);
+                let total_bytes = HEADER_BYTES + len;
+                let slots = total_bytes.div_ceil(8);
+                u32::try_from(slots).map_err(|_| SlotCountError::Overflow)
+            }
+
             // Not yet supported in data region
-            IntermediateType::String { .. }
-            | IntermediateType::FunctionBlock { .. }
-            | IntermediateType::Function { .. } => Err(SlotCountError::UnsupportedFieldType),
+            IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. } => {
+                Err(SlotCountError::UnsupportedFieldType)
+            }
         }
     }
 }
@@ -2019,9 +2030,24 @@ mod tests {
     }
 
     #[test]
-    fn slot_count_when_string_field_then_returns_unsupported_field_type() {
+    fn slot_count_when_string_with_explicit_len_then_returns_ceil_slots() {
+        // STRING[255]: ceil((4 + 255) / 8) = ceil(259/8) = 33 slots
         let s = IntermediateType::String { max_len: Some(255) };
-        assert_eq!(s.slot_count(), Err(SlotCountError::UnsupportedFieldType));
+        assert_eq!(s.slot_count(), Ok(33));
+    }
+
+    #[test]
+    fn slot_count_when_string_with_default_len_then_returns_ceil_slots() {
+        // STRING (default 254): ceil((4 + 254) / 8) = ceil(258/8) = 33 slots
+        let s = IntermediateType::String { max_len: None };
+        assert_eq!(s.slot_count(), Ok(33));
+    }
+
+    #[test]
+    fn slot_count_when_string_small_then_returns_1() {
+        // STRING[4]: ceil((4 + 4) / 8) = ceil(8/8) = 1 slot
+        let s = IntermediateType::String { max_len: Some(4) };
+        assert_eq!(s.slot_count(), Ok(1));
     }
 
     #[test]

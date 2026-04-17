@@ -280,4 +280,105 @@ END_IF;
             error_text
         );
     }
+
+    #[test]
+    fn parse_when_il_body_then_returns_unsupported_error() {
+        // IL body is also unsupported — covers the IL branch in unsupported_language()
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="IlProgram" pouType="program">
+        <body>
+          <IL>NOP</IL>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_err());
+
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, Problem::XmlBodyTypeNotSupported.code());
+        assert!(diagnostic.primary.message.contains("IL"));
+        assert!(diagnostic.primary.message.contains("not supported"));
+    }
+
+    #[test]
+    fn parse_when_multiple_pous_with_unsupported_first_then_returns_error_for_first() {
+        // Verifies the loop exits on first unsupported POU
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="FbdProg" pouType="program">
+        <body>
+          <FBD/>
+        </body>
+      </pou>
+      <pou name="StProg" pouType="program">
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">;</xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_err());
+
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, Problem::XmlBodyTypeNotSupported.code());
+        assert!(diagnostic.primary.message.contains("FbdProg"));
+    }
+
+    #[test]
+    fn parse_when_pou_with_no_body_then_succeeds() {
+        // POU without body exercises the None branch in the body loop
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
+  <contentHeader name="TestProject">
+    <coordinateInfo>
+      <fbd><scaling x="1" y="1"/></fbd>
+      <ld><scaling x="1" y="1"/></ld>
+      <sfc><scaling x="1" y="1"/></sfc>
+    </coordinateInfo>
+  </contentHeader>
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="NoBody" pouType="program">
+        <interface/>
+      </pou>
+    </pous>
+  </types>
+</project>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
 }

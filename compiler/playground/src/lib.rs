@@ -139,6 +139,44 @@ fn build_var_debug_map(container: &Container) -> HashMap<u16, VarDebugInfo> {
     map
 }
 
+/// Maps (type_name, ordinal) → value_name for enum display.
+type EnumValueMap = HashMap<(String, i32), String>;
+
+/// Builds a lookup map from enum definitions in the container's debug section.
+fn build_enum_value_map(container: &Container) -> EnumValueMap {
+    let mut map = HashMap::new();
+    if let Some(debug) = &container.debug_section {
+        for entry in &debug.enum_defs {
+            for (ordinal, value_name) in entry.values.iter().enumerate() {
+                map.insert(
+                    (entry.type_name.clone(), ordinal as i32),
+                    value_name.clone(),
+                );
+            }
+        }
+    }
+    map
+}
+
+/// Formats a raw 64-bit slot value according to the IEC type tag,
+/// with optional enum value name lookup.
+fn format_variable_value_with_enum(
+    raw: u64,
+    tag: u8,
+    type_name: &str,
+    enum_map: &EnumValueMap,
+) -> String {
+    // Check if this variable is an enum type with a known value name.
+    if !type_name.is_empty() {
+        let ordinal = raw as i32;
+        if let Some(value_name) = enum_map.get(&(type_name.to_string(), ordinal)) {
+            return format!("{value_name} ({ordinal})");
+        }
+    }
+    // Fall back to standard formatting.
+    format_variable_value(raw, tag)
+}
+
 /// Formats a raw 64-bit slot value according to the IEC type tag.
 fn format_variable_value(raw: u64, tag: u8) -> String {
     match tag {
@@ -356,7 +394,10 @@ fn compile_inner(source: &str, dialect: &str) -> CompileResult {
         };
     }
 
-    let container = match codegen_compile(&library, &context) {
+    let codegen_options = ironplc_codegen::CodegenOptions {
+        system_uptime_global: options.allow_system_uptime_global,
+    };
+    let container = match codegen_compile(&library, &context, &codegen_options) {
         Ok(c) => c,
         Err(diag) => {
             return CompileResult {
@@ -440,19 +481,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 
     let mut bufs = VmBuffers::from_container(&container);
 
-    let mut running = match Vm::new()
-        .load(
-            &container,
-            &mut bufs.stack,
-            &mut bufs.vars,
-            &mut bufs.data_region,
-            &mut bufs.temp_buf,
-            &mut bufs.tasks,
-            &mut bufs.programs,
-            &mut bufs.ready,
-        )
-        .start()
-    {
+    let mut running = match Vm::new().load(&container, &mut bufs).start() {
         Ok(vm) => vm,
         Err(ctx) => {
             return RunResult {
@@ -468,12 +497,13 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     };
 
     let debug_map = build_var_debug_map(&container);
+    let enum_map = build_enum_value_map(&container);
 
     for round in 0..scans {
         let current_us = (round as u64) * 1000;
         if let Err(ctx) = running.run_round(current_us) {
             let faulted = running.fault(ctx);
-            let variables = read_all_variables_faulted(&faulted, &debug_map);
+            let variables = read_all_variables_faulted(&faulted, &debug_map, &enum_map);
             return RunResult {
                 ok: false,
                 variables,
@@ -489,7 +519,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     }
 
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars, &debug_map);
+    let variables = read_all_variables_running(&running, num_vars, &debug_map, &enum_map);
     let scans_completed = running.scan_count();
     running.stop();
 
@@ -541,6 +571,7 @@ fn read_all_variables_running(
     vm: &ironplc_vm::VmRunning,
     num_vars: u16,
     debug_map: &HashMap<u16, VarDebugInfo>,
+    enum_map: &EnumValueMap,
 ) -> Vec<VariableInfo> {
     (0..num_vars)
         .filter_map(|i| {
@@ -551,7 +582,12 @@ fn read_all_variables_running(
                         (
                             info.name.clone(),
                             info.type_name.clone(),
-                            format_variable_value(raw, info.iec_type_tag),
+                            format_variable_value_with_enum(
+                                raw,
+                                info.iec_type_tag,
+                                &info.type_name,
+                                enum_map,
+                            ),
                         )
                     } else {
                         (String::new(), String::new(), format!("{}", raw as i32))
@@ -570,6 +606,7 @@ fn read_all_variables_running(
 fn read_all_variables_faulted(
     vm: &ironplc_vm::VmFaulted,
     debug_map: &HashMap<u16, VarDebugInfo>,
+    enum_map: &EnumValueMap,
 ) -> Vec<VariableInfo> {
     let num_vars = vm.num_variables();
     (0..num_vars)
@@ -581,7 +618,12 @@ fn read_all_variables_faulted(
                         (
                             info.name.clone(),
                             info.type_name.clone(),
-                            format_variable_value(raw, info.iec_type_tag),
+                            format_variable_value_with_enum(
+                                raw,
+                                info.iec_type_tag,
+                                &info.type_name,
+                                enum_map,
+                            ),
                         )
                     } else {
                         (String::new(), String::new(), format!("{}", raw as i32))
@@ -641,19 +683,7 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str) -> StepRe
     // Subsequent calls to step() will use resume() to skip re-initialization.
     let mut bufs = VmBuffers::from_container(&container);
 
-    match Vm::new()
-        .load(
-            &container,
-            &mut bufs.stack,
-            &mut bufs.vars,
-            &mut bufs.data_region,
-            &mut bufs.temp_buf,
-            &mut bufs.tasks,
-            &mut bufs.programs,
-            &mut bufs.ready,
-        )
-        .start()
-    {
+    match Vm::new().load(&container, &mut bufs).start() {
         Ok(running) => {
             running.stop();
         }
@@ -772,26 +802,37 @@ fn step_inner(scans: u32) -> StepResult {
 /// Returns `(variables, total_scan_count, error)`.
 fn run_vm_step(
     container: &Container,
-    var_buf: &mut [Slot],
-    data_region: &mut [u8],
+    var_buf: &mut Vec<Slot>,
+    data_region: &mut Vec<u8>,
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
 ) -> (Vec<VariableInfo>, u64, Option<String>) {
     let mut bufs = VmBuffers::from_container(container);
+    // Swap the session's persistent buffers into VmBuffers so the VM
+    // operates on them directly, avoiding a copy.
+    std::mem::swap(&mut bufs.vars, var_buf);
+    std::mem::swap(&mut bufs.data_region, data_region);
 
-    let mut running = Vm::new()
-        .load(
-            container,
-            &mut bufs.stack,
-            var_buf,
-            data_region,
-            &mut bufs.temp_buf,
-            &mut bufs.tasks,
-            &mut bufs.programs,
-            &mut bufs.ready,
-        )
-        .resume(base_scan_count);
+    let result = run_vm_scans(container, &mut bufs, base_scan_count, scans, cycle_time_us);
+
+    // Swap the (now-updated) persistent buffers back to the session.
+    std::mem::swap(&mut bufs.vars, var_buf);
+    std::mem::swap(&mut bufs.data_region, data_region);
+
+    result
+}
+
+/// Runs scan cycles on an already-prepared [`VmBuffers`], returning variable
+/// snapshots and the total scan count.
+fn run_vm_scans(
+    container: &Container,
+    bufs: &mut VmBuffers,
+    base_scan_count: u64,
+    scans: u32,
+    cycle_time_us: u64,
+) -> (Vec<VariableInfo>, u64, Option<String>) {
+    let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
     for _ in 0..scans {
         let current_us = running.scan_count() * cycle_time_us;
@@ -799,7 +840,8 @@ fn run_vm_step(
             let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
             let debug_map = build_var_debug_map(container);
-            let variables = read_all_variables_faulted(&faulted, &debug_map);
+            let enum_map = build_enum_value_map(container);
+            let variables = read_all_variables_faulted(&faulted, &debug_map, &enum_map);
             let error = format!(
                 "VM trap: {} (task {}, instance {})",
                 faulted.trap(),
@@ -811,8 +853,9 @@ fn run_vm_step(
     }
 
     let debug_map = build_var_debug_map(container);
+    let enum_map = build_enum_value_map(container);
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars, &debug_map);
+    let variables = read_all_variables_running(&running, num_vars, &debug_map, &enum_map);
     let total_scans = running.scan_count();
     running.stop();
     (variables, total_scans, None)
@@ -876,7 +919,7 @@ END_PROGRAM
         assert!(result.ok);
         assert_eq!(result.scans_completed, 1);
         assert!(!result.variables.is_empty());
-        assert_eq!(result.variables[0].value, "42");
+        assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -912,8 +955,8 @@ END_PROGRAM
         assert!(result.error.is_none());
         assert_eq!(result.scans_completed, 1);
         assert!(result.variables.len() >= 2);
-        assert_eq!(result.variables[0].value, "10");
-        assert_eq!(result.variables[1].value, "42");
+        assert_eq!(result.variables[2].value, "10"); // indices 0-1 are system globals
+        assert_eq!(result.variables[3].value, "42"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -938,7 +981,7 @@ END_PROGRAM
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 5, "")).unwrap();
         assert!(result.ok);
         assert_eq!(result.scans_completed, 5);
-        assert_eq!(result.variables[0].value, "99");
+        assert_eq!(result.variables[2].value, "99"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -1029,7 +1072,7 @@ END_PROGRAM
         assert!(result.ok);
         assert_eq!(result.total_scans, 1);
         assert!(!result.variables.is_empty());
-        assert_eq!(result.variables[0].value, "42");
+        assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -1047,11 +1090,11 @@ END_PROGRAM
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
-        assert_eq!(r1.variables[0].value, "1");
+        assert_eq!(r1.variables[2].value, "1"); // indices 0-1 are system globals
 
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r2.ok);
-        assert_eq!(r2.variables[0].value, "2");
+        assert_eq!(r2.variables[2].value, "2"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -1208,7 +1251,7 @@ END_PROGRAM
 ";
         load_program(source_a, 100_000, "");
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
-        assert_eq!(r1.variables[0].value, "10");
+        assert_eq!(r1.variables[2].value, "10"); // indices 0-1 are system globals
 
         let source_b = "
 PROGRAM main
@@ -1220,7 +1263,7 @@ END_PROGRAM
 ";
         load_program(source_b, 100_000, "");
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
-        assert_eq!(r2.variables[0].value, "20");
+        assert_eq!(r2.variables[2].value, "20"); // indices 0-1 are system globals
         assert_eq!(r2.total_scans, 1);
     }
 
@@ -1240,17 +1283,17 @@ END_PROGRAM
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
         assert_eq!(r1.total_scans, 1);
-        assert_eq!(r1.variables[0].value, "2"); // 1 * 2
+        assert_eq!(r1.variables[2].value, "2"); // 1 * 2; indices 0-1 are system globals
 
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r2.ok);
         assert_eq!(r2.total_scans, 2);
-        assert_eq!(r2.variables[0].value, "4"); // 2 * 2
+        assert_eq!(r2.variables[2].value, "4"); // 2 * 2; indices 0-1 are system globals
 
         let r3: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r3.ok);
         assert_eq!(r3.total_scans, 3);
-        assert_eq!(r3.variables[0].value, "8"); // 4 * 2
+        assert_eq!(r3.variables[2].value, "8"); // 4 * 2; indices 0-1 are system globals
     }
 
     #[test]
@@ -1265,7 +1308,7 @@ END_PROGRAM
 ";
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
-        assert_eq!(result.variables[0].value, "42");
+        assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
     }
 
     #[test]
@@ -1280,7 +1323,7 @@ END_PROGRAM
 ";
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
-        assert_eq!(result.variables[0].value, "16#42");
+        assert_eq!(result.variables[2].value, "16#42"); // indices 0-1 are system globals
     }
 
     #[test]

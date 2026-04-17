@@ -3,7 +3,7 @@
 //! The compiler as individual stages (to enable testing).
 
 use ironplc_dsl::{
-    core::{FileId, SourceSpan},
+    core::{FileId, Id, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
 use ironplc_parser::options::CompilerOptions;
@@ -22,10 +22,10 @@ use crate::{
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
-    symbol_environment::SymbolEnvironment,
+    symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_int_to_bool_initializer, xform_named_to_positional_args,
-    xform_resolve_constant_expressions, xform_resolve_expr_types,
+    type_table, xform_fold_constant_expressions, xform_int_to_bool_initializer,
+    xform_named_to_positional_args, xform_resolve_constant_expressions, xform_resolve_expr_types,
     xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
     xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
     xform_resolve_type_decl_environment, xform_toposort_declarations,
@@ -105,6 +105,24 @@ pub fn resolve_types(
 
     let mut symbol_environment = SymbolEnvironment::new();
 
+    // Register implicit system globals when the uptime feature is enabled.
+    if options.allow_system_uptime_global {
+        symbol_environment
+            .insert(
+                &Id::from("__SYSTEM_UP_TIME"),
+                SymbolKind::Variable,
+                &ScopeKind::Global,
+            )
+            .map_err(|e| vec![e])?;
+        symbol_environment
+            .insert(
+                &Id::from("__SYSTEM_UP_LTIME"),
+                SymbolKind::Variable,
+                &ScopeKind::Global,
+            )
+            .map_err(|e| vec![e])?;
+    }
+
     // Resolve constant references in type parameters (STRING lengths, array bounds).
     // Must run before toposort so that concrete integer values are available.
     let fallback = library.clone();
@@ -179,7 +197,22 @@ pub fn resolve_types(
 
     // Recoverable: resolve expression types using the function environment.
     let fallback = library.clone();
-    match xform_resolve_expr_types::apply(library, &mut type_environment, &function_environment) {
+    match xform_resolve_expr_types::apply(
+        library,
+        &mut type_environment,
+        &function_environment,
+        options,
+    ) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
+
+    // Recoverable: fold constant binary and unary expressions.
+    let fallback = library.clone();
+    match xform_fold_constant_expressions::apply(library) {
         Ok(result) => library = result,
         Err(errs) => {
             diagnostics.extend(errs);

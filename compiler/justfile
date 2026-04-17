@@ -2,21 +2,22 @@ set windows-shell := ["powershell.exe", "-c"]
 
 alias ci := default
 # Coverage runs all tests with instrumentation, so separate test step is redundant
-default: compile coverage lint
+default: compile coverage lint dupes
 
 setup:
   cargo install cargo-release
   cargo install cargo-llvm-cov
+  cargo install cargo-dupes
 
 compile:
   cargo build
 
 test:
-  cargo test --all-targets
+  cargo test --quiet --all-targets
 
 # Run tests and produce coverage report
 coverage:
-  cargo llvm-cov --ignore-filename-regex "cargo|dsl_macro_derive|rustup" --workspace --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
+  cargo llvm-cov --quiet --ignore-filename-regex "cargo|dsl_macro_derive|rustup" --workspace --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
 
 # Fix linting errors.
 format:
@@ -27,6 +28,10 @@ format:
 lint:
   cargo clippy
   cargo fmt --all -- --check
+
+# Check for duplicate code (AST-based).
+dupes:
+  cargo dupes check --max-exact-percent 10 --max-near-percent 5 --exclude-tests --min-lines 10
 
 # Set the version number for this component.
 version version:
@@ -56,12 +61,12 @@ _package-windows version filename target:
 
 _package-macos version filename target:
   cargo build --release --target {{target}}
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm
+  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp
   shasum -a 256 {{filename}} > {{filename}}.sha256
 
 _package-linux version filename target:
   cargo build --release --target {{target}}
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm
+  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp
   sha256sum {{filename}} > {{filename}}.sha256
 
 # Builds the Homebrew repository to release for Mac and Linux

@@ -7,6 +7,15 @@ mod cli;
 mod error;
 mod logger;
 
+#[cfg(test)]
+#[ctor::ctor]
+fn init_test_logger() {
+    let _ = env_logger::builder()
+        .is_test(true)
+        .filter_level(log::LevelFilter::Trace)
+        .try_init();
+}
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser, Debug)]
@@ -32,8 +41,9 @@ enum Action {
         /// Path to the bytecode container file (.iplc).
         file: PathBuf,
 
-        /// Write variable dump to the specified file after execution.
-        #[arg(long)]
+        /// Dump variable values after execution. Without a path, prints to
+        /// stdout. With a path, writes to the specified file.
+        #[arg(long, num_args = 0..=1, default_missing_value = "-")]
         dump_vars: Option<PathBuf>,
 
         /// Run N scheduling rounds then stop (default: continuous until Ctrl+C).

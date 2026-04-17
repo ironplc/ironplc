@@ -1,15 +1,23 @@
 use ironplc_container::{
-    ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, VarIndex,
+    ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, TaskType, VarIndex,
     STRING_HEADER_BYTES,
 };
 
+use crate::buffers::VmBuffers;
 use crate::builtin;
+use crate::debug_hook::{DebugHook, NoopDebugHook};
 use crate::error::Trap;
+#[cfg(feature = "profiling")]
+use crate::profile::InstructionProfile;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
 use crate::stack::OperandStack;
+use crate::string_ops;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
+use core::fmt::Write as FmtWrite;
 use ironplc_container::opcode;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 
 /// Context for a fault that occurred during task execution.
 #[derive(Debug)]
@@ -31,28 +39,15 @@ impl Vm {
         Vm
     }
 
-    /// Loads a container, using caller-provided buffers for stack, variables,
-    /// data region, temporary buffers, task states, program instance states,
-    /// and ready-task buffer.
+    /// Loads a container, using caller-provided buffers for execution state.
     ///
-    /// Populates `task_states` and `program_instances` from `container.task_table`.
+    /// Populates task states and program instances from `container.task_table`.
     /// Consumes the empty VM and returns a ready VM.
-    #[allow(clippy::too_many_arguments)]
-    pub fn load<'a>(
-        self,
-        container: &'a Container,
-        stack_buf: &'a mut [Slot],
-        var_buf: &'a mut [Slot],
-        data_region_buf: &'a mut [u8],
-        temp_buf: &'a mut [u8],
-        task_states: &'a mut [TaskState],
-        program_instances: &'a mut [ProgramInstanceState],
-        ready_buf: &'a mut [usize],
-    ) -> VmReady<'a> {
+    pub fn load<'a>(self, container: &'a Container, bufs: &'a mut VmBuffers) -> VmReady<'a> {
         // Populate task_states from the container's task table.
         for (i, t) in container.task_table.tasks.iter().enumerate() {
-            if i < task_states.len() {
-                task_states[i] = TaskState {
+            if i < bufs.tasks.len() {
+                bufs.tasks[i] = TaskState {
                     task_id: t.task_id,
                     priority: t.priority,
                     task_type: t.task_type,
@@ -70,8 +65,8 @@ impl Vm {
 
         // Populate program_instances from the container's task table.
         for (i, p) in container.task_table.programs.iter().enumerate() {
-            if i < program_instances.len() {
-                program_instances[i] = ProgramInstanceState {
+            if i < bufs.programs.len() {
+                bufs.programs[i] = ProgramInstanceState {
                     instance_id: p.instance_id,
                     task_id: p.task_id,
                     entry_function_id: p.entry_function_id,
@@ -82,20 +77,22 @@ impl Vm {
             }
         }
 
-        let stack = OperandStack::new(stack_buf);
-        let variables = VariableTable::new(var_buf);
+        let stack = OperandStack::new(&mut bufs.stack);
+        let variables = VariableTable::new(&mut bufs.vars);
         let max_temp_buf_bytes = container.header.max_temp_buf_bytes as usize;
 
         VmReady {
             container,
             stack,
             variables,
-            data_region: data_region_buf,
-            temp_buf,
+            data_region: &mut bufs.data_region,
+            temp_buf: &mut bufs.temp_buf,
             max_temp_buf_bytes,
-            task_states,
-            program_instances,
-            ready_buf,
+            task_states: &mut bufs.tasks,
+            program_instances: &mut bufs.programs,
+            ready_buf: &mut bufs.ready,
+            #[cfg(feature = "profiling")]
+            profile: InstructionProfile::new(),
         }
     }
 }
@@ -119,6 +116,8 @@ pub struct VmReady<'a> {
     task_states: &'a mut [TaskState],
     program_instances: &'a mut [ProgramInstanceState],
     ready_buf: &'a mut [usize],
+    #[cfg(feature = "profiling")]
+    profile: InstructionProfile,
 }
 
 impl<'a> VmReady<'a> {
@@ -168,6 +167,8 @@ impl<'a> VmReady<'a> {
                 self.max_temp_buf_bytes,
                 &scope,
                 0, // init functions don't need real time
+                #[cfg(feature = "profiling")]
+                &mut self.profile,
             )
             .map_err(|trap| FaultContext {
                 trap,
@@ -189,6 +190,8 @@ impl<'a> VmReady<'a> {
             shared_globals_size,
             scan_count: 0,
             stop_requested: false,
+            #[cfg(feature = "profiling")]
+            profile: self.profile,
         })
     }
 
@@ -213,6 +216,8 @@ impl<'a> VmReady<'a> {
             shared_globals_size,
             scan_count: initial_scan_count,
             stop_requested: false,
+            #[cfg(feature = "profiling")]
+            profile: self.profile,
         }
     }
 
@@ -246,6 +251,8 @@ pub struct VmRunning<'a> {
     shared_globals_size: u16,
     scan_count: u64,
     stop_requested: bool,
+    #[cfg(feature = "profiling")]
+    profile: InstructionProfile,
 }
 
 impl<'a> VmRunning<'a> {
@@ -273,11 +280,28 @@ impl<'a> VmRunning<'a> {
             return Ok(());
         }
 
+        // System variable injection: write monotonic uptime before task execution.
+        if self.container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME != 0 {
+            let time_ms = (current_time_us / 1000) as i64;
+            // __SYSTEM_UP_TIME at VarIndex(0): i32 milliseconds (wrapping)
+            self.variables
+                .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
+                .expect("system uptime variable must exist at index 0");
+            // __SYSTEM_UP_LTIME at VarIndex(1): i64 milliseconds (non-wrapping)
+            self.variables
+                .store(VarIndex::new(1), Slot::from_i64(time_ms))
+                .expect("system uptime variable must exist at index 1");
+        }
+
         // Stub: INPUT_FREEZE (no-op)
 
         for ri in 0..ready_count {
             let task_idx = self.ready_buf[ri];
             let task_id = self.task_states[task_idx].task_id;
+
+            #[cfg(not(target_arch = "wasm32"))]
+            let start = Instant::now();
+            let mut last_instance_id = InstanceId::DEFAULT;
 
             // Iterate over program instances for this task.
             // Copy fields to locals before calling execute() to satisfy borrow checker.
@@ -286,6 +310,7 @@ impl<'a> VmRunning<'a> {
                     continue;
                 }
                 let instance_id = self.program_instances[pi].instance_id;
+                last_instance_id = instance_id;
                 let entry_function_id = self.program_instances[pi].entry_function_id;
                 let var_table_offset = self.program_instances[pi].var_table_offset;
                 let var_table_count = self.program_instances[pi].var_table_count;
@@ -316,6 +341,8 @@ impl<'a> VmRunning<'a> {
                     self.max_temp_buf_bytes,
                     &scope,
                     current_time_us,
+                    #[cfg(feature = "profiling")]
+                    &mut self.profile,
                 )
                 .map_err(|trap| FaultContext {
                     trap,
@@ -324,13 +351,24 @@ impl<'a> VmRunning<'a> {
                 })?;
             }
 
-            // Watchdog check stub: without Instant-based sub-round timing,
-            // elapsed is always 0, so the watchdog never fires here.
-            // Phase 4 will add real elapsed tracking.
+            #[cfg(not(target_arch = "wasm32"))]
+            let elapsed_us = start.elapsed().as_micros() as u64;
+            #[cfg(target_arch = "wasm32")]
+            let elapsed_us = 0u64;
 
-            // Record execution with 0 elapsed (caller manages timing).
+            // Watchdog check: if the task has a watchdog configured and
+            // execution exceeded the timeout, trap.
+            let watchdog_us = self.task_states[task_idx].watchdog_us;
+            if watchdog_us > 0 && elapsed_us > watchdog_us {
+                return Err(FaultContext {
+                    trap: Trap::WatchdogTimeout(task_id),
+                    task_id,
+                    instance_id: last_instance_id,
+                });
+            }
+
             let mut scheduler = TaskScheduler::new(self.task_states);
-            scheduler.record_execution(task_idx, 0, current_time_us);
+            scheduler.record_execution(task_idx, elapsed_us, current_time_us);
         }
 
         // Stub: OUTPUT_FLUSH (no-op)
@@ -377,6 +415,16 @@ impl<'a> VmRunning<'a> {
         self.scan_count
     }
 
+    /// Returns the earliest `next_due_us` across all enabled cyclic tasks,
+    /// or `None` if no cyclic tasks exist (e.g. freewheeling only).
+    pub fn next_due_us(&self) -> Option<u64> {
+        self.task_states
+            .iter()
+            .filter(|t| t.enabled && t.task_type == TaskType::Cyclic)
+            .map(|t| t.next_due_us)
+            .min()
+    }
+
     /// Requests the VM to stop after the current round.
     pub fn request_stop(&mut self) {
         self.stop_requested = true;
@@ -387,11 +435,19 @@ impl<'a> VmRunning<'a> {
         self.stop_requested
     }
 
+    /// Returns a reference to the instruction profile.
+    #[cfg(feature = "profiling")]
+    pub fn profile(&self) -> &InstructionProfile {
+        &self.profile
+    }
+
     /// Transitions to the stopped state (clean shutdown).
     pub fn stop(self) -> VmStopped<'a> {
         VmStopped {
             variables: self.variables,
             scan_count: self.scan_count,
+            #[cfg(feature = "profiling")]
+            profile: self.profile,
         }
     }
 
@@ -402,6 +458,8 @@ impl<'a> VmRunning<'a> {
             task_id: ctx.task_id,
             instance_id: ctx.instance_id,
             variables: self.variables,
+            #[cfg(feature = "profiling")]
+            profile: self.profile,
         }
     }
 }
@@ -410,6 +468,8 @@ impl<'a> VmRunning<'a> {
 pub struct VmStopped<'a> {
     variables: VariableTable<'a>,
     scan_count: u64,
+    #[cfg(feature = "profiling")]
+    profile: InstructionProfile,
 }
 
 impl<'a> VmStopped<'a> {
@@ -434,6 +494,12 @@ impl<'a> VmStopped<'a> {
     pub fn scan_count(&self) -> u64 {
         self.scan_count
     }
+
+    /// Returns a reference to the instruction profile.
+    #[cfg(feature = "profiling")]
+    pub fn profile(&self) -> &InstructionProfile {
+        &self.profile
+    }
 }
 
 /// A VM that has stopped due to a trap.
@@ -442,6 +508,8 @@ pub struct VmFaulted<'a> {
     task_id: TaskId,
     instance_id: InstanceId,
     variables: VariableTable<'a>,
+    #[cfg(feature = "profiling")]
+    profile: InstructionProfile,
 }
 
 impl<'a> VmFaulted<'a> {
@@ -475,6 +543,12 @@ impl<'a> VmFaulted<'a> {
     /// Returns the number of variable slots.
     pub fn num_variables(&self) -> u16 {
         self.variables.len()
+    }
+
+    /// Returns a reference to the instruction profile.
+    #[cfg(feature = "profiling")]
+    pub fn profile(&self) -> &InstructionProfile {
+        &self.profile
     }
 }
 
@@ -519,7 +593,7 @@ macro_rules! checked_divop {
 /// Load constant from pool: read index, look up, push.
 macro_rules! load_const {
     ($bytecode:expr, $pc:expr, $container:expr, $stack:expr, $get:ident, $from:ident) => {{
-        let index = read_u16_le($bytecode, &mut $pc);
+        let index = read_u16_le($bytecode, &mut $pc)?;
         let value = $container
             .constant_pool
             .$get(ConstantIndex::new(index))
@@ -528,11 +602,12 @@ macro_rules! load_const {
     }};
 }
 
-/// Executes bytecode until RET_VOID or a trap.
+/// Executes bytecode until RET_VOID or a trap, using a no-op debug hook.
 ///
-/// This is a free function so that the borrow checker can see
-/// independent borrows of container (immutable) vs stack/variables
-/// (mutable).
+/// This is a thin wrapper around [`execute_with_hook`] that supplies a
+/// [`NoopDebugHook`]. Existing call sites use this entry point so that the
+/// debug-hook plumbing imposes no overhead on VMs that do not need
+/// instruction-level callbacks (the noop hook is a ZST and inlines away).
 #[allow(clippy::too_many_arguments)]
 fn execute(
     bytecode: &[u8],
@@ -544,13 +619,60 @@ fn execute(
     max_temp_buf_bytes: usize,
     scope: &VariableScope,
     current_time_us: u64,
+    #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
+) -> Result<(), Trap> {
+    let mut hook = NoopDebugHook;
+    execute_with_hook(
+        bytecode,
+        container,
+        stack,
+        variables,
+        data_region,
+        temp_buf,
+        max_temp_buf_bytes,
+        scope,
+        current_time_us,
+        #[cfg(feature = "profiling")]
+        profile,
+        &mut hook,
+    )
+}
+
+/// Executes bytecode until RET_VOID or a trap, invoking `hook.before_instruction`
+/// before each opcode.
+///
+/// This is a free function so that the borrow checker can see
+/// independent borrows of container (immutable) vs stack/variables
+/// (mutable). It is generic over the hook type so that the noop hook
+/// monomorphization compiles to identical code as before; only callers
+/// that supply a real hook pay any runtime cost.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_with_hook<H: DebugHook>(
+    bytecode: &[u8],
+    container: &Container,
+    stack: &mut OperandStack,
+    variables: &mut VariableTable,
+    data_region: &mut [u8],
+    temp_buf: &mut [u8],
+    max_temp_buf_bytes: usize,
+    scope: &VariableScope,
+    current_time_us: u64,
+    #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
+    hook: &mut H,
 ) -> Result<(), Trap> {
     let mut pc: usize = 0;
-    let mut next_temp_buf: u16 = 0;
+    let mut temp_alloc = string_ops::TempBufAllocator::new(max_temp_buf_bytes);
 
     while pc < bytecode.len() {
         let op = bytecode[pc];
+        // Notify the debug hook before advancing pc so the hook sees the
+        // offset of the opcode itself, not its operand bytes. With
+        // NoopDebugHook this call is inlined away to nothing.
+        hook.before_instruction(pc, op);
         pc += 1;
+
+        #[cfg(feature = "profiling")]
+        profile.record(op);
 
         match op {
             // --- Load constants ---
@@ -577,7 +699,7 @@ fn execute(
             | opcode::LOAD_VAR_I64
             | opcode::LOAD_VAR_F32
             | opcode::LOAD_VAR_F64 => {
-                let index = VarIndex::new(read_u16_le(bytecode, &mut pc));
+                let index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 scope.check_access(index)?;
                 let slot = variables.load(index)?;
                 stack.push(slot)?;
@@ -586,7 +708,7 @@ fn execute(
             | opcode::STORE_VAR_I64
             | opcode::STORE_VAR_F32
             | opcode::STORE_VAR_F64 => {
-                let index = VarIndex::new(read_u16_le(bytecode, &mut pc));
+                let index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 scope.check_access(index)?;
                 let slot = stack.pop()?;
                 variables.store(index, slot)?;
@@ -744,23 +866,137 @@ fn execute(
             opcode::BIT_NOT_64 => unaryop!(stack, as_i64, from_i64, a, !a),
             // --- Control flow ---
             opcode::JMP => {
-                let offset = read_i16_le(bytecode, &mut pc);
+                let offset = read_i16_le(bytecode, &mut pc)?;
                 pc = (pc as isize + offset as isize) as usize;
             }
             opcode::JMP_IF_NOT => {
-                let offset = read_i16_le(bytecode, &mut pc);
+                let offset = read_i16_le(bytecode, &mut pc)?;
                 let cond = stack.pop()?.as_i32();
                 if cond == 0 {
                     pc = (pc as isize + offset as isize) as usize;
                 }
             }
             opcode::BUILTIN => {
-                let func_id = read_u16_le(bytecode, &mut pc);
-                builtin::dispatch(func_id, stack)?;
+                let func_id = read_u16_le(bytecode, &mut pc)?;
+                match func_id {
+                    // --- Numeric ↔ STRING conversions ---
+                    //
+                    // These are handled inline (not via builtin::dispatch)
+                    // because they need access to temp_buf and data_region.
+                    opcode::builtin::CONV_I32_TO_STR => {
+                        let val = stack.pop()?.as_i32();
+                        let mut fmt_buf = StackFmtBuf::new();
+                        let _ = write!(fmt_buf, "{}", val);
+                        let bytes = fmt_buf.as_bytes();
+                        let (buf_idx, buf_start) = {
+                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            (slot.buf_idx as usize, slot.buf_start)
+                        };
+                        let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                        let cur_len = (bytes.len() as u16).min(max_len);
+                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        temp_buf[buf_start + STRING_HEADER_BYTES
+                            ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
+                            .copy_from_slice(&bytes[..cur_len as usize]);
+                        stack.push(Slot::from_i32(buf_idx as i32))?;
+                    }
+                    opcode::builtin::CONV_U32_TO_STR => {
+                        let val = stack.pop()?.as_i32() as u32;
+                        let mut fmt_buf = StackFmtBuf::new();
+                        let _ = write!(fmt_buf, "{}", val);
+                        let bytes = fmt_buf.as_bytes();
+                        let (buf_idx, buf_start) = {
+                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            (slot.buf_idx as usize, slot.buf_start)
+                        };
+                        let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                        let cur_len = (bytes.len() as u16).min(max_len);
+                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        temp_buf[buf_start + STRING_HEADER_BYTES
+                            ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
+                            .copy_from_slice(&bytes[..cur_len as usize]);
+                        stack.push(Slot::from_i32(buf_idx as i32))?;
+                    }
+                    opcode::builtin::CONV_F32_TO_STR => {
+                        let val = stack.pop()?.as_f32();
+                        let mut fmt_buf = StackFmtBuf::new();
+                        let _ = write!(fmt_buf, "{}", val);
+                        let bytes = fmt_buf.as_bytes();
+                        let (buf_idx, buf_start) = {
+                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            (slot.buf_idx as usize, slot.buf_start)
+                        };
+                        let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+                        let cur_len = (bytes.len() as u16).min(max_len);
+                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        temp_buf[buf_start + STRING_HEADER_BYTES
+                            ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
+                            .copy_from_slice(&bytes[..cur_len as usize]);
+                        stack.push(Slot::from_i32(buf_idx as i32))?;
+                    }
+                    opcode::builtin::CONV_STR_TO_I32 => {
+                        let data_offset = stack.pop()?.as_i32() as usize;
+                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
+                        }
+                        let cur_len =
+                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
+                        let start = data_offset + STRING_HEADER_BYTES;
+                        let end = (start + cur_len).min(data_region.len());
+                        let result = core::str::from_utf8(&data_region[start..end])
+                            .ok()
+                            .and_then(|s| s.trim().parse::<i32>().ok())
+                            .unwrap_or(0);
+                        stack.push(Slot::from_i32(result))?;
+                    }
+                    opcode::builtin::CONV_STR_TO_F32 => {
+                        let data_offset = stack.pop()?.as_i32() as usize;
+                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
+                        }
+                        let cur_len =
+                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
+                        let start = data_offset + STRING_HEADER_BYTES;
+                        let end = (start + cur_len).min(data_region.len());
+                        let result = core::str::from_utf8(&data_region[start..end])
+                            .ok()
+                            .and_then(|s| s.trim().parse::<f32>().ok())
+                            .unwrap_or(0.0);
+                        stack.push(Slot::from_f32(result))?;
+                    }
+                    opcode::builtin::CMP_STR => {
+                        let right_offset = stack.pop()?.as_i32() as usize;
+                        let left_offset = stack.pop()?.as_i32() as usize;
+
+                        if left_offset + STRING_HEADER_BYTES > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(left_offset as u32));
+                        }
+                        let left_len =
+                            string_ops::str_read_cur_len(data_region, left_offset) as usize;
+                        let left_start = left_offset + STRING_HEADER_BYTES;
+                        let left_data = &data_region[left_start..left_start + left_len];
+
+                        if right_offset + STRING_HEADER_BYTES > data_region.len() {
+                            return Err(Trap::DataRegionOutOfBounds(right_offset as u32));
+                        }
+                        let right_len =
+                            string_ops::str_read_cur_len(data_region, right_offset) as usize;
+                        let right_start = right_offset + STRING_HEADER_BYTES;
+                        let right_data = &data_region[right_start..right_start + right_len];
+
+                        let cmp_val = match left_data.cmp(right_data) {
+                            core::cmp::Ordering::Less => -1i32,
+                            core::cmp::Ordering::Equal => 0i32,
+                            core::cmp::Ordering::Greater => 1i32,
+                        };
+                        stack.push(Slot::from_i32(cmp_val))?;
+                    }
+                    _ => builtin::dispatch(func_id, stack)?,
+                }
             }
             opcode::CALL => {
-                let func_id = read_u16_le(bytecode, &mut pc);
-                let var_offset = read_u16_le(bytecode, &mut pc);
+                let func_id = read_u16_le(bytecode, &mut pc)?;
+                let var_offset = read_u16_le(bytecode, &mut pc)?;
                 let func = container
                     .code
                     .get_function(FunctionId::new(func_id))
@@ -785,8 +1021,9 @@ fn execute(
                 // TODO: Replace Rust-recursive execute() with an iterative dispatch
                 // loop that manages its own return-address stack, so call depth is
                 // controlled by the VM rather than Rust's thread stack.
-                // Recursively execute the function body.
-                execute(
+                // Recursively execute the function body, threading the debug hook
+                // through so callees are observable too.
+                execute_with_hook(
                     func_bytecode,
                     container,
                     stack,
@@ -796,6 +1033,9 @@ fn execute(
                     max_temp_buf_bytes,
                     &func_scope,
                     current_time_us,
+                    #[cfg(feature = "profiling")]
+                    profile,
+                    hook,
                 )?;
             }
             opcode::RET => {
@@ -817,7 +1057,7 @@ fn execute(
             //      string values. Same [max][cur][data] layout. The temp buffer
             //      pool is a flat byte array divided into equal-sized slots; a
             //      `buf_idx` (which fits in one stack slot) identifies which temp
-            //      buffer holds the data. A bump allocator (`next_temp_buf`)
+            //      buffer holds the data. A bump allocator (`TempBufAllocator`)
             //      hands out temp buffers within a single function call.
             //
             // The typical pattern for string assignment is:
@@ -834,13 +1074,13 @@ fn execute(
             // are stored. STR_STORE_VAR relies on max_length being set here
             // to enforce the capacity bound.
             opcode::STR_INIT => {
-                let data_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let max_length = read_u16_le(bytecode, &mut pc);
+                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let max_length = read_u16_le(bytecode, &mut pc)?;
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
-                str_write_header(data_region, data_offset, max_length, 0);
+                string_ops::str_write_header(data_region, data_offset, max_length, 0);
             }
 
             // LOAD_CONST_STR: Load a string literal from the constant pool
@@ -856,18 +1096,20 @@ fn execute(
             //   4. Push the buf_idx onto the stack so a subsequent opcode
             //      (e.g. STR_STORE_VAR) can find the data
             opcode::LOAD_CONST_STR => {
-                let index = read_u16_le(bytecode, &mut pc);
+                let index = read_u16_le(bytecode, &mut pc)?;
                 let str_bytes = container
                     .constant_pool
                     .get_str(ConstantIndex::new(index))
                     .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
 
-                let (buf_idx, buf_start) =
-                    str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                let (buf_idx, buf_start) = {
+                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    (slot.buf_idx as usize, slot.buf_start)
+                };
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (str_bytes.len() as u16).min(max_len);
-                str_write_header(temp_buf, buf_start, max_len, cur_len);
+                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
                 temp_buf[buf_start + STRING_HEADER_BYTES
                     ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                     .copy_from_slice(&str_bytes[..cur_len as usize]);
@@ -891,19 +1133,19 @@ fn execute(
             //      destination can hold (IEC 61131-3 assignment semantics)
             //   5. Update the destination's cur_length
             opcode::STR_STORE_VAR => {
-                let data_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let buf_idx = stack.pop()?.as_i32() as usize;
 
                 let buf_start = buf_idx * max_temp_buf_bytes;
                 if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
                     return Err(Trap::TempBufferExhausted);
                 }
-                let src_cur_len = str_read_cur_len(temp_buf, buf_start);
+                let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
-                let dest_max_len = str_read_max_len(data_region, data_offset);
+                let dest_max_len = string_ops::str_read_max_len(data_region, data_offset);
 
                 // Copy character data, truncating if source exceeds destination capacity.
                 let copy_len = src_cur_len.min(dest_max_len) as usize;
@@ -930,22 +1172,24 @@ fn execute(
             // region and writes to a temp buffer so the string value can be
             // passed through the stack to another opcode.
             opcode::STR_LOAD_VAR => {
-                let data_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
-                let src_max_len = str_read_max_len(data_region, data_offset);
-                let src_cur_len = str_read_cur_len(data_region, data_offset);
+                let src_max_len = string_ops::str_read_max_len(data_region, data_offset);
+                let src_cur_len = string_ops::str_read_cur_len(data_region, data_offset);
                 // Defensive: never read more than max_length bytes.
                 let read_len = src_cur_len.min(src_max_len) as usize;
 
-                let (buf_idx, buf_start) =
-                    str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                let (buf_idx, buf_start) = {
+                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    (slot.buf_idx as usize, slot.buf_start)
+                };
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(max_len);
-                str_write_header(temp_buf, buf_start, max_len, cur_len);
+                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
                 if data_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
@@ -961,7 +1205,7 @@ fn execute(
             // LEN_STR reads the cur_length field from a STRING variable's
             // header in the data region and pushes it as an i32.
             opcode::LEN_STR => {
-                let data_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
@@ -975,8 +1219,8 @@ fn execute(
             // FIND_STR: Find the first occurrence of IN2 within IN1.
             // Returns 1-based position or 0 if not found.
             opcode::FIND_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
 
                 // Read IN1's current length.
                 if in1_offset + STRING_HEADER_BYTES > data_region.len() {
@@ -1018,39 +1262,17 @@ fn execute(
             // REPLACE_STR: Replace L characters starting at position P in IN1
             // with IN2. Pops P then L from stack, pushes buf_idx.
             opcode::REPLACE_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
-
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN1's current length.
-                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u32));
-                }
-                let in1_len =
-                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
-                        as usize;
+                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
 
-                // Read IN2's current length.
-                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u32));
-                }
-                let in2_len =
-                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
-                        as usize;
-
-                let in1_start = in1_offset + STRING_HEADER_BYTES;
-                let in2_start = in2_offset + STRING_HEADER_BYTES;
-
-                // Clamp P to valid range (1-based, minimum 1).
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Convert P from 1-based to 0-based index.
                 let start_idx = (p - 1).min(in1_len);
-                // Number of characters to delete, clamped to remaining length.
                 let delete_len = l.min(in1_len - start_idx);
 
                 // Result = IN1[0..start_idx] + IN2 + IN1[start_idx+delete_len..]
@@ -1059,85 +1281,45 @@ fn execute(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
-
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
                 // Write result data: prefix + IN2 + suffix.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let mut write_pos = 0usize;
-
-                // Copy prefix (IN1[0..start_idx]).
                 let prefix_copy = prefix_len.min(cur_len as usize);
-                for i in 0..prefix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
-                    write_pos += 1;
-                }
-
-                // Copy IN2.
+                temp_buf[data_start..data_start + prefix_copy]
+                    .copy_from_slice(&data_region[in1_start..in1_start + prefix_copy]);
+                write_pos += prefix_copy;
                 let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..in2_copy {
-                    temp_buf[data_start + write_pos] = data_region[in2_start + i];
-                    write_pos += 1;
-                }
-
-                // Copy suffix (IN1[suffix_start..]).
+                temp_buf[data_start + write_pos..data_start + write_pos + in2_copy]
+                    .copy_from_slice(&data_region[in2_start..in2_start + in2_copy]);
+                write_pos += in2_copy;
                 let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..suffix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + suffix_start + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start + write_pos..data_start + write_pos + suffix_copy]
+                    .copy_from_slice(
+                        &data_region
+                            [in1_start + suffix_start..in1_start + suffix_start + suffix_copy],
+                    );
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // INSERT_STR: Insert IN2 into IN1 after position P.
             // Pops P from stack, pushes buf_idx.
             opcode::INSERT_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
-
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let p_val = stack.pop()?.as_i32();
 
-                // Read IN1's current length.
-                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u32));
-                }
-                let in1_len =
-                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
-                        as usize;
+                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
 
-                // Read IN2's current length.
-                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u32));
-                }
-                let in2_len =
-                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
-                        as usize;
-
-                let in1_start = in1_offset + STRING_HEADER_BYTES;
-                let in2_start = in2_offset + STRING_HEADER_BYTES;
-
-                // Clamp P to valid range (1-based, minimum 0 means insert at start).
                 let p = if p_val < 0 { 0usize } else { p_val as usize };
-
-                // Insert point: after position P (0-based index = P).
                 let insert_idx = p.min(in1_len);
 
                 // Result = IN1[0..insert_idx] + IN2 + IN1[insert_idx..]
@@ -1145,80 +1327,45 @@ fn execute(
                 let suffix_len = in1_len - insert_idx;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
-
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
                 // Write result data: prefix + IN2 + suffix.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let mut write_pos = 0usize;
-
-                // Copy prefix (IN1[0..insert_idx]).
                 let prefix_copy = prefix_len.min(cur_len as usize);
-                for i in 0..prefix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
-                    write_pos += 1;
-                }
-
-                // Copy IN2.
+                temp_buf[data_start..data_start + prefix_copy]
+                    .copy_from_slice(&data_region[in1_start..in1_start + prefix_copy]);
+                write_pos += prefix_copy;
                 let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..in2_copy {
-                    temp_buf[data_start + write_pos] = data_region[in2_start + i];
-                    write_pos += 1;
-                }
-
-                // Copy suffix (IN1[insert_idx..]).
+                temp_buf[data_start + write_pos..data_start + write_pos + in2_copy]
+                    .copy_from_slice(&data_region[in2_start..in2_start + in2_copy]);
+                write_pos += in2_copy;
                 let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..suffix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + insert_idx + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start + write_pos..data_start + write_pos + suffix_copy]
+                    .copy_from_slice(
+                        &data_region[in1_start + insert_idx..in1_start + insert_idx + suffix_copy],
+                    );
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // DELETE_STR: Delete L characters from IN1 starting at position P.
             // Pops P then L from stack, pushes buf_idx.
             opcode::DELETE_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN1's current length.
-                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u32));
-                }
-                let in1_len =
-                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
-                        as usize;
+                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
 
-                let in1_start = in1_offset + STRING_HEADER_BYTES;
-
-                // Clamp P to valid range (1-based, minimum 1).
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Convert P from 1-based to 0-based index.
                 let start_idx = (p - 1).min(in1_len);
-                // Number of characters to delete, clamped to remaining length.
                 let delete_len = l.min(in1_len - start_idx);
 
                 // Result = IN1[0..start_idx] + IN1[start_idx+delete_len..]
@@ -1227,280 +1374,148 @@ fn execute(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + suffix_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
-
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
                 // Write result data: prefix + suffix.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let mut write_pos = 0usize;
-
-                // Copy prefix (IN1[0..start_idx]).
                 let prefix_copy = prefix_len.min(cur_len as usize);
-                for i in 0..prefix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
-                    write_pos += 1;
-                }
-
-                // Copy suffix (IN1[suffix_start..]).
+                temp_buf[data_start..data_start + prefix_copy]
+                    .copy_from_slice(&data_region[in1_start..in1_start + prefix_copy]);
+                write_pos += prefix_copy;
                 let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..suffix_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + suffix_start + i];
-                    write_pos += 1;
-                }
+                temp_buf[data_start + write_pos..data_start + write_pos + suffix_copy]
+                    .copy_from_slice(
+                        &data_region
+                            [in1_start + suffix_start..in1_start + suffix_start + suffix_copy],
+                    );
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // LEFT_STR: Return the leftmost L characters of IN.
             // Pops L from stack, pushes buf_idx.
             opcode::LEFT_STR => {
-                let in_offset = read_u32_le(bytecode, &mut pc) as usize;
-
+                let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN's current length.
-                if in_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in_offset as u32));
-                }
-                let in_len =
-                    u16::from_le_bytes([data_region[in_offset + 2], data_region[in_offset + 3]])
-                        as usize;
+                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
 
-                let in_start = in_offset + STRING_HEADER_BYTES;
-
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Result length is min(L, in_len).
                 let result_len = l.min(in_len);
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
-
-                // Copy leftmost characters from IN.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let copy_len = cur_len as usize;
                 temp_buf[data_start..data_start + copy_len]
                     .copy_from_slice(&data_region[in_start..in_start + copy_len]);
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // RIGHT_STR: Return the rightmost L characters of IN.
             // Pops L from stack, pushes buf_idx.
             opcode::RIGHT_STR => {
-                let in_offset = read_u32_le(bytecode, &mut pc) as usize;
-
+                let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN's current length.
-                if in_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in_offset as u32));
-                }
-                let in_len =
-                    u16::from_le_bytes([data_region[in_offset + 2], data_region[in_offset + 3]])
-                        as usize;
+                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
 
-                let in_start = in_offset + STRING_HEADER_BYTES;
-
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Result length is min(L, in_len).
                 let result_len = l.min(in_len);
-
-                // Start index within IN for the rightmost characters.
                 let src_start = in_len - result_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
-
-                // Copy rightmost characters from IN.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let copy_len = cur_len as usize;
                 let src = in_start + src_start;
                 temp_buf[data_start..data_start + copy_len]
                     .copy_from_slice(&data_region[src..src + copy_len]);
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // MID_STR: Return L characters from IN starting at position P.
             // Pops P then L from stack, pushes buf_idx.
             opcode::MID_STR => {
-                let in_offset = read_u32_le(bytecode, &mut pc) as usize;
-
+                let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
-                // Read IN's current length.
-                if in_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in_offset as u32));
-                }
-                let in_len =
-                    u16::from_le_bytes([data_region[in_offset + 2], data_region[in_offset + 3]])
-                        as usize;
+                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
 
-                let in_start = in_offset + STRING_HEADER_BYTES;
-
-                // Clamp P to valid range (1-based, minimum 1).
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
-                // Clamp L to non-negative.
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
-
-                // Convert P from 1-based to 0-based index.
                 let start_idx = (p - 1).min(in_len);
-                // Number of characters to extract, clamped to remaining length.
                 let result_len = l.min(in_len - start_idx);
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
-
-                // Copy characters from IN starting at start_idx.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let copy_len = cur_len as usize;
                 let src = in_start + start_idx;
                 temp_buf[data_start..data_start + copy_len]
                     .copy_from_slice(&data_region[src..src + copy_len]);
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // CONCAT_STR: Concatenate IN1 and IN2.
             // Pushes buf_idx.
             opcode::CONCAT_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc) as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc) as usize;
+                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
+                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
 
-                // Read IN1's current length.
-                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u32));
-                }
-                let in1_len =
-                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
-                        as usize;
-
-                // Read IN2's current length.
-                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u32));
-                }
-                let in2_len =
-                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
-                        as usize;
-
-                let in1_start = in1_offset + STRING_HEADER_BYTES;
-                let in2_start = in2_offset + STRING_HEADER_BYTES;
+                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
 
                 let result_len = in1_len + in2_len;
 
-                // Allocate a temp buffer.
-                if max_temp_buf_bytes == 0 {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let buf_idx = next_temp_buf;
-                let buf_start = buf_idx as usize * max_temp_buf_bytes;
-                let buf_end = buf_start + max_temp_buf_bytes;
-                if buf_end > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                next_temp_buf = next_temp_buf.wrapping_add(1);
+                let slot = temp_alloc.alloc(temp_buf.len())?;
 
-                // Clamp result to temp buffer capacity.
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (result_len as u16).min(max_len);
-
-                // Write header.
-                temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-                temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
-                    .copy_from_slice(&cur_len.to_le_bytes());
+                let (cur_len, data_start) = string_ops::write_string_header(
+                    temp_buf,
+                    slot.buf_start,
+                    slot.max_len,
+                    result_len,
+                );
 
                 // Write result data: IN1 + IN2.
-                let data_start = buf_start + STRING_HEADER_BYTES;
                 let mut write_pos = 0usize;
-
-                // Copy IN1.
                 let in1_copy = in1_len.min(cur_len as usize);
                 for i in 0..in1_copy {
                     temp_buf[data_start + write_pos] = data_region[in1_start + i];
                     write_pos += 1;
                 }
-
-                // Copy IN2.
                 let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
                 for i in 0..in2_copy {
                     temp_buf[data_start + write_pos] = data_region[in2_start + i];
                     write_pos += 1;
                 }
 
-                stack.push(Slot::from_i32(buf_idx as i32))?;
+                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
             }
             // --- String array opcodes ---
 
@@ -1513,8 +1528,8 @@ fn execute(
             // Element stride = STRING_HEADER_BYTES + max_string_length.
             // Loops through all elements writing [max_len][cur_len=0] headers.
             opcode::STR_INIT_ARRAY => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
 
                 let desc = container
                     .type_section
@@ -1533,7 +1548,7 @@ fn execute(
                     if elem_offset + STRING_HEADER_BYTES > data_region.len() {
                         return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
                     }
-                    str_write_header(data_region, elem_offset, max_str_len, 0);
+                    string_ops::str_write_header(data_region, elem_offset, max_str_len, 0);
                 }
             }
 
@@ -1545,8 +1560,8 @@ fn execute(
             // Computes element offset = base + flat_index * stride, then copies the
             // string from the data region into a temp buffer.
             opcode::STR_LOAD_ARRAY_ELEM => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
 
@@ -1575,15 +1590,17 @@ fn execute(
                 if elem_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
                 }
-                let src_cur_len = str_read_cur_len(data_region, elem_offset);
+                let src_cur_len = string_ops::str_read_cur_len(data_region, elem_offset);
                 let read_len = src_cur_len.min(max_str_len) as usize;
 
-                let (buf_idx, buf_start) =
-                    str_alloc_temp(&mut next_temp_buf, max_temp_buf_bytes, temp_buf.len())?;
+                let (buf_idx, buf_start) = {
+                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    (slot.buf_idx as usize, slot.buf_start)
+                };
 
                 let buf_max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(buf_max_len);
-                str_write_header(temp_buf, buf_start, buf_max_len, cur_len);
+                string_ops::str_write_header(temp_buf, buf_start, buf_max_len, cur_len);
 
                 if elem_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
@@ -1604,8 +1621,8 @@ fn execute(
             // Computes element offset = base + flat_index * stride, then copies
             // the temp buffer contents into the data region, truncating per IEC 61131-3.
             opcode::STR_STORE_ARRAY_ELEM => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let value_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
@@ -1638,7 +1655,7 @@ fn execute(
                 if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
                     return Err(Trap::TempBufferExhausted);
                 }
-                let src_cur_len = str_read_cur_len(temp_buf, buf_start);
+                let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
 
                 if elem_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
@@ -1662,16 +1679,21 @@ fn execute(
             opcode::POP => {
                 stack.pop()?;
             }
+            opcode::DUP => {
+                stack.dup()?;
+            }
+            opcode::SWAP => {
+                stack.swap()?;
+            }
             // --- Function block opcodes ---
             opcode::FB_LOAD_INSTANCE => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 scope.check_access(var_index)?;
                 let slot = variables.load(var_index)?;
                 stack.push(slot)?;
             }
             opcode::FB_STORE_PARAM => {
-                let field = bytecode[pc] as u16;
-                pc += 1;
+                let field = read_u8(bytecode, &mut pc)? as u16;
                 let value = stack.pop()?;
                 let fb_ref = stack.peek()?.as_i32() as u32;
                 let offset = fb_ref as usize + field as usize * 8;
@@ -1681,8 +1703,7 @@ fn execute(
                 data_region[offset..offset + 8].copy_from_slice(&value.as_i64().to_le_bytes());
             }
             opcode::FB_LOAD_PARAM => {
-                let field = bytecode[pc] as u16;
-                pc += 1;
+                let field = read_u8(bytecode, &mut pc)? as u16;
                 let fb_ref = stack.peek()?.as_i32() as u32;
                 let offset = fb_ref as usize + field as usize * 8;
                 if offset + 8 > data_region.len() {
@@ -1693,7 +1714,7 @@ fn execute(
                 stack.push(Slot::from_i64(i64::from_le_bytes(buf)))?;
             }
             opcode::FB_CALL => {
-                let type_id = read_u16_le(bytecode, &mut pc);
+                let type_id = read_u16_le(bytecode, &mut pc)?;
                 let fb_ref = stack.peek()?.as_i32() as u32;
                 let instance_start = fb_ref as usize;
                 match type_id {
@@ -1819,7 +1840,7 @@ fn execute(
                             instance_offset: var_off,
                             instance_count: func.num_locals,
                         };
-                        execute(
+                        execute_with_hook(
                             func_bytecode,
                             container,
                             stack,
@@ -1829,6 +1850,9 @@ fn execute(
                             max_temp_buf_bytes,
                             &func_scope,
                             current_time_us,
+                            #[cfg(feature = "profiling")]
+                            profile,
+                            hook,
                         )?;
 
                         // Copy-out: variable table slots -> data region fields.
@@ -1843,8 +1867,8 @@ fn execute(
             }
             // --- Array opcodes ---
             opcode::LOAD_ARRAY => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
 
                 // Read index as i64 to catch overflow from i64 flat-index arithmetic.
@@ -1883,8 +1907,8 @@ fn execute(
                 stack.push(Slot::from_i64(raw))?;
             }
             opcode::STORE_ARRAY => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let value_slot = stack.pop()?;
 
@@ -1919,8 +1943,8 @@ fn execute(
                     .copy_from_slice(&value_slot.as_i64().to_le_bytes());
             }
             opcode::LOAD_ARRAY_DEREF => {
-                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
 
@@ -1966,8 +1990,8 @@ fn execute(
                 stack.push(Slot::from_i64(raw))?;
             }
             opcode::STORE_ARRAY_DEREF => {
-                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc));
-                let desc_index = read_u16_le(bytecode, &mut pc);
+                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let desc_index = read_u16_le(bytecode, &mut pc)?;
                 let index_slot = stack.pop()?;
                 let value_slot = stack.pop()?;
                 let index_i64 = index_slot.as_i64();
@@ -2023,64 +2047,86 @@ fn execute(
     Ok(())
 }
 
+/// Reads a single byte from bytecode at pc, advancing pc by 1.
+fn read_u8(bytecode: &[u8], pc: &mut usize) -> Result<u8, Trap> {
+    if *pc >= bytecode.len() {
+        return Err(Trap::UnexpectedEndOfBytecode);
+    }
+    let value = bytecode[*pc];
+    *pc += 1;
+    Ok(value)
+}
+
 /// Reads a little-endian u16 from bytecode at pc, advancing pc by 2.
-fn read_u16_le(bytecode: &[u8], pc: &mut usize) -> u16 {
+fn read_u16_le(bytecode: &[u8], pc: &mut usize) -> Result<u16, Trap> {
+    let end = *pc + 2;
+    if end > bytecode.len() {
+        return Err(Trap::UnexpectedEndOfBytecode);
+    }
     let value = u16::from_le_bytes([bytecode[*pc], bytecode[*pc + 1]]);
-    *pc += 2;
-    value
+    *pc = end;
+    Ok(value)
 }
 
 /// Reads a little-endian u32 from bytecode at pc, advancing pc by 4.
-fn read_u32_le(bytecode: &[u8], pc: &mut usize) -> u32 {
+fn read_u32_le(bytecode: &[u8], pc: &mut usize) -> Result<u32, Trap> {
+    let end = *pc + 4;
+    if end > bytecode.len() {
+        return Err(Trap::UnexpectedEndOfBytecode);
+    }
     let value = u32::from_le_bytes([
         bytecode[*pc],
         bytecode[*pc + 1],
         bytecode[*pc + 2],
         bytecode[*pc + 3],
     ]);
-    *pc += 4;
-    value
+    *pc = end;
+    Ok(value)
 }
 
 /// Reads a little-endian i16 from bytecode at pc, advancing pc by 2.
-fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> i16 {
+fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> Result<i16, Trap> {
+    let end = *pc + 2;
+    if end > bytecode.len() {
+        return Err(Trap::UnexpectedEndOfBytecode);
+    }
     let value = i16::from_le_bytes([bytecode[*pc], bytecode[*pc + 1]]);
-    *pc += 2;
-    value
+    *pc = end;
+    Ok(value)
 }
 
-/// Read max_length from a string header at `offset` in `buf`.
-fn str_read_max_len(buf: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([buf[offset], buf[offset + 1]])
+/// A small stack-allocated buffer for formatting numbers as strings.
+///
+/// Used by CONV_I32_TO_STR, CONV_U32_TO_STR, and CONV_F32_TO_STR to
+/// avoid heap allocation. 48 bytes is enough for any i32, u32, or f32
+/// decimal representation.
+struct StackFmtBuf {
+    buf: [u8; 48],
+    len: usize,
 }
 
-/// Read cur_length from a string header at `offset` in `buf`.
-fn str_read_cur_len(buf: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([buf[offset + 2], buf[offset + 3]])
-}
-
-/// Write a string header (max_length, cur_length) at `offset` in `buf`.
-fn str_write_header(buf: &mut [u8], offset: usize, max_len: u16, cur_len: u16) {
-    buf[offset..offset + 2].copy_from_slice(&max_len.to_le_bytes());
-    buf[offset + 2..offset + STRING_HEADER_BYTES].copy_from_slice(&cur_len.to_le_bytes());
-}
-
-/// Allocate the next temp buffer slot. Returns (buf_idx, buf_start).
-fn str_alloc_temp(
-    next_temp_buf: &mut u16,
-    max_temp_buf_bytes: usize,
-    temp_buf_len: usize,
-) -> Result<(usize, usize), Trap> {
-    if max_temp_buf_bytes == 0 {
-        return Err(Trap::TempBufferExhausted);
+impl StackFmtBuf {
+    fn new() -> Self {
+        Self {
+            buf: [0u8; 48],
+            len: 0,
+        }
     }
-    let buf_idx = *next_temp_buf as usize;
-    let buf_start = buf_idx * max_temp_buf_bytes;
-    if buf_start + max_temp_buf_bytes > temp_buf_len {
-        return Err(Trap::TempBufferExhausted);
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.buf[..self.len]
     }
-    *next_temp_buf = next_temp_buf.wrapping_add(1);
-    Ok((buf_idx, buf_start))
+}
+
+impl core::fmt::Write for StackFmtBuf {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let bytes = s.as_bytes();
+        let remaining = self.buf.len() - self.len;
+        let to_copy = bytes.len().min(remaining);
+        self.buf[self.len..self.len + to_copy].copy_from_slice(&bytes[..to_copy]);
+        self.len += to_copy;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -2142,16 +2188,7 @@ mod tests {
     fn vm_load_when_valid_container_then_returns_ready() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let ready = Vm::new().load(
-            &c,
-            &mut b.stack,
-            &mut b.vars,
-            &mut b.data_region,
-            &mut b.temp_buf,
-            &mut b.tasks,
-            &mut b.programs,
-            &mut b.ready,
-        );
+        let ready = Vm::new().load(&c, &mut b);
 
         // If this compiles, the VM is in the Ready state.
         // Verify we can read the initial variable values.
@@ -2162,19 +2199,7 @@ mod tests {
     fn vm_run_round_when_steel_thread_then_x_is_10_y_is_42() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         vm.run_round(0).unwrap();
 
@@ -2186,19 +2211,7 @@ mod tests {
     fn vm_run_round_when_invalid_opcode_then_trap() {
         let c = single_function_container(&[0xFF], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidInstruction(0xFF));
     }
@@ -2207,19 +2220,7 @@ mod tests {
     fn vm_request_stop_when_called_then_stop_requested() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert!(!vm.stop_requested());
         vm.request_stop();
@@ -2230,19 +2231,7 @@ mod tests {
     fn vm_stop_when_called_then_returns_stopped() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let vm = Vm::new().load(&c, &mut b).start().unwrap();
         let stopped = vm.stop();
         assert_eq!(stopped.read_variable(VarIndex::new(0)).unwrap(), 0); // not yet executed
     }
@@ -2251,19 +2240,7 @@ mod tests {
     fn vm_fault_when_called_then_returns_faulted_with_context() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
-        let vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let vm = Vm::new().load(&c, &mut b).start().unwrap();
         let ctx = FaultContext {
             trap: Trap::WatchdogTimeout(ironplc_container::TaskId::new(3)),
             task_id: ironplc_container::TaskId::new(3),
@@ -2302,19 +2279,7 @@ mod tests {
             .build();
 
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
         assert_trap(&mut vm, Trap::StackOverflow);
     }
 
@@ -2323,19 +2288,7 @@ mod tests {
         // ADD_I32 tries to pop 2 values from an empty stack
         let c = single_function_container(&[0x30], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::StackUnderflow);
     }
@@ -2349,19 +2302,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidConstantIndex(ConstantIndex::new(0)));
     }
@@ -2376,19 +2317,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 1, &[42]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
@@ -2402,19 +2331,7 @@ mod tests {
         ];
         let c = single_function_container(&bytecode, 1, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert_trap(&mut vm, Trap::InvalidVariableIndex(VarIndex::new(5)));
     }
@@ -2457,19 +2374,7 @@ mod tests {
             .entry_function_id(FunctionId::SCAN)
             .build();
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
         vm.run_round(0).unwrap();
 
         // result should be 3 + 7 = 10
@@ -2480,19 +2385,7 @@ mod tests {
     fn execute_when_empty_bytecode_then_ok() {
         let c = single_function_container(&[], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
-        let mut vm = Vm::new()
-            .load(
-                &c,
-                &mut b.stack,
-                &mut b.vars,
-                &mut b.data_region,
-                &mut b.temp_buf,
-                &mut b.tasks,
-                &mut b.programs,
-                &mut b.ready,
-            )
-            .start()
-            .unwrap();
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert!(vm.run_round(0).is_ok());
     }

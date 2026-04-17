@@ -138,7 +138,21 @@ features — they never disable features that a dialect already includes.
    Allow the ``SIZEOF()`` operator that returns the size in bytes of a
    variable or type. This is a vendor extension supported by CODESYS,
    TwinCAT, and RuSTy. See
-   :doc:`/reference/standard-library/functions/sizeof`.
+   :doc:`/reference/extension-library/functions/sizeof`.
+
+``--allow-cross-family-widening``
+   Allow implicit widening between bit-string and integer type families.
+   For example, passing a ``BYTE`` variable where an ``INT`` parameter is
+   expected, or passing a bare integer literal ``0`` where a ``BYTE``
+   parameter is expected. This is a vendor extension supported by CODESYS,
+   TwinCAT, and RuSTy.
+
+``--allow-partial-access-syntax``
+   Allow IEC 61131-3:2013 partial-access bit syntax ``.%Xn`` (e.g.,
+   ``myByte.%X3`` to access bit 3 of a ``BYTE``). Semantically equivalent to
+   the short form ``.n``. Enabled by ``--dialect=iec61131-3-ed3`` and
+   ``--dialect=rusty``. Byte/word/dword/lword partial access (``.%Bn``,
+   ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
 
 Pass the flag when running :program:`ironplcc`:
 
