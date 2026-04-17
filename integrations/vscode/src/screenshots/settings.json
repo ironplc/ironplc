@@ -1,0 +1,15 @@
+{
+  "workbench.colorTheme": "Default Light Modern",
+  "workbench.startupEditor": "none",
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none",
+  "extensions.autoUpdate": false,
+  "window.restoreWindows": "none",
+  "editor.minimap.enabled": false,
+  "editor.scrollbar.vertical": "hidden",
+  "editor.scrollbar.horizontal": "hidden",
+  "breadcrumbs.enabled": false,
+  "workbench.tips.enabled": false,
+  "workbench.activityBar.location": "default",
+  "workbench.sideBar.location": "left"
+}
