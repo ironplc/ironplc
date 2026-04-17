@@ -109,6 +109,7 @@ enum Element {
     Struct(Id),
     Array(Vec<Expr>),
     Bit(Integer),
+    PartialAccess(PartialAccessSize, Integer),
     Deref,
 }
 
@@ -717,7 +718,7 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
+    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessByte) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Byte, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
       // Start by assuming that the top is just a named variable
       let mut head = SymbolicVariableKind::Named(NamedVariable { name });
 
@@ -739,6 +740,13 @@ parser! {
             Element::Bit(idx) => {
               head = SymbolicVariableKind::BitAccess(BitAccessVariable{
                 variable: Box::new(head),
+                index: idx,
+              });
+            },
+            Element::PartialAccess(size, idx) => {
+              head = SymbolicVariableKind::PartialAccess(PartialAccessVariable{
+                variable: Box::new(head),
+                size,
                 index: idx,
               });
             },

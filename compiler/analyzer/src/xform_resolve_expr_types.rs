@@ -81,6 +81,8 @@ fn find_base_variable_name(var: &SymbolicVariableKind) -> Option<&Id> {
         SymbolicVariableKind::Named(nv) => Some(&nv.name),
         SymbolicVariableKind::Deref(dv) => find_base_variable_name(&dv.variable),
         SymbolicVariableKind::Array(av) => find_base_variable_name(&av.subscripted_variable),
+        SymbolicVariableKind::BitAccess(ba) => find_base_variable_name(&ba.variable),
+        SymbolicVariableKind::PartialAccess(pa) => find_base_variable_name(&pa.variable),
         _ => None,
     }
 }
@@ -445,6 +447,15 @@ impl ExprTypeResolver<'_> {
                 self.resolve_structured_variable_type(sv)
             }
             Variable::Symbolic(SymbolicVariableKind::BitAccess(_)) => Some(TypeName::from("BOOL")),
+            Variable::Symbolic(SymbolicVariableKind::PartialAccess(pa)) => {
+                let type_name = match pa.size {
+                    PartialAccessSize::Byte => "BYTE",
+                    PartialAccessSize::Word => "WORD",
+                    PartialAccessSize::DWord => "DWORD",
+                    PartialAccessSize::LWord => "LWORD",
+                };
+                Some(TypeName::from(type_name))
+            }
             Variable::Symbolic(SymbolicVariableKind::Deref(deref_var)) => {
                 // Dereference: resolve the target type of the reference.
                 let base_name = find_base_variable_name(&deref_var.variable)?;

@@ -46,6 +46,9 @@ impl From<SymbolicVariableKind> for Variable {
             SymbolicVariableKind::BitAccess(bit_access) => {
                 Variable::Symbolic(SymbolicVariableKind::BitAccess(bit_access))
             }
+            SymbolicVariableKind::PartialAccess(partial) => {
+                Variable::Symbolic(SymbolicVariableKind::PartialAccess(partial))
+            }
             SymbolicVariableKind::Deref(deref) => {
                 Variable::Symbolic(SymbolicVariableKind::Deref(deref))
             }
@@ -68,6 +71,7 @@ pub enum SymbolicVariableKind {
     Array(ArrayVariable),
     Structured(StructuredVariable),
     BitAccess(BitAccessVariable),
+    PartialAccess(PartialAccessVariable),
     Deref(DerefVariable),
 }
 
@@ -82,6 +86,7 @@ impl fmt::Display for SymbolicVariableKind {
             SymbolicVariableKind::BitAccess(bit_access) => {
                 f.write_fmt(format_args!("{bit_access}"))
             }
+            SymbolicVariableKind::PartialAccess(partial) => f.write_fmt(format_args!("{partial}")),
             SymbolicVariableKind::Deref(deref) => f.write_fmt(format_args!("{deref}")),
         }
     }
@@ -94,6 +99,7 @@ impl Located for SymbolicVariableKind {
             SymbolicVariableKind::Array(array) => array.span(),
             SymbolicVariableKind::Structured(structured) => structured.span(),
             SymbolicVariableKind::BitAccess(bit_access) => bit_access.span(),
+            SymbolicVariableKind::PartialAccess(partial) => partial.span(),
             SymbolicVariableKind::Deref(deref) => deref.span(),
         }
     }
@@ -197,6 +203,68 @@ impl fmt::Display for BitAccessVariable {
 }
 
 impl Located for BitAccessVariable {
+    fn span(&self) -> SourceSpan {
+        SourceSpan::join2(self.variable.as_ref(), &self.index)
+    }
+}
+
+/// Size of a partial-access slice.
+///
+/// Used with `.%Bn`, `.%Wn`, `.%Dn`, `.%Ln` syntax to extract or replace
+/// a byte/word/dword/lword-sized slice of an integer variable.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum PartialAccessSize {
+    Byte,
+    Word,
+    DWord,
+    LWord,
+}
+
+impl PartialAccessSize {
+    pub fn bit_width(self) -> u32 {
+        match self {
+            PartialAccessSize::Byte => 8,
+            PartialAccessSize::Word => 16,
+            PartialAccessSize::DWord => 32,
+            PartialAccessSize::LWord => 64,
+        }
+    }
+
+    pub fn prefix(self) -> &'static str {
+        match self {
+            PartialAccessSize::Byte => "%B",
+            PartialAccessSize::Word => "%W",
+            PartialAccessSize::DWord => "%D",
+            PartialAccessSize::LWord => "%L",
+        }
+    }
+}
+
+/// Partial access on an integer-typed variable, extracting or replacing
+/// a byte/word/dword/lword-sized slice.
+///
+/// See section B.1.4.2.
+#[derive(Debug, PartialEq, Clone, Recurse)]
+pub struct PartialAccessVariable {
+    pub variable: Box<SymbolicVariableKind>,
+    #[recurse(ignore)]
+    pub size: PartialAccessSize,
+    pub index: Integer,
+}
+
+impl fmt::Display for PartialAccessVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}.{}{}",
+            self.variable,
+            self.size.prefix(),
+            self.index.value
+        )
+    }
+}
+
+impl Located for PartialAccessVariable {
     fn span(&self) -> SourceSpan {
         SourceSpan::join2(self.variable.as_ref(), &self.index)
     }

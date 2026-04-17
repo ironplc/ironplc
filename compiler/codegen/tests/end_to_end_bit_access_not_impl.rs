@@ -342,3 +342,129 @@ END_PROGRAM
         result.err()
     );
 }
+
+// --- 4. Bit access on an array nested inside a struct field.
+//        `s.arr[i].n` where arr is an array field of the struct.
+
+#[test]
+fn end_to_end_when_read_bit_on_struct_field_array_element_then_correct() {
+    let source = "
+TYPE MY_STRUCT : STRUCT
+    flags : ARRAY[0..1] OF BYTE;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MY_STRUCT;
+    r0 : BOOL;
+    r2 : BOOL;
+  END_VAR
+  s.flags[0] := BYTE#16#05;
+  r0 := s.flags[0].0;
+  r2 := s.flags[0].2;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // 0x05 = 0b00000101: bit 0 = 1, bit 2 = 1.
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    assert_eq!(bufs.vars[2].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_write_bit_on_struct_field_array_element_then_correct() {
+    let source = "
+TYPE MY_STRUCT : STRUCT
+    flags : ARRAY[0..1] OF BYTE;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MY_STRUCT;
+    x : BYTE;
+  END_VAR
+  s.flags[0] := BYTE#16#AA;
+  s.flags[0].0 := TRUE;
+  x := s.flags[0];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // 0xAA | 0x01 = 0xAB = 171
+    assert_eq!(bufs.vars[1].as_i32(), 171);
+}
+
+#[test]
+fn end_to_end_when_write_bit_on_struct_field_array_preserves_other_elements() {
+    let source = "
+TYPE MY_STRUCT : STRUCT
+    flags : ARRAY[0..1] OF BYTE;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MY_STRUCT;
+    v0 : BYTE;
+    v1 : BYTE;
+  END_VAR
+  s.flags[0] := BYTE#16#FF;
+  s.flags[1] := BYTE#16#00;
+  s.flags[0].0 := FALSE;
+  s.flags[1].7 := TRUE;
+  v0 := s.flags[0];
+  v1 := s.flags[1];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // s.flags[0]: 0xFF & 0xFE = 0xFE = 254
+    // s.flags[1]: 0x00 | 0x80 = 0x80 = 128
+    assert_eq!(bufs.vars[1].as_i32(), 254);
+    assert_eq!(bufs.vars[2].as_i32(), 128);
+}
+
+#[test]
+fn end_to_end_when_write_bit_on_struct_field_lword_array_then_correct() {
+    let source = "
+TYPE MY_STRUCT : STRUCT
+    vals : ARRAY[0..1] OF LWORD;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MY_STRUCT;
+    x : LWORD;
+  END_VAR
+  s.vals[0] := LWORD#0;
+  s.vals[0].40 := TRUE;
+  x := s.vals[0];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // bit 40 = 2^40 = 1099511627776
+    assert_eq!(bufs.vars[1].as_i64(), 1099511627776);
+}
+
+#[test]
+fn end_to_end_when_percent_x_on_struct_field_array_then_correct() {
+    let source = "
+TYPE MY_STRUCT : STRUCT
+    flags : ARRAY[0..0] OF BYTE;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MY_STRUCT;
+    x : BYTE;
+  END_VAR
+  s.flags[0] := BYTE#16#00;
+  s.flags[0].%X3 := TRUE;
+  x := s.flags[0];
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &opts_with_partial_access());
+    // bit 3 = 8
+    assert_eq!(bufs.vars[1].as_i32(), 8);
+}

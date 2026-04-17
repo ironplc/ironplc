@@ -1,7 +1,8 @@
-//! Validation rule: reject `.%Xn` partial-access bit syntax unless the
-//! `allow_partial_access_syntax` flag is set. IEC 61131-3:2013 standardizes
-//! this form; IronPLC accepts it under `--allow-partial-access-syntax`
-//! (implied by the `rusty` and `iec61131-3-ed3` dialects).
+//! Validation rule: reject partial-access syntax (`.%Xn`, `.%Bn`, `.%Wn`,
+//! `.%Dn`, `.%Ln`) unless the `allow_partial_access_syntax` flag is set.
+//! IEC 61131-3:2013 standardizes this form; IronPLC accepts it under
+//! `--allow-partial-access-syntax` (implied by the `rusty` and
+//! `iec61131-3-ed3` dialects).
 
 use dsl::diagnostic::{Diagnostic, Label};
 
@@ -10,6 +11,17 @@ use crate::{
     token::{Token, TokenType},
 };
 
+fn is_partial_access_token(t: &TokenType) -> bool {
+    matches!(
+        t,
+        TokenType::PartialAccessBit
+            | TokenType::PartialAccessByte
+            | TokenType::PartialAccessWord
+            | TokenType::PartialAccessDWord
+            | TokenType::PartialAccessLWord
+    )
+}
+
 pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diagnostic>> {
     if options.allow_partial_access_syntax {
         return Ok(());
@@ -17,11 +29,11 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 
     let errors: Vec<Diagnostic> = tokens
         .iter()
-        .filter(|t| t.token_type == TokenType::PartialAccessBit)
+        .filter(|t| is_partial_access_token(&t.token_type))
         .map(|t| {
             Diagnostic::problem(
                 ironplc_problems::Problem::PartialAccessSyntaxDisabled,
-                Label::span(t.span.clone(), "partial-access bit selector"),
+                Label::span(t.span.clone(), "partial-access selector"),
             )
         })
         .collect();
@@ -69,6 +81,32 @@ mod test {
     #[test]
     fn apply_when_partial_access_bit_and_flag_on_then_ok() {
         let tokens = vec![mk_token(TokenType::PartialAccessBit, "%X0")];
+        let result = apply(
+            &tokens,
+            &CompilerOptions {
+                allow_partial_access_syntax: true,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_partial_access_byte_and_flag_off_then_error() {
+        let tokens = vec![mk_token(TokenType::PartialAccessByte, "%B0")];
+        let result = apply(
+            &tokens,
+            &CompilerOptions {
+                allow_partial_access_syntax: false,
+                ..CompilerOptions::default()
+            },
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_partial_access_byte_and_flag_on_then_ok() {
+        let tokens = vec![mk_token(TokenType::PartialAccessByte, "%B0")];
         let result = apply(
             &tokens,
             &CompilerOptions {

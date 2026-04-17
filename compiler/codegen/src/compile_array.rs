@@ -214,7 +214,7 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
 /// struct chain to get the field's slot offset and type, extract array dimension
 /// info, and return a `StructFieldArrayElement` that the caller uses to emit
 /// `flat_index + slot_offset` followed by the struct's LOAD_ARRAY/STORE_ARRAY.
-fn resolve_struct_field_array<'ctx, 'ast>(
+pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
     ctx: &'ctx CompileContext,
     structured: &ironplc_dsl::textual::StructuredVariable,
     subscripts: Vec<&'ast Expr>,

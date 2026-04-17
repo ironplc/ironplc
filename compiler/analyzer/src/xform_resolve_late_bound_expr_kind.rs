@@ -220,6 +220,9 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                         // declaration which isn't available here. Default to None.
                         self.current_type = VariableType::None;
                     }
+                    SymbolicVariableKind::PartialAccess(_pa) => {
+                        self.current_type = VariableType::None;
+                    }
                     SymbolicVariableKind::Deref(_d) => {
                         // Assignment through dereference like PT^[0] := value
                         // Determining the type requires resolving the reference.
