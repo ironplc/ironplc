@@ -206,3 +206,57 @@ endtoend-smoke-test compiler-version extension-version extension-name:
 _endtoend-smoke-unix:
   @echo "endtoend-smoke is not implemented for Unix family"
   exit 1
+
+# Install script smoke test - Unix only.
+#
+# Runs compiler/install.sh against a real GitHub release, verifies that the
+# installed binaries run, then re-runs the installer (without clearing state)
+# to confirm idempotency.
+#
+# compiler-version: empty to use the latest release; otherwise a bare version
+#                   like "0.201.0" (without the leading "v").
+[unix]
+install-script-smoke compiler-version="":
+  @just _install-script-smoke-clean
+  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-verify
+  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-verify
+
+[unix]
+_install-script-smoke-clean:
+  rm -rf "$HOME/.ironplc"
+
+[unix]
+_install-script-smoke-run compiler-version:
+  #!/usr/bin/env sh
+  set -eu
+  if [ -n "{{compiler-version}}" ]; then
+    IRONPLC_VERSION="v{{compiler-version}}" sh ./compiler/install.sh --no-modify-path
+  else
+    sh ./compiler/install.sh --no-modify-path
+  fi
+
+[unix]
+_install-script-smoke-verify:
+  #!/usr/bin/env sh
+  set -eu
+  BIN="$HOME/.ironplc/bin"
+  "$BIN/ironplcc" version
+  "$BIN/ironplcc" help
+
+  # ironplcvm and ironplcmcp are optional (older releases may not include them).
+  if [ -x "$BIN/ironplcmcp" ]; then
+    # MCP handshake: initialize -> notifications/initialized -> tools/list.
+    # The response should contain a known tool name (list_options).
+    printf '%s\n%s\n%s\n' \
+      '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"0.1"}}}' \
+      '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+      '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+      | "$BIN/ironplcmcp" | grep -q list_options
+  fi
+
+[windows]
+install-script-smoke compiler-version="":
+  @echo "install-script-smoke is Unix-only; use endtoend-smoke on Windows"
+  exit 1

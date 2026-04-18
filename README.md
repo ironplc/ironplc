@@ -14,10 +14,18 @@ programs on off-the-shelf hardware — no proprietary IDE required.
 
 ## Quick Start
 
-1. [Install IronPLC](https://www.ironplc.com/quickstart/installation.html), or
-   try it in the browser at [playground.ironplc.com](https://playground.ironplc.com)
-2. Follow the [quick start tutorial](https://www.ironplc.com/quickstart/index.html)
-   to write your first PLC program
+Install on Linux or macOS:
+
+```sh
+curl -fsSL https://www.ironplc.com/install.sh | sh
+```
+
+Or [see the installation docs](https://www.ironplc.com/quickstart/installation.html)
+for Windows, Homebrew, and other options — or try it in the browser at
+[playground.ironplc.com](https://playground.ironplc.com).
+
+Then follow the [quick start tutorial](https://www.ironplc.com/quickstart/index.html)
+to write your first PLC program.
 
 ## Capabilities
 

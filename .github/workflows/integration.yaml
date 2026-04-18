@@ -55,3 +55,25 @@ jobs:
     with:
       commit-ref: ""
       publish: false
+
+  install-script-lint:
+    name: Lint Install Script
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Run shellcheck
+        run: shellcheck -s sh compiler/install.sh
+
+  install-script-smoke:
+    name: Install Script Smoke Test (Last Release)
+    # Runs install.sh against the last published release on Linux and macOS.
+    # This catches regressions in the script without requiring a new release.
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    uses: ./.github/workflows/partial_install_script_test.yaml
+    with:
+      compiler-version: ""
