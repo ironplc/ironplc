@@ -19,3 +19,4 @@ ironplc-parser = { path = "../parser", version = "0.201.0" }
 ironplc-vm = { path = "../vm", version = "0.201.0", features = ["test-support"] }
 spec_test_macro = { path = "../spec_test_macro" }
 proptest = "1"
+rstest = "0.26"
