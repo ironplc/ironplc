@@ -81,6 +81,20 @@ publish-openvsx vsixfilename:
   # OVSX_PAT: The personal access token for Open VSX publishing (read from environment)
   npx ovsx publish {{vsixfilename}} -p $OVSX_PAT
 
+# Capture VS Code extension screenshots for documentation.
+# Requires `just compile` first. macOS runs natively; Linux uses Xvfb.
+screenshots:
+  just _screenshots-{{os()}}
+
+_screenshots-macos:
+  node ./out/screenshots/run.js
+
+_screenshots-linux:
+  xvfb-run -a --server-args="-screen 0 1920x1080x24" node ./out/screenshots/run.js
+
+_screenshots-windows:
+  node ./out/screenshots/run.js
+
 # Remove build artifacts
 clean:
   rm -rf out

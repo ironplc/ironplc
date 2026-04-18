@@ -13,6 +13,7 @@ use crate::tools::common::ParseCheckInput;
 use crate::tools::compile::CompileInput;
 use crate::tools::container_drop::ContainerDropInput;
 use crate::tools::explain_diagnostic::ExplainDiagnosticInput;
+use crate::tools::symbols::SymbolsInput;
 
 #[derive(Clone)]
 pub struct IronPlcMcp {
@@ -88,6 +89,37 @@ impl IronPlcMcp {
     fn check(&self, params: Parameters<ParseCheckInput>) -> Result<Content, rmcp::ErrorData> {
         let input = params.0;
         let response = tools::check::build_response(&input.sources, &input.options);
+        let json = serde_json::to_string(&response)
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        Ok(Content::text(json))
+    }
+
+    /// Full symbol table extraction.
+    #[tool(
+        name = "symbols",
+        description = "Full symbol table for a set of sources. Large responses are capped \u{2014} prefer the `pou` filter or one of the context tools (`pou_scope`, `project_io`, `types_all`) when you only need part of the answer."
+    )]
+    fn symbols(
+        &self,
+        Parameters(input): Parameters<SymbolsInput>,
+    ) -> Result<Content, rmcp::ErrorData> {
+        let response =
+            tools::symbols::build_response(&input.sources, &input.options, input.pou.as_deref());
+        let json = serde_json::to_string(&response)
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        Ok(Content::text(json))
+    }
+
+    /// Project manifest: files, POU names, and UDTs grouped by kind.
+    #[tool(
+        name = "project_manifest",
+        description = "Flat summary of what is declared across the supplied sources: file names, Program/Function/Function-Block names, and user-defined types grouped by kind (enumerations, structures, arrays, subranges, aliases, strings, references). Use this to orient yourself in an unfamiliar project before calling `symbols` or `pou_scope`."
+    )]
+    fn project_manifest(
+        &self,
+        Parameters(input): Parameters<ParseCheckInput>,
+    ) -> Result<Content, rmcp::ErrorData> {
+        let response = tools::project_manifest::build_response(&input.sources, &input.options);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
         Ok(Content::text(json))

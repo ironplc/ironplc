@@ -345,6 +345,21 @@ impl TypeEnvironment {
         self.table.iter()
     }
 
+    /// Returns an iterator over user-defined types, excluding elementary types,
+    /// function block types, and function types.
+    pub fn iter_user_defined(
+        &self,
+    ) -> impl Iterator<Item = (&TypeName, &crate::type_attributes::TypeAttributes)> {
+        use crate::type_category::TypeCategory;
+        self.table.iter().filter(|(_, attrs)| {
+            attrs.type_category != TypeCategory::Elementary
+                && !matches!(
+                    attrs.representation,
+                    IntermediateType::FunctionBlock { .. } | IntermediateType::Function { .. }
+                )
+        })
+    }
+
     /// Gets the memory size of a type by name
     ///
     /// Returns `Ok(Some(size))` if the type exists and has a known size,

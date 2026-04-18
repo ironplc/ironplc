@@ -9,7 +9,10 @@
 //! on-demand during validation via TypeEnvironment.
 
 use ironplc_dsl::{
-    common::{InitialValueAssignmentKind, Library, TypeReference, VariableType},
+    common::{
+        AddressAssignment, InitialValueAssignmentKind, Library, LocationPrefix, SizePrefix,
+        TypeReference, VariableType,
+    },
     core::{Id, Located},
     diagnostic::Diagnostic,
     visitor::Visitor,
@@ -73,46 +76,38 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
 
     // TODO fn visit_program_access_decl
 
-    #[allow(unused_assignments)]
     fn visit_var_decl(
         &mut self,
         node: &ironplc_dsl::common::VarDecl,
     ) -> Result<Self::Value, Diagnostic> {
-        // Some types of variables are references to other variables.
-        // TODO Stage these so that we can update references to them but not actually declare them here
-        // (or otherwise distinguish between a declaration and a reference)
-        if node.var_type != VariableType::External {
-            match &node.identifier {
-                ironplc_dsl::common::VariableIdentifier::Symbol(id) => {
-                    // Determine the appropriate symbol kind based on variable type
-                    let symbol_kind = match node.var_type {
-                        VariableType::Input => SymbolKind::Parameter,
-                        VariableType::Output => SymbolKind::OutputParameter,
-                        VariableType::InOut => SymbolKind::InOutParameter,
-                        VariableType::Var | VariableType::VarTemp => SymbolKind::Variable,
-                        VariableType::Global => SymbolKind::Variable, // Global variables
-                        VariableType::Access => SymbolKind::Variable, // Access variables
-                        VariableType::External => SymbolKind::Variable, // Should not reach here due to above check
-                    };
+        let symbol_kind = match node.var_type {
+            VariableType::Input => SymbolKind::Parameter,
+            VariableType::Output => SymbolKind::OutputParameter,
+            VariableType::InOut => SymbolKind::InOutParameter,
+            _ => SymbolKind::Variable,
+        };
 
-                    self.symbol_env
-                        .insert(id, symbol_kind, &self.current_scope())?;
-                }
-                ironplc_dsl::common::VariableIdentifier::Direct(_) => {
-                    // TODO: Handle direct variables (hardware-mapped I/O)
-                }
+        match &node.identifier {
+            ironplc_dsl::common::VariableIdentifier::Symbol(id) => {
+                self.symbol_env.insert_variable(
+                    id,
+                    symbol_kind,
+                    &self.current_scope(),
+                    node.var_type.clone(),
+                    None,
+                )?;
             }
-        } else {
-            // External variables are references to global variables
-            if let ironplc_dsl::common::VariableIdentifier::Symbol(id) = &node.identifier {
-                // Mark as external reference
-                let mut symbol_info = crate::symbol_environment::SymbolInfo::new(
-                    SymbolKind::Variable,
-                    self.current_scope(),
-                    id.span(),
-                );
-                symbol_info = symbol_info.with_external(true);
-                // TODO: Need to modify insert to handle external references
+            ironplc_dsl::common::VariableIdentifier::Direct(direct) => {
+                if let Some(name) = &direct.name {
+                    let address = format_address(&direct.address_assignment);
+                    self.symbol_env.insert_variable(
+                        name,
+                        symbol_kind,
+                        &self.current_scope(),
+                        node.var_type.clone(),
+                        Some(address),
+                    )?;
+                }
             }
         }
         node.recurse_visit(self)
@@ -330,6 +325,24 @@ impl<'a> Visitor<Diagnostic> for EnvironmentResolver<'a> {
     }
 
     // TODO should this handle parameters?
+}
+
+fn format_address(addr: &AddressAssignment) -> String {
+    let loc = match addr.location {
+        LocationPrefix::I => "I",
+        LocationPrefix::Q => "Q",
+        LocationPrefix::M => "M",
+    };
+    let size = match addr.size {
+        SizePrefix::X => "X",
+        SizePrefix::B => "B",
+        SizePrefix::W => "W",
+        SizePrefix::D => "D",
+        SizePrefix::L => "L",
+        SizePrefix::Nil | SizePrefix::Unspecified => "",
+    };
+    let parts: Vec<String> = addr.address.iter().map(|a| a.to_string()).collect();
+    format!("%{loc}{size}{}", parts.join("."))
 }
 
 #[cfg(test)]

@@ -11,6 +11,7 @@ repository.workspace = true
 maintenance = { status = "experimental" }
 
 [dependencies]
+ironplc-analyzer = { path = "../analyzer", version = "0.201.0" }
 ironplc-codegen = { path = "../codegen", version = "0.201.0" }
 ironplc-container = { path = "../container", version = "0.201.0" }
 ironplc-dsl = { path = "../dsl", version = "0.201.0" }
