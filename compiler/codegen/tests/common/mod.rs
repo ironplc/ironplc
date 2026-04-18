@@ -1,6 +1,7 @@
 //! Shared test helpers for codegen integration tests.
 
 #![allow(dead_code)]
+#![allow(unused_macros)]
 #![allow(clippy::result_large_err)]
 
 use ironplc_analyzer::SemanticContext;
@@ -130,9 +131,13 @@ pub fn assert_run_i32_with(source: &str, options: &CompilerOptions, asserts: &[(
 /// exact-duplicate set. A macro invocation is opaque to the detector, so
 /// each test becomes a single token and no new group forms.
 ///
+/// Any `#[...]` attributes (including `///` docstrings) preceding the
+/// macro invocation are forwarded to the generated `fn`.
+///
 /// Use from a test binary with `#[macro_use] mod common;`.
 macro_rules! e2e_i32 {
-    ($name:ident, $source:literal, $asserts:expr $(,)?) => {
+    ($(#[$meta:meta])* $name:ident, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
         #[test]
         fn $name() {
             common::assert_run_i32($source, $asserts);
@@ -142,7 +147,8 @@ macro_rules! e2e_i32 {
 
 /// Same as [`e2e_i32`] but reads slots as i64 (LINT/ULINT).
 macro_rules! e2e_i64 {
-    ($name:ident, $source:literal, $asserts:expr $(,)?) => {
+    ($(#[$meta:meta])* $name:ident, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
         #[test]
         fn $name() {
             common::assert_run_i64($source, $asserts);
@@ -154,7 +160,8 @@ macro_rules! e2e_i64 {
 /// can enable a non-default dialect flag. The options expression is
 /// evaluated once inside the generated test body.
 macro_rules! e2e_i32_with {
-    ($name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
         #[test]
         fn $name() {
             common::assert_run_i32_with($source, &$opts, $asserts);
