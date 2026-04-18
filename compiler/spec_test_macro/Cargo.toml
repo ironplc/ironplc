@@ -1,7 +1,7 @@
 [package]
 name = "spec_test_macro"
 description = "Proc-macro attribute for spec conformance tests"
-version = "0.201.0"
+version = "0.202.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
