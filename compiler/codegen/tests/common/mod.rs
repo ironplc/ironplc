@@ -87,3 +87,27 @@ pub fn parse_and_run_rounds(
     let mut vm = load_and_start(&container, &mut bufs).unwrap();
     f(&mut vm);
 }
+
+/// Runs `source` with default options and asserts each `(var_index, expected)`
+/// pair against the corresponding `vars[i].as_i32()` slot after one scan.
+///
+/// This is the workhorse helper for the `end_to_end_*.rs` integer tests:
+/// it collapses the recurring 3-line scaffold (`let source ...; let (_c, bufs)
+/// = parse_and_run(...); assert_eq!(...)`) into a single call so that each
+/// `#[test] fn` becomes one statement. Reduces duplicate AST mass enough that
+/// `cargo dupes` no longer flags the tests as a group.
+pub fn assert_run_i32(source: &str, asserts: &[(usize, i32)]) {
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_i32(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Same as [`assert_run_i32`] but reads slots as i64. Use for LINT/ULINT or
+/// any value whose magnitude exceeds 32 bits.
+pub fn assert_run_i64(source: &str, asserts: &[(usize, i64)]) {
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_i64(), *expected, "vars[{idx}] mismatch");
+    }
+}
