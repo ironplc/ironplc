@@ -111,3 +111,53 @@ pub fn assert_run_i64(source: &str, asserts: &[(usize, i64)]) {
         assert_eq!(bufs.vars[*idx].as_i64(), *expected, "vars[{idx}] mismatch");
     }
 }
+
+/// Like [`assert_run_i32`] but with explicit [`CompilerOptions`]. Use when a
+/// test requires a non-default dialect flag (e.g. `allow_partial_access_syntax`).
+pub fn assert_run_i32_with(source: &str, options: &CompilerOptions, asserts: &[(usize, i32)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_i32(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Declares a `#[test] fn` that asserts an IEC 61131-3 program produces the
+/// given i32 var values.
+///
+/// The macro form (vs writing the `#[test] fn` body directly as
+/// `{ assert_run_i32(...); }`) matters for code duplication: without it,
+/// every short 6-line body gets regrouped by `cargo dupes` as a new
+/// exact-duplicate set. A macro invocation is opaque to the detector, so
+/// each test becomes a single token and no new group forms.
+///
+/// Use from a test binary with `#[macro_use] mod common;`.
+macro_rules! e2e_i32 {
+    ($name:ident, $source:literal, $asserts:expr $(,)?) => {
+        #[test]
+        fn $name() {
+            common::assert_run_i32($source, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32`] but reads slots as i64 (LINT/ULINT).
+macro_rules! e2e_i64 {
+    ($name:ident, $source:literal, $asserts:expr $(,)?) => {
+        #[test]
+        fn $name() {
+            common::assert_run_i64($source, $asserts);
+        }
+    };
+}
+
+/// Like [`e2e_i32`] but takes a [`CompilerOptions`] expression so the test
+/// can enable a non-default dialect flag. The options expression is
+/// evaluated once inside the generated test body.
+macro_rules! e2e_i32_with {
+    ($name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        #[test]
+        fn $name() {
+            common::assert_run_i32_with($source, &$opts, $asserts);
+        }
+    };
+}

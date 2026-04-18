@@ -5,37 +5,11 @@
 //! overflow/wrapping, sign/zero extension, arithmetic, comparison,
 //! and unsigned semantics for each type.
 
+#[macro_use]
 mod common;
 
-use common::{assert_run_i32, assert_run_i64, parse_and_run};
+use common::parse_and_run;
 use ironplc_parser::options::CompilerOptions;
-
-/// Declares a `#[test] fn` that asserts an IEC 61131-3 program produces the
-/// given i32 var values.
-///
-/// The macro form (vs a plain function call inside an explicit `#[test] fn`)
-/// makes each test a single token to `cargo dupes`, which prevents the
-/// AST-level duplicate detector from regrouping the short bodies as a new
-/// duplicate set. Without the macro, every test would be a 6-line function
-/// with the same shape and `cargo dupes` would flag the new clones.
-macro_rules! e2e_i32 {
-    ($name:ident, $source:literal, $asserts:expr $(,)?) => {
-        #[test]
-        fn $name() {
-            assert_run_i32($source, $asserts);
-        }
-    };
-}
-
-/// Same as [`e2e_i32`] but reads slots as i64 (LINT/ULINT).
-macro_rules! e2e_i64 {
-    ($name:ident, $source:literal, $asserts:expr $(,)?) => {
-        #[test]
-        fn $name() {
-            assert_run_i64($source, $asserts);
-        }
-    };
-}
 
 // --- SINT (8-bit signed, -128..127) ---
 
