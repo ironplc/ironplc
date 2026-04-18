@@ -869,13 +869,89 @@ fn mcp_spec_req_tol_151_container_drop_unknown_id() {}
 // Context tools: `project_manifest` (REQ-TOL-200..201) — Milestone 1 (later)
 // ===========================================================================
 
+/// REQ-TOL-200: The `project_manifest` tool returns file names, POU names,
+/// and UDTs grouped by kind.
 #[spec_test(REQ_TOL_200)]
-#[ignore]
-fn mcp_spec_req_tol_200_project_manifest_returns_declarations() {}
+fn mcp_spec_req_tol_200_project_manifest_returns_declarations() {
+    use crate::tools::common::SourceInput;
 
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "TYPE MyEnum : (A, B, C); END_TYPE\n\
+                  FUNCTION_BLOCK fb\nEND_FUNCTION_BLOCK\n\
+                  PROGRAM p\nVAR inst : fb; END_VAR\nEND_PROGRAM"
+            .into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::project_manifest::build_response(&sources, &options);
+    let json = serde_json::to_value(&resp).unwrap();
+
+    assert_eq!(json["ok"], true, "diagnostics: {}", json["diagnostics"]);
+    assert!(json["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "main.st"));
+    assert!(json["programs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "p"));
+    assert!(json["function_blocks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "fb"));
+    assert!(json["enumerations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "MyEnum"));
+
+    // All seven UDT buckets are always present as arrays, even when empty.
+    for key in [
+        "enumerations",
+        "structures",
+        "arrays",
+        "subranges",
+        "aliases",
+        "strings",
+        "references",
+    ] {
+        assert!(json[key].is_array(), "bucket {key} should be an array");
+    }
+}
+
+/// REQ-TOL-201: On semantic failure, `project_manifest` returns `ok: false`,
+/// a partial manifest, and analysis diagnostics.
 #[spec_test(REQ_TOL_201)]
-#[ignore]
-fn mcp_spec_req_tol_201_project_manifest_partial_on_failure() {}
+fn mcp_spec_req_tol_201_project_manifest_partial_on_failure() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::project_manifest::build_response(&sources, &options);
+    let json = serde_json::to_value(&resp).unwrap();
+
+    assert_eq!(json["ok"], false);
+    assert!(!json["diagnostics"].as_array().unwrap().is_empty());
+    // Partial manifest preserved even though semantic analysis failed.
+    assert!(json["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "main.st"));
+    assert!(json["programs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "p"));
+}
 
 // ===========================================================================
 // Context tools: `project_io` (REQ-TOL-210..212) — Milestone 1 (later)
