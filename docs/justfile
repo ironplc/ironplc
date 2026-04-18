@@ -11,6 +11,10 @@ setup:
 compile:
   sphinx-build -a -W -n -b html . _build
   echo "www.ironplc.com" > _build/CNAME
+  # Publish the install script at https://www.ironplc.com/install.sh.
+  # This only goes live after partial_install_script_test passes, gating
+  # publish-website on a broken installer.
+  cp ../compiler/install.sh _build/install.sh
 
 # Sets the version number for this component.
 version version:
