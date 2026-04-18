@@ -6,8 +6,9 @@ Installation
 
 IronPLC supports the following platforms:
 
-- Windows (x64)
-- macOS
+- Windows (x64, arm64)
+- macOS (x64, arm64)
+- Linux (x64)
 
 -------------
 Prerequisites
@@ -56,9 +57,21 @@ Follow the steps below to install IronPLC.
 
    **Install IronPLC CLI**
 
+   Option 1 — Homebrew (recommended):
+
    #. Go to `Homebrew <https://brew.sh/>`_ then follow the instructions to
       install Homebrew.
    #. In a Terminal, enter :program:`brew tap ironplc/tap`, then enter :program:`brew install ironplc`.
+
+   Option 2 — install script:
+
+   .. code-block:: sh
+
+      curl -fsSL https://www.ironplc.com/install.sh | sh
+
+   This installs ``ironplcc``, ``ironplcvm``, and ``ironplcmcp`` into
+   ``$HOME/.ironplc/bin`` and adds that directory to your ``PATH`` via
+   your shell profile.
 
    **Install IronPLC Extension**
 
@@ -72,8 +85,35 @@ Follow the steps below to install IronPLC.
 
 .. tab:: Linux
 
-   The weekly builds do include a homebrew tap for Linux but the tap is not
-   tested other than to validate that it compiles.
+   **Install IronPLC CLI**
+
+   Run the following in a terminal:
+
+   .. code-block:: sh
+
+      curl -fsSL https://www.ironplc.com/install.sh | sh
+
+   This installs ``ironplcc``, ``ironplcvm``, and ``ironplcmcp`` into
+   ``$HOME/.ironplc/bin`` and adds that directory to your ``PATH`` via
+   your shell profile.
+
+   To install a specific version:
+
+   .. code-block:: sh
+
+      curl -fsSL https://www.ironplc.com/install.sh | IRONPLC_VERSION=v0.201.0 sh
+
+   Prebuilt binaries are currently provided for x86_64 Linux only.
+
+   **Install IronPLC Extension**
+
+   Run your development environment, then:
+
+   #. Go to the Extensions view by clicking on the Extensions icon in
+      :guilabel:`Activity Bar` on the side of the window or using the
+      View: Extensions command (:kbd:`Ctrl+Shift+X`).
+   #. In the Extensions view, enter :samp:`IronPLC` in the search box.
+   #. In the Extensions view for the IronPLC item, choose :guilabel:`Install`.
 
 --------------------------------------
 Next Steps

@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.201.0">
+<meta name="ironplc-version" content="0.202.0">
 </head>
   <body>
     
@@ -318,6 +318,7 @@
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../language/structured-text/index.html">Structured Text</a><input aria-label="Toggle navigation of Structured Text" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/assignment.html">Assignment</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../language/structured-text/bit-access.html">Bit Access</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/if.html">IF</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/case.html">CASE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../language/structured-text/for.html">FOR</a></li>
@@ -518,6 +519,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4030.html">P4030</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4031.html">P4031</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4032.html">P4032</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4033.html">P4033</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -650,6 +652,12 @@ deployment.</p>
 <li><p>Automatic bracket matching for block keywords (<code class="docutils literal notranslate"><span class="pre">IF</span></code>/<code class="docutils literal notranslate"><span class="pre">END_IF</span></code>, <code class="docutils literal notranslate"><span class="pre">FUNCTION</span></code>/<code class="docutils literal notranslate"><span class="pre">END_FUNCTION</span></code>, etc.)</p></li>
 <li><p>Real-time diagnostic analysis</p></li>
 </ul>
+<figure class="align-default" id="id1">
+<img alt="VS Code showing an IEC 61131-3 Structured Text file with syntax highlighting" src="../../_images/syntax-highlighting.png" style="width: 600px;" />
+<figcaption>
+<p><span class="caption-text">Structured Text with syntax highlighting in VS Code.</span><a class="headerlink" href="#id1" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
 </section>
 <section id="plcopen-xml">
 <h3>PLCopen XML<a class="headerlink" href="#plcopen-xml" title="Link to this heading">¶</a></h3>
@@ -699,6 +707,12 @@ See <a class="reference internal" href="build-tasks.html"><span class="doc">Buil
 <p>Opening an <code class="file docutils literal notranslate"><span class="pre">.iplc</span></code> bytecode file displays a human-readable disassembly of
 the compiled program, including the file header, constant pool, and function
 instructions with color-coded opcodes. See <a class="reference internal" href="bytecode-viewer.html"><span class="doc">Bytecode Viewer</span></a> for details.</p>
+<figure class="align-default" id="id2">
+<img alt="VS Code custom editor showing disassembled IPLC bytecode with color-coded opcodes" src="../../_images/bytecode-viewer.png" style="width: 600px;" />
+<figcaption>
+<p><span class="caption-text">The bytecode viewer showing a disassembled <code class="file docutils literal notranslate"><span class="pre">.iplc</span></code> file.</span><a class="headerlink" href="#id2" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
 </section>
 <section id="diagnostics">
 <h2>Diagnostics<a class="headerlink" href="#diagnostics" title="Link to this heading">¶</a></h2>
@@ -710,6 +724,12 @@ instructions with color-coded opcodes. See <a class="reference internal" href="b
 <p>Each diagnostic includes a problem code (e.g., P0001) linking to documentation
 that explains the issue and how to resolve it. See <a class="reference internal" href="../compiler/problems/index.html"><span class="doc">Problem Codes</span></a>
 for the complete list.</p>
+<figure class="align-default" id="id3">
+<img alt="VS Code editor showing red and yellow diagnostic squiggles on invalid Structured Text code" src="../../_images/diagnostics-squiggles.png" style="width: 600px;" />
+<figcaption>
+<p><span class="caption-text">Diagnostics with error squiggles and problem codes.</span><a class="headerlink" href="#id3" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
 </section>
 </section>
 

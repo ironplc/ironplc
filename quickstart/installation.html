@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/quickstart/installation.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="IronPLC supports the following platforms: Windows (x64), macOS. Prerequisites: The first step is to install a supported development environment: Visual Studio Code, Cursor. Other development enviro..." />
-<meta name="description" content="IronPLC supports the following platforms: Windows (x64), macOS. Prerequisites: The first step is to install a supported development environment: Visual Studio Code, Cursor. Other development enviro..." />
+<meta property="og:description" content="IronPLC supports the following platforms: Windows (x64, arm64), macOS (x64, arm64), Linux (x64). Prerequisites: The first step is to install a supported development environment: Visual Studio Code,..." />
+<meta name="description" content="IronPLC supports the following platforms: Windows (x64, arm64), macOS (x64, arm64), Linux (x64). Prerequisites: The first step is to install a supported development environment: Visual Studio Code,..." />
 <link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="How a PLC Program Works" href="sense-control-actuate.html"><link rel="prev" title="Quick start tutorial" href="index.html">
         <link rel="canonical" href="https://www.ironplc.com/quickstart/installation.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.201.0">
+<meta name="ironplc-version" content="0.202.0">
 </head>
   <body>
     
@@ -318,6 +318,7 @@
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/language/structured-text/index.html">Structured Text</a><input aria-label="Toggle navigation of Structured Text" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/assignment.html">Assignment</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/bit-access.html">Bit Access</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/if.html">IF</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/case.html">CASE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/for.html">FOR</a></li>
@@ -518,6 +519,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4030.html">P4030</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4031.html">P4031</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4032.html">P4032</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4033.html">P4033</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -633,8 +635,9 @@
 <span id="installation-steps-target"></span><h1>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h1>
 <p>IronPLC supports the following platforms:</p>
 <ul class="simple">
-<li><p>Windows (x64)</p></li>
-<li><p>macOS</p></li>
+<li><p>Windows (x64, arm64)</p></li>
+<li><p>macOS (x64, arm64)</p></li>
+<li><p>Linux (x64)</p></li>
 </ul>
 <section id="prerequisites">
 <h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">¶</a></h2>
@@ -657,8 +660,8 @@ environments.</p>
 <ol class="arabic simple">
 <li><p>Download the latest IronPLC installer from <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
 <ul class="simple">
-<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.201.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
-<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.201.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
+<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.202.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
+<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.202.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
 </ul>
 </li>
 <li><p>Run the installer and follow the prompts to complete
@@ -676,11 +679,19 @@ View: Extensions command (<kbd class="kbd docutils literal notranslate">Ctrl</kb
 </div>
 <input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">macOS</label><div class="tab-content docutils">
 <p><strong>Install IronPLC CLI</strong></p>
+<p>Option 1 — Homebrew (recommended):</p>
 <ol class="arabic simple">
 <li><p>Go to <a class="reference external" href="https://brew.sh/">Homebrew</a> then follow the instructions to
 install Homebrew.</p></li>
 <li><p>In a Terminal, enter <strong class="program">brew tap ironplc/tap</strong>, then enter <strong class="program">brew install ironplc</strong>.</p></li>
 </ol>
+<p>Option 2 — install script:</p>
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://www.ironplc.com/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+</pre></div>
+</div>
+<p>This installs <code class="docutils literal notranslate"><span class="pre">ironplcc</span></code>, <code class="docutils literal notranslate"><span class="pre">ironplcvm</span></code>, and <code class="docutils literal notranslate"><span class="pre">ironplcmcp</span></code> into
+<code class="docutils literal notranslate"><span class="pre">$HOME/.ironplc/bin</span></code> and adds that directory to your <code class="docutils literal notranslate"><span class="pre">PATH</span></code> via
+your shell profile.</p>
 <p><strong>Install IronPLC Extension</strong></p>
 <p>Run your development environment, then:</p>
 <ol class="arabic simple">
@@ -692,8 +703,28 @@ View: Extensions command (<kbd class="kbd docutils literal notranslate">⌘</kbd
 </ol>
 </div>
 <input class="tab-input" id="tab-set--0-input--3" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--3">Linux</label><div class="tab-content docutils">
-<p>The weekly builds do include a homebrew tap for Linux but the tap is not
-tested other than to validate that it compiles.</p>
+<p><strong>Install IronPLC CLI</strong></p>
+<p>Run the following in a terminal:</p>
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://www.ironplc.com/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+</pre></div>
+</div>
+<p>This installs <code class="docutils literal notranslate"><span class="pre">ironplcc</span></code>, <code class="docutils literal notranslate"><span class="pre">ironplcvm</span></code>, and <code class="docutils literal notranslate"><span class="pre">ironplcmcp</span></code> into
+<code class="docutils literal notranslate"><span class="pre">$HOME/.ironplc/bin</span></code> and adds that directory to your <code class="docutils literal notranslate"><span class="pre">PATH</span></code> via
+your shell profile.</p>
+<p>To install a specific version:</p>
+<div class="highlight-sh notranslate"><div class="highlight"><pre><span></span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://www.ironplc.com/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="nv">IRONPLC_VERSION</span><span class="o">=</span>v0.201.0<span class="w"> </span>sh
+</pre></div>
+</div>
+<p>Prebuilt binaries are currently provided for x86_64 Linux only.</p>
+<p><strong>Install IronPLC Extension</strong></p>
+<p>Run your development environment, then:</p>
+<ol class="arabic simple">
+<li><p>Go to the Extensions view by clicking on the Extensions icon in
+<span class="guilabel">Activity Bar</span> on the side of the window or using the
+View: Extensions command (<kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd>).</p></li>
+<li><p>In the Extensions view, enter <code class="samp docutils literal notranslate"><span class="pre">IronPLC</span></code> in the search box.</p></li>
+<li><p>In the Extensions view for the IronPLC item, choose <span class="guilabel">Install</span>.</p></li>
+</ol>
 </div>
 </div>
 </section>

@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/data-types/elementary/dword.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Bit string of 32 bits.,, Size, 32 bits,, Range, 16#00000000 to 16#FFFFFFFF,, Default, 16#00000000,, IEC 61131-3, Section 2.3.1,, Support, Supported,,,, Literals: Example: See Also: WORD — 16-bit bi..." />
-<meta name="description" content="Bit string of 32 bits.,, Size, 32 bits,, Range, 16#00000000 to 16#FFFFFFFF,, Default, 16#00000000,, IEC 61131-3, Section 2.3.1,, Support, Supported,,,, Literals: Example: See Also: WORD — 16-bit bi..." />
+<meta property="og:description" content="Bit string of 32 bits.,, Size, 32 bits,, Range, 16#00000000 to 16#FFFFFFFF,, Default, 16#00000000,, IEC 61131-3, Section 2.3.1,, Support, Supported,,,, Literals: Example: Bit Access: Individual bit..." />
+<meta name="description" content="Bit string of 32 bits.,, Size, 32 bits,, Range, 16#00000000 to 16#FFFFFFFF,, Default, 16#00000000,, IEC 61131-3, Section 2.3.1,, Support, Supported,,,, Literals: Example: Bit Access: Individual bit..." />
 <link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="LWORD" href="lword.html"><link rel="prev" title="WORD" href="word.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/data-types/elementary/dword.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.201.0">
+<meta name="ironplc-version" content="0.202.0">
 </head>
   <body>
     
@@ -318,6 +318,7 @@
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../structured-text/index.html">Structured Text</a><input aria-label="Toggle navigation of Structured Text" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/assignment.html">Assignment</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../structured-text/bit-access.html">Bit Access</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/if.html">IF</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/case.html">CASE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../structured-text/for.html">FOR</a></li>
@@ -518,6 +519,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4030.html">P4030</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4031.html">P4031</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4032.html">P4032</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P4033.html">P4033</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../compiler/problems/P6003.html">P6003</a></li>
@@ -667,12 +669,20 @@
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&code=Y29uZmlnIDo9IERXT1JEIzE2IzAwRkYwMDAwOwpmbGFnX2JpdCA6PSBEV09SRCMxNiMwMDAwMDAwMTsKdXBkYXRlZCA6PSBjb25maWcgT1IgZmxhZ19iaXQ7ICAoKiB1cGRhdGVkID0gMTYjMDBGRjAwMDEgKik%3D&vars=Y29uZmlnIDogRFdPUkQ7IGZsYWdfYml0IDogRFdPUkQ7IHVwZGF0ZWQgOiBEV09SRDs%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:386px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
+<section id="bit-access">
+<h2>Bit Access<a class="headerlink" href="#bit-access" title="Link to this heading">¶</a></h2>
+<p>Individual bits can be read and written using <code class="docutils literal notranslate"><span class="pre">.n</span></code> or <code class="docutils literal notranslate"><span class="pre">.%Xn</span></code> syntax
+(for example, <code class="docutils literal notranslate"><span class="pre">config.12</span></code> or <code class="docutils literal notranslate"><span class="pre">config.%X12</span></code>). Valid indices are
+<code class="docutils literal notranslate"><span class="pre">0..31</span></code>. See <a class="reference internal" href="../../structured-text/bit-access.html"><span class="doc">Bit Access</span></a>.</p>
+</section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><a class="reference internal" href="word.html"><span class="doc">WORD</span></a> — 16-bit bit string</p></li>
 <li><p><a class="reference internal" href="lword.html"><span class="doc">LWORD</span></a> — 64-bit bit string</p></li>
 <li><p><a class="reference internal" href="udint.html"><span class="doc">UDINT</span></a> — 32-bit unsigned integer</p></li>
+<li><p><a class="reference internal" href="../../structured-text/bit-access.html"><span class="doc">Bit Access</span></a> — selecting an
+individual bit of a bit-string value</p></li>
 </ul>
 </section>
 </section>
@@ -743,6 +753,7 @@
 <li><a class="reference internal" href="#">DWORD</a><ul>
 <li><a class="reference internal" href="#literals">Literals</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#bit-access">Bit Access</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>

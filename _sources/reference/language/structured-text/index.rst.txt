@@ -23,6 +23,8 @@ Statements
      - Description
    * - :doc:`assignment`
      - Assign a value to a variable
+   * - :doc:`bit-access`
+     - Access a single bit of an integer or bit-string variable
    * - :doc:`if`
      - Conditional branching
    * - :doc:`case`
@@ -117,6 +119,7 @@ Operators are listed from highest to lowest precedence.
    :hidden:
 
    assignment
+   bit-access
    if
    case
    for

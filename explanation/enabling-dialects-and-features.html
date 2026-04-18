@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.201.0">
+<meta name="ironplc-version" content="0.202.0">
 </head>
   <body>
     
@@ -318,6 +318,7 @@
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/language/structured-text/index.html">Structured Text</a><input aria-label="Toggle navigation of Structured Text" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/assignment.html">Assignment</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/bit-access.html">Bit Access</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/if.html">IF</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/case.html">CASE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/structured-text/for.html">FOR</a></li>
@@ -518,6 +519,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4030.html">P4030</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4031.html">P4031</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4032.html">P4032</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4033.html">P4033</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -749,6 +751,12 @@ For example, passing a <code class="docutils literal notranslate"><span class="p
 expected, or passing a bare integer literal <code class="docutils literal notranslate"><span class="pre">0</span></code> where a <code class="docutils literal notranslate"><span class="pre">BYTE</span></code>
 parameter is expected. This is a vendor extension supported by CODESYS,
 TwinCAT, and RuSTy.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-partial-access-syntax</span></code></dt><dd><p>Allow IEC 61131-3:2013 partial-access bit syntax <code class="docutils literal notranslate"><span class="pre">.%Xn</span></code> (e.g.,
+<code class="docutils literal notranslate"><span class="pre">myByte.%X3</span></code> to access bit 3 of a <code class="docutils literal notranslate"><span class="pre">BYTE</span></code>). Semantically equivalent to
+the short form <code class="docutils literal notranslate"><span class="pre">.n</span></code>. Enabled by <code class="docutils literal notranslate"><span class="pre">--dialect=iec61131-3-ed3</span></code> and
+<code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code>. Byte/word/dword/lword partial access (<code class="docutils literal notranslate"><span class="pre">.%Bn</span></code>,
+<code class="docutils literal notranslate"><span class="pre">.%Wn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Dn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Ln</span></code>) is not yet supported.</p>
 </dd>
 </dl>
 <p>Pass the flag when running <strong class="program">ironplcc</strong>:</p>

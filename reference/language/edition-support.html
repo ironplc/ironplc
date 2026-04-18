@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.201.0">
+<meta name="ironplc-version" content="0.202.0">
 </head>
   <body>
     
@@ -318,6 +318,7 @@
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="structured-text/index.html">Structured Text</a><input aria-label="Toggle navigation of Structured Text" class="toctree-checkbox" id="toctree-checkbox-13" name="toctree-checkbox-13" role="switch" type="checkbox"/><label for="toctree-checkbox-13"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="structured-text/assignment.html">Assignment</a></li>
+<li class="toctree-l4"><a class="reference internal" href="structured-text/bit-access.html">Bit Access</a></li>
 <li class="toctree-l4"><a class="reference internal" href="structured-text/if.html">IF</a></li>
 <li class="toctree-l4"><a class="reference internal" href="structured-text/case.html">CASE</a></li>
 <li class="toctree-l4"><a class="reference internal" href="structured-text/for.html">FOR</a></li>
@@ -518,6 +519,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4030.html">P4030</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4031.html">P4031</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4032.html">P4032</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4033.html">P4033</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -684,6 +686,11 @@ compiler or VS Code extension.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NULL</span></code></p></td>
 <td><p>Literal</p></td>
 <td><p>Null reference value</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="structured-text/bit-access.html"><span class="doc">.%Xn</span></a></p></td>
+<td><p>Partial access</p></td>
+<td><p>Bit access via explicit partial-access syntax (equivalent to the
+<code class="docutils literal notranslate"><span class="pre">.n</span></code> short form; byte/word/dword/lword forms are not yet supported)</p></td>
 </tr>
 </tbody>
 </table>
