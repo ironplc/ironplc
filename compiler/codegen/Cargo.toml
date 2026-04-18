@@ -1,22 +1,22 @@
 [package]
 name = "ironplc-codegen"
 description = "Bytecode code generator for IronPLC"
-version = "0.201.0"
+version = "0.203.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-ironplc-dsl = { path = "../dsl", version = "0.201.0" }
-ironplc-container = { path = "../container", version = "0.201.0" }
-ironplc-problems = { path = "../problems", version = "0.201.0" }
-ironplc-analyzer = { path = "../analyzer", version = "0.201.0" }
+ironplc-dsl = { path = "../dsl", version = "0.203.0" }
+ironplc-container = { path = "../container", version = "0.203.0" }
+ironplc-problems = { path = "../problems", version = "0.203.0" }
+ironplc-analyzer = { path = "../analyzer", version = "0.203.0" }
 
 [dev-dependencies]
-ironplc-analyzer = { path = "../analyzer", version = "0.201.0" }
-ironplc-parser = { path = "../parser", version = "0.201.0" }
-ironplc-vm = { path = "../vm", version = "0.201.0", features = ["test-support"] }
+ironplc-analyzer = { path = "../analyzer", version = "0.203.0" }
+ironplc-parser = { path = "../parser", version = "0.203.0" }
+ironplc-vm = { path = "../vm", version = "0.203.0", features = ["test-support"] }
 spec_test_macro = { path = "../spec_test_macro" }
 proptest = "1"
 rstest = "0.26"
