@@ -956,6 +956,7 @@ dependencies = [
  "log",
  "predicates",
  "rmcp",
+ "rstest",
  "schemars",
  "serde",
  "serde_json",

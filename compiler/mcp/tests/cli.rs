@@ -6,6 +6,7 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use rstest::rstest;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,453 +72,151 @@ fn initialize_when_valid_handshake_then_returns_protocol_version(
 }
 
 // ---------------------------------------------------------------------------
-// parse tool
+// Tool-call argument fixtures
+//
+// Most tool-call tests below differ only in (tool name, JSON args, expected
+// substring), so the JSON payloads are factored out as named constants and
+// reused across the parametrized table. Add a new constant only when the
+// payload is genuinely new — prefer reusing an existing one.
 // ---------------------------------------------------------------------------
 
-#[test]
-fn parse_when_valid_program_then_ok_true() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "parse",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":true"#));
-    Ok(())
-}
+/// Single valid 2-line program; no semantic checks fail.
+const ARGS_VALID_PROGRAM: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
 
-#[test]
-fn parse_when_valid_program_then_structure_contains_program(
+/// Truncated program that fails parsing.
+const ARGS_SYNTAX_ERROR: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
+/// Program that parses but references an undeclared variable `y`.
+const ARGS_SEMANTIC_ERROR: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
+/// Source whose `name` is empty — triggers input validation (P8001).
+const ARGS_EMPTY_SOURCE_NAME: &str = r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
+/// Valid sources but `options` is missing the `dialect` field — triggers P8001.
+const ARGS_MISSING_DIALECT: &str =
+    r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{}}"#;
+
+/// Compilable program with an explicit DINT initialization.
+const ARGS_COMPILE_VALID: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
+/// Compile input that also declares a CONFIGURATION + RESOURCE + TASK.
+const ARGS_COMPILE_WITH_CONFIG: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM\n\nCONFIGURATION config\n  RESOURCE resource1 ON PLC\n    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\n    PROGRAM program1 WITH plc_task : Main;\n  END_RESOURCE\nEND_CONFIGURATION"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
+/// Program with a single declared variable — used by the `symbols` happy path.
+const ARGS_SYMBOLS_VALID: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
+/// Program that defines an enumerated TYPE — used by `project_manifest`.
+const ARGS_ENUM_TYPE: &str = r#"{"sources":[{"name":"main.st","content":"TYPE MyEnum : (A, B, C); END_TYPE\nPROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
+// ---------------------------------------------------------------------------
+// Per-tool happy/error paths
+//
+// Each case invokes the named MCP tool with the given JSON arguments and
+// asserts the expected substring appears in stdout. This single parametrized
+// test replaces 29 hand-written `#[test] fn`s that all followed this exact
+// shape (cargo-dupes group `36d0bb0d`).
+// ---------------------------------------------------------------------------
+#[rstest]
+// parse
+#[case::parse_valid_program_ok_true("parse", ARGS_VALID_PROGRAM, r#"\"ok\":true"#)]
+#[case::parse_valid_program_structure_program(
+    "parse",
+    ARGS_VALID_PROGRAM,
+    r#"\"kind\":\"program\""#
+)]
+#[case::parse_syntax_error_ok_false("parse", ARGS_SYNTAX_ERROR, r#"\"ok\":false"#)]
+#[case::parse_syntax_error_diagnostics_code("parse", ARGS_SYNTAX_ERROR, r#"\"code\":"#)]
+#[case::parse_empty_source_name_validation_error("parse", ARGS_EMPTY_SOURCE_NAME, "P8001")]
+#[case::parse_missing_dialect_validation_error("parse", ARGS_MISSING_DIALECT, "P8001")]
+// check
+#[case::check_valid_program_ok_true("check", ARGS_VALID_PROGRAM, r#"\"ok\":true"#)]
+#[case::check_syntax_error_ok_false("check", ARGS_SYNTAX_ERROR, r#"\"ok\":false"#)]
+#[case::check_semantic_error_ok_false("check", ARGS_SEMANTIC_ERROR, r#"\"ok\":false"#)]
+#[case::check_semantic_error_diagnostics("check", ARGS_SEMANTIC_ERROR, r#"\"code\":"#)]
+#[case::check_empty_source_name_validation_error("check", ARGS_EMPTY_SOURCE_NAME, "P8001")]
+#[case::check_missing_dialect_validation_error("check", ARGS_MISSING_DIALECT, "P8001")]
+// compile
+#[case::compile_valid_program_ok_true("compile", ARGS_COMPILE_VALID, r#"\"ok\":true"#)]
+#[case::compile_valid_program_container_id_present(
+    "compile",
+    ARGS_COMPILE_VALID,
+    r#"\"container_id\":\"c_"#
+)]
+#[case::compile_with_config_tasks_populated(
+    "compile",
+    ARGS_COMPILE_WITH_CONFIG,
+    r#"\"name\":\"plc_task\""#
+)]
+#[case::compile_with_config_programs_populated(
+    "compile",
+    ARGS_COMPILE_WITH_CONFIG,
+    r#"\"name\":\"program1\""#
+)]
+#[case::compile_syntax_error_ok_false("compile", ARGS_SYNTAX_ERROR, r#"\"ok\":false"#)]
+#[case::compile_empty_source_name_validation_error("compile", ARGS_EMPTY_SOURCE_NAME, "P8001")]
+#[case::compile_missing_dialect_validation_error("compile", ARGS_MISSING_DIALECT, "P8001")]
+// symbols
+#[case::symbols_valid_program_ok_true("symbols", ARGS_SYMBOLS_VALID, r#"\"ok\":true"#)]
+#[case::symbols_valid_program_programs_populated(
+    "symbols",
+    ARGS_SYMBOLS_VALID,
+    r#"\"name\":\"p\""#
+)]
+#[case::symbols_semantic_error_ok_false("symbols", ARGS_SEMANTIC_ERROR, r#"\"ok\":false"#)]
+#[case::symbols_empty_source_name_validation_error("symbols", ARGS_EMPTY_SOURCE_NAME, "P8001")]
+#[case::symbols_missing_dialect_validation_error("symbols", ARGS_MISSING_DIALECT, "P8001")]
+// project_manifest
+#[case::project_manifest_valid_program_ok_true(
+    "project_manifest",
+    ARGS_VALID_PROGRAM,
+    r#"\"ok\":true"#
+)]
+#[case::project_manifest_enum_type_in_enumerations(
+    "project_manifest",
+    ARGS_ENUM_TYPE,
+    r#"\"enumerations\":[\"MyEnum\"]"#
+)]
+#[case::project_manifest_semantic_error_ok_false(
+    "project_manifest",
+    ARGS_SEMANTIC_ERROR,
+    r#"\"ok\":false"#
+)]
+#[case::project_manifest_empty_source_name_validation_error(
+    "project_manifest",
+    ARGS_EMPTY_SOURCE_NAME,
+    "P8001"
+)]
+#[case::project_manifest_missing_dialect_validation_error(
+    "project_manifest",
+    ARGS_MISSING_DIALECT,
+    "P8001"
+)]
+fn tool_call_then_stdout_contains(
+    #[case] tool: &str,
+    #[case] arguments_json: &str,
+    #[case] expected: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "parse",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
+    let stdin = mcp_tool_call(tool, arguments_json);
     Command::cargo_bin("ironplcmcp")?
         .write_stdin(stdin)
         .assert()
         .success()
-        .stdout(predicate::str::contains(r#"\"kind\":\"program\""#));
+        .stdout(predicate::str::contains(expected));
     Ok(())
 }
 
-#[test]
-fn parse_when_syntax_error_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "parse",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":false"#));
-    Ok(())
-}
-
-#[test]
-fn parse_when_syntax_error_then_diagnostics_contain_code() -> Result<(), Box<dyn std::error::Error>>
-{
-    let stdin = mcp_tool_call(
-        "parse",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"code\":"#));
-    Ok(())
-}
-
-#[test]
-fn parse_when_empty_source_name_then_validation_error() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "parse",
-        r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
-    Ok(())
-}
-
-#[test]
-fn parse_when_missing_dialect_then_validation_error() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "parse",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// check tool
-// ---------------------------------------------------------------------------
-
-#[test]
-fn check_when_valid_program_then_ok_true() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "check",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":true"#));
-    Ok(())
-}
-
-#[test]
-fn check_when_syntax_error_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "check",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":false"#));
-    Ok(())
-}
-
-#[test]
-fn check_when_semantic_error_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "check",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":false"#));
-    Ok(())
-}
-
-#[test]
-fn check_when_semantic_error_then_diagnostics_present() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "check",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"code\":"#));
-    Ok(())
-}
-
-#[test]
-fn check_when_empty_source_name_then_validation_error() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "check",
-        r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
-    Ok(())
-}
-
-#[test]
-fn check_when_missing_dialect_then_validation_error() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "check",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// compile tool
-// ---------------------------------------------------------------------------
-
-#[test]
-fn compile_when_valid_program_then_ok_true() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "compile",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":true"#));
-    Ok(())
-}
-
-#[test]
-fn compile_when_valid_program_then_container_id_present() -> Result<(), Box<dyn std::error::Error>>
-{
-    let stdin = mcp_tool_call(
-        "compile",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"container_id\":\"c_"#));
-    Ok(())
-}
-
-#[test]
-fn compile_when_valid_program_with_config_then_tasks_populated(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "compile",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM\n\nCONFIGURATION config\n  RESOURCE resource1 ON PLC\n    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\n    PROGRAM program1 WITH plc_task : Main;\n  END_RESOURCE\nEND_CONFIGURATION"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"name\":\"plc_task\""#));
-    Ok(())
-}
-
-#[test]
-fn compile_when_valid_program_with_config_then_programs_populated(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "compile",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM\n\nCONFIGURATION config\n  RESOURCE resource1 ON PLC\n    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\n    PROGRAM program1 WITH plc_task : Main;\n  END_RESOURCE\nEND_CONFIGURATION"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"name\":\"program1\""#));
-    Ok(())
-}
-
-#[test]
-fn compile_when_syntax_error_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "compile",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":false"#));
-    Ok(())
-}
-
-#[test]
-fn compile_when_empty_source_name_then_validation_error() -> Result<(), Box<dyn std::error::Error>>
-{
-    let stdin = mcp_tool_call(
-        "compile",
-        r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
-    Ok(())
-}
-
-#[test]
-fn compile_when_missing_dialect_then_validation_error() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "compile",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// symbols tool
-// ---------------------------------------------------------------------------
-
-#[test]
-fn symbols_when_valid_program_then_ok_true() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "symbols",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":true"#));
-    Ok(())
-}
-
-#[test]
-fn symbols_when_valid_program_then_programs_populated() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "symbols",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"name\":\"p\""#));
-    Ok(())
-}
-
-#[test]
-fn symbols_when_semantic_error_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "symbols",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":false"#));
-    Ok(())
-}
-
-#[test]
-fn symbols_when_empty_source_name_then_validation_error() -> Result<(), Box<dyn std::error::Error>>
-{
-    let stdin = mcp_tool_call(
-        "symbols",
-        r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
-    Ok(())
-}
-
-#[test]
-fn symbols_when_missing_dialect_then_validation_error() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "symbols",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// project_manifest tool
-// ---------------------------------------------------------------------------
-
-#[test]
-fn project_manifest_when_valid_program_then_ok_true() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "project_manifest",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":true"#));
-    Ok(())
-}
-
+/// `project_manifest` returns both `files` and `programs` arrays for a valid
+/// program. Asserts both substrings, so this case doesn't fit the single-
+/// substring shape used by the parametrized table above.
 #[test]
 fn project_manifest_when_valid_program_then_files_and_programs_populated(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "project_manifest",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
+    let stdin = mcp_tool_call("project_manifest", ARGS_VALID_PROGRAM);
     Command::cargo_bin("ironplcmcp")?
         .write_stdin(stdin)
         .assert()
         .success()
         .stdout(predicate::str::contains(r#"\"files\":[\"main.st\"]"#))
         .stdout(predicate::str::contains(r#"\"programs\":[\"p\"]"#));
-    Ok(())
-}
-
-#[test]
-fn project_manifest_when_enum_type_then_in_enumerations() -> Result<(), Box<dyn std::error::Error>>
-{
-    let stdin = mcp_tool_call(
-        "project_manifest",
-        r#"{"sources":[{"name":"main.st","content":"TYPE MyEnum : (A, B, C); END_TYPE\nPROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"enumerations\":[\"MyEnum\"]"#));
-    Ok(())
-}
-
-#[test]
-fn project_manifest_when_semantic_error_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "project_manifest",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(r#"\"ok\":false"#));
-    Ok(())
-}
-
-#[test]
-fn project_manifest_when_empty_source_name_then_validation_error(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "project_manifest",
-        r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
-    Ok(())
-}
-
-#[test]
-fn project_manifest_when_missing_dialect_then_validation_error(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let stdin = mcp_tool_call(
-        "project_manifest",
-        r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{}}"#,
-    );
-    Command::cargo_bin("ironplcmcp")?
-        .write_stdin(stdin)
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("P8001"));
     Ok(())
 }
