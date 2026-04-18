@@ -91,6 +91,18 @@ jobs:
       ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
       ironplc-vscode-extension-name: "garretfick.ironplc"
 
+  install-script-smoke-test:
+    name: Install Script Smoke Test
+    # Verify the curl | sh installer works against the just-published
+    # release on Linux and macOS. Failing this blocks publish-website
+    # (via the needs list below), so a broken install.sh cannot reach
+    # https://www.ironplc.com/install.sh.
+    needs: [release, publish-prerelease]
+    uses: ./.github/workflows/partial_install_script_test.yaml
+    if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
+    with:
+      compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
+
   playground-e2e-test:
     name: Playground E2E Test
     # Run browser-based E2E tests against the built playground before publishing
@@ -100,8 +112,10 @@ jobs:
   publish-website:
     name: Build and Publish Website
     # The website doesn't depend on these but we don't publish
-    # if those are failing so we depend on those.
-    needs: [release, smoke-test, playground-e2e-test]
+    # if those are failing so we depend on those. In particular,
+    # install-script-smoke-test must pass before we publish the
+    # docs site, because the site serves install.sh.
+    needs: [release, smoke-test, install-script-smoke-test, playground-e2e-test]
     uses: ./.github/workflows/partial_website.yaml
     with:
       publish: ${{ !inputs.dryrun }}

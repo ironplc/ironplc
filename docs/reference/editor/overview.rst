@@ -22,6 +22,12 @@ The extension provides:
 * Automatic bracket matching for block keywords (``IF``/``END_IF``, ``FUNCTION``/``END_FUNCTION``, etc.)
 * Real-time diagnostic analysis
 
+.. figure:: images/syntax-highlighting.png
+   :alt: VS Code showing an IEC 61131-3 Structured Text file with syntax highlighting
+   :width: 600px
+
+   Structured Text with syntax highlighting in VS Code.
+
 PLCopen XML
 -----------
 
@@ -71,6 +77,12 @@ Opening an :file:`.iplc` bytecode file displays a human-readable disassembly of
 the compiled program, including the file header, constant pool, and function
 instructions with color-coded opcodes. See :doc:`bytecode-viewer` for details.
 
+.. figure:: images/bytecode-viewer.png
+   :alt: VS Code custom editor showing disassembled IPLC bytecode with color-coded opcodes
+   :width: 600px
+
+   The bytecode viewer showing a disassembled :file:`.iplc` file.
+
 Diagnostics
 ===========
 
@@ -82,3 +94,9 @@ The extension reports diagnostics from the IronPLC compiler in real-time:
 Each diagnostic includes a problem code (e.g., P0001) linking to documentation
 that explains the issue and how to resolve it. See :doc:`/reference/compiler/problems/index`
 for the complete list.
+
+.. figure:: images/diagnostics-squiggles.png
+   :alt: VS Code editor showing red and yellow diagnostic squiggles on invalid Structured Text code
+   :width: 600px
+
+   Diagnostics with error squiggles and problem codes.
