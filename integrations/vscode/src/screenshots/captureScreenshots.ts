@@ -42,6 +42,25 @@ async function waitForEditor(page: Page): Promise<void> {
   await page.waitForTimeout(2000);
 }
 
+async function dismissNotifications(page: Page): Promise<void> {
+  // The "extensions temporarily disabled" notification appears after the editor loads.
+  // Wait briefly for it to appear, then dismiss all toasts.
+  await page.waitForTimeout(2000);
+  const toasts = page.locator('.notifications-toasts .notification-toast');
+  const count = await toasts.count();
+  for (let i = count - 1; i >= 0; i--) {
+    const toast = toasts.nth(i);
+    if (await toast.isVisible()) {
+      const closeBtn = toast.locator('a.action-label[title="Close Notification"], .codicon-notifications-clear, .codicon-close');
+      const closeBtnCount = await closeBtn.count();
+      if (closeBtnCount > 0 && await closeBtn.first().isVisible()) {
+        await closeBtn.first().click();
+        await page.waitForTimeout(200);
+      }
+    }
+  }
+}
+
 async function hideSideBar(page: Page): Promise<void> {
   const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
   await page.keyboard.press(`${modifier}+b`);
@@ -61,6 +80,7 @@ export async function captureSyntaxHighlighting(
     const page = await app.firstWindow();
     await setWindowSize(page);
     await waitForEditor(page);
+    await dismissNotifications(page);
     await hideSideBar(page);
     await page.waitForTimeout(1000);
     await page.screenshot({ path: outputPath, type: 'png' });
@@ -80,6 +100,7 @@ export async function captureDiagnostics(
     const page = await app.firstWindow();
     await setWindowSize(page);
     await waitForEditor(page);
+    await dismissNotifications(page);
     await hideSideBar(page);
     try {
       await page.waitForSelector('.squiggly-error, .squiggly-warning', { timeout: 15000 });
@@ -105,6 +126,7 @@ export async function captureSettings(
     const page = await app.firstWindow();
     await setWindowSize(page);
     await waitForEditor(page);
+    await dismissNotifications(page);
     const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
     await page.keyboard.press(`${modifier}+,`);
     await page.waitForSelector('.settings-editor', { timeout: 10000 });
