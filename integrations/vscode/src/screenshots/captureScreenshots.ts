@@ -153,6 +153,73 @@ export async function captureDiagnosticsWithProblems(
   }
 }
 
+export async function captureRunProgramCodeLens(
+  opts: Omit<LaunchOptions, 'filePath'>,
+  outputPath: string,
+): Promise<void> {
+  const app = await launchVSCode({ ...opts, filePath: VALID_ST });
+  try {
+    const page = await app.firstWindow();
+    await setWindowSize(page);
+    await waitForEditor(page);
+    await dismissNotifications(page);
+    await hideSideBar(page);
+    try {
+      // Wait for the "Run Program" code lens to appear above the PROGRAM declaration.
+      await page.waitForSelector('.codelens-decoration a', { timeout: 15000 });
+    }
+    catch {
+      console.warn('Warning: Run Program code lens did not appear within timeout');
+    }
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: outputPath, type: 'png' });
+    console.log(`Captured: ${outputPath}`);
+  }
+  finally {
+    await app.close();
+  }
+}
+
+export async function captureRunningProgram(
+  opts: Omit<LaunchOptions, 'filePath'>,
+  outputPath: string,
+): Promise<void> {
+  const app = await launchVSCode({ ...opts, filePath: VALID_ST });
+  try {
+    const page = await app.firstWindow();
+    await setWindowSize(page);
+    await waitForEditor(page);
+    await dismissNotifications(page);
+    await hideSideBar(page);
+    try {
+      // Wait for the "Run Program" code lens, then click it to start execution.
+      const runLens = page.locator('.codelens-decoration a', { hasText: 'Run Program' }).first();
+      await runLens.waitFor({ timeout: 15000 });
+      await runLens.click();
+    }
+    catch {
+      console.warn('Warning: Run Program code lens did not appear or could not be clicked');
+    }
+    try {
+      // Wait for the Stop status bar item — signals the program is running.
+      await page.waitForSelector('.statusbar-item[id*="stopProgram"], .statusbar-item', {
+        timeout: 10000,
+      });
+      // Also wait for the Pause/Stop code lenses to replace "Run Program".
+      await page.locator('.codelens-decoration a', { hasText: 'Stop' }).first().waitFor({ timeout: 10000 });
+    }
+    catch {
+      console.warn('Warning: running state indicators did not appear within timeout');
+    }
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: outputPath, type: 'png' });
+    console.log(`Captured: ${outputPath}`);
+  }
+  finally {
+    await app.close();
+  }
+}
+
 export async function captureSettings(
   opts: Omit<LaunchOptions, 'filePath'>,
   outputPath: string,

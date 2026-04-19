@@ -7,6 +7,8 @@ import {
   captureSyntaxHighlighting,
   captureDiagnostics,
   captureDiagnosticsWithProblems,
+  captureRunProgramCodeLens,
+  captureRunningProgram,
   captureSettings,
   captureBytecodeViewer,
 } from './captureScreenshots';
@@ -59,10 +61,18 @@ async function main(): Promise<void> {
 
       console.log('\n--- Diagnostics with Problems Panel ---');
       await captureDiagnosticsWithProblems(opts, path.join(editorOutputDir, 'diagnostics-problems.png'));
+
+      console.log('\n--- Run Program Code Lens ---');
+      await captureRunProgramCodeLens(opts, path.join(editorOutputDir, 'run-program-code-lens.png'));
+
+      console.log('\n--- Running Program ---');
+      await captureRunningProgram(opts, path.join(editorOutputDir, 'run-program-running.png'));
     }
     else {
       console.log('\n--- Diagnostics: SKIPPED (ironplcc not found on PATH) ---');
       console.log('\n--- Diagnostics with Problems Panel: SKIPPED (ironplcc not found on PATH) ---');
+      console.log('\n--- Run Program Code Lens: SKIPPED (ironplcc not found on PATH) ---');
+      console.log('\n--- Running Program: SKIPPED (ironplcc not found on PATH) ---');
     }
 
     console.log('\n--- Settings Panel ---');
