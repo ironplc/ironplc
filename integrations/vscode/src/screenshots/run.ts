@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const editorOutputDir = path.resolve(__dirname, '../../docs/reference/editor/images');
   fs.mkdirSync(editorOutputDir, { recursive: true });
 
-  const extensionPath = path.resolve(__dirname, '../');
+  const extensionPath = path.resolve(__dirname, '../../');
   const vscodePath = await downloadAndUnzipVSCode('stable');
   console.log(`VS Code path: ${vscodePath}`);
 

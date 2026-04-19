@@ -4,6 +4,10 @@ import { _electron, ElectronApplication, Page } from 'playwright';
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 
+// Source files live under src/, not out/, so resolve relative to the workspace root.
+const VALID_ST = path.resolve(__dirname, '../../src/test/functional/resources/valid.st');
+const INVALID_ST = path.resolve(__dirname, 'fixtures/invalid.st');
+
 interface LaunchOptions {
   vscodePath: string;
   extensionPath: string;
@@ -13,7 +17,6 @@ interface LaunchOptions {
 
 async function launchVSCode(opts: LaunchOptions): Promise<ElectronApplication> {
   const args = [
-    opts.vscodePath,
     `--extensionDevelopmentPath=${opts.extensionPath}`,
     `--user-data-dir=${opts.userDataDir}`,
     '--disable-extensions',
@@ -27,6 +30,7 @@ async function launchVSCode(opts: LaunchOptions): Promise<ElectronApplication> {
   const electronEnv: Record<string, string> = { ...process.env as Record<string, string> };
   electronEnv['ELECTRON_DISABLE_SANDBOX'] = '1';
   const app = await _electron.launch({
+    executablePath: opts.vscodePath,
     args,
     env: electronEnv,
   });
@@ -52,8 +56,7 @@ export async function captureSyntaxHighlighting(
   opts: Omit<LaunchOptions, 'filePath'>,
   outputPath: string,
 ): Promise<void> {
-  const validSt = path.resolve(__dirname, '../test/functional/resources/valid.st');
-  const app = await launchVSCode({ ...opts, filePath: validSt });
+  const app = await launchVSCode({ ...opts, filePath: VALID_ST });
   try {
     const page = await app.firstWindow();
     await setWindowSize(page);
@@ -72,8 +75,7 @@ export async function captureDiagnostics(
   opts: Omit<LaunchOptions, 'filePath'>,
   outputPath: string,
 ): Promise<void> {
-  const invalidSt = path.resolve(__dirname, 'fixtures/invalid.st');
-  const app = await launchVSCode({ ...opts, filePath: invalidSt });
+  const app = await launchVSCode({ ...opts, filePath: INVALID_ST });
   try {
     const page = await app.firstWindow();
     await setWindowSize(page);
@@ -98,8 +100,7 @@ export async function captureSettings(
   opts: Omit<LaunchOptions, 'filePath'>,
   outputPath: string,
 ): Promise<void> {
-  const validSt = path.resolve(__dirname, '../test/functional/resources/valid.st');
-  const app = await launchVSCode({ ...opts, filePath: validSt });
+  const app = await launchVSCode({ ...opts, filePath: VALID_ST });
   try {
     const page = await app.firstWindow();
     await setWindowSize(page);
@@ -108,8 +109,10 @@ export async function captureSettings(
     await page.keyboard.press(`${modifier}+,`);
     await page.waitForSelector('.settings-editor', { timeout: 10000 });
     await page.waitForTimeout(500);
-    const searchInput = page.locator('.settings-editor .suggest-input-container input');
-    await searchInput.fill('ironplc');
+
+    // The settings search bar is a hidden Monaco widget — type directly since
+    // VS Code focuses it automatically when settings opens via the keyboard shortcut.
+    await page.keyboard.type('ironplc');
     await page.waitForTimeout(2000);
     await page.screenshot({ path: outputPath, type: 'png' });
     console.log(`Captured: ${outputPath}`);

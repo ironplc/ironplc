@@ -249,6 +249,7 @@
     "test-compile": "tsc -p ./",
     "precompile": "npm run generate-problems",
     "compile": "tsc -p ./",
+    "postcompile": "cp src/screenshots/settings.json out/screenshots/settings.json && cp -r src/screenshots/fixtures out/screenshots/fixtures",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "validate-grammars": "ajv validate -s schemas/tmlanguage.json -d \"syntaxes/*.tmLanguage.json\"",
