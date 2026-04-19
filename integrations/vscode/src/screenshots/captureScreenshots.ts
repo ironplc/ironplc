@@ -63,8 +63,15 @@ async function dismissNotifications(page: Page): Promise<void> {
 
 async function hideSideBar(page: Page): Promise<void> {
   const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  // Hide the primary side bar.
   await page.keyboard.press(`${modifier}+b`);
   await page.waitForTimeout(500);
+  // Hide the secondary side bar (AI chat panels live here) only if it is visible.
+  const secondarySideBar = page.locator('.part.auxiliarybar');
+  if (await secondarySideBar.isVisible()) {
+    await page.keyboard.press(`${modifier}+Alt+b`);
+    await page.waitForTimeout(500);
+  }
 }
 
 async function setWindowSize(page: Page): Promise<void> {
