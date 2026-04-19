@@ -117,6 +117,42 @@ export async function captureDiagnostics(
   }
 }
 
+export async function captureDiagnosticsWithProblems(
+  opts: Omit<LaunchOptions, 'filePath'>,
+  outputPath: string,
+): Promise<void> {
+  const app = await launchVSCode({ ...opts, filePath: INVALID_ST });
+  try {
+    const page = await app.firstWindow();
+    await setWindowSize(page);
+    await waitForEditor(page);
+    await dismissNotifications(page);
+    await hideSideBar(page);
+    try {
+      await page.waitForSelector('.squiggly-error, .squiggly-warning', { timeout: 15000 });
+    }
+    catch {
+      console.warn('Warning: diagnostic squiggles did not appear within timeout');
+    }
+    // Open the Problems panel via keyboard shortcut
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+m`);
+    try {
+      // Wait for at least one problem entry to appear in the panel
+      await page.waitForSelector('.markers-panel .monaco-list-row', { timeout: 10000 });
+    }
+    catch {
+      console.warn('Warning: problem entries did not appear in the Problems panel within timeout');
+    }
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: outputPath, type: 'png' });
+    console.log(`Captured: ${outputPath}`);
+  }
+  finally {
+    await app.close();
+  }
+}
+
 export async function captureSettings(
   opts: Omit<LaunchOptions, 'filePath'>,
   outputPath: string,

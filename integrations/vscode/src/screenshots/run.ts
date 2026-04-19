@@ -6,13 +6,23 @@ import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 import {
   captureSyntaxHighlighting,
   captureDiagnostics,
+  captureDiagnosticsWithProblems,
   captureSettings,
   captureBytecodeViewer,
 } from './captureScreenshots';
 
 function hasIronplcc(): boolean {
+  // Augment PATH with common install locations that may not be inherited when
+  // node is launched via `just` (e.g. ~/.cargo/bin for Rust-installed binaries).
+  const extraPaths = [
+    path.join(os.homedir(), '.cargo', 'bin'),
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+  ];
+  const augmentedPath = [...extraPaths, process.env['PATH'] ?? ''].join(path.delimiter);
+  const env = { ...process.env, PATH: augmentedPath };
   try {
-    execSync('ironplcc --version', { stdio: 'ignore' });
+    execSync('ironplcc version', { stdio: 'ignore', env });
     return true;
   }
   catch {
@@ -46,9 +56,13 @@ async function main(): Promise<void> {
     if (ironplccAvailable) {
       console.log('\n--- Diagnostics ---');
       await captureDiagnostics(opts, path.join(editorOutputDir, 'diagnostics-squiggles.png'));
+
+      console.log('\n--- Diagnostics with Problems Panel ---');
+      await captureDiagnosticsWithProblems(opts, path.join(editorOutputDir, 'diagnostics-problems.png'));
     }
     else {
       console.log('\n--- Diagnostics: SKIPPED (ironplcc not found on PATH) ---');
+      console.log('\n--- Diagnostics with Problems Panel: SKIPPED (ironplcc not found on PATH) ---');
     }
 
     console.log('\n--- Settings Panel ---');
