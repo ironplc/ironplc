@@ -603,7 +603,7 @@ fn hex_string(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_container::ContainerBuilder;
+    use ironplc_container::{ContainerBuilder, FunctionId};
     use std::io::Cursor;
     use std::io::Write;
     use tempfile::NamedTempFile;
@@ -625,13 +625,34 @@ mod tests {
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 2, 0)
+            .add_function(FunctionId::new(0), &bytecode, 2, 2, 0)
             .build();
 
         // Round-trip through serialization to fill in offsets
         let mut buf = Vec::new();
         container.write_to(&mut buf).unwrap();
         Container::read_from(&mut Cursor::new(&buf)).unwrap()
+    }
+
+    /// Builds a minimal container whose single function contains the given bytecode.
+    ///
+    /// The container has no constants and no variables. Round-trips through
+    /// serialization so all section offsets are populated correctly.
+    fn container_with_bytecode(bytecode: Vec<u8>) -> Container {
+        let container = ContainerBuilder::new()
+            .add_function(FunctionId::new(0), &bytecode, 4, 0, 0)
+            .build();
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+        Container::read_from(&mut Cursor::new(&buf)).unwrap()
+    }
+
+    /// Returns the first decoded instruction from a container built with the
+    /// given bytecode. Convenience wrapper used by single-opcode tests.
+    fn first_instruction(bytecode: Vec<u8>) -> serde_json::Value {
+        let container = container_with_bytecode(bytecode);
+        let result = disassemble(&container);
+        result["functions"][0]["instructions"][0].clone()
     }
 
     // ---------------------------------------------------------------
@@ -814,5 +835,370 @@ mod tests {
 
         let result = disassemble_file(tmp.path());
         assert!(result["error"].is_string());
+    }
+
+    // ---------------------------------------------------------------
+    // disassemble_file: missing-file error path
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn disassemble_file_when_path_does_not_exist_then_returns_error_with_message() {
+        let result = disassemble_file(std::path::Path::new("/nonexistent/path/file.iplc"));
+        let msg = result["error"].as_str().unwrap();
+        assert!(
+            msg.contains("Failed to open file"),
+            "unexpected message: {msg}"
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // format_const_value: non-I32 types
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn format_const_value_when_u32_then_formats_correctly() {
+        let bytes = 4294967295u32.to_le_bytes(); // u32::MAX
+        assert_eq!(format_const_value(ConstType::U32, &bytes), "4294967295");
+    }
+
+    #[test]
+    fn format_const_value_when_i64_then_formats_correctly() {
+        let bytes = (-1i64).to_le_bytes();
+        assert_eq!(format_const_value(ConstType::I64, &bytes), "-1");
+    }
+
+    #[test]
+    fn format_const_value_when_u64_then_formats_correctly() {
+        let bytes = 100u64.to_le_bytes();
+        assert_eq!(format_const_value(ConstType::U64, &bytes), "100");
+    }
+
+    #[test]
+    fn format_const_value_when_f32_then_formats_correctly() {
+        let bytes = 1.5f32.to_le_bytes();
+        assert_eq!(format_const_value(ConstType::F32, &bytes), "1.5");
+    }
+
+    #[test]
+    fn format_const_value_when_f64_then_formats_correctly() {
+        let bytes = 2.5f64.to_le_bytes();
+        assert_eq!(format_const_value(ConstType::F64, &bytes), "2.5");
+    }
+
+    #[test]
+    fn format_const_value_when_too_few_bytes_then_returns_invalid() {
+        assert_eq!(
+            format_const_value(ConstType::I32, &[0u8; 2]),
+            "<invalid: 2 bytes>"
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // hex_string
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn hex_string_when_bytes_then_returns_lowercase_hex() {
+        assert_eq!(hex_string(&[0xDE, 0xAD, 0xBE, 0xEF]), "deadbeef");
+    }
+
+    #[test]
+    fn hex_string_when_empty_then_returns_empty_string() {
+        assert_eq!(hex_string(&[]), "");
+    }
+
+    // ---------------------------------------------------------------
+    // decode_instructions: no-operand opcodes
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn decode_when_load_true_then_opcode_name_and_empty_operands() {
+        let instr = first_instruction(vec![opcode::LOAD_TRUE, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "LOAD_TRUE");
+        assert_eq!(instr["operands"], "");
+    }
+
+    #[test]
+    fn decode_when_load_false_then_opcode_name_and_empty_operands() {
+        let instr = first_instruction(vec![opcode::LOAD_FALSE, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "LOAD_FALSE");
+        assert_eq!(instr["operands"], "");
+    }
+
+    #[test]
+    fn decode_when_sub_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::SUB_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "SUB_I32");
+    }
+
+    #[test]
+    fn decode_when_mul_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::MUL_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "MUL_I32");
+    }
+
+    #[test]
+    fn decode_when_div_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::DIV_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "DIV_I32");
+    }
+
+    #[test]
+    fn decode_when_mod_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::MOD_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "MOD_I32");
+    }
+
+    #[test]
+    fn decode_when_neg_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::NEG_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "NEG_I32");
+    }
+
+    #[test]
+    fn decode_when_eq_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::EQ_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "EQ_I32");
+    }
+
+    #[test]
+    fn decode_when_ne_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::NE_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "NE_I32");
+    }
+
+    #[test]
+    fn decode_when_lt_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::LT_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "LT_I32");
+    }
+
+    #[test]
+    fn decode_when_le_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::LE_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "LE_I32");
+    }
+
+    #[test]
+    fn decode_when_gt_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::GT_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "GT_I32");
+    }
+
+    #[test]
+    fn decode_when_ge_i32_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::GE_I32, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "GE_I32");
+    }
+
+    #[test]
+    fn decode_when_bool_and_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::BOOL_AND, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "BOOL_AND");
+    }
+
+    #[test]
+    fn decode_when_bool_or_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::BOOL_OR, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "BOOL_OR");
+    }
+
+    #[test]
+    fn decode_when_bool_xor_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::BOOL_XOR, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "BOOL_XOR");
+    }
+
+    #[test]
+    fn decode_when_bool_not_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::BOOL_NOT, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "BOOL_NOT");
+    }
+
+    #[test]
+    fn decode_when_dup_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::DUP, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "DUP");
+    }
+
+    #[test]
+    fn decode_when_swap_then_opcode_name() {
+        let instr = first_instruction(vec![opcode::SWAP, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], "SWAP");
+    }
+
+    // ---------------------------------------------------------------
+    // decode_instructions: jump opcodes (computed target comment)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn decode_when_jmp_forward_then_comment_shows_target_address() {
+        // JMP offset=+2: target = 0 + 3 + 2 = 5
+        let bytecode = vec![
+            opcode::JMP,
+            0x02,
+            0x00,
+            opcode::RET_VOID,
+            0x00,
+            opcode::RET_VOID,
+        ];
+        let instr = first_instruction(bytecode);
+        assert_eq!(instr["opcode"], "JMP");
+        assert_eq!(instr["operands"], "offset: +2");
+        assert_eq!(instr["comment"], "-> 5");
+    }
+
+    #[test]
+    fn decode_when_jmp_if_not_then_comment_shows_target_address() {
+        // JMP_IF_NOT offset=-3: target = 0 + 3 + (-3) = 0
+        let bytecode = vec![opcode::JMP_IF_NOT, 0xFD, 0xFF, opcode::RET_VOID];
+        let instr = first_instruction(bytecode);
+        assert_eq!(instr["opcode"], "JMP_IF_NOT");
+        assert_eq!(instr["comment"], "-> 0");
+    }
+
+    // ---------------------------------------------------------------
+    // decode_instructions: BUILTIN named sub-IDs
+    // ---------------------------------------------------------------
+
+    fn builtin_instruction(func_id: u16) -> serde_json::Value {
+        let id = func_id.to_le_bytes();
+        first_instruction(vec![opcode::BUILTIN, id[0], id[1], opcode::RET_VOID])
+    }
+
+    #[test]
+    fn decode_when_builtin_expt_i32_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::EXPT_I32);
+        assert_eq!(instr["operands"], "EXPT_I32 (0x0340)");
+    }
+
+    #[test]
+    fn decode_when_builtin_abs_i32_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::ABS_I32);
+        assert_eq!(instr["operands"], "ABS_I32 (0x0343)");
+    }
+
+    #[test]
+    fn decode_when_builtin_min_i32_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::MIN_I32);
+        assert_eq!(instr["operands"], "MIN_I32 (0x0344)");
+    }
+
+    #[test]
+    fn decode_when_builtin_max_f64_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::MAX_F64);
+        assert_eq!(instr["operands"], "MAX_F64 (0x0359)");
+    }
+
+    #[test]
+    fn decode_when_builtin_limit_f32_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::LIMIT_F32);
+        assert_eq!(instr["operands"], "LIMIT_F32 (0x035A)");
+    }
+
+    #[test]
+    fn decode_when_builtin_sel_i32_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::SEL_I32);
+        assert_eq!(instr["operands"], "SEL_I32 (0x0347)");
+    }
+
+    #[test]
+    fn decode_when_builtin_shl_i32_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::SHL_I32);
+        assert_eq!(instr["operands"], "SHL_I32 (0x0348)");
+    }
+
+    #[test]
+    fn decode_when_builtin_rol_u8_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::ROL_U8);
+        assert_eq!(instr["operands"], "ROL_U8 (0x0350)");
+    }
+
+    #[test]
+    fn decode_when_builtin_bcd_to_int_32_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::BCD_TO_INT_32);
+        assert_eq!(instr["operands"], "BCD_TO_INT_32 (0x0393)");
+    }
+
+    #[test]
+    fn decode_when_builtin_int_to_bcd_64_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::INT_TO_BCD_64);
+        assert_eq!(instr["operands"], "INT_TO_BCD_64 (0x0398)");
+    }
+
+    #[test]
+    fn decode_when_builtin_sqrt_f32_then_operand_shows_name() {
+        let instr = builtin_instruction(opcode::builtin::SQRT_F32);
+        assert_eq!(instr["operands"], "SQRT_F32 (0x035E)");
+    }
+
+    #[test]
+    fn decode_when_builtin_mux_i32_then_operand_shows_width_and_n() {
+        // MUX_I32_BASE + 3 = MUX with 3 inputs
+        let instr = builtin_instruction(opcode::builtin::MUX_I32_BASE + 3);
+        let operands = instr["operands"].as_str().unwrap();
+        assert!(operands.starts_with("MUX_I32(3)"), "got: {operands}");
+    }
+
+    #[test]
+    fn decode_when_builtin_mux_i64_then_operand_shows_width_and_n() {
+        let instr = builtin_instruction(opcode::builtin::MUX_I64_BASE + 2);
+        let operands = instr["operands"].as_str().unwrap();
+        assert!(operands.starts_with("MUX_I64(2)"), "got: {operands}");
+    }
+
+    #[test]
+    fn decode_when_builtin_mux_f32_then_operand_shows_width_and_n() {
+        let instr = builtin_instruction(opcode::builtin::MUX_F32_BASE + 4);
+        let operands = instr["operands"].as_str().unwrap();
+        assert!(operands.starts_with("MUX_F32(4)"), "got: {operands}");
+    }
+
+    #[test]
+    fn decode_when_builtin_mux_f64_then_operand_shows_width_and_n() {
+        let instr = builtin_instruction(opcode::builtin::MUX_F64_BASE + 5);
+        let operands = instr["operands"].as_str().unwrap();
+        assert!(operands.starts_with("MUX_F64(5)"), "got: {operands}");
+    }
+
+    #[test]
+    fn decode_when_builtin_unknown_id_then_operand_shows_hex() {
+        let instr = builtin_instruction(0x00FF);
+        assert_eq!(instr["operands"], "0x00FF");
+    }
+
+    // ---------------------------------------------------------------
+    // decode_instructions: unknown opcode fallback
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn decode_when_unknown_opcode_then_shows_hex_and_advances_one_byte() {
+        let bytecode = vec![0xFE, opcode::RET_VOID];
+        let container = container_with_bytecode(bytecode);
+        let result = disassemble(&container);
+        let instructions = result["functions"][0]["instructions"].as_array().unwrap();
+        assert_eq!(instructions.len(), 2);
+        assert_eq!(instructions[0]["opcode"], "UNKNOWN(0xFE)");
+        assert_eq!(instructions[0]["operands"], "");
+    }
+
+    // ---------------------------------------------------------------
+    // lookup_const_comment: out-of-range pool index
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn decode_when_const_pool_index_out_of_range_then_comment_shows_invalid() {
+        // pool[99] but the pool only has one entry
+        let bytecode = vec![opcode::LOAD_CONST_I32, 0x63, 0x00, opcode::RET_VOID];
+        let container = ContainerBuilder::new()
+            .add_i32_constant(42)
+            .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 0, 0)
+            .build();
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+        let container = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+        let result = disassemble(&container);
+        let instr = &result["functions"][0]["instructions"][0];
+        assert_eq!(instr["comment"], "= <invalid pool index 99>");
     }
 }
