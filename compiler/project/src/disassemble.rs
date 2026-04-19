@@ -845,7 +845,10 @@ mod tests {
     fn disassemble_file_when_path_does_not_exist_then_returns_error_with_message() {
         let result = disassemble_file(std::path::Path::new("/nonexistent/path/file.iplc"));
         let msg = result["error"].as_str().unwrap();
-        assert!(msg.contains("Failed to open file"), "unexpected message: {msg}");
+        assert!(
+            msg.contains("Failed to open file"),
+            "unexpected message: {msg}"
+        );
     }
 
     // ---------------------------------------------------------------
@@ -1031,7 +1034,14 @@ mod tests {
     #[test]
     fn decode_when_jmp_forward_then_comment_shows_target_address() {
         // JMP offset=+2: target = 0 + 3 + 2 = 5
-        let bytecode = vec![opcode::JMP, 0x02, 0x00, opcode::RET_VOID, 0x00, opcode::RET_VOID];
+        let bytecode = vec![
+            opcode::JMP,
+            0x02,
+            0x00,
+            opcode::RET_VOID,
+            0x00,
+            opcode::RET_VOID,
+        ];
         let instr = first_instruction(bytecode);
         assert_eq!(instr["opcode"], "JMP");
         assert_eq!(instr["operands"], "offset: +2");
