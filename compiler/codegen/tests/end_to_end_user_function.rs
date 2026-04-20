@@ -1,246 +1,78 @@
 //! End-to-end integration tests for user-defined function calls.
 
+#[macro_use]
 mod common;
-use ironplc_parser::options::{CompilerOptions, Dialect};
 
 use common::parse_and_run;
+use ironplc_parser::options::{CompilerOptions, Dialect};
 
-#[test]
-fn end_to_end_when_user_function_add_then_returns_sum() {
-    let source = "
-FUNCTION add_two : DINT
-  VAR_INPUT
-    a : DINT;
-    b : DINT;
-  END_VAR
-  add_two := a + b;
-END_FUNCTION
+e2e_i32!(
+    end_to_end_when_user_function_add_then_returns_sum,
+    "FUNCTION add_two : DINT VAR_INPUT a : DINT; b : DINT; END_VAR add_two := a + b; END_FUNCTION PROGRAM main VAR result : DINT; END_VAR result := add_two(3, 7); END_PROGRAM",
+    &[(0, 10)],
+);
 
-PROGRAM main
-  VAR
-    result : DINT;
-  END_VAR
-  result := add_two(3, 7);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+e2e_i32!(
+    end_to_end_when_user_function_with_local_var_then_correct,
+    "FUNCTION double_plus_one : DINT VAR_INPUT x : DINT; END_VAR VAR temp : DINT; END_VAR temp := x * 2; double_plus_one := temp + 1; END_FUNCTION PROGRAM main VAR result : DINT; END_VAR result := double_plus_one(5); END_PROGRAM",
+    &[(0, 11)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-}
+e2e_i32!(
+    end_to_end_when_user_function_called_twice_then_both_correct,
+    "FUNCTION square : DINT VAR_INPUT n : DINT; END_VAR square := n * n; END_FUNCTION PROGRAM main VAR a : DINT; b : DINT; END_VAR a := square(3); b := square(5); END_PROGRAM",
+    &[(0, 9), (1, 25)],
+);
 
-#[test]
-fn end_to_end_when_user_function_with_local_var_then_correct() {
-    let source = "
-FUNCTION double_plus_one : DINT
-  VAR_INPUT
-    x : DINT;
-  END_VAR
-  VAR
-    temp : DINT;
-  END_VAR
-  temp := x * 2;
-  double_plus_one := temp + 1;
-END_FUNCTION
+e2e_i32!(
+    end_to_end_when_user_function_in_expression_then_correct,
+    "FUNCTION inc : DINT VAR_INPUT x : DINT; END_VAR inc := x + 1; END_FUNCTION PROGRAM main VAR result : DINT; END_VAR result := inc(10) + inc(20); END_PROGRAM",
+    &[(0, 32)],
+);
 
-PROGRAM main
-  VAR
-    result : DINT;
-  END_VAR
-  result := double_plus_one(5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+// FOO assigns 8, then shifts right by 1: 8 >> 1 = 4.
+e2e_i32!(
+    end_to_end_when_user_function_assigns_return_var_then_uses_in_builtin_then_correct,
+    "FUNCTION FOO : INT VAR_INPUT A : INT; END_VAR FOO := 8; FOO := SHR(FOO, 1); END_FUNCTION PROGRAM main VAR result : INT; END_VAR result := FOO(A := 5); END_PROGRAM",
+    &[(0, 4)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 11);
-}
+// The motivating example from ADR-0024: a function with a local variable that
+// has an initial value must re-initialize on every call.
+// First call: counter starts at 10, adds 5 -> 15.
+// Second call: counter must restart at 10 (not 15), adds 3 -> 13.
+e2e_i32!(
+    end_to_end_when_function_called_twice_then_locals_reinitialized,
+    "FUNCTION accumulate : DINT VAR_INPUT a : DINT; END_VAR VAR counter : DINT := 10; END_VAR counter := counter + a; accumulate := counter; END_FUNCTION PROGRAM main VAR r1 : DINT; r2 : DINT; END_VAR r1 := accumulate(5); r2 := accumulate(3); END_PROGRAM",
+    &[(0, 15), (1, 13)],
+);
 
-#[test]
-fn end_to_end_when_user_function_called_twice_then_both_correct() {
-    let source = "
-FUNCTION square : DINT
-  VAR_INPUT
-    n : DINT;
-  END_VAR
-  square := n * n;
-END_FUNCTION
+// A function with a local variable that has no explicit initializer must be
+// zero-initialized on every call.
+// First call: accum starts at 0, adds 7 -> 7.
+// Second call: accum must restart at 0 (not 7), adds 3 -> 3.
+e2e_i32!(
+    end_to_end_when_function_called_twice_then_zero_default_locals_reinitialized,
+    "FUNCTION sum_via_local : DINT VAR_INPUT x : DINT; END_VAR VAR accum : DINT; END_VAR accum := accum + x; sum_via_local := accum; END_FUNCTION PROGRAM main VAR r1 : DINT; r2 : DINT; END_VAR r1 := sum_via_local(7); r2 := sum_via_local(3); END_PROGRAM",
+    &[(0, 7), (1, 3)],
+);
 
-PROGRAM main
-  VAR
-    a : DINT;
-    b : DINT;
-  END_VAR
-  a := square(3);
-  b := square(5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+// The return variable must also be zero-initialized on every call. If it
+// retained its value, the second call would see the first call's result.
+// First call: flag > 0, so return 42.
+// Second call: flag = 0, so return value stays at default (0), not stale 42.
+e2e_i32!(
+    end_to_end_when_function_called_twice_then_return_value_reinitialized,
+    "FUNCTION conditional_set : DINT VAR_INPUT flag : DINT; END_VAR IF flag > 0 THEN conditional_set := 42; END_IF; END_FUNCTION PROGRAM main VAR r1 : DINT; r2 : DINT; END_VAR r1 := conditional_set(1); r2 := conditional_set(0); END_PROGRAM",
+    &[(0, 42), (1, 0)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 9);
-    assert_eq!(bufs.vars[1].as_i32(), 25);
-}
-
-#[test]
-fn end_to_end_when_user_function_in_expression_then_correct() {
-    let source = "
-FUNCTION inc : DINT
-  VAR_INPUT
-    x : DINT;
-  END_VAR
-  inc := x + 1;
-END_FUNCTION
-
-PROGRAM main
-  VAR
-    result : DINT;
-  END_VAR
-  result := inc(10) + inc(20);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 32);
-}
-
-#[test]
-fn end_to_end_when_user_function_assigns_return_var_then_uses_in_builtin_then_correct() {
-    let source = "
-FUNCTION FOO : INT
-  VAR_INPUT
-    A : INT;
-  END_VAR
-  FOO := 8;
-  FOO := SHR(FOO, 1);
-END_FUNCTION
-
-PROGRAM main
-  VAR
-    result : INT;
-  END_VAR
-  result := FOO(A := 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // FOO assigns 8, then shifts right by 1: 8 >> 1 = 4
-    assert_eq!(bufs.vars[0].as_i32(), 4);
-}
-
-#[test]
-fn end_to_end_when_function_called_twice_then_locals_reinitialized() {
-    // The motivating example from ADR-0024: a function with a local variable
-    // that has an initial value must re-initialize on every call.
-    let source = "
-FUNCTION accumulate : DINT
-  VAR_INPUT a : DINT; END_VAR
-  VAR counter : DINT := 10; END_VAR
-  counter := counter + a;
-  accumulate := counter;
-END_FUNCTION
-
-PROGRAM main
-  VAR
-    r1 : DINT;
-    r2 : DINT;
-  END_VAR
-  r1 := accumulate(5);
-  r2 := accumulate(3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // First call: counter starts at 10, adds 5 → 15
-    assert_eq!(bufs.vars[0].as_i32(), 15);
-    // Second call: counter must restart at 10 (not 15), adds 3 → 13
-    assert_eq!(bufs.vars[1].as_i32(), 13);
-}
-
-#[test]
-fn end_to_end_when_function_called_twice_then_zero_default_locals_reinitialized() {
-    // A function with a local variable that has no explicit initializer
-    // must be zero-initialized on every call.
-    let source = "
-FUNCTION sum_via_local : DINT
-  VAR_INPUT x : DINT; END_VAR
-  VAR accum : DINT; END_VAR
-  accum := accum + x;
-  sum_via_local := accum;
-END_FUNCTION
-
-PROGRAM main
-  VAR
-    r1 : DINT;
-    r2 : DINT;
-  END_VAR
-  r1 := sum_via_local(7);
-  r2 := sum_via_local(3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // First call: accum starts at 0, adds 7 → 7
-    assert_eq!(bufs.vars[0].as_i32(), 7);
-    // Second call: accum must restart at 0 (not 7), adds 3 → 3
-    assert_eq!(bufs.vars[1].as_i32(), 3);
-}
-
-#[test]
-fn end_to_end_when_function_called_twice_then_return_value_reinitialized() {
-    // The return variable must also be zero-initialized on every call.
-    // If it retained its value, the second call would see the first call's result.
-    let source = "
-FUNCTION conditional_set : DINT
-  VAR_INPUT flag : DINT; END_VAR
-  IF flag > 0 THEN
-    conditional_set := 42;
-  END_IF;
-END_FUNCTION
-
-PROGRAM main
-  VAR
-    r1 : DINT;
-    r2 : DINT;
-  END_VAR
-  r1 := conditional_set(1);
-  r2 := conditional_set(0);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // First call: flag > 0, so return 42
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-    // Second call: flag = 0, so return value stays at default (0), not stale 42
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_user_function_calls_another_user_function_then_correct() {
-    let source = "
-FUNCTION INNER : DINT
-  VAR_INPUT
-    X : DINT;
-  END_VAR
-  INNER := X * 2;
-END_FUNCTION
-
-FUNCTION OUTER : DINT
-  VAR_INPUT
-    Y : DINT;
-  END_VAR
-  OUTER := INNER(X := Y);
-END_FUNCTION
-
-PROGRAM main
-  VAR
-    result : DINT;
-  END_VAR
-  result := OUTER(Y := 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // OUTER(3) calls INNER(3), which returns 3 * 2 = 6
-    assert_eq!(bufs.vars[0].as_i32(), 6);
-}
+// OUTER(3) calls INNER(3), which returns 3 * 2 = 6.
+e2e_i32!(
+    end_to_end_when_user_function_calls_another_user_function_then_correct,
+    "FUNCTION INNER : DINT VAR_INPUT X : DINT; END_VAR INNER := X * 2; END_FUNCTION FUNCTION OUTER : DINT VAR_INPUT Y : DINT; END_VAR OUTER := INNER(X := Y); END_FUNCTION PROGRAM main VAR result : DINT; END_VAR result := OUTER(Y := 3); END_PROGRAM",
+    &[(0, 6)],
+);
 
 #[test]
 fn end_to_end_when_unused_function_defined_then_result_unchanged() {
@@ -312,208 +144,56 @@ END_PROGRAM
     assert_eq!(bufs2.vars[0].as_f32(), 7.0);
 }
 
-#[test]
-fn end_to_end_when_user_function_with_string_param_calls_len_then_returns_length() {
-    let source = "
-FUNCTION MY_LEN : INT
-VAR_INPUT
-    S : STRING;
-END_VAR
-    MY_LEN := LEN(S);
-END_FUNCTION
-PROGRAM main
-VAR
-    result : INT;
-END_VAR
-    result := MY_LEN(S := 'Hello');
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+e2e_i32!(
+    end_to_end_when_user_function_with_string_param_calls_len_then_returns_length,
+    "FUNCTION MY_LEN : INT VAR_INPUT S : STRING; END_VAR MY_LEN := LEN(S); END_FUNCTION PROGRAM main VAR result : INT; END_VAR result := MY_LEN(S := 'Hello'); END_PROGRAM",
+    &[(0, 5)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-}
+// 'Hi there' has 8 characters.
+e2e_i32!(
+    end_to_end_when_user_function_with_string_param_from_variable_then_correct,
+    "FUNCTION MY_LEN : INT VAR_INPUT S : STRING; END_VAR MY_LEN := LEN(S); END_FUNCTION PROGRAM main VAR greeting : STRING := 'Hi there'; result : INT; END_VAR result := MY_LEN(S := greeting); END_PROGRAM",
+    &[(1, 8)],
+);
 
-#[test]
-fn end_to_end_when_user_function_with_string_param_from_variable_then_correct() {
-    let source = "
-FUNCTION MY_LEN : INT
-VAR_INPUT
-    S : STRING;
-END_VAR
-    MY_LEN := LEN(S);
-END_FUNCTION
-PROGRAM main
-VAR
-    greeting : STRING := 'Hi there';
-    result : INT;
-END_VAR
-    result := MY_LEN(S := greeting);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+e2e_i32!(
+    end_to_end_when_user_function_with_string_and_scalar_params_then_correct,
+    "FUNCTION CHECK_LEN : INT VAR_INPUT S : STRING; expected : INT; END_VAR VAR actual : INT; END_VAR actual := LEN(S); IF actual = expected THEN CHECK_LEN := 1; ELSE CHECK_LEN := 0; END_IF; END_FUNCTION PROGRAM main VAR result : INT; END_VAR result := CHECK_LEN(S := 'ABC', expected := 3); END_PROGRAM",
+    &[(0, 1)],
+);
 
-    // 'Hi there' has 8 characters.
-    assert_eq!(bufs.vars[1].as_i32(), 8);
-}
+e2e_i32!(
+    end_to_end_when_user_function_with_string_param_called_twice_then_both_correct,
+    "FUNCTION MY_LEN : INT VAR_INPUT S : STRING; END_VAR MY_LEN := LEN(S); END_FUNCTION PROGRAM main VAR r1 : INT; r2 : INT; END_VAR r1 := MY_LEN(S := 'AB'); r2 := MY_LEN(S := 'ABCDE'); END_PROGRAM",
+    &[(0, 2), (1, 5)],
+);
 
-#[test]
-fn end_to_end_when_user_function_with_string_and_scalar_params_then_correct() {
-    let source = "
-FUNCTION CHECK_LEN : INT
-VAR_INPUT
-    S : STRING;
-    expected : INT;
-END_VAR
-VAR
-    actual : INT;
-END_VAR
-    actual := LEN(S);
-    IF actual = expected THEN
-        CHECK_LEN := 1;
-    ELSE
-        CHECK_LEN := 0;
-    END_IF;
-END_FUNCTION
-PROGRAM main
-VAR
-    result : INT;
-END_VAR
-    result := CHECK_LEN(S := 'ABC', expected := 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+// -2.5 < 0.0 is TRUE (1), 2.5 < 0.0 is FALSE (0).
+e2e_i32!(
+    end_to_end_when_user_function_with_real_comparison_then_correct,
+    "FUNCTION SIGN_R : BOOL VAR_INPUT in : REAL; END_VAR SIGN_R := in < 0.0; END_FUNCTION PROGRAM main VAR neg : BOOL; pos : BOOL; END_VAR neg := SIGN_R(in := -2.5); pos := SIGN_R(in := 2.5); END_PROGRAM",
+    &[(0, 1), (1, 0)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-}
+// ADD_TEN receives 5, adds 10, returns 15.
+e2e_i32!(
+    end_to_end_when_user_function_with_inout_dint_then_correct,
+    "FUNCTION ADD_TEN : DINT VAR_IN_OUT data : DINT; END_VAR data := data + 10; ADD_TEN := data; END_FUNCTION PROGRAM main VAR x : DINT := 5; result : DINT; END_VAR result := ADD_TEN(data := x); END_PROGRAM",
+    &[(1, 15)],
+);
 
-#[test]
-fn end_to_end_when_user_function_with_string_param_called_twice_then_both_correct() {
-    let source = "
-FUNCTION MY_LEN : INT
-VAR_INPUT
-    S : STRING;
-END_VAR
-    MY_LEN := LEN(S);
-END_FUNCTION
-PROGRAM main
-VAR
-    r1 : INT;
-    r2 : INT;
-END_VAR
-    r1 := MY_LEN(S := 'AB');
-    r2 := MY_LEN(S := 'ABCDE');
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+// ADD_N receives data=100 and n=42, returns 142.
+e2e_i32!(
+    end_to_end_when_user_function_with_inout_and_input_then_correct,
+    "FUNCTION ADD_N : DINT VAR_INPUT n : DINT; END_VAR VAR_IN_OUT data : DINT; END_VAR data := data + n; ADD_N := data; END_FUNCTION PROGRAM main VAR x : DINT := 100; result : DINT; END_VAR result := ADD_N(n := 42, data := x); END_PROGRAM",
+    &[(1, 142)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 2);
-    assert_eq!(bufs.vars[1].as_i32(), 5);
-}
-
-#[test]
-fn end_to_end_when_user_function_with_real_comparison_then_correct() {
-    let source = "
-FUNCTION SIGN_R : BOOL
-VAR_INPUT
-    in : REAL;
-END_VAR
-    SIGN_R := in < 0.0;
-END_FUNCTION
-PROGRAM main
-VAR
-    neg : BOOL;
-    pos : BOOL;
-END_VAR
-    neg := SIGN_R(in := -2.5);
-    pos := SIGN_R(in := 2.5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // -2.5 < 0.0 is TRUE (1), 2.5 < 0.0 is FALSE (0)
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_user_function_with_inout_dint_then_correct() {
-    let source = "
-FUNCTION ADD_TEN : DINT
-  VAR_IN_OUT
-    data : DINT;
-  END_VAR
-  data := data + 10;
-  ADD_TEN := data;
-END_FUNCTION
-
-PROGRAM main
-  VAR
-    x : DINT := 5;
-    result : DINT;
-  END_VAR
-  result := ADD_TEN(data := x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // ADD_TEN receives 5, adds 10, returns 15
-    assert_eq!(bufs.vars[1].as_i32(), 15);
-}
-
-#[test]
-fn end_to_end_when_user_function_with_inout_and_input_then_correct() {
-    let source = "
-FUNCTION ADD_N : DINT
-  VAR_INPUT
-    n : DINT;
-  END_VAR
-  VAR_IN_OUT
-    data : DINT;
-  END_VAR
-  data := data + n;
-  ADD_N := data;
-END_FUNCTION
-
-PROGRAM main
-  VAR
-    x : DINT := 100;
-    result : DINT;
-  END_VAR
-  result := ADD_N(n := 42, data := x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // ADD_N receives data=100 and n=42, returns 142
-    assert_eq!(bufs.vars[1].as_i32(), 142);
-}
-
-#[test]
-fn end_to_end_when_user_function_with_inout_string_ref_then_correct() {
-    let source = "
-FUNCTION MY_FUNC : BOOL
-  VAR_IN_OUT
-      data : STRING[80];
-  END_VAR
-  VAR
-      pt : REF_TO BYTE;
-  END_VAR
-      pt := REF(data);
-      MY_FUNC := TRUE;
-END_FUNCTION
-
-PROGRAM main
-  VAR
-      s : STRING[80] := 'hello';
-      result : BOOL;
-  END_VAR
-      result := MY_FUNC(data := s);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
+// REF_TO in a function VAR_IN_OUT — needs Ed3 dialect.
+e2e_i32_with!(
+    end_to_end_when_user_function_with_inout_string_ref_then_correct,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "FUNCTION MY_FUNC : BOOL VAR_IN_OUT data : STRING[80]; END_VAR VAR pt : REF_TO BYTE; END_VAR pt := REF(data); MY_FUNC := TRUE; END_FUNCTION PROGRAM main VAR s : STRING[80] := 'hello'; result : BOOL; END_VAR result := MY_FUNC(data := s); END_PROGRAM",
+    &[(1, 1)],
+);

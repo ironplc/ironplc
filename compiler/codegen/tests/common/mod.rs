@@ -122,6 +122,51 @@ pub fn assert_run_i32_with(source: &str, options: &CompilerOptions, asserts: &[(
     }
 }
 
+/// Same as [`assert_run_i32`] but reads slots as f32 (REAL). Uses exact bit
+/// equality so tests must choose inputs that produce deterministic results.
+pub fn assert_run_f32(source: &str, asserts: &[(usize, f32)]) {
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_f32(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Same as [`assert_run_i32`] but reads slots as f64 (LREAL). Uses exact bit
+/// equality so tests must choose inputs that produce deterministic results.
+pub fn assert_run_f64(source: &str, asserts: &[(usize, f64)]) {
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_f64(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Like [`assert_run_f32`] but asserts each value is within `tolerance` of
+/// the expected value. Use when arithmetic (pow, transcendentals) produces
+/// values that can't be represented exactly in f32.
+pub fn assert_run_f32_near(source: &str, tolerance: f32, asserts: &[(usize, f32)]) {
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    for (idx, expected) in asserts {
+        let actual = bufs.vars[*idx].as_f32();
+        assert!(
+            (actual - *expected).abs() < tolerance,
+            "vars[{idx}]: expected {expected}, got {actual}"
+        );
+    }
+}
+
+/// Like [`assert_run_f64`] but asserts each value is within `tolerance` of
+/// the expected value.
+pub fn assert_run_f64_near(source: &str, tolerance: f64, asserts: &[(usize, f64)]) {
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    for (idx, expected) in asserts {
+        let actual = bufs.vars[*idx].as_f64();
+        assert!(
+            (actual - *expected).abs() < tolerance,
+            "vars[{idx}]: expected {expected}, got {actual}"
+        );
+    }
+}
+
 /// Declares a `#[test] fn` that asserts an IEC 61131-3 program produces the
 /// given i32 var values.
 ///
@@ -165,6 +210,51 @@ macro_rules! e2e_i32_with {
         #[test]
         fn $name() {
             common::assert_run_i32_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32`] but reads slots as f32 (REAL).
+macro_rules! e2e_f32 {
+    ($(#[$meta:meta])* $name:ident, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            common::assert_run_f32($source, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32`] but reads slots as f64 (LREAL).
+macro_rules! e2e_f64 {
+    ($(#[$meta:meta])* $name:ident, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            common::assert_run_f64($source, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_f32`] but takes an explicit tolerance. Use when the expected
+/// f32 value cannot be represented exactly (e.g. results of `**`, sqrt, ln).
+macro_rules! e2e_f32_near {
+    ($(#[$meta:meta])* $name:ident, $tol:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            common::assert_run_f32_near($source, $tol, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_f64`] but takes an explicit tolerance.
+macro_rules! e2e_f64_near {
+    ($(#[$meta:meta])* $name:ident, $tol:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            common::assert_run_f64_near($source, $tol, $asserts);
         }
     };
 }
