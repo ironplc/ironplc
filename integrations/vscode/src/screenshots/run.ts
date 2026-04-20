@@ -11,7 +11,7 @@ import {
   captureRunningProgram,
   captureSettings,
   captureBytecodeViewer,
-  captureMcpServers,
+  captureMcpConfig,
 } from './captureScreenshots';
 
 function augmentedEnv(): NodeJS.ProcessEnv {
@@ -99,13 +99,8 @@ async function main(): Promise<void> {
     console.log('\n--- Settings Panel ---');
     await captureSettings(opts, path.join(editorOutputDir, 'settings-panel.png'));
 
-    if (ironplcmcpAvailable) {
-      console.log('\n--- MCP Servers View ---');
-      await captureMcpServers(opts, path.join(aiAgentsOutputDir, 'mcp-servers-view.png'));
-    }
-    else {
-      console.log('\n--- MCP Servers View: SKIPPED (ironplcmcp not found on PATH) ---');
-    }
+    console.log('\n--- MCP Config ---');
+    await captureMcpConfig(opts, path.join(aiAgentsOutputDir, 'mcp-config.png'));
 
     const iplcFixture = path.resolve(__dirname, 'fixtures/sample.iplc');
     if (fs.existsSync(iplcFixture)) {
