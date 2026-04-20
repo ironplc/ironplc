@@ -12,6 +12,8 @@ IronPLC is a compiler (`ironplcc`), runtime (`ironplcvm`), VS Code extension,
 browser playground, and MCP server for writing and running IEC 61131-3
 programs on off-the-shelf hardware — no proprietary IDE required.
 
+![](images/run-program-code-lens.png)
+
 ## Quick Start
 
 Install on Linux or macOS:
