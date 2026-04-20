@@ -101,6 +101,17 @@ that matches your agent.
    #. Type :command:`/mcp` to confirm that the IronPLC server is
       listed and connected.
 
+Once the server is configured, VS Code lists the IronPLC MCP server and
+its tools in the Extensions view under :guilabel:`MCP Servers - Installed`:
+
+.. figure:: images/mcp-servers-view.png
+   :alt: VS Code Extensions view showing the IronPLC MCP server and the
+         tools it exposes (check, compile, explain_diagnostic, and others)
+   :width: 600px
+
+   IronPLC's MCP server registered in VS Code, with the compiler tools
+   available to any MCP-compatible agent.
+
 --------------------------------------
 Write a Motor Start/Stop Program
 --------------------------------------
