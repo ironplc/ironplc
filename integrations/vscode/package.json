@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IEC 61131-3 Structured Text language support with real-time error checking, syntax highlighting, and build tools for PLC programs.",
-  "version": "0.203.0",
+  "version": "0.204.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -249,6 +249,7 @@
     "test-compile": "tsc -p ./",
     "precompile": "npm run generate-problems",
     "compile": "tsc -p ./",
+    "postcompile": "cp src/screenshots/settings.json out/screenshots/settings.json && cp -r src/screenshots/fixtures out/screenshots/fixtures",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "validate-grammars": "ajv validate -s schemas/tmlanguage.json -d \"syntaxes/*.tmLanguage.json\"",

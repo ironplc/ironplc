@@ -2389,4 +2389,62 @@ mod tests {
 
         assert!(vm.run_round(0).is_ok());
     }
+
+    #[test]
+    fn vm_default_when_called_then_loads_container() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let ready = Vm::default().load(&c, &mut b);
+
+        assert_eq!(ready.read_variable(VarIndex::new(0)).unwrap(), 0);
+    }
+
+    #[test]
+    fn vm_ready_read_variable_raw_when_before_init_then_returns_zero_slot() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let ready = Vm::new().load(&c, &mut b);
+
+        assert_eq!(ready.read_variable_raw(VarIndex::new(0)).unwrap(), 0u64);
+        assert_eq!(ready.read_variable_raw(VarIndex::new(1)).unwrap(), 0u64);
+    }
+
+    #[test]
+    fn vm_run_round_when_no_tasks_enabled_then_returns_ok_without_executing() {
+        use ironplc_container::{ProgramInstanceEntry, TaskEntry};
+
+        let c = ContainerBuilder::new()
+            .num_variables(0)
+            .add_function(FunctionId::INIT, &[0xB5], 0, 0, 0)
+            .add_function(FunctionId::SCAN, &[0xB5], 0, 0, 0)
+            .add_task(TaskEntry {
+                task_id: TaskId::DEFAULT,
+                priority: 0,
+                task_type: TaskType::Freewheeling,
+                flags: 0x00, // disabled
+                interval_us: 0,
+                single_var_index: VarIndex::NO_SINGLE_VAR,
+                watchdog_us: 0,
+                input_image_offset: 0,
+                output_image_offset: 0,
+                reserved: [0; 4],
+            })
+            .add_program_instance(ProgramInstanceEntry {
+                instance_id: InstanceId::DEFAULT,
+                task_id: TaskId::DEFAULT,
+                entry_function_id: FunctionId::SCAN,
+                var_table_offset: 0,
+                var_table_count: 0,
+                fb_instance_offset: 0,
+                fb_instance_count: 0,
+                init_function_id: FunctionId::INIT,
+            })
+            .init_function_id(FunctionId::INIT)
+            .entry_function_id(FunctionId::SCAN)
+            .build();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        assert!(vm.run_round(0).is_ok());
+    }
 }
