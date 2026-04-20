@@ -18,7 +18,7 @@ files, so you can use it alongside your existing PLC development environment.
 
 The long-term vision is to become a full development environment for
 building IEC 61131-3 based control systems on off-the-shelf embedded
-computers (SoftPLCs). That goal is ambitious and IronPLC is still early in
+computers (SoftPLCs). IronPLC is still early in
 that journey — but there is plenty you can do with it today. IronPLC is MIT
 licensed and we'd love for you to give it a try, share feedback, or
 contribute.
