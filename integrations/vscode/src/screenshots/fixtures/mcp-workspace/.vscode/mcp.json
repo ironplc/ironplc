@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "ironplc": {
+      "type": "stdio",
+      "command": "ironplcmcp"
+    }
+  }
+}

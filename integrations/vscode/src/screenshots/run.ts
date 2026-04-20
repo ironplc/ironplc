@@ -11,9 +11,10 @@ import {
   captureRunningProgram,
   captureSettings,
   captureBytecodeViewer,
+  captureMcpServers,
 } from './captureScreenshots';
 
-function hasIronplcc(): boolean {
+function augmentedEnv(): NodeJS.ProcessEnv {
   // Augment PATH with common install locations that may not be inherited when
   // node is launched via `just` (e.g. ~/.cargo/bin for Rust-installed binaries).
   const extraPaths = [
@@ -22,9 +23,26 @@ function hasIronplcc(): boolean {
     '/opt/homebrew/bin',
   ];
   const augmentedPath = [...extraPaths, process.env['PATH'] ?? ''].join(path.delimiter);
-  const env = { ...process.env, PATH: augmentedPath };
+  return { ...process.env, PATH: augmentedPath };
+}
+
+function hasIronplcc(): boolean {
   try {
-    execSync('ironplcc version', { stdio: 'ignore', env });
+    execSync('ironplcc version', { stdio: 'ignore', env: augmentedEnv() });
+    return true;
+  }
+  catch {
+    return false;
+  }
+}
+
+function hasIronplcmcp(): boolean {
+  // `ironplcmcp` speaks MCP over stdio and has no --version flag, so probe for
+  // existence using platform-appropriate PATH lookup commands.
+  const env = augmentedEnv();
+  const cmd = process.platform === 'win32' ? 'where ironplcmcp' : 'command -v ironplcmcp';
+  try {
+    execSync(cmd, { stdio: 'ignore', env });
     return true;
   }
   catch {
@@ -34,7 +52,9 @@ function hasIronplcc(): boolean {
 
 async function main(): Promise<void> {
   const editorOutputDir = path.resolve(__dirname, '../../docs/reference/editor/images');
+  const aiAgentsOutputDir = path.resolve(__dirname, '../../docs/how-to-guides/ai-agents/images');
   fs.mkdirSync(editorOutputDir, { recursive: true });
+  fs.mkdirSync(aiAgentsOutputDir, { recursive: true });
 
   const extensionPath = path.resolve(__dirname, '../../');
   const vscodePath = await downloadAndUnzipVSCode('stable');
@@ -50,6 +70,7 @@ async function main(): Promise<void> {
 
   const opts = { vscodePath, extensionPath, userDataDir };
   const ironplccAvailable = hasIronplcc();
+  const ironplcmcpAvailable = hasIronplcmcp();
 
   try {
     console.log('\n--- Syntax Highlighting ---');
@@ -77,6 +98,14 @@ async function main(): Promise<void> {
 
     console.log('\n--- Settings Panel ---');
     await captureSettings(opts, path.join(editorOutputDir, 'settings-panel.png'));
+
+    if (ironplcmcpAvailable) {
+      console.log('\n--- MCP Servers View ---');
+      await captureMcpServers(opts, path.join(aiAgentsOutputDir, 'mcp-servers-view.png'));
+    }
+    else {
+      console.log('\n--- MCP Servers View: SKIPPED (ironplcmcp not found on PATH) ---');
+    }
 
     const iplcFixture = path.resolve(__dirname, 'fixtures/sample.iplc');
     if (fs.existsSync(iplcFixture)) {

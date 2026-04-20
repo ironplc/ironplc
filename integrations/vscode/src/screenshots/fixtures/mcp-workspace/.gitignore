@@ -1,0 +1,5 @@
+# This fixture intentionally commits its .vscode/mcp.json so screenshot
+# captures pick up the MCP server configuration. Negate the repo-level
+# .vscode/ ignore rule for this folder only.
+!.vscode/
+!.vscode/**

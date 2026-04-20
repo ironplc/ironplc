@@ -7,6 +7,7 @@ const WINDOW_HEIGHT = 800;
 // Source files live under src/, not out/, so resolve relative to the workspace root.
 const VALID_ST = path.resolve(__dirname, '../../src/test/functional/resources/valid.st');
 const INVALID_ST = path.resolve(__dirname, 'fixtures/invalid.st');
+const MCP_WORKSPACE = path.resolve(__dirname, '../../src/screenshots/fixtures/mcp-workspace');
 
 interface LaunchOptions {
   vscodePath: string;
@@ -246,6 +247,70 @@ export async function captureSettings(
     // VS Code focuses it automatically when settings opens via the keyboard shortcut.
     await page.keyboard.type('ironplc');
     await page.waitForTimeout(2000);
+    await page.screenshot({ path: outputPath, type: 'png' });
+    console.log(`Captured: ${outputPath}`);
+  }
+  finally {
+    await app.close();
+  }
+}
+
+export async function captureMcpServers(
+  opts: Omit<LaunchOptions, 'filePath'>,
+  outputPath: string,
+): Promise<void> {
+  // Launch against the workspace folder so VS Code picks up .vscode/mcp.json.
+  const app = await launchVSCode({ ...opts, filePath: MCP_WORKSPACE });
+  try {
+    const page = await app.firstWindow();
+    await setWindowSize(page);
+    await waitForEditor(page);
+    await dismissNotifications(page);
+
+    // Open the Extensions view — VS Code renders configured MCP servers in a
+    // dedicated "MCP SERVERS - INSTALLED" pane inside this viewlet.
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+x`);
+    await page.waitForSelector('.extensions-viewlet', { timeout: 10000 });
+    await page.waitForTimeout(1000);
+
+    // Find the MCP servers pane header and ensure it's expanded so the
+    // ironplc entry and its tools are visible. VS Code sometimes renders the
+    // section collapsed by default depending on the viewlet layout.
+    const mcpPaneHeader = page.locator(
+      '.extensions-viewlet .pane-header[aria-label*="MCP" i], '
+      + '.extensions-viewlet .pane-header:has-text("MCP")',
+    ).first();
+    try {
+      await mcpPaneHeader.waitFor({ timeout: 10000 });
+      const expanded = await mcpPaneHeader.getAttribute('aria-expanded');
+      if (expanded !== 'true') {
+        await mcpPaneHeader.click();
+        await page.waitForTimeout(500);
+      }
+    }
+    catch {
+      console.warn('Warning: MCP servers pane header did not appear within timeout');
+    }
+
+    // Expand the ironplc server row so its tools (check, compile, …) are
+    // listed underneath. The row renders as a tree item with a twistie.
+    try {
+      const ironplcRow = page.locator(
+        '.extensions-viewlet .monaco-list-row:has-text("ironplc")',
+      ).first();
+      await ironplcRow.waitFor({ timeout: 5000 });
+      const rowExpanded = await ironplcRow.getAttribute('aria-expanded');
+      if (rowExpanded === 'false') {
+        await ironplcRow.click();
+        await page.waitForTimeout(500);
+      }
+    }
+    catch {
+      console.warn('Warning: ironplc MCP server row did not appear within timeout');
+    }
+
+    await page.waitForTimeout(1000);
     await page.screenshot({ path: outputPath, type: 'png' });
     console.log(`Captured: ${outputPath}`);
   }
