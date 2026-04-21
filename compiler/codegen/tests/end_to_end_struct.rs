@@ -6,7 +6,7 @@ mod common;
 
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
-use ironplc_parser::options::CompilerOptions;
+use ironplc_parser::options::{CompilerOptions, Dialect};
 
 /// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -371,3 +371,203 @@ e2e_i32!(
     "TYPE MY_DATA : STRUCT DIRS : ARRAY[0..2, 0..15] OF STRING[3]; END_STRUCT; END_TYPE VAR_GLOBAL DATA : MY_DATA; END_VAR FUNCTION FOO : INT VAR_INPUT DIR : STRING[3]; END_VAR VAR i : INT; j : INT; END_VAR FOO := 0; IF DATA.DIRS[i, j] = DIR THEN FOO := 1; END_IF; END_FUNCTION PROGRAM main VAR r_match : INT; r_mismatch : INT; END_VAR DATA.DIRS[0, 0] := 'N'; r_match := FOO(DIR := 'N'); r_mismatch := FOO(DIR := 'S'); END_PROGRAM",
     &[(2, 1), (3, 0)],
 );
+
+// --- 64-bit integer and LTIME struct fields ---
+// Exercise `resolve_field_op_type` / `var_type_info_for_field` on 64-bit
+// signed types (Int B64 and Time B64) — the Signed W64 branch only fires
+// when these types are declared inside a STRUCT.
+
+#[test]
+fn end_to_end_when_struct_field_lint_then_reads_and_writes() {
+    let source = "
+TYPE MyStruct : STRUCT v : LINT; END_STRUCT; END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : LINT;
+  END_VAR
+    s.v := LINT#9000000000;
+    result := s.v;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i64(), 9_000_000_000);
+}
+
+#[test]
+fn end_to_end_when_struct_field_ltime_then_reads_and_writes() {
+    let source = "
+TYPE MyStruct : STRUCT t : LTIME; END_STRUCT; END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : LTIME;
+  END_VAR
+    s.t := LTIME#5s;
+    result := s.t;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
+    assert_eq!(bufs.vars[1].as_i64(), 5_000);
+}
+
+// --- DATE, TOD, DT struct fields ---
+// Exercise the Date / TimeOfDay / DateAndTime patterns in
+// `resolve_field_op_type` and `var_type_info_for_field`.
+
+#[test]
+fn end_to_end_when_struct_field_date_then_reads_and_writes() {
+    let source = "
+TYPE MyStruct : STRUCT d : DATE; END_STRUCT; END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : DATE;
+  END_VAR
+    s.d := D#2024-01-01;
+    result := s.d;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // 2024-01-01 is 19723 days after 1970-01-01 = 1_704_067_200 seconds
+    assert_eq!(bufs.vars[1].as_i32() as u32, 1_704_067_200);
+}
+
+#[test]
+fn end_to_end_when_struct_field_tod_then_reads_and_writes() {
+    let source = "
+TYPE MyStruct : STRUCT t : TIME_OF_DAY; END_STRUCT; END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : TIME_OF_DAY;
+  END_VAR
+    s.t := TOD#12:30:00;
+    result := s.t;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // 12h * 3600000 + 30m * 60000 = 45_000_000 ms
+    assert_eq!(bufs.vars[1].as_i32() as u32, 45_000_000);
+}
+
+#[test]
+fn end_to_end_when_struct_field_dt_then_reads_and_writes() {
+    let source = "
+TYPE MyStruct : STRUCT v : DATE_AND_TIME; END_STRUCT; END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : DATE_AND_TIME;
+  END_VAR
+    s.v := DT#2024-01-01-12:30:00;
+    result := s.v;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    // 1_704_067_200 + 12*3600 + 30*60 = 1_704_112_200
+    assert_eq!(bufs.vars[1].as_i32() as u32, 1_704_112_200);
+}
+
+// --- Subrange struct field default value ---
+// The default for a subrange is its lower bound (IEC 61131-3 §2.4.3.1).
+// Exercises `emit_default_for_field` — W32 branch for INT-based subranges
+// and W64 branch for LINT-based subranges.
+
+#[test]
+fn end_to_end_when_struct_field_subrange_int_default_then_lower_bound() {
+    let source = "
+TYPE
+  MY_RANGE : INT (5..50);
+  MyStruct : STRUCT v : MY_RANGE; END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : INT;
+  END_VAR
+    result := s.v;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 5);
+}
+
+#[test]
+fn end_to_end_when_struct_field_subrange_lint_default_then_lower_bound() {
+    let source = "
+TYPE
+  MY_RANGE : LINT (10..10000);
+  MyStruct : STRUCT v : MY_RANGE; END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : LINT;
+  END_VAR
+    result := s.v;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i64(), 10);
+}
+
+// --- Nested struct initialization ---
+// Exercises the recursive `initialize_struct_fields` call path for nested
+// struct fields, with and without explicit inner initializers.
+
+#[test]
+fn end_to_end_when_nested_struct_with_explicit_inner_init_then_values_stored() {
+    let source = "
+TYPE
+  Inner : STRUCT x : DINT; y : DINT; END_STRUCT;
+  Outer : STRUCT inner : Inner; z : DINT; END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    o : Outer := (inner := (x := 1, y := 2), z := 3);
+    rx : DINT;
+    ry : DINT;
+    rz : DINT;
+  END_VAR
+    rx := o.inner.x;
+    ry := o.inner.y;
+    rz := o.z;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+    assert_eq!(bufs.vars[2].as_i32(), 2);
+    assert_eq!(bufs.vars[3].as_i32(), 3);
+}
+
+#[test]
+fn end_to_end_when_nested_struct_without_explicit_init_then_zero_defaults() {
+    // Covers the recursive `initialize_struct_fields` path when the inner
+    // struct has no explicit initializer — inner leaf fields still get
+    // zero-initialized via the default-value branch.
+    let source = "
+TYPE
+  Inner : STRUCT x : DINT; y : DINT; END_STRUCT;
+  Outer : STRUCT inner : Inner; z : DINT; END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    o : Outer;
+    rx : DINT;
+    ry : DINT;
+    rz : DINT;
+  END_VAR
+    rx := o.inner.x;
+    ry := o.inner.y;
+    rz := o.z;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 0);
+    assert_eq!(bufs.vars[2].as_i32(), 0);
+    assert_eq!(bufs.vars[3].as_i32(), 0);
+}
