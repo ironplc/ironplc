@@ -334,4 +334,13 @@ mod tests {
         let result = FileHeader::from_bytes(&bytes);
         assert!(matches!(result, Err(ContainerError::InvalidMagic)));
     }
+
+    #[test]
+    fn header_from_bytes_when_wrong_format_version_then_unsupported_version() {
+        let mut bytes = [0u8; HEADER_SIZE];
+        bytes[0..4].copy_from_slice(&MAGIC.to_le_bytes());
+        bytes[4..6].copy_from_slice(&(FORMAT_VERSION + 1).to_le_bytes());
+        let result = FileHeader::from_bytes(&bytes);
+        assert!(matches!(result, Err(ContainerError::UnsupportedVersion)));
+    }
 }
