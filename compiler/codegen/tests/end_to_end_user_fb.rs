@@ -144,3 +144,74 @@ END_PROGRAM
     let _ = common::try_parse_and_compile(source, &CompilerOptions::default())
         .expect("FB calling user function should compile");
 }
+
+#[test]
+fn end_to_end_when_user_fb_dot_access_read_then_returns_output() {
+    // Mirror of the DOUBLER test using dot-access instead of `Q => result`.
+    let source = "
+FUNCTION_BLOCK DOUBLER
+  VAR_INPUT x : DINT; END_VAR
+  VAR_OUTPUT y : DINT; END_VAR
+  y := x * 2;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    fb : DOUBLER;
+    result : DINT;
+  END_VAR
+  fb(x := 7);
+  result := fb.y;
+END_PROGRAM
+";
+    let (_container, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(
+        bufs.vars[1].as_i32(),
+        14,
+        "result should be 7 * 2 = 14 via dot-access"
+    );
+}
+
+#[test]
+fn end_to_end_when_user_fb_dot_access_across_rounds_then_stack_stable() {
+    // Proves SWAP+POP cleans the fb_ref between iterations: if the stack
+    // drifted, repeated rounds would either trap or produce wrong values.
+    let source = "
+FUNCTION_BLOCK ACCUMULATOR
+  VAR_INPUT val : DINT; END_VAR
+  VAR total : DINT; END_VAR
+  VAR_OUTPUT sum : DINT; END_VAR
+  total := total + val;
+  sum := total;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    acc : ACCUMULATOR;
+    result : DINT;
+  END_VAR
+  acc(val := 10);
+  result := acc.sum;
+END_PROGRAM
+";
+    parse_and_run_rounds(source, &CompilerOptions::default(), |vm| {
+        vm.run_round(0).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            10,
+            "round 1: result should be 10"
+        );
+        vm.run_round(0).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            20,
+            "round 2: result should be 20"
+        );
+        vm.run_round(0).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            30,
+            "round 3: result should be 30"
+        );
+    });
+}
