@@ -6,7 +6,10 @@ const WINDOW_HEIGHT = 800;
 
 // Source files live under src/, not out/, so resolve relative to the workspace root.
 const VALID_ST = path.resolve(__dirname, '../../src/test/functional/resources/valid.st');
-const INVALID_ST = path.resolve(__dirname, 'fixtures/invalid.st');
+const INVALID_ST = path.resolve(__dirname, '../../src/screenshots/fixtures/invalid.st');
+const MCP_CONFIG = path.resolve(__dirname, '../../src/screenshots/fixtures/mcp-workspace/.vscode/mcp.json');
+const QUICKSTART_HELLOWORLD_ST = path.resolve(__dirname, '../../src/screenshots/fixtures/quickstart-helloworld.st');
+const QUICKSTART_TIMER_ST = path.resolve(__dirname, '../../src/screenshots/fixtures/quickstart-timer.st');
 
 interface LaunchOptions {
   vscodePath: string;
@@ -261,8 +264,7 @@ export async function captureMcpConfig(
   opts: Omit<LaunchOptions, 'filePath'>,
   outputPath: string,
 ): Promise<void> {
-  const mcpConfigPath = path.resolve(__dirname, 'fixtures/mcp-workspace/.vscode/mcp.json');
-  const app = await launchVSCode({ ...opts, filePath: mcpConfigPath });
+  const app = await launchVSCode({ ...opts, filePath: MCP_CONFIG });
   try {
     const page = await app.firstWindow();
     await setWindowSize(page);
@@ -290,6 +292,91 @@ export async function captureBytecodeViewer(
     await page.waitForTimeout(5000);
     await hideSideBar(page);
     await page.waitForTimeout(1000);
+    await page.screenshot({ path: outputPath, type: 'png' });
+    console.log(`Captured: ${outputPath}`);
+  }
+  finally {
+    await app.close();
+  }
+}
+
+async function clickRunProgramAndWaitForOutput(page: Page): Promise<void> {
+  try {
+    const runLens = page.locator('.codelens-decoration a', { hasText: 'Run Program' }).first();
+    await runLens.waitFor({ timeout: 15000 });
+    await runLens.click();
+  }
+  catch {
+    console.warn('Warning: Run Program code lens did not appear or could not be clicked');
+  }
+  try {
+    // Wait for the IronPLC Run output panel to show scan cycle output.
+    await page.waitForSelector('.output-view-container .view-line', { timeout: 15000 });
+  }
+  catch {
+    console.warn('Warning: IronPLC Run output did not appear within timeout');
+  }
+  // Allow a few render cycles so variable values stabilise.
+  await page.waitForTimeout(1500);
+}
+
+export async function captureQuickstartHelloworld(
+  opts: Omit<LaunchOptions, 'filePath'>,
+  outputPath: string,
+): Promise<void> {
+  const app = await launchVSCode({ ...opts, filePath: QUICKSTART_HELLOWORLD_ST });
+  try {
+    const page = await app.firstWindow();
+    await setWindowSize(page);
+    await waitForEditor(page);
+    await dismissNotifications(page);
+    await hideSideBar(page);
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: outputPath, type: 'png' });
+    console.log(`Captured: ${outputPath}`);
+  }
+  finally {
+    await app.close();
+  }
+}
+
+export async function captureQuickstartRunOutput(
+  opts: Omit<LaunchOptions, 'filePath'>,
+  outputPath: string,
+): Promise<void> {
+  // Use the helloworld fixture (no CONFIGURATION — runs with defaults).
+  // The run output panel opens automatically when Run Program is clicked.
+  const app = await launchVSCode({ ...opts, filePath: QUICKSTART_HELLOWORLD_ST });
+  try {
+    const page = await app.firstWindow();
+    await setWindowSize(page);
+    await waitForEditor(page);
+    await dismissNotifications(page);
+    await hideSideBar(page);
+    await clickRunProgramAndWaitForOutput(page);
+    await page.screenshot({ path: outputPath, type: 'png' });
+    console.log(`Captured: ${outputPath}`);
+  }
+  finally {
+    await app.close();
+  }
+}
+
+export async function captureQuickstartTimerOutput(
+  opts: Omit<LaunchOptions, 'filePath'>,
+  outputPath: string,
+): Promise<void> {
+  // Use the timer fixture which includes a CONFIGURATION block.
+  const app = await launchVSCode({ ...opts, filePath: QUICKSTART_TIMER_ST });
+  try {
+    const page = await app.firstWindow();
+    await setWindowSize(page);
+    await waitForEditor(page);
+    await dismissNotifications(page);
+    await hideSideBar(page);
+    await clickRunProgramAndWaitForOutput(page);
+    // Wait long enough for the TON timer to fire (PT = 500 ms, scan = 100 ms → ~5 scans).
+    await page.waitForTimeout(2000);
     await page.screenshot({ path: outputPath, type: 'png' });
     console.log(`Captured: ${outputPath}`);
   }

@@ -10,7 +10,7 @@ Access these settings through:
 
 Then search for "ironplc" to find all extension settings.
 
-.. figure:: images/settings-panel.png
+.. figure:: /images/screenshots/settings-panel.png
    :alt: VS Code settings panel filtered to show IronPLC extension settings
    :width: 600px
 
