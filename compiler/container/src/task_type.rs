@@ -29,3 +29,23 @@ impl TaskType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_type_from_u8_when_valid_tags_then_returns_variant() {
+        assert_eq!(TaskType::from_u8(0).unwrap(), TaskType::Cyclic);
+        assert_eq!(TaskType::from_u8(1).unwrap(), TaskType::Event);
+        assert_eq!(TaskType::from_u8(2).unwrap(), TaskType::Freewheeling);
+    }
+
+    #[test]
+    fn task_type_from_u8_when_invalid_tag_then_returns_error() {
+        assert!(matches!(
+            TaskType::from_u8(99),
+            Err(ContainerError::InvalidTaskType(99))
+        ));
+    }
+}

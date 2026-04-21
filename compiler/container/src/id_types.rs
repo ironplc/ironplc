@@ -249,3 +249,85 @@ impl core::ops::AddAssign<u32> for SlotIndex {
         self.0 += rhs;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::string::ToString;
+
+    #[test]
+    fn fb_type_id_display_when_formatted_then_writes_number() {
+        assert_eq!(FbTypeId::new(123).to_string(), "123");
+    }
+
+    #[test]
+    fn var_index_display_when_formatted_then_writes_number() {
+        assert_eq!(VarIndex::new(456).to_string(), "456");
+    }
+
+    #[test]
+    fn var_index_when_add_u16_then_sum() {
+        assert_eq!(VarIndex::new(10) + 5, VarIndex::new(15));
+    }
+
+    #[test]
+    fn var_index_when_sub_var_index_then_delta() {
+        assert_eq!(VarIndex::new(20) - VarIndex::new(5), 15);
+    }
+
+    #[test]
+    fn var_index_when_add_assign_u16_then_mutated() {
+        let mut v = VarIndex::new(10);
+        v += 5u16;
+        assert_eq!(v, VarIndex::new(15));
+    }
+
+    #[test]
+    fn constant_index_to_le_bytes_when_called_then_little_endian_bytes() {
+        assert_eq!(ConstantIndex::new(0x1234).to_le_bytes(), [0x34, 0x12]);
+    }
+
+    #[test]
+    fn var_index_into_i64_when_cast_then_value() {
+        let v: i64 = VarIndex::new(999).into();
+        assert_eq!(v, 999i64);
+    }
+
+    #[test]
+    fn constant_index_display_when_formatted_then_writes_number() {
+        assert_eq!(ConstantIndex::new(777).to_string(), "777");
+    }
+
+    #[test]
+    fn slot_index_display_when_formatted_then_writes_number() {
+        assert_eq!(SlotIndex::new(1234).to_string(), "1234");
+    }
+
+    #[test]
+    fn slot_index_to_le_bytes_when_called_then_little_endian_bytes() {
+        assert_eq!(
+            SlotIndex::new(0x12345678).to_le_bytes(),
+            [0x78, 0x56, 0x34, 0x12]
+        );
+    }
+
+    #[test]
+    fn slot_index_when_add_u32_then_sum() {
+        assert_eq!(SlotIndex::new(100) + 50u32, SlotIndex::new(150));
+    }
+
+    #[test]
+    fn slot_index_when_add_slot_index_then_sum() {
+        assert_eq!(
+            SlotIndex::new(100) + SlotIndex::new(50),
+            SlotIndex::new(150)
+        );
+    }
+
+    #[test]
+    fn slot_index_when_add_assign_u32_then_mutated() {
+        let mut s = SlotIndex::new(100);
+        s += 50u32;
+        assert_eq!(s, SlotIndex::new(150));
+    }
+}

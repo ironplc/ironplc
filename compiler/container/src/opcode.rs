@@ -1032,3 +1032,44 @@ pub mod fb_type {
     /// F_TRIG (falling edge detector).
     pub const F_TRIG: u16 = 0x0041;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn instruction_size_when_unknown_opcode_then_returns_one() {
+        // 0xFE is not assigned; the default arm must return 1 so that
+        // disassembly does not get stuck in an infinite loop.
+        assert_eq!(instruction_size(0xFE), 1);
+    }
+
+    #[test]
+    fn mux_info_when_valid_arity_then_returns_some_count() {
+        assert_eq!(builtin::mux_info(builtin::MUX_I32_BASE + 3), Some(3));
+        assert_eq!(builtin::mux_info(builtin::MUX_F64_BASE + 5), Some(5));
+    }
+
+    #[test]
+    fn mux_info_when_arity_below_two_then_returns_none() {
+        assert_eq!(builtin::mux_info(builtin::MUX_I32_BASE), None);
+        assert_eq!(builtin::mux_info(builtin::MUX_I32_BASE + 1), None);
+    }
+
+    #[test]
+    fn mux_info_when_not_a_mux_id_then_returns_none() {
+        assert_eq!(builtin::mux_info(0x0001), None);
+    }
+
+    #[test]
+    fn arg_count_when_mux_id_then_returns_n_plus_one() {
+        // MUX pops n IN values + 1 K selector.
+        assert_eq!(builtin::arg_count(builtin::MUX_I32_BASE + 3), 4);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown builtin function ID")]
+    fn arg_count_when_unknown_function_id_then_panics() {
+        let _ = builtin::arg_count(0xFFFF);
+    }
+}

@@ -475,4 +475,68 @@ mod tests {
         let ts = container.type_section.unwrap();
         assert_eq!(ts.array_descriptors.len(), 2);
     }
+
+    #[test]
+    fn builder_when_add_line_map_entry_then_included_in_debug_section() {
+        use crate::debug_section::LineMapEntry;
+
+        let entry = LineMapEntry {
+            function_id: FunctionId::INIT,
+            bytecode_offset: 4,
+            source_line: 12,
+            source_column: 3,
+        };
+
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .add_function(FunctionId::INIT, &[0xB5], 0, 0, 0)
+            .add_line_map_entry(entry)
+            .build();
+
+        let debug = container.debug_section.expect("debug section present");
+        assert_eq!(debug.line_map.len(), 1);
+        assert_eq!(debug.line_map[0], entry);
+    }
+
+    #[test]
+    fn builder_when_add_fb_type_then_included_in_type_section() {
+        use crate::id_types::FbTypeId;
+        use crate::type_section::{FbTypeDescriptor, FieldEntry, FieldType};
+
+        let desc = FbTypeDescriptor {
+            type_id: FbTypeId::new(7),
+            fields: vec![FieldEntry {
+                field_type: FieldType::I32,
+                field_extra: 0,
+            }],
+        };
+
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .add_fb_type(desc.clone())
+            .build();
+
+        let ts = container.type_section.expect("type section present");
+        assert_eq!(ts.fb_types.len(), 1);
+        assert_eq!(ts.fb_types[0], desc);
+    }
+
+    #[test]
+    fn builder_default_when_constructed_then_matches_new() {
+        let default_container = ContainerBuilder::default().num_variables(0).build();
+        let new_container = ContainerBuilder::new().num_variables(0).build();
+
+        assert_eq!(
+            default_container.header.num_variables,
+            new_container.header.num_variables
+        );
+        assert_eq!(
+            default_container.code.functions.len(),
+            new_container.code.functions.len()
+        );
+        assert_eq!(
+            default_container.constant_pool.len(),
+            new_container.constant_pool.len()
+        );
+    }
 }
