@@ -138,6 +138,12 @@ Now that the timer and configuration are in place, run the updated program:
 
 #. Click :guilabel:`Stop` above the ``PROGRAM`` line to end execution.
 
+.. figure:: /images/screenshots/quickstart-timer-output.png
+   :alt: VS Code IronPLC Run panel showing timer variables including PulseTimer.Q and PulseTimer.ET
+   :width: 600px
+
+   The IronPLC Run panel showing timer variable values after the TON fires.
+
 The timer's elapsed time (``ET``) shows how long it has been running.
 After enough scan cycles, ``Q`` becomes ``TRUE`` and the buzzer turns on.
 

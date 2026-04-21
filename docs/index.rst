@@ -16,6 +16,12 @@ type. It also includes a command-line compiler and an early-stage runtime.
 IronPLC reads Structured Text, PLCopen XML (Beremiz), and TwinCAT 3 source
 files, so you can use it alongside your existing PLC development environment.
 
+.. figure:: /images/screenshots/syntax-highlighting.png
+   :alt: VS Code showing an IEC 61131-3 Structured Text file with syntax highlighting
+   :width: 600px
+
+   Structured Text with syntax highlighting in VS Code.
+
 The long-term vision is to become a full development environment for
 building IEC 61131-3 based control systems on off-the-shelf embedded
 computers (SoftPLCs). IronPLC is still early in

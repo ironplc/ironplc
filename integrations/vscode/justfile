@@ -83,10 +83,10 @@ publish-openvsx vsixfilename:
 
 # Capture VS Code extension screenshots for documentation.
 # Requires `just compile` first. macOS runs natively; Linux uses Xvfb.
-# After capturing, copies images to the Sphinx docs source tree.
+# Screenshots are written to out/screenshots/output/.
+# Run `just screenshots` from the repository root to also copy them into docs.
 screenshots:
   just _screenshots-{{os()}}
-  just _copy-screenshots
 
 _screenshots-macos:
   node ./out/screenshots/run.js
@@ -96,12 +96,6 @@ _screenshots-linux:
 
 _screenshots-windows:
   node ./out/screenshots/run.js
-
-_copy-screenshots:
-  mkdir -p ../../docs/reference/editor/images
-  mkdir -p ../../docs/how-to-guides/ai-agents/images
-  cp docs/reference/editor/images/*.png ../../docs/reference/editor/images/
-  cp docs/how-to-guides/ai-agents/images/*.png ../../docs/how-to-guides/ai-agents/images/
 
 # Remove build artifacts
 clean:

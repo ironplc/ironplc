@@ -22,7 +22,7 @@ The extension provides:
 * Automatic bracket matching for block keywords (``IF``/``END_IF``, ``FUNCTION``/``END_FUNCTION``, etc.)
 * Real-time diagnostic analysis
 
-.. figure:: images/syntax-highlighting.png
+.. figure:: /images/screenshots/syntax-highlighting.png
    :alt: VS Code showing an IEC 61131-3 Structured Text file with syntax highlighting
    :width: 600px
 
@@ -77,7 +77,7 @@ Opening an :file:`.iplc` bytecode file displays a human-readable disassembly of
 the compiled program, including the file header, constant pool, and function
 instructions with color-coded opcodes. See :doc:`bytecode-viewer` for details.
 
-.. figure:: images/bytecode-viewer.png
+.. figure:: /images/screenshots/bytecode-viewer.png
    :alt: VS Code custom editor showing disassembled IPLC bytecode with color-coded opcodes
    :width: 600px
 
@@ -95,8 +95,39 @@ Each diagnostic includes a problem code (e.g., P0001) linking to documentation
 that explains the issue and how to resolve it. See :doc:`/reference/compiler/problems/index`
 for the complete list.
 
-.. figure:: images/diagnostics-squiggles.png
+.. figure:: /images/screenshots/diagnostics-squiggles.png
    :alt: VS Code editor showing red and yellow diagnostic squiggles on invalid Structured Text code
    :width: 600px
 
    Diagnostics with error squiggles and problem codes.
+
+Open the Problems panel (:kbd:`Ctrl+Shift+M` or :kbd:`⌘+Shift+M`) to see all
+diagnostics in a list with their problem codes.
+
+.. figure:: /images/screenshots/diagnostics-problems.png
+   :alt: VS Code Problems panel listing IronPLC diagnostic errors with problem codes
+   :width: 600px
+
+   The Problems panel showing diagnostics with problem codes.
+
+Run Program
+===========
+
+The extension adds a :guilabel:`Run Program` code lens above each ``PROGRAM``
+declaration. Click it to compile and execute the program using the IronPLC
+runtime.
+
+.. figure:: /images/screenshots/run-program-code-lens.png
+   :alt: VS Code editor showing the Run Program code lens above a PROGRAM declaration
+   :width: 600px
+
+   The Run Program code lens above a ``PROGRAM`` declaration.
+
+While the program is running, the code lens changes to :guilabel:`Stop` and
+:guilabel:`Pause` controls.
+
+.. figure:: /images/screenshots/run-program-running.png
+   :alt: VS Code editor showing Stop and Pause code lenses while a program is running
+   :width: 600px
+
+   Stop and Pause controls replace Run Program while the program executes.
