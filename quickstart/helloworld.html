@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.204.0">
+<meta name="ironplc-version" content="0.205.0">
 </head>
   <body>
     
@@ -681,6 +681,12 @@ IronPLC virtual machine.</p>
 </ol>
 <p>If the IronPLC extension is installed, you should see no errors highlighted
 in the editor.</p>
+<figure class="align-default" id="id2">
+<img alt="VS Code editor showing the doorbell program in main.st with syntax highlighting and no errors" src="../_images/quickstart-helloworld.png" style="width: 600px;" />
+<figcaption>
+<p><span class="caption-text">The doorbell program with syntax highlighting and no errors.</span><a class="headerlink" href="#id2" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
 </section>
 <section id="what-this-program-does">
 <h2>What This Program Does<a class="headerlink" href="#what-this-program-does" title="Link to this heading">¶</a></h2>
@@ -717,6 +723,12 @@ as the program runs. You should see output like:</p>
 </li>
 <li><p>Click <span class="guilabel">Stop</span> above the <code class="docutils literal notranslate"><span class="pre">PROGRAM</span></code> line to end execution.</p></li>
 </ol>
+<figure class="align-default" id="id3">
+<img alt="VS Code editor showing the Run Program code lens and the IronPLC Run output panel with scan cycle results" src="../_images/quickstart-run-output.png" style="width: 600px;" />
+<figcaption>
+<p><span class="caption-text">The IronPLC Run panel showing scan cycle output with variable values.</span><a class="headerlink" href="#id3" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
 <p><code class="docutils literal notranslate"><span class="pre">Button</span></code> starts as <code class="docutils literal notranslate"><span class="pre">FALSE</span></code> (the default for <code class="code docutils literal notranslate"><span class="pre">BOOL</span></code>), so
 <code class="docutils literal notranslate"><span class="pre">NOT</span> <span class="pre">Button</span></code> evaluates to <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>, and the buzzer sounds. This is
 exactly the sense-control-actuate cycle in action — even though there is

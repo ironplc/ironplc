@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.204.0">
+<meta name="ironplc-version" content="0.205.0">
 </head>
   <body>
     
@@ -730,6 +730,34 @@ for the complete list.</p>
 <p><span class="caption-text">Diagnostics with error squiggles and problem codes.</span><a class="headerlink" href="#id3" title="Link to this image">¶</a></p>
 </figcaption>
 </figure>
+<p>Open the Problems panel (<kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">M</kbd> or <kbd class="kbd docutils literal notranslate">⌘</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">M</kbd>) to see all
+diagnostics in a list with their problem codes.</p>
+<figure class="align-default" id="id4">
+<img alt="VS Code Problems panel listing IronPLC diagnostic errors with problem codes" src="../../_images/diagnostics-problems.png" style="width: 600px;" />
+<figcaption>
+<p><span class="caption-text">The Problems panel showing diagnostics with problem codes.</span><a class="headerlink" href="#id4" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
+</section>
+<section id="run-program">
+<h2>Run Program<a class="headerlink" href="#run-program" title="Link to this heading">¶</a></h2>
+<p>The extension adds a <span class="guilabel">Run Program</span> code lens above each <code class="docutils literal notranslate"><span class="pre">PROGRAM</span></code>
+declaration. Click it to compile and execute the program using the IronPLC
+runtime.</p>
+<figure class="align-default" id="id5">
+<img alt="VS Code editor showing the Run Program code lens above a PROGRAM declaration" src="../../_images/run-program-code-lens.png" style="width: 600px;" />
+<figcaption>
+<p><span class="caption-text">The Run Program code lens above a <code class="docutils literal notranslate"><span class="pre">PROGRAM</span></code> declaration.</span><a class="headerlink" href="#id5" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
+<p>While the program is running, the code lens changes to <span class="guilabel">Stop</span> and
+<span class="guilabel">Pause</span> controls.</p>
+<figure class="align-default" id="id6">
+<img alt="VS Code editor showing Stop and Pause code lenses while a program is running" src="../../_images/run-program-running.png" style="width: 600px;" />
+<figcaption>
+<p><span class="caption-text">Stop and Pause controls replace Run Program while the program executes.</span><a class="headerlink" href="#id6" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
 </section>
 </section>
 
@@ -810,6 +838,7 @@ for the complete list.</p>
 <li><a class="reference internal" href="#build-tasks">Build Tasks</a></li>
 <li><a class="reference internal" href="#bytecode-viewer">Bytecode Viewer</a></li>
 <li><a class="reference internal" href="#diagnostics">Diagnostics</a></li>
+<li><a class="reference internal" href="#run-program">Run Program</a></li>
 </ul>
 </li>
 </ul>
