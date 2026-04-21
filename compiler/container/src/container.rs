@@ -317,4 +317,95 @@ mod tests {
         );
         assert_eq!(decoded.code.functions.len(), 1);
     }
+
+    #[test]
+    fn container_read_from_when_type_section_truncated_then_type_section_is_none() {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,
+            0x18, 0x00, 0x00,
+            0xB5,
+        ];
+
+        let mut builder = ContainerBuilder::new();
+        builder.add_array_descriptor(0, 4, 0);
+        let container = builder
+            .num_variables(1)
+            .add_i32_constant(1)
+            .add_function(FunctionId::INIT, &bytecode, 1, 1, 0)
+            .build();
+
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+
+        // Inflate the declared type_section_size so ts_end exceeds available
+        // bytes, forcing the bounds check at container.rs:109 to return None.
+        let mut header = FileHeader::read_from(&mut Cursor::new(&buf[..HEADER_SIZE])).unwrap();
+        header.type_section_size = buf.len() as u32 * 2;
+
+        let mut tampered = Vec::with_capacity(buf.len());
+        header.write_to(&mut tampered).unwrap();
+        tampered.extend_from_slice(&buf[HEADER_SIZE..]);
+
+        let decoded = Container::read_from(&mut Cursor::new(&tampered)).unwrap();
+        assert!(decoded.type_section.is_none());
+    }
+
+    #[test]
+    fn container_read_from_when_debug_section_truncated_then_debug_section_is_none() {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,
+            0x18, 0x00, 0x00,
+            0xB5,
+        ];
+
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(1)
+            .add_function(FunctionId::INIT, &bytecode, 1, 1, 0)
+            .add_func_name(FuncNameEntry {
+                function_id: FunctionId::INIT,
+                name: "MAIN".into(),
+            })
+            .build();
+
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+
+        // Inflate the declared debug_section_size past the end of the buffer,
+        // triggering the bounds check that returns None at container.rs:135.
+        let mut header = FileHeader::read_from(&mut Cursor::new(&buf[..HEADER_SIZE])).unwrap();
+        header.debug_section_size = buf.len() as u32 * 2;
+
+        let mut tampered = Vec::with_capacity(buf.len());
+        header.write_to(&mut tampered).unwrap();
+        tampered.extend_from_slice(&buf[HEADER_SIZE..]);
+
+        let decoded = Container::read_from(&mut Cursor::new(&tampered)).unwrap();
+        assert!(decoded.debug_section.is_none());
+    }
+
+    #[test]
+    fn container_read_from_when_no_debug_section_then_debug_section_is_none() {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x01, 0x00, 0x00,
+            0x18, 0x00, 0x00,
+            0xB5,
+        ];
+
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(1)
+            .add_function(FunctionId::INIT, &bytecode, 1, 1, 0)
+            .build();
+
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+
+        let decoded = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+        assert_eq!(decoded.header.debug_section_size, 0);
+        assert!(decoded.debug_section.is_none());
+    }
 }
