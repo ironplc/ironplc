@@ -49,7 +49,9 @@
           </span>
         </div>
       </div>
-      <textarea id="editor" spellcheck="false" data-testid="editor">PROGRAM main
+      <div class="editor-wrapper">
+        <div class="editor-gutter" id="editor-gutter" aria-hidden="true"></div>
+        <textarea id="editor" spellcheck="false" wrap="off" data-testid="editor">PROGRAM main
   VAR
     count : INT;
     doubled : INT;
@@ -63,6 +65,7 @@
   doubled := count * 2;
 END_PROGRAM
 </textarea>
+      </div>
     </section>
 
     <section class="output-section">

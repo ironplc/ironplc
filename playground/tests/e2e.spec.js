@@ -363,4 +363,27 @@ END_PROGRAM
     await expect(page.locator('[data-testid="duration-display"]')).toBeVisible();
     await expect(page.locator('[data-testid="cycles-display"]')).toBeVisible();
   });
+
+  test("editor_when_loaded_then_shows_line_number_gutter", async ({ page }) => {
+    const gutter = page.locator("#editor-gutter");
+    await expect(gutter).toBeVisible();
+
+    const editor = page.locator('[data-testid="editor"]');
+    const source = await editor.inputValue();
+    const expectedLines = Math.max(1, source.split("\n").length);
+
+    const gutterText = await gutter.textContent();
+    const gutterLines = gutterText.split("\n");
+    expect(gutterLines.length).toBe(expectedLines);
+    expect(gutterLines[0]).toBe("1");
+    expect(gutterLines[gutterLines.length - 1]).toBe(String(expectedLines));
+  });
+
+  test("editor_when_content_changed_then_line_numbers_update", async ({ page }) => {
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill("line one\nline two\nline three");
+
+    const gutter = page.locator("#editor-gutter");
+    await expect(gutter).toHaveText("1\n2\n3");
+  });
 });
