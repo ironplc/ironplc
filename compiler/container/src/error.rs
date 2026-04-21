@@ -69,3 +69,85 @@ impl From<std::io::Error> for ContainerError {
         ContainerError::Io(e)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error as _;
+    use std::string::ToString;
+
+    #[test]
+    fn container_error_display_when_invalid_magic_then_mentions_magic() {
+        let msg = ContainerError::InvalidMagic.to_string();
+        assert!(msg.contains("magic"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_unsupported_version_then_mentions_version() {
+        let msg = ContainerError::UnsupportedVersion.to_string();
+        assert!(msg.contains("version"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_invalid_constant_type_then_contains_tag() {
+        let msg = ContainerError::InvalidConstantType(42).to_string();
+        assert!(msg.contains("42"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_invalid_constant_index_then_contains_index() {
+        let msg = ContainerError::InvalidConstantIndex(ConstantIndex::new(999)).to_string();
+        assert!(msg.contains("999"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_section_size_mismatch_then_mentions_section() {
+        let msg = ContainerError::SectionSizeMismatch.to_string();
+        assert!(msg.contains("section"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_invalid_task_type_then_contains_tag() {
+        let msg = ContainerError::InvalidTaskType(7).to_string();
+        assert!(msg.contains('7'), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_invalid_field_type_then_contains_tag() {
+        let msg = ContainerError::InvalidFieldType(5).to_string();
+        assert!(msg.contains('5'), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_io_error_then_mentions_io() {
+        let err = ContainerError::Io(std::io::Error::from(std::io::ErrorKind::UnexpectedEof));
+        let msg = err.to_string();
+        assert!(msg.contains("I/O"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_invalid_debug_section_then_mentions_debug() {
+        let msg = ContainerError::InvalidDebugSection.to_string();
+        assert!(msg.contains("debug"), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_source_when_io_then_returns_some() {
+        let err = ContainerError::Io(std::io::Error::from(std::io::ErrorKind::UnexpectedEof));
+        assert!(err.source().is_some());
+    }
+
+    #[test]
+    fn container_error_source_when_non_io_then_returns_none() {
+        assert!(ContainerError::InvalidMagic.source().is_none());
+        assert!(ContainerError::UnsupportedVersion.source().is_none());
+        assert!(ContainerError::SectionSizeMismatch.source().is_none());
+    }
+
+    #[test]
+    fn container_error_from_io_error_when_converted_then_io_variant() {
+        let io_err = std::io::Error::from(std::io::ErrorKind::UnexpectedEof);
+        let err: ContainerError = io_err.into();
+        assert!(matches!(err, ContainerError::Io(_)));
+    }
+}

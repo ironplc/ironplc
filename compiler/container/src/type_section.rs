@@ -481,4 +481,56 @@ mod tests {
             Err(ContainerError::InvalidFieldType(42))
         ));
     }
+
+    #[test]
+    fn type_section_section_size_when_fb_types_with_fields_then_includes_field_bytes() {
+        let section = TypeSection {
+            fb_types: vec![FbTypeDescriptor {
+                type_id: FbTypeId::new(0x20),
+                fields: vec![
+                    FieldEntry {
+                        field_type: FieldType::I32,
+                        field_extra: 0,
+                    },
+                    FieldEntry {
+                        field_type: FieldType::F64,
+                        field_extra: 0,
+                    },
+                    FieldEntry {
+                        field_type: FieldType::String,
+                        field_extra: 80,
+                    },
+                ],
+            }],
+            array_descriptors: vec![],
+            user_fb_types: vec![],
+        };
+
+        // Header: 2 (FB count) + 2 (array count) + 2 (user FB count) = 6
+        // Per descriptor: 4 (header) + 3 fields * 4 = 16
+        // Total: 6 + 16 = 22
+        assert_eq!(section.section_size(), 22);
+
+        let mut buf = Vec::new();
+        section.write_to(&mut buf).unwrap();
+        assert_eq!(buf.len() as u32, section.section_size());
+    }
+
+    #[test]
+    fn type_section_read_from_when_no_user_fb_descriptor_then_empty_user_fb_types() {
+        // Build a type section payload that stops after the array-count
+        // field, simulating a legacy container without the user FB descriptor
+        // sub-table. The reader should treat the missing data as zero
+        // descriptors rather than erroring.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&0u16.to_le_bytes()); // FB count = 0
+        buf.extend_from_slice(&0u16.to_le_bytes()); // array count = 0
+
+        let mut cursor = Cursor::new(&buf);
+        let decoded = TypeSection::read_from(&mut cursor).unwrap();
+
+        assert!(decoded.fb_types.is_empty());
+        assert!(decoded.array_descriptors.is_empty());
+        assert!(decoded.user_fb_types.is_empty());
+    }
 }

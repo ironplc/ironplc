@@ -632,4 +632,29 @@ mod tests {
         let result = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }
+
+    #[test]
+    fn optimize_when_load_const_out_of_bounds_add_i32_then_keeps_instructions() {
+        // Drives is_zero_constant's `_ => false` default arm: the pool index
+        // points past the end of the empty constant pool.
+        let mut bytecode = Vec::new();
+        bytecode.extend_from_slice(&load_const_i32(5));
+        bytecode.push(opcode::ADD_I32);
+        bytecode.push(opcode::RET_VOID);
+
+        let result = optimize(&bytecode, &[]);
+        assert_eq!(result, bytecode);
+    }
+
+    #[test]
+    fn optimize_when_load_const_out_of_bounds_mul_i32_then_keeps_instructions() {
+        // Drives is_one_constant's `_ => false` default arm.
+        let mut bytecode = Vec::new();
+        bytecode.extend_from_slice(&load_const_i32(5));
+        bytecode.push(opcode::MUL_I32);
+        bytecode.push(opcode::RET_VOID);
+
+        let result = optimize(&bytecode, &[]);
+        assert_eq!(result, bytecode);
+    }
 }
