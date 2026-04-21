@@ -108,6 +108,9 @@ const ARGS_SYMBOLS_VALID: &str = r#"{"sources":[{"name":"main.st","content":"PRO
 /// Program that defines an enumerated TYPE — used by `project_manifest`.
 const ARGS_ENUM_TYPE: &str = r#"{"sources":[{"name":"main.st","content":"TYPE MyEnum : (A, B, C); END_TYPE\nPROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
 
+/// Program declaring one `VAR_INPUT` — used by the `project_io` happy path.
+const ARGS_PROJECT_IO_INPUT: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR_INPUT start : BOOL; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
 // ---------------------------------------------------------------------------
 // Per-tool happy/error paths
 //
@@ -191,6 +194,20 @@ const ARGS_ENUM_TYPE: &str = r#"{"sources":[{"name":"main.st","content":"TYPE My
     ARGS_MISSING_DIALECT,
     "P8001"
 )]
+// project_io
+#[case::project_io_valid_program_ok_true("project_io", ARGS_PROJECT_IO_INPUT, r#"\"ok\":true"#)]
+#[case::project_io_valid_program_input_listed(
+    "project_io",
+    ARGS_PROJECT_IO_INPUT,
+    r#"\"name\":\"p.start\""#
+)]
+#[case::project_io_semantic_error_ok_false("project_io", ARGS_SEMANTIC_ERROR, r#"\"ok\":false"#)]
+#[case::project_io_empty_source_name_validation_error(
+    "project_io",
+    ARGS_EMPTY_SOURCE_NAME,
+    "P8001"
+)]
+#[case::project_io_missing_dialect_validation_error("project_io", ARGS_MISSING_DIALECT, "P8001")]
 fn tool_call_then_stdout_contains(
     #[case] tool: &str,
     #[case] arguments_json: &str,
