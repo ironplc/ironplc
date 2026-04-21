@@ -1,4 +1,6 @@
 import * as path from 'path';
+import * as fs from 'fs';
+import * as UPNG from 'upng-js';
 import { _electron, ElectronApplication, Page } from 'playwright';
 
 const WINDOW_WIDTH = 1200;
@@ -378,6 +380,93 @@ export async function captureQuickstartTimerOutput(
     // Wait long enough for the TON timer to fire (PT = 500 ms, scan = 100 ms → ~5 scans).
     await page.waitForTimeout(2000);
     await page.screenshot({ path: outputPath, type: 'png' });
+    console.log(`Captured: ${outputPath}`);
+  }
+  finally {
+    await app.close();
+  }
+}
+
+/** Encode an array of PNG Buffers (with per-frame delays in ms) into an APNG file. */
+async function encodeApng(
+  frames: { png: Buffer; delayMs: number }[],
+  outputPath: string,
+): Promise<void> {
+  // Decode each PNG to raw RGBA so UPNG can re-encode them together.
+  const rgbaFrames: ArrayBuffer[] = [];
+  let width = 0;
+  let height = 0;
+  for (const { png } of frames) {
+    const img = UPNG.decode(png.buffer as ArrayBuffer);
+    width = img.width;
+    height = img.height;
+    rgbaFrames.push(UPNG.toRGBA8(img)[0]);
+  }
+  const delays = frames.map((f) => f.delayMs);
+  const apng = UPNG.encode(rgbaFrames, width, height, 0, delays);
+  fs.writeFileSync(outputPath, Buffer.from(apng));
+}
+
+export async function captureQuickstartAnimation(
+  opts: Omit<LaunchOptions, 'filePath'>,
+  outputPath: string,
+): Promise<void> {
+  // Open VS Code with the timer fixture — includes TON, PulseTimer, and CONFIGURATION.
+  // The animation shows: file open with code → Run Program clicked → output updating with timer variables.
+  const app = await launchVSCode({ ...opts, filePath: QUICKSTART_TIMER_ST });
+  const frames: { png: Buffer; delayMs: number }[] = [];
+
+  try {
+    const page = await app.firstWindow();
+    await setWindowSize(page);
+    await waitForEditor(page);
+    await dismissNotifications(page);
+    await hideSideBar(page);
+
+    // Frame 1 — editor open, code visible, syntax highlighted, no errors.
+    // Hold for 2 s so the viewer can read the code.
+    await page.waitForTimeout(1000);
+    frames.push({ png: await page.screenshot({ type: 'png' }), delayMs: 2000 });
+
+    // Frame 2 — just before clicking Run Program; code lens visible.
+    try {
+      await page.waitForSelector('.codelens-decoration a', { timeout: 15000 });
+    }
+    catch {
+      console.warn('Warning: Run Program code lens did not appear within timeout');
+    }
+    await page.waitForTimeout(500);
+    frames.push({ png: await page.screenshot({ type: 'png' }), delayMs: 1500 });
+
+    // Click Run Program.
+    try {
+      const runLens = page.locator('.codelens-decoration a', { hasText: 'Run Program' }).first();
+      await runLens.click();
+    }
+    catch {
+      console.warn('Warning: could not click Run Program code lens');
+    }
+
+    // Frame 3 — output panel opening / first scan cycle.
+    try {
+      await page.waitForSelector('.output-view-container .view-line', { timeout: 15000 });
+    }
+    catch {
+      console.warn('Warning: IronPLC Run output did not appear within timeout');
+    }
+    await page.waitForTimeout(600);
+    frames.push({ png: await page.screenshot({ type: 'png' }), delayMs: 1000 });
+
+    // Frame 4 — a few more scan cycles have elapsed.
+    await page.waitForTimeout(1500);
+    frames.push({ png: await page.screenshot({ type: 'png' }), delayMs: 1000 });
+
+    // Frame 5 — pause briefly then show Stop/Pause code lenses.
+    await page.waitForTimeout(1500);
+    frames.push({ png: await page.screenshot({ type: 'png' }), delayMs: 3000 });
+
+    console.log(`Encoding APNG with ${frames.length} frames...`);
+    await encodeApng(frames, outputPath);
     console.log(`Captured: ${outputPath}`);
   }
   finally {
