@@ -15,6 +15,7 @@ import {
   captureQuickstartHelloworld,
   captureQuickstartRunOutput,
   captureQuickstartTimerOutput,
+  captureQuickstartAnimation,
 } from './captureScreenshots';
 
 function augmentedEnv(): NodeJS.ProcessEnv {
@@ -26,6 +27,7 @@ function augmentedEnv(): NodeJS.ProcessEnv {
     '/opt/homebrew/bin',
   ];
   const augmentedPath = [...extraPaths, process.env['PATH'] ?? ''].join(path.delimiter);
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   return { ...process.env, PATH: augmentedPath };
 }
 
@@ -112,6 +114,9 @@ async function main(): Promise<void> {
 
       console.log('\n--- Quickstart: Timer Output ---');
       await captureQuickstartTimerOutput(opts, path.join(outputDir, 'quickstart-timer-output.png'));
+
+      console.log('\n--- Quickstart: Animation ---');
+      await captureQuickstartAnimation(opts, path.join(outputDir, 'quickstart-animation.png'));
     }
     else {
       console.log('\n--- Quickstart screenshots: SKIPPED (ironplcc not found on PATH) ---');

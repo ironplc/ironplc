@@ -144,6 +144,12 @@ Now that the timer and configuration are in place, run the updated program:
 
    The IronPLC Run panel showing timer variable values after the TON fires.
 
+.. figure:: /images/screenshots/quickstart-animation.png
+   :alt: Animation showing the timer program running — file open, Run Program clicked, timer variables updating across scan cycles
+   :width: 600px
+
+   The timer program in action: scan cycles advancing and PulseTimer variables updating.
+
 The timer's elapsed time (``ET``) shows how long it has been running.
 After enough scan cycles, ``Q`` becomes ``TRUE`` and the buzzer turns on.
 
