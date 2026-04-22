@@ -31,6 +31,8 @@ screenshots:
   cd integrations/vscode && just screenshots
   mkdir -p docs/images/screenshots
   cp integrations/vscode/out/screenshots/output/*.png docs/images/screenshots/
+  cp integrations/vscode/out/screenshots/output/quickstart-animation.png images/quickstart-animation.png
+  cp integrations/vscode/out/screenshots/output/quickstart-animation.png integrations/vscode/images/quickstart-animation.png
 
 # Simulate the workflow that runs to validate a commit (as best as is possible via Docker)
 ci-commit-workflow:
