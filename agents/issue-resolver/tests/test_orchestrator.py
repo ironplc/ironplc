@@ -11,6 +11,7 @@ from agents.requirements import AgentError, IncompleteIssueError
 from ledger import Ledger
 from models import BlockReason, Stage, WorkItemEvent
 from orchestrator import Orchestrator
+from schemas import Requirement, RequirementsDocument
 
 
 def _event(label: str = "status/triage") -> WorkItemEvent:
@@ -20,6 +21,16 @@ def _event(label: str = "status/triage") -> WorkItemEvent:
         action="labeled",
         label=label,
         actor="reporter",
+    )
+
+
+def _happy_doc() -> RequirementsDocument:
+    return RequirementsDocument(
+        requirements=[
+            Requirement(id="REQ-TBD-001", statement="The compiler SHALL do the thing."),
+            Requirement(id="REQ-TBD-002", statement="The compiler SHALL do another thing."),
+        ],
+        open_questions=["Does the second thing apply to LREAL too?"],
     )
 
 
@@ -48,14 +59,17 @@ def _make_orchestrator() -> tuple[Orchestrator, MagicMock, AsyncMock]:
 class TestOrchestrator(unittest.TestCase):
     def test_triage_happy_path_posts_comment_and_transitions_labels(self) -> None:
         orch, github, agent = _make_orchestrator()
-        agent.run.return_value = "**REQ-TBD-001** SHALL do the thing."
+        agent.run.return_value = _happy_doc()
 
         asyncio.run(orch.handle_event(_event()))
 
         github.post_comment.assert_called_once()
         args, _ = github.post_comment.call_args
         self.assertEqual(args[0], 42)
-        self.assertIn("REQ-TBD-001", args[1])
+        body = args[1]
+        self.assertIn("REQ-TBD-001", body)
+        self.assertIn("REQ-TBD-002", body)
+        self.assertIn("Does the second thing apply", body)
         github.add_label.assert_any_call(42, "status/requirements")
         github.remove_label.assert_any_call(42, "status/triage")
 
@@ -64,6 +78,20 @@ class TestOrchestrator(unittest.TestCase):
         self.assertEqual(wi.revision_counts[Stage.REQUIREMENTS], 1)
         self.assertEqual(wi.artifact_ids[Stage.REQUIREMENTS], 1234)
 
+    def test_happy_path_with_no_open_questions_then_renders_none_identified(self) -> None:
+        orch, github, agent = _make_orchestrator()
+        agent.run.return_value = RequirementsDocument(
+            requirements=[
+                Requirement(id="REQ-TBD-001", statement="SHALL x.")
+            ],
+            open_questions=[],
+        )
+
+        asyncio.run(orch.handle_event(_event()))
+
+        body = github.post_comment.call_args.args[1]
+        self.assertIn("None identified", body)
+
     def test_incomplete_issue_posts_needs_info_and_swaps_labels(self) -> None:
         orch, github, agent = _make_orchestrator()
         agent.run.side_effect = IncompleteIssueError(missing="No ST program")
@@ -71,7 +99,6 @@ class TestOrchestrator(unittest.TestCase):
         asyncio.run(orch.handle_event(_event()))
 
         github.post_comment.assert_called_once()
-        _, kwargs = github.post_comment.call_args
         body = github.post_comment.call_args.args[1]
         self.assertIn("No ST program", body)
         github.add_label.assert_any_call(42, "status/needs-info")
@@ -93,11 +120,10 @@ class TestOrchestrator(unittest.TestCase):
 
     def test_revision_limit_trips_after_third_pass(self) -> None:
         orch, github, agent = _make_orchestrator()
-        agent.run.return_value = "**REQ-TBD-001** SHALL x."
+        agent.run.return_value = _happy_doc()
 
         for _ in range(3):
             asyncio.run(orch.handle_event(_event()))
-
         # Fourth triage attempt trips the revision limit.
         asyncio.run(orch.handle_event(_event()))
 

@@ -37,6 +37,7 @@ from context import build_requirements_context
 from github_client import GitHubClient, GitHubAPIError
 from ledger import Ledger
 from models import BlockReason, Stage, WorkItem, WorkItemEvent
+from schemas import RequirementsDocument
 
 
 _MAX_REVISIONS_PER_STAGE = 3
@@ -141,7 +142,7 @@ class Orchestrator:
             context = build_requirements_context(
                 issue, comments, bot_login=self.bot_login
             )
-            requirements_md = await self.requirements_agent.run(
+            requirements_doc = await self.requirements_agent.run(
                 context, work_item
             )
         except IncompleteIssueError as exc:
@@ -158,7 +159,7 @@ class Orchestrator:
             )
             return
 
-        body = _format_requirements_comment(requirements_md)
+        body = _format_requirements_comment(requirements_doc)
         posted = self.github.post_comment(event.issue_number, body)
         comment_id = posted.get("id")
         if isinstance(comment_id, int):
@@ -266,16 +267,26 @@ class Orchestrator:
         )
 
 
-def _format_requirements_comment(content: str) -> str:
+def _format_requirements_comment(doc: RequirementsDocument) -> str:
     header = (
         "> **Auto-generated requirements** — review and edit before "
-        "accepting. This was produced by an AI assistant and may contain "
-        "errors.\n\n"
+        "accepting. This was produced by an AI assistant and may "
+        "contain errors.\n>\n"
+        "> Requirement IDs use the `REQ-TBD-` placeholder prefix; the "
+        "Design stage will reassign prefixes to match the target design "
+        "document.\n"
     )
-    body = header + content.strip()
-    if "open questions" not in content.lower():
-        body += "\n\n## Open Questions\n\n- None identified — please verify."
-    return body
+    body_lines = [f"**{req.id}** {req.statement}" for req in doc.requirements]
+
+    questions_heading = "## Open Questions"
+    if doc.open_questions:
+        questions = "\n".join(f"- {q}" for q in doc.open_questions)
+    else:
+        questions = "- None identified."
+
+    return "\n\n".join(
+        [header.rstrip(), "\n\n".join(body_lines), questions_heading, questions]
+    )
 
 
 async def safe_handle_event(
