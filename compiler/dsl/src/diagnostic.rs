@@ -37,26 +37,25 @@ pub struct LineColumn {
     pub column: u32,
 }
 
-/// Converts a byte offset in `source` to a 0-indexed line and column.
-///
-/// The column is measured in code points, matching LSP's default
-/// `PositionEncodingKind::Utf16` close enough for single-codepoint
-/// characters and mirroring the convention used elsewhere in the compiler.
-///
-/// Offsets beyond the end of `source` are clamped to the end of `source`.
-pub fn offset_to_line_column(source: &str, offset: usize) -> LineColumn {
-    let clamped = offset.min(source.len());
-    let mut line: u32 = 0;
-    let mut column: u32 = 0;
-    for ch in source[..clamped].chars() {
-        if ch == '\n' {
-            line += 1;
-            column = 0;
-        } else {
-            column += 1;
+impl LineColumn {
+    /// Converts a byte offset in `source` to a 0-indexed line and column.
+    ///
+    /// The column is measured in code points. Offsets beyond the end of
+    /// `source` are clamped to the end of `source`.
+    pub fn from_offset(source: &str, offset: usize) -> Self {
+        let clamped = offset.min(source.len());
+        let mut line: u32 = 0;
+        let mut column: u32 = 0;
+        for ch in source[..clamped].chars() {
+            if ch == '\n' {
+                line += 1;
+                column = 0;
+            } else {
+                column += 1;
+            }
         }
+        LineColumn { line, column }
     }
-    LineColumn { line, column }
 }
 
 /// A label that refers to some range in a file and possibly associated
@@ -346,37 +345,37 @@ mod tests {
 
     #[test]
     fn offset_to_line_column_when_at_start_then_returns_zero_zero() {
-        let lc = offset_to_line_column("abc\ndef", 0);
+        let lc = LineColumn::from_offset("abc\ndef", 0);
         assert_eq!(lc, LineColumn { line: 0, column: 0 });
     }
 
     #[test]
     fn offset_to_line_column_when_on_first_line_then_returns_line_zero() {
-        let lc = offset_to_line_column("abc\ndef", 2);
+        let lc = LineColumn::from_offset("abc\ndef", 2);
         assert_eq!(lc, LineColumn { line: 0, column: 2 });
     }
 
     #[test]
     fn offset_to_line_column_when_after_newline_then_advances_line() {
-        let lc = offset_to_line_column("abc\ndef", 4);
+        let lc = LineColumn::from_offset("abc\ndef", 4);
         assert_eq!(lc, LineColumn { line: 1, column: 0 });
     }
 
     #[test]
     fn offset_to_line_column_when_on_later_line_then_returns_correct_column() {
-        let lc = offset_to_line_column("abc\ndef\nghi", 9);
+        let lc = LineColumn::from_offset("abc\ndef\nghi", 9);
         assert_eq!(lc, LineColumn { line: 2, column: 1 });
     }
 
     #[test]
     fn offset_to_line_column_when_offset_past_end_then_clamps_to_end() {
-        let lc = offset_to_line_column("abc", 999);
+        let lc = LineColumn::from_offset("abc", 999);
         assert_eq!(lc, LineColumn { line: 0, column: 3 });
     }
 
     #[test]
     fn offset_to_line_column_when_empty_source_then_returns_zero_zero() {
-        let lc = offset_to_line_column("", 0);
+        let lc = LineColumn::from_offset("", 0);
         assert_eq!(lc, LineColumn { line: 0, column: 0 });
     }
 

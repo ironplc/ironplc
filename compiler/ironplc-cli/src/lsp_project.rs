@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use ironplc_analyzer::{SemanticContext, TypeCategory};
 use ironplc_dsl::core::{FileId, Located};
-use ironplc_dsl::diagnostic::offset_to_line_column;
+use ironplc_dsl::diagnostic::LineColumn;
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
 use lsp_types::{
@@ -289,8 +289,8 @@ fn intermediate_type_to_symbol_kind(
 
 /// Convert a SourceSpan to an LSP Range using file contents for line/column calculation.
 fn span_to_range(contents: &str, span: &ironplc_dsl::core::SourceSpan) -> lsp_types::Range {
-    let start = offset_to_line_column(contents, span.start);
-    let end = offset_to_line_column(contents, span.end);
+    let start = LineColumn::from_offset(contents, span.start);
+    let end = LineColumn::from_offset(contents, span.end);
     lsp_types::Range::new(
         lsp_types::Position::new(start.line, start.column),
         lsp_types::Position::new(end.line, end.column),
@@ -553,8 +553,8 @@ fn map_label(label: &ironplc_dsl::diagnostic::Label, project: &dyn Project) -> l
 
     if let Some(contents) = contents {
         let contents = contents.as_string();
-        let start = offset_to_line_column(contents, label.location.start);
-        let end = offset_to_line_column(contents, label.location.end);
+        let start = LineColumn::from_offset(contents, label.location.start);
+        let end = LineColumn::from_offset(contents, label.location.end);
         return lsp_types::Range::new(
             lsp_types::Position::new(start.line, start.column),
             lsp_types::Position::new(end.line, end.column),

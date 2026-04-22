@@ -19,7 +19,7 @@ use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
-use ironplc_dsl::diagnostic::{offset_to_line_column, Diagnostic};
+use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_sources::{parse_source, FileType};
 use ironplc_vm::{Slot, Vm, VmBuffers};
@@ -84,17 +84,14 @@ struct CompileResult {
 
 /// A single diagnostic (error or warning) from compilation.
 ///
-/// `start_line`/`start_column`/`end_line`/`end_column` are 1-based for display
-/// and computed from `start`/`end` (byte offsets) using the same helper the
-/// LSP server uses.
+/// Line and column fields are 1-based for display, computed from the
+/// diagnostic's byte offsets using the same helper the LSP server uses.
 #[derive(Debug, Serialize, Deserialize)]
 struct DiagnosticInfo {
     code: String,
     message: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     label: String,
-    start: usize,
-    end: usize,
     start_line: u32,
     start_column: u32,
     end_line: u32,
@@ -104,14 +101,12 @@ struct DiagnosticInfo {
 /// Build a [`DiagnosticInfo`] from a compiler diagnostic, computing 1-based
 /// line/column from the supplied source text.
 fn diagnostic_info(diag: &Diagnostic, source: &str) -> DiagnosticInfo {
-    let start = offset_to_line_column(source, diag.primary.location.start);
-    let end = offset_to_line_column(source, diag.primary.location.end);
+    let start = LineColumn::from_offset(source, diag.primary.location.start);
+    let end = LineColumn::from_offset(source, diag.primary.location.end);
     DiagnosticInfo {
         code: diag.code.clone(),
         message: diag.description(),
         label: diag.primary.message.clone(),
-        start: diag.primary.location.start,
-        end: diag.primary.location.end,
         start_line: start.line + 1,
         start_column: start.column + 1,
         end_line: end.line + 1,
@@ -352,7 +347,6 @@ struct StepResult {
 ///   "ok": false,
 ///   "diagnostics": [{
 ///     "code": "...", "message": "...",
-///     "start": N, "end": N,
 ///     "start_line": L, "start_column": C,
 ///     "end_line": L, "end_column": C
 ///   }]
@@ -363,7 +357,7 @@ struct StepResult {
 pub fn compile(source: &str, dialect: &str) -> String {
     let result = compile_inner(source, dialect);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","label":"","start":0,"end":0,"start_line":1,"start_column":1,"end_line":1,"end_column":1}}]}}"#)
+        format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","label":"","start_line":1,"start_column":1,"end_line":1,"end_column":1}}]}}"#)
     })
 }
 
@@ -435,8 +429,6 @@ fn compile_inner(source: &str, dialect: &str) -> CompileResult {
                 code: "INTERNAL".to_string(),
                 message: format!("Failed to serialize bytecode: {e}"),
                 label: String::new(),
-                start: 0,
-                end: 0,
                 start_line: 1,
                 start_column: 1,
                 end_line: 1,
