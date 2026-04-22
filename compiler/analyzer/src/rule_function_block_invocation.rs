@@ -295,7 +295,7 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{assert_rule_err, assert_rule_ok};
+    use crate::test_helpers::assert_rule_ok;
     use rstest::rstest;
 
     /// Builds a two-FB program with a Callee whose interface is given by
