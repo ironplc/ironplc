@@ -4,6 +4,8 @@ IronPLC provides IEC 61131-3 Structured Text language support for VS Code.
 Get real-time error checking, syntax highlighting, and build tools for PLC
 programs — no proprietary IDE required.
 
+![](images/quickstart-animation.png)
+
 ## Quick Start
 
 1. [Install the IronPLC compiler and extension](https://www.ironplc.com/quickstart/installation.html)
