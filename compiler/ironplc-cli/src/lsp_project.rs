@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 use ironplc_analyzer::{SemanticContext, TypeCategory};
 use ironplc_dsl::core::{FileId, Located};
+use ironplc_dsl::diagnostic::LineColumn;
 use ironplc_parser::token::{Token, TokenType};
 use log::error;
 use lsp_types::{
@@ -288,36 +289,11 @@ fn intermediate_type_to_symbol_kind(
 
 /// Convert a SourceSpan to an LSP Range using file contents for line/column calculation.
 fn span_to_range(contents: &str, span: &ironplc_dsl::core::SourceSpan) -> lsp_types::Range {
-    let mut start_line = 0;
-    let mut start_col = 0;
-
-    for (idx, ch) in contents.char_indices() {
-        if idx >= span.start {
-            break;
-        }
-        if ch == '\n' {
-            start_line += 1;
-            start_col = 0;
-        } else {
-            start_col += 1;
-        }
-    }
-
-    let mut end_line = start_line;
-    let mut end_col = start_col;
-
-    for ch in contents[span.start..span.end.min(contents.len())].chars() {
-        if ch == '\n' {
-            end_line += 1;
-            end_col = 0;
-        } else {
-            end_col += 1;
-        }
-    }
-
+    let start = LineColumn::from_offset(contents, span.start);
+    let end = LineColumn::from_offset(contents, span.end);
     lsp_types::Range::new(
-        lsp_types::Position::new(start_line, start_col),
-        lsp_types::Position::new(end_line, end_col),
+        lsp_types::Position::new(start.line, start.column),
+        lsp_types::Position::new(end.line, end.column),
     )
 }
 
@@ -577,33 +553,11 @@ fn map_label(label: &ironplc_dsl::diagnostic::Label, project: &dyn Project) -> l
 
     if let Some(contents) = contents {
         let contents = contents.as_string();
-
-        let mut start_line = 0;
-        let mut start_offset = 0;
-
-        for char in contents[0..label.location.start].chars() {
-            if char == '\n' {
-                start_line += 1;
-                start_offset = 0;
-            } else {
-                start_offset += 1;
-            }
-        }
-
-        let mut end_line = start_line;
-        let mut end_offset = start_offset;
-        for char in contents[label.location.start..label.location.end.min(contents.len())].chars() {
-            if char == '\n' {
-                end_line += 1;
-                end_offset = 0;
-            } else {
-                end_offset += 1;
-            }
-        }
-
+        let start = LineColumn::from_offset(contents, label.location.start);
+        let end = LineColumn::from_offset(contents, label.location.end);
         return lsp_types::Range::new(
-            lsp_types::Position::new(start_line, start_offset),
-            lsp_types::Position::new(end_line, end_offset),
+            lsp_types::Position::new(start.line, start.column),
+            lsp_types::Position::new(end.line, end.column),
         );
     }
     lsp_types::Range::new(
