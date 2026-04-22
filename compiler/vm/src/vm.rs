@@ -19,6 +19,17 @@ use ironplc_container::opcode;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
+/// Maximum depth of nested CALL / user-FB_CALL frames before the VM
+/// traps with [`Trap::CallStackOverflow`].
+///
+/// The VM currently runs callee bytecode by recursively invoking
+/// `execute_with_hook`, so the Rust thread stack is consumed per frame.
+/// This bound keeps the VM well clear of the thread-stack limit
+/// (including under test harnesses with smaller stacks) while leaving
+/// plenty of headroom for realistic IEC-61131 programs, which typically
+/// nest only a handful of levels.
+const MAX_CALL_DEPTH: u32 = 32;
+
 /// Context for a fault that occurred during task execution.
 #[derive(Debug)]
 pub struct FaultContext {
@@ -167,6 +178,7 @@ impl<'a> VmReady<'a> {
                 self.max_temp_buf_bytes,
                 &scope,
                 0, // init functions don't need real time
+                0, // top-of-chain call: depth starts at zero
                 #[cfg(feature = "profiling")]
                 &mut self.profile,
             )
@@ -341,6 +353,7 @@ impl<'a> VmRunning<'a> {
                     self.max_temp_buf_bytes,
                     &scope,
                     current_time_us,
+                    0, // top-of-chain call: depth starts at zero
                     #[cfg(feature = "profiling")]
                     &mut self.profile,
                 )
@@ -619,6 +632,7 @@ fn execute(
     max_temp_buf_bytes: usize,
     scope: &VariableScope,
     current_time_us: u64,
+    depth: u32,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
     let mut hook = NoopDebugHook;
@@ -632,6 +646,7 @@ fn execute(
         max_temp_buf_bytes,
         scope,
         current_time_us,
+        depth,
         #[cfg(feature = "profiling")]
         profile,
         &mut hook,
@@ -657,6 +672,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     max_temp_buf_bytes: usize,
     scope: &VariableScope,
     current_time_us: u64,
+    depth: u32,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
     hook: &mut H,
 ) -> Result<(), Trap> {
@@ -1018,11 +1034,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     variables.store(VarIndex::new(var_offset + i), val)?;
                 }
 
-                // TODO: Replace Rust-recursive execute() with an iterative dispatch
-                // loop that manages its own return-address stack, so call depth is
-                // controlled by the VM rather than Rust's thread stack.
                 // Recursively execute the function body, threading the debug hook
-                // through so callees are observable too.
+                // through so callees are observable too. A future iterative
+                // dispatch rewrite could replace this recursion with an explicit
+                // return-address stack; until then the depth counter bounds it.
+                if depth >= MAX_CALL_DEPTH {
+                    return Err(Trap::CallStackOverflow);
+                }
                 execute_with_hook(
                     func_bytecode,
                     container,
@@ -1033,6 +1051,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     max_temp_buf_bytes,
                     &func_scope,
                     current_time_us,
+                    depth + 1,
                     #[cfg(feature = "profiling")]
                     profile,
                     hook,
@@ -1840,6 +1859,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             instance_offset: var_off,
                             instance_count: func.num_locals,
                         };
+                        if depth >= MAX_CALL_DEPTH {
+                            return Err(Trap::CallStackOverflow);
+                        }
                         execute_with_hook(
                             func_bytecode,
                             container,
@@ -1850,6 +1872,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             max_temp_buf_bytes,
                             &func_scope,
                             current_time_us,
+                            depth + 1,
                             #[cfg(feature = "profiling")]
                             profile,
                             hook,
