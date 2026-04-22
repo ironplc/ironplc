@@ -33,7 +33,7 @@ This spec builds on:
 
 #### `run`
 
-Loads a bytecode container file and executes one scan cycle.
+Loads a bytecode container file and executes it.
 
 ```
 ironplcvm run [OPTIONS] <FILE>
@@ -49,22 +49,40 @@ ironplcvm run [OPTIONS] <FILE>
 
 | Option | Description |
 |--------|-------------|
-| `--dump-vars <PATH>` | After a successful scan, write all variable values to the specified file. |
+| `--dump-vars [PATH]` | After the VM stops, write all variable values to `PATH`. If `PATH` is omitted or `-`, write to stdout. |
+| `--scans <N>` | Run exactly `N` scheduling rounds then stop. When omitted, runs continuously until SIGINT (Ctrl+C). |
 
 **Behavior:**
 
-1. Open and read the container file.
-2. Load the container into the VM (`Vm::new().load(container)`).
-3. Start the VM (`vm.start()`).
-4. Execute one scan cycle (`vm.run_single_scan()`).
-5. If `--dump-vars` is specified, write the variable dump file (see format below).
-6. Exit with code 0 on success.
+- **REQ-VC-001** `run` opens the container file at `<FILE>`. If the file cannot be opened, the command exits with code 2 and emits V6001 to stderr.
+- **REQ-VC-002** `run` decodes the container. If the bytes are not a valid container (bad magic, truncated, unsupported version), the command exits with code 2 and emits V6002 to stderr.
+- **REQ-VC-003** `run --scans N` executes exactly `N` scheduling rounds then exits 0.
+- **REQ-VC-004** When execution traps (divide by zero, stack overflow, invalid instruction, etc.), `run` exits with code 1 and emits the trap's V-code to stderr.
+- **REQ-VC-011** When no `--scans` value is given, `run` loops until SIGINT (Ctrl+C). On SIGINT it requests a clean stop and exits 0 after the current round.
+- **REQ-VC-012** Between rounds, `run` sleeps until the next cyclic task is due (based on `next_due_us`) to avoid busy-looping.
 
-**Error behavior:**
+#### `benchmark`
 
-- If the file cannot be opened or read: print error to stderr, exit with non-zero code.
-- If the file is not a valid container (bad magic, unsupported version, etc.): print error to stderr, exit with non-zero code.
-- If execution traps (divide by zero, stack overflow, invalid instruction, etc.): print the trap description to stderr, exit with non-zero code.
+Measures execution timing by running a container for a fixed number of rounds.
+
+```
+ironplcvm benchmark [OPTIONS] <FILE>
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--cycles <N>` | 10000 | Number of measured scan rounds. |
+| `--warmup <M>` | 1000 | Number of unmeasured warmup rounds before measurement. |
+
+**Behavior:**
+
+- **REQ-VC-013** `benchmark` prints a single JSON object to stdout containing `program`, `opt_level`, `cycles`, `warmup`, a `scan_us` object with `mean`, `stddev`, `p99`, and `max` in microseconds, and a `tasks` array with per-task metadata.
+- **REQ-VC-014** `benchmark --cycles N --warmup M` executes `M` unmeasured warmup rounds followed by `N` measured rounds.
+- **REQ-VC-015** For each cyclic task with `interval_us > 0`, the JSON `tasks[*]` entry includes a `budget_pct` object with `mean`, `p99`, and `max` expressed as a percentage of the task's interval.
+- **REQ-VC-016** File-open (V6001) and container-read (V6002) errors behave identically to `run`: exit code 2 with the V-code on stderr.
+- **REQ-VC-017** If a trap occurs during either the warmup or measured phase, `benchmark` exits with code 1 and emits the trap's V-code to stderr.
 
 #### `version`
 
@@ -78,33 +96,55 @@ Output: `ironplcvm version <VERSION>` followed by a newline on stdout.
 
 ## Variable Dump Format
 
-The `--dump-vars <path>` option writes all variable slot values to a file after a successful scan cycle.
+The `--dump-vars [PATH]` option writes all variable slot values after the VM stops (successfully or from a fault).
+
+### Behavior
+
+- **REQ-VC-005** After a successful run, `--dump-vars <PATH>` writes one variable per line, newline-terminated.
+- **REQ-VC-006** If `--dump-vars` is specified without a `PATH`, or with `PATH` equal to `-`, the dump is written to stdout.
+- **REQ-VC-007** If a runtime trap occurs and `--dump-vars` is set, the dump of the current variable state is written before the command exits non-zero.
+- **REQ-VC-008** When the container's debug section names a variable, the line uses `<name>: <value>`. Otherwise the line uses `var[<index>]: <raw_i32>`.
+- **REQ-VC-009** When debug info provides an IEC type tag, `<value>` is formatted per the type:
+
+| Tag | Format | Example |
+|-----|--------|---------|
+| `BOOL` | `TRUE`/`FALSE` | `TRUE` |
+| `SINT`, `INT`, `DINT`, `LINT` | signed decimal | `-42` |
+| `USINT`, `UINT`, `UDINT`, `ULINT` | unsigned decimal | `42` |
+| `REAL` | `{}` (32-bit float) | `3.14` |
+| `LREAL` | `{}` (64-bit float) | `3.14159265` |
+| `BYTE` | `16#XX` | `16#FF` |
+| `WORD` | `16#XXXX` | `16#ABCD` |
+| `DWORD` | `16#XXXXXXXX` | `16#DEADBEEF` |
+| `LWORD` | `16#XXXXXXXXXXXXXXXX` | `16#00000000DEADBEEF` |
+| `TIME` | `T#<ms>ms` | `T#250ms` |
+| `LTIME` | `LTIME#<ms>ms` | `LTIME#250ms` |
+| other | signed decimal fallback | `0` |
+
+- **REQ-VC-010** If the dump file cannot be created (e.g., parent directory missing), the command exits with code 2 and emits V6004 to stderr.
 
 ### Format
 
-One line per variable, zero-indexed, newline-terminated:
+One line per variable, zero-indexed, newline-terminated (no debug info):
 
 ```
 var[0]: 10
 var[1]: 42
 ```
 
-### Grammar
+With debug info:
 
 ```
-dump       = { variable } ;
-variable   = "var[" , index , "]: " , value , "\n" ;
-index      = decimal_integer ;    (* 0-based, no leading zeros except for 0 itself *)
-value      = signed_decimal_i32 ; (* e.g., "42", "-1", "0" *)
+Buzzer: TRUE
+Counter: 42
 ```
 
 ### Rules
 
 1. **Variable count** comes from `container.header.num_variables`.
 2. **Variable order** is ascending by index, 0 through `num_variables - 1`.
-3. **Value representation**: each variable is printed as a signed 32-bit integer (via `Slot::as_i32()`). When the container type section is implemented, the dump format can become type-aware.
-4. **File creation**: the dump file is created or overwritten (not appended). If the file cannot be written, the command returns a non-zero exit code with an error on stderr.
-5. **Empty programs**: if `num_variables` is 0, the dump file is created but empty.
+3. **File creation**: the dump file is created or overwritten (not appended).
+4. **Empty programs**: if `num_variables` is 0, the dump file is created but empty.
 
 ### Example
 
@@ -119,11 +159,10 @@ var[1]: 42
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success — program loaded and scan completed without traps. |
-| Non-zero | Failure — file error, container error, or runtime trap. |
+| 0 | Success — program loaded and execution completed without traps. |
+| 1 | Runtime trap — a VM trap occurred during execution. |
+| 2 | IO or container error — file could not be opened, read, created, or written. |
 
 ## Future Extensions
 
-- `--scans <N>` — run N scan cycles instead of one.
-- Type-aware variable dump once the container type section is populated.
-- `--continuous` — run scan cycles in a loop until interrupted.
+- Type-aware variable dump for richer IEC types (arrays, structs) once the container type section covers them.

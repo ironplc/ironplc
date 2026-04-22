@@ -1078,6 +1078,7 @@ dependencies = [
  "log",
  "predicates",
  "serde_json",
+ "spec_test_macro",
  "tempfile",
  "time",
 ]
