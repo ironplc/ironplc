@@ -30,8 +30,17 @@ lint:
   cargo fmt --all -- --check
 
 # Check for duplicate code (AST-based).
+#
+# Two passes:
+# 1. Production code: strict 10% exact / 5% near gate with tests excluded.
+# 2. Test code: looser 25% exact / 7% near gate with tests included. Tests
+#    inherently share boilerplate (parse → compile → run → assert) so a
+#    stricter gate would be unrealistic, but this still catches material
+#    regressions — any big new copy-paste cluster in the test suite pushes
+#    the percentages up.
 dupes:
   cargo dupes check --max-exact-percent 10 --max-near-percent 5 --exclude-tests --min-lines 10
+  cargo dupes check --max-exact-percent 25 --max-near-percent 7 --min-lines 10
 
 # Set the version number for this component.
 version version:

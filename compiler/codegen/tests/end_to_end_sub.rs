@@ -63,8 +63,7 @@ e2e_i32!(
 // Multi-scan countdown uses the raw VM API; keep as a dedicated test.
 #[test]
 fn end_to_end_when_countdown_program_then_decrements_across_scans() {
-    let source =
-        "PROGRAM main VAR count : DINT; END_VAR count := count - 1; END_PROGRAM";
+    let source = "PROGRAM main VAR count : DINT; END_VAR count := count - 1; END_PROGRAM";
     let container = parse_and_compile(source, &CompilerOptions::default());
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = Vm::new().load(&container, &mut bufs).start().unwrap();

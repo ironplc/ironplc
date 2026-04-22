@@ -174,11 +174,10 @@ impl Visitor<Diagnostic> for HierarchyVisitor {
 #[cfg(test)]
 mod tests {
     use crate::rule_pou_hierarchy::apply;
-    use crate::test_helpers::{
-        assert_rule_err_parse_only, assert_rule_ok_blank_ctx,
-        parse_and_resolve_types,
-    };
     use crate::semantic_context::SemanticContextBuilder;
+    use crate::test_helpers::{
+        assert_rule_err_parse_only, assert_rule_ok_blank_ctx, parse_and_resolve_types,
+    };
     use ironplc_parser::options::CompilerOptions;
     use rstest::rstest;
 

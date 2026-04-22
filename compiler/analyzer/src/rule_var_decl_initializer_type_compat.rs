@@ -174,7 +174,8 @@ mod test {
     // parser, and the dialect flag must reach both parse and apply stages.
     fn run_rusty_rule(decl: &str) -> SemanticResult {
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(&program_with_var(decl), &options);
+        let (library, context) =
+            parse_and_resolve_types_with_options(&program_with_var(decl), &options);
         apply(&library, &context, &options)
     }
 

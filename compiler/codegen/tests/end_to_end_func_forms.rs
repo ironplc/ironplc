@@ -22,9 +22,8 @@ use rstest::rstest;
 #[case::div("DIV", "20, 4", 5)]
 #[case::mod_("MOD", "10, 3", 1)]
 fn end_to_end_arith_function(#[case] func: &str, #[case] args: &str, #[case] expected: i32) {
-    let source = format!(
-        "PROGRAM main VAR result : DINT; END_VAR result := {func}({args}); END_PROGRAM"
-    );
+    let source =
+        format!("PROGRAM main VAR result : DINT; END_VAR result := {func}({args}); END_PROGRAM");
     let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), expected);
 }
@@ -43,11 +42,7 @@ fn end_to_end_arith_function(#[case] func: &str, #[case] args: &str, #[case] exp
 #[case::xor("XOR", "TRUE, FALSE", "TRUE, TRUE")]
 // NOT(x) parses as unary NOT applied to parenthesized expression (x).
 #[case::not_parens("NOT", "FALSE", "TRUE")]
-fn end_to_end_bool_function(
-    #[case] func: &str,
-    #[case] args_true: &str,
-    #[case] args_false: &str,
-) {
+fn end_to_end_bool_function(#[case] func: &str, #[case] args_true: &str, #[case] args_false: &str) {
     let source = format!(
         "PROGRAM main VAR true_result : DINT; false_result : DINT; END_VAR true_result := {func}({args_true}); false_result := {func}({args_false}); END_PROGRAM"
     );

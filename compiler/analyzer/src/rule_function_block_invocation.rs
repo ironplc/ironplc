@@ -309,10 +309,7 @@ mod tests {
 
     // Each case describes (callee_vars, call_expression). Valid invocations.
     #[rstest]
-    #[case::no_args(
-        "",
-        "FB_INSTANCE();"
-    )]
+    #[case::no_args("", "FB_INSTANCE();")]
     #[case::some_formal_input_names_assigned(
         "VAR_INPUT IN1: BOOL; IN2: BOOL; END_VAR",
         "FB_INSTANCE(IN1 := TRUE);"
@@ -374,18 +371,12 @@ mod tests {
         "VAR_INPUT IN1: BOOL; IN2: BOOL; END_VAR",
         "FB_INSTANCE(TRUE);"
     )]
-    #[case::nonformal_names_too_many(
-        "VAR_INPUT IN2: BOOL; END_VAR",
-        "FB_INSTANCE(TRUE, FALSE);"
-    )]
+    #[case::nonformal_names_too_many("VAR_INPUT IN2: BOOL; END_VAR", "FB_INSTANCE(TRUE, FALSE);")]
     #[case::one_input_name_incorrect(
         "VAR_INPUT IN1: BOOL; END_VAR",
         "FB_INSTANCE(IN1 := TRUE, BAR := TRUE);"
     )]
-    fn apply_when_invalid_invocation_then_error(
-        #[case] callee_vars: &str,
-        #[case] call: &str,
-    ) {
+    fn apply_when_invalid_invocation_then_error(#[case] callee_vars: &str, #[case] call: &str) {
         assert_err_with_blank_context(&two_fb_program(callee_vars, call));
     }
 

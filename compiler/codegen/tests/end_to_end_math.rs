@@ -20,7 +20,10 @@ fn end_to_end_math_real(#[case] func: &str, #[case] input: f32, #[case] expected
     // LN / LOG require coarser tolerance because their inputs are themselves
     // rounded; EXP is exact at 0.
     let tolerance = if func == "LN" { 1e-4 } else { 1e-5 };
-    assert!((y - expected).abs() < tolerance, "expected ~{expected}, got {y}");
+    assert!(
+        (y - expected).abs() < tolerance,
+        "expected ~{expected}, got {y}"
+    );
 }
 
 // LREAL (f64) math cases: tighter tolerance.

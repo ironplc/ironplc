@@ -40,7 +40,11 @@ fn assert_concat(decl: &str, args: &str, pre_lens: &[u16], expected: &str) {
 
 // CONCAT of two STRING variables: two strings precede `result`, each default-sized (254).
 #[rstest]
-#[case::two_strings("s1 : STRING := 'Hello'; s2 : STRING := ' World';", "s1, s2", "Hello World")]
+#[case::two_strings(
+    "s1 : STRING := 'Hello'; s2 : STRING := ' World';",
+    "s1, s2",
+    "Hello World"
+)]
 #[case::single_chars("s1 : STRING := 'A'; s2 : STRING := 'B';", "s1, s2", "AB")]
 #[case::empty_first("s1 : STRING; s2 : STRING := 'World';", "s1, s2", "World")]
 #[case::empty_second("s1 : STRING := 'Hello'; s2 : STRING;", "s1, s2", "Hello")]

@@ -23,9 +23,8 @@ fn sizeof_options() -> CompilerOptions {
 #[case::lreal(1, "LREAL", 8)]
 #[case::array_10_of_int(1, "ARRAY[1..10] OF INT", 20)]
 fn end_to_end_sizeof(#[case] _ordinal: u8, #[case] ty: &str, #[case] expected_bytes: i32) {
-    let source = format!(
-        "PROGRAM main VAR x : {ty}; s : DINT; END_VAR s := SIZEOF(x); END_PROGRAM"
-    );
+    let source =
+        format!("PROGRAM main VAR x : {ty}; s : DINT; END_VAR s := SIZEOF(x); END_PROGRAM");
     let (_c, bufs) = parse_and_run(&source, &sizeof_options());
     assert_eq!(bufs.vars[1].as_i32(), expected_bytes);
 }

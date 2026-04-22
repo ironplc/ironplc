@@ -455,10 +455,9 @@ mod tests {
         #[case] arg_ty: Option<&str>,
         #[case] arg_expr: &str,
     ) {
-        let (library, context) =
-            parse_and_resolve_types_with_context(&identity_fn_source(
-                ret_ty, param_ty, result_ty, arg_ty, arg_expr,
-            ));
+        let (library, context) = parse_and_resolve_types_with_context(&identity_fn_source(
+            ret_ty, param_ty, result_ty, arg_ty, arg_expr,
+        ));
         let result = apply(&library, &context, &CompilerOptions::default());
         assert!(result.is_err());
     }
@@ -547,7 +546,11 @@ mod tests {
     #[test]
     fn apply_when_byte_return_to_int_var_without_flag_then_error() {
         let (library, context) = parse_and_resolve_types_with_context(&identity_fn_source(
-            "BYTE", "BYTE", "INT", Some("BYTE"), "y",
+            "BYTE",
+            "BYTE",
+            "INT",
+            Some("BYTE"),
+            "y",
         ));
         let result = apply(&library, &context, &CompilerOptions::default());
         assert!(result.is_err());
@@ -556,6 +559,8 @@ mod tests {
     // Integer → bit-string is never allowed, even with the flag.
     #[test]
     fn apply_when_int_arg_to_byte_param_with_flag_then_error() {
-        assert!(apply_identity_with_cross_family("BYTE", "BYTE", "BYTE", Some("INT"), "y").is_err());
+        assert!(
+            apply_identity_with_cross_family("BYTE", "BYTE", "BYTE", Some("INT"), "y").is_err()
+        );
     }
 }

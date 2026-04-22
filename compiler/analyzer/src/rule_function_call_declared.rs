@@ -138,9 +138,7 @@ mod tests {
     /// with a fixed VAR envelope. Cuts the boilerplate in tests that only
     /// differ in the call expression being exercised.
     fn caller_fb(vars: &str, body: &str) -> String {
-        format!(
-            "FUNCTION_BLOCK CALLER VAR {vars} END_VAR {body} END_FUNCTION_BLOCK"
-        )
+        format!("FUNCTION_BLOCK CALLER VAR {vars} END_VAR {body} END_FUNCTION_BLOCK")
     }
 
     // --- Stdlib / user-defined function calls that should succeed ---
@@ -150,15 +148,9 @@ mod tests {
     // called function is declared and has the right arity.
     #[rstest]
     // Stdlib conversion.
-    #[case::stdlib_int_to_real(
-        "result : REAL; value : INT;",
-        "result := INT_TO_REAL(value);"
-    )]
+    #[case::stdlib_int_to_real("result : REAL; value : INT;", "result := INT_TO_REAL(value);")]
     // User-defined function (declared separately in the outer library).
-    #[case::user_function(
-        "result : INT;",
-        "result := ADD_INTS(1, 2);"
-    )]
+    #[case::user_function("result : INT;", "result := ADD_INTS(1, 2);")]
     // Stdlib monadic/dyadic numeric functions.
     #[case::abs_call("result : INT; value : INT;", "result := ABS(value);")]
     #[case::sqrt_call("result : REAL; value : REAL;", "result := SQRT(value);")]
@@ -168,15 +160,9 @@ mod tests {
         "result : INT; low : INT; value : INT; high : INT;",
         "result := LIMIT(low, value, high);"
     )]
-    #[case::expt_call(
-        "result : INT; base : INT; exp : INT;",
-        "result := EXPT(base, exp);"
-    )]
+    #[case::expt_call("result : INT; base : INT; exp : INT;", "result := EXPT(base, exp);")]
     // MUX with variable arity (3 fixed + N-1 variants).
-    #[case::mux_3_args(
-        "result : INT; a : INT; b : INT;",
-        "result := MUX(0, a, b);"
-    )]
+    #[case::mux_3_args("result : INT; a : INT; b : INT;", "result := MUX(0, a, b);")]
     #[case::mux_5_args(
         "result : INT; a : INT; b : INT; c : INT; d : INT;",
         "result := MUX(2, a, b, c, d);"
@@ -214,10 +200,7 @@ mod tests {
     // --- Undeclared-function diagnostics ---
 
     #[rstest]
-    #[case::caller_calls_undeclared(
-        "result : INT;",
-        "result := NONEXISTENT_FUNC(1);"
-    )]
+    #[case::caller_calls_undeclared("result : INT;", "result := NONEXISTENT_FUNC(1);")]
     fn apply_when_function_not_declared_then_error(#[case] vars: &str, #[case] body: &str) {
         assert_rule_err(
             apply,
@@ -245,15 +228,9 @@ mod tests {
         "result := INT_TO_REAL(value, value);"
     )]
     // Too few args to a 3-arity stdlib function.
-    #[case::limit_too_few(
-        "result : INT; a : INT; b : INT;",
-        "result := LIMIT(a, b);"
-    )]
+    #[case::limit_too_few("result : INT; a : INT; b : INT;", "result := LIMIT(a, b);")]
     // MUX with fewer than 3 args.
-    #[case::mux_too_few(
-        "result : INT; a : INT;",
-        "result := MUX(0, a);"
-    )]
+    #[case::mux_too_few("result : INT; a : INT;", "result := MUX(0, a);")]
     // MUX with more than 17 args (16 data + 1 selector max).
     #[case::mux_18_args(
         "result : INT; a : INT; b : INT; c : INT; d : INT; e : INT; f : INT; g : INT; h : INT; i : INT; j : INT; k : INT; l : INT; m : INT; n : INT; o : INT; p : INT; q : INT;",

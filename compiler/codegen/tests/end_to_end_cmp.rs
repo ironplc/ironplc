@@ -17,9 +17,8 @@ use rstest::rstest;
 #[case::gt_true(7, "x > 5", 1)]
 #[case::ge_false(3, "x >= 5", 0)]
 fn end_to_end_cmp_dint(#[case] x: i32, #[case] expr: &str, #[case] expected_y: i32) {
-    let source = format!(
-        "PROGRAM main VAR x : DINT; y : DINT; END_VAR x := {x}; y := {expr}; END_PROGRAM"
-    );
+    let source =
+        format!("PROGRAM main VAR x : DINT; y : DINT; END_VAR x := {x}; y := {expr}; END_PROGRAM");
     let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), x);
     assert_eq!(bufs.vars[1].as_i32(), expected_y);
@@ -31,12 +30,7 @@ fn end_to_end_cmp_dint(#[case] x: i32, #[case] expr: &str, #[case] expected_y: i
 #[case::le_true(72, "<=", 90, 1)]
 #[case::gt_false(50, ">", 65, 0)]
 #[case::lt_false(200, "<", 100, 0)]
-fn end_to_end_cmp_byte(
-    #[case] lhs: u8,
-    #[case] op: &str,
-    #[case] rhs: u8,
-    #[case] expected: i32,
-) {
+fn end_to_end_cmp_byte(#[case] lhs: u8, #[case] op: &str, #[case] rhs: u8, #[case] expected: i32) {
     let source = format!(
         "PROGRAM main VAR c : BYTE; result : BOOL; END_VAR c := BYTE#{lhs}; result := c {op} BYTE#{rhs}; END_PROGRAM"
     );

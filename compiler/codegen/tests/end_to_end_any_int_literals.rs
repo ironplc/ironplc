@@ -15,27 +15,9 @@ use rstest::rstest;
 // parameter and returns it via a small expression, then calls it from a
 // PROGRAM with a bare literal argument. vars[0] holds the PROGRAM's result.
 #[rstest]
-#[case::bare_int_to_int_param(
-    "ADD_ONE",
-    "INT",
-    "ADD_ONE := x + INT#1;",
-    "5",
-    6
-)]
-#[case::bare_int_to_sint_param(
-    "DOUBLE",
-    "SINT",
-    "DOUBLE := x + x;",
-    "7",
-    14
-)]
-#[case::bare_int_to_dint_param(
-    "TRIPLE",
-    "DINT",
-    "TRIPLE := x + x + x;",
-    "100",
-    300
-)]
+#[case::bare_int_to_int_param("ADD_ONE", "INT", "ADD_ONE := x + INT#1;", "5", 6)]
+#[case::bare_int_to_sint_param("DOUBLE", "SINT", "DOUBLE := x + x;", "7", 14)]
+#[case::bare_int_to_dint_param("TRIPLE", "DINT", "TRIPLE := x + x + x;", "100", 300)]
 fn end_to_end_bare_int_literal(
     #[case] fn_name: &str,
     #[case] ty: &str,

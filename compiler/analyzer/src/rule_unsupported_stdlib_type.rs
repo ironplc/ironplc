@@ -79,9 +79,7 @@ mod tests {
     #[case::ctu_dint_supported(
         "FUNCTION_BLOCK DUMMY VAR_INPUT counter : CTU_DINT; END_VAR END_FUNCTION_BLOCK"
     )]
-    #[case::ton_supported(
-        "FUNCTION_BLOCK DUMMY VAR_INPUT timer : TON; END_VAR END_FUNCTION_BLOCK"
-    )]
+    #[case::ton_supported("FUNCTION_BLOCK DUMMY VAR_INPUT timer : TON; END_VAR END_FUNCTION_BLOCK")]
     #[case::user_defined_function_block(
         "FUNCTION_BLOCK MY_CUSTOM_FB VAR_INPUT value : INT; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK DUMMY VAR_INPUT my_var : MY_CUSTOM_FB; END_VAR END_FUNCTION_BLOCK"
     )]

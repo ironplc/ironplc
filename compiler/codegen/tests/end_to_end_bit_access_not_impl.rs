@@ -122,7 +122,8 @@ e2e_i32!(
 
 #[test]
 fn end_to_end_when_write_bit_on_lword_array_then_compiles() {
-    let source = "PROGRAM main VAR arr : ARRAY[0..0] OF LWORD; END_VAR arr[0].0 := TRUE; END_PROGRAM";
+    let source =
+        "PROGRAM main VAR arr : ARRAY[0..0] OF LWORD; END_VAR arr[0].0 := TRUE; END_PROGRAM";
     let result = try_parse_and_compile(source, &CompilerOptions::default());
     assert!(
         result.is_ok(),

@@ -45,7 +45,10 @@ fn end_to_end_when_two_string_variables_then_both_initialized() {
     let source = "PROGRAM main VAR a : STRING := 'foo'; b : STRING := 'bar'; END_VAR END_PROGRAM";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(read_string(&bufs.data_region, 0), "foo");
-    assert_eq!(read_string(&bufs.data_region, STRING_HEADER_BYTES + 254), "bar");
+    assert_eq!(
+        read_string(&bufs.data_region, STRING_HEADER_BYTES + 254),
+        "bar"
+    );
 }
 
 // DINT + STRING mixed: scalar at vars[0], string at data_region 0.

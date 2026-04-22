@@ -81,7 +81,10 @@ fn end_to_end_string_to_real(#[case] s_init: &str, #[case] expected: f32, #[case
     let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
     let actual = bufs.vars[1].as_f32();
     if approx {
-        assert!((actual - expected).abs() < 1e-5, "expected ≈{expected}, got {actual}");
+        assert!(
+            (actual - expected).abs() < 1e-5,
+            "expected ≈{expected}, got {actual}"
+        );
     } else {
         assert_eq!(actual, expected);
     }

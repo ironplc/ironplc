@@ -45,9 +45,8 @@ e2e_i32!(
 #[case::not_zero(0, "NOT x", 1)]
 #[case::not_nonzero(5, "NOT x", 0)]
 fn end_to_end_bool_op(#[case] x: i32, #[case] expr: &str, #[case] expected_y: i32) {
-    let source = format!(
-        "PROGRAM main VAR x : DINT; y : DINT; END_VAR x := {x}; y := {expr}; END_PROGRAM"
-    );
+    let source =
+        format!("PROGRAM main VAR x : DINT; y : DINT; END_VAR x := {x}; y := {expr}; END_PROGRAM");
     let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), x);
     assert_eq!(bufs.vars[1].as_i32(), expected_y);
