@@ -27,6 +27,7 @@ function augmentedEnv(): NodeJS.ProcessEnv {
     '/opt/homebrew/bin',
   ];
   const augmentedPath = [...extraPaths, process.env['PATH'] ?? ''].join(path.delimiter);
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   return { ...process.env, PATH: augmentedPath };
 }
 

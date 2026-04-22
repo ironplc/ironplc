@@ -402,7 +402,7 @@ async function encodeApng(
     height = img.height;
     rgbaFrames.push(UPNG.toRGBA8(img)[0]);
   }
-  const delays = frames.map((f) => f.delayMs);
+  const delays = frames.map(f => f.delayMs);
   const apng = UPNG.encode(rgbaFrames, width, height, 0, delays);
   fs.writeFileSync(outputPath, Buffer.from(apng));
 }
