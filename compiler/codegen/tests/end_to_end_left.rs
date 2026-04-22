@@ -1,12 +1,11 @@
 //! End-to-end integration tests for the LEFT standard function.
 
 mod common;
-use ironplc_parser::options::CompilerOptions;
-
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
+use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
-/// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
     let cur_len =
         u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
@@ -15,9 +14,6 @@ fn read_string(data_region: &[u8], data_offset: usize) -> String {
     bytes.iter().map(|&b| b as char).collect()
 }
 
-/// Computes the data_offset of a STRING variable given its position
-/// in the declaration order and preceding string max lengths.
-/// Each STRING variable occupies STRING_HEADER_BYTES + max_length bytes.
 fn string_offset(preceding_max_lengths: &[u16]) -> usize {
     preceding_max_lengths
         .iter()
@@ -25,124 +21,36 @@ fn string_offset(preceding_max_lengths: &[u16]) -> usize {
         .sum()
 }
 
-#[test]
-fn end_to_end_when_left_partial_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello World';
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // LEFT 5 chars of 'Hello World' -> 'Hello'
+// All cases share: VAR s1 : STRING := <init>; result : STRING; END_VAR;
+//                  result := LEFT(s1, <n>);
+// `result` sits after one default-sized STRING.
+#[rstest]
+#[case::partial("'Hello World'", "5", "Hello")]
+#[case::exceeds_length_clamped("'Hi'", "100", "Hi")]
+#[case::zero_gives_empty("'Hello'", "0", "")]
+#[case::single_char("'ABCDE'", "1", "A")]
+#[case::exact_length("'ABCDE'", "5", "ABCDE")]
+#[case::empty_string_gives_empty("", "5", "")]
+fn end_to_end_left(#[case] s1_init: &str, #[case] n: &str, #[case] expected: &str) {
+    let s1_decl = if s1_init.is_empty() {
+        "s1 : STRING;".to_string()
+    } else {
+        format!("s1 : STRING := {s1_init};")
+    };
+    let source = format!(
+        "PROGRAM main VAR {s1_decl} result : STRING; END_VAR result := LEFT(s1, {n}); END_PROGRAM"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
     let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello");
+    assert_eq!(read_string(&bufs.data_region, result_offset), expected);
 }
 
-#[test]
-fn end_to_end_when_left_exceeds_length_then_entire_string() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hi';
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, 100);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // LEFT 100 chars of 'Hi' -> 'Hi' (clamped to string length)
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hi");
-}
-
-#[test]
-fn end_to_end_when_left_zero_then_empty_string() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello';
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, 0);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "");
-}
-
-#[test]
-fn end_to_end_when_left_single_char_then_first_char() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, 1);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "A");
-}
-
-#[test]
-fn end_to_end_when_left_exact_length_then_entire_string() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABCDE");
-}
-
+// LEFT where the count is passed via an INT variable: adds a scalar slot but
+// leaves the preceding STRINGs unchanged.
 #[test]
 fn end_to_end_when_left_with_integer_var_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello World';
-    n : INT := 3;
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, n);
-END_PROGRAM
-";
+    let source = "PROGRAM main VAR s1 : STRING := 'Hello World'; n : INT := 3; result : STRING; END_VAR result := LEFT(s1, n); END_PROGRAM";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "Hel");
-}
-
-#[test]
-fn end_to_end_when_left_empty_string_then_empty() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING;
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "");
 }
