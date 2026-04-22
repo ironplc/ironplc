@@ -1,87 +1,36 @@
 //! End-to-end tests for integer narrowing type conversions.
 
 mod common;
-use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
+use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
-#[test]
-fn end_to_end_when_dint_to_int_then_narrows() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-    y : INT;
-  END_VAR
-  x := 1000;
-  y := DINT_TO_INT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 1000);
-}
-
-#[test]
-fn end_to_end_when_lint_to_dint_then_narrows() {
-    let source = "
-PROGRAM main
-  VAR
-    x : LINT;
-    y : DINT;
-  END_VAR
-  x := 42;
-  y := LINT_TO_DINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_dint_to_sint_overflow_then_wraps() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-    y : SINT;
-  END_VAR
-  x := 300;
-  y := DINT_TO_SINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // 300 mod 256 = 44 (wrapping to i8 range)
-    assert_eq!(bufs.vars[1].as_i32() as i8, 44);
-}
-
-#[test]
-fn end_to_end_when_lint_to_sint_then_narrows() {
-    let source = "
-PROGRAM main
-  VAR
-    x : LINT;
-    y : SINT;
-  END_VAR
-  x := 50;
-  y := LINT_TO_SINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 50);
-}
-
-#[test]
-fn end_to_end_when_ulint_to_udint_then_narrows() {
-    let source = "
-PROGRAM main
-  VAR
-    x : ULINT;
-    y : UDINT;
-  END_VAR
-  x := 1000;
-  y := ULINT_TO_UDINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u32, 1000);
+// Each case declares `x : <from>; y : <to>;`, sets `x := <init>;`, then
+// calls `<from>_TO_<to>(x)` into `y`. vars[1] holds the narrowed value.
+#[rstest]
+#[case::dint_to_int("DINT", "INT", 1000, 1000)]
+#[case::lint_to_dint("LINT", "DINT", 42, 42)]
+// 300 mod 256 = 44 (wrapping to i8 range).
+#[case::dint_to_sint_overflow_wraps("DINT", "SINT", 300, 44)]
+#[case::lint_to_sint("LINT", "SINT", 50, 50)]
+#[case::ulint_to_udint("ULINT", "UDINT", 1000, 1000)]
+fn end_to_end_narrowing(
+    #[case] from: &str,
+    #[case] to: &str,
+    #[case] init: i64,
+    #[case] expected: i32,
+) {
+    let source = format!(
+        "PROGRAM main VAR x : {from}; y : {to}; END_VAR x := {init}; y := {from}_TO_{to}(x); END_PROGRAM"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    // SINT is 8-bit signed; mask to i8 range via the cast.
+    if to == "SINT" {
+        assert_eq!(bufs.vars[1].as_i32() as i8 as i32, expected);
+    } else if to == "UDINT" {
+        assert_eq!(bufs.vars[1].as_i32() as u32 as i32, expected);
+    } else {
+        assert_eq!(bufs.vars[1].as_i32(), expected);
+    }
 }
