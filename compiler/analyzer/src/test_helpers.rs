@@ -1,7 +1,9 @@
+use crate::result::SemanticResult;
 use crate::semantic_context::SemanticContext;
 use crate::stages::resolve_types;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::FileId;
+use ironplc_parser::options::CompilerOptions;
 
 #[cfg(test)]
 pub fn parse_only(program: &str) -> Library {
@@ -40,4 +42,39 @@ pub fn parse_and_resolve_types_with_options(
 
     let library = parse_program(program, &FileId::default(), options).unwrap();
     resolve_types(&[&library], options).unwrap()
+}
+
+/// Type alias for a semantic rule's `apply` function. Every rule in
+/// `analyzer/src/rule_*.rs` exposes an `apply` with this signature, which lets
+/// the `assert_rule_*` helpers work uniformly across rules.
+#[cfg(test)]
+pub type RuleApplyFn = fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult;
+
+/// Parses `program`, resolves types, applies `rule`, and asserts the result is `Ok`.
+///
+/// Collapses the 4-line scaffold that every `rule_*.rs` test used to write
+/// (parse → resolve → apply → `assert!(result.is_ok())`) into one call, which
+/// removes a large dupe cluster that `cargo dupes` used to flag across the
+/// analyzer rule tests.
+#[cfg(test)]
+pub fn assert_rule_ok(rule: RuleApplyFn, program: &str) {
+    let (library, context) = parse_and_resolve_types_with_context(program);
+    let result = rule(&library, &context, &CompilerOptions::default());
+    assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
+}
+
+/// Like [`assert_rule_ok`] but asserts the rule produces exactly one diagnostic
+/// with the given problem code. `expected_code` is typically
+/// `Problem::FooBar.code()`.
+#[cfg(test)]
+pub fn assert_rule_err(rule: RuleApplyFn, program: &str, expected_code: &str) {
+    let (library, context) = parse_and_resolve_types_with_context(program);
+    let result = rule(&library, &context, &CompilerOptions::default());
+    let diagnostics = result.expect_err("expected Err");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "expected exactly 1 diagnostic, got {diagnostics:?}"
+    );
+    assert_eq!(diagnostics[0].code, expected_code);
 }
