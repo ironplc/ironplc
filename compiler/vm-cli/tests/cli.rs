@@ -3,7 +3,10 @@ use std::path::{Path, PathBuf};
 use assert_cmd::cargo;
 use assert_cmd::prelude::*;
 use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
-use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
+use ironplc_container::{
+    ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId, TaskType,
+    VarIndex,
+};
 use predicates::prelude::*;
 use std::process::Command;
 use tempfile::TempDir;
@@ -297,6 +300,313 @@ fn run_when_dump_vars_without_path_then_prints_to_stdout() -> Result<(), Box<dyn
         .success()
         .stdout(predicate::str::contains("var[0]: 10"))
         .stdout(predicate::str::contains("var[1]: 42"));
+
+    Ok(())
+}
+
+/// Builds a container with a no-op init function and a scan function that
+/// assigns `x := 10` then divides by zero. The init runs cleanly under
+/// `Vm::start()`; the fault happens inside `run_round`, so the pre-fault
+/// variable state is observable via `--dump-vars`.
+fn write_fault_with_vars_container(path: &Path) {
+    #[rustfmt::skip]
+    let init_bytecode: Vec<u8> = vec![
+        0xB5,                   // RET_VOID — init is a no-op.
+    ];
+    #[rustfmt::skip]
+    let scan_bytecode: Vec<u8> = vec![
+        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
+        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
+        0x33,                   // DIV_I32                  (10 / 0 → trap)
+        0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (unreached)
+        0xB5,                   // RET_VOID
+    ];
+
+    let container = ContainerBuilder::new()
+        .num_variables(2)
+        .add_i32_constant(10)
+        .add_i32_constant(0)
+        .add_function(FunctionId::new(0), &init_bytecode, 0, 0, 0)
+        .add_function(FunctionId::new(1), &scan_bytecode, 2, 2, 0)
+        .init_function_id(FunctionId::new(0))
+        .entry_function_id(FunctionId::new(1))
+        .build();
+
+    let mut buf = Vec::new();
+    container.write_to(&mut buf).unwrap();
+    std::fs::write(path, &buf).unwrap();
+}
+
+/// REQ-VC-007: a runtime trap with `--dump-vars` writes the current variable
+/// state before exiting with code 1.
+#[test]
+fn run_when_fault_and_dump_vars_then_writes_variables_and_exits_1(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("fault.iplc");
+    let dump_path = dir.path().join("vars.txt");
+    write_fault_with_vars_container(&container_path);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--dump-vars")
+        .arg(&dump_path)
+        .arg("--scans")
+        .arg("1");
+    cmd.assert()
+        .code(1)
+        .stderr(predicate::str::contains("V4001"));
+
+    let contents = std::fs::read_to_string(&dump_path)?;
+    // x was stored before the fault; y was never stored.
+    assert_eq!(contents, "var[0]: 10\nvar[1]: 0\n");
+
+    Ok(())
+}
+
+/// REQ-VC-010: an unreachable dump path returns V6004 with exit code 2.
+#[test]
+fn run_when_dump_path_in_nonexistent_directory_then_exit_2_and_v6004(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("test.iplc");
+    write_steel_thread_container(&container_path);
+
+    // A parent directory that doesn't exist → File::create fails.
+    let dump_path = dir.path().join("no_such_subdir").join("vars.txt");
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run")
+        .arg(&container_path)
+        .arg("--dump-vars")
+        .arg(&dump_path)
+        .arg("--scans")
+        .arg("1");
+    cmd.assert()
+        .code(2)
+        .stderr(predicate::str::contains("V6004"));
+
+    Ok(())
+}
+
+/// REQ-VC-016: `benchmark` surfaces malformed-container errors as V6002/exit 2.
+#[test]
+fn benchmark_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let bad_path = dir.path().join("bad.iplc");
+    std::fs::write(&bad_path, "this is not a container file")?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("benchmark").arg(&bad_path);
+    cmd.assert()
+        .code(2)
+        .stderr(predicate::str::contains("V6002"));
+
+    Ok(())
+}
+
+/// Builds a container whose init is a no-op but whose scan function divides
+/// by zero. The fault therefore occurs inside `run_round`, not `start()`,
+/// which is the path used by `benchmark`'s warmup and measured loops.
+fn write_scan_divide_by_zero_container(path: &Path) {
+    #[rustfmt::skip]
+    let init_bytecode: Vec<u8> = vec![0xB5]; // RET_VOID
+    #[rustfmt::skip]
+    let scan_bytecode: Vec<u8> = vec![
+        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
+        0x33,                   // DIV_I32                  (10 / 0 → trap)
+        0xB5,                   // RET_VOID
+    ];
+
+    let container = ContainerBuilder::new()
+        .num_variables(0)
+        .add_i32_constant(10)
+        .add_i32_constant(0)
+        .add_function(FunctionId::new(0), &init_bytecode, 0, 0, 0)
+        .add_function(FunctionId::new(1), &scan_bytecode, 2, 0, 0)
+        .init_function_id(FunctionId::new(0))
+        .entry_function_id(FunctionId::new(1))
+        .build();
+
+    let mut buf = Vec::new();
+    container.write_to(&mut buf).unwrap();
+    std::fs::write(path, &buf).unwrap();
+}
+
+/// REQ-VC-017: a trap during the benchmark warmup phase exits 1 with the trap's V-code.
+#[test]
+fn benchmark_when_fault_during_warmup_then_exit_1() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("scan_div_zero.iplc");
+    write_scan_divide_by_zero_container(&container_path);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("benchmark")
+        .arg(&container_path)
+        .arg("--warmup")
+        .arg("5")
+        .arg("--cycles")
+        .arg("10");
+    cmd.assert()
+        .code(1)
+        .stderr(predicate::str::contains("V4001"));
+
+    Ok(())
+}
+
+/// REQ-VC-017: a trap during the measured phase (warmup=0) exits 1 with the trap's V-code.
+#[test]
+fn benchmark_when_fault_during_measured_then_exit_1() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("scan_div_zero.iplc");
+    write_scan_divide_by_zero_container(&container_path);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("benchmark")
+        .arg(&container_path)
+        .arg("--warmup")
+        .arg("0")
+        .arg("--cycles")
+        .arg("5");
+    cmd.assert()
+        .code(1)
+        .stderr(predicate::str::contains("V4001"));
+
+    Ok(())
+}
+
+/// REQ-VC-014: with `--cycles 0 --warmup 0`, `benchmark` still emits valid
+/// JSON — `scan_us` stats are zero and no samples were measured.
+#[test]
+fn benchmark_when_zero_cycles_then_outputs_zero_stats() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("test.iplc");
+    write_steel_thread_container(&container_path);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("benchmark")
+        .arg(&container_path)
+        .arg("--warmup")
+        .arg("0")
+        .arg("--cycles")
+        .arg("0");
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let json: serde_json::Value = serde_json::from_slice(&output)?;
+    assert_eq!(json["cycles"], 0);
+    assert_eq!(json["warmup"], 0);
+    // With zero samples, max and p99 come from `unwrap_or(0.0)` / the empty
+    // percentile guard. mean and stddev are NaN (serialised as null).
+    assert_eq!(json["scan_us"]["p99"], 0.0);
+    assert_eq!(json["scan_us"]["max"], 0.0);
+
+    Ok(())
+}
+
+/// Builds a container with an explicit cyclic task at `interval_us`.
+/// The program is a no-op (RET_VOID) so run_round is cheap.
+fn write_cyclic_task_container(path: &Path, interval_us: u64) {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0xB5,                   // RET_VOID
+    ];
+
+    let task = TaskEntry {
+        task_id: TaskId::DEFAULT,
+        priority: 0,
+        task_type: TaskType::Cyclic,
+        flags: 0x01, // enabled
+        interval_us,
+        single_var_index: VarIndex::NO_SINGLE_VAR,
+        watchdog_us: 0,
+        input_image_offset: 0,
+        output_image_offset: 0,
+        reserved: [0; 4],
+    };
+    let program = ProgramInstanceEntry {
+        instance_id: InstanceId::DEFAULT,
+        task_id: TaskId::DEFAULT,
+        entry_function_id: FunctionId::new(0),
+        var_table_offset: 0,
+        var_table_count: 0,
+        fb_instance_offset: 0,
+        fb_instance_count: 0,
+        init_function_id: FunctionId::new(0),
+    };
+
+    let container = ContainerBuilder::new()
+        .num_variables(0)
+        .add_function(FunctionId::new(0), &bytecode, 0, 0, 0)
+        .add_task(task)
+        .add_program_instance(program)
+        .build();
+
+    let mut buf = Vec::new();
+    container.write_to(&mut buf).unwrap();
+    std::fs::write(path, &buf).unwrap();
+}
+
+/// REQ-VC-015: `benchmark` emits per-cyclic-task `budget_pct` when the task's
+/// interval is non-zero.
+#[test]
+fn benchmark_when_cyclic_task_then_budget_pct_in_output() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("cyclic.iplc");
+    // 10 ms interval — non-zero so the budget_pct branch fires.
+    write_cyclic_task_container(&container_path, 10_000);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("benchmark")
+        .arg(&container_path)
+        .arg("--warmup")
+        .arg("1")
+        .arg("--cycles")
+        .arg("5");
+    let output = cmd.assert().success().get_output().stdout.clone();
+    let json: serde_json::Value = serde_json::from_slice(&output)?;
+    let tasks = json["tasks"]
+        .as_array()
+        .expect("tasks must be a JSON array");
+    assert!(!tasks.is_empty(), "expected at least one task entry");
+    let task = &tasks[0];
+    assert_eq!(task["task_type"], "Cyclic");
+    let budget = &task["budget_pct"];
+    assert!(budget.is_object(), "expected budget_pct object: {task}");
+    assert!(budget["mean"].is_number());
+    assert!(budget["p99"].is_number());
+    assert!(budget["max"].is_number());
+
+    Ok(())
+}
+
+/// REQ-VC-012: `run` sleeps between rounds for a cyclic task — two rounds with
+/// a 20 ms interval must take at least one interval of wall-clock time.
+#[test]
+fn run_when_cyclic_task_then_sleeps_between_rounds() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("cyclic.iplc");
+    let interval_us: u64 = 20_000; // 20 ms
+    write_cyclic_task_container(&container_path, interval_us);
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
+    cmd.arg("run").arg(&container_path).arg("--scans").arg("2");
+    let start = std::time::Instant::now();
+    cmd.assert().success();
+    let elapsed = start.elapsed();
+
+    // Spawning a cargo binary has non-trivial overhead, so the exact wall-clock
+    // depends on the host. We just assert the run took at least a single
+    // interval — proof that `next_due_us`-driven sleep was exercised at least
+    // once. A busy-loop would finish in microseconds.
+    let interval = std::time::Duration::from_micros(interval_us);
+    assert!(
+        elapsed >= interval,
+        "expected at least one cyclic interval ({interval:?}) of wall-clock, got {elapsed:?}"
+    );
 
     Ok(())
 }

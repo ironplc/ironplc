@@ -351,3 +351,231 @@ fn dump_variables_faulted(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
+    use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
+
+    /// REQ-VC-013: percentile of an empty sample returns 0 so benchmark can
+    /// still emit a valid JSON stats object when `--cycles 0` is supplied.
+    #[test]
+    fn percentile_when_empty_then_zero() {
+        let empty: Vec<f64> = Vec::new();
+        assert_eq!(percentile(&empty, 99.0), 0.0);
+        assert_eq!(percentile(&empty, 50.0), 0.0);
+    }
+
+    #[test]
+    fn percentile_when_single_value_then_returns_that_value() {
+        let sorted = vec![42.0];
+        assert_eq!(percentile(&sorted, 50.0), 42.0);
+        assert_eq!(percentile(&sorted, 99.0), 42.0);
+    }
+
+    #[test]
+    fn percentile_when_many_values_then_nearest_rank() {
+        // 10 values 1.0..=10.0; p50 → rank 5 → 5.0, p100 → rank 10 → 10.0
+        let sorted: Vec<f64> = (1..=10).map(|v| v as f64).collect();
+        assert_eq!(percentile(&sorted, 50.0), 5.0);
+        assert_eq!(percentile(&sorted, 100.0), 10.0);
+    }
+
+    #[test]
+    fn round3_rounds_to_three_decimals() {
+        assert_eq!(round3(1.23456), 1.235);
+        assert_eq!(round3(0.0005), 0.001);
+        assert_eq!(round3(0.0004), 0.0);
+    }
+
+    /// REQ-VC-009: BOOL formats as TRUE/FALSE.
+    #[test]
+    fn format_variable_value_when_bool_then_true_or_false() {
+        assert_eq!(format_variable_value(1, iec_type_tag::BOOL), "TRUE");
+        assert_eq!(format_variable_value(0, iec_type_tag::BOOL), "FALSE");
+        // Non-zero lower i32 bits → TRUE.
+        assert_eq!(
+            format_variable_value(0xFFFF_FFFF, iec_type_tag::BOOL),
+            "TRUE"
+        );
+    }
+
+    /// REQ-VC-009: signed IEC integer types decode as signed decimals at their widths.
+    #[test]
+    fn format_variable_value_when_signed_int_then_signed_decimal() {
+        assert_eq!(
+            format_variable_value(0xFF_u64, iec_type_tag::SINT),
+            "-1",
+            "SINT should sign-extend from 8 bits"
+        );
+        assert_eq!(
+            format_variable_value(0xFFFF_u64, iec_type_tag::INT),
+            "-1",
+            "INT should sign-extend from 16 bits"
+        );
+        assert_eq!(
+            format_variable_value(0xFFFF_FFFF_u64, iec_type_tag::DINT),
+            "-1",
+            "DINT should sign-extend from 32 bits"
+        );
+        assert_eq!(
+            format_variable_value(0xFFFF_FFFF_FFFF_FFFF_u64, iec_type_tag::LINT),
+            "-1",
+            "LINT should interpret as signed 64-bit"
+        );
+    }
+
+    /// REQ-VC-009: unsigned IEC integer types decode as unsigned decimals at their widths.
+    #[test]
+    fn format_variable_value_when_unsigned_int_then_unsigned_decimal() {
+        assert_eq!(format_variable_value(0xFF_u64, iec_type_tag::USINT), "255");
+        assert_eq!(
+            format_variable_value(0xFFFF_u64, iec_type_tag::UINT),
+            "65535"
+        );
+        assert_eq!(
+            format_variable_value(0xFFFF_FFFF_u64, iec_type_tag::UDINT),
+            "4294967295"
+        );
+        assert_eq!(
+            format_variable_value(0xFFFF_FFFF_FFFF_FFFF_u64, iec_type_tag::ULINT),
+            "18446744073709551615"
+        );
+    }
+
+    /// REQ-VC-009: REAL and LREAL reinterpret the raw bits as float/double.
+    #[test]
+    fn format_variable_value_when_real_then_float_decimal() {
+        let raw32 = 1.5_f32.to_bits() as u64;
+        assert_eq!(format_variable_value(raw32, iec_type_tag::REAL), "1.5");
+        let raw64 = 2.25_f64.to_bits();
+        assert_eq!(format_variable_value(raw64, iec_type_tag::LREAL), "2.25");
+    }
+
+    /// REQ-VC-009: BYTE/WORD/DWORD/LWORD render in IEC `16#...` hex form at their widths.
+    #[test]
+    fn format_variable_value_when_bit_string_then_iec_hex() {
+        assert_eq!(format_variable_value(0xAB, iec_type_tag::BYTE), "16#AB");
+        assert_eq!(format_variable_value(0x0F, iec_type_tag::BYTE), "16#0F");
+        assert_eq!(format_variable_value(0xABCD, iec_type_tag::WORD), "16#ABCD");
+        assert_eq!(
+            format_variable_value(0xDEAD_BEEF, iec_type_tag::DWORD),
+            "16#DEADBEEF"
+        );
+        assert_eq!(
+            format_variable_value(0x0000_0000_DEAD_BEEF, iec_type_tag::LWORD),
+            "16#00000000DEADBEEF"
+        );
+    }
+
+    /// REQ-VC-009: TIME/LTIME render with `T#` / `LTIME#` prefixes.
+    #[test]
+    fn format_variable_value_when_time_then_iec_duration() {
+        assert_eq!(format_variable_value(250, iec_type_tag::TIME), "T#250ms");
+        assert_eq!(
+            format_variable_value(0xFFFF_FFFF, iec_type_tag::TIME),
+            "T#-1ms"
+        );
+        assert_eq!(
+            format_variable_value(10_000, iec_type_tag::LTIME),
+            "LTIME#10000ms"
+        );
+    }
+
+    /// REQ-VC-009: an unknown tag falls back to signed i32 decimal.
+    #[test]
+    fn format_variable_value_when_unknown_tag_then_signed_i32_fallback() {
+        assert_eq!(format_variable_value(42, iec_type_tag::OTHER), "42");
+        assert_eq!(
+            format_variable_value(0xFFFF_FFFF, iec_type_tag::OTHER),
+            "-1"
+        );
+    }
+
+    /// REQ-VC-008: without debug info, lines use the `var[i]: <i32>` fallback.
+    #[test]
+    fn write_variable_line_when_no_debug_then_indexed_format() {
+        let debug_map: HashMap<u16, (&str, u8)> = HashMap::new();
+        let mut buf = Vec::new();
+        assert!(write_variable_line(&mut buf, 3, 0xFFFF_FFFF, &debug_map).is_ok());
+        assert_eq!(std::str::from_utf8(&buf).unwrap(), "var[3]: -1\n");
+    }
+
+    /// REQ-VC-008/009: with debug info, lines use `name: <typed value>`.
+    #[test]
+    fn write_variable_line_when_debug_then_named_and_typed() {
+        let mut debug_map: HashMap<u16, (&str, u8)> = HashMap::new();
+        debug_map.insert(0, ("Counter", iec_type_tag::DINT));
+        let mut buf = Vec::new();
+        assert!(write_variable_line(&mut buf, 0, 42_u64, &debug_map).is_ok());
+        assert_eq!(std::str::from_utf8(&buf).unwrap(), "Counter: 42\n");
+    }
+
+    /// A Write impl that always fails, used to cover the write-error branch in
+    /// `write_variable_line`.
+    struct FailingWriter;
+    impl Write for FailingWriter {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "simulated write failure",
+            ))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// REQ-VC-005: dump write failures produce a V6006 error.
+    #[test]
+    fn write_variable_line_when_writer_errors_then_v6006() {
+        let debug_map: HashMap<u16, (&str, u8)> = HashMap::new();
+        let mut sink = FailingWriter;
+        let err = write_variable_line(&mut sink, 0, 0, &debug_map)
+            .expect_err("writer failure should surface as VmError");
+        assert!(
+            err.to_string().starts_with("V6006"),
+            "expected V6006 (dump write), got {err}"
+        );
+    }
+
+    #[test]
+    fn build_var_debug_map_when_no_debug_section_then_empty() {
+        // A container without any debug entries has no debug section.
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_function(FunctionId::new(0), &[0xB5], 0, 1, 0)
+            .build();
+        let map = build_var_debug_map(&container);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn build_var_debug_map_when_debug_present_then_maps_by_index() {
+        let container = ContainerBuilder::new()
+            .num_variables(2)
+            .add_function(FunctionId::new(0), &[0xB5], 0, 2, 0)
+            .add_var_name(VarNameEntry {
+                var_index: VarIndex::new(0),
+                function_id: FunctionId::GLOBAL_SCOPE,
+                var_section: 0,
+                iec_type_tag: iec_type_tag::DINT,
+                name: "alpha".into(),
+                type_name: "DINT".into(),
+            })
+            .add_var_name(VarNameEntry {
+                var_index: VarIndex::new(1),
+                function_id: FunctionId::GLOBAL_SCOPE,
+                var_section: 0,
+                iec_type_tag: iec_type_tag::BOOL,
+                name: "beta".into(),
+                type_name: "BOOL".into(),
+            })
+            .build();
+        let map = build_var_debug_map(&container);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(&0), Some(&("alpha", iec_type_tag::DINT)));
+        assert_eq!(map.get(&1), Some(&("beta", iec_type_tag::BOOL)));
+    }
+}
