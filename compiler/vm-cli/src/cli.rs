@@ -357,10 +357,11 @@ mod tests {
     use super::*;
     use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
     use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
+    use spec_test_macro::spec_test;
 
     /// REQ-VC-013: percentile of an empty sample returns 0 so benchmark can
     /// still emit a valid JSON stats object when `--cycles 0` is supplied.
-    #[test]
+    #[spec_test(REQ_VC_013)]
     fn percentile_when_empty_then_zero() {
         let empty: Vec<f64> = Vec::new();
         assert_eq!(percentile(&empty, 99.0), 0.0);
@@ -390,7 +391,7 @@ mod tests {
     }
 
     /// REQ-VC-009: BOOL formats as TRUE/FALSE.
-    #[test]
+    #[spec_test(REQ_VC_009)]
     fn format_variable_value_when_bool_then_true_or_false() {
         assert_eq!(format_variable_value(1, iec_type_tag::BOOL), "TRUE");
         assert_eq!(format_variable_value(0, iec_type_tag::BOOL), "FALSE");
@@ -402,7 +403,7 @@ mod tests {
     }
 
     /// REQ-VC-009: signed IEC integer types decode as signed decimals at their widths.
-    #[test]
+    #[spec_test(REQ_VC_009)]
     fn format_variable_value_when_signed_int_then_signed_decimal() {
         assert_eq!(
             format_variable_value(0xFF_u64, iec_type_tag::SINT),
@@ -427,7 +428,7 @@ mod tests {
     }
 
     /// REQ-VC-009: unsigned IEC integer types decode as unsigned decimals at their widths.
-    #[test]
+    #[spec_test(REQ_VC_009)]
     fn format_variable_value_when_unsigned_int_then_unsigned_decimal() {
         assert_eq!(format_variable_value(0xFF_u64, iec_type_tag::USINT), "255");
         assert_eq!(
@@ -445,7 +446,7 @@ mod tests {
     }
 
     /// REQ-VC-009: REAL and LREAL reinterpret the raw bits as float/double.
-    #[test]
+    #[spec_test(REQ_VC_009)]
     fn format_variable_value_when_real_then_float_decimal() {
         let raw32 = 1.5_f32.to_bits() as u64;
         assert_eq!(format_variable_value(raw32, iec_type_tag::REAL), "1.5");
@@ -454,7 +455,7 @@ mod tests {
     }
 
     /// REQ-VC-009: BYTE/WORD/DWORD/LWORD render in IEC `16#...` hex form at their widths.
-    #[test]
+    #[spec_test(REQ_VC_009)]
     fn format_variable_value_when_bit_string_then_iec_hex() {
         assert_eq!(format_variable_value(0xAB, iec_type_tag::BYTE), "16#AB");
         assert_eq!(format_variable_value(0x0F, iec_type_tag::BYTE), "16#0F");
@@ -470,7 +471,7 @@ mod tests {
     }
 
     /// REQ-VC-009: TIME/LTIME render with `T#` / `LTIME#` prefixes.
-    #[test]
+    #[spec_test(REQ_VC_009)]
     fn format_variable_value_when_time_then_iec_duration() {
         assert_eq!(format_variable_value(250, iec_type_tag::TIME), "T#250ms");
         assert_eq!(
@@ -484,7 +485,7 @@ mod tests {
     }
 
     /// REQ-VC-009: an unknown tag falls back to signed i32 decimal.
-    #[test]
+    #[spec_test(REQ_VC_009)]
     fn format_variable_value_when_unknown_tag_then_signed_i32_fallback() {
         assert_eq!(format_variable_value(42, iec_type_tag::OTHER), "42");
         assert_eq!(
@@ -494,7 +495,7 @@ mod tests {
     }
 
     /// REQ-VC-008: without debug info, lines use the `var[i]: <i32>` fallback.
-    #[test]
+    #[spec_test(REQ_VC_008)]
     fn write_variable_line_when_no_debug_then_indexed_format() {
         let debug_map: HashMap<u16, (&str, u8)> = HashMap::new();
         let mut buf = Vec::new();
@@ -502,8 +503,8 @@ mod tests {
         assert_eq!(std::str::from_utf8(&buf).unwrap(), "var[3]: -1\n");
     }
 
-    /// REQ-VC-008/009: with debug info, lines use `name: <typed value>`.
-    #[test]
+    /// REQ-VC-008: with debug info, lines use `name: <typed value>`.
+    #[spec_test(REQ_VC_008)]
     fn write_variable_line_when_debug_then_named_and_typed() {
         let mut debug_map: HashMap<u16, (&str, u8)> = HashMap::new();
         debug_map.insert(0, ("Counter", iec_type_tag::DINT));
@@ -528,7 +529,7 @@ mod tests {
     }
 
     /// REQ-VC-005: dump write failures produce a V6006 error.
-    #[test]
+    #[spec_test(REQ_VC_005)]
     fn write_variable_line_when_writer_errors_then_v6006() {
         let debug_map: HashMap<u16, (&str, u8)> = HashMap::new();
         let mut sink = FailingWriter;

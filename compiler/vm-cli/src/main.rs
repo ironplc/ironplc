@@ -8,6 +8,11 @@ mod error;
 mod logger;
 
 #[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+
+#[cfg(test)]
 #[ctor::ctor]
 fn init_test_logger() {
     let _ = env_logger::builder()

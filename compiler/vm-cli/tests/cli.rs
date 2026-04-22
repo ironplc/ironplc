@@ -8,8 +8,28 @@ use ironplc_container::{
     VarIndex,
 };
 use predicates::prelude::*;
+use spec_test_macro::spec_test;
 use std::process::Command;
 use tempfile::TempDir;
+
+/// Spec-conformance requirements generated from `specs/design/vm-cli.md`.
+/// Referenced by `#[spec_test(REQ_VC_NNN)]`. See vm-cli/build.rs.
+#[allow(dead_code)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+
+/// Meta-test: every requirement in `specs/design/vm-cli.md` has a
+/// `#[spec_test(REQ_VC_NNN)]` somewhere in src/ or tests/. The build script
+/// populates `UNTESTED` from files it scans.
+#[test]
+fn all_spec_requirements_have_tests() {
+    assert!(
+        spec_requirements::UNTESTED.is_empty(),
+        "Requirements in spec with no conformance test: {:?}",
+        spec_requirements::UNTESTED
+    );
+}
 
 /// One-time generator for golden test files. Run with:
 /// cargo test -p ironplc-vm-cli --test cli generate_golden -- --ignored --nocapture
@@ -55,7 +75,8 @@ fn write_steel_thread_container(path: &Path) {
     std::fs::write(path, &buf).unwrap();
 }
 
-#[test]
+/// REQ-VC-003: `run --scans N` runs exactly N rounds then exits 0.
+#[spec_test(REQ_VC_003)]
 fn run_when_valid_container_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("test.iplc");
@@ -68,7 +89,8 @@ fn run_when_valid_container_file_then_ok() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-#[test]
+/// REQ-VC-005: `run --dump-vars <PATH>` writes variable values to a file.
+#[spec_test(REQ_VC_005)]
 fn run_when_valid_container_file_and_dump_vars_then_writes_variables(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -91,7 +113,8 @@ fn run_when_valid_container_file_and_dump_vars_then_writes_variables(
     Ok(())
 }
 
-#[test]
+/// REQ-VC-001: a missing container file yields V6001 exit 2.
+#[spec_test(REQ_VC_001)]
 fn run_when_file_not_found_then_exit_2_and_v6001() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
     cmd.arg("run").arg("test/file/doesnt/exist.iplc");
@@ -102,7 +125,8 @@ fn run_when_file_not_found_then_exit_2_and_v6001() -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-#[test]
+/// REQ-VC-002: a malformed container yields V6002 exit 2.
+#[spec_test(REQ_VC_002)]
 fn run_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let bad_path = dir.path().join("bad.iplc");
@@ -138,7 +162,8 @@ fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-#[test]
+/// REQ-VC-013: `benchmark` prints a JSON object with `scan_us` stats and tasks.
+#[spec_test(REQ_VC_013)]
 fn benchmark_when_valid_container_then_outputs_json_with_scan_us(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -163,7 +188,8 @@ fn benchmark_when_valid_container_then_outputs_json_with_scan_us(
     Ok(())
 }
 
-#[test]
+/// REQ-VC-016: `benchmark` surfaces file-open errors as V6001 exit 2.
+#[spec_test(REQ_VC_016)]
 fn benchmark_when_file_not_found_then_exit_2_and_v6001() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
     cmd.arg("benchmark").arg("nonexistent.iplc");
@@ -196,7 +222,8 @@ fn write_divide_by_zero_container(path: &Path) {
     std::fs::write(path, &buf).unwrap();
 }
 
-#[test]
+/// REQ-VC-004: a runtime trap exits 1 with the trap's V-code on stderr.
+#[spec_test(REQ_VC_004)]
 fn run_when_divide_by_zero_then_exit_1_and_v4001() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("div_zero.iplc");
@@ -260,7 +287,8 @@ fn write_doorbell_container(path: &Path) {
     std::fs::write(path, &buf).unwrap();
 }
 
-#[test]
+/// REQ-VC-008: with debug info, the dump uses named variables.
+#[spec_test(REQ_VC_008)]
 fn run_when_debug_info_and_dump_vars_then_shows_named_variables(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -283,7 +311,8 @@ fn run_when_debug_info_and_dump_vars_then_shows_named_variables(
     Ok(())
 }
 
-#[test]
+/// REQ-VC-006: `--dump-vars` without a path writes the dump to stdout.
+#[spec_test(REQ_VC_006)]
 fn run_when_dump_vars_without_path_then_prints_to_stdout() -> Result<(), Box<dyn std::error::Error>>
 {
     let dir = TempDir::new()?;
@@ -341,7 +370,7 @@ fn write_fault_with_vars_container(path: &Path) {
 
 /// REQ-VC-007: a runtime trap with `--dump-vars` writes the current variable
 /// state before exiting with code 1.
-#[test]
+#[spec_test(REQ_VC_007)]
 fn run_when_fault_and_dump_vars_then_writes_variables_and_exits_1(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -368,7 +397,7 @@ fn run_when_fault_and_dump_vars_then_writes_variables_and_exits_1(
 }
 
 /// REQ-VC-010: an unreachable dump path returns V6004 with exit code 2.
-#[test]
+#[spec_test(REQ_VC_010)]
 fn run_when_dump_path_in_nonexistent_directory_then_exit_2_and_v6004(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -393,7 +422,7 @@ fn run_when_dump_path_in_nonexistent_directory_then_exit_2_and_v6004(
 }
 
 /// REQ-VC-016: `benchmark` surfaces malformed-container errors as V6002/exit 2.
-#[test]
+#[spec_test(REQ_VC_016)]
 fn benchmark_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let bad_path = dir.path().join("bad.iplc");
@@ -438,7 +467,7 @@ fn write_scan_divide_by_zero_container(path: &Path) {
 }
 
 /// REQ-VC-017: a trap during the benchmark warmup phase exits 1 with the trap's V-code.
-#[test]
+#[spec_test(REQ_VC_017)]
 fn benchmark_when_fault_during_warmup_then_exit_1() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("scan_div_zero.iplc");
@@ -459,7 +488,7 @@ fn benchmark_when_fault_during_warmup_then_exit_1() -> Result<(), Box<dyn std::e
 }
 
 /// REQ-VC-017: a trap during the measured phase (warmup=0) exits 1 with the trap's V-code.
-#[test]
+#[spec_test(REQ_VC_017)]
 fn benchmark_when_fault_during_measured_then_exit_1() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("scan_div_zero.iplc");
@@ -481,7 +510,7 @@ fn benchmark_when_fault_during_measured_then_exit_1() -> Result<(), Box<dyn std:
 
 /// REQ-VC-014: with `--cycles 0 --warmup 0`, `benchmark` still emits valid
 /// JSON — `scan_us` stats are zero and no samples were measured.
-#[test]
+#[spec_test(REQ_VC_014)]
 fn benchmark_when_zero_cycles_then_outputs_zero_stats() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("test.iplc");
@@ -551,7 +580,7 @@ fn write_cyclic_task_container(path: &Path, interval_us: u64) {
 
 /// REQ-VC-015: `benchmark` emits per-cyclic-task `budget_pct` when the task's
 /// interval is non-zero.
-#[test]
+#[spec_test(REQ_VC_015)]
 fn benchmark_when_cyclic_task_then_budget_pct_in_output() -> Result<(), Box<dyn std::error::Error>>
 {
     let dir = TempDir::new()?;
@@ -585,7 +614,7 @@ fn benchmark_when_cyclic_task_then_budget_pct_in_output() -> Result<(), Box<dyn 
 
 /// REQ-VC-012: `run` sleeps between rounds for a cyclic task — two rounds with
 /// a 20 ms interval must take at least one interval of wall-clock time.
-#[test]
+#[spec_test(REQ_VC_012)]
 fn run_when_cyclic_task_then_sleeps_between_rounds() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("cyclic.iplc");
@@ -606,6 +635,47 @@ fn run_when_cyclic_task_then_sleeps_between_rounds() -> Result<(), Box<dyn std::
     assert!(
         elapsed >= interval,
         "expected at least one cyclic interval ({interval:?}) of wall-clock, got {elapsed:?}"
+    );
+
+    Ok(())
+}
+
+/// REQ-VC-011: without `--scans`, `run` loops until SIGINT then exits 0.
+/// Unix-only: we send SIGINT via `kill(2)` after giving the child time to
+/// install the ctrlc handler and enter the main loop.
+#[cfg(unix)]
+#[spec_test(REQ_VC_011)]
+fn run_without_scans_then_stops_on_sigint() -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::{Command as ProcessCommand, Stdio};
+    use std::time::Duration;
+
+    let dir = TempDir::new()?;
+    let container_path = dir.path().join("test.iplc");
+    // Use a cyclic container so the loop sleeps between rounds — that gives the
+    // kill(2) call a deterministic window to be observed.
+    write_cyclic_task_container(&container_path, 10_000);
+
+    let mut child = ProcessCommand::new(cargo::cargo_bin!("ironplcvm"))
+        .arg("run")
+        .arg(&container_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    // Give the child time to install its ctrlc handler and enter the scan loop.
+    std::thread::sleep(Duration::from_millis(300));
+
+    let pid = child.id();
+    let kill_status = ProcessCommand::new("kill")
+        .arg("-INT")
+        .arg(pid.to_string())
+        .status()?;
+    assert!(kill_status.success(), "failed to signal child");
+
+    let status = child.wait()?;
+    assert!(
+        status.success(),
+        "expected clean exit 0 after SIGINT, got {status:?}"
     );
 
     Ok(())
