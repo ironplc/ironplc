@@ -666,8 +666,8 @@ function renderDiagnostics(diagnostics) {
       message += `: ${escapeHtml(d.label)}`;
     }
     html += `<span class="diagnostic-message">${message}</span>`;
-    if (d.start > 0 || d.end > 0) {
-      html += `<span class="diagnostic-location">offset ${d.start}\u2013${d.end}</span>`;
+    if (d.start_line > 0 && d.start_column > 0) {
+      html += `<span class="diagnostic-location">line ${d.start_line}, column ${d.start_column}</span>`;
     }
     html += "</div>";
   }
