@@ -80,23 +80,12 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
     use super::*;
+    use crate::test_helpers::assert_rule_ok_blank_ctx;
 
     #[test]
     fn apply_when_subrange_valid_then_ok() {
-        let program = "
-TYPE
-    VALID_RANGE : INT(-10..10);
-END_TYPE";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
+        assert_rule_ok_blank_ctx(apply, "TYPE VALID_RANGE : INT(-10..10); END_TYPE");
     }
 
     #[test]

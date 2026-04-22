@@ -294,304 +294,114 @@ impl Visitor<Diagnostic> for RuleFunctionBlockUse<'_> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::test_helpers::{assert_rule_err, assert_rule_ok};
+    use rstest::rstest;
+
+    /// Builds a two-FB program with a Callee whose interface is given by
+    /// `callee_vars`, and a Caller that declares `FB_INSTANCE : Callee;` and
+    /// invokes it via `call`.
+    fn two_fb_program(callee_vars: &str, call: &str) -> String {
+        format!(
+            "FUNCTION_BLOCK Callee {callee_vars} END_FUNCTION_BLOCK FUNCTION_BLOCK Caller VAR FB_INSTANCE : Callee; END_VAR {call} END_FUNCTION_BLOCK"
+        )
+    }
+
+    // Each case describes (callee_vars, call_expression). Valid invocations.
+    #[rstest]
+    #[case::no_args(
+        "",
+        "FB_INSTANCE();"
+    )]
+    #[case::some_formal_input_names_assigned(
+        "VAR_INPUT IN1: BOOL; IN2: BOOL; END_VAR",
+        "FB_INSTANCE(IN1 := TRUE);"
+    )]
+    #[case::nonformal_input_all_assigned(
+        "VAR_INPUT IN1: BOOL; IN2: BOOL; END_VAR",
+        "FB_INSTANCE(TRUE, FALSE);"
+    )]
+    #[case::all_formal_input_names_assigned(
+        "VAR_INPUT IN1: BOOL; IN2: BOOL; END_VAR",
+        "FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);"
+    )]
+    fn apply_when_valid_invocation_then_ok(#[case] callee_vars: &str, #[case] call: &str) {
+        assert_rule_ok(apply, &two_fb_program(callee_vars, call));
+    }
+
+    // Output-variable assignment needs a LOCAL variable in Caller, so the
+    // envelope is slightly different and doesn't share `two_fb_program`.
+    #[test]
+    fn apply_when_some_output_names_assigned_then_ok() {
+        assert_rule_ok(
+            apply,
+            "FUNCTION_BLOCK Callee VAR_OUTPUT OUT1: BOOL; OUT2: BOOL; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK Caller VAR FB_INSTANCE : Callee; LOCAL: BOOL; END_VAR FB_INSTANCE(OUT1 => LOCAL); END_FUNCTION_BLOCK",
+        );
+    }
+
+    // PROGRAM (not FUNCTION_BLOCK) invoking an FB — distinct caller shape.
+    #[test]
+    fn apply_when_program_invokes_function_block_then_ok() {
+        assert_rule_ok(
+            apply,
+            "FUNCTION_BLOCK Callee VAR_INPUT IN1: BOOL; END_VAR END_FUNCTION_BLOCK PROGRAM prgm VAR FB_INSTANCE : Callee; END_VAR FB_INSTANCE(IN1 := TRUE); END_PROGRAM",
+        );
+    }
+
+    // Invalid invocations. This rule reports several distinct diagnostics; the
+    // tests don't assert on the specific code so we just assert `is_err()`.
+    //
+    // NOTE: `parse_and_resolve_types_with_context` (used by `assert_rule_*`)
+    // walks the analyzer pipeline. Some of these programs don't survive that
+    // full pipeline — the FB-invocation rule is only a piece of it — so we
+    // use the raw `apply` form and a blank context via the builder.
     use crate::semantic_context::SemanticContextBuilder;
     use crate::test_helpers::parse_and_resolve_types;
 
-    use super::*;
-
-    #[test]
-    fn apply_when_no_names_uses_default_then_return_ok() {
-        let program = "
-FUNCTION_BLOCK Callee
-
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE();
-END_FUNCTION_BLOCK";
-
+    fn assert_err_with_blank_context(program: &str) {
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
+        assert!(apply(&library, &context, &CompilerOptions::default()).is_err());
     }
 
-    #[test]
-    fn apply_when_some_formal_input_names_assigned_then_ok() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_INPUT
-IN1: BOOL;
-IN2: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE(IN1 := TRUE);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
+    #[rstest]
+    #[case::mixed_formal_nonformal(
+        "VAR_INPUT IN1: BOOL; IN2: BOOL; END_VAR",
+        "FB_INSTANCE(IN1 := TRUE, FALSE);"
+    )]
+    #[case::formal_names_incorrect("", "FB_INSTANCE(BAR := TRUE);")]
+    #[case::nonformal_names_too_few(
+        "VAR_INPUT IN1: BOOL; IN2: BOOL; END_VAR",
+        "FB_INSTANCE(TRUE);"
+    )]
+    #[case::nonformal_names_too_many(
+        "VAR_INPUT IN2: BOOL; END_VAR",
+        "FB_INSTANCE(TRUE, FALSE);"
+    )]
+    #[case::one_input_name_incorrect(
+        "VAR_INPUT IN1: BOOL; END_VAR",
+        "FB_INSTANCE(IN1 := TRUE, BAR := TRUE);"
+    )]
+    fn apply_when_invalid_invocation_then_error(
+        #[case] callee_vars: &str,
+        #[case] call: &str,
+    ) {
+        assert_err_with_blank_context(&two_fb_program(callee_vars, call));
     }
 
-    #[test]
-    fn apply_when_mixed_formal_nonformal_then_error() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_INPUT
-IN1: BOOL;
-IN2: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE(IN1 := TRUE, FALSE);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
+    // Caller missing the FB instance variable declaration.
     #[test]
     fn apply_when_function_block_definition_not_defined_then_error() {
-        let program = "
-FUNCTION_BLOCK Caller
-VAR
-IN1: BOOL;
-END_VAR
-FB_INSTANCE(IN1 := TRUE);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
+        assert_err_with_blank_context(
+            "FUNCTION_BLOCK Caller VAR IN1: BOOL; END_VAR FB_INSTANCE(IN1 := TRUE); END_FUNCTION_BLOCK",
+        );
     }
 
-    #[test]
-    fn apply_when_nonformal_input_names_assigned_then_ok() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_INPUT
-IN1: BOOL;
-IN2: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE(TRUE, FALSE);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn apply_when_some_output_names_assigned_then_ok() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_OUTPUT
-OUT1: BOOL;
-OUT2: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-LOCAL: BOOL;
-END_VAR
-FB_INSTANCE(OUT1 => LOCAL);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn apply_when_all_formal_input_names_assigned_then_ok() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_INPUT
-IN1: BOOL;
-IN2: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE(IN1 := TRUE, IN2 := FALSE);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn apply_when_formal_names_incorrect_then_error() {
-        let program = "
-FUNCTION_BLOCK Callee
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE(BAR := TRUE);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_nonformal_names_too_few_then_error() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_INPUT
-IN1: BOOL;
-IN2: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE(TRUE);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_nonformal_names_too_many_then_error() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_INPUT
-IN2: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE(TRUE, FALSE);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_one_input_name_incorrect_then_error() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_INPUT
-IN1: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE(IN1 := TRUE, BAR := TRUE);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
+    // Output name not present on Callee.
     #[test]
     fn apply_when_one_output_name_incorrect_then_error() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_OUTPUT
-OUT1: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-LOCAL: BOOL;
-END_VAR
-FB_INSTANCE(OUT2 => LOCAL);
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_program_invokes_function_block_then_ok() {
-        let program = "
-FUNCTION_BLOCK Callee
-VAR_INPUT
-IN1: BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-        
-PROGRAM prgm
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-FB_INSTANCE(IN1 := TRUE);
-END_PROGRAM";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
+        assert_err_with_blank_context(
+            "FUNCTION_BLOCK Callee VAR_OUTPUT OUT1: BOOL; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK Caller VAR FB_INSTANCE : Callee; LOCAL: BOOL; END_VAR FB_INSTANCE(OUT2 => LOCAL); END_FUNCTION_BLOCK",
+        );
     }
 }

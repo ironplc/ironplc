@@ -87,51 +87,24 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
     use super::*;
+    use crate::test_helpers::{assert_rule_err_blank_ctx, assert_rule_ok_blank_ctx};
 
     #[test]
     fn apply_when_values_unique_then_ok() {
-        let program = "
-TYPE
-LOGLEVEL : (CRITICAL, ERROR);
-END_TYPE";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
+        assert_rule_ok_blank_ctx(apply, "TYPE LOGLEVEL : (CRITICAL, ERROR); END_TYPE");
     }
 
     #[test]
     fn apply_when_typename_values_unique_then_ok() {
-        let program = "
-TYPE
-LOGLEVEL : (CRITICAL, ERROR);
-LOGLEVEL2 : LOGLEVEL;
-END_TYPE";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
+        assert_rule_ok_blank_ctx(
+            apply,
+            "TYPE LOGLEVEL : (CRITICAL, ERROR); LOGLEVEL2 : LOGLEVEL; END_TYPE",
+        );
     }
 
     #[test]
     fn apply_when_value_duplicated_then_error() {
-        let program = "
-TYPE
-LOGLEVEL : (CRITICAL, CRITICAL);
-END_TYPE";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
+        assert_rule_err_blank_ctx(apply, "TYPE LOGLEVEL : (CRITICAL, CRITICAL); END_TYPE");
     }
 }

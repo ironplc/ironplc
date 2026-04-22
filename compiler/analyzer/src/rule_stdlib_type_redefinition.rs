@@ -73,21 +73,18 @@ mod tests {
     use super::*;
     use crate::semantic_context::SemanticContextBuilder;
     use crate::test_helpers::parse_only;
+    use rstest::rstest;
 
-    #[test]
-    fn apply_when_user_defines_ton_then_err() {
-        // User tries to define a function block named TON
-        let program = "
-FUNCTION_BLOCK TON
-VAR_INPUT
-value : INT;
-END_VAR
-END_FUNCTION_BLOCK";
-
+    // Redefining a stdlib name as a user FB should produce one
+    // `StdlibTypeRedefinition` diagnostic. `parse_only` is used because the
+    // test libraries don't survive full type resolution.
+    #[rstest]
+    #[case::ton("FUNCTION_BLOCK TON VAR_INPUT value : INT; END_VAR END_FUNCTION_BLOCK")]
+    #[case::r_trig("FUNCTION_BLOCK R_TRIG VAR_INPUT clk : BOOL; END_VAR END_FUNCTION_BLOCK")]
+    fn apply_when_user_defines_stdlib_name_then_err(#[case] program: &str) {
         let input = parse_only(program);
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&input, &context, &CompilerOptions::default());
-
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(1, err.len());
@@ -96,38 +93,11 @@ END_FUNCTION_BLOCK";
 
     #[test]
     fn apply_when_user_defines_custom_fb_then_ok() {
-        // User defines a custom function block with a non-stdlib name
-        let program = "
-FUNCTION_BLOCK MY_CUSTOM_FB
-VAR_INPUT
-value : INT;
-END_VAR
-END_FUNCTION_BLOCK";
-
-        let input = parse_only(program);
+        let input = parse_only(
+            "FUNCTION_BLOCK MY_CUSTOM_FB VAR_INPUT value : INT; END_VAR END_FUNCTION_BLOCK",
+        );
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&input, &context, &CompilerOptions::default());
-
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_user_defines_r_trig_then_err() {
-        // R_TRIG is a stdlib type
-        let program = "
-FUNCTION_BLOCK R_TRIG
-VAR_INPUT
-clk : BOOL;
-END_VAR
-END_FUNCTION_BLOCK";
-
-        let input = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(1, err.len());
-        assert_eq!(Problem::StdlibTypeRedefinition.code(), err[0].code);
     }
 }

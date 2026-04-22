@@ -70,69 +70,22 @@ impl Visitor<Diagnostic> for RuleUnsupportedStdLibType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_helpers::assert_rule_ok_blank_ctx;
+    use rstest::rstest;
 
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
-    #[test]
-    fn apply_when_has_ctu_dint_supported_type_then_ok() {
-        // CTU_DINT is now a supported stdlib type variant
-        let program = "
-FUNCTION_BLOCK DUMMY
-VAR_INPUT
-counter : CTU_DINT;
-END_VAR
-
-END_FUNCTION_BLOCK";
-
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        // CTU_DINT is now supported, so this should pass (no unsupported stdlib type error)
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_has_ton_supported_type_then_ok() {
-        // TON is a supported stdlib type - should not trigger this rule
-        let program = "
-FUNCTION_BLOCK DUMMY
-VAR_INPUT
-timer : TON;
-END_VAR
-
-END_FUNCTION_BLOCK";
-
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        // TON is now supported, so this should pass (no unsupported stdlib type error)
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_has_user_defined_function_block_then_ok() {
-        // User-defined function blocks should not trigger this rule
-        let program = "
-FUNCTION_BLOCK MY_CUSTOM_FB
-VAR_INPUT
-value : INT;
-END_VAR
-END_FUNCTION_BLOCK
-
-FUNCTION_BLOCK DUMMY
-VAR_INPUT
-my_var : MY_CUSTOM_FB;
-END_VAR
-END_FUNCTION_BLOCK";
-
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        // User-defined function blocks are not stdlib types, so this should pass
-        assert!(result.is_ok());
+    // CTU_DINT and TON are supported stdlib types; user-defined FBs aren't
+    // stdlib at all. All three should pass this rule.
+    #[rstest]
+    #[case::ctu_dint_supported(
+        "FUNCTION_BLOCK DUMMY VAR_INPUT counter : CTU_DINT; END_VAR END_FUNCTION_BLOCK"
+    )]
+    #[case::ton_supported(
+        "FUNCTION_BLOCK DUMMY VAR_INPUT timer : TON; END_VAR END_FUNCTION_BLOCK"
+    )]
+    #[case::user_defined_function_block(
+        "FUNCTION_BLOCK MY_CUSTOM_FB VAR_INPUT value : INT; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK DUMMY VAR_INPUT my_var : MY_CUSTOM_FB; END_VAR END_FUNCTION_BLOCK"
+    )]
+    fn apply_when_valid_type_then_ok(#[case] program: &str) {
+        assert_rule_ok_blank_ctx(apply, program);
     }
 }

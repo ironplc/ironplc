@@ -127,242 +127,68 @@ impl Visitor<Diagnostic> for RuleInitializerTypeCompat<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_helpers::{
-        parse_and_resolve_types_with_context, parse_and_resolve_types_with_options,
-    };
-
     use super::*;
+    use crate::test_helpers::{
+        assert_rule_err, assert_rule_ok, parse_and_resolve_types_with_options,
+    };
     use ironplc_parser::options::{CompilerOptions, Dialect};
-    use ironplc_problems::Problem;
+    use rstest::rstest;
 
-    #[test]
-    fn apply_when_int_var_with_integer_literal_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : INT := 10;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
+    fn program_with_var(decl: &str) -> String {
+        format!("PROGRAM main VAR {decl} END_VAR END_PROGRAM")
     }
 
-    #[test]
-    fn apply_when_real_var_with_real_literal_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : REAL := 10.0;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
+    // All cases use the envelope `PROGRAM main VAR <decl> END_VAR END_PROGRAM`.
+    // The default (IEC) dialect requires strict type-literal match.
+    #[rstest]
+    #[case::int_integer_literal("x : INT := 10;")]
+    #[case::real_real_literal("x : REAL := 10.0;")]
+    #[case::real_integer_literal("x : REAL := 10;")]
+    #[case::bool_true("x : BOOL := TRUE;")]
+    #[case::no_initializer("x : INT;")]
+    #[case::uint_integer_literal("x : UINT := 5;")]
+    #[case::int_negative_integer("x : INT := -10;")]
+    #[case::real_negative_real("x : REAL := -10.0;")]
+    fn apply_when_compatible_initializer_then_ok(#[case] decl: &str) {
+        assert_rule_ok(apply, &program_with_var(decl));
     }
 
-    #[test]
-    fn apply_when_real_var_with_integer_literal_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : REAL := 10;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
+    // Same envelope, each case should produce exactly one
+    // `InitializerTypeMismatch` diagnostic.
+    #[rstest]
+    #[case::int_real_literal("dummy : INT := 10.0;")]
+    #[case::bool_integer_literal("x : BOOL := 1;")]
+    #[case::real_boolean_literal("x : REAL := TRUE;")]
+    #[case::int_string_literal("x : INT := 'hello';")]
+    fn apply_when_incompatible_initializer_then_error(#[case] decl: &str) {
+        assert_rule_err(
+            apply,
+            &program_with_var(decl),
+            Problem::InitializerTypeMismatch.code(),
+        );
     }
 
-    #[test]
-    fn apply_when_bool_var_with_boolean_literal_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : BOOL := TRUE;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_no_initializer_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : INT;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_uint_var_with_integer_literal_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : UINT := 5;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_int_var_with_negative_integer_literal_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : INT := -10;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_real_var_with_negative_real_literal_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : REAL := -10.0;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_int_var_with_real_literal_then_error() {
-        let program = "
-PROGRAM main
-VAR
-    dummy : INT := 10.0;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_bool_var_with_integer_literal_then_error() {
-        let program = "
-PROGRAM main
-VAR
-    x : BOOL := 1;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_real_var_with_boolean_literal_then_error() {
-        let program = "
-PROGRAM main
-VAR
-    x : REAL := TRUE;
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_int_var_with_string_literal_then_error() {
-        let program = "
-PROGRAM main
-VAR
-    x : INT := 'hello';
-END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_bool_var_with_integer_one_and_rusty_dialect_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : BOOL := 1;
-END_VAR
-END_PROGRAM";
-
+    // Rusty dialect relaxes BOOL := 0/1 (truthy integers) but still rejects
+    // values outside {0, 1}. These cases can't use `assert_rule_ok/err`
+    // because those helpers only pass `CompilerOptions::default()` to the
+    // parser, and the dialect flag must reach both parse and apply stages.
+    fn run_rusty_rule(decl: &str) -> SemanticResult {
         let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
-        assert!(result.is_ok());
+        let (library, context) = parse_and_resolve_types_with_options(&program_with_var(decl), &options);
+        apply(&library, &context, &options)
     }
 
-    #[test]
-    fn apply_when_bool_var_with_integer_zero_and_rusty_dialect_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : BOOL := 0;
-END_VAR
-END_PROGRAM";
-
-        let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
-        assert!(result.is_ok());
+    #[rstest]
+    #[case::bool_one("x : BOOL := 1;")]
+    #[case::bool_zero("x : BOOL := 0;")]
+    fn apply_when_rusty_dialect_bool_with_0_or_1_then_ok(#[case] decl: &str) {
+        assert!(run_rusty_rule(decl).is_ok());
     }
 
     #[test]
     fn apply_when_bool_var_with_integer_two_and_rusty_dialect_then_error() {
-        let program = "
-PROGRAM main
-VAR
-    x : BOOL := 2;
-END_VAR
-END_PROGRAM";
-
-        let options = CompilerOptions::from_dialect(Dialect::Rusty);
-        let (library, context) = parse_and_resolve_types_with_options(program, &options);
-        let result = apply(&library, &context, &options);
+        let result = run_rusty_rule("x : BOOL := 2;");
         assert!(result.is_err());
-
         let errors = result.unwrap_err();
         assert_eq!(1, errors.len());
         assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);

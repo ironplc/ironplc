@@ -91,41 +91,22 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
     use super::*;
+    use crate::test_helpers::{assert_rule_err_blank_ctx, assert_rule_ok_blank_ctx};
 
     #[test]
     fn apply_when_structure_has_unique_names_then_ok() {
-        let program = "
-TYPE
-    CUSTOM_STRUCT : STRUCT
-        NAME: BOOL;
-    END_STRUCT;
-END_TYPE";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
+        assert_rule_ok_blank_ctx(
+            apply,
+            "TYPE CUSTOM_STRUCT : STRUCT NAME: BOOL; END_STRUCT; END_TYPE",
+        );
     }
 
     #[test]
     fn apply_when_structure_has_duplicated_names_then_error() {
-        let program = "
-TYPE
-    CUSTOM_STRUCT : STRUCT
-        NAME: BOOL;
-        NAME: BOOL;
-    END_STRUCT;
-END_TYPE";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
+        assert_rule_err_blank_ctx(
+            apply,
+            "TYPE CUSTOM_STRUCT : STRUCT NAME: BOOL; NAME: BOOL; END_STRUCT; END_TYPE",
+        );
     }
 }

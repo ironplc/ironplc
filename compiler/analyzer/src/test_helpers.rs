@@ -78,3 +78,45 @@ pub fn assert_rule_err(rule: RuleApplyFn, program: &str, expected_code: &str) {
     );
     assert_eq!(diagnostics[0].code, expected_code);
 }
+
+/// Same shape as [`assert_rule_ok`] but passes a blank `SemanticContext`
+/// (built by `SemanticContextBuilder::new()`) instead of one produced by the
+/// analyzer pipeline. Use this for rules whose `apply` takes `_context` (i.e.,
+/// they don't consult the type environment), since the blank context avoids
+/// forcing the program through full type resolution.
+#[cfg(test)]
+pub fn assert_rule_ok_blank_ctx(rule: RuleApplyFn, program: &str) {
+    let library = parse_and_resolve_types(program);
+    let context = crate::semantic_context::SemanticContextBuilder::new()
+        .build()
+        .unwrap();
+    let result = rule(&library, &context, &CompilerOptions::default());
+    assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
+}
+
+/// Like [`assert_rule_ok_blank_ctx`] but asserts the rule returns `Err`.
+/// Does not check the diagnostic code — use where the test just confirms the
+/// rule fired at all.
+#[cfg(test)]
+pub fn assert_rule_err_blank_ctx(rule: RuleApplyFn, program: &str) {
+    let library = parse_and_resolve_types(program);
+    let context = crate::semantic_context::SemanticContextBuilder::new()
+        .build()
+        .unwrap();
+    let result = rule(&library, &context, &CompilerOptions::default());
+    assert!(result.is_err(), "expected Err, got {:?}", result.ok());
+}
+
+/// Like [`assert_rule_err_blank_ctx`] but uses [`parse_only`] instead of
+/// [`parse_and_resolve_types`]. Useful for rules that check program-level
+/// structure (duplicate POU names, etc.) whose tests use programs that don't
+/// survive full type resolution — the check should fire on the raw library.
+#[cfg(test)]
+pub fn assert_rule_err_parse_only(rule: RuleApplyFn, program: &str) {
+    let library = parse_only(program);
+    let context = crate::semantic_context::SemanticContextBuilder::new()
+        .build()
+        .unwrap();
+    let result = rule(&library, &context, &CompilerOptions::default());
+    assert!(result.is_err(), "expected Err, got {:?}", result.ok());
+}
