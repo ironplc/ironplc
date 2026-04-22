@@ -3,6 +3,7 @@
 mod common;
 use common::parse_and_run;
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
 fn sizeof_options() -> CompilerOptions {
     CompilerOptions {
@@ -11,115 +12,20 @@ fn sizeof_options() -> CompilerOptions {
     }
 }
 
-#[test]
-fn end_to_end_when_sizeof_int_then_returns_2() {
-    let source = "
-PROGRAM main
-  VAR
-    x : INT;
-    s : DINT;
-  END_VAR
-  s := SIZEOF(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &sizeof_options());
-
-    assert_eq!(bufs.vars[1].as_i32(), 2);
-}
-
-#[test]
-fn end_to_end_when_sizeof_dint_then_returns_4() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-    s : DINT;
-  END_VAR
-  s := SIZEOF(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &sizeof_options());
-
-    assert_eq!(bufs.vars[1].as_i32(), 4);
-}
-
-#[test]
-fn end_to_end_when_sizeof_dword_then_returns_4() {
-    let source = "
-PROGRAM main
-  VAR
-    y : DWORD;
-    s : DINT;
-  END_VAR
-  s := SIZEOF(y);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &sizeof_options());
-
-    assert_eq!(bufs.vars[1].as_i32(), 4);
-}
-
-#[test]
-fn end_to_end_when_sizeof_bool_then_returns_1() {
-    let source = "
-PROGRAM main
-  VAR
-    b : BOOL;
-    s : DINT;
-  END_VAR
-  s := SIZEOF(b);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &sizeof_options());
-
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
-
-#[test]
-fn end_to_end_when_sizeof_real_then_returns_4() {
-    let source = "
-PROGRAM main
-  VAR
-    r : REAL;
-    s : DINT;
-  END_VAR
-  s := SIZEOF(r);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &sizeof_options());
-
-    assert_eq!(bufs.vars[1].as_i32(), 4);
-}
-
-#[test]
-fn end_to_end_when_sizeof_lreal_then_returns_8() {
-    let source = "
-PROGRAM main
-  VAR
-    r : LREAL;
-    s : DINT;
-  END_VAR
-  s := SIZEOF(r);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &sizeof_options());
-
-    assert_eq!(bufs.vars[1].as_i32(), 8);
-}
-
-#[test]
-fn end_to_end_when_sizeof_array_of_int_then_returns_total_bytes() {
-    let source = "
-PROGRAM main
-  VAR
-    arr : ARRAY[1..10] OF INT;
-    s : DINT;
-  END_VAR
-  s := SIZEOF(arr);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &sizeof_options());
-
-    // 10 elements × 2 bytes each = 20
-    assert_eq!(bufs.vars[1].as_i32(), 20);
+// Envelope: VAR x : <ty>; s : DINT; END_VAR; s := SIZEOF(x);
+// `s` lives at vars[1] and holds the size in bytes.
+#[rstest]
+#[case::int(2, "INT", 2)]
+#[case::dint(1, "DINT", 4)]
+#[case::dword(1, "DWORD", 4)]
+#[case::bool_(1, "BOOL", 1)]
+#[case::real(1, "REAL", 4)]
+#[case::lreal(1, "LREAL", 8)]
+#[case::array_10_of_int(1, "ARRAY[1..10] OF INT", 20)]
+fn end_to_end_sizeof(#[case] _ordinal: u8, #[case] ty: &str, #[case] expected_bytes: i32) {
+    let source = format!(
+        "PROGRAM main VAR x : {ty}; s : DINT; END_VAR s := SIZEOF(x); END_PROGRAM"
+    );
+    let (_c, bufs) = parse_and_run(&source, &sizeof_options());
+    assert_eq!(bufs.vars[1].as_i32(), expected_bytes);
 }
