@@ -6,294 +6,73 @@
 //! Note: NOT(x) is tested via the unary operator path since the parser
 //! treats NOT as a unary operator applied to parenthesized expression (x).
 
+#[macro_use]
 mod common;
-use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
+use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
-// --- Arithmetic functions ---
-
-#[test]
-fn end_to_end_when_add_function_then_returns_sum() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-    y : DINT;
-  END_VAR
-  x := 10;
-  y := ADD(x, 32);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+// Binary arithmetic functions with literal operands:
+//   result := <FN>(<a>, <b>);
+// Produces a single DINT result in `result`.
+#[rstest]
+#[case::sub("SUB", "10, 3", 7)]
+#[case::mul("MUL", "6, 7", 42)]
+#[case::div("DIV", "20, 4", 5)]
+#[case::mod_("MOD", "10, 3", 1)]
+fn end_to_end_arith_function(#[case] func: &str, #[case] args: &str, #[case] expected: i32) {
+    let source = format!(
+        "PROGRAM main VAR result : DINT; END_VAR result := {func}({args}); END_PROGRAM"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[0].as_i32(), expected);
 }
 
-#[test]
-fn end_to_end_when_sub_function_then_returns_difference() {
-    let source = "
-PROGRAM main
-  VAR
-    result : DINT;
-  END_VAR
-  result := SUB(10, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 7);
-}
-
-#[test]
-fn end_to_end_when_mul_function_then_returns_product() {
-    let source = "
-PROGRAM main
-  VAR
-    result : DINT;
-  END_VAR
-  result := MUL(6, 7);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_div_function_then_returns_quotient() {
-    let source = "
-PROGRAM main
-  VAR
-    result : DINT;
-  END_VAR
-  result := DIV(20, 4);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-}
-
-// --- Comparison functions ---
-
-#[test]
-fn end_to_end_when_gt_function_then_returns_bool() {
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := GT(10, 5);
-  false_result := GT(5, 10);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
+// Two-case boolean/comparison functions:
+//   true_result := <FN>(<args_true>);   false_result := <FN>(<args_false>);
+// Every entry has the same VAR envelope and asserts vars[0]=1, vars[1]=0.
+#[rstest]
+#[case::gt("GT", "10, 5", "5, 10")]
+#[case::eq("EQ", "5, 5", "5, 10")]
+#[case::le("LE", "5, 10", "10, 5")]
+#[case::lt("LT", "5, 10", "5, 5")]
+#[case::ne("NE", "5, 10", "5, 5")]
+#[case::and("AND", "TRUE, TRUE", "TRUE, FALSE")]
+#[case::or("OR", "FALSE, TRUE", "FALSE, FALSE")]
+#[case::xor("XOR", "TRUE, FALSE", "TRUE, TRUE")]
+// NOT(x) parses as unary NOT applied to parenthesized expression (x).
+#[case::not_parens("NOT", "FALSE", "TRUE")]
+fn end_to_end_bool_function(
+    #[case] func: &str,
+    #[case] args_true: &str,
+    #[case] args_false: &str,
+) {
+    let source = format!(
+        "PROGRAM main VAR true_result : DINT; false_result : DINT; END_VAR true_result := {func}({args_true}); false_result := {func}({args_false}); END_PROGRAM"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0);
 }
 
-#[test]
-fn end_to_end_when_ge_function_then_returns_bool() {
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    equal_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := GE(10, 5);
-  equal_result := GE(5, 5);
-  false_result := GE(5, 10);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+// ADD uses a variable operand, giving it a distinct shape (2 user vars, both asserted).
+e2e_i32!(
+    end_to_end_when_add_function_then_returns_sum,
+    "PROGRAM main VAR x : DINT; y : DINT; END_VAR x := 10; y := ADD(x, 32); END_PROGRAM",
+    &[(0, 10), (1, 42)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-    assert_eq!(bufs.vars[2].as_i32(), 0);
-}
+// GE has three cases (true / equal / false) rather than the usual two.
+e2e_i32!(
+    end_to_end_when_ge_function_then_returns_bool,
+    "PROGRAM main VAR true_result : DINT; equal_result : DINT; false_result : DINT; END_VAR true_result := GE(10, 5); equal_result := GE(5, 5); false_result := GE(5, 10); END_PROGRAM",
+    &[(0, 1), (1, 1), (2, 0)],
+);
 
-#[test]
-fn end_to_end_when_eq_function_then_returns_bool() {
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := EQ(5, 5);
-  false_result := EQ(5, 10);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_le_function_then_returns_bool() {
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := LE(5, 10);
-  false_result := LE(10, 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_lt_function_then_returns_bool() {
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := LT(5, 10);
-  false_result := LT(5, 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_ne_function_then_returns_bool() {
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := NE(5, 10);
-  false_result := NE(5, 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_mod_function_then_returns_remainder() {
-    let source = "
-PROGRAM main
-  VAR
-    result : DINT;
-  END_VAR
-  result := MOD(10, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-}
-
-#[test]
-fn end_to_end_when_and_function_then_returns_bool() {
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := AND(TRUE, TRUE);
-  false_result := AND(TRUE, FALSE);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_or_function_then_returns_bool() {
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := OR(FALSE, TRUE);
-  false_result := OR(FALSE, FALSE);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_xor_function_then_returns_bool() {
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := XOR(TRUE, FALSE);
-  false_result := XOR(TRUE, TRUE);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_not_parens_then_returns_negation() {
-    // NOT(x) parses as unary NOT applied to parenthesized expression (x).
-    // This is semantically equivalent to the NOT function form.
-    let source = "
-PROGRAM main
-  VAR
-    true_result : DINT;
-    false_result : DINT;
-  END_VAR
-  true_result := NOT(FALSE);
-  false_result := NOT(TRUE);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-// --- Assignment function ---
-
-#[test]
-fn end_to_end_when_move_function_then_returns_input_value() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-    result : DINT;
-  END_VAR
-  x := 42;
-  result := MOVE(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
+// MOVE from a var into a var — separate shape from the binary operators.
+e2e_i32!(
+    end_to_end_when_move_function_then_returns_input_value,
+    "PROGRAM main VAR x : DINT; result : DINT; END_VAR x := 42; result := MOVE(x); END_PROGRAM",
+    &[(0, 42), (1, 42)],
+);

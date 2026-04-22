@@ -1,10 +1,11 @@
 //! End-to-end integration tests for the CONCAT standard function.
 
 mod common;
-use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
+use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
 /// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -15,9 +16,8 @@ fn read_string(data_region: &[u8], data_offset: usize) -> String {
     bytes.iter().map(|&b| b as char).collect()
 }
 
-/// Computes the data_offset of a STRING variable given its position
-/// in the declaration order and preceding string max lengths.
-/// Each STRING variable occupies STRING_HEADER_BYTES + max_length bytes.
+/// Byte offset of a STRING variable in the data region, computed from the
+/// maximum lengths of the STRING variables that precede it in declaration order.
 fn string_offset(preceding_max_lengths: &[u16]) -> usize {
     preceding_max_lengths
         .iter()
@@ -25,197 +25,48 @@ fn string_offset(preceding_max_lengths: &[u16]) -> usize {
         .sum()
 }
 
-#[test]
-fn end_to_end_when_concat_two_strings_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello';
-    s2 : STRING := ' World';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
-}
-
-#[test]
-fn end_to_end_when_concat_single_chars_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'A';
-    s2 : STRING := 'B';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "AB");
-}
-
-#[test]
-fn end_to_end_when_concat_empty_first_then_second_string() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING;
-    s2 : STRING := 'World';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "World");
-}
-
-#[test]
-fn end_to_end_when_concat_empty_second_then_first_string() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello';
-    s2 : STRING;
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello");
-}
-
-#[test]
-fn end_to_end_when_concat_both_empty_then_empty() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING;
-    s2 : STRING;
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "");
-}
-
-#[test]
-fn end_to_end_when_concat_longer_strings_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'The quick brown ';
-    s2 : STRING := 'fox jumps over';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(
-        read_string(&bufs.data_region, result_offset),
-        "The quick brown fox jumps over"
+/// Runs `PROGRAM main VAR {decl} result : STRING; END_VAR result := CONCAT({args}); END_PROGRAM`
+/// and asserts `result` equals `expected`. `pre_lens` lists the max lengths of the
+/// STRING variables declared before `result` so the helper can locate `result` in
+/// the data region.
+fn assert_concat(decl: &str, args: &str, pre_lens: &[u16], expected: &str) {
+    let source = format!(
+        "PROGRAM main VAR {decl} result : STRING; END_VAR result := CONCAT({args}); END_PROGRAM"
     );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    let result_offset = string_offset(pre_lens);
+    assert_eq!(read_string(&bufs.data_region, result_offset), expected);
 }
 
-#[test]
-fn end_to_end_when_concat_same_variable_then_doubled() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABC';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, s1);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABCABC");
+// CONCAT of two STRING variables: two strings precede `result`, each default-sized (254).
+#[rstest]
+#[case::two_strings("s1 : STRING := 'Hello'; s2 : STRING := ' World';", "s1, s2", "Hello World")]
+#[case::single_chars("s1 : STRING := 'A'; s2 : STRING := 'B';", "s1, s2", "AB")]
+#[case::empty_first("s1 : STRING; s2 : STRING := 'World';", "s1, s2", "World")]
+#[case::empty_second("s1 : STRING := 'Hello'; s2 : STRING;", "s1, s2", "Hello")]
+#[case::both_empty("s1 : STRING; s2 : STRING;", "s1, s2", "")]
+#[case::longer_strings(
+    "s1 : STRING := 'The quick brown '; s2 : STRING := 'fox jumps over';",
+    "s1, s2",
+    "The quick brown fox jumps over"
+)]
+fn end_to_end_concat_two_vars(#[case] decl: &str, #[case] args: &str, #[case] expected: &str) {
+    assert_concat(decl, args, &[254, 254], expected);
 }
 
-#[test]
-fn end_to_end_when_concat_two_literals_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    result : STRING;
-  END_VAR
-  result := CONCAT('Hello', ' World');
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // result is the first (and only) declared string variable at offset 0.
-    let result_offset = string_offset(&[]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
+// CONCAT with one preceding STRING variable (literal on one side, or var used twice).
+#[rstest]
+#[case::same_variable("s1 : STRING := 'ABC';", "s1, s1", "ABCABC")]
+#[case::literal_and_variable("s1 : STRING := 'World';", "'Hello ', s1", "Hello World")]
+#[case::variable_and_literal("s1 : STRING := 'Hello';", "s1, ' World'", "Hello World")]
+fn end_to_end_concat_one_var(#[case] decl: &str, #[case] args: &str, #[case] expected: &str) {
+    assert_concat(decl, args, &[254], expected);
 }
 
-#[test]
-fn end_to_end_when_concat_literal_and_variable_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'World';
-    result : STRING;
-  END_VAR
-  result := CONCAT('Hello ', s1);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
-}
-
-#[test]
-fn end_to_end_when_concat_variable_and_literal_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello';
-    result : STRING;
-  END_VAR
-  result := CONCAT(s1, ' World');
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
-}
-
-#[test]
-fn end_to_end_when_concat_single_char_literals_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    result : STRING;
-  END_VAR
-  result := CONCAT('A', 'B');
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "AB");
+// CONCAT with two literal arguments: no preceding STRING variables.
+#[rstest]
+#[case::two_literals("'Hello', ' World'", "Hello World")]
+#[case::single_char_literals("'A', 'B'", "AB")]
+fn end_to_end_concat_literals_only(#[case] args: &str, #[case] expected: &str) {
+    assert_concat("", args, &[], expected);
 }
