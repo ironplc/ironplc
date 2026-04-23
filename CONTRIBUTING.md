@@ -10,21 +10,24 @@ as a single repository that hosts all of components:
 * the [compiler](compiler/CONTRIBUTING.md)
 * the [Visual Studio Code Extension](integrations/vscode/CONTRIBUTING.md)
 * the [documentation website](docs/CONTRIBUTING.md)
-* the [interactive playground](playground/)
+* the [interactive playground](playground/CONTRIBUTING.md)
 
 See below for common recommendations or follow the links above for information
 about how to develop each component.
 
-## Code Standards and AI-Assisted Development
+## Code Standards and Project Conventions
 
-IronPLC uses AI-assisted development with detailed coding standards and architectural patterns defined in steering files. These files guide both human and AI contributors to maintain consistency and quality:
+IronPLC has detailed coding standards and architectural patterns defined in
+steering files under `specs/steering/`. These apply to all contributors:
 
 * **[Development Standards](specs/steering/development-standards.md)** - Core project conventions, testing patterns, and error handling
 * **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features and semantic analysis
 * **[Problem Code Management](specs/steering/problem-code-management.md)** - Guidelines for error handling and diagnostic creation
 * **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules
+* **[Common Tasks](specs/steering/common-tasks.md)** - Full command reference for day-to-day development
 
-When contributing code, these steering files provide the detailed implementation guidance, while this CONTRIBUTING.md focuses on the development workflow and setup process.
+The steering files provide the detailed implementation guidance; this
+CONTRIBUTING.md focuses on the development workflow and setup process.
 
 ## Developing
 
@@ -40,7 +43,6 @@ to install:
 Things are even easier if you also install:
 
 * [Just command runner](https://just.systems/man/en/)
-* [act](https://github.com/nektos/act)
 
 Then follow these steps to check that you have a working environment:
 
@@ -68,68 +70,88 @@ Then follow these steps to check that you have a working environment:
 Follow the steps for each component to continue your development
 environment.
 
-## Claude Code Setup (Optional)
+## Planning Non-Trivial Changes
 
-The devcontainer is configured to support Claude Code, Anthropic's AI coding assistant. To use Claude Code in the development environment:
+**Non-trivial changes must start with a plan committed to `specs/plans/`.**
+This keeps design discussion in the open and makes review easier.
 
-1. **Get an Anthropic API key:**
-   - Sign up at [console.anthropic.com](https://console.anthropic.com)
-   - Create an API key in your account settings
+Workflow:
 
-2. **Set the environment variable on your host machine:**
-   
-   **On macOS/Linux:**
-   ```bash
-   export ANTHROPIC_API_KEY="your-api-key-here"
-   ```
-   
-   **On Windows (PowerShell):**
-   ```powershell
-   $env:ANTHROPIC_API_KEY="your-api-key-here"
-   ```
-   
-   **On Windows (Command Prompt):**
-   ```cmd
-   set ANTHROPIC_API_KEY=your-api-key-here
-   ```
+1. Create a feature branch from `main`. Do not commit directly to `main`.
+1. Write an implementation plan and save it under `specs/plans/` (follow the
+   naming convention used by existing files there).
+1. Commit the plan to the feature branch before the implementation code.
+1. Implement the changes following the plan.
+1. Run the pre-PR checks described below.
+1. Push the branch and open a pull request.
 
-3. **Make the environment variable persistent:**
-   
-   **On macOS/Linux:** Add the export command to your shell profile (`.bashrc`, `.zshrc`, etc.)
-   
-   **On Windows:** Set it as a system environment variable through System Properties > Environment Variables
+You may **skip the plan** for mechanical changes: typo fixes, formatting,
+dependency bumps, single-line bug fixes, or documentation-only edits.
 
-4. **Restart VS Code** after setting the environment variable to ensure it's available to the devcontainer.
+## Before You Open a PR
 
-The devcontainer will automatically map your host `ANTHROPIC_API_KEY` environment variable into the container, making Claude Code available for AI-assisted development.
-
-## Local Integration Testing
-
-As described above, cross-platform development is hard. Unfortunately I don't
-know of a great way to run integration tests across all platforms locally.
-
-The best offer here is to run the "on-commit" tests on a Ubuntu Docker image.
-The on-commit tests are slow to run because they test are extensive.
-You will want to run component-specific tests because they are much faster to
-execute. Nevertheless, if you want to reproduce the GitHub commit checks, this
-is the way.
-
-Execute the following to run what you can locally:
+You must run the full CI pipeline locally and see it pass before opening a
+pull request:
 
 ```sh
-just ci-commit-workflow
+cd compiler && just
 ```
+
+This runs compile, coverage (which includes tests), and lint (clippy + fmt).
+All checks must pass.
+
+Common failures:
+
+* **Clippy warnings** - Fix all clippy issues.
+* **Format issues** - Run `cd compiler && just format` to auto-fix.
+* **Coverage below 85%** - Add tests for uncovered code (`just coverage`
+  enforces `--fail-under-lines 85`).
+
+If you touched the VS Code extension, the docs, or the playground, also run
+the component's own CI recipe (`just ci` from that component's directory).
+
+Full cross-platform integration tests run in GitHub Actions when you push.
 
 ## Code Quality Expectations
 
 ### Testing Standards
-All code must follow BDD-style test naming conventions and include comprehensive test coverage. See the development standards steering file for specific patterns and examples.
+
+All tests use BDD-style naming:
+
+```
+function_when_condition_then_expected_result
+```
+
+Example:
+
+```rust
+#[test]
+fn parse_when_input_is_empty_then_returns_error() {
+    // ...
+}
+```
+
+Coverage is enforced at **85%** by `just coverage` in the compiler. Add tests
+for any new code paths.
 
 ### Error Handling
-Error handling is critical for developer experience. All errors must use the shared problem code system with proper documentation. See the problem code management steering file for the complete lifecycle and requirements.
+
+All compiler errors use the shared problem code system. Every new problem
+code requires documentation at
+`docs/reference/compiler/problems/P####.rst`. See the [Problem Code
+Management](specs/steering/problem-code-management.md) steering file for the
+full lifecycle and requirements.
 
 ### Architecture Compliance
-The compiler follows specific architectural patterns for semantic analysis and type checking. Modules must remain focused and under 1000 lines of code. See the compiler architecture steering file for detailed guidance.
+
+The compiler follows specific architectural patterns for semantic analysis
+and type checking. **Modules must stay under 1000 lines of code.** See the
+[Compiler Architecture](specs/steering/compiler-architecture.md) steering
+file for detailed guidance.
 
 ### IEC 61131-3 Compliance
-All language features must follow IEC 61131-3 standard compliance rules with configurable validation levels. See the compliance steering file for implementation requirements.
+
+All language features must follow IEC 61131-3 standard compliance rules with
+configurable validation levels. See the [IEC 61131-3
+Compliance](specs/steering/iec-61131-3-compliance.md) steering file for
+implementation requirements.
