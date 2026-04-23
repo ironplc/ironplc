@@ -4,11 +4,13 @@ This component is the `ironplcc` compiler.
 
 ## Code Standards
 
-The compiler follows specific architectural patterns and coding standards defined in the project's steering files:
+The compiler follows specific architectural patterns and coding standards defined in the project's steering files under `specs/steering/`:
 
-* **Compiler Architecture** (`.kiro/steering/compiler-architecture.md`) - Module organization, semantic analysis patterns, and type system implementation
-* **Problem Code Management** (`.kiro/steering/problem-code-management.md`) - Error handling patterns and diagnostic creation
-* **IEC 61131-3 Compliance** (`.kiro/steering/iec-61131-3-compliance.md`) - Standard compliance validation and type system rules
+* [Development Standards](../specs/steering/development-standards.md) - Core conventions, testing patterns, and error handling
+* [Compiler Architecture](../specs/steering/compiler-architecture.md) - Module organization, semantic analysis patterns, and type system implementation
+* [Problem Code Management](../specs/steering/problem-code-management.md) - Error handling patterns and diagnostic creation
+* [IEC 61131-3 Compliance](../specs/steering/iec-61131-3-compliance.md) - Standard compliance validation and type system rules
+* [Syntax Support Guide](../specs/steering/syntax-support-guide.md) - Checklist for adding new syntax (relevant for parser, codegen, and plc2plc work)
 
 These steering files provide detailed implementation guidance that complements the development workflow described below.
 
@@ -37,7 +39,7 @@ cargo run check ironplc-cli/resources/test/first_steps.st
 
 ### Making Changes
 
-`ironplcc` has a large set of tests. Use `just` to execute the full build pipeline (compile, test, and lint):
+`ironplcc` has a large set of tests. Use `just` to execute the full build pipeline (compile, coverage, and lint). **This is the pipeline you must run before opening a PR:**
 
 ```sh
 just
@@ -45,8 +47,10 @@ just
 
 You can also run individual tasks:
 - `just compile` - Build the compiler
-- `just test` - Run tests and check coverage
+- `just test` - Run tests
+- `just coverage` - Run tests and enforce the 85% coverage floor
 - `just lint` - Check code formatting and style
+- `just format` - Auto-fix formatting
 
 ### Checking Coverage
 
@@ -96,7 +100,8 @@ When working on the compiler:
 
 * **Keep modules focused**: Each analyzer/transformation module should handle one specific aspect and stay under 1000 lines of code
 * **Follow semantic analysis patterns**: Use the `try_from` pattern for AST transformations and proper error handling
-* **Implement proper diagnostics**: All errors must use the shared problem code system with clear, actionable messages
+* **Implement proper diagnostics**: All errors must use the shared problem code system with clear, actionable messages. Every new problem code requires a doc page at `docs/reference/compiler/problems/P####.rst`
 * **Maintain IEC 61131-3 compliance**: Follow standard compliance rules and support configurable validation levels
+* **Use BDD-style test names**: `function_when_condition_then_expected_result` (for example, `parse_when_input_is_empty_then_returns_error`)
 
 See the steering files referenced above for detailed implementation patterns and examples.
