@@ -93,11 +93,28 @@ dependency bumps, single-line bug fixes, or documentation-only edits.
 You must run the full CI pipeline locally and see it pass before opening a
 pull request:
 
-```sh
-cd compiler && just
-```
+1. **Code Audit**:
 
-This runs compile, coverage (which includes tests), and lint (clippy + fmt).
+   ```sh
+   cd compiler && just
+   ```
+
+   This runs compile, coverage (which includes tests), and lint (clippy + fmt).
+
+2. **Documentation Audit**:
+
+   ```sh
+   sh tools/lint-docs.sh
+   ```
+
+   or
+
+   ```sh
+   just lint-docs
+   ```
+
+   This ensures the **Sovridium Strategy Lattice** (ROADMAP, SAGE, etc.) remains geometrically stable and compliant.
+
 All checks must pass.
 
 Common failures:
@@ -106,6 +123,7 @@ Common failures:
 * **Format issues** - Run `cd compiler && just format` to auto-fix.
 * **Coverage below 85%** - Add tests for uncovered code (`just coverage`
   enforces `--fail-under-lines 85`).
+* **Lattice Inconsistency** - Check `lint-docs.sh` output for formatting errors.
 
 If you touched the VS Code extension, the docs, or the playground, also run
 the component's own CI recipe (`just ci` from that component's directory).
