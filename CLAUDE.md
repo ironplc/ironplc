@@ -11,6 +11,10 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 - **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules (especially relevant for `**/analyzer/**` files)
 - **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
 - **[Syntax Support Guide](specs/steering/syntax-support-guide.md)** - Checklist and patterns for adding new syntax support, including `--allow-x` flags, plc2plc round-trip tests, and end-to-end execution tests (especially relevant for `**/parser/**`, `**/codegen/**`, `**/plc2plc/**` files)
+- **[SAGE Intelligence](SAGE.md)** - Authoritative framework for industrial logic, including Skill Augmented GRPO (SAGE) protocols
+- **[Agent Registry](AGENTS.md)** - Centralized protocol guide for AI-native orchestrators and human-intent synthesis
+- **[Strategic Roadmap](ROADMAP.md)** - Evolution from Spec-Driven (SDD) to Intent-Driven (IDD) development
+- **[Documentation Linter](specs/tools/documentation-linter.md)** - Specification for the risk-averse verification of documentation integrity
 
 ## Skills (Slash Commands)
 
@@ -83,4 +87,5 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 4. **BDD-style test names**: `function_when_condition_then_result`
 5. **Module size limit**: Max 1000 lines per module
 6. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-7. **Version numbers**: Automatically managed - do not edit manually
+7. **SAGE Compliance**: All agentic synthesis must follow the SAGE protocol (Intent + Method) to ensure logic auditability
+8. **Version numbers**: Automatically managed - do not edit manually

@@ -14,6 +14,10 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 - **[Problem Code Management](specs/steering/problem-code-management.md)** - Problem codes, diagnostics, and `compiler/problems/` workflows
 - **[Extension Testing Requirements](specs/steering/extension-testing-requirements.md)** - VS Code extension CI gates and invariants (especially relevant for `integrations/vscode/**`)
 - **[Steering File Guidelines](specs/steering/steering-file-guidelines.md)** - How IronPLC maintains steering docs and the pointer pattern
+- **[SAGE Intelligence](SAGE.md)** - Authoritative framework for industrial logic, including Skill Augmented GRPO (SAGE) protocols
+- **[Agent Registry](AGENTS.md)** - Centralized protocol guide for AI-native orchestrators and human-intent synthesis
+- **[Strategic Roadmap](ROADMAP.md)** - Evolution from Spec-Driven (SDD) to Intent-Driven (IDD) development
+- **[Documentation Linter](specs/tools/documentation-linter.md)** - Specification for the risk-averse verification of documentation integrity
 
 ## Skills (Slash Commands) — Claude Code
 
@@ -83,4 +87,5 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 4. **BDD-style test names**: `function_when_condition_then_result`
 5. **Module size limit**: Max 1000 lines per module
 6. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-7. **Version numbers**: Automatically managed - do not edit manually
+7. **SAGE Compliance**: All agentic synthesis must follow the SAGE protocol (Intent + Method) to ensure logic auditability
+8. **Version numbers**: Automatically managed - do not edit manually

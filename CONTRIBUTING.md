@@ -118,7 +118,7 @@ Full cross-platform integration tests run in GitHub Actions when you push.
 
 All tests use BDD-style naming:
 
-```
+```rust
 function_when_condition_then_expected_result
 ```
 

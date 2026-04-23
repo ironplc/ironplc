@@ -1,0 +1,27 @@
+# markdownlint configuration
+# For full list of rules: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+default: true
+
+# Line length - disabled to allow long strategy sentences
+MD013: false
+
+# Header style - enforced as # header
+MD003:
+  style: "atx"
+
+# Duplicate headings in different sections - allowed for modular specs
+MD024:
+  allow_different_nesting: true
+  siblings_only: true
+
+# Inline HTML - allowed for alerts (GH style)
+MD033: false
+
+# No-trailing-spaces - enforced
+MD009:
+  br_spaces: 2
+
+# Exclude specific rules that interfere with strategic lattice aesthetics
+MD022: false # Headings don't need surrounding blank lines if visually distinct
+MD032: false # Lists don't need surrounding blank lines for compact strategy specs

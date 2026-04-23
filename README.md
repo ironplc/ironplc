@@ -1,6 +1,6 @@
 # IronPLC
 
-![](docs/_static/ironplc-banner.svg)
+![IronPLC Banner](docs/_static/ironplc-banner.svg)
 
 An open-source toolchain and runtime for IEC 61131-3, written in safe Rust.
 
@@ -12,7 +12,7 @@ IronPLC is a compiler (`ironplcc`), runtime (`ironplcvm`), VS Code extension,
 browser playground, and MCP server for writing and running IEC 61131-3
 programs on off-the-shelf hardware — no proprietary IDE required.
 
-![](images/quickstart-animation.png)
+![Quickstart Animation](images/quickstart-animation.png)
 
 ## Quick Start
 
@@ -46,12 +46,26 @@ to write your first PLC program.
 * [**Interactive playground**](https://playground.ironplc.com) —
   try IronPLC in the browser with no install
 
+## 🛰️ Strategic Vision
+
+IronPLC is evolving towards the **Sovridium™** framework:
+* [**Strategic Roadmap**](ROADMAP.md) — The evolution from Spec-Driven to **Intent-Driven Development (IDD)**.
+* [**SAGE Intelligence**](SAGE.md) — The **Skill Augmented GRPO** framework for industrial-grade logic and autonomous safety.
+* [**Agent Registry**](AGENTS.md) — Centralized protocols for AI-native orchestrators and the E3 Lattice.
+
 ## What's in this repo
 
 * `compiler/` — Rust workspace (compiler, runtime, MCP server, playground WASM)
 * `integrations/vscode/` — VS Code extension
 * `docs/` — Sphinx documentation site ([ironplc.com](https://www.ironplc.com))
 * `playground/` — browser playground
+* `tools/` — Automation scripts and utilities
+
+## Automation
+
+The project provides several automation tools to maintain the lattice:
+* `just lint-docs` or `sh tools/lint-docs.sh` — Verifies documentation integrity. See the [Linter Specification](specs/tools/documentation-linter.md).
+* `just devenv-smoke` — Verifies the development environment.
 
 ## Contributing
 

@@ -128,6 +128,10 @@ update:
   cd compiler && just update
   cd integrations/vscode && just update
 
+# Lints all strategic documentation across the lattice.
+lint-docs:
+  @sh ./tools/lint-docs.sh
+
 # This is only valid for Windows hosts
 e2e_fspath := env_var_or_default('USERPROFILE', '') + "\\.vscode\\extensions\\"
 e2e_external := "file:///" + replace(replace(e2e_fspath, "\\", "/"), ":", "%3A")
