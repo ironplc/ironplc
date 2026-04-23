@@ -4,6 +4,7 @@
 
 pub mod cache;
 pub mod logging;
+pub mod runner;
 pub mod server;
 pub mod tools;
 

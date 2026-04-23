@@ -203,9 +203,16 @@ fn apply_flag(options: &mut CompilerOptions, idx: usize, value: bool) {
 /// `start` and `end` are the 0-indexed byte offsets already stored in
 /// the diagnostic — no line/column conversion is performed.
 pub fn serialize_diagnostic(diag: &Diagnostic) -> serde_json::Value {
+    let description = diag.description();
+    let label_msg = diag.primary.message.as_str();
+    let message = if label_msg.is_empty() || description.contains(label_msg) {
+        description
+    } else {
+        format!("{description}: {label_msg}")
+    };
     serde_json::json!({
         "code": diag.code,
-        "message": diag.description(),
+        "message": message,
         "file": diag.primary.file_id.to_string(),
         "start": diag.primary.location.start,
         "end": diag.primary.location.end,
