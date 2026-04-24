@@ -57,6 +57,12 @@ In your development environment:
 If the IronPLC extension is installed, you should see no errors highlighted
 in the editor.
 
+.. figure:: /images/screenshots/quickstart-helloworld.png
+   :alt: VS Code editor showing the doorbell program in main.st with syntax highlighting and no errors
+   :width: 600px
+
+   The doorbell program with syntax highlighting and no errors.
+
 --------------------------------------
 What This Program Does
 --------------------------------------
@@ -97,6 +103,12 @@ IronPLC extension.
         Buzzer : BOOL = TRUE
 
 #. Click :guilabel:`Stop` above the ``PROGRAM`` line to end execution.
+
+.. figure:: /images/screenshots/quickstart-run-output.png
+   :alt: VS Code editor showing the Run Program code lens and the IronPLC Run output panel with scan cycle results
+   :width: 600px
+
+   The IronPLC Run panel showing scan cycle output with variable values.
 
 ``Button`` starts as ``FALSE`` (the default for :code:`BOOL`), so
 ``NOT Button`` evaluates to ``TRUE``, and the buzzer sounds. This is

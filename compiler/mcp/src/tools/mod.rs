@@ -5,5 +5,6 @@ pub mod container_drop;
 pub mod explain_diagnostic;
 pub mod list_options;
 pub mod parse;
+pub mod project_io;
 pub mod project_manifest;
 pub mod symbols;

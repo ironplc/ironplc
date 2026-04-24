@@ -101,6 +101,12 @@ that matches your agent.
    #. Type :command:`/mcp` to confirm that the IronPLC server is
       listed and connected.
 
+.. figure:: /images/screenshots/mcp-config.png
+   :alt: VS Code editor showing an MCP configuration file with the IronPLC server entry
+   :width: 600px
+
+   An MCP configuration file with the IronPLC server entry.
+
 --------------------------------------
 Write a Motor Start/Stop Program
 --------------------------------------

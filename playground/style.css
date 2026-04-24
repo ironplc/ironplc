@@ -167,8 +167,34 @@ main {
   color: var(--border);
 }
 
+.editor-wrapper {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.editor-gutter {
+  padding: 1rem 0.5rem 1rem 0.75rem;
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  tab-size: 2;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  text-align: right;
+  white-space: pre;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  min-width: 3ch;
+  flex: 0 0 auto;
+}
+
 #editor {
   flex: 1;
+  min-width: 0;
   background: var(--surface);
   color: var(--text);
   border: none;
@@ -179,6 +205,8 @@ main {
   resize: none;
   outline: none;
   tab-size: 2;
+  overflow: auto;
+  white-space: pre;
 }
 
 .output-section {
@@ -349,6 +377,11 @@ body.embed .toolbar {
 
 body.embed #editor {
   padding: 0.75rem;
+  font-size: 0.8rem;
+}
+
+body.embed .editor-gutter {
+  padding: 0.75rem 0.4rem 0.75rem 0.5rem;
   font-size: 0.8rem;
 }
 

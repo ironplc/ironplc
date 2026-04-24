@@ -761,4 +761,104 @@ mod tests {
         section.write_to(&mut buf).unwrap();
         assert_eq!(section.section_size(), buf.len() as u32);
     }
+
+    #[test]
+    fn debug_section_lookup_source_location_when_multiple_entries_then_returns_greatest_leq() {
+        let section = DebugSection {
+            var_names: vec![],
+            func_names: vec![],
+            line_map: vec![
+                LineMapEntry {
+                    function_id: FunctionId::INIT,
+                    bytecode_offset: 0,
+                    source_line: 10,
+                    source_column: 1,
+                },
+                LineMapEntry {
+                    function_id: FunctionId::INIT,
+                    bytecode_offset: 8,
+                    source_line: 20,
+                    source_column: 1,
+                },
+                LineMapEntry {
+                    function_id: FunctionId::INIT,
+                    bytecode_offset: 12,
+                    source_line: 30,
+                    source_column: 1,
+                },
+                // Entry for a different function that must never be returned.
+                LineMapEntry {
+                    function_id: FunctionId::GLOBAL_SCOPE,
+                    bytecode_offset: 4,
+                    source_line: 99,
+                    source_column: 1,
+                },
+            ],
+            enum_defs: vec![],
+        };
+
+        // Offset 0: matches the first entry exactly.
+        let hit = section.lookup_source_location(FunctionId::INIT, 0).unwrap();
+        assert_eq!(hit.source_line, 10);
+
+        // Offset 5: before the second entry, should return the first.
+        let hit = section.lookup_source_location(FunctionId::INIT, 5).unwrap();
+        assert_eq!(hit.source_line, 10);
+
+        // Offset 10: between second and third entry, should return the second.
+        let hit = section
+            .lookup_source_location(FunctionId::INIT, 10)
+            .unwrap();
+        assert_eq!(hit.source_line, 20);
+
+        // Offset 12: matches the third entry exactly.
+        let hit = section
+            .lookup_source_location(FunctionId::INIT, 12)
+            .unwrap();
+        assert_eq!(hit.source_line, 30);
+
+        // Offset 100: beyond the last entry, should still return the third.
+        let hit = section
+            .lookup_source_location(FunctionId::INIT, 100)
+            .unwrap();
+        assert_eq!(hit.source_line, 30);
+    }
+
+    #[test]
+    fn debug_section_lookup_source_location_when_entries_out_of_order_then_returns_greatest_leq() {
+        // Stored in descending bytecode_offset order so the later iterations
+        // see entries with smaller offsets than the running best; this
+        // exercises the `_ => {}` fall-through arm that leaves `best`
+        // unchanged.
+        let section = DebugSection {
+            var_names: vec![],
+            func_names: vec![],
+            line_map: vec![
+                LineMapEntry {
+                    function_id: FunctionId::INIT,
+                    bytecode_offset: 12,
+                    source_line: 30,
+                    source_column: 1,
+                },
+                LineMapEntry {
+                    function_id: FunctionId::INIT,
+                    bytecode_offset: 0,
+                    source_line: 10,
+                    source_column: 1,
+                },
+                LineMapEntry {
+                    function_id: FunctionId::INIT,
+                    bytecode_offset: 8,
+                    source_line: 20,
+                    source_column: 1,
+                },
+            ],
+            enum_defs: vec![],
+        };
+
+        let hit = section
+            .lookup_source_location(FunctionId::INIT, 100)
+            .unwrap();
+        assert_eq!(hit.source_line, 30);
+    }
 }

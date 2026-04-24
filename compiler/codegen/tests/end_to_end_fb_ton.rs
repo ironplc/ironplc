@@ -339,3 +339,98 @@ END_PROGRAM
         );
     }
 }
+
+#[test]
+fn end_to_end_when_ton_dot_access_reads_q_after_pt_then_true() {
+    // Reproduces the user's original program that previously failed codegen
+    // with P9999 "Variable 'PulseTimer' is not a structure".
+    let source = "
+PROGRAM main
+  VAR
+    Button : BOOL;
+    Buzzer : BOOL;
+    PulseTimer : TON;
+  END_VAR
+  PulseTimer(IN := NOT Button, PT := T#500ms);
+  Buzzer := PulseTimer.Q;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+
+        // Button stays FALSE → IN is TRUE. Start timing at t=0.
+        vm.run_round(0).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            0,
+            "Buzzer should be FALSE before PT elapsed"
+        );
+
+        // At t=600ms, past PT (500ms). Dot-access read should see Q = TRUE.
+        vm.run_round(600_000).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            1,
+            "Buzzer should be TRUE via dot-access after PT elapsed"
+        );
+    }
+}
+
+#[test]
+fn end_to_end_when_ton_dot_access_reads_q_before_pt_then_false() {
+    let source = "
+PROGRAM main
+  VAR
+    Button : BOOL;
+    Buzzer : BOOL;
+    PulseTimer : TON;
+  END_VAR
+  PulseTimer(IN := NOT Button, PT := T#500ms);
+  Buzzer := PulseTimer.Q;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+
+        vm.run_round(0).unwrap();
+        // t=100ms: well before PT=500ms, Q must remain FALSE.
+        vm.run_round(100_000).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            0,
+            "Buzzer should be FALSE via dot-access before PT elapsed"
+        );
+    }
+}
+
+#[test]
+fn end_to_end_when_ton_dot_access_reads_et_then_elapsed_time_correct() {
+    // Exercises dot-access on a non-BOOL field (ET is TIME/i32 ms).
+    let source = "
+PROGRAM main
+  VAR
+    timer : TON;
+    elapsed : TIME;
+  END_VAR
+  timer(IN := TRUE, PT := T#10s);
+  elapsed := timer.ET;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+
+        vm.run_round(0).unwrap();
+        vm.run_round(3_000_000).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            3000,
+            "elapsed should be 3000 ms via dot-access"
+        );
+    }
+}

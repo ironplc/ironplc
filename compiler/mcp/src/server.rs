@@ -125,6 +125,21 @@ impl IronPlcMcp {
         Ok(Content::text(json))
     }
 
+    /// Project I/O: inputs the caller can drive, outputs it can observe.
+    #[tool(
+        name = "project_io",
+        description = "Inputs the caller can drive and outputs the caller can observe, for planning a `run` call. This is the right tool to call before constructing `stimuli` or deciding which variables to `trace`."
+    )]
+    fn project_io(
+        &self,
+        Parameters(input): Parameters<ParseCheckInput>,
+    ) -> Result<Content, rmcp::ErrorData> {
+        let response = tools::project_io::build_response(&input.sources, &input.options);
+        let json = serde_json::to_string(&response)
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        Ok(Content::text(json))
+    }
+
     /// Full pipeline: parse, semantic analysis, and codegen.
     #[tool(
         name = "compile",

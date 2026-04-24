@@ -83,6 +83,8 @@ publish-openvsx vsixfilename:
 
 # Capture VS Code extension screenshots for documentation.
 # Requires `just compile` first. macOS runs natively; Linux uses Xvfb.
+# Screenshots are written to out/screenshots/output/.
+# Run `just screenshots` from the repository root to also copy them into docs.
 screenshots:
   just _screenshots-{{os()}}
 

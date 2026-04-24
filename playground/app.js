@@ -1,6 +1,7 @@
 import uPlot from './uPlot.esm.js';
 
 const editor = document.getElementById("editor");
+const gutter = document.getElementById("editor-gutter");
 const startBtn = document.getElementById("start-btn");
 const stopBtn = document.getElementById("stop-btn");
 const pauseBtn = document.getElementById("pause-btn");
@@ -223,10 +224,27 @@ examplesSelect.addEventListener("change", () => {
   }
 
   editor.value = selected.code;
+  renderLineNumbers();
   trackPageview("/playground/example/" + selected.name, selected.name);
 
   // Reset the dropdown to show "Examples" label
   examplesSelect.selectedIndex = 0;
+});
+
+// --- Line number gutter ---
+
+function renderLineNumbers() {
+  const lineCount = Math.max(1, editor.value.split("\n").length);
+  let text = "1";
+  for (let i = 2; i <= lineCount; i++) {
+    text += "\n" + i;
+  }
+  gutter.textContent = text;
+  gutter.style.minWidth = `${Math.max(2, String(lineCount).length) + 1}ch`;
+}
+
+editor.addEventListener("scroll", () => {
+  gutter.scrollTop = editor.scrollTop;
 });
 
 // Pre-load code from URL parameters
@@ -261,6 +279,8 @@ if (params.has("code")) {
     // Ignore invalid base64
   }
 }
+
+renderLineNumbers();
 
 // --- Web Worker communication ---
 
@@ -518,6 +538,7 @@ pauseBtn.addEventListener("click", () => {
 // --- Source change handling ---
 
 editor.addEventListener("input", () => {
+  renderLineNumbers();
   if (isRunning) {
     stopExecution();
     postCommand("reset");
@@ -645,8 +666,8 @@ function renderDiagnostics(diagnostics) {
       message += `: ${escapeHtml(d.label)}`;
     }
     html += `<span class="diagnostic-message">${message}</span>`;
-    if (d.start > 0 || d.end > 0) {
-      html += `<span class="diagnostic-location">offset ${d.start}\u2013${d.end}</span>`;
+    if (d.start_line > 0 && d.start_column > 0) {
+      html += `<span class="diagnostic-location">line ${d.start_line}, column ${d.start_column}</span>`;
     }
     html += "</div>";
   }

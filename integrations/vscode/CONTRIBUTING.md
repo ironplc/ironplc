@@ -22,6 +22,9 @@ step, you will to a custom-build version).
 1. Make changes as desired.
 1. Reload the extension by pressing `Ctrl+R` or `Cmd+R` on Mac.
 
+Before opening a PR that touches this component, run `just ci` (see below)
+and make sure it passes.
+
 ## Use Custom IronPLC
 
 You will frequently need to make changes to both this Visual Studio Code
@@ -32,11 +35,21 @@ Extension and IronPLC.
 1. In the **Settings** document, search for **ironplc**.
 1. Set the value of **Ironplc: Path** to the directory containing `ironplcc`.
 
-## Run Tests
+## Run Tests and Checks
 
-1. Open the directory containing this file in Visual Studio Code.
-1. Run `just test` to execute the functional tests (or use the debug viewlet as described below).
+The extension has several recipes; run the right one for what you changed:
+
+* `just test-unit` - unit tests (with coverage enforcement)
+* `just test-grammar` - grammar snapshot tests for syntax highlighting
+* `just test` - functional/integration tests (uses Xvfb on Linux)
+* `just check-invariants` - verifies that declared capabilities have test coverage
+* `just lint` - lint checks
+* `just ci` - full pipeline: compile + check-invariants + lint + test-grammar + test-unit + test. **Run this before opening a PR.**
+
+After intentional grammar changes, run `just update-grammar-snapshots` to
+refresh the snapshot files.
 
 ### Alternative: Debug Tests in VS Code
+
 1. Open the debug viewlet (`Ctrl+Shift+D` or `Cmd+Shift+D` on Mac) and from the launch configuration dropdown pick **Extension Tests**.
 1. Press `F5` to run the tests in a new window with your extension loaded.

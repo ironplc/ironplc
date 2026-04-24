@@ -251,4 +251,90 @@ mod tests {
     fn const_type_as_str_when_f64_then_returns_f64_string() {
         assert_eq!(ConstType::F64.as_str(), "F64");
     }
+
+    #[test]
+    fn constant_pool_when_empty_then_is_empty_returns_true() {
+        let pool = ConstantPool::default();
+        assert!(pool.is_empty());
+    }
+
+    #[test]
+    fn constant_pool_when_push_then_is_empty_returns_false() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry {
+            const_type: ConstType::I32,
+            value: 1i32.to_le_bytes().to_vec(),
+        });
+        assert!(!pool.is_empty());
+    }
+
+    #[test]
+    fn constant_pool_get_i32_when_type_mismatch_then_returns_error() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry {
+            const_type: ConstType::F32,
+            value: 1.0f32.to_le_bytes().to_vec(),
+        });
+
+        assert!(matches!(
+            pool.get_i32(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantType(_))
+        ));
+    }
+
+    #[test]
+    fn constant_pool_get_f32_when_type_mismatch_then_returns_error() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry {
+            const_type: ConstType::I32,
+            value: 1i32.to_le_bytes().to_vec(),
+        });
+
+        assert!(matches!(
+            pool.get_f32(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantType(_))
+        ));
+    }
+
+    #[test]
+    fn constant_pool_get_f64_when_type_mismatch_then_returns_error() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry {
+            const_type: ConstType::I32,
+            value: 1i32.to_le_bytes().to_vec(),
+        });
+
+        assert!(matches!(
+            pool.get_f64(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantType(_))
+        ));
+    }
+
+    #[test]
+    fn constant_pool_get_i64_when_type_mismatch_then_returns_error() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry {
+            const_type: ConstType::F64,
+            value: 1.0f64.to_le_bytes().to_vec(),
+        });
+
+        assert!(matches!(
+            pool.get_i64(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantType(_))
+        ));
+    }
+
+    #[test]
+    fn constant_pool_get_str_when_type_mismatch_then_returns_error() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry {
+            const_type: ConstType::I32,
+            value: 1i32.to_le_bytes().to_vec(),
+        });
+
+        assert!(matches!(
+            pool.get_str(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantType(_))
+        ));
+    }
 }

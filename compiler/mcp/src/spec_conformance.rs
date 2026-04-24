@@ -954,20 +954,101 @@ fn mcp_spec_req_tol_201_project_manifest_partial_on_failure() {
 }
 
 // ===========================================================================
-// Context tools: `project_io` (REQ-TOL-210..212) — Milestone 1 (later)
+// Context tools: `project_io` (REQ-TOL-210..212)
 // ===========================================================================
 
+/// REQ-TOL-210: Every variable drivable from outside the program — program
+/// `VAR_INPUT`/`VAR_IN_OUT`, `VAR_EXTERNAL`, non-addressed globals, and
+/// `%I*` hardware inputs — appears in the `inputs` array.
 #[spec_test(REQ_TOL_210)]
-#[ignore]
-fn mcp_spec_req_tol_210_project_io_returns_inputs() {}
+fn mcp_spec_req_tol_210_project_io_returns_inputs() {
+    use crate::tools::common::SourceInput;
 
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\n\
+                  VAR_INPUT start : BOOL; END_VAR\n\
+                  VAR_IN_OUT swap : BOOL; END_VAR\n\
+                  VAR button AT %IX0.0 : BOOL; END_VAR\n\
+                  END_PROGRAM"
+            .into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::project_io::build_response(&sources, &options);
+    let json = serde_json::to_value(&resp).unwrap();
+
+    assert_eq!(json["ok"], true, "diagnostics: {}", json["diagnostics"]);
+    let inputs = json["inputs"].as_array().unwrap();
+    assert!(inputs.iter().any(|v| v["name"] == "p.start"));
+    assert!(inputs.iter().any(|v| v["name"] == "p.swap"));
+    assert!(inputs.iter().any(|v| v["address"] == "%IX0.0"));
+}
+
+/// REQ-TOL-211: Every variable observable outside the program — program
+/// `VAR_OUTPUT`/`VAR_IN_OUT`, non-addressed globals, and `%Q*` hardware
+/// outputs — appears in `outputs`. `VAR_IN_OUT` and non-addressed globals
+/// appear in both arrays. `%M*` marker memory appears in neither.
 #[spec_test(REQ_TOL_211)]
-#[ignore]
-fn mcp_spec_req_tol_211_project_io_returns_outputs() {}
+fn mcp_spec_req_tol_211_project_io_returns_outputs() {
+    use crate::tools::common::SourceInput;
 
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\n\
+                  VAR_OUTPUT done : BOOL; END_VAR\n\
+                  VAR_IN_OUT swap : BOOL; END_VAR\n\
+                  VAR buzzer AT %QX0.0 : BOOL; END_VAR\n\
+                  VAR marker AT %MX0.0 : BOOL; END_VAR\n\
+                  END_PROGRAM"
+            .into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::project_io::build_response(&sources, &options);
+    let json = serde_json::to_value(&resp).unwrap();
+
+    assert_eq!(json["ok"], true, "diagnostics: {}", json["diagnostics"]);
+    let inputs = json["inputs"].as_array().unwrap();
+    let outputs = json["outputs"].as_array().unwrap();
+    assert!(outputs.iter().any(|v| v["name"] == "p.done"));
+    assert!(outputs.iter().any(|v| v["address"] == "%QX0.0"));
+    // VAR_IN_OUT appears in both arrays.
+    assert!(inputs.iter().any(|v| v["name"] == "p.swap"));
+    assert!(outputs.iter().any(|v| v["name"] == "p.swap"));
+    // %M* appears in neither.
+    assert!(!inputs.iter().any(|v| v["address"] == "%MX0.0"));
+    assert!(!outputs.iter().any(|v| v["address"] == "%MX0.0"));
+}
+
+/// REQ-TOL-212: Each entry in `inputs`/`outputs` has `name`, `type`, and
+/// `address` (string or null).
 #[spec_test(REQ_TOL_212)]
-#[ignore]
-fn mcp_spec_req_tol_212_project_io_entry_format() {}
+fn mcp_spec_req_tol_212_project_io_entry_format() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nVAR_INPUT start : BOOL; END_VAR\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::project_io::build_response(&sources, &options);
+    let json = serde_json::to_value(&resp).unwrap();
+
+    assert_eq!(json["ok"], true, "diagnostics: {}", json["diagnostics"]);
+    let entry = json["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["name"] == "p.start")
+        .expect("p.start not found in inputs");
+    assert!(entry.get("name").is_some());
+    assert!(entry.get("type").is_some());
+    assert!(entry.get("address").is_some());
+    // `address` is `null` when the variable is not hardware-mapped.
+    assert!(entry["address"].is_null());
+}
 
 // ===========================================================================
 // Context tools: `pou_scope` (REQ-TOL-220..221) — Milestone 1 (later)

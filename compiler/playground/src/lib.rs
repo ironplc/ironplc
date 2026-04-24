@@ -19,6 +19,7 @@ use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
+use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_sources::{parse_source, FileType};
 use ironplc_vm::{Slot, Vm, VmBuffers};
@@ -82,14 +83,35 @@ struct CompileResult {
 }
 
 /// A single diagnostic (error or warning) from compilation.
+///
+/// Line and column fields are 1-based for display, computed from the
+/// diagnostic's byte offsets using the same helper the LSP server uses.
 #[derive(Debug, Serialize, Deserialize)]
 struct DiagnosticInfo {
     code: String,
     message: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     label: String,
-    start: usize,
-    end: usize,
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32,
+}
+
+/// Build a [`DiagnosticInfo`] from a compiler diagnostic, computing 1-based
+/// line/column from the supplied source text.
+fn diagnostic_info(diag: &Diagnostic, source: &str) -> DiagnosticInfo {
+    let start = LineColumn::from_offset(source, diag.primary.location.start);
+    let end = LineColumn::from_offset(source, diag.primary.location.end);
+    DiagnosticInfo {
+        code: diag.code.clone(),
+        message: diag.description(),
+        label: diag.primary.message.clone(),
+        start_line: start.line + 1,
+        start_column: start.column + 1,
+        end_line: end.line + 1,
+        end_column: end.column + 1,
+    }
 }
 
 /// Result of executing bytecode.
@@ -321,13 +343,21 @@ struct StepResult {
 /// ```
 /// or on error:
 /// ```json
-/// { "ok": false, "diagnostics": [{"code": "...", "message": "...", "start": N, "end": N}] }
+/// {
+///   "ok": false,
+///   "diagnostics": [{
+///     "code": "...", "message": "...",
+///     "start_line": L, "start_column": C,
+///     "end_line": L, "end_column": C
+///   }]
+/// }
 /// ```
+/// Line and column are 1-based.
 #[wasm_bindgen]
 pub fn compile(source: &str, dialect: &str) -> String {
     let result = compile_inner(source, dialect);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","label":"","start":0,"end":0}}]}}"#)
+        format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","label":"","start_line":1,"start_column":1,"end_line":1,"end_column":1}}]}}"#)
     })
 }
 
@@ -340,13 +370,7 @@ fn compile_inner(source: &str, dialect: &str) -> CompileResult {
             return CompileResult {
                 ok: false,
                 bytecode: None,
-                diagnostics: vec![DiagnosticInfo {
-                    code: diag.code.clone(),
-                    message: diag.description(),
-                    label: diag.primary.message.clone(),
-                    start: diag.primary.location.start,
-                    end: diag.primary.location.end,
-                }],
+                diagnostics: vec![diagnostic_info(&diag, source)],
             };
         }
     };
@@ -362,14 +386,8 @@ fn compile_inner(source: &str, dialect: &str) -> CompileResult {
                 ok: false,
                 bytecode: None,
                 diagnostics: diagnostics
-                    .into_iter()
-                    .map(|d| DiagnosticInfo {
-                        code: d.code.clone(),
-                        message: d.description(),
-                        label: d.primary.message.clone(),
-                        start: d.primary.location.start,
-                        end: d.primary.location.end,
-                    })
+                    .iter()
+                    .map(|d| diagnostic_info(d, source))
                     .collect(),
             };
         }
@@ -383,13 +401,7 @@ fn compile_inner(source: &str, dialect: &str) -> CompileResult {
             diagnostics: context
                 .diagnostics()
                 .iter()
-                .map(|d| DiagnosticInfo {
-                    code: d.code.clone(),
-                    message: d.description(),
-                    label: d.primary.message.clone(),
-                    start: d.primary.location.start,
-                    end: d.primary.location.end,
-                })
+                .map(|d| diagnostic_info(d, source))
                 .collect(),
         };
     }
@@ -403,13 +415,7 @@ fn compile_inner(source: &str, dialect: &str) -> CompileResult {
             return CompileResult {
                 ok: false,
                 bytecode: None,
-                diagnostics: vec![DiagnosticInfo {
-                    code: diag.code.clone(),
-                    message: diag.description(),
-                    label: diag.primary.message.clone(),
-                    start: diag.primary.location.start,
-                    end: diag.primary.location.end,
-                }],
+                diagnostics: vec![diagnostic_info(&diag, source)],
             };
         }
     };
@@ -423,8 +429,10 @@ fn compile_inner(source: &str, dialect: &str) -> CompileResult {
                 code: "INTERNAL".to_string(),
                 message: format!("Failed to serialize bytecode: {e}"),
                 label: String::new(),
-                start: 0,
-                end: 0,
+                start_line: 1,
+                start_column: 1,
+                end_line: 1,
+                end_column: 1,
             }],
         };
     }
@@ -900,6 +908,23 @@ END_PROGRAM
         assert!(result.bytecode.is_none());
         assert!(!result.diagnostics.is_empty());
         assert!(!result.diagnostics[0].label.is_empty());
+    }
+
+    #[test]
+    fn compile_when_error_on_later_line_then_diagnostic_has_line_and_column() {
+        // Line numbers are 1-based; the error is after the first line.
+        let source = "PROGRAM main\nVAR\nEND_VAR\nINVALID\nEND_PROGRAM";
+        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        assert!(!result.ok);
+        assert!(!result.diagnostics.is_empty());
+        let diag = &result.diagnostics[0];
+        assert!(
+            diag.start_line >= 2,
+            "expected error on line 2 or later, got {}",
+            diag.start_line
+        );
+        assert!(diag.start_column >= 1, "expected 1-based column");
+        assert!(diag.end_line >= diag.start_line);
     }
 
     #[test]

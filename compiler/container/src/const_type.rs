@@ -40,3 +40,38 @@ impl ConstType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn const_type_from_u8_when_valid_tags_then_returns_variant() {
+        assert_eq!(ConstType::from_u8(0).unwrap(), ConstType::I32);
+        assert_eq!(ConstType::from_u8(1).unwrap(), ConstType::U32);
+        assert_eq!(ConstType::from_u8(2).unwrap(), ConstType::I64);
+        assert_eq!(ConstType::from_u8(3).unwrap(), ConstType::U64);
+        assert_eq!(ConstType::from_u8(4).unwrap(), ConstType::F32);
+        assert_eq!(ConstType::from_u8(5).unwrap(), ConstType::F64);
+        assert_eq!(ConstType::from_u8(6).unwrap(), ConstType::Str);
+    }
+
+    #[test]
+    fn const_type_from_u8_when_invalid_tag_then_returns_error() {
+        assert!(matches!(
+            ConstType::from_u8(99),
+            Err(ContainerError::InvalidConstantType(99))
+        ));
+    }
+
+    #[test]
+    fn const_type_as_str_when_each_variant_then_returns_name() {
+        assert_eq!(ConstType::I32.as_str(), "I32");
+        assert_eq!(ConstType::U32.as_str(), "U32");
+        assert_eq!(ConstType::I64.as_str(), "I64");
+        assert_eq!(ConstType::U64.as_str(), "U64");
+        assert_eq!(ConstType::F32.as_str(), "F32");
+        assert_eq!(ConstType::F64.as_str(), "F64");
+        assert_eq!(ConstType::Str.as_str(), "Str");
+    }
+}

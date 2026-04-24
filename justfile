@@ -23,6 +23,17 @@ _devenv-smoke-unix:
   cd docs && just compile
   @echo "SMOKE PASSED"
 
+# Capture screenshots of the VS Code extension for documentation.
+# Requires ironplcc to be installed and a display available (macOS or Linux with Xvfb).
+# Compiles the extension, captures screenshots, then copies PNGs to docs/images/screenshots/.
+screenshots:
+  cd integrations/vscode && just compile
+  cd integrations/vscode && just screenshots
+  mkdir -p docs/images/screenshots
+  cp integrations/vscode/out/screenshots/output/*.png docs/images/screenshots/
+  cp integrations/vscode/out/screenshots/output/quickstart-animation.png images/quickstart-animation.png
+  cp integrations/vscode/out/screenshots/output/quickstart-animation.png integrations/vscode/images/quickstart-animation.png
+
 # Simulate the workflow that runs to validate a commit (as best as is possible via Docker)
 ci-commit-workflow:
   @just _ci-commit-workflow-{{os_family()}}
