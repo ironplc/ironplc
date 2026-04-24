@@ -338,10 +338,11 @@ parser! {
     // Omitted and subsumed into constant.
 
     // B.1.2.3.1 Duration
-    // dt_sep defines case insensitive separators between parts of duration
-    rule dt_sep(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.as_str() == val]
+    // dt_sep defines case insensitive separators between parts of duration.
+    // See specs/design/time-literals.md — REQ-TL-011.
+    rule dt_sep(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case(val)]
 
-    pub rule duration() -> DurationLiteral = start:position!() (tok(TokenType::Time) / tok(TokenType::Ltime) / dt_sep("T") / dt_sep("t")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
+    pub rule duration() -> DurationLiteral = start:position!() (tok(TokenType::Time) / tok(TokenType::Ltime) / dt_sep("T")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
       let span = SourceSpan::range(start, end);
       let interval = match s {
         Some(sign) => i.interval * -1,
@@ -379,7 +380,7 @@ parser! {
     rule day_hour() -> Integer = integer()
     rule day_minute() -> Integer = integer()
     rule day_second() -> FixedPoint = fixed_point()
-    rule date() -> DateLiteral = (tok(TokenType::Date) / tok(TokenType::Ldate) / dt_sep("D") / dt_sep("d")) tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d) }
+    rule date() -> DateLiteral = (tok(TokenType::Date) / tok(TokenType::Ldate) / dt_sep("D")) tok(TokenType::Hash) d:date_literal() { DateLiteral::new(d) }
     rule date_literal() -> Date = y:year() tok(TokenType::Minus) m:month() tok(TokenType::Minus) d:day() {?
       let y = y.value;
       let m = Month::try_from(<dsl::common::Integer as TryInto<u8>>::try_into(m).map_err(|e| "month")?).map_err(|e| "month")?;

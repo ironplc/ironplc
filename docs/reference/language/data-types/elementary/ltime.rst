@@ -35,11 +35,13 @@ Literals
 
    LTIME#100ms
    LTIME#5s
-   LTIME#1h30m
-   LTIME#500us
+   LTIME#2h
+   ltime#-500ms
 
-Components can be combined: days (``d``), hours (``h``), minutes (``m``),
-seconds (``s``), milliseconds (``ms``), microseconds (``us``).
+Supported units: days (``d``), hours (``h``), minutes (``m``),
+seconds (``s``), milliseconds (``ms``). Units are case-insensitive,
+so ``LTIME#5S`` and ``LTIME#5s`` are equivalent. The prefix is likewise
+case-insensitive.
 
 See Also
 --------

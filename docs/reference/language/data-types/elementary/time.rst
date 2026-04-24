@@ -31,12 +31,13 @@ Literals
 
    T#100ms
    T#2s
-   T#1h30m
-   T#5d12h30m15s
-   TIME#500us
+   T#-500ms
+   TIME#5S
 
-Components can be combined: days (``d``), hours (``h``), minutes (``m``),
-seconds (``s``), milliseconds (``ms``), microseconds (``us``).
+Supported units: days (``d``), hours (``h``), minutes (``m``),
+seconds (``s``), milliseconds (``ms``). Units are case-insensitive,
+so ``T#5S`` and ``T#5s`` are equivalent. The prefix ``T#`` (or
+``TIME#``) is likewise case-insensitive.
 
 See Also
 --------
