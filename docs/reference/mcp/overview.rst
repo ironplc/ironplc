@@ -3,12 +3,12 @@ Overview
 ========
 
 The IronPLC MCP server is a thin adapter that exposes the IronPLC compiler
-to any `Model Context Protocol <https://modelcontextprotocol.io/>`_
+and runtime to any `Model Context Protocol <https://modelcontextprotocol.io/>`_
 client — typically an AI coding agent such as Claude Desktop, Cline, or
-Claude Code. Each MCP tool corresponds to a capability of the compiler
-(syntax check, semantic analysis, symbol extraction, code generation) and
-returns structured JSON that the agent can act on without parsing
-human-oriented terminal output.
+Claude Code. Each MCP tool corresponds to a capability of the compiler or
+runtime (syntax check, semantic analysis, symbol extraction, code
+generation, execution) and returns structured JSON that the agent can act
+on without parsing human-oriented terminal output.
 
 Transport
 =========

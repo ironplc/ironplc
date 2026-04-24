@@ -34,15 +34,6 @@ The server exits with status 0 when the client disconnects cleanly, or
 with a non-zero status and an error message on standard error if the
 transport fails.
 
-Environment
-===========
-
-``RUST_LOG``
-   Overrides the default log level. The server logs at ``info`` by
-   default; set ``RUST_LOG=debug`` or ``RUST_LOG=trace`` for more
-   detail. Uses the standard ``env_logger`` filter syntax. Logs are
-   written to standard error.
-
 Configuration
 =============
 
