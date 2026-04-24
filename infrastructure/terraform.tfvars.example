@@ -1,3 +1,7 @@
+# Only used if the HCP workspace is set to Local execution mode.
+# For the default (Remote) execution, set these as workspace Terraform
+# variables in HCP instead — see infrastructure/README.md.
+#
 # Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
 
 # Fine-grained PAT with admin:webhooks on the repo and issues:write.

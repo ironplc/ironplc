@@ -1,6 +1,16 @@
 terraform {
   required_version = ">= 1.5.0"
 
+  # State + plan/apply execution live in HCP Terraform. The org name is
+  # read from the TF_CLOUD_ORGANIZATION environment variable so this
+  # config is not tied to a specific user's HCP account — see
+  # infrastructure/README.md for setup.
+  cloud {
+    workspaces {
+      name = "ironplc-infrastructure"
+    }
+  }
+
   required_providers {
     github = {
       source  = "integrations/github"
