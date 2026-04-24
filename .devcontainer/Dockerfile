@@ -9,6 +9,15 @@ RUN apt-get install -y python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 
 # Install required Sphinx extensions for the documentation
 RUN pip3 install --break-system-packages furo sphinx-inline-tabs sphinx_copybutton esbonio sphinx-design sphinx-sitemap sphinxext-opengraph
 
+# Install Terraform from HashiCorp's apt repository (used by the
+# infrastructure/ config to provision GitHub labels and the agent
+# webhook). Tracks latest, same philosophy as the Rust tooling below.
+RUN apt-get install -y gnupg lsb-release && \
+    curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list && \
+    apt-get update && \
+    apt-get install -y terraform
+
 # Install Rust. This installs "globally" which is highly discouraged
 # but we claim this is Ok because in this container we only have one user.
 RUN export RUSTUP_HOME=/usr/local &&\
