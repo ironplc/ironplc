@@ -1051,36 +1051,178 @@ fn mcp_spec_req_tol_212_project_io_entry_format() {
 }
 
 // ===========================================================================
-// Context tools: `pou_scope` (REQ-TOL-220..221) — Milestone 1 (later)
+// Context tools: `pou_scope` (REQ-TOL-220..221)
 // ===========================================================================
 
+/// REQ-TOL-220: `pou_scope` returns the queried POU's variables with
+/// `name`, `type`, `direction`, and `initial_value` fields.
 #[spec_test(REQ_TOL_220)]
-#[ignore]
-fn mcp_spec_req_tol_220_pou_scope_returns_variables() {}
+fn mcp_spec_req_tol_220_pou_scope_returns_variables() {
+    use crate::tools::common::SourceInput;
 
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM p\nVAR_INPUT start : BOOL := FALSE; END_VAR\nVAR count : DINT; END_VAR\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::pou_scope::build_response(&sources, &options, "p");
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    assert!(resp.found);
+
+    let start = resp
+        .variables
+        .iter()
+        .find(|v| v.name == "start")
+        .expect("start variable missing");
+    assert_eq!(start.direction, "In");
+    assert_eq!(start.initial_value.as_deref(), Some("FALSE"));
+    assert!(!start.type_name.is_empty());
+
+    let count = resp
+        .variables
+        .iter()
+        .find(|v| v.name == "count")
+        .expect("count variable missing");
+    assert_eq!(count.direction, "Local");
+    assert_eq!(count.initial_value, None);
+}
+
+/// REQ-TOL-221: `pou_scope` returns `ok:false`, `found:false`, empty
+/// `variables`, and a diagnostic when the POU does not exist. Program
+/// resolution also wins over Function Block when names collide.
 #[spec_test(REQ_TOL_221)]
-#[ignore]
-fn mcp_spec_req_tol_221_pou_scope_unknown_pou() {}
+fn mcp_spec_req_tol_221_pou_scope_unknown_pou() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "FUNCTION_BLOCK Motor\nVAR fb_var : INT; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Motor\nVAR prog_var : INT; END_VAR\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    // Program resolves first.
+    let resp = tools::pou_scope::build_response(&sources, &options, "Motor");
+    assert!(resp.found);
+    assert!(resp.variables.iter().any(|v| v.name == "prog_var"));
+    assert!(resp.variables.iter().all(|v| v.name != "fb_var"));
+
+    // Unknown POU.
+    let missing = tools::pou_scope::build_response(&sources, &options, "nonexistent");
+    assert!(!missing.ok);
+    assert!(!missing.found);
+    assert!(missing.variables.is_empty());
+    assert!(missing.diagnostics.iter().any(|d| d["code"] == "P8001"));
+}
 
 // ===========================================================================
-// Context tools: `pou_lineage` (REQ-TOL-230..231) — Milestone 1 (later)
+// Context tools: `pou_lineage` (REQ-TOL-230..231)
 // ===========================================================================
 
+/// REQ-TOL-230: `pou_lineage` returns `pou`, `upstream`, and `downstream`
+/// adjacency lists derived from the project dependency DAG.
 #[spec_test(REQ_TOL_230)]
-#[ignore]
-fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {}
+fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {
+    use crate::tools::common::SourceInput;
 
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    // Main depends on Counter → Counter is upstream.
+    let main_resp = tools::pou_lineage::build_response(&sources, &options, "Main");
+    assert!(main_resp.ok, "diagnostics: {:?}", main_resp.diagnostics);
+    assert!(main_resp.found);
+    assert!(main_resp
+        .upstream
+        .iter()
+        .any(|n| n.eq_ignore_ascii_case("Counter")));
+
+    // Counter has Main as downstream.
+    let counter_resp = tools::pou_lineage::build_response(&sources, &options, "Counter");
+    assert!(counter_resp.ok);
+    assert!(counter_resp.found);
+    assert!(counter_resp
+        .downstream
+        .iter()
+        .any(|n| n.eq_ignore_ascii_case("Main")));
+}
+
+/// REQ-TOL-231: `pou_lineage` returns `ok:false`, `found:false`, empty
+/// upstream/downstream arrays, and a diagnostic for an unknown POU.
 #[spec_test(REQ_TOL_231)]
-#[ignore]
-fn mcp_spec_req_tol_231_pou_lineage_unknown_pou() {}
+fn mcp_spec_req_tol_231_pou_lineage_unknown_pou() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::pou_lineage::build_response(&sources, &options, "nonexistent");
+    assert!(!resp.ok);
+    assert!(!resp.found);
+    assert!(resp.upstream.is_empty());
+    assert!(resp.downstream.is_empty());
+    assert!(resp.diagnostics.iter().any(|d| d["code"] == "P8001"));
+}
 
 // ===========================================================================
-// Context tools: `types_all` (REQ-TOL-240) — Milestone 1 (later)
+// Context tools: `types_all` (REQ-TOL-240)
 // ===========================================================================
 
+/// REQ-TOL-240: `types_all` returns every user-defined type with kind-specific
+/// detail fields.
 #[spec_test(REQ_TOL_240)]
-#[ignore]
-fn mcp_spec_req_tol_240_types_all_returns_user_defined_types() {}
+fn mcp_spec_req_tol_240_types_all_returns_user_defined_types() {
+    use crate::tools::common::SourceInput;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "TYPE MotorState : (Stopped, Running, Fault); END_TYPE\nTYPE PidParams : STRUCT Kp : REAL; END_STRUCT; END_TYPE\nTYPE Buf : ARRAY[1..10] OF INT; END_TYPE\nTYPE Percent : INT (0..100); END_TYPE\nPROGRAM p\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::types_all::build_response(&sources, &options);
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+
+    let motor = resp
+        .types
+        .iter()
+        .find(|t| t.name == "MotorState")
+        .expect("MotorState missing");
+    assert_eq!(motor.kind, "enum");
+    assert!(motor.values.is_some());
+
+    let pid = resp
+        .types
+        .iter()
+        .find(|t| t.name == "PidParams")
+        .expect("PidParams missing");
+    assert_eq!(pid.kind, "struct");
+    assert!(pid.fields.is_some());
+
+    let buf = resp
+        .types
+        .iter()
+        .find(|t| t.name == "Buf")
+        .expect("Buf missing");
+    assert_eq!(buf.kind, "array");
+    assert!(buf.element_type.is_some());
+    assert!(buf.bounds.is_some());
+
+    let percent = resp
+        .types
+        .iter()
+        .find(|t| t.name == "Percent")
+        .expect("Percent missing");
+    assert_eq!(percent.kind, "subrange");
+    assert_eq!(percent.low, Some(0));
+    assert_eq!(percent.high, Some(100));
+}
 
 // ===========================================================================
 // Architecture (REQ-ARC-*)
