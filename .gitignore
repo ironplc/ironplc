@@ -13,4 +13,5 @@ docs/_build/**
 .vscode/
 __pycache__/
 *.exe
-lcov.info.secrets/
+lcov.info
+.secrets/
