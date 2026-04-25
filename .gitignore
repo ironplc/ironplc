@@ -14,3 +14,15 @@ docs/_build/**
 __pycache__/
 *.exe
 lcov.info
+
+# Terraform
+terraform.tfvars
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Local env
+.env
+# Ledger (SQLite event log produced at runtime)
+ledger.db

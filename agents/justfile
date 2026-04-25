@@ -4,7 +4,7 @@ alias ci := default
 default: setup test
 
 setup:
-  pip install -r compatibility_resolver/requirements.txt pytest
+  pip install -r issue-resolver/requirements.txt pytest pytest-asyncio
 
 test:
-  python -m pytest compatibility_resolver/ -v
+  cd issue-resolver && python -m pytest tests/ -v
