@@ -60,11 +60,12 @@ pub fn build_response(container_id: &str, cache: &Mutex<ContainerCache>) -> Cont
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cache::{CachedContainer, ContainerCache};
+    use crate::cache::{CachedContainer, ContainerCache, VariableSymbolMap};
 
     fn make_cache_with_entry() -> (Mutex<ContainerCache>, String) {
         let mut cache = ContainerCache::new(64, 64 * 1024 * 1024);
-        let container = CachedContainer::new(vec![0u8; 100], vec![], vec![]);
+        let container =
+            CachedContainer::new(vec![0u8; 100], vec![], vec![], VariableSymbolMap::new());
         let id = cache.insert(container).unwrap();
         (Mutex::new(cache), id)
     }

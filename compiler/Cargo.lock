@@ -953,6 +953,7 @@ dependencies = [
  "ironplc-parser",
  "ironplc-problems",
  "ironplc-project",
+ "ironplc-vm",
  "log",
  "predicates",
  "rmcp",

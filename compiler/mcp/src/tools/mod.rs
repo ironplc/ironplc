@@ -9,5 +9,6 @@ pub mod pou_lineage;
 pub mod pou_scope;
 pub mod project_io;
 pub mod project_manifest;
+pub mod run;
 pub mod symbols;
 pub mod types_all;

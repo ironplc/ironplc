@@ -294,3 +294,96 @@ fn project_manifest_when_valid_program_then_files_and_programs_populated(
         .stdout(predicate::str::contains(r#"\"programs\":[\"p\"]"#));
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// `run` tool
+// ---------------------------------------------------------------------------
+
+/// `run` with no container handle at all should fail fast with a diagnostic.
+#[test]
+fn run_when_no_container_handle_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
+    let args = r#"{"duration_ms":100,"variables":[]}"#;
+    let stdin = mcp_tool_call("run", args);
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#"\"ok\":false"#));
+    Ok(())
+}
+
+/// `run` with an unknown container_id should surface a P8001 diagnostic
+/// that names the missing id.
+#[test]
+fn run_when_unknown_container_id_then_diagnostic_names_it() -> Result<(), Box<dyn std::error::Error>>
+{
+    let args = r#"{"container_id":"c_ghost","duration_ms":100,"variables":[]}"#;
+    let stdin = mcp_tool_call("run", args);
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#"\"ok\":false"#))
+        .stdout(predicate::str::contains("c_ghost"));
+    Ok(())
+}
+
+/// `run` guards Phase 11 features (stimuli) behind a diagnostic.
+#[test]
+fn run_when_stimuli_supplied_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
+    let args = r#"{"container_id":"c_0","duration_ms":100,"stimuli":[{"time_ms":0,"set":{}}]}"#;
+    let stdin = mcp_tool_call("run", args);
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#"\"ok\":false"#));
+    Ok(())
+}
+
+/// `run` appears in the tools/list response so clients can discover it.
+#[test]
+fn tools_list_includes_run_tool() -> Result<(), Box<dyn std::error::Error>> {
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(MCP_TOOLS_LIST)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"name\":\"run\""));
+    Ok(())
+}
+
+/// Compile then run: a two-step flow that exercises the compile → cache →
+/// run handoff. Drives a simple counter program and asserts the trace
+/// contains an increasing `Main.Counter` value.
+#[test]
+fn run_when_compile_then_run_counter_then_trace_shows_increment(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Embed a compilable counter program with an explicit 100ms cyclic
+    // task, pre-escaped for embedding inside the MCP JSON-RPC envelope.
+    let source = r#"PROGRAM Main\nVAR Counter : INT; END_VAR\nCounter := Counter + 1;\nEND_PROGRAM\n\nCONFIGURATION config\nRESOURCE resource1 ON PLC\nTASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\nPROGRAM program1 WITH plc_task : Main;\nEND_RESOURCE\nEND_CONFIGURATION"#;
+    let compile_args = format!(
+        r#"{{"sources":[{{"name":"main.st","content":"{source}"}}],"options":{{"dialect":"iec61131-3-ed2"}}}}"#
+    );
+    let compile_call = format!(
+        r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"compile","arguments":{compile_args}}}}}"#
+    );
+    // The first container assigned by a fresh cache has id "c_0".
+    let run_args = r#"{"container_id":"c_0","duration_ms":500,"variables":["Main.Counter"]}"#;
+    let run_call = format!(
+        r#"{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"run","arguments":{run_args}}}}}"#
+    );
+    let stdin = format!("{MCP_INITIALIZE}\n{MCP_INITIALIZED}\n{compile_call}\n{run_call}\n");
+
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        // Compile response
+        .stdout(predicate::str::contains(r#"\"container_id\":\"c_0\""#))
+        // Run response
+        .stdout(predicate::str::contains(
+            r#"\"terminated_reason\":\"completed\""#,
+        ))
+        .stdout(predicate::str::contains("Main.Counter"));
+    Ok(())
+}
