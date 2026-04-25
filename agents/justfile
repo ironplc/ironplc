@@ -4,7 +4,9 @@ alias ci := default
 default: setup test
 
 setup:
-  pip install -r issue-resolver/requirements.txt pytest pytest-asyncio
+  python3 -m venv issue-resolver/.venv
+  issue-resolver/.venv/bin/pip install --upgrade pip
+  issue-resolver/.venv/bin/pip install -r issue-resolver/requirements.txt pytest pytest-asyncio
 
 test:
-  cd issue-resolver && python -m pytest tests/ -v
+  cd issue-resolver && .venv/bin/python -m pytest tests/ -v
