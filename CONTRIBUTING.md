@@ -88,10 +88,12 @@ Workflow:
 You may **skip the plan** for mechanical changes: typo fixes, formatting,
 dependency bumps, single-line bug fixes, or documentation-only edits.
 
-## Before You Open a PR
+## Circuit Integrity Audit
 
-You must run the full CI pipeline locally and see it pass before opening a
-pull request:
+You must verify the **Circuit Integrity** of your changes by running the full CI
+pipeline locally before opening a pull request. This ensures the implementation
+is **grounded** via tests and architectural compliance, acting as a **Circuit Breaker**
+to prevent logical faults from entering the main branch.
 
 ```sh
 cd compiler && just
