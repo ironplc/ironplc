@@ -93,7 +93,8 @@ dependency bumps, single-line bug fixes, or documentation-only edits.
 You must verify the **Circuit Integrity** of your changes by running the full CI
 pipeline locally before opening a pull request. This ensures the implementation
 is **grounded** via tests and architectural compliance, acting as a **Circuit Breaker**
-to prevent logical faults from entering the main branch.
+to prevent logical faults or **accidental credential leakage** (from local `.secrets/`)
+from entering the main branch.
 
 ```sh
 cd compiler && just
