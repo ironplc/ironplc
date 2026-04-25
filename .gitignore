@@ -12,6 +12,7 @@ docs/_build/**
 .DS_Store
 .vscode/
 __pycache__/
+.venv/
 *.exe
 lcov.info
 
