@@ -201,8 +201,13 @@ pub fn build_response(
         None
     };
 
+    // Build the fully-qualified variable symbol map (REQ-ARC-070) the
+    // `run` tool will use to resolve names like `Main.Counter` to
+    // VarIndex values.
+    let symbols = crate::runner::build_symbol_map(context, &container);
+
     // Cache the container
-    let cached = CachedContainer::new(bytes, task_metas, program_metas);
+    let cached = CachedContainer::new(bytes, task_metas, program_metas, symbols);
     let container_id = {
         let mut guard = cache.lock().unwrap();
         match guard.insert(cached) {
