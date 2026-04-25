@@ -8,7 +8,7 @@ FROM mcr.microsoft.com/devcontainers/typescript-node:22
 # rotates point-release packages.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 \
+        python3-venv python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 \
         libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 nsis \
         gnupg lsb-release && \
     rm -rf /var/lib/apt/lists/*
