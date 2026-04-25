@@ -111,6 +111,36 @@ const ARGS_ENUM_TYPE: &str = r#"{"sources":[{"name":"main.st","content":"TYPE My
 /// Program declaring one `VAR_INPUT` — used by the `project_io` happy path.
 const ARGS_PROJECT_IO_INPUT: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR_INPUT start : BOOL; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
 
+/// Program with variables of mixed direction — used by the `pou_scope`
+/// happy path. Carries `pou` in the tool-call arguments.
+const ARGS_POU_SCOPE_VALID: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR_INPUT start : BOOL := FALSE; END_VAR\nVAR count : DINT; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"p"}"#;
+
+/// Same valid sources but an unknown POU name.
+const ARGS_POU_SCOPE_MISSING: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"nonexistent"}"#;
+
+/// Program + FB where Main depends on Counter — used by `pou_lineage`.
+const ARGS_POU_LINEAGE_VALID: &str = r#"{"sources":[{"name":"main.st","content":"FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"Main"}"#;
+
+/// Same valid sources but an unknown POU name.
+const ARGS_POU_LINEAGE_MISSING: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"nonexistent"}"#;
+
+/// Sources declaring an enum, struct, array, and subrange — used by `types_all`.
+const ARGS_TYPES_ALL_VALID: &str = r#"{"sources":[{"name":"main.st","content":"TYPE MotorState : (Stopped, Running, Fault); END_TYPE\nTYPE PidParams : STRUCT Kp : REAL; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
+/// `pou_scope` needs a `pou` field; empty source name still triggers P8001.
+const ARGS_POU_SCOPE_EMPTY_SOURCE: &str = r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"p"}"#;
+
+/// `pou_lineage` equivalent of the empty-source case.
+const ARGS_POU_LINEAGE_EMPTY_SOURCE: &str = r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"p"}"#;
+
+/// `pou_scope` with a missing dialect.
+const ARGS_POU_SCOPE_MISSING_DIALECT: &str =
+    r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{},"pou":"p"}"#;
+
+/// `pou_lineage` with a missing dialect.
+const ARGS_POU_LINEAGE_MISSING_DIALECT: &str =
+    r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{},"pou":"p"}"#;
+
 // ---------------------------------------------------------------------------
 // Per-tool happy/error paths
 //
@@ -208,6 +238,33 @@ const ARGS_PROJECT_IO_INPUT: &str = r#"{"sources":[{"name":"main.st","content":"
     "P8001"
 )]
 #[case::project_io_missing_dialect_validation_error("project_io", ARGS_MISSING_DIALECT, "P8001")]
+// pou_scope
+#[case::pou_scope_valid_ok_true("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"ok\":true"#)]
+#[case::pou_scope_valid_found_true("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"found\":true"#)]
+#[case::pou_scope_valid_variable_listed("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"name\":\"start\""#)]
+#[case::pou_scope_missing_found_false("pou_scope", ARGS_POU_SCOPE_MISSING, r#"\"found\":false"#)]
+#[case::pou_scope_missing_p8001("pou_scope", ARGS_POU_SCOPE_MISSING, "P8001")]
+#[case::pou_scope_empty_source_p8001("pou_scope", ARGS_POU_SCOPE_EMPTY_SOURCE, "P8001")]
+#[case::pou_scope_missing_dialect_p8001("pou_scope", ARGS_POU_SCOPE_MISSING_DIALECT, "P8001")]
+// pou_lineage
+#[case::pou_lineage_valid_ok_true("pou_lineage", ARGS_POU_LINEAGE_VALID, r#"\"ok\":true"#)]
+#[case::pou_lineage_valid_found_true("pou_lineage", ARGS_POU_LINEAGE_VALID, r#"\"found\":true"#)]
+#[case::pou_lineage_valid_upstream_has_counter("pou_lineage", ARGS_POU_LINEAGE_VALID, "Counter")]
+#[case::pou_lineage_missing_found_false(
+    "pou_lineage",
+    ARGS_POU_LINEAGE_MISSING,
+    r#"\"found\":false"#
+)]
+#[case::pou_lineage_missing_p8001("pou_lineage", ARGS_POU_LINEAGE_MISSING, "P8001")]
+#[case::pou_lineage_empty_source_p8001("pou_lineage", ARGS_POU_LINEAGE_EMPTY_SOURCE, "P8001")]
+#[case::pou_lineage_missing_dialect_p8001("pou_lineage", ARGS_POU_LINEAGE_MISSING_DIALECT, "P8001")]
+// types_all
+#[case::types_all_valid_ok_true("types_all", ARGS_TYPES_ALL_VALID, r#"\"ok\":true"#)]
+#[case::types_all_valid_enum_kind("types_all", ARGS_TYPES_ALL_VALID, r#"\"kind\":\"enum\""#)]
+#[case::types_all_valid_struct_kind("types_all", ARGS_TYPES_ALL_VALID, r#"\"kind\":\"struct\""#)]
+#[case::types_all_semantic_error_ok_false("types_all", ARGS_SEMANTIC_ERROR, r#"\"ok\":false"#)]
+#[case::types_all_empty_source_p8001("types_all", ARGS_EMPTY_SOURCE_NAME, "P8001")]
+#[case::types_all_missing_dialect_p8001("types_all", ARGS_MISSING_DIALECT, "P8001")]
 fn tool_call_then_stdout_contains(
     #[case] tool: &str,
     #[case] arguments_json: &str,
