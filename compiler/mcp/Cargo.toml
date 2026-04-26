@@ -34,6 +34,9 @@ log = "0.4.20"
 name = "ironplcmcp"
 path = "src/main.rs"
 
+[build-dependencies]
+ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
+
 [dev-dependencies]
 assert_cmd = { version = "2.0" }
 predicates = { version = "3.0" }

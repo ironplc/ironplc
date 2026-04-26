@@ -23,6 +23,7 @@ time = "0.3.17"
 
 [build-dependencies]
 csv = "1"
+ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 
 [dev-dependencies]
 assert_cmd = { version = "2.0" }
