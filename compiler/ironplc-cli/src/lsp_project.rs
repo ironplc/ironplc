@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use ironplc_analyzer::{SemanticContext, TypeCategory};
+use ironplc_analyzer::extractors::TypeSymbolKind;
+use ironplc_analyzer::SemanticContext;
 use ironplc_dsl::core::{FileId, Located};
 use ironplc_dsl::diagnostic::LineColumn;
 use ironplc_parser::token::{Token, TokenType};
@@ -160,68 +161,71 @@ impl LspProject {
 
         let mut symbols = Vec::new();
 
-        // Add types (structures, enumerations, etc.)
-        for (type_name, type_attrs) in context.types().iter() {
-            // Skip built-in types (elementary and stdlib)
-            if type_attrs.span().is_builtin() {
+        // User-defined types (structures, enumerations, arrays, ...)
+        // The extractor already excludes elementary types and the
+        // function-block / function entries that types() carries
+        // alongside the per-POU registry, so we don't need to filter
+        // those again here.
+        for view in context.user_defined_types() {
+            if view.attributes.span().file_id != file_id {
                 continue;
             }
-
-            // Skip types not in this file
-            if type_attrs.span().file_id != file_id {
-                continue;
-            }
-
-            // Only show user-defined and derived types
-            if type_attrs.type_category == TypeCategory::Elementary {
-                continue;
-            }
-
-            let symbol_kind = intermediate_type_to_symbol_kind(&type_attrs.representation);
-            let range = span_to_range(contents, &type_attrs.span());
-
+            let range = span_to_range(contents, &view.attributes.span());
             #[allow(deprecated)]
-            let symbol = DocumentSymbol {
-                name: type_name.to_string(),
-                detail: Some(format!("{:?}", type_attrs.type_category)),
-                kind: symbol_kind,
+            symbols.push(DocumentSymbol {
+                name: view.name.to_string(),
+                detail: Some(format!("{:?}", view.attributes.type_category)),
+                kind: type_kind_to_symbol_kind(view.kind),
                 tags: None,
                 deprecated: None,
                 range,
                 selection_range: range,
                 children: None,
-            };
-
-            symbols.push(symbol);
+            });
         }
 
-        // Add functions from the function environment
-        for (_func_name, func_sig) in context.functions().iter() {
-            // Skip stdlib functions
-            if func_sig.is_stdlib() {
+        // Function blocks (declared by the user; not surfaced via
+        // user-defined types since the function-block name is registered
+        // separately in the symbol environment).
+        for view in context.function_blocks() {
+            if view.info.span.file_id != file_id {
                 continue;
             }
-
-            // Skip functions not in this file
-            if func_sig.span.file_id != file_id {
-                continue;
-            }
-
-            let range = span_to_range(contents, &func_sig.span);
-
+            let range = span_to_range(contents, &view.info.span);
             #[allow(deprecated)]
-            let symbol = DocumentSymbol {
-                name: func_sig.name.to_string(),
-                detail: func_sig.return_type.as_ref().map(|t| format!("{:?}", t)),
+            symbols.push(DocumentSymbol {
+                name: view.name.to_string(),
+                detail: None,
+                kind: SymbolKind::CLASS,
+                tags: None,
+                deprecated: None,
+                range,
+                selection_range: range,
+                children: None,
+            });
+        }
+
+        // User-defined functions
+        for view in context.user_defined_functions() {
+            if view.signature.span.file_id != file_id {
+                continue;
+            }
+            let range = span_to_range(contents, &view.signature.span);
+            #[allow(deprecated)]
+            symbols.push(DocumentSymbol {
+                name: view.signature.name.to_string(),
+                detail: view
+                    .signature
+                    .return_type
+                    .as_ref()
+                    .map(|t| format!("{:?}", t)),
                 kind: SymbolKind::FUNCTION,
                 tags: None,
                 deprecated: None,
                 range,
                 selection_range: range,
                 children: None,
-            };
-
-            symbols.push(symbol);
+            });
         }
 
         DocumentSymbolResponse::Nested(symbols)
@@ -269,21 +273,18 @@ impl LspProject {
     }
 }
 
-/// Convert an IntermediateType to an LSP SymbolKind.
-fn intermediate_type_to_symbol_kind(
-    intermediate_type: &ironplc_analyzer::IntermediateType,
-) -> SymbolKind {
-    use ironplc_analyzer::IntermediateType;
-
-    match intermediate_type {
-        IntermediateType::Structure { .. } => SymbolKind::STRUCT,
-        IntermediateType::Enumeration { .. } => SymbolKind::ENUM,
-        IntermediateType::FunctionBlock { .. } => SymbolKind::CLASS,
-        IntermediateType::Function { .. } => SymbolKind::FUNCTION,
-        IntermediateType::Array { .. } => SymbolKind::ARRAY,
-        IntermediateType::Subrange { .. } => SymbolKind::TYPE_PARAMETER,
-        // Elementary types - shouldn't reach here but provide a fallback
-        _ => SymbolKind::VARIABLE,
+/// Map the analyzer's neutral `TypeSymbolKind` to LSP's `SymbolKind`.
+fn type_kind_to_symbol_kind(kind: TypeSymbolKind) -> SymbolKind {
+    match kind {
+        TypeSymbolKind::Structure => SymbolKind::STRUCT,
+        TypeSymbolKind::Enumeration => SymbolKind::ENUM,
+        TypeSymbolKind::FunctionBlock => SymbolKind::CLASS,
+        TypeSymbolKind::Function => SymbolKind::FUNCTION,
+        TypeSymbolKind::Array => SymbolKind::ARRAY,
+        TypeSymbolKind::Subrange => SymbolKind::TYPE_PARAMETER,
+        TypeSymbolKind::String | TypeSymbolKind::Reference | TypeSymbolKind::Alias => {
+            SymbolKind::VARIABLE
+        }
     }
 }
 
@@ -1103,40 +1104,35 @@ INVALID_SYNTAX"
     }
 
     #[test]
-    fn intermediate_type_to_symbol_kind_when_structure_then_struct() {
-        use super::intermediate_type_to_symbol_kind;
-        use ironplc_analyzer::IntermediateType;
+    fn type_kind_to_symbol_kind_when_structure_then_struct() {
+        use super::type_kind_to_symbol_kind;
+        use ironplc_analyzer::extractors::TypeSymbolKind;
 
-        let int_type = IntermediateType::Structure { fields: vec![] };
-        let kind = intermediate_type_to_symbol_kind(&int_type);
-
-        assert_eq!(kind, lsp_types::SymbolKind::STRUCT);
+        assert_eq!(
+            type_kind_to_symbol_kind(TypeSymbolKind::Structure),
+            lsp_types::SymbolKind::STRUCT
+        );
     }
 
     #[test]
-    fn intermediate_type_to_symbol_kind_when_enumeration_then_enum() {
-        use super::intermediate_type_to_symbol_kind;
-        use ironplc_analyzer::IntermediateType;
+    fn type_kind_to_symbol_kind_when_enumeration_then_enum() {
+        use super::type_kind_to_symbol_kind;
+        use ironplc_analyzer::extractors::TypeSymbolKind;
 
-        let int_type = IntermediateType::Enumeration {
-            underlying_type: Box::new(IntermediateType::Bool),
-        };
-        let kind = intermediate_type_to_symbol_kind(&int_type);
-
-        assert_eq!(kind, lsp_types::SymbolKind::ENUM);
+        assert_eq!(
+            type_kind_to_symbol_kind(TypeSymbolKind::Enumeration),
+            lsp_types::SymbolKind::ENUM
+        );
     }
 
     #[test]
-    fn intermediate_type_to_symbol_kind_when_function_block_then_class() {
-        use super::intermediate_type_to_symbol_kind;
-        use ironplc_analyzer::IntermediateType;
+    fn type_kind_to_symbol_kind_when_function_block_then_class() {
+        use super::type_kind_to_symbol_kind;
+        use ironplc_analyzer::extractors::TypeSymbolKind;
 
-        let int_type = IntermediateType::FunctionBlock {
-            name: "TestFB".to_string(),
-            fields: vec![],
-        };
-        let kind = intermediate_type_to_symbol_kind(&int_type);
-
-        assert_eq!(kind, lsp_types::SymbolKind::CLASS);
+        assert_eq!(
+            type_kind_to_symbol_kind(TypeSymbolKind::FunctionBlock),
+            lsp_types::SymbolKind::CLASS
+        );
     }
 }
