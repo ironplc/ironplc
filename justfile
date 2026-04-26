@@ -11,7 +11,7 @@ _devenv-smoke-windows:
   @"CHECK: compile VS code extension (does not include tests)"
   cd integrations\vscode; just setup; just compile
   @"CHECK: compile the docs"
-  cd docs; just compile
+  cd docs; just ci
   "SMOKE PASSED"
 
 _devenv-smoke-unix:
@@ -20,7 +20,7 @@ _devenv-smoke-unix:
   @echo "CHECK: compile VS code extension (does not include tests)"
   cd integrations/vscode && just setup && just compile
   @echo "CHECK: compile the docs"
-  cd docs && just compile
+  cd docs && just ci
   @echo "SMOKE PASSED"
 
 # Capture screenshots of the VS Code extension for documentation.

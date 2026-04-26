@@ -6,10 +6,12 @@ default: compile
 ci: setup compile
 
 setup:
-  pip3 install furo sphinx-inline-tabs sphinx-copybutton pytz sphinx-design sphinx-sitemap sphinxext-opengraph
+  python3 -m venv .venv
+  .venv/bin/pip install --upgrade pip
+  .venv/bin/pip install -r requirements.txt
 
 compile:
-  sphinx-build -a -W -n -b html . _build
+  .venv/bin/sphinx-build -a -W -n -b html . _build
   echo "www.ironplc.com" > _build/CNAME
   # Publish the install script at https://www.ironplc.com/install.sh.
   # This only goes live after partial_install_script_test passes, gating

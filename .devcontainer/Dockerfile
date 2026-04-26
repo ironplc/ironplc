@@ -2,19 +2,18 @@
 # See https://github.com/devcontainers/images/tree/main/src/typescript-node for variants
 FROM mcr.microsoft.com/devcontainers/typescript-node:22
 
-# Install the Python and Sphinx for documentation. Combine update+install
-# into a single RUN so the apt index is always fresh for the install step;
-# splitting them lets Docker cache a stale index and then 404 when Debian
-# rotates point-release packages.
+# Install Python tooling and other system packages. Sphinx itself and its
+# extensions are NOT installed here; the docs build creates an isolated venv
+# at docs/.venv via `just setup`. Combine update+install into a single RUN so
+# the apt index is always fresh for the install step; splitting them lets
+# Docker cache a stale index and then 404 when Debian rotates point-release
+# packages.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3-venv python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 \
+        python3-venv python3-pip curl xvfb libnss3 libatk1.0-0 \
         libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 nsis \
         gnupg lsb-release && \
     rm -rf /var/lib/apt/lists/*
-
-# Install required Sphinx extensions for the documentation
-RUN pip3 install --break-system-packages furo sphinx-inline-tabs sphinx_copybutton esbonio sphinx-design sphinx-sitemap sphinxext-opengraph
 
 # Install Terraform from HashiCorp's apt repository (used by the
 # infrastructure/ config to provision GitHub labels and the agent
