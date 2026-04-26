@@ -1,0 +1,8 @@
+sphinx
+furo
+sphinx-inline-tabs
+sphinx-copybutton
+sphinx-design
+sphinx-sitemap
+sphinxext-opengraph
+pytz
