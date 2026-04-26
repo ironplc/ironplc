@@ -14,3 +14,4 @@ docs/_build/**
 __pycache__/
 *.exe
 lcov.info
+.secrets/
