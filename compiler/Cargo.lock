@@ -913,6 +913,7 @@ dependencies = [
  "ironplc-dsl",
  "ironplc-parser",
  "ironplc-problems",
+ "ironplc-spec-requirements-gen",
  "ironplc-vm",
  "proptest",
  "rstest",
@@ -923,6 +924,7 @@ dependencies = [
 name = "ironplc-container"
 version = "0.206.0"
 dependencies = [
+ "ironplc-spec-requirements-gen",
  "spec_test_macro",
 ]
 
@@ -953,6 +955,7 @@ dependencies = [
  "ironplc-parser",
  "ironplc-problems",
  "ironplc-project",
+ "ironplc-spec-requirements-gen",
  "ironplc-vm",
  "log",
  "predicates",
@@ -1051,6 +1054,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ironplc-spec-requirements-gen"
+version = "0.206.0"
+
+[[package]]
 name = "ironplc-test"
 version = "0.206.0"
 
@@ -1075,6 +1082,7 @@ dependencies = [
  "ctrlc",
  "env_logger",
  "ironplc-container",
+ "ironplc-spec-requirements-gen",
  "ironplc-vm",
  "log",
  "predicates",

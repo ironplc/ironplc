@@ -1,0 +1,8 @@
+[package]
+name = "ironplc-spec-requirements-gen"
+description = "Build-script helper that generates spec_requirements.rs from REQ markers"
+version = "0.206.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
