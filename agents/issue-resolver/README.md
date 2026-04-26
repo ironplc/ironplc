@@ -34,40 +34,111 @@ GitHub issue event  ──webhook──▶  FastAPI (main.py)
 ## Prerequisites
 
 - Python 3.11+
-- An [ngrok reserved domain](https://dashboard.ngrok.com/domains) or
-  other stable public HTTPS endpoint (GitHub needs a stable URL).
+- [`just`](https://github.com/casey/just) (used to drive every
+  workflow in this directory).
 - A fine-grained GitHub PAT with `issues: write` on `ironplc/ironplc`.
 - An Anthropic API key.
-- Terraform has already been applied from the sibling
-  `infrastructure/` directory (creates the 14 labels and the webhook).
+- For full end-to-end testing only: an
+  [ngrok reserved domain](https://dashboard.ngrok.com/domains) (or
+  other stable public HTTPS endpoint) and Terraform applied from the
+  sibling `infrastructure/` directory (creates the 14 labels and the
+  webhook).
 
 ## Setup
+
+The only manual step is creating `.env` — `just` will not overwrite
+it. Copy the template and fill in your values:
 
 ```bash
 cd agents/issue-resolver
 cp .env.example .env
 # Fill in ANTHROPIC_API_KEY, GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET.
 # GITHUB_WEBHOOK_SECRET must match infrastructure/terraform.tfvars.
-pip install -r requirements.txt
 ```
 
-## Run locally
+For local smoke testing without real credentials, any non-empty
+string works for each of the three secrets — the Anthropic SDK and
+GitHub client don't validate at construction. Calls that actually
+hit the APIs will fail, which is the expected behavior.
+
+Then create the venv and install dependencies:
+
+```bash
+just setup
+```
+
+## Available recipes
+
+| Recipe | What it does |
+|---|---|
+| `just` (or `just ci`) | `setup` then `test` |
+| `just setup` | Create `.venv` and install deps (idempotent) |
+| `just test` | Run the unit test suite |
+| `just serve` | Start `uvicorn` on port 8000 with hot-reload |
+| `just serve-dryrun` | Like `serve`, but comment posts and label changes are printed to stdout instead of sent to GitHub |
+| `just health` | `GET /health` against a running `serve` |
+| `just webhook` | Send a properly-signed webhook (default action `opened`, ignored by orchestrator) |
+| `just webhook-bogus` | Send a webhook with an invalid signature; expect 401 |
+| `just ledger` | Tail the 20 most recent `ledger.db` rows |
+
+All recipes auto-load `.env`, so you don't have to export anything.
+
+## Local smoke test (no GitHub, no LLM)
 
 Two terminals:
 
 ```bash
-# Terminal A: the app
+# Terminal A
 cd agents/issue-resolver
-uvicorn main:app --port 8000 --reload
+just serve
 
-# Terminal B: the tunnel
+# Terminal B
+cd agents/issue-resolver
+just health         # → 200 {"ok":"true"}
+just webhook-bogus  # → 401, ledger row WEBHOOK_UNAUTHORIZED
+just webhook        # → 200, ledger row WEBHOOK_IGNORED (action "opened")
+just ledger         # see what got written
+```
+
+Drive the orchestrator into the requirements stage (will fail at the
+LLM call without a real Anthropic key, which is fine):
+
+```bash
+just webhook ACTION=labeled LABEL=status/triage NUMBER=42
+```
+
+## Simulate a real issue without writing back (dry run)
+
+Useful when you want to see how the orchestrator handles a real issue
+that already exists in GitHub, without it actually posting comments or
+moving labels. Reads still hit real GitHub, so use a fine-grained PAT
+with **read-only** access (`metadata: read`, `issues: read`) as a
+safety net in case the wrapper is bypassed.
+
+```bash
+# .env: GITHUB_REPO points at the real repo, GITHUB_TOKEN is read-only.
+just serve-dryrun
+
+# In another terminal, fabricate the trigger for a real issue number.
+just webhook ACTION=labeled LABEL=status/triage NUMBER=<real issue #>
+```
+
+The would-be comment body and label changes print to the `serve-dryrun`
+console, prefixed with `[DRY RUN]`. The ledger still records
+`COMMENT_POSTED` and `LABEL_TRANSITION` events.
+
+## Full end-to-end (requires real credentials + ngrok + Terraform)
+
+```bash
+# Terminal A: the app
+just serve
+
+# Terminal B: expose it on a public HTTPS URL
 ngrok http --domain your-reserved-name.ngrok-free.app 8000
 ```
 
 Point the webhook (managed by Terraform) at
-`https://your-reserved-name.ngrok-free.app/webhook`.
-
-## End-to-end smoke test
+`https://your-reserved-name.ngrok-free.app/webhook`. Then:
 
 1. File a new issue using the *Compatibility Gap* template (see
    `.github/ISSUE_TEMPLATE/compatibility_gap.md`).
@@ -100,8 +171,7 @@ Point the webhook (managed by Terraform) at
 ## Tests
 
 ```bash
-cd agents/issue-resolver
-python -m pytest tests/ -v
+just test
 ```
 
 Tests cover signature verification, context packaging, ledger
