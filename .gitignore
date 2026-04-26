@@ -12,6 +12,19 @@ docs/_build/**
 .DS_Store
 .vscode/
 __pycache__/
+.venv/
 *.exe
 lcov.info
 .secrets/
+
+# Terraform
+terraform.tfvars
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Local env
+.env
+# Ledger (SQLite event log produced at runtime)
+ledger.db
