@@ -14,6 +14,11 @@ test:
 serve port='8000':
     .venv/bin/uvicorn main:app --port {{port}} --reload
 
+# Like `serve`, but the orchestrator delegates reads to real GitHub and
+# only prints what it would post or relabel. Pair with a read-only PAT.
+serve-dryrun port='8000':
+    DRY_RUN=true .venv/bin/uvicorn main:app --port {{port}} --reload
+
 health port='8000':
     curl -s -i localhost:{{port}}/health
 
