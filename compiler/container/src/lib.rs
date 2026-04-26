@@ -23,6 +23,8 @@ mod constant_pool;
 #[cfg(feature = "std")]
 mod container;
 #[cfg(feature = "std")]
+pub mod debug_format;
+#[cfg(feature = "std")]
 pub mod debug_section;
 #[cfg(feature = "std")]
 pub mod task_table;
@@ -49,6 +51,8 @@ pub use code_section::{CodeSection, FuncEntry};
 pub use constant_pool::{ConstEntry, ConstantPool};
 #[cfg(feature = "std")]
 pub use container::Container;
+#[cfg(feature = "std")]
+pub use debug_format::{build_var_debug_map, format_variable_value, VarDebugInfo};
 #[cfg(feature = "std")]
 pub use debug_section::{DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, VarNameEntry};
 #[cfg(feature = "std")]

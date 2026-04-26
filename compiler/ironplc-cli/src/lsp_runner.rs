@@ -10,7 +10,7 @@ use std::io::Cursor;
 
 use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile as codegen_compile;
-use ironplc_container::debug_section::iec_type_tag;
+use ironplc_container::debug_format::{build_var_debug_map, format_variable_value, VarDebugInfo};
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
 use ironplc_parser::options::CompilerOptions;
@@ -269,59 +269,6 @@ fn compile_to_bytes(source: &str, options: &CompilerOptions) -> Result<Vec<u8>, 
     Ok(buf)
 }
 
-/// Debug metadata for a variable.
-struct VarDebugInfo {
-    name: String,
-    type_name: String,
-    iec_type_tag: u8,
-}
-
-/// Builds a lookup map from var_index to debug info.
-fn build_var_debug_map(container: &Container) -> HashMap<u16, VarDebugInfo> {
-    let mut map = HashMap::new();
-    if let Some(debug) = &container.debug_section {
-        for entry in &debug.var_names {
-            map.insert(
-                entry.var_index.raw(),
-                VarDebugInfo {
-                    name: entry.name.clone(),
-                    type_name: entry.type_name.clone(),
-                    iec_type_tag: entry.iec_type_tag,
-                },
-            );
-        }
-    }
-    map
-}
-
-/// Formats a raw 64-bit slot value according to the IEC type tag.
-fn format_variable_value(raw: u64, tag: u8) -> String {
-    match tag {
-        iec_type_tag::BOOL => {
-            if (raw as i32) != 0 {
-                "TRUE".into()
-            } else {
-                "FALSE".into()
-            }
-        }
-        iec_type_tag::SINT => format!("{}", raw as i32 as i8),
-        iec_type_tag::INT => format!("{}", raw as i32 as i16),
-        iec_type_tag::DINT => format!("{}", raw as i32),
-        iec_type_tag::LINT => format!("{}", raw as i64),
-        iec_type_tag::USINT => format!("{}", raw as u8),
-        iec_type_tag::UINT => format!("{}", raw as u16),
-        iec_type_tag::UDINT => format!("{}", raw as u32),
-        iec_type_tag::ULINT => format!("{}", raw),
-        iec_type_tag::REAL => format!("{}", f32::from_bits(raw as u32)),
-        iec_type_tag::LREAL => format!("{}", f64::from_bits(raw)),
-        iec_type_tag::BYTE => format!("16#{:02X}", raw as u8),
-        iec_type_tag::WORD => format!("16#{:04X}", raw as u16),
-        iec_type_tag::DWORD => format!("16#{:08X}", raw as u32),
-        iec_type_tag::LWORD => format!("16#{:016X}", raw),
-        _ => format!("{}", raw as i32),
-    }
-}
-
 fn read_all_variables_running(
     vm: &ironplc_vm::VmRunning,
     num_vars: u16,
@@ -439,27 +386,5 @@ END_PROGRAM
         let result = runner.step(3);
         assert!(result.ok);
         assert_eq!(result.total_scans, 8);
-    }
-
-    #[test]
-    fn format_variable_value_when_bool_true_then_returns_true() {
-        assert_eq!(format_variable_value(1, iec_type_tag::BOOL), "TRUE");
-    }
-
-    #[test]
-    fn format_variable_value_when_bool_false_then_returns_false() {
-        assert_eq!(format_variable_value(0, iec_type_tag::BOOL), "FALSE");
-    }
-
-    #[test]
-    fn format_variable_value_when_dint_then_returns_decimal() {
-        assert_eq!(format_variable_value(42, iec_type_tag::DINT), "42");
-    }
-
-    #[test]
-    fn format_variable_value_when_real_then_returns_float() {
-        let raw = f32::to_bits(1.25) as u64;
-        let result = format_variable_value(raw, iec_type_tag::REAL);
-        assert!(result.starts_with("1.25"));
     }
 }
