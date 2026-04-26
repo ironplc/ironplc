@@ -12,4 +12,5 @@ Technical reference material for IronPLC tools.
    Extension Library <extension-library/index>
    Compiler <compiler/index>
    Runtime <runtime/index>
+   MCP Server <mcp/index>
    Editor Extension <editor/index>

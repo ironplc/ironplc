@@ -10,6 +10,8 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
+use ironplc_container::VarIndex;
+
 /// Default maximum number of cached containers.
 pub const DEFAULT_MAX_ENTRIES: usize = 64;
 
@@ -24,18 +26,28 @@ pub struct CachedContainer {
     pub tasks: Vec<TaskMeta>,
     /// Program metadata extracted from the compiled program.
     pub programs: Vec<ProgramMeta>,
+    /// Fully-qualified name resolution for the container's variables.
+    /// Empty when the analyzer didn't emit enough info (e.g. no programs
+    /// declared); the `run` tool surfaces that as a diagnostic.
+    pub symbols: VariableSymbolMap,
     /// Cached byte size (equal to `iplc_bytes.len()`).
     byte_size: usize,
 }
 
 impl CachedContainer {
     /// Creates a new cached container from serialized bytes and metadata.
-    pub fn new(iplc_bytes: Vec<u8>, tasks: Vec<TaskMeta>, programs: Vec<ProgramMeta>) -> Self {
+    pub fn new(
+        iplc_bytes: Vec<u8>,
+        tasks: Vec<TaskMeta>,
+        programs: Vec<ProgramMeta>,
+        symbols: VariableSymbolMap,
+    ) -> Self {
         let byte_size = iplc_bytes.len();
         Self {
             iplc_bytes,
             tasks,
             programs,
+            symbols,
             byte_size,
         }
     }
@@ -44,6 +56,80 @@ impl CachedContainer {
     pub fn byte_size(&self) -> usize {
         self.byte_size
     }
+}
+
+/// A variable that has been resolved to a concrete `VarIndex`.
+#[derive(Clone, Debug)]
+pub struct ResolvedVar {
+    /// Index into the VM's variable table.
+    pub var_index: VarIndex,
+    /// IEC type tag (from `ironplc_container::debug_section::iec_type_tag`).
+    pub iec_type_tag: u8,
+    /// Variable section encoding (from `debug_section::var_section`),
+    /// used to enforce REQ-TOL-042 stimulus eligibility in a follow-up.
+    pub var_section: u8,
+    /// Hardware address, if direct-mapped (e.g. "%IX0.0").
+    pub address: Option<String>,
+    /// Declaring program, if this is a program-local variable. `None`
+    /// for bare globals.
+    pub program: Option<String>,
+    /// The canonical fully-qualified name (e.g. `"Main.Counter"`).
+    pub canonical_name: String,
+}
+
+/// Symbol table used by the `run` tool to map fully-qualified names to
+/// VM variable indices. Built by `compile` and stored alongside the
+/// container bytes per REQ-ARC-070.
+#[derive(Clone, Debug, Default)]
+pub struct VariableSymbolMap {
+    /// Canonical qualified name → resolved variable.
+    by_qualified: HashMap<String, ResolvedVar>,
+    /// Bare variable name → every resolution sharing that suffix.
+    /// Used for the REQ-ARC-020 bare-name fallback lookup.
+    by_bare: HashMap<String, Vec<ResolvedVar>>,
+}
+
+impl VariableSymbolMap {
+    /// Returns an empty symbol map.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Inserts a resolved variable, registering it under both its
+    /// canonical qualified name and its bare (last-component) name.
+    pub fn insert(&mut self, resolved: ResolvedVar) {
+        let bare = bare_component(&resolved.canonical_name).to_string();
+        self.by_qualified
+            .insert(resolved.canonical_name.clone(), resolved.clone());
+        self.by_bare.entry(bare).or_default().push(resolved);
+    }
+
+    /// Exact lookup by canonical qualified name (e.g. `"Main.Counter"`).
+    pub fn by_qualified(&self, name: &str) -> Option<&ResolvedVar> {
+        self.by_qualified.get(name)
+    }
+
+    /// All resolutions sharing the given bare (last-component) name.
+    pub fn by_bare(&self, bare: &str) -> &[ResolvedVar] {
+        self.by_bare.get(bare).map(|v| v.as_slice()).unwrap_or(&[])
+    }
+
+    /// Iterates over every resolved variable in the map.
+    pub fn iter(&self) -> impl Iterator<Item = &ResolvedVar> {
+        self.by_qualified.values()
+    }
+
+    /// Returns the number of resolved variables.
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.by_qualified.len()
+    }
+}
+
+/// Returns the last dot-separated component of `name`, or `name` itself
+/// if it has no dots.
+fn bare_component(name: &str) -> &str {
+    name.rsplit('.').next().unwrap_or(name)
 }
 
 /// Task metadata for the compile tool response.
@@ -180,7 +266,7 @@ mod tests {
     use super::*;
 
     fn make_container(size: usize) -> CachedContainer {
-        CachedContainer::new(vec![0u8; size], vec![], vec![])
+        CachedContainer::new(vec![0u8; size], vec![], vec![], VariableSymbolMap::new())
     }
 
     #[test]

@@ -2,12 +2,28 @@
 # See https://github.com/devcontainers/images/tree/main/src/typescript-node for variants
 FROM mcr.microsoft.com/devcontainers/typescript-node:22
 
-# Install the Python and Sphinx for documentation
-RUN apt-get update
-RUN apt-get install -y python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 nsis
+# Install the Python and Sphinx for documentation. Combine update+install
+# into a single RUN so the apt index is always fresh for the install step;
+# splitting them lets Docker cache a stale index and then 404 when Debian
+# rotates point-release packages.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3-venv python3-sphinx python3-pip curl xvfb libnss3 libatk1.0-0 \
+        libatk-bridge2.0-0 libdrm2 libgtk-3-0 libgbm1 libasound2 nsis \
+        gnupg lsb-release && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install required Sphinx extensions for the documentation
 RUN pip3 install --break-system-packages furo sphinx-inline-tabs sphinx_copybutton esbonio sphinx-design sphinx-sitemap sphinxext-opengraph
+
+# Install Terraform from HashiCorp's apt repository (used by the
+# infrastructure/ config to provision GitHub labels and the agent
+# webhook). Tracks latest, same philosophy as the Rust tooling below.
+RUN curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends terraform && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Rust. This installs "globally" which is highly discouraged
 # but we claim this is Ok because in this container we only have one user.

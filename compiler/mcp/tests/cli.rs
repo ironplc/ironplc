@@ -111,6 +111,36 @@ const ARGS_ENUM_TYPE: &str = r#"{"sources":[{"name":"main.st","content":"TYPE My
 /// Program declaring one `VAR_INPUT` — used by the `project_io` happy path.
 const ARGS_PROJECT_IO_INPUT: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR_INPUT start : BOOL; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
 
+/// Program with variables of mixed direction — used by the `pou_scope`
+/// happy path. Carries `pou` in the tool-call arguments.
+const ARGS_POU_SCOPE_VALID: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nVAR_INPUT start : BOOL := FALSE; END_VAR\nVAR count : DINT; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"p"}"#;
+
+/// Same valid sources but an unknown POU name.
+const ARGS_POU_SCOPE_MISSING: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"nonexistent"}"#;
+
+/// Program + FB where Main depends on Counter — used by `pou_lineage`.
+const ARGS_POU_LINEAGE_VALID: &str = r#"{"sources":[{"name":"main.st","content":"FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"Main"}"#;
+
+/// Same valid sources but an unknown POU name.
+const ARGS_POU_LINEAGE_MISSING: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"nonexistent"}"#;
+
+/// Sources declaring an enum, struct, array, and subrange — used by `types_all`.
+const ARGS_TYPES_ALL_VALID: &str = r#"{"sources":[{"name":"main.st","content":"TYPE MotorState : (Stopped, Running, Fault); END_TYPE\nTYPE PidParams : STRUCT Kp : REAL; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
+
+/// `pou_scope` needs a `pou` field; empty source name still triggers P8001.
+const ARGS_POU_SCOPE_EMPTY_SOURCE: &str = r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"p"}"#;
+
+/// `pou_lineage` equivalent of the empty-source case.
+const ARGS_POU_LINEAGE_EMPTY_SOURCE: &str = r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"p"}"#;
+
+/// `pou_scope` with a missing dialect.
+const ARGS_POU_SCOPE_MISSING_DIALECT: &str =
+    r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{},"pou":"p"}"#;
+
+/// `pou_lineage` with a missing dialect.
+const ARGS_POU_LINEAGE_MISSING_DIALECT: &str =
+    r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{},"pou":"p"}"#;
+
 // ---------------------------------------------------------------------------
 // Per-tool happy/error paths
 //
@@ -208,6 +238,33 @@ const ARGS_PROJECT_IO_INPUT: &str = r#"{"sources":[{"name":"main.st","content":"
     "P8001"
 )]
 #[case::project_io_missing_dialect_validation_error("project_io", ARGS_MISSING_DIALECT, "P8001")]
+// pou_scope
+#[case::pou_scope_valid_ok_true("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"ok\":true"#)]
+#[case::pou_scope_valid_found_true("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"found\":true"#)]
+#[case::pou_scope_valid_variable_listed("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"name\":\"start\""#)]
+#[case::pou_scope_missing_found_false("pou_scope", ARGS_POU_SCOPE_MISSING, r#"\"found\":false"#)]
+#[case::pou_scope_missing_p8001("pou_scope", ARGS_POU_SCOPE_MISSING, "P8001")]
+#[case::pou_scope_empty_source_p8001("pou_scope", ARGS_POU_SCOPE_EMPTY_SOURCE, "P8001")]
+#[case::pou_scope_missing_dialect_p8001("pou_scope", ARGS_POU_SCOPE_MISSING_DIALECT, "P8001")]
+// pou_lineage
+#[case::pou_lineage_valid_ok_true("pou_lineage", ARGS_POU_LINEAGE_VALID, r#"\"ok\":true"#)]
+#[case::pou_lineage_valid_found_true("pou_lineage", ARGS_POU_LINEAGE_VALID, r#"\"found\":true"#)]
+#[case::pou_lineage_valid_upstream_has_counter("pou_lineage", ARGS_POU_LINEAGE_VALID, "Counter")]
+#[case::pou_lineage_missing_found_false(
+    "pou_lineage",
+    ARGS_POU_LINEAGE_MISSING,
+    r#"\"found\":false"#
+)]
+#[case::pou_lineage_missing_p8001("pou_lineage", ARGS_POU_LINEAGE_MISSING, "P8001")]
+#[case::pou_lineage_empty_source_p8001("pou_lineage", ARGS_POU_LINEAGE_EMPTY_SOURCE, "P8001")]
+#[case::pou_lineage_missing_dialect_p8001("pou_lineage", ARGS_POU_LINEAGE_MISSING_DIALECT, "P8001")]
+// types_all
+#[case::types_all_valid_ok_true("types_all", ARGS_TYPES_ALL_VALID, r#"\"ok\":true"#)]
+#[case::types_all_valid_enum_kind("types_all", ARGS_TYPES_ALL_VALID, r#"\"kind\":\"enum\""#)]
+#[case::types_all_valid_struct_kind("types_all", ARGS_TYPES_ALL_VALID, r#"\"kind\":\"struct\""#)]
+#[case::types_all_semantic_error_ok_false("types_all", ARGS_SEMANTIC_ERROR, r#"\"ok\":false"#)]
+#[case::types_all_empty_source_p8001("types_all", ARGS_EMPTY_SOURCE_NAME, "P8001")]
+#[case::types_all_missing_dialect_p8001("types_all", ARGS_MISSING_DIALECT, "P8001")]
 fn tool_call_then_stdout_contains(
     #[case] tool: &str,
     #[case] arguments_json: &str,
@@ -235,5 +292,98 @@ fn project_manifest_when_valid_program_then_files_and_programs_populated(
         .success()
         .stdout(predicate::str::contains(r#"\"files\":[\"main.st\"]"#))
         .stdout(predicate::str::contains(r#"\"programs\":[\"p\"]"#));
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// `run` tool
+// ---------------------------------------------------------------------------
+
+/// `run` with no container handle at all should fail fast with a diagnostic.
+#[test]
+fn run_when_no_container_handle_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
+    let args = r#"{"duration_ms":100,"variables":[]}"#;
+    let stdin = mcp_tool_call("run", args);
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#"\"ok\":false"#));
+    Ok(())
+}
+
+/// `run` with an unknown container_id should surface a P8001 diagnostic
+/// that names the missing id.
+#[test]
+fn run_when_unknown_container_id_then_diagnostic_names_it() -> Result<(), Box<dyn std::error::Error>>
+{
+    let args = r#"{"container_id":"c_ghost","duration_ms":100,"variables":[]}"#;
+    let stdin = mcp_tool_call("run", args);
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#"\"ok\":false"#))
+        .stdout(predicate::str::contains("c_ghost"));
+    Ok(())
+}
+
+/// `run` guards Phase 11 features (stimuli) behind a diagnostic.
+#[test]
+fn run_when_stimuli_supplied_then_ok_false() -> Result<(), Box<dyn std::error::Error>> {
+    let args = r#"{"container_id":"c_0","duration_ms":100,"stimuli":[{"time_ms":0,"set":{}}]}"#;
+    let stdin = mcp_tool_call("run", args);
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#"\"ok\":false"#));
+    Ok(())
+}
+
+/// `run` appears in the tools/list response so clients can discover it.
+#[test]
+fn tools_list_includes_run_tool() -> Result<(), Box<dyn std::error::Error>> {
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(MCP_TOOLS_LIST)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"name\":\"run\""));
+    Ok(())
+}
+
+/// Compile then run: a two-step flow that exercises the compile → cache →
+/// run handoff. Drives a simple counter program and asserts the trace
+/// contains an increasing `Main.Counter` value.
+#[test]
+fn run_when_compile_then_run_counter_then_trace_shows_increment(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Embed a compilable counter program with an explicit 100ms cyclic
+    // task, pre-escaped for embedding inside the MCP JSON-RPC envelope.
+    let source = r#"PROGRAM Main\nVAR Counter : INT; END_VAR\nCounter := Counter + 1;\nEND_PROGRAM\n\nCONFIGURATION config\nRESOURCE resource1 ON PLC\nTASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);\nPROGRAM program1 WITH plc_task : Main;\nEND_RESOURCE\nEND_CONFIGURATION"#;
+    let compile_args = format!(
+        r#"{{"sources":[{{"name":"main.st","content":"{source}"}}],"options":{{"dialect":"iec61131-3-ed2"}}}}"#
+    );
+    let compile_call = format!(
+        r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"compile","arguments":{compile_args}}}}}"#
+    );
+    // The first container assigned by a fresh cache has id "c_0".
+    let run_args = r#"{"container_id":"c_0","duration_ms":500,"variables":["Main.Counter"]}"#;
+    let run_call = format!(
+        r#"{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"run","arguments":{run_args}}}}}"#
+    );
+    let stdin = format!("{MCP_INITIALIZE}\n{MCP_INITIALIZED}\n{compile_call}\n{run_call}\n");
+
+    Command::cargo_bin("ironplcmcp")?
+        .write_stdin(stdin)
+        .assert()
+        .success()
+        // Compile response
+        .stdout(predicate::str::contains(r#"\"container_id\":\"c_0\""#))
+        // Run response
+        .stdout(predicate::str::contains(
+            r#"\"terminated_reason\":\"completed\""#,
+        ))
+        .stdout(predicate::str::contains("Main.Counter"));
     Ok(())
 }
