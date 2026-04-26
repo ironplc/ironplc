@@ -15,6 +15,7 @@ use crate::tools::container_drop::ContainerDropInput;
 use crate::tools::explain_diagnostic::ExplainDiagnosticInput;
 use crate::tools::pou_lineage::PouLineageInput;
 use crate::tools::pou_scope::PouScopeInput;
+use crate::tools::run::RunInput;
 use crate::tools::symbols::SymbolsInput;
 
 #[derive(Clone)]
@@ -218,6 +219,21 @@ impl IronPlcMcp {
         Parameters(input): Parameters<ContainerDropInput>,
     ) -> Result<Content, rmcp::ErrorData> {
         let response = tools::container_drop::build_response(&input.container_id, &self.cache);
+        let json = serde_json::to_string(&response)
+            .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+        Ok(Content::text(json))
+    }
+
+    /// Executes a compiled container in the IronPLC VM.
+    #[tool(
+        name = "run",
+        description = "Executes a compiled container in the IronPLC VM for a bounded simulated duration and returns a trace of observed variables. Call `check` until it returns `ok:true`, then `compile` to obtain a `container_id`, then `run`. In this milestone the tool supports `every_cycle` trace mode without stimuli; supply `variables` (fully-qualified names) or `trace_outputs:true` to capture outputs."
+    )]
+    async fn run(
+        &self,
+        Parameters(input): Parameters<RunInput>,
+    ) -> Result<Content, rmcp::ErrorData> {
+        let response = tools::run::build_response(&input, &self.cache);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
         Ok(Content::text(json))
