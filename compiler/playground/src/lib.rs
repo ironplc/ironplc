@@ -16,6 +16,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile as codegen_compile;
+use ironplc_container::debug_format::{build_var_debug_map, VarDebugInfo};
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
@@ -134,31 +135,6 @@ struct VariableInfo {
     name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     type_name: String,
-}
-
-/// Debug metadata for a variable, extracted from the container's debug section.
-struct VarDebugInfo {
-    name: String,
-    type_name: String,
-    iec_type_tag: u8,
-}
-
-/// Builds a lookup map from var_index to debug info from the container's debug section.
-fn build_var_debug_map(container: &Container) -> HashMap<u16, VarDebugInfo> {
-    let mut map = HashMap::new();
-    if let Some(debug) = &container.debug_section {
-        for entry in &debug.var_names {
-            map.insert(
-                entry.var_index.raw(),
-                VarDebugInfo {
-                    name: entry.name.clone(),
-                    type_name: entry.type_name.clone(),
-                    iec_type_tag: entry.iec_type_tag,
-                },
-            );
-        }
-    }
-    map
 }
 
 /// Maps (type_name, ordinal) → value_name for enum display.
