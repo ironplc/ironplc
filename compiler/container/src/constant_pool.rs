@@ -52,80 +52,47 @@ impl ConstantPool {
         size
     }
 
-    /// Gets an i32 value from the constant pool at the given index.
-    pub fn get_i32(&self, index: ConstantIndex) -> Result<i32, ContainerError> {
+    /// Reads the first `N` bytes of the entry at `index`, after verifying its
+    /// type matches `expected`.
+    fn get_le_bytes<const N: usize>(
+        &self,
+        index: ConstantIndex,
+        expected: ConstType,
+    ) -> Result<[u8; N], ContainerError> {
         let entry = self
             .entries
             .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
-        if entry.const_type != ConstType::I32 {
+        if entry.const_type != expected {
             return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
         }
-        Ok(i32::from_le_bytes([
-            entry.value[0],
-            entry.value[1],
-            entry.value[2],
-            entry.value[3],
-        ]))
+        let mut bytes = [0u8; N];
+        bytes.copy_from_slice(&entry.value[..N]);
+        Ok(bytes)
+    }
+
+    /// Gets an i32 value from the constant pool at the given index.
+    pub fn get_i32(&self, index: ConstantIndex) -> Result<i32, ContainerError> {
+        self.get_le_bytes::<4>(index, ConstType::I32)
+            .map(i32::from_le_bytes)
     }
 
     /// Gets an f32 value from the constant pool at the given index.
     pub fn get_f32(&self, index: ConstantIndex) -> Result<f32, ContainerError> {
-        let entry = self
-            .entries
-            .get(index.raw() as usize)
-            .ok_or(ContainerError::InvalidConstantIndex(index))?;
-        if entry.const_type != ConstType::F32 {
-            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
-        }
-        Ok(f32::from_le_bytes([
-            entry.value[0],
-            entry.value[1],
-            entry.value[2],
-            entry.value[3],
-        ]))
+        self.get_le_bytes::<4>(index, ConstType::F32)
+            .map(f32::from_le_bytes)
     }
 
     /// Gets an f64 value from the constant pool at the given index.
     pub fn get_f64(&self, index: ConstantIndex) -> Result<f64, ContainerError> {
-        let entry = self
-            .entries
-            .get(index.raw() as usize)
-            .ok_or(ContainerError::InvalidConstantIndex(index))?;
-        if entry.const_type != ConstType::F64 {
-            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
-        }
-        Ok(f64::from_le_bytes([
-            entry.value[0],
-            entry.value[1],
-            entry.value[2],
-            entry.value[3],
-            entry.value[4],
-            entry.value[5],
-            entry.value[6],
-            entry.value[7],
-        ]))
+        self.get_le_bytes::<8>(index, ConstType::F64)
+            .map(f64::from_le_bytes)
     }
 
     /// Gets an i64 value from the constant pool at the given index.
     pub fn get_i64(&self, index: ConstantIndex) -> Result<i64, ContainerError> {
-        let entry = self
-            .entries
-            .get(index.raw() as usize)
-            .ok_or(ContainerError::InvalidConstantIndex(index))?;
-        if entry.const_type != ConstType::I64 {
-            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
-        }
-        Ok(i64::from_le_bytes([
-            entry.value[0],
-            entry.value[1],
-            entry.value[2],
-            entry.value[3],
-            entry.value[4],
-            entry.value[5],
-            entry.value[6],
-            entry.value[7],
-        ]))
+        self.get_le_bytes::<8>(index, ConstType::I64)
+            .map(i64::from_le_bytes)
     }
 
     /// Gets a string value (raw bytes) from the constant pool at the given index.
