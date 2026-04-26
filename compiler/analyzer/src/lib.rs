@@ -60,6 +60,8 @@ mod xform_toposort_declarations;
 // Type declaration environment helper modules
 mod intermediates;
 
+pub mod extractors;
+
 // Re-export public types for external use
 pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
