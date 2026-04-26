@@ -8,6 +8,7 @@ from hashlib import sha256
 from unittest.mock import MagicMock, patch
 
 from github_client import (
+    DryRunGitHubClient,
     GitHubAPIError,
     GitHubClient,
     verify_webhook_signature,
@@ -84,6 +85,36 @@ class TestGitHubClient(unittest.TestCase):
         client = GitHubClient(token="tok", repo="o/r")
         # Must not raise.
         client.remove_label(42, "status/triage")
+
+
+class TestDryRunGitHubClient(unittest.TestCase):
+    def test_post_comment_when_dry_run_then_does_not_call_inner(self) -> None:
+        inner = MagicMock(spec=GitHubClient)
+        client = DryRunGitHubClient(inner)
+        result = client.post_comment(7, "hello")
+        inner.post_comment.assert_not_called()
+        self.assertEqual(result, {"id": 0})
+
+    def test_label_writes_when_dry_run_then_does_not_call_inner(self) -> None:
+        inner = MagicMock(spec=GitHubClient)
+        client = DryRunGitHubClient(inner)
+        client.add_label(7, "status/triage")
+        client.remove_label(7, "status/triage")
+        inner.add_label.assert_not_called()
+        inner.remove_label.assert_not_called()
+
+    def test_reads_when_dry_run_then_delegate_to_inner(self) -> None:
+        inner = MagicMock(spec=GitHubClient)
+        inner.get_issue.return_value = {"number": 7}
+        inner.get_issue_comments.return_value = [{"id": 1}]
+        inner.get_labels.return_value = ["status/triage"]
+        inner.get_authenticated_user_login.return_value = "bot"
+        client = DryRunGitHubClient(inner)
+
+        self.assertEqual(client.get_issue(7), {"number": 7})
+        self.assertEqual(client.get_issue_comments(7), [{"id": 1}])
+        self.assertEqual(client.get_labels(7), ["status/triage"])
+        self.assertEqual(client.get_authenticated_user_login(), "bot")
 
 
 if __name__ == "__main__":
