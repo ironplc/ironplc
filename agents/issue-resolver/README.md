@@ -104,7 +104,7 @@ Drive the orchestrator into the requirements stage (will fail at the
 LLM call without a real Anthropic key, which is fine):
 
 ```bash
-just webhook ACTION=labeled LABEL=status/triage NUMBER=42
+just webhook labeled status/triage 42
 ```
 
 ## Simulate a real issue without writing back (dry run)
@@ -120,7 +120,8 @@ safety net in case the wrapper is bypassed.
 just serve-dryrun
 
 # In another terminal, fabricate the trigger for a real issue number.
-just webhook ACTION=labeled LABEL=status/triage NUMBER=<real issue #>
+# Recipe args are positional: ACTION LABEL NUMBER [EVENT] [port]
+just webhook labeled status/triage <real issue #>
 ```
 
 The would-be comment body and label changes print to the `serve-dryrun`
