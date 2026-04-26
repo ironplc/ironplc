@@ -13,6 +13,7 @@ members = [
     "parser",
     "problems",
     "sources",
+    "spec_requirements_gen",
     "test",
     "vm",
     "vm-cli",
