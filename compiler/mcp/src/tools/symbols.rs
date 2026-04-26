@@ -1,6 +1,7 @@
-use ironplc_analyzer::symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind};
-use ironplc_analyzer::{IntermediateType, SemanticContext};
-use ironplc_dsl::common::VariableType;
+use ironplc_analyzer::extractors::{
+    FunctionBlockSymbol as FunctionBlockView, FunctionSymbolView, ProgramSymbol as ProgramView,
+    TypeSymbolView, VariableDirection, VariableSymbol,
+};
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
@@ -105,10 +106,18 @@ pub fn build_response(
         }
     };
 
-    let mut programs = extract_programs(context);
-    let mut functions = extract_functions(context);
-    let mut function_blocks = extract_function_blocks(context);
-    let mut types = extract_types(context);
+    let mut programs: Vec<ProgramSymbol> = context.programs().iter().map(map_program).collect();
+    let mut functions: Vec<FunctionSymbol> = context
+        .user_defined_functions()
+        .iter()
+        .map(map_function)
+        .collect();
+    let mut function_blocks: Vec<FunctionBlockSymbol> = context
+        .function_blocks()
+        .iter()
+        .map(map_function_block)
+        .collect();
+    let mut types: Vec<TypeSymbol> = context.user_defined_types().iter().map(map_type).collect();
 
     if let Some(pou_name) = pou_filter {
         return apply_pou_filter(
@@ -153,130 +162,68 @@ pub fn build_response(
     response
 }
 
-fn extract_programs(context: &SemanticContext) -> Vec<ProgramSymbol> {
-    context
-        .symbols()
-        .get_programs()
-        .into_iter()
-        .map(|(name, _)| {
-            let scope = ScopeKind::Named(name.clone());
-            let variables = extract_variables_from_scope(context.symbols(), &scope);
-            ProgramSymbol {
-                name: name.to_string(),
-                variables,
-            }
-        })
-        .collect()
+fn map_program(view: &ProgramView<'_>) -> ProgramSymbol {
+    ProgramSymbol {
+        name: view.name.to_string(),
+        variables: view.variables.iter().map(map_variable).collect(),
+    }
 }
 
-fn extract_functions(context: &SemanticContext) -> Vec<FunctionSymbol> {
-    context
-        .functions()
-        .iter_user_defined()
-        .map(|(_, sig)| {
-            let params: Vec<VariableInfo> = sig
-                .parameters
-                .iter()
-                .map(|p| {
-                    let direction = if p.is_inout {
-                        "InOut"
-                    } else if p.is_output {
-                        "Out"
-                    } else {
-                        "In"
-                    };
-                    VariableInfo {
-                        name: p.name.to_string(),
-                        type_name: p.param_type.to_string(),
-                        direction: direction.to_string(),
-                        address: None,
-                        external: false,
-                    }
-                })
-                .collect();
-            FunctionSymbol {
-                name: sig.name.to_string(),
-                return_type: sig
-                    .return_type
-                    .as_ref()
-                    .map(|rt| rt.to_type_name().to_string())
-                    .unwrap_or_default(),
-                parameters: params,
-            }
-        })
-        .collect()
+fn map_function_block(view: &FunctionBlockView<'_>) -> FunctionBlockSymbol {
+    FunctionBlockSymbol {
+        name: view.name.to_string(),
+        variables: view.variables.iter().map(map_variable).collect(),
+    }
 }
 
-fn extract_function_blocks(context: &SemanticContext) -> Vec<FunctionBlockSymbol> {
-    context
-        .symbols()
-        .get_function_blocks()
-        .into_iter()
-        .map(|(name, _)| {
-            let scope = ScopeKind::Named(name.clone());
-            let variables = extract_variables_from_scope(context.symbols(), &scope);
-            FunctionBlockSymbol {
-                name: name.to_string(),
-                variables,
-            }
+fn map_function(view: &FunctionSymbolView<'_>) -> FunctionSymbol {
+    let parameters: Vec<VariableInfo> = view
+        .parameters()
+        .map(|p| VariableInfo {
+            name: p.param.name.to_string(),
+            type_name: p.param.param_type.to_string(),
+            direction: p.direction.as_str().to_string(),
+            address: None,
+            external: false,
         })
-        .collect()
+        .collect();
+    FunctionSymbol {
+        name: view.signature.name.to_string(),
+        return_type: view
+            .return_type_name()
+            .map(|t| t.to_string())
+            .unwrap_or_default(),
+        parameters,
+    }
 }
 
-fn extract_types(context: &SemanticContext) -> Vec<TypeSymbol> {
-    context
-        .types()
-        .iter_user_defined()
-        .map(|(name, attrs)| {
-            let kind = match &attrs.representation {
-                IntermediateType::Enumeration { .. } => "enumeration",
-                IntermediateType::Structure { .. } => "structure",
-                IntermediateType::Array { .. } => "array",
-                IntermediateType::Subrange { .. } => "subrange",
-                IntermediateType::String { .. } => "string",
-                IntermediateType::Reference { .. } => "reference",
-                _ => "alias",
-            };
-            TypeSymbol {
-                name: name.to_string(),
-                kind: kind.to_string(),
-            }
-        })
-        .collect()
+fn map_type(view: &TypeSymbolView<'_>) -> TypeSymbol {
+    TypeSymbol {
+        name: view.name.to_string(),
+        kind: view.kind.as_str().to_string(),
+    }
 }
 
-fn extract_variables_from_scope(
-    symbols: &SymbolEnvironment,
-    scope: &ScopeKind,
-) -> Vec<VariableInfo> {
-    symbols
-        .get_variables_in_scope(scope)
-        .into_iter()
-        .map(|(name, info)| {
-            let direction = match &info.variable_type {
-                Some(VariableType::Input) => "In",
-                Some(VariableType::Output) => "Out",
-                Some(VariableType::InOut) => "InOut",
-                Some(VariableType::Global) => "Global",
-                Some(VariableType::External) => "External",
-                _ => match info.kind {
-                    SymbolKind::Parameter => "In",
-                    SymbolKind::OutputParameter => "Out",
-                    SymbolKind::InOutParameter => "InOut",
-                    _ => "Local",
-                },
-            };
-            let external = matches!(direction, "In" | "InOut" | "External" | "Global")
-                || info.address.as_ref().is_some_and(|a| a.starts_with("%I"));
-            VariableInfo {
-                name: name.to_string(),
-                type_name: info.data_type.clone().unwrap_or_default(),
-                direction: direction.to_string(),
-                address: info.address.clone(),
-                external,
-            }
-        })
-        .collect()
+fn map_variable(var: &VariableSymbol<'_>) -> VariableInfo {
+    let direction = var.direction;
+    let external = matches!(
+        direction,
+        VariableDirection::In
+            | VariableDirection::InOut
+            | VariableDirection::External
+            | VariableDirection::Global
+    ) || var
+        .info
+        .address
+        .as_ref()
+        .is_some_and(|a| a.starts_with("%I"));
+    VariableInfo {
+        name: var.name.to_string(),
+        type_name: var.info.data_type.clone().unwrap_or_default(),
+        direction: direction.as_str().to_string(),
+        address: var.info.address.clone(),
+        external,
+    }
 }
 
 fn apply_pou_filter(
