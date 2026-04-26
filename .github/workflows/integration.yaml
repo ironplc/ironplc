@@ -10,14 +10,11 @@ permissions:
   contents: read
 
 jobs:
-  # Restrict PR builds to organization members and collaborators to prevent
-  # resource abuse from arbitrary external PRs. workflow_dispatch events
-  # are already restricted by permissions.
+  # PRs from untrusted authors are gated by the repo's "Require approval for
+  # first-time contributors" setting, which queues the run for maintainer
+  # approval instead of executing automatically.
   ironplcc-tests:
     name: Build IronPLC Compiler
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     uses: ./.github/workflows/partial_compiler.yaml
     with:
       commit-ref: ""
@@ -26,9 +23,6 @@ jobs:
 
   vscode-extension:
     name: Build Visual Studio Code Extension
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
       commit-ref: ""
@@ -37,18 +31,12 @@ jobs:
 
   agents:
     name: Test Agents
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     uses: ./.github/workflows/partial_agents.yaml
     with:
       commit-ref: ""
 
   docs:
     name: Build Website
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     # The website doesn't depend on these but we don't publish
     # if those are failing so we depend on those.
     uses: ./.github/workflows/partial_website.yaml
@@ -58,9 +46,6 @@ jobs:
 
   install-script-lint:
     name: Lint Install Script
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -71,9 +56,6 @@ jobs:
     name: Install Script Smoke Test (Last Release)
     # Runs install.sh against the last published release on Linux and macOS.
     # This catches regressions in the script without requiring a new release.
-    if: >-
-      github.event_name != 'pull_request' ||
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     uses: ./.github/workflows/partial_install_script_test.yaml
     with:
       compiler-version: ""
