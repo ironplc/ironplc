@@ -75,6 +75,7 @@ just setup
 | `just setup` | Create `.venv` and install deps (idempotent) |
 | `just test` | Run the unit test suite |
 | `just serve` | Start `uvicorn` on port 8000 with hot-reload |
+| `just serve-dryrun` | Like `serve`, but comment posts and label changes are printed to stdout instead of sent to GitHub |
 | `just health` | `GET /health` against a running `serve` |
 | `just webhook` | Send a properly-signed webhook (default action `opened`, ignored by orchestrator) |
 | `just webhook-bogus` | Send a webhook with an invalid signature; expect 401 |
@@ -105,6 +106,26 @@ LLM call without a real Anthropic key, which is fine):
 ```bash
 just webhook ACTION=labeled LABEL=status/triage NUMBER=42
 ```
+
+## Simulate a real issue without writing back (dry run)
+
+Useful when you want to see how the orchestrator handles a real issue
+that already exists in GitHub, without it actually posting comments or
+moving labels. Reads still hit real GitHub, so use a fine-grained PAT
+with **read-only** access (`metadata: read`, `issues: read`) as a
+safety net in case the wrapper is bypassed.
+
+```bash
+# .env: GITHUB_REPO points at the real repo, GITHUB_TOKEN is read-only.
+just serve-dryrun
+
+# In another terminal, fabricate the trigger for a real issue number.
+just webhook ACTION=labeled LABEL=status/triage NUMBER=<real issue #>
+```
+
+The would-be comment body and label changes print to the `serve-dryrun`
+console, prefixed with `[DRY RUN]`. The ledger still records
+`COMMENT_POSTED` and `LABEL_TRANSITION` events.
 
 ## Full end-to-end (requires real credentials + ngrok + Terraform)
 

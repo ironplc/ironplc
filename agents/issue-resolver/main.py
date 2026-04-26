@@ -13,13 +13,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 
 import anthropic
 from fastapi import BackgroundTasks, FastAPI, Header, Request, Response
 
 from agents.requirements import RequirementsAgent
 from config import load_config
-from github_client import GitHubClient, verify_webhook_signature
+from github_client import (
+    DryRunGitHubClient,
+    GitHubClient,
+    verify_webhook_signature,
+)
 from ledger import Ledger
 from models import WorkItemEvent
 from orchestrator import Orchestrator, safe_handle_event
@@ -34,7 +39,16 @@ def create_app() -> FastAPI:
 
     config = load_config()
     ledger = Ledger()
-    github = GitHubClient(token=config.github_token, repo=config.github_repo)
+    real_github = GitHubClient(
+        token=config.github_token, repo=config.github_repo
+    )
+    github: GitHubClient | DryRunGitHubClient = real_github
+    if os.environ.get("DRY_RUN") == "true":
+        github = DryRunGitHubClient(real_github)
+        logger.warning(
+            "DRY_RUN=true: comments and label changes will be printed, "
+            "not sent to GitHub"
+        )
     anthropic_client = anthropic.Anthropic(api_key=config.anthropic_api_key)
 
     bot_login: str | None
