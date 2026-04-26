@@ -1,7 +1,6 @@
 use ironplc_analyzer::extractors::{
-    extract_function_blocks, extract_programs, extract_user_defined_functions,
-    extract_user_defined_types, FunctionBlockSymbol as FunctionBlockView, FunctionSymbolView,
-    ProgramSymbol as ProgramView, TypeSymbolView, VariableDirection, VariableSymbol,
+    FunctionBlockSymbol as FunctionBlockView, FunctionSymbolView, ProgramSymbol as ProgramView,
+    TypeSymbolView, VariableDirection, VariableSymbol,
 };
 use ironplc_dsl::core::FileId;
 use ironplc_project::project::{MemoryBackedProject, Project};
@@ -107,20 +106,18 @@ pub fn build_response(
         }
     };
 
-    let mut programs: Vec<ProgramSymbol> =
-        extract_programs(context).iter().map(map_program).collect();
-    let mut functions: Vec<FunctionSymbol> = extract_user_defined_functions(context)
+    let mut programs: Vec<ProgramSymbol> = context.programs().iter().map(map_program).collect();
+    let mut functions: Vec<FunctionSymbol> = context
+        .user_defined_functions()
         .iter()
         .map(map_function)
         .collect();
-    let mut function_blocks: Vec<FunctionBlockSymbol> = extract_function_blocks(context)
+    let mut function_blocks: Vec<FunctionBlockSymbol> = context
+        .function_blocks()
         .iter()
         .map(map_function_block)
         .collect();
-    let mut types: Vec<TypeSymbol> = extract_user_defined_types(context)
-        .iter()
-        .map(map_type)
-        .collect();
+    let mut types: Vec<TypeSymbol> = context.user_defined_types().iter().map(map_type).collect();
 
     if let Some(pou_name) = pou_filter {
         return apply_pou_filter(

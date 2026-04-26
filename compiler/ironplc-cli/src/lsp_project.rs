@@ -3,10 +3,7 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use ironplc_analyzer::extractors::{
-    extract_function_blocks, extract_user_defined_functions, extract_user_defined_types,
-    TypeSymbolKind,
-};
+use ironplc_analyzer::extractors::TypeSymbolKind;
 use ironplc_analyzer::SemanticContext;
 use ironplc_dsl::core::{FileId, Located};
 use ironplc_dsl::diagnostic::LineColumn;
@@ -169,7 +166,7 @@ impl LspProject {
         // function-block / function entries that types() carries
         // alongside the per-POU registry, so we don't need to filter
         // those again here.
-        for view in extract_user_defined_types(context) {
+        for view in context.user_defined_types() {
             if view.attributes.span().file_id != file_id {
                 continue;
             }
@@ -190,7 +187,7 @@ impl LspProject {
         // Function blocks (declared by the user; not surfaced via
         // user-defined types since the function-block name is registered
         // separately in the symbol environment).
-        for view in extract_function_blocks(context) {
+        for view in context.function_blocks() {
             if view.info.span.file_id != file_id {
                 continue;
             }
@@ -209,7 +206,7 @@ impl LspProject {
         }
 
         // User-defined functions
-        for view in extract_user_defined_functions(context) {
+        for view in context.user_defined_functions() {
             if view.signature.span.file_id != file_id {
                 continue;
             }
