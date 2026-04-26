@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use ironplc_container::debug_section::iec_type_tag;
+use ironplc_container::debug_format::{build_var_debug_map, format_variable_value, VarDebugInfo};
 use ironplc_container::Container;
 use ironplc_vm::{Vm, VmBuffers};
 use serde_json::json;
@@ -232,50 +232,6 @@ fn round3(v: f64) -> f64 {
     (v * 1000.0).round() / 1000.0
 }
 
-/// Builds a lookup from variable index to (name, iec_type_tag) from the container's debug section.
-fn build_var_debug_map(container: &Container) -> HashMap<u16, (&str, u8)> {
-    let mut map = HashMap::new();
-    if let Some(ref debug) = container.debug_section {
-        for entry in &debug.var_names {
-            map.insert(
-                entry.var_index.raw(),
-                (entry.name.as_str(), entry.iec_type_tag),
-            );
-        }
-    }
-    map
-}
-
-/// Formats a raw 64-bit slot value according to the IEC type tag.
-fn format_variable_value(raw: u64, tag: u8) -> String {
-    match tag {
-        iec_type_tag::BOOL => {
-            if (raw as i32) != 0 {
-                "TRUE".into()
-            } else {
-                "FALSE".into()
-            }
-        }
-        iec_type_tag::SINT => format!("{}", raw as i32 as i8),
-        iec_type_tag::INT => format!("{}", raw as i32 as i16),
-        iec_type_tag::DINT => format!("{}", raw as i32),
-        iec_type_tag::LINT => format!("{}", raw as i64),
-        iec_type_tag::USINT => format!("{}", raw as u8),
-        iec_type_tag::UINT => format!("{}", raw as u16),
-        iec_type_tag::UDINT => format!("{}", raw as u32),
-        iec_type_tag::ULINT => format!("{raw}"),
-        iec_type_tag::REAL => format!("{}", f32::from_bits(raw as u32)),
-        iec_type_tag::LREAL => format!("{}", f64::from_bits(raw)),
-        iec_type_tag::BYTE => format!("16#{:02X}", raw as u8),
-        iec_type_tag::WORD => format!("16#{:04X}", raw as u16),
-        iec_type_tag::DWORD => format!("16#{:08X}", raw as u32),
-        iec_type_tag::LWORD => format!("16#{:016X}", raw),
-        iec_type_tag::TIME => format!("T#{}ms", raw as i32),
-        iec_type_tag::LTIME => format!("LTIME#{}ms", raw as i64),
-        _ => format!("{}", raw as i32),
-    }
-}
-
 /// Writes a single variable line to the writer.
 ///
 /// Uses debug info when available: `Buzzer: TRUE`
@@ -284,10 +240,14 @@ fn write_variable_line(
     out: &mut dyn Write,
     index: u16,
     raw: u64,
-    debug_map: &HashMap<u16, (&str, u8)>,
+    debug_map: &HashMap<u16, VarDebugInfo>,
 ) -> Result<(), VmError> {
-    let line = if let Some(&(name, tag)) = debug_map.get(&index) {
-        format!("{}: {}", name, format_variable_value(raw, tag))
+    let line = if let Some(info) = debug_map.get(&index) {
+        format!(
+            "{}: {}",
+            info.name,
+            format_variable_value(raw, info.iec_type_tag)
+        )
     } else {
         format!("var[{index}]: {}", raw as i32)
     };
@@ -355,8 +315,7 @@ fn dump_variables_faulted(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_container::debug_section::{iec_type_tag, VarNameEntry};
-    use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
+    use ironplc_container::debug_section::iec_type_tag;
     use spec_test_macro::spec_test;
 
     /// REQ-VC-013: percentile of an empty sample returns 0 so benchmark can
@@ -497,7 +456,7 @@ mod tests {
     /// REQ-VC-008: without debug info, lines use the `var[i]: <i32>` fallback.
     #[spec_test(REQ_VC_008)]
     fn write_variable_line_when_no_debug_then_indexed_format() {
-        let debug_map: HashMap<u16, (&str, u8)> = HashMap::new();
+        let debug_map: HashMap<u16, VarDebugInfo> = HashMap::new();
         let mut buf = Vec::new();
         assert!(write_variable_line(&mut buf, 3, 0xFFFF_FFFF, &debug_map).is_ok());
         assert_eq!(std::str::from_utf8(&buf).unwrap(), "var[3]: -1\n");
@@ -506,8 +465,15 @@ mod tests {
     /// REQ-VC-008: with debug info, lines use `name: <typed value>`.
     #[spec_test(REQ_VC_008)]
     fn write_variable_line_when_debug_then_named_and_typed() {
-        let mut debug_map: HashMap<u16, (&str, u8)> = HashMap::new();
-        debug_map.insert(0, ("Counter", iec_type_tag::DINT));
+        let mut debug_map: HashMap<u16, VarDebugInfo> = HashMap::new();
+        debug_map.insert(
+            0,
+            VarDebugInfo {
+                name: "Counter".into(),
+                type_name: "DINT".into(),
+                iec_type_tag: iec_type_tag::DINT,
+            },
+        );
         let mut buf = Vec::new();
         assert!(write_variable_line(&mut buf, 0, 42_u64, &debug_map).is_ok());
         assert_eq!(std::str::from_utf8(&buf).unwrap(), "Counter: 42\n");
@@ -531,7 +497,7 @@ mod tests {
     /// REQ-VC-005: dump write failures produce a V6006 error.
     #[spec_test(REQ_VC_005)]
     fn write_variable_line_when_writer_errors_then_v6006() {
-        let debug_map: HashMap<u16, (&str, u8)> = HashMap::new();
+        let debug_map: HashMap<u16, VarDebugInfo> = HashMap::new();
         let mut sink = FailingWriter;
         let err = write_variable_line(&mut sink, 0, 0, &debug_map)
             .expect_err("writer failure should surface as VmError");
@@ -539,44 +505,5 @@ mod tests {
             err.to_string().starts_with("V6006"),
             "expected V6006 (dump write), got {err}"
         );
-    }
-
-    #[test]
-    fn build_var_debug_map_when_no_debug_section_then_empty() {
-        // A container without any debug entries has no debug section.
-        let container = ContainerBuilder::new()
-            .num_variables(1)
-            .add_function(FunctionId::new(0), &[0xB5], 0, 1, 0)
-            .build();
-        let map = build_var_debug_map(&container);
-        assert!(map.is_empty());
-    }
-
-    #[test]
-    fn build_var_debug_map_when_debug_present_then_maps_by_index() {
-        let container = ContainerBuilder::new()
-            .num_variables(2)
-            .add_function(FunctionId::new(0), &[0xB5], 0, 2, 0)
-            .add_var_name(VarNameEntry {
-                var_index: VarIndex::new(0),
-                function_id: FunctionId::GLOBAL_SCOPE,
-                var_section: 0,
-                iec_type_tag: iec_type_tag::DINT,
-                name: "alpha".into(),
-                type_name: "DINT".into(),
-            })
-            .add_var_name(VarNameEntry {
-                var_index: VarIndex::new(1),
-                function_id: FunctionId::GLOBAL_SCOPE,
-                var_section: 0,
-                iec_type_tag: iec_type_tag::BOOL,
-                name: "beta".into(),
-                type_name: "BOOL".into(),
-            })
-            .build();
-        let map = build_var_debug_map(&container);
-        assert_eq!(map.len(), 2);
-        assert_eq!(map.get(&0), Some(&("alpha", iec_type_tag::DINT)));
-        assert_eq!(map.get(&1), Some(&("beta", iec_type_tag::BOOL)));
     }
 }

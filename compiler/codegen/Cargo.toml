@@ -13,6 +13,9 @@ ironplc-container = { path = "../container", version = "0.206.0" }
 ironplc-problems = { path = "../problems", version = "0.206.0" }
 ironplc-analyzer = { path = "../analyzer", version = "0.206.0" }
 
+[build-dependencies]
+ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
+
 [dev-dependencies]
 ironplc-analyzer = { path = "../analyzer", version = "0.206.0" }
 ironplc-parser = { path = "../parser", version = "0.206.0" }
