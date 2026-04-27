@@ -1,0 +1,19 @@
+# Code owners for security-sensitive paths.
+#
+# GitHub auto-requests review from the listed owners when a PR modifies
+# matching files. With "Require review from Code Owners" enabled on the
+# main branch protection rule, merge is blocked until at least one
+# code owner approves.
+#
+# Note: last matching pattern wins, not all of them. Order matters.
+
+# Workflow definitions — gates publish secrets and runner-minute usage.
+# See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+.github/workflows/   @garretfick
+
+# This file itself.
+.github/CODEOWNERS   @garretfick
+
+# The CI/secret-scoping ADR. Future revisions should be reviewed by an
+# owner who understands the threat model.
+specs/adrs/0032-*    @garretfick
