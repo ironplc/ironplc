@@ -29,6 +29,9 @@ jobs:
         name: Update Dependencies
 
         runs-on: ubuntu-latest
+        # Scopes IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN to deployments from
+        # main; PR-triggered workflows cannot reach this secret.
+        environment: production
 
         outputs:
           commit-ref: ${{ inputs.branch-name }}
