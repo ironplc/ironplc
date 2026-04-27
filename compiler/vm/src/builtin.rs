@@ -604,22 +604,29 @@ fn dispatch_mux_f64(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
     Ok(())
 }
 
-/// IEEE 754-safe clamp for f32. Unlike `f32::clamp`, this does not panic
-/// when `mn`, `mx`, or `val` is NaN. NaN propagates: if any input is NaN
-/// the result is NaN.
-#[inline]
-fn float_clamp_f32(val: f32, mn: f32, mx: f32) -> f32 {
-    if val.is_nan() || mn.is_nan() || mx.is_nan() {
-        return f32::NAN;
-    }
-    if val < mn {
-        mn
-    } else if val > mx {
-        mx
-    } else {
-        val
-    }
+/// Defines an IEEE 754-safe clamp function for a float type. Unlike
+/// `f{32,64}::clamp`, this does not panic when `mn`, `mx`, or `val` is NaN.
+/// NaN propagates: if any input is NaN the result is NaN.
+macro_rules! define_float_clamp {
+    ($name:ident, $ty:ty) => {
+        #[inline]
+        fn $name(val: $ty, mn: $ty, mx: $ty) -> $ty {
+            if val.is_nan() || mn.is_nan() || mx.is_nan() {
+                return <$ty>::NAN;
+            }
+            if val < mn {
+                mn
+            } else if val > mx {
+                mx
+            } else {
+                val
+            }
+        }
+    };
 }
+
+define_float_clamp!(float_clamp_f32, f32);
+define_float_clamp!(float_clamp_f64, f64);
 
 // =============================================================================
 // BCD conversion helpers
@@ -685,59 +692,25 @@ fn int_to_bcd_u8(val: u8) -> u8 {
     ((val / 10) << 4) | (val % 10)
 }
 
-/// Encodes a u16 value (max 9999) as BCD. Values > 9999 wrap.
-#[inline]
-fn int_to_bcd_u16(val: u16) -> u16 {
-    let val = val % 10000;
-    let mut result: u16 = 0;
-    let mut remaining = val;
-    for i in 0..4 {
-        let digit = remaining % 10;
-        result |= digit << (4 * i);
-        remaining /= 10;
-    }
-    result
+/// Defines a fixed-width BCD encoder for an unsigned integer type. The
+/// encoded value is reduced modulo `10^digits` so larger inputs wrap.
+macro_rules! define_int_to_bcd {
+    ($name:ident, $ty:ty, $digits:expr, $modulus:expr) => {
+        #[inline]
+        fn $name(val: $ty) -> $ty {
+            let val = val % $modulus;
+            let mut result: $ty = 0;
+            let mut remaining = val;
+            for i in 0..$digits {
+                let digit = remaining % 10;
+                result |= digit << (4 * i);
+                remaining /= 10;
+            }
+            result
+        }
+    };
 }
 
-/// Encodes a u32 value (max 99_999_999) as BCD. Values > 99_999_999 wrap.
-#[inline]
-fn int_to_bcd_u32(val: u32) -> u32 {
-    let val = val % 100_000_000;
-    let mut result: u32 = 0;
-    let mut remaining = val;
-    for i in 0..8 {
-        let digit = remaining % 10;
-        result |= digit << (4 * i);
-        remaining /= 10;
-    }
-    result
-}
-
-/// Encodes a u64 value as BCD (16 digits).
-#[inline]
-fn int_to_bcd_u64(val: u64) -> u64 {
-    let val = val % 10_000_000_000_000_000;
-    let mut result: u64 = 0;
-    let mut remaining = val;
-    for i in 0..16 {
-        let digit = remaining % 10;
-        result |= digit << (4 * i);
-        remaining /= 10;
-    }
-    result
-}
-
-/// IEEE 754-safe clamp for f64. See [`float_clamp_f32`] for semantics.
-#[inline]
-fn float_clamp_f64(val: f64, mn: f64, mx: f64) -> f64 {
-    if val.is_nan() || mn.is_nan() || mx.is_nan() {
-        return f64::NAN;
-    }
-    if val < mn {
-        mn
-    } else if val > mx {
-        mx
-    } else {
-        val
-    }
-}
+define_int_to_bcd!(int_to_bcd_u16, u16, 4, 10_000);
+define_int_to_bcd!(int_to_bcd_u32, u32, 8, 100_000_000);
+define_int_to_bcd!(int_to_bcd_u64, u64, 16, 10_000_000_000_000_000);
