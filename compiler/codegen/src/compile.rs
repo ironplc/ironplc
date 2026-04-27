@@ -714,70 +714,67 @@ impl CompileContext {
         idx
     }
 
-    /// Adds an i32 constant to the pool and returns its index.
-    pub(crate) fn add_i32_constant(&mut self, value: i32) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::I32(v) = existing {
-                if *v == value {
-                    return i as u16;
-                }
-            }
+    /// Returns the index of an existing constant matching `matches`, or
+    /// pushes `new_value` and returns its index.
+    fn intern_constant(
+        &mut self,
+        matches: impl FnMut(&PoolConstant) -> bool,
+        new_value: PoolConstant,
+    ) -> u16 {
+        if let Some(i) = self.constants.iter().position(matches) {
+            return i as u16;
         }
         let index = self.constants.len() as u16;
-        self.constants.push(PoolConstant::I32(value));
+        self.constants.push(new_value);
         index
+    }
+
+    /// Adds an i32 constant to the pool and returns its index.
+    pub(crate) fn add_i32_constant(&mut self, value: i32) -> u16 {
+        self.intern_constant(
+            |c| matches!(c, PoolConstant::I32(v) if *v == value),
+            PoolConstant::I32(value),
+        )
     }
 
     /// Adds an f32 constant to the pool and returns its index.
+    ///
+    /// Equality uses `to_bits()` so that distinct NaN bit patterns are not
+    /// collapsed to the same pool entry.
     pub(crate) fn add_f32_constant(&mut self, value: f32) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::F32(v) = existing {
-                if v.to_bits() == value.to_bits() {
-                    return i as u16;
-                }
-            }
-        }
-        let index = self.constants.len() as u16;
-        self.constants.push(PoolConstant::F32(value));
-        index
+        self.intern_constant(
+            |c| matches!(c, PoolConstant::F32(v) if v.to_bits() == value.to_bits()),
+            PoolConstant::F32(value),
+        )
     }
 
     /// Adds an f64 constant to the pool and returns its index.
+    ///
+    /// Equality uses `to_bits()` so that distinct NaN bit patterns are not
+    /// collapsed to the same pool entry.
     pub(crate) fn add_f64_constant(&mut self, value: f64) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::F64(v) = existing {
-                if v.to_bits() == value.to_bits() {
-                    return i as u16;
-                }
-            }
-        }
-        let index = self.constants.len() as u16;
-        self.constants.push(PoolConstant::F64(value));
-        index
+        self.intern_constant(
+            |c| matches!(c, PoolConstant::F64(v) if v.to_bits() == value.to_bits()),
+            PoolConstant::F64(value),
+        )
     }
 
     /// Adds an i64 constant to the pool and returns its index.
     pub(crate) fn add_i64_constant(&mut self, value: i64) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::I64(v) = existing {
-                if *v == value {
-                    return i as u16;
-                }
-            }
-        }
-        let index = self.constants.len() as u16;
-        self.constants.push(PoolConstant::I64(value));
-        index
+        self.intern_constant(
+            |c| matches!(c, PoolConstant::I64(v) if *v == value),
+            PoolConstant::I64(value),
+        )
     }
 
     /// Adds a string constant (raw bytes) to the pool and returns its index.
     pub(crate) fn add_str_constant(&mut self, value: Vec<u8>) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::Str(v) = existing {
-                if *v == value {
-                    return i as u16;
-                }
-            }
+        if let Some(i) = self
+            .constants
+            .iter()
+            .position(|c| matches!(c, PoolConstant::Str(v) if v == &value))
+        {
+            return i as u16;
         }
         let index = self.constants.len() as u16;
         self.constants.push(PoolConstant::Str(value));

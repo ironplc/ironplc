@@ -26,6 +26,11 @@
     "remoteEnv": {
         "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
     },
+    // Run docs venv setup once after the container is created. The venv
+    // lives in the mounted workspace (docs/.venv), so it cannot be baked
+    // into the image; this runs after the workspace is mounted so the
+    // container is ready to build docs immediately.
+    "postCreateCommand": "cd docs && just setup",
     // Required to set up line coverage in Rust
     "runArgs": [ "--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined" ]
 }

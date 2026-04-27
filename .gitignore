@@ -15,6 +15,7 @@ __pycache__/
 .venv/
 *.exe
 lcov.info
+.secrets/
 
 # Terraform
 terraform.tfvars
