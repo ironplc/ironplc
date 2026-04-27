@@ -11,6 +11,12 @@
 # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
 .github/workflows/   @garretfick
 
+# Justfiles — privileged workflow jobs in the `production` environment
+# invoke recipes with IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN, VSCE_PAT,
+# and OVSX_PAT in scope. A malicious recipe edit would have the same
+# blast radius as a malicious workflow edit.
+**/justfile          @garretfick
+
 # This file itself.
 .github/CODEOWNERS   @garretfick
 

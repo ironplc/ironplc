@@ -90,7 +90,7 @@ For any PR that modifies `.github/workflows/**`:
 4. Does it add a new workflow that reads `secrets.*`?
    * The reading job must declare an appropriate environment (`production` for publish secrets; none for `GITHUB_TOKEN`-only).
 
-A CODEOWNERS rule on `.github/workflows/**` ensures a security-aware reviewer is automatically routed to every such PR.
+A CODEOWNERS rule on `.github/workflows/**` and `**/justfile` ensures a security-aware reviewer is automatically routed to every such PR. Justfiles are included because privileged jobs (`environment: production`) execute justfile recipes with publish secrets in scope — a malicious recipe edit has the same blast radius as a malicious workflow edit.
 
 ### One-time GitHub setup
 
