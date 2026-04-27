@@ -169,6 +169,17 @@ Point the webhook (managed by Terraform) at
 | Agent/API failure | Error notice | `+flag/agent-error` | `AGENT_ERROR` |
 | 4th retry at one stage | Revision-limit notice | `+flag/revision-limit` | `REVISION_LIMIT` |
 
+## System prompts
+
+LLM system prompts live as Markdown files in `agents/prompts/`:
+
+- `requirements_validate.md` — the "is the issue ready?" prompt
+- `requirements_generate.md` — the "draft the requirements doc" prompt
+
+Edit them directly to tune agent behavior; no code changes needed.
+The files are read at module import in `agents/requirements.py`, so a
+restart of `just serve` picks up changes.
+
 ## Tests
 
 ```bash
