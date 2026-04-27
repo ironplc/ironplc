@@ -36,6 +36,7 @@ jobs:
         runs-on: ubuntu-latest
         # Scopes IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN to deployments from
         # main; PR-triggered workflows cannot reach this secret.
+        # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
         environment: production
         
         outputs:

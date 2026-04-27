@@ -126,6 +126,7 @@ jobs:
     needs: [release, publish-website]
     runs-on: ubuntu-latest
     # Scopes VS_MARKETPLACE_TOKEN, OVSX_PAT to deployments from main.
+    # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
     environment: production
     defaults:
       run:
@@ -179,6 +180,7 @@ jobs:
     needs: [release, publish-release]
     runs-on: ubuntu-latest
     # Scopes IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN to deployments from main.
+    # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
     environment: production
     steps:
       - name: Download playground artifact
@@ -206,6 +208,7 @@ jobs:
     needs: [release, publish-release]
     runs-on: ubuntu-latest
     # Scopes IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN to deployments from main.
+    # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
     environment: production
     defaults:
       run:

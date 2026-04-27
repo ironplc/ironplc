@@ -11,9 +11,9 @@ permissions:
 
 jobs:
   # Per-run approval gate. Every run pauses here until a reviewer of the
-  # `pr-ci` environment clicks Approve, scoped to that exact commit. This
-  # prevents arbitrary fork PRs (and unreviewed pushes) from consuming
-  # runner minutes or executing untrusted code on our behalf.
+  # `pr-ci` environment clicks Approve, scoped to that exact commit.
+  # See specs/adrs/0032-ci-gating-and-secret-scoping.md for the rationale,
+  # threat model, and one-time GitHub setup required.
   approve:
     name: Awaiting maintainer approval
     runs-on: ubuntu-latest
