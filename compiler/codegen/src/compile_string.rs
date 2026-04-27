@@ -299,15 +299,48 @@ pub(crate) fn compile_insert(
     Ok(())
 }
 
-/// Compiles the DELETE standard function call.
+/// Compiles a string function call of the form `FN(IN, ARG1)`.
 ///
-/// DELETE(IN1, L, P) deletes L characters from IN1 starting at position
-/// P (1-based) and returns the result as a new string. IN1 must be a
-/// STRING variable; L and P are integer expressions compiled onto the stack.
-pub(crate) fn compile_delete(
+/// Resolves IN to a data_offset, compiles ARG1 as an integer expression
+/// onto the stack, accounts for the result temp buffer, then emits the
+/// opcode supplied by `emit`.
+fn compile_string_2arg(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     func: &Function,
+    emit: fn(&mut Emitter, u32),
+) -> Result<(), Diagnostic> {
+    let args = collect_positional_args(func);
+
+    if args.len() != 2 {
+        return Err(Diagnostic::todo_with_span(
+            func.name.span(),
+            file!(),
+            line!(),
+        ));
+    }
+
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+
+    let op_type = DEFAULT_OP_TYPE;
+    compile_expr(emitter, ctx, args[1], op_type)?;
+
+    ctx.num_temp_bufs += 1;
+
+    emit(emitter, in_offset);
+    Ok(())
+}
+
+/// Compiles a string function call of the form `FN(IN, ARG1, ARG2)`.
+///
+/// Resolves IN to a data_offset, compiles ARG1 and ARG2 as integer
+/// expressions onto the stack, accounts for the result temp buffer, then
+/// emits the opcode supplied by `emit`.
+fn compile_string_3arg(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+    emit: fn(&mut Emitter, u32),
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
 
@@ -319,18 +352,29 @@ pub(crate) fn compile_delete(
         ));
     }
 
-    let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
+    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
 
-    // Compile L and P integer expressions onto the stack.
     let op_type = DEFAULT_OP_TYPE;
     compile_expr(emitter, ctx, args[1], op_type)?;
     compile_expr(emitter, ctx, args[2], op_type)?;
 
-    // Account for the temp buffer needed for the result.
     ctx.num_temp_bufs += 1;
 
-    emitter.emit_delete_str(in1_offset);
+    emit(emitter, in_offset);
     Ok(())
+}
+
+/// Compiles the DELETE standard function call.
+///
+/// DELETE(IN1, L, P) deletes L characters from IN1 starting at position
+/// P (1-based) and returns the result as a new string. IN1 must be a
+/// STRING variable; L and P are integer expressions compiled onto the stack.
+pub(crate) fn compile_delete(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    func: &Function,
+) -> Result<(), Diagnostic> {
+    compile_string_3arg(emitter, ctx, func, Emitter::emit_delete_str)
 }
 
 /// Compiles the LEFT standard function call.
@@ -342,27 +386,7 @@ pub(crate) fn compile_left(
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-
-    // Compile L integer expression onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[1], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_left_str(in_offset);
-    Ok(())
+    compile_string_2arg(emitter, ctx, func, Emitter::emit_left_str)
 }
 
 /// Compiles the RIGHT standard function call.
@@ -374,27 +398,7 @@ pub(crate) fn compile_right(
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-
-    // Compile L integer expression onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[1], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_right_str(in_offset);
-    Ok(())
+    compile_string_2arg(emitter, ctx, func, Emitter::emit_right_str)
 }
 
 /// Compiles the MID standard function call.
@@ -407,28 +411,7 @@ pub(crate) fn compile_mid(
     ctx: &mut CompileContext,
     func: &Function,
 ) -> Result<(), Diagnostic> {
-    let args = collect_positional_args(func);
-
-    if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
-    }
-
-    let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
-
-    // Compile L and P integer expressions onto the stack.
-    let op_type = DEFAULT_OP_TYPE;
-    compile_expr(emitter, ctx, args[1], op_type)?;
-    compile_expr(emitter, ctx, args[2], op_type)?;
-
-    // Account for the temp buffer needed for the result.
-    ctx.num_temp_bufs += 1;
-
-    emitter.emit_mid_str(in_offset);
-    Ok(())
+    compile_string_3arg(emitter, ctx, func, Emitter::emit_mid_str)
 }
 
 /// Compiles the CONCAT standard function call.
