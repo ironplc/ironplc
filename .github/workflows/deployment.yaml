@@ -125,6 +125,9 @@ jobs:
     name: Publish Release
     needs: [release, publish-website]
     runs-on: ubuntu-latest
+    # Scopes VS_MARKETPLACE_TOKEN, OVSX_PAT to deployments from main.
+    # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+    environment: production
     defaults:
       run:
         working-directory: ./integrations/vscode
@@ -176,6 +179,9 @@ jobs:
     name: Publish Playground to playground.ironplc.com
     needs: [release, publish-release]
     runs-on: ubuntu-latest
+    # Scopes IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN to deployments from main.
+    # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+    environment: production
     steps:
       - name: Download playground artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -201,6 +207,9 @@ jobs:
     name: Publish Homebrew Tap
     needs: [release, publish-release]
     runs-on: ubuntu-latest
+    # Scopes IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN to deployments from main.
+    # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+    environment: production
     defaults:
       run:
         working-directory: ./compiler
