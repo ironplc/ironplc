@@ -21,6 +21,8 @@ from agents.requirements import (
     AgentError,
     IncompleteIssueError,
     RequirementsAgent,
+    _REQUIREMENTS_SYSTEM,
+    _VALIDATION_SYSTEM,
 )
 from ledger import Ledger
 from schemas import IssueContext, RequirementsDocument, ValidationResult
@@ -168,6 +170,21 @@ class TestValidationResultSchema(unittest.TestCase):
     def test_validation_result_when_missing_defaults_to_empty(self) -> None:
         v = ValidationResult.model_validate({"sufficient": True})
         self.assertEqual(v.missing, "")
+
+
+class TestSystemPrompts(unittest.TestCase):
+    def test_validation_prompt_when_loaded_then_non_empty_and_mentions_tool(
+        self,
+    ) -> None:
+        self.assertTrue(_VALIDATION_SYSTEM.strip())
+        self.assertIn("report_validation", _VALIDATION_SYSTEM)
+
+    def test_requirements_prompt_when_loaded_then_non_empty_and_mentions_tool(
+        self,
+    ) -> None:
+        self.assertTrue(_REQUIREMENTS_SYSTEM.strip())
+        self.assertIn("report_requirements", _REQUIREMENTS_SYSTEM)
+        self.assertIn("REQ-TBD", _REQUIREMENTS_SYSTEM)
 
 
 if __name__ == "__main__":

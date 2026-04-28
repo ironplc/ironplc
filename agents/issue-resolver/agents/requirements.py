@@ -31,6 +31,7 @@ token counts — never the prompt body.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import anthropic
@@ -54,52 +55,13 @@ class AgentError(RuntimeError):
         self.message = message
 
 
-_VALIDATION_SYSTEM = """\
-You are a triage assistant for the IronPLC compiler project. Your job
-is to decide whether a GitHub issue contains enough information for a
-requirements engineer to draft requirements.
-
-An issue has enough information when it contains ALL of the following:
-1. A code snippet, typically IEC 61131-3 Structured Text.
-2. A description of what currently happens in IronPLC (actual
-   behavior).
-3. A description of what should happen instead (expected behavior).
-
-The issue does NOT need to follow any template. Assess substance, not
-structure. Relevant information may appear anywhere in the title,
-body, or follow-up comments.
-
-Call the `report_validation` tool exactly once with your answer.
-"""
-
-
-_REQUIREMENTS_SYSTEM = """\
-You are a requirements engineer for the IronPLC compiler project.
-IronPLC is an open-source runtime for the IEC 61131-3:2013 PLC
-programming languages. Given a GitHub issue (title, body, and comment
-thread), produce a structured requirements document.
-
-Each requirement must:
-- Use a placeholder ID of the form `REQ-TBD-NNN`, sequential, zero-
-  padded, starting at 001. The Design stage will reassign the prefix
-  later; do not invent another prefix here.
-- Contain one SHALL sentence describing required behavior.
-- Be specific, testable, and traceable to the reported problem.
-- Stay inside the scope of the reported issue; do not expand into
-  unrelated features.
-- When the issue cites a clause or table from the standard, ground
-  the requirement by referring to IEC 61131-3:2013 and the specific
-  clause or table number.
-
-Follow the requirement conventions that already exist in the IronPLC
-repository; do not invent new formatting rules.
-
-Use the `open_questions` field for ambiguities that need maintainer
-input, and leave it empty when there are none.
-
-Call the `report_requirements` tool exactly once with the finished
-document.
-"""
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
+_VALIDATION_SYSTEM = (_PROMPTS_DIR / "requirements_validate.md").read_text(
+    encoding="utf-8"
+)
+_REQUIREMENTS_SYSTEM = (_PROMPTS_DIR / "requirements_generate.md").read_text(
+    encoding="utf-8"
+)
 
 
 def _tool_from_schema(name: str, description: str, schema: dict[str, Any]) -> dict[str, Any]:
