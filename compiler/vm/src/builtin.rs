@@ -2,12 +2,144 @@
 //!
 //! Handles execution of the BUILTIN opcode by dispatching on the function ID.
 
+use core::fmt::Write;
+
 use ironplc_container::opcode;
 use ironplc_container::FunctionId;
+use ironplc_container::STRING_HEADER_BYTES;
 
 use crate::error::Trap;
 use crate::stack::OperandStack;
+use crate::string_ops;
 use crate::value::Slot;
+use crate::vm::{read_u16_le, StackFmtBuf};
+
+/// Top-level handler for the `BUILTIN` opcode.
+///
+/// Reads the builtin function ID from the operand stream and dispatches.
+/// Numeric ↔ STRING conversions and CMP_STR are handled inline because
+/// they need access to `temp_buf` / `data_region` / `temp_alloc`; all
+/// other builtins delegate to `dispatch` which only needs the stack.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn handle_builtin(
+    bytecode: &[u8],
+    pc: &mut usize,
+    stack: &mut OperandStack,
+    data_region: &mut [u8],
+    temp_buf: &mut [u8],
+    max_temp_buf_bytes: usize,
+    temp_alloc: &mut string_ops::TempBufAllocator,
+) -> Result<(), Trap> {
+    let func_id = read_u16_le(bytecode, pc)?;
+    match func_id {
+        opcode::builtin::CONV_I32_TO_STR => {
+            let val = stack.pop()?.as_i32();
+            let mut fmt_buf = StackFmtBuf::new();
+            let _ = write!(fmt_buf, "{}", val);
+            let bytes = fmt_buf.as_bytes();
+            let (buf_idx, buf_start) = {
+                let slot = temp_alloc.alloc(temp_buf.len())?;
+                (slot.buf_idx as usize, slot.buf_start)
+            };
+            let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+            let cur_len = (bytes.len() as u16).min(max_len);
+            string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+            temp_buf[buf_start + STRING_HEADER_BYTES
+                ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
+                .copy_from_slice(&bytes[..cur_len as usize]);
+            stack.push(Slot::from_i32(buf_idx as i32))?;
+        }
+        opcode::builtin::CONV_U32_TO_STR => {
+            let val = stack.pop()?.as_i32() as u32;
+            let mut fmt_buf = StackFmtBuf::new();
+            let _ = write!(fmt_buf, "{}", val);
+            let bytes = fmt_buf.as_bytes();
+            let (buf_idx, buf_start) = {
+                let slot = temp_alloc.alloc(temp_buf.len())?;
+                (slot.buf_idx as usize, slot.buf_start)
+            };
+            let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+            let cur_len = (bytes.len() as u16).min(max_len);
+            string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+            temp_buf[buf_start + STRING_HEADER_BYTES
+                ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
+                .copy_from_slice(&bytes[..cur_len as usize]);
+            stack.push(Slot::from_i32(buf_idx as i32))?;
+        }
+        opcode::builtin::CONV_F32_TO_STR => {
+            let val = stack.pop()?.as_f32();
+            let mut fmt_buf = StackFmtBuf::new();
+            let _ = write!(fmt_buf, "{}", val);
+            let bytes = fmt_buf.as_bytes();
+            let (buf_idx, buf_start) = {
+                let slot = temp_alloc.alloc(temp_buf.len())?;
+                (slot.buf_idx as usize, slot.buf_start)
+            };
+            let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+            let cur_len = (bytes.len() as u16).min(max_len);
+            string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+            temp_buf[buf_start + STRING_HEADER_BYTES
+                ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
+                .copy_from_slice(&bytes[..cur_len as usize]);
+            stack.push(Slot::from_i32(buf_idx as i32))?;
+        }
+        opcode::builtin::CONV_STR_TO_I32 => {
+            let data_offset = stack.pop()?.as_i32() as usize;
+            if data_offset + STRING_HEADER_BYTES > data_region.len() {
+                return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
+            }
+            let cur_len = string_ops::str_read_cur_len(data_region, data_offset) as usize;
+            let start = data_offset + STRING_HEADER_BYTES;
+            let end = (start + cur_len).min(data_region.len());
+            let result = core::str::from_utf8(&data_region[start..end])
+                .ok()
+                .and_then(|s| s.trim().parse::<i32>().ok())
+                .unwrap_or(0);
+            stack.push(Slot::from_i32(result))?;
+        }
+        opcode::builtin::CONV_STR_TO_F32 => {
+            let data_offset = stack.pop()?.as_i32() as usize;
+            if data_offset + STRING_HEADER_BYTES > data_region.len() {
+                return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
+            }
+            let cur_len = string_ops::str_read_cur_len(data_region, data_offset) as usize;
+            let start = data_offset + STRING_HEADER_BYTES;
+            let end = (start + cur_len).min(data_region.len());
+            let result = core::str::from_utf8(&data_region[start..end])
+                .ok()
+                .and_then(|s| s.trim().parse::<f32>().ok())
+                .unwrap_or(0.0);
+            stack.push(Slot::from_f32(result))?;
+        }
+        opcode::builtin::CMP_STR => {
+            let right_offset = stack.pop()?.as_i32() as usize;
+            let left_offset = stack.pop()?.as_i32() as usize;
+
+            if left_offset + STRING_HEADER_BYTES > data_region.len() {
+                return Err(Trap::DataRegionOutOfBounds(left_offset as u32));
+            }
+            let left_len = string_ops::str_read_cur_len(data_region, left_offset) as usize;
+            let left_start = left_offset + STRING_HEADER_BYTES;
+            let left_data = &data_region[left_start..left_start + left_len];
+
+            if right_offset + STRING_HEADER_BYTES > data_region.len() {
+                return Err(Trap::DataRegionOutOfBounds(right_offset as u32));
+            }
+            let right_len = string_ops::str_read_cur_len(data_region, right_offset) as usize;
+            let right_start = right_offset + STRING_HEADER_BYTES;
+            let right_data = &data_region[right_start..right_start + right_len];
+
+            let cmp_val = match left_data.cmp(right_data) {
+                core::cmp::Ordering::Less => -1i32,
+                core::cmp::Ordering::Equal => 0i32,
+                core::cmp::Ordering::Greater => 1i32,
+            };
+            stack.push(Slot::from_i32(cmp_val))?;
+        }
+        _ => dispatch(func_id, stack)?,
+    }
+    Ok(())
+}
 
 /// Dispatches a built-in function call by `func_id`.
 ///

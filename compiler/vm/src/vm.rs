@@ -1,6 +1,5 @@
 use ironplc_container::{
-    ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, TaskType, VarIndex,
-    STRING_HEADER_BYTES,
+    ConstantIndex, Container, InstanceId, TaskId, TaskType, VarIndex,
 };
 
 use crate::buffers::VmBuffers;
@@ -14,7 +13,6 @@ use crate::stack::OperandStack;
 use crate::string_ops;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
-use core::fmt::Write as FmtWrite;
 use ironplc_container::opcode;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -28,7 +26,7 @@ use std::time::Instant;
 /// (including under test harnesses with smaller stacks) while leaving
 /// plenty of headroom for realistic IEC-61131 programs, which typically
 /// nest only a handful of levels.
-const MAX_CALL_DEPTH: u32 = 32;
+pub(crate) const MAX_CALL_DEPTH: u32 = 32;
 
 /// Context for a fault that occurred during task execution.
 #[derive(Debug)]
@@ -892,171 +890,31 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     pc = (pc as isize + offset as isize) as usize;
                 }
             }
-            opcode::BUILTIN => {
-                let func_id = read_u16_le(bytecode, &mut pc)?;
-                match func_id {
-                    // --- Numeric ↔ STRING conversions ---
-                    //
-                    // These are handled inline (not via builtin::dispatch)
-                    // because they need access to temp_buf and data_region.
-                    opcode::builtin::CONV_I32_TO_STR => {
-                        let val = stack.pop()?.as_i32();
-                        let mut fmt_buf = StackFmtBuf::new();
-                        let _ = write!(fmt_buf, "{}", val);
-                        let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) = {
-                            let slot = temp_alloc.alloc(temp_buf.len())?;
-                            (slot.buf_idx as usize, slot.buf_start)
-                        };
-                        let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                        let cur_len = (bytes.len() as u16).min(max_len);
-                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
-                        temp_buf[buf_start + STRING_HEADER_BYTES
-                            ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
-                            .copy_from_slice(&bytes[..cur_len as usize]);
-                        stack.push(Slot::from_i32(buf_idx as i32))?;
-                    }
-                    opcode::builtin::CONV_U32_TO_STR => {
-                        let val = stack.pop()?.as_i32() as u32;
-                        let mut fmt_buf = StackFmtBuf::new();
-                        let _ = write!(fmt_buf, "{}", val);
-                        let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) = {
-                            let slot = temp_alloc.alloc(temp_buf.len())?;
-                            (slot.buf_idx as usize, slot.buf_start)
-                        };
-                        let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                        let cur_len = (bytes.len() as u16).min(max_len);
-                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
-                        temp_buf[buf_start + STRING_HEADER_BYTES
-                            ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
-                            .copy_from_slice(&bytes[..cur_len as usize]);
-                        stack.push(Slot::from_i32(buf_idx as i32))?;
-                    }
-                    opcode::builtin::CONV_F32_TO_STR => {
-                        let val = stack.pop()?.as_f32();
-                        let mut fmt_buf = StackFmtBuf::new();
-                        let _ = write!(fmt_buf, "{}", val);
-                        let bytes = fmt_buf.as_bytes();
-                        let (buf_idx, buf_start) = {
-                            let slot = temp_alloc.alloc(temp_buf.len())?;
-                            (slot.buf_idx as usize, slot.buf_start)
-                        };
-                        let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                        let cur_len = (bytes.len() as u16).min(max_len);
-                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
-                        temp_buf[buf_start + STRING_HEADER_BYTES
-                            ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
-                            .copy_from_slice(&bytes[..cur_len as usize]);
-                        stack.push(Slot::from_i32(buf_idx as i32))?;
-                    }
-                    opcode::builtin::CONV_STR_TO_I32 => {
-                        let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
-                            .ok()
-                            .and_then(|s| s.trim().parse::<i32>().ok())
-                            .unwrap_or(0);
-                        stack.push(Slot::from_i32(result))?;
-                    }
-                    opcode::builtin::CONV_STR_TO_F32 => {
-                        let data_offset = stack.pop()?.as_i32() as usize;
-                        if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                        }
-                        let cur_len =
-                            string_ops::str_read_cur_len(data_region, data_offset) as usize;
-                        let start = data_offset + STRING_HEADER_BYTES;
-                        let end = (start + cur_len).min(data_region.len());
-                        let result = core::str::from_utf8(&data_region[start..end])
-                            .ok()
-                            .and_then(|s| s.trim().parse::<f32>().ok())
-                            .unwrap_or(0.0);
-                        stack.push(Slot::from_f32(result))?;
-                    }
-                    opcode::builtin::CMP_STR => {
-                        let right_offset = stack.pop()?.as_i32() as usize;
-                        let left_offset = stack.pop()?.as_i32() as usize;
-
-                        if left_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(left_offset as u32));
-                        }
-                        let left_len =
-                            string_ops::str_read_cur_len(data_region, left_offset) as usize;
-                        let left_start = left_offset + STRING_HEADER_BYTES;
-                        let left_data = &data_region[left_start..left_start + left_len];
-
-                        if right_offset + STRING_HEADER_BYTES > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(right_offset as u32));
-                        }
-                        let right_len =
-                            string_ops::str_read_cur_len(data_region, right_offset) as usize;
-                        let right_start = right_offset + STRING_HEADER_BYTES;
-                        let right_data = &data_region[right_start..right_start + right_len];
-
-                        let cmp_val = match left_data.cmp(right_data) {
-                            core::cmp::Ordering::Less => -1i32,
-                            core::cmp::Ordering::Equal => 0i32,
-                            core::cmp::Ordering::Greater => 1i32,
-                        };
-                        stack.push(Slot::from_i32(cmp_val))?;
-                    }
-                    _ => builtin::dispatch(func_id, stack)?,
-                }
-            }
-            opcode::CALL => {
-                let func_id = read_u16_le(bytecode, &mut pc)?;
-                let var_offset = read_u16_le(bytecode, &mut pc)?;
-                let func = container
-                    .code
-                    .get_function(FunctionId::new(func_id))
-                    .ok_or(Trap::InvalidFunctionId(FunctionId::new(func_id)))?;
-                let func_bytecode = container
-                    .code
-                    .get_function_bytecode(FunctionId::new(func_id))
-                    .ok_or(Trap::InvalidFunctionId(FunctionId::new(func_id)))?;
-
-                let func_scope = VariableScope {
-                    shared_globals_size: scope.shared_globals_size,
-                    instance_offset: var_offset,
-                    instance_count: func.num_locals,
-                };
-
-                // Pop arguments from stack into function's parameter slots (reverse order).
-                for i in (0..func.num_params).rev() {
-                    let val = stack.pop()?;
-                    variables.store(VarIndex::new(var_offset + i), val)?;
-                }
-
-                // Recursively execute the function body, threading the debug hook
-                // through so callees are observable too. A future iterative
-                // dispatch rewrite could replace this recursion with an explicit
-                // return-address stack; until then the depth counter bounds it.
-                if depth >= MAX_CALL_DEPTH {
-                    return Err(Trap::CallStackOverflow);
-                }
-                execute_with_hook(
-                    func_bytecode,
-                    container,
-                    stack,
-                    variables,
-                    data_region,
-                    temp_buf,
-                    max_temp_buf_bytes,
-                    &func_scope,
-                    current_time_us,
-                    depth + 1,
-                    #[cfg(feature = "profiling")]
-                    profile,
-                    hook,
-                )?;
-            }
+            opcode::BUILTIN => builtin::handle_builtin(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                max_temp_buf_bytes,
+                &mut temp_alloc,
+            )?,
+            opcode::CALL => crate::call_op::handle_call(
+                bytecode,
+                &mut pc,
+                container,
+                stack,
+                variables,
+                data_region,
+                temp_buf,
+                max_temp_buf_bytes,
+                scope,
+                current_time_us,
+                depth,
+                #[cfg(feature = "profiling")]
+                profile,
+                hook,
+            )?,
             opcode::RET => {
                 // Return value is already on the stack; just return from execute().
                 return Ok(());
@@ -1092,608 +950,126 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             // STRING variable during program initialization, before any values
             // are stored. STR_STORE_VAR relies on max_length being set here
             // to enforce the capacity bound.
-            opcode::STR_INIT => {
-                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let max_length = read_u16_le(bytecode, &mut pc)?;
-
-                if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                }
-                string_ops::str_write_header(data_region, data_offset, max_length, 0);
-            }
-
-            // LOAD_CONST_STR: Load a string literal from the constant pool
-            // into a temp buffer.
-            //
-            // Operands: pool_index (u16)
-            // Stack effect: pushes buf_idx (the temp buffer holding the string)
-            //
-            // Steps:
-            //   1. Look up raw bytes in the constant pool
-            //   2. Claim the next temp buffer from the bump allocator
-            //   3. Write the string into the temp buffer in [max][cur][data] format
-            //   4. Push the buf_idx onto the stack so a subsequent opcode
-            //      (e.g. STR_STORE_VAR) can find the data
-            opcode::LOAD_CONST_STR => {
-                let index = read_u16_le(bytecode, &mut pc)?;
-                let str_bytes = container
-                    .constant_pool
-                    .get_str(ConstantIndex::new(index))
-                    .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
-
-                let (buf_idx, buf_start) = {
-                    let slot = temp_alloc.alloc(temp_buf.len())?;
-                    (slot.buf_idx as usize, slot.buf_start)
-                };
-
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (str_bytes.len() as u16).min(max_len);
-                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
-                temp_buf[buf_start + STRING_HEADER_BYTES
-                    ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
-                    .copy_from_slice(&str_bytes[..cur_len as usize]);
-
-                stack.push(Slot::from_i32(buf_idx as i32))?;
-            }
-
-            // STR_STORE_VAR: Copy a string from a temp buffer into the
-            // data region (i.e., assign to a STRING variable).
-            //
-            // Operands: data_offset (u16) — where the destination string lives
-            // Stack effect: pops buf_idx
-            //
-            // Steps:
-            //   1. Pop buf_idx to locate the source temp buffer
-            //   2. Read the source's cur_length from the temp buffer header
-            //   3. Read the destination's max_length from the data region header
-            //      (set earlier by STR_INIT)
-            //   4. Copy min(src_cur_length, dest_max_length) bytes — this
-            //      silently truncates if the source is longer than the
-            //      destination can hold (IEC 61131-3 assignment semantics)
-            //   5. Update the destination's cur_length
-            opcode::STR_STORE_VAR => {
-                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let buf_idx = stack.pop()?.as_i32() as usize;
-
-                let buf_start = buf_idx * max_temp_buf_bytes;
-                if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
-
-                if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                }
-                let dest_max_len = string_ops::str_read_max_len(data_region, data_offset);
-
-                // Copy character data, truncating if source exceeds destination capacity.
-                let copy_len = src_cur_len.min(dest_max_len) as usize;
-                if data_offset + STRING_HEADER_BYTES + copy_len > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                }
-                let dst_start = data_offset + STRING_HEADER_BYTES;
-                let src_start = buf_start + STRING_HEADER_BYTES;
-                data_region[dst_start..dst_start + copy_len]
-                    .copy_from_slice(&temp_buf[src_start..src_start + copy_len]);
-
-                // Update destination cur_length.
-                data_region[data_offset + 2..data_offset + STRING_HEADER_BYTES]
-                    .copy_from_slice(&(copy_len as u16).to_le_bytes());
-            }
-
-            // STR_LOAD_VAR: Copy a string from the data region into a temp
-            // buffer (i.e., read a STRING variable for use in an expression).
-            //
-            // Operands: data_offset (u16) — where the source string lives
-            // Stack effect: pushes buf_idx
-            //
-            // This is the inverse of STR_STORE_VAR: it reads from the data
-            // region and writes to a temp buffer so the string value can be
-            // passed through the stack to another opcode.
-            opcode::STR_LOAD_VAR => {
-                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
-
-                if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                }
-                let src_max_len = string_ops::str_read_max_len(data_region, data_offset);
-                let src_cur_len = string_ops::str_read_cur_len(data_region, data_offset);
-                // Defensive: never read more than max_length bytes.
-                let read_len = src_cur_len.min(src_max_len) as usize;
-
-                let (buf_idx, buf_start) = {
-                    let slot = temp_alloc.alloc(temp_buf.len())?;
-                    (slot.buf_idx as usize, slot.buf_start)
-                };
-
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (read_len as u16).min(max_len);
-                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
-                if data_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                }
-                let dst_start = buf_start + STRING_HEADER_BYTES;
-                let src_start = data_offset + STRING_HEADER_BYTES;
-                temp_buf[dst_start..dst_start + cur_len as usize]
-                    .copy_from_slice(&data_region[src_start..src_start + cur_len as usize]);
-
-                stack.push(Slot::from_i32(buf_idx as i32))?;
-            }
-            // --- String function opcodes ---
-            //
-            // LEN_STR reads the cur_length field from a STRING variable's
-            // header in the data region and pushes it as an i32.
+            opcode::STR_INIT => string_ops::handle_str_init(bytecode, &mut pc, data_region)?,
+            opcode::LOAD_CONST_STR => string_ops::handle_load_const_str(
+                bytecode,
+                &mut pc,
+                container,
+                stack,
+                temp_buf,
+                max_temp_buf_bytes,
+                &mut temp_alloc,
+            )?,
+            opcode::STR_STORE_VAR => string_ops::handle_str_store_var(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                max_temp_buf_bytes,
+            )?,
+            opcode::STR_LOAD_VAR => string_ops::handle_str_load_var(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                max_temp_buf_bytes,
+                &mut temp_alloc,
+            )?,
             opcode::LEN_STR => {
-                let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
-
-                if data_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
-                }
-                let cur_len = u16::from_le_bytes([
-                    data_region[data_offset + 2],
-                    data_region[data_offset + 3],
-                ]);
-                stack.push(Slot::from_i32(cur_len as i32))?;
+                string_ops::handle_len_str(bytecode, &mut pc, stack, data_region)?
             }
-            // FIND_STR: Find the first occurrence of IN2 within IN1.
-            // Returns 1-based position or 0 if not found.
             opcode::FIND_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
-
-                // Read IN1's current length.
-                if in1_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in1_offset as u32));
-                }
-                let in1_len =
-                    u16::from_le_bytes([data_region[in1_offset + 2], data_region[in1_offset + 3]])
-                        as usize;
-
-                // Read IN2's current length.
-                if in2_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(in2_offset as u32));
-                }
-                let in2_len =
-                    u16::from_le_bytes([data_region[in2_offset + 2], data_region[in2_offset + 3]])
-                        as usize;
-
-                let result = if in2_len == 0 || in2_len > in1_len {
-                    // Empty search string or search string longer than haystack: not found.
-                    0i32
-                } else {
-                    let in1_start = in1_offset + STRING_HEADER_BYTES;
-                    let in2_start = in2_offset + STRING_HEADER_BYTES;
-                    let in1_data = &data_region[in1_start..in1_start + in1_len];
-                    let in2_data = &data_region[in2_start..in2_start + in2_len];
-
-                    // Linear search for the first occurrence.
-                    let mut found = 0i32;
-                    for i in 0..=(in1_len - in2_len) {
-                        if in1_data[i..i + in2_len] == *in2_data {
-                            found = (i + 1) as i32; // 1-based position
-                            break;
-                        }
-                    }
-                    found
-                };
-                stack.push(Slot::from_i32(result))?;
+                string_ops::handle_find_str(bytecode, &mut pc, stack, data_region)?
             }
-            // REPLACE_STR: Replace L characters starting at position P in IN1
-            // with IN2. Pops P then L from stack, pushes buf_idx.
-            opcode::REPLACE_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let p_val = stack.pop()?.as_i32();
-                let l_val = stack.pop()?.as_i32();
-
-                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
-                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
-
-                let p = if p_val < 1 { 1usize } else { p_val as usize };
-                let l = if l_val < 0 { 0usize } else { l_val as usize };
-                let start_idx = (p - 1).min(in1_len);
-                let delete_len = l.min(in1_len - start_idx);
-
-                // Result = IN1[0..start_idx] + IN2 + IN1[start_idx+delete_len..]
-                let prefix_len = start_idx;
-                let suffix_start = start_idx + delete_len;
-                let suffix_len = in1_len - suffix_start;
-                let result_len = prefix_len + in2_len + suffix_len;
-
-                let slot = temp_alloc.alloc(temp_buf.len())?;
-
-                let (cur_len, data_start) = string_ops::write_string_header(
-                    temp_buf,
-                    slot.buf_start,
-                    slot.max_len,
-                    result_len,
-                );
-
-                // Write result data: prefix + IN2 + suffix.
-                let mut write_pos = 0usize;
-                let prefix_copy = prefix_len.min(cur_len as usize);
-                temp_buf[data_start..data_start + prefix_copy]
-                    .copy_from_slice(&data_region[in1_start..in1_start + prefix_copy]);
-                write_pos += prefix_copy;
-                let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
-                temp_buf[data_start + write_pos..data_start + write_pos + in2_copy]
-                    .copy_from_slice(&data_region[in2_start..in2_start + in2_copy]);
-                write_pos += in2_copy;
-                let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
-                temp_buf[data_start + write_pos..data_start + write_pos + suffix_copy]
-                    .copy_from_slice(
-                        &data_region
-                            [in1_start + suffix_start..in1_start + suffix_start + suffix_copy],
-                    );
-
-                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
-            }
-            // INSERT_STR: Insert IN2 into IN1 after position P.
-            // Pops P from stack, pushes buf_idx.
-            opcode::INSERT_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let p_val = stack.pop()?.as_i32();
-
-                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
-                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
-
-                let p = if p_val < 0 { 0usize } else { p_val as usize };
-                let insert_idx = p.min(in1_len);
-
-                // Result = IN1[0..insert_idx] + IN2 + IN1[insert_idx..]
-                let prefix_len = insert_idx;
-                let suffix_len = in1_len - insert_idx;
-                let result_len = prefix_len + in2_len + suffix_len;
-
-                let slot = temp_alloc.alloc(temp_buf.len())?;
-
-                let (cur_len, data_start) = string_ops::write_string_header(
-                    temp_buf,
-                    slot.buf_start,
-                    slot.max_len,
-                    result_len,
-                );
-
-                // Write result data: prefix + IN2 + suffix.
-                let mut write_pos = 0usize;
-                let prefix_copy = prefix_len.min(cur_len as usize);
-                temp_buf[data_start..data_start + prefix_copy]
-                    .copy_from_slice(&data_region[in1_start..in1_start + prefix_copy]);
-                write_pos += prefix_copy;
-                let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
-                temp_buf[data_start + write_pos..data_start + write_pos + in2_copy]
-                    .copy_from_slice(&data_region[in2_start..in2_start + in2_copy]);
-                write_pos += in2_copy;
-                let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
-                temp_buf[data_start + write_pos..data_start + write_pos + suffix_copy]
-                    .copy_from_slice(
-                        &data_region[in1_start + insert_idx..in1_start + insert_idx + suffix_copy],
-                    );
-
-                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
-            }
-            // DELETE_STR: Delete L characters from IN1 starting at position P.
-            // Pops P then L from stack, pushes buf_idx.
-            opcode::DELETE_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let p_val = stack.pop()?.as_i32();
-                let l_val = stack.pop()?.as_i32();
-
-                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
-
-                let p = if p_val < 1 { 1usize } else { p_val as usize };
-                let l = if l_val < 0 { 0usize } else { l_val as usize };
-                let start_idx = (p - 1).min(in1_len);
-                let delete_len = l.min(in1_len - start_idx);
-
-                // Result = IN1[0..start_idx] + IN1[start_idx+delete_len..]
-                let prefix_len = start_idx;
-                let suffix_start = start_idx + delete_len;
-                let suffix_len = in1_len - suffix_start;
-                let result_len = prefix_len + suffix_len;
-
-                let slot = temp_alloc.alloc(temp_buf.len())?;
-
-                let (cur_len, data_start) = string_ops::write_string_header(
-                    temp_buf,
-                    slot.buf_start,
-                    slot.max_len,
-                    result_len,
-                );
-
-                // Write result data: prefix + suffix.
-                let mut write_pos = 0usize;
-                let prefix_copy = prefix_len.min(cur_len as usize);
-                temp_buf[data_start..data_start + prefix_copy]
-                    .copy_from_slice(&data_region[in1_start..in1_start + prefix_copy]);
-                write_pos += prefix_copy;
-                let suffix_copy = suffix_len.min((cur_len as usize).saturating_sub(write_pos));
-                temp_buf[data_start + write_pos..data_start + write_pos + suffix_copy]
-                    .copy_from_slice(
-                        &data_region
-                            [in1_start + suffix_start..in1_start + suffix_start + suffix_copy],
-                    );
-
-                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
-            }
-            // LEFT_STR: Return the leftmost L characters of IN.
-            // Pops L from stack, pushes buf_idx.
-            opcode::LEFT_STR => {
-                let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let l_val = stack.pop()?.as_i32();
-
-                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
-
-                let l = if l_val < 0 { 0usize } else { l_val as usize };
-                let result_len = l.min(in_len);
-
-                let slot = temp_alloc.alloc(temp_buf.len())?;
-
-                let (cur_len, data_start) = string_ops::write_string_header(
-                    temp_buf,
-                    slot.buf_start,
-                    slot.max_len,
-                    result_len,
-                );
-
-                let copy_len = cur_len as usize;
-                temp_buf[data_start..data_start + copy_len]
-                    .copy_from_slice(&data_region[in_start..in_start + copy_len]);
-
-                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
-            }
-            // RIGHT_STR: Return the rightmost L characters of IN.
-            // Pops L from stack, pushes buf_idx.
-            opcode::RIGHT_STR => {
-                let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let l_val = stack.pop()?.as_i32();
-
-                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
-
-                let l = if l_val < 0 { 0usize } else { l_val as usize };
-                let result_len = l.min(in_len);
-                let src_start = in_len - result_len;
-
-                let slot = temp_alloc.alloc(temp_buf.len())?;
-
-                let (cur_len, data_start) = string_ops::write_string_header(
-                    temp_buf,
-                    slot.buf_start,
-                    slot.max_len,
-                    result_len,
-                );
-
-                let copy_len = cur_len as usize;
-                let src = in_start + src_start;
-                temp_buf[data_start..data_start + copy_len]
-                    .copy_from_slice(&data_region[src..src + copy_len]);
-
-                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
-            }
-            // MID_STR: Return L characters from IN starting at position P.
-            // Pops P then L from stack, pushes buf_idx.
-            opcode::MID_STR => {
-                let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let p_val = stack.pop()?.as_i32();
-                let l_val = stack.pop()?.as_i32();
-
-                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
-
-                let p = if p_val < 1 { 1usize } else { p_val as usize };
-                let l = if l_val < 0 { 0usize } else { l_val as usize };
-                let start_idx = (p - 1).min(in_len);
-                let result_len = l.min(in_len - start_idx);
-
-                let slot = temp_alloc.alloc(temp_buf.len())?;
-
-                let (cur_len, data_start) = string_ops::write_string_header(
-                    temp_buf,
-                    slot.buf_start,
-                    slot.max_len,
-                    result_len,
-                );
-
-                let copy_len = cur_len as usize;
-                let src = in_start + start_idx;
-                temp_buf[data_start..data_start + copy_len]
-                    .copy_from_slice(&data_region[src..src + copy_len]);
-
-                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
-            }
-            // CONCAT_STR: Concatenate IN1 and IN2.
-            // Pushes buf_idx.
-            opcode::CONCAT_STR => {
-                let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
-                let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
-
-                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
-                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
-
-                let result_len = in1_len + in2_len;
-
-                let slot = temp_alloc.alloc(temp_buf.len())?;
-
-                let (cur_len, data_start) = string_ops::write_string_header(
-                    temp_buf,
-                    slot.buf_start,
-                    slot.max_len,
-                    result_len,
-                );
-
-                // Write result data: IN1 + IN2.
-                let mut write_pos = 0usize;
-                let in1_copy = in1_len.min(cur_len as usize);
-                for i in 0..in1_copy {
-                    temp_buf[data_start + write_pos] = data_region[in1_start + i];
-                    write_pos += 1;
-                }
-                let in2_copy = in2_len.min((cur_len as usize).saturating_sub(write_pos));
-                for i in 0..in2_copy {
-                    temp_buf[data_start + write_pos] = data_region[in2_start + i];
-                    write_pos += 1;
-                }
-
-                stack.push(Slot::from_i32(slot.buf_idx as i32))?;
-            }
-            // --- String array opcodes ---
-
-            // STR_INIT_ARRAY: Initialize all string headers in an array of strings.
-            //
-            // Operands: var_index (u16), desc_index (u16)
-            // Stack effect: none
-            //
-            // Reads element_extra from the array descriptor as max_string_length.
-            // Element stride = STRING_HEADER_BYTES + max_string_length.
-            // Loops through all elements writing [max_len][cur_len=0] headers.
-            opcode::STR_INIT_ARRAY => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
-                let desc_index = read_u16_le(bytecode, &mut pc)?;
-
-                let desc = container
-                    .type_section
-                    .as_ref()
-                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
-                let total_elements = desc.total_elements;
-                let max_str_len = desc.element_extra;
-                let stride = STRING_HEADER_BYTES + max_str_len as usize;
-
-                scope.check_access(var_index)?;
-                let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
-
-                for i in 0..total_elements as usize {
-                    let elem_offset = base_offset + i * stride;
-                    if elem_offset + STRING_HEADER_BYTES > data_region.len() {
-                        return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
-                    }
-                    string_ops::str_write_header(data_region, elem_offset, max_str_len, 0);
-                }
-            }
-
-            // STR_LOAD_ARRAY_ELEM: Load a string from an array element into a temp buffer.
-            //
-            // Operands: var_index (u16), desc_index (u16)
-            // Stack effect: pops flat_index, pushes buf_idx (net 0)
-            //
-            // Computes element offset = base + flat_index * stride, then copies the
-            // string from the data region into a temp buffer.
-            opcode::STR_LOAD_ARRAY_ELEM => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
-                let desc_index = read_u16_le(bytecode, &mut pc)?;
-                let index_slot = stack.pop()?;
-                let index_i64 = index_slot.as_i64();
-
-                let desc = container
-                    .type_section
-                    .as_ref()
-                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
-                let total_elements = desc.total_elements;
-                let max_str_len = desc.element_extra;
-                let stride = STRING_HEADER_BYTES + max_str_len as usize;
-
-                if index_i64 < 0 || index_i64 >= total_elements as i64 {
-                    return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index,
-                        index: index_i64 as i32,
-                        total_elements,
-                    });
-                }
-                let index = index_i64 as usize;
-
-                scope.check_access(var_index)?;
-                let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
-                let elem_offset = base_offset + index * stride;
-
-                if elem_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
-                }
-                let src_cur_len = string_ops::str_read_cur_len(data_region, elem_offset);
-                let read_len = src_cur_len.min(max_str_len) as usize;
-
-                let (buf_idx, buf_start) = {
-                    let slot = temp_alloc.alloc(temp_buf.len())?;
-                    (slot.buf_idx as usize, slot.buf_start)
-                };
-
-                let buf_max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (read_len as u16).min(buf_max_len);
-                string_ops::str_write_header(temp_buf, buf_start, buf_max_len, cur_len);
-
-                if elem_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
-                }
-                let dst_start = buf_start + STRING_HEADER_BYTES;
-                let src_start = elem_offset + STRING_HEADER_BYTES;
-                temp_buf[dst_start..dst_start + cur_len as usize]
-                    .copy_from_slice(&data_region[src_start..src_start + cur_len as usize]);
-
-                stack.push(Slot::from_i32(buf_idx as i32))?;
-            }
-
-            // STR_STORE_ARRAY_ELEM: Store a temp buffer into a string array element.
-            //
-            // Operands: var_index (u16), desc_index (u16)
-            // Stack effect: pops flat_index, pops buf_idx (net -2)
-            //
-            // Computes element offset = base + flat_index * stride, then copies
-            // the temp buffer contents into the data region, truncating per IEC 61131-3.
-            opcode::STR_STORE_ARRAY_ELEM => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
-                let desc_index = read_u16_le(bytecode, &mut pc)?;
-                let index_slot = stack.pop()?;
-                let value_slot = stack.pop()?;
-                let index_i64 = index_slot.as_i64();
-                let buf_idx = value_slot.as_i32() as usize;
-
-                let desc = container
-                    .type_section
-                    .as_ref()
-                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
-                let total_elements = desc.total_elements;
-                let max_str_len = desc.element_extra;
-                let stride = STRING_HEADER_BYTES + max_str_len as usize;
-
-                if index_i64 < 0 || index_i64 >= total_elements as i64 {
-                    return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index,
-                        index: index_i64 as i32,
-                        total_elements,
-                    });
-                }
-                let index = index_i64 as usize;
-
-                scope.check_access(var_index)?;
-                let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
-                let elem_offset = base_offset + index * stride;
-
-                // Read source from temp buffer.
-                let buf_start = buf_idx * max_temp_buf_bytes;
-                if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
-                    return Err(Trap::TempBufferExhausted);
-                }
-                let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
-
-                if elem_offset + STRING_HEADER_BYTES > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
-                }
-
-                // Copy, truncating to max_str_len per IEC 61131-3 semantics.
-                let copy_len = src_cur_len.min(max_str_len) as usize;
-                if elem_offset + STRING_HEADER_BYTES + copy_len > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
-                }
-                let dst_start = elem_offset + STRING_HEADER_BYTES;
-                let src_start = buf_start + STRING_HEADER_BYTES;
-                data_region[dst_start..dst_start + copy_len]
-                    .copy_from_slice(&temp_buf[src_start..src_start + copy_len]);
-
-                // Update destination cur_length.
-                data_region[elem_offset + 2..elem_offset + STRING_HEADER_BYTES]
-                    .copy_from_slice(&(copy_len as u16).to_le_bytes());
-            }
+            opcode::REPLACE_STR => string_ops::handle_replace_str(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                &mut temp_alloc,
+            )?,
+            opcode::INSERT_STR => string_ops::handle_insert_str(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                &mut temp_alloc,
+            )?,
+            opcode::DELETE_STR => string_ops::handle_delete_str(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                &mut temp_alloc,
+            )?,
+            opcode::LEFT_STR => string_ops::handle_left_str(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                &mut temp_alloc,
+            )?,
+            opcode::RIGHT_STR => string_ops::handle_right_str(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                &mut temp_alloc,
+            )?,
+            opcode::MID_STR => string_ops::handle_mid_str(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                &mut temp_alloc,
+            )?,
+            opcode::CONCAT_STR => string_ops::handle_concat_str(
+                bytecode,
+                &mut pc,
+                stack,
+                data_region,
+                temp_buf,
+                &mut temp_alloc,
+            )?,
+            opcode::STR_INIT_ARRAY => string_ops::handle_str_init_array(
+                bytecode,
+                &mut pc,
+                container,
+                variables,
+                data_region,
+                scope,
+            )?,
+            opcode::STR_LOAD_ARRAY_ELEM => string_ops::handle_str_load_array_elem(
+                bytecode,
+                &mut pc,
+                container,
+                stack,
+                variables,
+                data_region,
+                temp_buf,
+                max_temp_buf_bytes,
+                &mut temp_alloc,
+                scope,
+            )?,
+            opcode::STR_STORE_ARRAY_ELEM => string_ops::handle_str_store_array_elem(
+                bytecode,
+                &mut pc,
+                container,
+                stack,
+                variables,
+                data_region,
+                temp_buf,
+                max_temp_buf_bytes,
+                scope,
+            )?,
 
             opcode::POP => {
                 stack.pop()?;
@@ -1732,332 +1108,35 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 buf.copy_from_slice(&data_region[offset..offset + 8]);
                 stack.push(Slot::from_i64(i64::from_le_bytes(buf)))?;
             }
-            opcode::FB_CALL => {
-                let type_id = read_u16_le(bytecode, &mut pc)?;
-                let fb_ref = stack.peek()?.as_i32() as u32;
-                let instance_start = fb_ref as usize;
-                match type_id {
-                    opcode::fb_type::TON | opcode::fb_type::TOF | opcode::fb_type::TP => {
-                        let instance_size = crate::intrinsic::TIMER_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        let time = current_time_us as i64;
-                        match type_id {
-                            opcode::fb_type::TON => crate::intrinsic::ton(slice, time)?,
-                            opcode::fb_type::TOF => crate::intrinsic::tof(slice, time)?,
-                            opcode::fb_type::TP => crate::intrinsic::tp(slice, time)?,
-                            _ => unreachable!(),
-                        }
-                    }
-                    opcode::fb_type::CTU => {
-                        let instance_size = crate::intrinsic::CTU_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::ctu(slice)?;
-                    }
-                    opcode::fb_type::CTD => {
-                        let instance_size = crate::intrinsic::CTD_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::ctd(slice)?;
-                    }
-                    opcode::fb_type::CTUD => {
-                        let instance_size = crate::intrinsic::CTUD_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::ctud(slice)?;
-                    }
-                    opcode::fb_type::SR => {
-                        let instance_size = crate::intrinsic::SR_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::sr(slice)?;
-                    }
-                    opcode::fb_type::RS => {
-                        let instance_size = crate::intrinsic::RS_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::rs(slice)?;
-                    }
-                    opcode::fb_type::R_TRIG => {
-                        let instance_size = crate::intrinsic::R_TRIG_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::r_trig(slice)?;
-                    }
-                    opcode::fb_type::F_TRIG => {
-                        let instance_size = crate::intrinsic::F_TRIG_INSTANCE_FIELDS * 8;
-                        let instance_end = instance_start + instance_size;
-                        if instance_end > data_region.len() {
-                            return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
-                        }
-                        let slice = &mut data_region[instance_start..instance_end];
-                        crate::intrinsic::f_trig(slice)?;
-                    }
-                    _ => {
-                        // User-defined FB: look up in the container's user FB table.
-                        let fb_type_id = FbTypeId::new(type_id);
-                        let user_fb = container
-                            .type_section
-                            .as_ref()
-                            .and_then(|ts| {
-                                ts.user_fb_types.iter().find(|d| d.type_id == fb_type_id)
-                            })
-                            .ok_or(Trap::InvalidFbTypeId(fb_type_id))?;
-
-                        let func_id = user_fb.function_id;
-                        let var_off = user_fb.var_offset;
-                        let num_fields = user_fb.num_fields as usize;
-
-                        let func = container
-                            .code
-                            .get_function(func_id)
-                            .ok_or(Trap::InvalidFunctionId(func_id))?;
-                        let func_bytecode = container
-                            .code
-                            .get_function_bytecode(func_id)
-                            .ok_or(Trap::InvalidFunctionId(func_id))?;
-
-                        // Copy-in: data region fields -> variable table slots.
-                        for i in 0..num_fields {
-                            let offset = instance_start + i * 8;
-                            if offset + 8 > data_region.len() {
-                                return Err(Trap::DataRegionOutOfBounds(offset as u32));
-                            }
-                            let mut buf = [0u8; 8];
-                            buf.copy_from_slice(&data_region[offset..offset + 8]);
-                            variables.store(
-                                VarIndex::new(var_off + i as u16),
-                                Slot::from_i64(i64::from_le_bytes(buf)),
-                            )?;
-                        }
-
-                        // Execute the FB body.
-                        let func_scope = VariableScope {
-                            shared_globals_size: scope.shared_globals_size,
-                            instance_offset: var_off,
-                            instance_count: func.num_locals,
-                        };
-                        if depth >= MAX_CALL_DEPTH {
-                            return Err(Trap::CallStackOverflow);
-                        }
-                        execute_with_hook(
-                            func_bytecode,
-                            container,
-                            stack,
-                            variables,
-                            data_region,
-                            temp_buf,
-                            max_temp_buf_bytes,
-                            &func_scope,
-                            current_time_us,
-                            depth + 1,
-                            #[cfg(feature = "profiling")]
-                            profile,
-                            hook,
-                        )?;
-
-                        // Copy-out: variable table slots -> data region fields.
-                        for i in 0..num_fields {
-                            let offset = instance_start + i * 8;
-                            let val = variables.load(VarIndex::new(var_off + i as u16))?;
-                            data_region[offset..offset + 8]
-                                .copy_from_slice(&val.as_i64().to_le_bytes());
-                        }
-                    }
-                }
-            }
+            opcode::FB_CALL => crate::fb_ops::handle_fb_call(
+                bytecode,
+                &mut pc,
+                container,
+                stack,
+                variables,
+                data_region,
+                temp_buf,
+                max_temp_buf_bytes,
+                scope,
+                current_time_us,
+                depth,
+                #[cfg(feature = "profiling")]
+                profile,
+                hook,
+            )?,
             // --- Array opcodes ---
-            opcode::LOAD_ARRAY => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
-                let desc_index = read_u16_le(bytecode, &mut pc)?;
-                let index_slot = stack.pop()?;
-
-                // Read index as i64 to catch overflow from i64 flat-index arithmetic.
-                let index_i64 = index_slot.as_i64();
-
-                // Look up array descriptor by index (O(1) Vec access)
-                let total_elements = container
-                    .type_section
-                    .as_ref()
-                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                    .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
-
-                // Bounds check: 0 <= index < total_elements
-                if index_i64 < 0 || index_i64 >= total_elements as i64 {
-                    return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index,
-                        index: index_i64 as i32,
-                        total_elements,
-                    });
-                }
-                let index = index_i64 as u32;
-
-                scope.check_access(var_index)?;
-
-                let data_offset = variables.load(var_index)?.as_i32() as u32 as usize;
-                let byte_offset = data_offset + index as usize * 8;
-
-                if byte_offset + 8 > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(byte_offset as u32));
-                }
-
-                let mut buf = [0u8; 8];
-                buf.copy_from_slice(&data_region[byte_offset..byte_offset + 8]);
-                let raw = i64::from_le_bytes(buf);
-                stack.push(Slot::from_i64(raw))?;
-            }
-            opcode::STORE_ARRAY => {
-                let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
-                let desc_index = read_u16_le(bytecode, &mut pc)?;
-                let index_slot = stack.pop()?;
-                let value_slot = stack.pop()?;
-
-                let index_i64 = index_slot.as_i64();
-
-                let total_elements = container
-                    .type_section
-                    .as_ref()
-                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                    .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(var_index))?;
-
-                if index_i64 < 0 || index_i64 >= total_elements as i64 {
-                    return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index,
-                        index: index_i64 as i32,
-                        total_elements,
-                    });
-                }
-                let index = index_i64 as u32;
-
-                scope.check_access(var_index)?;
-
-                let data_offset = variables.load(var_index)?.as_i32() as u32 as usize;
-                let byte_offset = data_offset + index as usize * 8;
-
-                if byte_offset + 8 > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(byte_offset as u32));
-                }
-
-                data_region[byte_offset..byte_offset + 8]
-                    .copy_from_slice(&value_slot.as_i64().to_le_bytes());
-            }
-            opcode::LOAD_ARRAY_DEREF => {
-                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
-                let desc_index = read_u16_le(bytecode, &mut pc)?;
-                let index_slot = stack.pop()?;
-                let index_i64 = index_slot.as_i64();
-
-                // Resolve the reference: load the target variable index.
-                scope.check_access(ref_var_index)?;
-                let target_slot = variables.load(ref_var_index)?;
-                let target_raw = target_slot.as_i64() as u64;
-                if target_raw == u64::MAX {
-                    return Err(Trap::NullDereference);
-                }
-                let target_var_index = VarIndex::new(target_raw as u16);
-
-                // Bounds check via descriptor.
-                let total_elements = container
-                    .type_section
-                    .as_ref()
-                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                    .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(ref_var_index))?;
-
-                if index_i64 < 0 || index_i64 >= total_elements as i64 {
-                    return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index: target_var_index,
-                        index: index_i64 as i32,
-                        total_elements,
-                    });
-                }
-                let index = index_i64 as u32;
-
-                // Double indirection: load data_offset from target array variable.
-                // No scope check on target — it lives in the caller's scope,
-                // matching LOAD_INDIRECT/STORE_INDIRECT behavior.
-                let data_offset = variables.load(target_var_index)?.as_i32() as u32 as usize;
-                let byte_offset = data_offset + index as usize * 8;
-
-                if byte_offset + 8 > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(byte_offset as u32));
-                }
-
-                let mut buf = [0u8; 8];
-                buf.copy_from_slice(&data_region[byte_offset..byte_offset + 8]);
-                let raw = i64::from_le_bytes(buf);
-                stack.push(Slot::from_i64(raw))?;
-            }
-            opcode::STORE_ARRAY_DEREF => {
-                let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
-                let desc_index = read_u16_le(bytecode, &mut pc)?;
-                let index_slot = stack.pop()?;
-                let value_slot = stack.pop()?;
-                let index_i64 = index_slot.as_i64();
-
-                // Resolve the reference: load the target variable index.
-                scope.check_access(ref_var_index)?;
-                let target_slot = variables.load(ref_var_index)?;
-                let target_raw = target_slot.as_i64() as u64;
-                if target_raw == u64::MAX {
-                    return Err(Trap::NullDereference);
-                }
-                let target_var_index = VarIndex::new(target_raw as u16);
-
-                // Bounds check via descriptor.
-                let total_elements = container
-                    .type_section
-                    .as_ref()
-                    .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
-                    .map(|d| d.total_elements)
-                    .ok_or(Trap::InvalidVariableIndex(ref_var_index))?;
-
-                if index_i64 < 0 || index_i64 >= total_elements as i64 {
-                    return Err(Trap::ArrayIndexOutOfBounds {
-                        var_index: target_var_index,
-                        index: index_i64 as i32,
-                        total_elements,
-                    });
-                }
-                let index = index_i64 as u32;
-
-                // Double indirection: load data_offset from target array variable.
-                // No scope check on target — it lives in the caller's scope,
-                // matching LOAD_INDIRECT/STORE_INDIRECT behavior.
-                let data_offset = variables.load(target_var_index)?.as_i32() as u32 as usize;
-                let byte_offset = data_offset + index as usize * 8;
-
-                if byte_offset + 8 > data_region.len() {
-                    return Err(Trap::DataRegionOutOfBounds(byte_offset as u32));
-                }
-
-                data_region[byte_offset..byte_offset + 8]
-                    .copy_from_slice(&value_slot.as_i64().to_le_bytes());
-            }
+            opcode::LOAD_ARRAY => crate::array_ops::handle_load_array(
+                bytecode, &mut pc, container, stack, variables, data_region, scope,
+            )?,
+            opcode::STORE_ARRAY => crate::array_ops::handle_store_array(
+                bytecode, &mut pc, container, stack, variables, data_region, scope,
+            )?,
+            opcode::LOAD_ARRAY_DEREF => crate::array_ops::handle_load_array_deref(
+                bytecode, &mut pc, container, stack, variables, data_region, scope,
+            )?,
+            opcode::STORE_ARRAY_DEREF => crate::array_ops::handle_store_array_deref(
+                bytecode, &mut pc, container, stack, variables, data_region, scope,
+            )?,
             opcode::RET_VOID => {
                 return Ok(());
             }
@@ -2070,8 +1149,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     Ok(())
 }
 
+
 /// Reads a single byte from bytecode at pc, advancing pc by 1.
-fn read_u8(bytecode: &[u8], pc: &mut usize) -> Result<u8, Trap> {
+pub(crate) fn read_u8(bytecode: &[u8], pc: &mut usize) -> Result<u8, Trap> {
     if *pc >= bytecode.len() {
         return Err(Trap::UnexpectedEndOfBytecode);
     }
@@ -2081,7 +1161,7 @@ fn read_u8(bytecode: &[u8], pc: &mut usize) -> Result<u8, Trap> {
 }
 
 /// Reads a little-endian u16 from bytecode at pc, advancing pc by 2.
-fn read_u16_le(bytecode: &[u8], pc: &mut usize) -> Result<u16, Trap> {
+pub(crate) fn read_u16_le(bytecode: &[u8], pc: &mut usize) -> Result<u16, Trap> {
     let end = *pc + 2;
     if end > bytecode.len() {
         return Err(Trap::UnexpectedEndOfBytecode);
@@ -2092,7 +1172,7 @@ fn read_u16_le(bytecode: &[u8], pc: &mut usize) -> Result<u16, Trap> {
 }
 
 /// Reads a little-endian u32 from bytecode at pc, advancing pc by 4.
-fn read_u32_le(bytecode: &[u8], pc: &mut usize) -> Result<u32, Trap> {
+pub(crate) fn read_u32_le(bytecode: &[u8], pc: &mut usize) -> Result<u32, Trap> {
     let end = *pc + 4;
     if end > bytecode.len() {
         return Err(Trap::UnexpectedEndOfBytecode);
@@ -2108,7 +1188,7 @@ fn read_u32_le(bytecode: &[u8], pc: &mut usize) -> Result<u32, Trap> {
 }
 
 /// Reads a little-endian i16 from bytecode at pc, advancing pc by 2.
-fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> Result<i16, Trap> {
+pub(crate) fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> Result<i16, Trap> {
     let end = *pc + 2;
     if end > bytecode.len() {
         return Err(Trap::UnexpectedEndOfBytecode);
@@ -2123,20 +1203,20 @@ fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> Result<i16, Trap> {
 /// Used by CONV_I32_TO_STR, CONV_U32_TO_STR, and CONV_F32_TO_STR to
 /// avoid heap allocation. 48 bytes is enough for any i32, u32, or f32
 /// decimal representation.
-struct StackFmtBuf {
+pub(crate) struct StackFmtBuf {
     buf: [u8; 48],
     len: usize,
 }
 
 impl StackFmtBuf {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             buf: [0u8; 48],
             len: 0,
         }
     }
 
-    fn as_bytes(&self) -> &[u8] {
+    pub(crate) fn as_bytes(&self) -> &[u8] {
         &self.buf[..self.len]
     }
 }
