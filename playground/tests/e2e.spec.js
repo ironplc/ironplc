@@ -246,9 +246,17 @@ END_PROGRAM
     await page.fill('[data-testid="interval-input"]', "100");
     await page.click('[data-testid="start-btn"]');
 
-    // Wait for sparkline canvases to appear (need at least 2 data points)
+    // Wait for sparkline canvases to appear (need at least 2 data points).
+    // Assert on uPlot's bitmap attributes rather than layout visibility:
+    // uPlot only sets the canvas width/height attributes after commit()
+    // sizes the wrap, so seeing them proves the chart fully rendered. This
+    // avoids a race where renderVariables replaces innerHTML every 500ms
+    // and Playwright's toBeVisible occasionally sees a zero-sized layout box.
     const variablesPanel = page.locator('[data-testid="variables-panel"]');
-    await expect(variablesPanel.locator("canvas").first()).toBeVisible({ timeout: 10000 });
+    const canvas = variablesPanel.locator("canvas").first();
+    await expect(canvas).toBeAttached({ timeout: 10000 });
+    await expect(canvas).toHaveAttribute("width", "120");
+    await expect(canvas).toHaveAttribute("height", "24");
 
     await page.click('[data-testid="stop-btn"]');
   });
