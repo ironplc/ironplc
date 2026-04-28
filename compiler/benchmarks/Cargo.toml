@@ -18,7 +18,7 @@ ironplc-container = { path = "../container", version = "0.208.0" }
 ironplc-dsl = { path = "../dsl", version = "0.208.0" }
 ironplc-parser = { path = "../parser", version = "0.208.0" }
 ironplc-vm = { path = "../vm", version = "0.208.0", features = ["test-support"] }
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "st_benchmark"

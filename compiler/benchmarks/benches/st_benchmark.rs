@@ -7,12 +7,11 @@
 //!
 //! Run with: `cargo bench --package ironplc-benchmarks`
 
-use criterion::{
-    black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use ironplc_benchmarks::compile_st;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::{Slot, VmBuffers};
+use std::hint::black_box;
 
 /// Runs one benchmark iteration: creates `VmBuffers`, applies `$setup`,
 /// then executes one VM scan cycle.
