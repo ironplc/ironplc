@@ -12,7 +12,7 @@ use crate::error::Trap;
 use crate::stack::OperandStack;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
-use crate::vm::read_u16_le;
+use crate::dispatch::read_u16_le;
 
 pub(crate) fn handle_load_array(
     bytecode: &[u8],

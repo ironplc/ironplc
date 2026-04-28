@@ -12,7 +12,7 @@ use crate::error::Trap;
 use crate::stack::OperandStack;
 use crate::string_ops;
 use crate::value::Slot;
-use crate::vm::{read_u16_le, StackFmtBuf};
+use crate::dispatch::{read_u16_le, StackFmtBuf};
 
 /// Top-level handler for the `BUILTIN` opcode.
 ///

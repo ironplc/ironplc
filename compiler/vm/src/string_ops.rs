@@ -116,7 +116,7 @@ use ironplc_container::{Container, ConstantIndex, VarIndex};
 use crate::stack::OperandStack;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
-use crate::vm::{read_u16_le, read_u32_le};
+use crate::dispatch::{read_u16_le, read_u32_le};
 
 pub(crate) fn handle_str_init(
     bytecode: &[u8],

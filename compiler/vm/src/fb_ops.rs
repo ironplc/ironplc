@@ -18,7 +18,8 @@ use crate::profile::InstructionProfile;
 use crate::stack::OperandStack;
 use crate::value::Slot;
 use crate::variable_table::{VariableScope, VariableTable};
-use crate::vm::{execute_with_hook, read_u16_le, MAX_CALL_DEPTH};
+use crate::dispatch::{execute_with_hook, read_u16_le};
+use crate::vm::MAX_CALL_DEPTH;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_fb_call<H: DebugHook>(

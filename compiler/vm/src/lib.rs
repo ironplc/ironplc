@@ -3,6 +3,7 @@ pub(crate) mod array_ops;
 pub(crate) mod builtin;
 pub(crate) mod call_op;
 pub mod debug_hook;
+pub(crate) mod dispatch;
 pub mod error;
 pub(crate) mod fb_ops;
 pub(crate) mod intrinsic;
