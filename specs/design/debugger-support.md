@@ -23,7 +23,14 @@ This spec builds on:
 
 Goal #2 forces a single design decision that drives the rest of this spec. Today `execute_with_hook` (`compiler/vm/src/vm.rs`) implements PLC `CALL` by recursing into itself, so the Rust call stack *is* the PLC call stack. That architecture cannot pause mid-CALL: a `Paused` return value from the innermost frame leaves the operand-stack contents, locals, pc, and the chain of Rust frames stranded, with no way to resume.
 
-This spec therefore commits to converting the VM to a **non-recursive (iterative) dispatch** with an **explicit, heap-allocated frame stack**. Every PLC `CALL` pushes a frame; every `RET` pops one; the dispatch loop runs until the frame stack is empty or a debug pause is requested. The frame stack is the single piece of state that has to be checkpointed at a pause and restored at a resume — no Rust frames are involved.
+This spec therefore commits to converting the VM to a **non-recursive (iterative) dispatch** with an **explicit, embedder-provided frame stack**. Every PLC `CALL` pushes a frame; every `RET` pops one; the dispatch loop runs until the frame stack is empty or a debug pause is requested. The frame stack is the single piece of state that has to be checkpointed at a pause and restored at a resume — no Rust frames are involved.
+
+**No heap allocation.** The frame stack follows the same pattern the VM already uses for `OperandStack`, `VariableTable`, `data_region`, and `temp_buf` (`compiler/vm/src/stack.rs:5`, `variable_table.rs:42`): a borrowed `&mut [Frame]` slice owned by the embedder. The compiler already computes the worst-case call depth at compile time — IEC 61131-3 forbids recursion, so the call graph is a DAG and its longest path is the bound — and writes it to the container header as `max_call_depth: u16` (`compiler/container/src/header.rs:57`). The embedder reads that field, allocates a buffer of exactly that size, and hands it to the VM:
+
+- **Hosted (LSP, vm-cli, playground):** `Vec<Frame>` of length `header.max_call_depth`.
+- **`no_std` / Arduino-class:** `heapless::Vec<Frame, N>` or a fixed `[MaybeUninit<Frame>; N]` where `N` is a const upper bound chosen at firmware build time. A program whose `header.max_call_depth` exceeds the embedder's `N` is rejected at load with a clear error, the same way the operand stack and variable table already are.
+
+This preserves the no-heap, no-`alloc` execution profile that the existing VM already supports (see `2026-04-XX-no-std-vm-impl.md`). The debugger adds no new allocation requirement.
 
 This is the largest change in the plan. It must land before any breakpoint, step, or pause feature can work; Phase 2 cannot be skipped or reduced. The alternative — a "scan-boundary-only" debugger — is explicitly rejected because it cannot offer breakpoints in the middle of a function body, which is the headline debugger feature.
 
@@ -426,11 +433,13 @@ The fix is the standard interpreter pattern: store frames on a `Vec<Frame>`, pop
 
 ```rust
 /// One PLC call frame on the explicit frame stack.
+/// `Copy` so the frame stack can live in `[MaybeUninit<Frame>; N]` on no_std.
+#[derive(Clone, Copy)]
 pub struct Frame {
     /// The function this frame is executing.
     pub function_id: FunctionId,
     /// Byte offset within `function`'s bytecode of the *next* opcode to execute.
-    pub pc: usize,
+    pub pc: u32,
     /// Variable scope for this frame (locals + globals view).
     pub scope: VariableScope,
     /// Operand-stack height when this frame was pushed; used by RET to
@@ -444,19 +453,61 @@ pub struct Frame {
 }
 ```
 
-The frame stack is bounded by `MAX_CALL_DEPTH` (already a constant in `vm.rs`); attempting to push beyond it returns `Trap::CallStackOverflow` exactly as today.
+`Frame` is plain-old-data so it costs nothing to copy and can be stored in a fixed-size array on `no_std` targets.
+
+#### FrameStack: borrowed slice, no heap
+
+The frame stack is a borrowed slice plus a length, mirroring `OperandStack` and `VariableTable`:
+
+```rust
+pub struct FrameStack<'a> {
+    slots: &'a mut [Frame],
+    len: u16,
+}
+
+impl<'a> FrameStack<'a> {
+    /// `backing` must be at least `header.max_call_depth` Frames long.
+    pub fn new(backing: &'a mut [Frame]) -> Self { ... }
+
+    pub fn push(&mut self, frame: Frame) -> Result<(), Trap> {
+        if (self.len as usize) >= self.slots.len() {
+            return Err(Trap::CallStackOverflow);
+        }
+        self.slots[self.len as usize] = frame;
+        self.len += 1;
+        Ok(())
+    }
+
+    pub fn pop(&mut self) -> Option<Frame> { ... }
+    pub fn top(&self) -> Option<&Frame> { ... }
+    pub fn top_mut(&mut self) -> Option<&mut Frame> { ... }
+    pub fn len(&self) -> u16 { self.len }
+    pub fn is_empty(&self) -> bool { self.len == 0 }
+}
+```
+
+The slice may be backed by `Vec<Frame>`, `[Frame; N]`, `heapless::Vec<Frame, N>`, or any other contiguous storage. `FrameStack::new` does no allocation. The bound is enforced at runtime via `Trap::CallStackOverflow` (the existing trap), which fires both when the firmware-side const `N` is too small *and* when a malicious container under-reports `max_call_depth`. The constant `MAX_CALL_DEPTH = 32` in `vm.rs:31` is removed in favor of the per-program bound.
+
+#### Container-header bound is authoritative
+
+The compiler computes the worst-case call depth via a topological walk of the call graph (already legal because IEC 61131-3 forbids recursion) and writes it to `FileHeader.max_call_depth`. The codegen change in Phase 2 is to ensure this field is populated for every program; today it defaults to 0. The verifier (`compiler/codegen/src/spec_conformance.rs` or equivalent) gains a check that:
+
+- `header.max_call_depth ≥ longest_path(call_graph) + 1` (the +1 accounts for the entry frame).
+- The call graph contains no cycles (already enforced upstream as the recursion ban; this is a defense-in-depth check).
+
+Embedders read `header.max_call_depth` after loading the container and provision the frame slice. On `no_std` targets where the slice is a fixed `[Frame; N]`, the load fails with `LoadError::ProgramExceedsCallDepth { required, available }` if `header.max_call_depth > N`. This is the same policy the VM already uses for `max_stack_depth` against the operand-stack buffer.
 
 #### Restructured execute
 
 ```rust
-pub(crate) fn execute_with_hook<H: DebugHook>(
+pub(crate) fn execute_with_hook<'a, H: DebugHook>(
     container: &Container,
-    stack: &mut OperandStack,
-    variables: &mut VariableTable,
+    stack: &mut OperandStack<'a>,
+    variables: &mut VariableTable<'a>,
     data_region: &mut [u8],
     temp_buf: &mut [u8],
     max_temp_buf_bytes: usize,
-    frames: &mut FrameStack,
+    frames: &mut FrameStack<'a>,   // borrowed; no heap involved
     current_time_us: u64,
     hook: &mut H,
 ) -> Result<ExecuteOutcome, Trap> {
@@ -674,7 +725,7 @@ enum StepMode {
 
 ### Pause/Resume protocol
 
-A pause leaves the VM in a well-defined `PausedAt(PauseReason)` sub-state inside `VmRunning`. The complete checkpoint is:
+A pause leaves the VM in a well-defined `PausedAt(PauseReason)` sub-state inside `VmRunning`. **No allocation happens at pause or resume** — every piece of preserved state already lives in embedder-provided buffers (operand stack, variable table, data region, temp-buf, frame stack). Pause is just a state-flag flip plus a return out of the dispatch loop; resume is just a re-entry into it. The complete checkpoint is:
 
 | State | Owner | Why preserved |
 |-------|-------|---------------|
@@ -702,12 +753,14 @@ For v1, **breakpoints are global** (any instance hitting them pauses); a future 
 
 ### Concurrency model
 
+The concurrency model below applies to the **hosted DAP server only** (`vm-cli` with `--features dap`). `no_std` embedders have no DAP server — they run the VM with `NoopDebugHook` and pay zero overhead. The `vm` crate exposes the same `DebugHook` trait on both targets, but the Arc/Atomic/thread machinery lives in `vm-cli`, not `vm`, so the core VM stays `no_std` clean.
+
 The DAP I/O thread and the VM thread share three pieces of state. Each one has a specific synchronization rule:
 
 | State | Sharing pattern | Mechanism |
 |-------|-----------------|-----------|
-| `BreakpointTable` | I/O writes (setBreakpoints), VM reads (every instruction) | `arc_swap::ArcSwap<BreakpointTable>` — the I/O thread builds a new table off-thread and atomically swaps the `Arc` pointer. The VM does one `Arc` load per instruction (no contention, no locking). |
-| `pause_requested` | I/O writes (DAP `pause`), VM reads (every instruction) | `AtomicBool` with `Acquire` load + `Release` store. |
+| `BreakpointTable` | I/O writes (setBreakpoints), VM reads (every instruction) | `arc_swap::ArcSwap<BreakpointTable>` — the I/O thread builds a new table off-thread and atomically swaps the `Arc` pointer. The VM does one `Arc` load per instruction (no contention, no locking). Hosted-only (requires `alloc`). |
+| `pause_requested` | I/O writes (DAP `pause`), VM reads (every instruction) | `core::sync::atomic::AtomicBool` with `Acquire` load + `Release` store. Available on `no_std` too, though `no_std` builds never construct one. |
 | Frame stack, operand stack, variables, data region | VM mutates while running; I/O reads only when **paused** | Ownership transfer via channels: while RUNNING, the VM owns these; on pause it sends a `Paused` event with a `&mut`-equivalent handle (in practice a re-entrant `Mutex` held only when paused). DAP requests for variables/stackTrace are serviced from the paused state synchronously by the VM thread itself, fed by a request channel; the I/O thread never touches the VM's data structures directly. |
 
 This last point is important: `variables`, `stackTrace`, and `evaluate` requests are dispatched **on the VM thread** while it is paused, not on the I/O thread. The I/O thread only owns the JSON pipe. This eliminates every Send/Sync hazard the original plan glossed over.
@@ -1107,7 +1160,10 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 |-------|-------|---------|
 | `vm` | new `frame_stack.rs` | `Frame`, `FrameStack` (bounded by `MAX_CALL_DEPTH`), `TempAllocMark` |
 | `vm` | `vm.rs` | Replace recursive `CALL` arm (`vm.rs:1044`, `vm.rs:1865`) with `frames.push(...)`; lift the dispatch loop to iterate `frames`; `execute_with_hook` becomes the loop body's wrapper. Remove `depth` parameter — depth is now `frames.len()`. Add `ExecuteOutcome::{Completed, Paused}` (Paused only reachable after Phase 3 extends the hook signature; for now it's unreachable but the type exists). |
-| `vm` | `vm.rs` | `VmRunning` gains `frames: FrameStack`, `phase: Phase`, `current_instance_id`. `Phase::Running` is the only legal phase reached in this phase; `PausedAt` is added but only used in Phase 3. |
+| `vm` | `vm.rs` | `VmRunning<'a>` gains `frames: FrameStack<'a>`, `phase: Phase`, `current_instance_id`. The frame backing slice is supplied to `Vm::new()` alongside the existing operand-stack and variable-table backing slices; no allocation is added. `Phase::Running` is the only legal phase reached in this phase; `PausedAt` is added but only used in Phase 3. |
+| `vm` | `vm.rs` | `Vm::load()` validates `header.max_call_depth ≤ frames.capacity()` and returns `LoadError::ProgramExceedsCallDepth` otherwise (matches the existing operand-stack/variable-table sizing checks). |
+| `codegen` | `compile_fn.rs` / `compile.rs` | Compute worst-case call depth from the call graph (longest path; the recursion ban guarantees acyclicity) and write it to `FileHeader.max_call_depth`. |
+| `codegen` | `spec_conformance.rs` | Verify the call graph is acyclic and that the emitted `max_call_depth` is at least the longest path + 1. |
 | `vm` | `lib.rs` | Re-export `Frame`, `FrameStack`, `Phase`, `ExecuteOutcome` |
 
 **Migration order** (each commit must compile and pass `cd compiler && just`):
@@ -1259,7 +1315,7 @@ This means bytecode debugging works even when the debug section is stripped — 
 
 For reviewers familiar with the prior version of this document:
 
-1. **Iterative dispatch with explicit `FrameStack`** replaces the recursive `execute_with_hook`. This is the prerequisite for instruction-level pausing.
+1. **Iterative dispatch with explicit `FrameStack`** replaces the recursive `execute_with_hook`. The frame stack is a **borrowed slice** sized at load time from `header.max_call_depth` (computed by the compiler from the call graph; recursion is forbidden by IEC 61131-3 so the longest path is well-defined). No heap allocation; matches the existing `OperandStack` / `VariableTable` model and works on Arduino-class targets. This is the prerequisite for instruction-level pausing.
 2. **`DebugHook` trait extension** — `before_instruction` returns `HookAction`; new `before_call`/`after_return` callbacks; `function_id` parameter added. The existing `NoopDebugHook` + monomorphization model is retained, **not** replaced by `Option<&mut DebugState>`.
 3. **`DebuggerHook` is a `DebugHook` impl**, not a fourth-thing-named-`DebugState`. It owns the breakpoint table reference, step controller, and pause flag.
 4. **Concurrency model is explicit**: `ArcSwap<BreakpointTable>` for the breakpoint table, `AtomicBool` for the pause flag, and DAP request servicing happens *on the VM thread* while paused.
