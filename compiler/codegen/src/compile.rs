@@ -839,7 +839,7 @@ END_PROGRAM
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(1))
             .unwrap();
-        assert_eq!(scan_bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
+        assert_eq!(scan_bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0xB5]);
     }
 
     #[test]
@@ -969,7 +969,7 @@ END_PROGRAM
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(1))
             .unwrap();
-        assert_eq!(bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
+        assert_eq!(bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0xB5]);
     }
 
     #[test]
