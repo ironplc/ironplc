@@ -26,10 +26,10 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0xA1, // DUP (consecutive identical load)
             0x32, // MUL_I32
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );
@@ -57,10 +57,10 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (7)
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (7)
             0xA1, // DUP (store-load optimization)
-            0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );
