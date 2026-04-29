@@ -15,13 +15,13 @@ debug = ["peg/trace"]
 trace = ["debug"]
 
 [dependencies]
-time = "0.3.17"
-phf = { version = "0.11", features = ["macros"] }
+time = "0.3.47"
+phf = { version = "0.13", features = ["macros"] }
 ironplc-dsl = { path = "../dsl", version = "0.208.0" }
 ironplc-problems = { path = "../problems", version = "0.208.0" }
 ironplc-test = { path = "../test", version = "0.208.0" }
-logos = "0.14.0"
-peg = "0.8.3"
+logos = "0.16.1"
+peg = "0.8.5"
 
 [dev-dependencies]
 rstest = "0.26"

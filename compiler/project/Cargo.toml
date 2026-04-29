@@ -20,10 +20,10 @@ ironplc-dsl = { path = "../dsl", version = "0.208.0" }
 ironplc-problems = { path = "../problems", version = "0.208.0" }
 ironplc-sources = { path = "../sources", version = "0.208.0" }
 ironplc-container = { path = "../container", version = "0.208.0" }
-log = "0.4.20"
+log = "0.4.29"
 serde_json = "1.0"
 
 [dev-dependencies]
 tempfile = "3"
-ctor = "0.2"
-env_logger = "0.10"
+ctor = "0.11"
+env_logger = "0.11"

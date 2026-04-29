@@ -11,4 +11,4 @@ repository.workspace = true
 maintenance = { status = "experimental" }
 
 [build-dependencies]
-csv = "1.2"
+csv = "1.4"
