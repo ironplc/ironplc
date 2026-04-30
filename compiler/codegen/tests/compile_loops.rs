@@ -1,6 +1,7 @@
 //! Bytecode-level integration tests for WHILE, REPEAT, and FOR loop compilation.
 
 mod common;
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
 use common::parse_and_compile;
@@ -210,11 +211,6 @@ END_PROGRAM
 // are constants that keep every visible value (init, body, and the
 // post-final-increment) within the declared narrow type's range.
 
-const TRUNC_I8: u8 = 0x20;
-const TRUNC_U8: u8 = 0x21;
-const TRUNC_I16: u8 = 0x22;
-const TRUNC_U16: u8 = 0x23;
-
 #[test]
 fn compile_when_for_int_with_safe_constant_bounds_then_omits_trunc() {
     // Body uses a DINT sink so the only candidate TRUNC opcodes are the two
@@ -237,7 +233,7 @@ END_PROGRAM
         .unwrap();
 
     assert!(
-        !bytecode.contains(&TRUNC_I16),
+        !bytecode.contains(&opcode::TRUNC_I16),
         "TRUNC_I16 should be elided for in-range constant bounds; bytecode = {bytecode:?}"
     );
 }
@@ -264,7 +260,7 @@ END_PROGRAM
         .unwrap();
 
     assert!(
-        bytecode.contains(&TRUNC_I16),
+        bytecode.contains(&opcode::TRUNC_I16),
         "TRUNC_I16 must remain at boundary to=INT_MAX; bytecode = {bytecode:?}"
     );
 }
@@ -290,7 +286,7 @@ END_PROGRAM
         .unwrap();
 
     assert!(
-        bytecode.contains(&TRUNC_I16),
+        bytecode.contains(&opcode::TRUNC_I16),
         "TRUNC_I16 must remain when 'to' is non-constant; bytecode = {bytecode:?}"
     );
 }
@@ -315,7 +311,7 @@ END_PROGRAM
         .unwrap();
 
     assert!(
-        !bytecode.contains(&TRUNC_I8),
+        !bytecode.contains(&opcode::TRUNC_I8),
         "TRUNC_I8 should be elided for in-range constant bounds; bytecode = {bytecode:?}"
     );
 }
@@ -340,7 +336,7 @@ END_PROGRAM
         .unwrap();
 
     assert!(
-        !bytecode.contains(&TRUNC_U16),
+        !bytecode.contains(&opcode::TRUNC_U16),
         "TRUNC_U16 should be elided for in-range constant bounds; bytecode = {bytecode:?}"
     );
 }
@@ -366,7 +362,7 @@ END_PROGRAM
         .unwrap();
 
     assert!(
-        bytecode.contains(&TRUNC_I8),
+        bytecode.contains(&opcode::TRUNC_I8),
         "TRUNC_I8 must remain at boundary to=SINT_MIN with negative step; bytecode = {bytecode:?}"
     );
 }
@@ -391,7 +387,7 @@ END_PROGRAM
         .unwrap();
 
     assert!(
-        !bytecode.contains(&TRUNC_I16),
+        !bytecode.contains(&opcode::TRUNC_I16),
         "TRUNC_I16 should be elided for in-range constant bounds with negative step; bytecode = {bytecode:?}"
     );
 }
