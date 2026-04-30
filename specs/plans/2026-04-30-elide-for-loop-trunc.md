@@ -37,8 +37,8 @@ For declared narrow type with range `[T_min, T_max]` and constant bounds
   - `T_min <= from <= T_max` (init in range), AND
   - `to <= T_max` (every body value is `<= to`), AND
   - `to.checked_add(step)` exists and `<= T_max` (post-final increment in
-    range — guards against the `FOR i:INT := 1 TO 32767` boundary case where
-    the current TRUNC behaviour would actually loop forever).
+    range — guards against the `FOR i:INT := 1 TO 32767` boundary case
+    where the loop's existing wrap-around behaviour is preserved verbatim).
 - **Negative step (`step < 0`)**: mirror — `T_min <= to`, `from <= T_max`,
   `to.checked_add(step) >= T_min`.
 - **Zero step**: keep TRUNC (degenerate; do not optimise).

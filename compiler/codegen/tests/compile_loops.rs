@@ -204,3 +204,194 @@ END_PROGRAM
     // Verify LT_I32 for negative step (instead of GT_I32)
     assert_eq!(bytecode[12], 0x6A); // LT_I32
 }
+
+// FOR-loop TRUNC elision (specs/plans/2026-04-30-elide-for-loop-trunc.md):
+// the per-iteration TRUNC opcode is elided when the control variable's bounds
+// are constants that keep every visible value (init, body, and the
+// post-final-increment) within the declared narrow type's range.
+
+const TRUNC_I8: u8 = 0x20;
+const TRUNC_U8: u8 = 0x21;
+const TRUNC_I16: u8 = 0x22;
+const TRUNC_U16: u8 = 0x23;
+
+#[test]
+fn compile_when_for_int_with_safe_constant_bounds_then_omits_trunc() {
+    // Body uses a DINT sink so the only candidate TRUNC opcodes are the two
+    // that wrap the FOR-loop's init and increment.
+    let source = "
+PROGRAM main
+  VAR
+    i : INT;
+    sink : DINT;
+  END_VAR
+  FOR i := 1 TO 100 DO
+    sink := sink + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+
+    assert!(
+        !bytecode.contains(&TRUNC_I16),
+        "TRUNC_I16 should be elided for in-range constant bounds; bytecode = {bytecode:?}"
+    );
+}
+
+#[test]
+fn compile_when_for_int_with_boundary_to_then_emits_trunc() {
+    // to + step = 32767 + 1 = 32768 overflows INT, so TRUNC must remain to
+    // preserve the wrap-around terminating behaviour.
+    let source = "
+PROGRAM main
+  VAR
+    i : INT;
+    sink : DINT;
+  END_VAR
+  FOR i := 1 TO 32767 DO
+    sink := sink + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+
+    assert!(
+        bytecode.contains(&TRUNC_I16),
+        "TRUNC_I16 must remain at boundary to=INT_MAX; bytecode = {bytecode:?}"
+    );
+}
+
+#[test]
+fn compile_when_for_int_with_non_constant_to_then_emits_trunc() {
+    let source = "
+PROGRAM main
+  VAR
+    i : INT;
+    n : INT;
+    sink : DINT;
+  END_VAR
+  FOR i := 1 TO n DO
+    sink := sink + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+
+    assert!(
+        bytecode.contains(&TRUNC_I16),
+        "TRUNC_I16 must remain when 'to' is non-constant; bytecode = {bytecode:?}"
+    );
+}
+
+#[test]
+fn compile_when_for_sint_with_safe_constant_bounds_then_omits_trunc() {
+    let source = "
+PROGRAM main
+  VAR
+    i : SINT;
+    sink : DINT;
+  END_VAR
+  FOR i := 1 TO 10 DO
+    sink := sink + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+
+    assert!(
+        !bytecode.contains(&TRUNC_I8),
+        "TRUNC_I8 should be elided for in-range constant bounds; bytecode = {bytecode:?}"
+    );
+}
+
+#[test]
+fn compile_when_for_uint_with_safe_constant_bounds_then_omits_trunc() {
+    let source = "
+PROGRAM main
+  VAR
+    i : UINT;
+    sink : DINT;
+  END_VAR
+  FOR i := 1 TO 100 DO
+    sink := sink + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+
+    assert!(
+        !bytecode.contains(&TRUNC_U16),
+        "TRUNC_U16 should be elided for in-range constant bounds; bytecode = {bytecode:?}"
+    );
+}
+
+#[test]
+fn compile_when_for_sint_negative_step_at_boundary_then_emits_trunc() {
+    // to + step = -128 + (-1) = -129 underflows SINT, so TRUNC must remain.
+    let source = "
+PROGRAM main
+  VAR
+    i : SINT;
+    sink : DINT;
+  END_VAR
+  FOR i := 0 TO -128 BY -1 DO
+    sink := sink + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+
+    assert!(
+        bytecode.contains(&TRUNC_I8),
+        "TRUNC_I8 must remain at boundary to=SINT_MIN with negative step; bytecode = {bytecode:?}"
+    );
+}
+
+#[test]
+fn compile_when_for_int_negative_step_safe_then_omits_trunc() {
+    let source = "
+PROGRAM main
+  VAR
+    i : INT;
+    sink : DINT;
+  END_VAR
+  FOR i := 100 TO 1 BY -1 DO
+    sink := sink + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+
+    assert!(
+        !bytecode.contains(&TRUNC_I16),
+        "TRUNC_I16 should be elided for in-range constant bounds with negative step; bytecode = {bytecode:?}"
+    );
+}
