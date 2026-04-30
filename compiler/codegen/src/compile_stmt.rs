@@ -17,7 +17,8 @@ use ironplc_dsl::textual::{
 use ironplc_problems::Problem;
 
 use super::compile::{
-    CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH_U16,
+    CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_OP_TYPE,
+    DEFAULT_STRING_MAX_LENGTH_U16,
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
@@ -775,26 +776,95 @@ enum StepSign {
 /// integer literal (positive or negative). Returns `None` for non-constant
 /// expressions.
 fn try_constant_sign(expr: &Expr) -> Option<StepSign> {
+    match try_constant_i64(expr)? {
+        v if v > 0 => Some(StepSign::Positive),
+        v if v < 0 => Some(StepSign::Negative),
+        _ => None,
+    }
+}
+
+/// Returns the `i64` value of an expression if it is a compile-time constant
+/// integer literal (positive, negative, or unary-negated). Returns `None`
+/// for non-constant expressions or values outside the `i64` range.
+fn try_constant_i64(expr: &Expr) -> Option<i64> {
     match &expr.kind {
         ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            if lit.value.is_neg {
-                Some(StepSign::Negative)
-            } else {
-                Some(StepSign::Positive)
-            }
+            signed_integer_to_i64(&lit.value).ok()
         }
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => {
-            // -<literal> is negative
-            if matches!(
-                &unary.term.kind,
-                ExprKind::Const(ConstantKind::IntegerLiteral(_))
-            ) {
-                Some(StepSign::Negative)
-            } else {
-                None
-            }
-        }
+        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
+            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => signed_integer_to_i64(&lit.value)
+                .ok()
+                .and_then(i64::checked_neg),
+            _ => None,
+        },
         _ => None,
+    }
+}
+
+/// Returns the `(min, max)` value range for a narrow integer type, or `None`
+/// for 32- and 64-bit types where `emit_truncation` is already a no-op.
+fn narrow_type_range(type_info: VarTypeInfo) -> Option<(i64, i64)> {
+    match (type_info.signedness, type_info.storage_bits) {
+        (Signedness::Signed, 8) => Some((i8::MIN as i64, i8::MAX as i64)),
+        (Signedness::Signed, 16) => Some((i16::MIN as i64, i16::MAX as i64)),
+        (Signedness::Unsigned, 8) => Some((0, u8::MAX as i64)),
+        (Signedness::Unsigned, 16) => Some((0, u16::MAX as i64)),
+        _ => None,
+    }
+}
+
+/// Returns `true` when both `TRUNC` sites in a FOR loop can safely be elided
+/// because every value the control variable will hold (initial, body-visible,
+/// and post-final-increment) is provably within the declared narrow type's
+/// range. Conservative: any non-constant bound, or any boundary that could
+/// trigger wrap-around, returns `false` and preserves the existing TRUNC.
+fn for_loop_trunc_can_be_elided(
+    from: &Expr,
+    to: &Expr,
+    step: Option<&Expr>,
+    type_info: VarTypeInfo,
+) -> bool {
+    let Some((t_min, t_max)) = narrow_type_range(type_info) else {
+        // Wide type: emit_truncation is already a no-op; flag is irrelevant.
+        return true;
+    };
+    let Some(from_v) = try_constant_i64(from) else {
+        return false;
+    };
+    let Some(to_v) = try_constant_i64(to) else {
+        return false;
+    };
+    let step_v = match step {
+        None => 1,
+        Some(expr) => match try_constant_i64(expr) {
+            Some(v) => v,
+            None => return false,
+        },
+    };
+    if from_v < t_min || from_v > t_max {
+        return false;
+    }
+    match step_v {
+        s if s > 0 => {
+            // Body sees values in [from, to]; post-final stored value is to + step.
+            if to_v > t_max {
+                return false;
+            }
+            match to_v.checked_add(s) {
+                Some(post) => post <= t_max,
+                None => false,
+            }
+        }
+        s if s < 0 => {
+            if to_v < t_min {
+                return false;
+            }
+            match to_v.checked_add(s) {
+                Some(post) => post >= t_min,
+                None => false,
+            }
+        }
+        _ => false,
     }
 }
 
@@ -844,10 +914,21 @@ fn compile_for(
         },
     };
 
+    // Decide whether the per-loop TRUNC can be elided based on a local interval
+    // check over the constant bounds. See specs/plans/2026-04-30-elide-for-loop-trunc.md.
+    let elide_trunc = match type_info {
+        Some(ti) => {
+            for_loop_trunc_can_be_elided(&for_stmt.from, &for_stmt.to, for_stmt.step.as_ref(), ti)
+        }
+        None => true,
+    };
+
     // Initialize: compile(from), STORE_VAR control
     compile_expr(emitter, ctx, &for_stmt.from, op_type)?;
     if let Some(ti) = type_info {
-        emit_truncation(emitter, ti);
+        if !elide_trunc {
+            emit_truncation(emitter, ti);
+        }
     }
     emit_store_var(emitter, var_index, op_type);
 
@@ -897,7 +978,9 @@ fn compile_for(
     }
     emit_add(emitter, op_type);
     if let Some(ti) = type_info {
-        emit_truncation(emitter, ti);
+        if !elide_trunc {
+            emit_truncation(emitter, ti);
+        }
     }
     emit_store_var(emitter, var_index, op_type);
     emitter.emit_jmp(loop_label);

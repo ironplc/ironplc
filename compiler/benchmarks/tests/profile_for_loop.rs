@@ -136,11 +136,14 @@ fn profile_for_loop_int_then_expected_hot_opcodes_dominate() {
     assert!(profile.count(opcode::STORE_VAR_I32) >= 100);
     assert!(profile.count(opcode::GT_I32) >= 50);
 
-    // INT is 16-bit signed, so codegen must emit TRUNC_I16 after every
-    // arithmetic op that writes back to an INT variable. If this drops
-    // to zero, an interval-analysis pass has elided it (a planned
-    // optimisation; see vm-performance.md §13a) — update this test then.
-    assert!(profile.count(opcode::TRUNC_I16) >= 100);
+    // The two FOR-loop-internal TRUNC_I16 sites (init and per-iteration
+    // increment) are now elided because `1 TO 100` keeps every value of `i`
+    // safely inside INT's range. See
+    // specs/plans/2026-04-30-elide-for-loop-trunc.md. The 102 TRUNC_I16
+    // ops still observed are 100 from the body's `total := total + i`
+    // assignment plus 2 from initializing `total : INT` — narrow stores
+    // that this slice of interval analysis does not address.
+    assert_eq!(profile.count(opcode::TRUNC_I16), 102);
 }
 
 #[test]

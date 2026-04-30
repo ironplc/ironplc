@@ -146,3 +146,75 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_i32(), 0); // y untouched
 }
+
+// FOR-loop TRUNC elision (specs/plans/2026-04-30-elide-for-loop-trunc.md):
+// the optimisation must preserve runtime behaviour for narrow integer types,
+// including at the type-range boundaries where TRUNC must remain.
+
+#[test]
+fn end_to_end_when_for_int_sums_then_correct_result() {
+    let source = "
+PROGRAM main
+  VAR
+    i : INT;
+    sum : DINT;
+  END_VAR
+  FOR i := 1 TO 100 DO
+    sum := sum + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 100);
+}
+
+#[test]
+fn end_to_end_when_for_sint_iterates_then_correct_count() {
+    let source = "
+PROGRAM main
+  VAR
+    i : SINT;
+    count : DINT;
+  END_VAR
+  FOR i := 1 TO 10 DO
+    count := count + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 10);
+}
+
+#[test]
+fn end_to_end_when_for_uint_iterates_then_correct_count() {
+    let source = "
+PROGRAM main
+  VAR
+    i : UINT;
+    count : DINT;
+  END_VAR
+  FOR i := 1 TO 50 DO
+    count := count + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 50);
+}
+
+#[test]
+fn end_to_end_when_for_int_negative_step_then_correct_count() {
+    let source = "
+PROGRAM main
+  VAR
+    i : INT;
+    count : DINT;
+  END_VAR
+  FOR i := 100 TO 1 BY -1 DO
+    count := count + 1;
+  END_FOR;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), 100);
+}
