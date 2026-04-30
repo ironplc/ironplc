@@ -22,9 +22,9 @@ use super::compile::{
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
-    condition_op_type, emit_add, emit_ge, emit_gt, emit_le, emit_load_var, emit_lt, emit_store_var,
-    emit_truncation, extract_bit_access_target, extract_partial_access_target, op_type,
-    resolve_variable, resolve_variable_name, signed_integer_to_i64, variable_span,
+    condition_op_type, emit_add, emit_ge, emit_le, emit_load_var, emit_store_var, emit_truncation,
+    extract_bit_access_target, extract_partial_access_target, op_type, resolve_variable,
+    resolve_variable_name, signed_integer_to_i64, variable_span,
 };
 use crate::emit::Emitter;
 
@@ -876,10 +876,8 @@ fn for_loop_trunc_can_be_elided(
 /// LOOP:
 ///   LOAD_VAR control
 ///   compile(to)
-///   GT_I32 (or LT_I32 for negative step)
-///   JMP_IF_NOT → BODY
-///   JMP → END
-/// BODY:
+///   LE_I32 (or GE_I32 for negative step)  // continuation predicate
+///   JMP_IF_NOT → END                       // exit when continuation fails
 ///   compile(body)
 ///   LOAD_VAR control
 ///   compile(step)  // default: LOAD_CONST 1
@@ -888,6 +886,11 @@ fn for_loop_trunc_can_be_elided(
 ///   JMP → LOOP
 /// END:
 /// ```
+///
+/// The continuation predicate is `i <= to` (positive step) / `i >= to`
+/// (negative step). Inverting the predicate lets the body fall through
+/// from the conditional branch, eliminating one `JMP` dispatch per
+/// iteration. See `specs/plans/2026-04-30-elide-for-loop-exit-jmp.md`.
 fn compile_for(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -933,22 +936,20 @@ fn compile_for(
     emit_store_var(emitter, var_index, op_type);
 
     let loop_label = emitter.create_label();
-    let body_label = emitter.create_label();
     let end_label = emitter.create_label();
 
-    // LOOP: check termination condition
+    // LOOP: check continuation condition; exit straight to END when it
+    // fails so the body falls through without an extra JMP dispatch.
     emitter.bind_label(loop_label);
     emit_load_var(emitter, var_index, op_type);
     compile_expr(emitter, ctx, &for_stmt.to, op_type)?;
     match step_sign {
-        StepSign::Positive => emit_gt(emitter, op_type),
-        StepSign::Negative => emit_lt(emitter, op_type),
+        StepSign::Positive => emit_le(emitter, op_type),
+        StepSign::Negative => emit_ge(emitter, op_type),
     }
-    emitter.emit_jmp_if_not(body_label);
-    emitter.emit_jmp(end_label);
+    emitter.emit_jmp_if_not(end_label);
 
     // BODY:
-    emitter.bind_label(body_label);
     ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &for_stmt.body)?;
     ctx.loop_exit_labels.pop();
