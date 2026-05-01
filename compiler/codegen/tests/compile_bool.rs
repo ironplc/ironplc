@@ -43,7 +43,7 @@ END_PROGRAM
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
             0x6A, // LT_I32
-            0x54, // BOOL_AND
+            0x78, // BOOL_AND
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
@@ -79,7 +79,7 @@ END_PROGRAM
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
             0x6A, // LT_I32
-            0x55, // BOOL_OR
+            0x79, // BOOL_OR
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
@@ -115,7 +115,7 @@ END_PROGRAM
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
             0x6A, // LT_I32
-            0x56, // BOOL_XOR
+            0x7A, // BOOL_XOR
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
@@ -149,7 +149,7 @@ END_PROGRAM
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
             0xA1, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x57, // BOOL_NOT
+            0x7B, // BOOL_NOT
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]

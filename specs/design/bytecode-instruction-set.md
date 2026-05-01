@@ -302,10 +302,10 @@ Boolean operations operate on I32 values where 0 = FALSE and 1 = TRUE. Bitwise o
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x54 | BOOL_AND | — | [I32, I32] → [I32] | Logical AND (result is 0 or 1) |
-| 0x55 | BOOL_OR | — | [I32, I32] → [I32] | Logical OR (result is 0 or 1) |
-| 0x56 | BOOL_XOR | — | [I32, I32] → [I32] | Logical XOR (result is 0 or 1) |
-| 0x57 | BOOL_NOT | — | [I32] → [I32] | Logical NOT (result is 0 or 1) |
+| 0x78 | BOOL_AND | — | [I32, I32] → [I32] | Logical AND (result is 0 or 1) |
+| 0x79 | BOOL_OR | — | [I32, I32] → [I32] | Logical OR (result is 0 or 1) |
+| 0x7A | BOOL_XOR | — | [I32, I32] → [I32] | Logical XOR (result is 0 or 1) |
+| 0x7B | BOOL_NOT | — | [I32] → [I32] | Logical NOT (result is 0 or 1) |
 
 Boolean operations coerce inputs: any non-zero I32 value is treated as TRUE and normalized to 1 before the operation. The result is always 0 or 1. This means `BOOL_AND` on inputs (5, 3) produces 1, not a bitwise AND. The compiler is responsible for ensuring BOOL-typed variables contain only 0 or 1, but the boolean opcodes are defensive against non-canonical inputs.
 
@@ -313,18 +313,18 @@ Boolean operations coerce inputs: any non-zero I32 value is treated as TRUE and 
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x58 | BIT_AND_32 | — | [U32, U32] → [U32] | Bitwise AND, 32-bit |
-| 0x59 | BIT_OR_32 | — | [U32, U32] → [U32] | Bitwise OR, 32-bit |
-| 0x5A | BIT_XOR_32 | — | [U32, U32] → [U32] | Bitwise XOR, 32-bit |
-| 0x5B | BIT_NOT_32 | — | [U32] → [U32] | Bitwise NOT, 32-bit |
+| 0x68 | BIT_AND_32 | — | [U32, U32] → [U32] | Bitwise AND, 32-bit |
+| 0x6C | BIT_OR_32 | — | [U32, U32] → [U32] | Bitwise OR, 32-bit |
+| 0x70 | BIT_XOR_32 | — | [U32, U32] → [U32] | Bitwise XOR, 32-bit |
+| 0x74 | BIT_NOT_32 | — | [U32] → [U32] | Bitwise NOT, 32-bit |
 | 0x5C | SHL_32 | — | [U32, U32] → [U32] | Shift left, 32-bit (shift amount on top) |
 | 0x5D | SHR_32 | — | [U32, U32] → [U32] | Shift right (logical), 32-bit |
 | 0x5E | ROL_32 | — | [U32, U32] → [U32] | Rotate left, 32-bit |
 | 0x5F | ROR_32 | — | [U32, U32] → [U32] | Rotate right, 32-bit |
-| 0x60 | BIT_AND_64 | — | [U64, U64] → [U64] | Bitwise AND, 64-bit |
-| 0x61 | BIT_OR_64 | — | [U64, U64] → [U64] | Bitwise OR, 64-bit |
-| 0x62 | BIT_XOR_64 | — | [U64, U64] → [U64] | Bitwise XOR, 64-bit |
-| 0x63 | BIT_NOT_64 | — | [U64] → [U64] | Bitwise NOT, 64-bit |
+| 0x69 | BIT_AND_64 | — | [U64, U64] → [U64] | Bitwise AND, 64-bit |
+| 0x6D | BIT_OR_64 | — | [U64, U64] → [U64] | Bitwise OR, 64-bit |
+| 0x71 | BIT_XOR_64 | — | [U64, U64] → [U64] | Bitwise XOR, 64-bit |
+| 0x75 | BIT_NOT_64 | — | [U64] → [U64] | Bitwise NOT, 64-bit |
 | 0x64 | SHL_64 | — | [U64, U64] → [U64] | Shift left, 64-bit |
 | 0x65 | SHR_64 | — | [U64, U64] → [U64] | Shift right (logical), 64-bit |
 | 0x66 | ROL_64 | — | [U64, U64] → [U64] | Rotate left, 64-bit |
@@ -347,7 +347,7 @@ Comparison instructions pop two values and push an I32 (0 or 1) result. Separate
 | 0x6A | LT_I32 | — | [I32, I32] → [I32] | Less than (signed) |
 | 0x6B | LE_I32 | — | [I32, I32] → [I32] | Less than or equal (signed) |
 | 0x50 | GT_I32 | — | [I32, I32] → [I32] | Greater than (signed) |
-| 0x6D | GE_I32 | — | [I32, I32] → [I32] | Greater than or equal (signed) |
+| 0x54 | GE_I32 | — | [I32, I32] → [I32] | Greater than or equal (signed) |
 
 #### Unsigned Integer Comparison (32-bit)
 

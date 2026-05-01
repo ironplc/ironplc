@@ -254,59 +254,59 @@ pub const GT_I32: Opcode = encode_opcode(OP_CLASS_GT_S, T_I32);
 
 /// Compare two signed 32-bit integers (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0.
-pub const GE_I32: Opcode = 0x6D;
+pub const GE_I32: Opcode = encode_opcode(OP_CLASS_GE_S, T_I32);
 
 /// Logical AND of two values.
 /// Pops two values (b then a), coerces non-zero to 1, pushes 1 if both are non-zero, else 0.
-pub const BOOL_AND: Opcode = 0x54;
+pub const BOOL_AND: Opcode = encode_opcode(OP_CLASS_BOOL_OP, 0);
 
 /// Logical OR of two values.
 /// Pops two values (b then a), coerces non-zero to 1, pushes 1 if either is non-zero, else 0.
-pub const BOOL_OR: Opcode = 0x55;
+pub const BOOL_OR: Opcode = encode_opcode(OP_CLASS_BOOL_OP, 1);
 
 /// Logical XOR of two values.
 /// Pops two values (b then a), coerces non-zero to 1, pushes 1 if exactly one is non-zero, else 0.
-pub const BOOL_XOR: Opcode = 0x56;
+pub const BOOL_XOR: Opcode = encode_opcode(OP_CLASS_BOOL_OP, 2);
 
 /// Logical NOT of a value.
 /// Pops one value, pushes 1 if it is zero, else 0.
-pub const BOOL_NOT: Opcode = 0x57;
+pub const BOOL_NOT: Opcode = encode_opcode(OP_CLASS_BOOL_OP, 3);
 
 // --- Bitwise opcodes (32-bit) ---
 
 /// Bitwise AND of two 32-bit integers.
 /// Pops two values (b then a), pushes a & b.
-pub const BIT_AND_32: Opcode = 0x58;
+pub const BIT_AND_32: Opcode = encode_opcode(OP_CLASS_BIT_AND, 0);
 
 /// Bitwise OR of two 32-bit integers.
 /// Pops two values (b then a), pushes a | b.
-pub const BIT_OR_32: Opcode = 0x59;
+pub const BIT_OR_32: Opcode = encode_opcode(OP_CLASS_BIT_OR, 0);
 
 /// Bitwise XOR of two 32-bit integers.
 /// Pops two values (b then a), pushes a ^ b.
-pub const BIT_XOR_32: Opcode = 0x5A;
+pub const BIT_XOR_32: Opcode = encode_opcode(OP_CLASS_BIT_XOR, 0);
 
 /// Bitwise NOT of a 32-bit integer.
 /// Pops one value, pushes !a.
-pub const BIT_NOT_32: Opcode = 0x5B;
+pub const BIT_NOT_32: Opcode = encode_opcode(OP_CLASS_BIT_NOT, 0);
 
 // --- Bitwise opcodes (64-bit) ---
 
 /// Bitwise AND of two 64-bit integers.
 /// Pops two values (b then a), pushes a & b.
-pub const BIT_AND_64: Opcode = 0x60;
+pub const BIT_AND_64: Opcode = encode_opcode(OP_CLASS_BIT_AND, 1);
 
 /// Bitwise OR of two 64-bit integers.
 /// Pops two values (b then a), pushes a | b.
-pub const BIT_OR_64: Opcode = 0x61;
+pub const BIT_OR_64: Opcode = encode_opcode(OP_CLASS_BIT_OR, 1);
 
 /// Bitwise XOR of two 64-bit integers.
 /// Pops two values (b then a), pushes a ^ b.
-pub const BIT_XOR_64: Opcode = 0x62;
+pub const BIT_XOR_64: Opcode = encode_opcode(OP_CLASS_BIT_XOR, 1);
 
 /// Bitwise NOT of a 64-bit integer.
 /// Pops one value, pushes !a.
-pub const BIT_NOT_64: Opcode = 0x63;
+pub const BIT_NOT_64: Opcode = encode_opcode(OP_CLASS_BIT_NOT, 1);
 
 /// Unconditional jump. Operand: i16 offset relative to next instruction.
 pub const JMP: Opcode = 0xB0;
@@ -657,41 +657,41 @@ pub const GT_I64: Opcode = encode_opcode(OP_CLASS_GT_S, T_I64);
 
 /// Compare two signed 64-bit integers (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0.
-pub const GE_I64: Opcode = 0x75;
+pub const GE_I64: Opcode = encode_opcode(OP_CLASS_GE_S, T_I64);
 
 // --- Unsigned comparison opcodes ---
 
 /// Compare two unsigned 32-bit integers (less than).
 /// Pops two i32 values (b then a), pushes 1 if (a as u32) < (b as u32), else 0.
-pub const LT_U32: Opcode = 0x78;
+pub const LT_U32: Opcode = encode_opcode(OP_CLASS_LT_U, T_I32);
 
 /// Compare two unsigned 32-bit integers (less than or equal).
 /// Pops two i32 values (b then a), pushes 1 if (a as u32) <= (b as u32), else 0.
-pub const LE_U32: Opcode = 0x79;
+pub const LE_U32: Opcode = encode_opcode(OP_CLASS_LE_U, T_I32);
 
 /// Compare two unsigned 32-bit integers (greater than).
 /// Pops two i32 values (b then a), pushes 1 if (a as u32) > (b as u32), else 0.
-pub const GT_U32: Opcode = 0x7A;
+pub const GT_U32: Opcode = encode_opcode(OP_CLASS_GT_U, T_I32);
 
 /// Compare two unsigned 32-bit integers (greater than or equal).
 /// Pops two i32 values (b then a), pushes 1 if (a as u32) >= (b as u32), else 0.
-pub const GE_U32: Opcode = 0x7B;
+pub const GE_U32: Opcode = encode_opcode(OP_CLASS_GE_U, T_I32);
 
 /// Compare two unsigned 64-bit integers (less than).
 /// Pops two i64 values (b then a), pushes 1 if (a as u64) < (b as u64), else 0.
-pub const LT_U64: Opcode = 0x7C;
+pub const LT_U64: Opcode = encode_opcode(OP_CLASS_LT_U, T_I64);
 
 /// Compare two unsigned 64-bit integers (less than or equal).
 /// Pops two i64 values (b then a), pushes 1 if (a as u64) <= (b as u64), else 0.
-pub const LE_U64: Opcode = 0x7D;
+pub const LE_U64: Opcode = encode_opcode(OP_CLASS_LE_U, T_I64);
 
 /// Compare two unsigned 64-bit integers (greater than).
 /// Pops two i64 values (b then a), pushes 1 if (a as u64) > (b as u64), else 0.
-pub const GT_U64: Opcode = 0x7E;
+pub const GT_U64: Opcode = encode_opcode(OP_CLASS_GT_U, T_I64);
 
 /// Compare two unsigned 64-bit integers (greater than or equal).
 /// Pops two i64 values (b then a), pushes 1 if (a as u64) >= (b as u64), else 0.
-pub const GE_U64: Opcode = 0x7F;
+pub const GE_U64: Opcode = encode_opcode(OP_CLASS_GE_U, T_I64);
 
 // --- 32-bit float comparison opcodes ---
 
@@ -717,7 +717,7 @@ pub const GT_F32: Opcode = encode_opcode(OP_CLASS_GT_S, T_F32);
 
 /// Compare two 32-bit floats (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
-pub const GE_F32: Opcode = 0x85;
+pub const GE_F32: Opcode = encode_opcode(OP_CLASS_GE_S, T_F32);
 
 // --- 64-bit float comparison opcodes ---
 
@@ -743,7 +743,7 @@ pub const GT_F64: Opcode = encode_opcode(OP_CLASS_GT_S, T_F64);
 
 /// Compare two 64-bit floats (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
-pub const GE_F64: Opcode = 0x8D;
+pub const GE_F64: Opcode = encode_opcode(OP_CLASS_GE_S, T_F64);
 
 /// Returns the total byte size of the instruction starting with `op`.
 ///

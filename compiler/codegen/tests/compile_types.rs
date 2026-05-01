@@ -118,10 +118,10 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    // The comparison should use GT_U32 (0x7A) instead of GT_I32 (0x50)
+    // The comparison should use GT_U32 (0x60) instead of GT_I32 (0x50)
     assert!(
-        bytecode.contains(&0x7A),
-        "Expected GT_U32 (0x7A) in bytecode: {:02X?}",
+        bytecode.contains(&0x60),
+        "Expected GT_U32 (0x60) in bytecode: {:02X?}",
         bytecode
     );
 }
