@@ -234,11 +234,11 @@ pub const NEG_I32: Opcode = encode_opcode(OP_CLASS_NEG, T_I32);
 
 /// Compare two 32-bit integers for equality.
 /// Pops two values (b then a), pushes 1 if a == b, else 0.
-pub const EQ_I32: Opcode = 0x68;
+pub const EQ_I32: Opcode = encode_opcode(OP_CLASS_EQ, T_I32);
 
 /// Compare two 32-bit integers for inequality.
 /// Pops two values (b then a), pushes 1 if a != b, else 0.
-pub const NE_I32: Opcode = 0x69;
+pub const NE_I32: Opcode = encode_opcode(OP_CLASS_NE, T_I32);
 
 /// Compare two signed 32-bit integers (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0.
@@ -250,7 +250,7 @@ pub const LE_I32: Opcode = 0x6B;
 
 /// Compare two signed 32-bit integers (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0.
-pub const GT_I32: Opcode = 0x6C;
+pub const GT_I32: Opcode = encode_opcode(OP_CLASS_GT_S, T_I32);
 
 /// Compare two signed 32-bit integers (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0.
@@ -637,11 +637,11 @@ pub const NEG_F64: Opcode = encode_opcode(OP_CLASS_NEG, T_F64);
 
 /// Compare two 64-bit integers for equality.
 /// Pops two values (b then a), pushes 1 if a == b, else 0.
-pub const EQ_I64: Opcode = 0x70;
+pub const EQ_I64: Opcode = encode_opcode(OP_CLASS_EQ, T_I64);
 
 /// Compare two 64-bit integers for inequality.
 /// Pops two values (b then a), pushes 1 if a != b, else 0.
-pub const NE_I64: Opcode = 0x71;
+pub const NE_I64: Opcode = encode_opcode(OP_CLASS_NE, T_I64);
 
 /// Compare two signed 64-bit integers (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0.
@@ -653,7 +653,7 @@ pub const LE_I64: Opcode = 0x73;
 
 /// Compare two signed 64-bit integers (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0.
-pub const GT_I64: Opcode = 0x74;
+pub const GT_I64: Opcode = encode_opcode(OP_CLASS_GT_S, T_I64);
 
 /// Compare two signed 64-bit integers (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0.
@@ -697,11 +697,11 @@ pub const GE_U64: Opcode = 0x7F;
 
 /// Compare two 32-bit floats for equality.
 /// Pops two values (b then a), pushes 1 if a == b, else 0 (as i32).
-pub const EQ_F32: Opcode = 0x80;
+pub const EQ_F32: Opcode = encode_opcode(OP_CLASS_EQ, T_F32);
 
 /// Compare two 32-bit floats for inequality.
 /// Pops two values (b then a), pushes 1 if a != b, else 0 (as i32).
-pub const NE_F32: Opcode = 0x81;
+pub const NE_F32: Opcode = encode_opcode(OP_CLASS_NE, T_F32);
 
 /// Compare two 32-bit floats (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0 (as i32).
@@ -713,7 +713,7 @@ pub const LE_F32: Opcode = 0x83;
 
 /// Compare two 32-bit floats (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0 (as i32).
-pub const GT_F32: Opcode = 0x84;
+pub const GT_F32: Opcode = encode_opcode(OP_CLASS_GT_S, T_F32);
 
 /// Compare two 32-bit floats (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
@@ -723,11 +723,11 @@ pub const GE_F32: Opcode = 0x85;
 
 /// Compare two 64-bit floats for equality.
 /// Pops two values (b then a), pushes 1 if a == b, else 0 (as i32).
-pub const EQ_F64: Opcode = 0x88;
+pub const EQ_F64: Opcode = encode_opcode(OP_CLASS_EQ, T_F64);
 
 /// Compare two 64-bit floats for inequality.
 /// Pops two values (b then a), pushes 1 if a != b, else 0 (as i32).
-pub const NE_F64: Opcode = 0x89;
+pub const NE_F64: Opcode = encode_opcode(OP_CLASS_NE, T_F64);
 
 /// Compare two 64-bit floats (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0 (as i32).
@@ -739,7 +739,7 @@ pub const LE_F64: Opcode = 0x8B;
 
 /// Compare two 64-bit floats (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0 (as i32).
-pub const GT_F64: Opcode = 0x8C;
+pub const GT_F64: Opcode = encode_opcode(OP_CLASS_GT_S, T_F64);
 
 /// Compare two 64-bit floats (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
