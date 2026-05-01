@@ -215,8 +215,8 @@ fn disassemble_functions(container: &Container) -> Value {
             let instructions = decode_instructions(bytecode, container);
             json!({
                 "id": func.function_id.raw(),
-                "bytecodeOffset": func.bytecode_offset,
-                "bytecodeLength": func.bytecode_length,
+                "bytecodeOffset": func.code_offset,
+                "bytecodeLength": func.code_length,
                 "maxStackDepth": func.max_stack_depth,
                 "numLocals": func.num_locals,
                 "instructions": instructions,
