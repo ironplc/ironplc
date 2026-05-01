@@ -252,9 +252,9 @@ All arithmetic operates at the promoted width per ADR-0001. The compiler emits N
 | 0x20 | ADD_I32 | — | [I32, I32] → [I32] | Signed 32-bit addition |
 | 0x24 | SUB_I32 | — | [I32, I32] → [I32] | Signed 32-bit subtraction |
 | 0x28 | MUL_I32 | — | [I32, I32] → [I32] | Signed 32-bit multiplication |
-| 0x33 | DIV_I32 | — | [I32, I32] → [I32] | Signed 32-bit division (truncates toward zero) |
-| 0x34 | MOD_I32 | — | [I32, I32] → [I32] | Signed 32-bit modulo |
-| 0x35 | NEG_I32 | — | [I32] → [I32] | Signed 32-bit negation |
+| 0x30 | DIV_I32 | — | [I32, I32] → [I32] | Signed 32-bit division (truncates toward zero) |
+| 0x38 | MOD_I32 | — | [I32, I32] → [I32] | Signed 32-bit modulo |
+| 0x2C | NEG_I32 | — | [I32] → [I32] | Signed 32-bit negation |
 | 0x36 | ADD_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit addition |
 | 0x37 | SUB_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit subtraction |
 | 0x38 | MUL_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit multiplication |
@@ -284,8 +284,8 @@ All arithmetic operates at the promoted width per ADR-0001. The compiler emits N
 | 0x22 | ADD_F32 | — | [F32, F32] → [F32] | 32-bit float addition |
 | 0x49 | SUB_F32 | — | [F32, F32] → [F32] | 32-bit float subtraction (Wave 3 deferred) |
 | 0x2A | MUL_F32 | — | [F32, F32] → [F32] | 32-bit float multiplication |
-| 0x4B | DIV_F32 | — | [F32, F32] → [F32] | 32-bit float division |
-| 0x4C | NEG_F32 | — | [F32] → [F32] | 32-bit float negation |
+| 0x32 | DIV_F32 | — | [F32, F32] → [F32] | 32-bit float division |
+| 0x2E | NEG_F32 | — | [F32] → [F32] | 32-bit float negation |
 | 0x4D | ADD_F64 | — | [F64, F64] → [F64] | 64-bit float addition |
 | 0x4E | SUB_F64 | — | [F64, F64] → [F64] | 64-bit float subtraction |
 | 0x4F | MUL_F64 | — | [F64, F64] → [F64] | 64-bit float multiplication |

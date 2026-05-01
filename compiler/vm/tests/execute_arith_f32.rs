@@ -50,7 +50,7 @@ fn execute_when_div_f32_then_correct() {
     let bytecode: Vec<u8> = vec![
         0x02, 0x00, 0x00,  // LOAD_CONST_F32 pool[0]  (7.5)
         0x02, 0x01, 0x00,  // LOAD_CONST_F32 pool[1]  (2.5)
-        0x4B,              // DIV_F32
+        0x32,              // DIV_F32
         0x12, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -64,7 +64,7 @@ fn execute_when_div_f32_by_zero_then_positive_infinity() {
     let bytecode: Vec<u8> = vec![
         0x02, 0x00, 0x00,  // LOAD_CONST_F32 pool[0]  (1.0)
         0x02, 0x01, 0x00,  // LOAD_CONST_F32 pool[1]  (0.0)
-        0x4B,              // DIV_F32
+        0x32,              // DIV_F32
         0x12, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -77,7 +77,7 @@ fn execute_when_neg_f32_then_correct() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x02, 0x00, 0x00,  // LOAD_CONST_F32 pool[0]  (5.5)
-        0x4C,              // NEG_F32
+        0x2E,              // NEG_F32
         0x12, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -90,7 +90,7 @@ fn execute_when_neg_f32_negative_then_positive() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x02, 0x00, 0x00,  // LOAD_CONST_F32 pool[0]  (-3.25)
-        0x4C,              // NEG_F32
+        0x2E,              // NEG_F32
         0x12, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
