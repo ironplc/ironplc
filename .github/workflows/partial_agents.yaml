@@ -26,17 +26,17 @@ jobs:
         working-directory: ./agents/issue-resolver
     steps:
       - name: Checkout branch or tag ${{ inputs.commit-ref }}
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: ${{ inputs.commit-ref }}
         with:
           ref: ${{ inputs.commit-ref }}
       - name: Checkout HEAD
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: ${{ !inputs.commit-ref }}
 
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
       - name: Set up Python 3.x
-        uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: '3.x'
 
