@@ -1524,14 +1524,22 @@ parser! {
 
     // B.3.2.1 Assignment statements
     pub rule assignment_statement() -> StmtKind =
-      var:variable() _ tok(TokenType::Caret) _ tok(TokenType::Assignment) _ expr:expression() {
+      var:variable() _ tok(TokenType::Caret) _ assign:tok(TokenType::Assignment) _ expr:expression() {
         StmtKind::Assignment(Assignment {
           target: var,
           deref: true,
           value: Expr::new(expr),
+          span: assign.span.clone(),
         })
       }
-      / var:variable() _ tok(TokenType::Assignment) _ expr:expression() { StmtKind::assignment(var, expr) }
+      / var:variable() _ assign:tok(TokenType::Assignment) _ expr:expression() {
+        StmtKind::Assignment(Assignment {
+          target: var,
+          deref: false,
+          value: Expr::new(expr),
+          span: assign.span.clone(),
+        })
+      }
 
     // B.3.2.2 Subprogram control statements
     rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
@@ -1564,19 +1572,21 @@ parser! {
 
     // B.3.2.3 Selection statements
     rule selection_statement() -> StmtKind = if_statement() / case_statement()
-    rule if_statement() -> StmtKind = tok(TokenType::If) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list()? _ else_ifs:(tok(TokenType::Elsif) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list() {ElseIf{expr: Expr::new(expr), body}}) ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ tok(TokenType::EndIf) {
+    rule if_statement() -> StmtKind = start:tok(TokenType::If) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list()? _ else_ifs:(tok(TokenType::Elsif) _ expr:expression() _ tok(TokenType::Then) _ body:statement_list() {ElseIf{expr: Expr::new(expr), body}}) ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ end:tok(TokenType::EndIf) {
       StmtKind::If(If {
         expr: Expr::new(expr),
         body: body.unwrap_or_default(),
         else_ifs,
-        else_body: else_body.unwrap_or_default()
+        else_body: else_body.unwrap_or_default(),
+        span: SourceSpan::join(&start.span, &end.span),
       })
     }
-    rule case_statement() -> StmtKind = tok(TokenType::Case) _ selector:expression() _ tok(TokenType::Of) _ cases:case_element() ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ tok(TokenType::EndCase) {
+    rule case_statement() -> StmtKind = start:tok(TokenType::Case) _ selector:expression() _ tok(TokenType::Of) _ cases:case_element() ** _ _ else_body:(tok(TokenType::Else) _ e:statement_list() { e })? _ end:tok(TokenType::EndCase) {
       StmtKind::Case(Case {
         selector: Expr::new(selector),
         statement_groups: cases,
         else_body: else_body.unwrap_or_default(),
+        span: SourceSpan::join(&start.span, &end.span),
       })
     }
     rule case_element() -> CaseStatementGroup = selectors:case_list() _ tok(TokenType::Colon) _ statements:statement_list() {
@@ -1590,27 +1600,30 @@ parser! {
 
     // B.3.2.4 Iteration statements
     rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement()
-    rule for_statement() -> For = tok(TokenType::For) _ control:control_variable() _ tok(TokenType::Assignment) _ range:for_list() _ tok(TokenType::Do) _ body:statement_list() _ tok(TokenType::EndFor) {
+    rule for_statement() -> For = start:tok(TokenType::For) _ control:control_variable() _ tok(TokenType::Assignment) _ range:for_list() _ tok(TokenType::Do) _ body:statement_list() _ end:tok(TokenType::EndFor) {
       For {
         control,
         from: range.0,
         to: range.1,
         step: range.2,
         body,
+        span: SourceSpan::join(&start.span, &end.span),
       }
     }
     rule control_variable() -> Id = identifier()
     rule for_list() -> (Expr, Expr, Option<Expr>) = from:expression() _ tok(TokenType::To) _ to:expression() _ step:(tok(TokenType::By) _ s:expression() {Expr::new(s)})? { (Expr::new(from), Expr::new(to), step) }
-    rule while_statement() -> While = tok(TokenType::While) _ condition:expression() _ tok(TokenType::Do) _ body:statement_list() _ tok(TokenType::EndWhile) {
+    rule while_statement() -> While = start:tok(TokenType::While) _ condition:expression() _ tok(TokenType::Do) _ body:statement_list() _ end:tok(TokenType::EndWhile) {
       While {
         condition: Expr::new(condition),
         body,
+        span: SourceSpan::join(&start.span, &end.span),
       }
     }
-    rule repeat_statement() -> Repeat = tok(TokenType::Repeat) _ body:statement_list() _ tok(TokenType::Until) _ until:expression() _ tok(TokenType::EndRepeat) {
+    rule repeat_statement() -> Repeat = start:tok(TokenType::Repeat) _ body:statement_list() _ tok(TokenType::Until) _ until:expression() _ end:tok(TokenType::EndRepeat) {
       Repeat {
         until: Expr::new(until),
         body,
+        span: SourceSpan::join(&start.span, &end.span),
       }
     }
     rule exit_statement() -> StmtKind = t:tok(TokenType::Exit) { StmtKind::Exit(t.span.clone()) }
