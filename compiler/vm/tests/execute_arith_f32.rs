@@ -8,7 +8,7 @@ fn execute_when_add_f32_then_correct() {
     let bytecode: Vec<u8> = vec![
         0x02, 0x00, 0x00,  // LOAD_CONST_F32 pool[0]  (1.5)
         0x02, 0x01, 0x00,  // LOAD_CONST_F32 pool[1]  (2.25)
-        0x48,              // ADD_F32
+        0x22,              // ADD_F32
         0x12, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -36,7 +36,7 @@ fn execute_when_mul_f32_then_correct() {
     let bytecode: Vec<u8> = vec![
         0x02, 0x00, 0x00,  // LOAD_CONST_F32 pool[0]  (4.0)
         0x02, 0x01, 0x00,  // LOAD_CONST_F32 pool[1]  (2.5)
-        0x4A,              // MUL_F32
+        0x2A,              // MUL_F32
         0x12, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -104,7 +104,7 @@ fn execute_when_add_f32_nan_then_nan() {
     let bytecode: Vec<u8> = vec![
         0x02, 0x00, 0x00,  // LOAD_CONST_F32 pool[0]  (NaN)
         0x02, 0x01, 0x00,  // LOAD_CONST_F32 pool[1]  (1.0)
-        0x48,              // ADD_F32
+        0x22,              // ADD_F32
         0x12, 0x00, 0x00,  // STORE_VAR_F32 var[0]
         0xB5,              // RET_VOID
     ];
