@@ -105,6 +105,15 @@ impl Located for SymbolicVariableKind {
     }
 }
 
+impl Located for Variable {
+    fn span(&self) -> SourceSpan {
+        match self {
+            Variable::Direct(addr) => addr.position.clone(),
+            Variable::Symbolic(sym) => sym.span(),
+        }
+    }
+}
+
 impl Variable {
     pub fn named(name: &str) -> Variable {
         Variable::Symbolic(SymbolicVariableKind::Named(NamedVariable {
@@ -399,6 +408,31 @@ impl Expr {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.kind)
+    }
+}
+
+impl Located for Expr {
+    fn span(&self) -> SourceSpan {
+        self.kind.span()
+    }
+}
+
+impl Located for ExprKind {
+    fn span(&self) -> SourceSpan {
+        match self {
+            ExprKind::Compare(expr) => SourceSpan::join(&expr.left.span(), &expr.right.span()),
+            ExprKind::BinaryOp(expr) => SourceSpan::join(&expr.left.span(), &expr.right.span()),
+            ExprKind::UnaryOp(expr) => expr.term.span(),
+            ExprKind::Expression(inner) => inner.span(),
+            ExprKind::Const(constant) => constant.span(),
+            ExprKind::EnumeratedValue(value) => value.span(),
+            ExprKind::Variable(var) => var.span(),
+            ExprKind::Function(func) => func.name.span(),
+            ExprKind::LateBound(late) => late.value.span(),
+            ExprKind::Ref(var) => var.span(),
+            ExprKind::Deref(expr) => expr.span(),
+            ExprKind::Null(span) => span.clone(),
+        }
     }
 }
 
