@@ -35,7 +35,7 @@ pub fn single_function_container_f32(
         builder = builder.add_f32_constant(c);
     }
     builder
-        .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0)
+        .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0)
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
@@ -54,7 +54,7 @@ pub fn single_function_container_f64(
         builder = builder.add_f64_constant(c);
     }
     builder
-        .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0)
+        .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0)
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
@@ -73,7 +73,7 @@ pub fn single_function_container_i64(
         builder = builder.add_i64_constant(c);
     }
     builder
-        .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0)
+        .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0)
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
@@ -96,7 +96,7 @@ pub fn single_function_container_i32_i64(
         builder = builder.add_i64_constant(c);
     }
     builder
-        .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0)
+        .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0)
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
@@ -119,7 +119,7 @@ pub fn single_function_container_i32_f32(
         builder = builder.add_f32_constant(c);
     }
     builder
-        .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0)
+        .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0)
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
@@ -142,7 +142,7 @@ pub fn single_function_container_i32_f64(
         builder = builder.add_f64_constant(c);
     }
     builder
-        .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0)
+        .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0)
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)

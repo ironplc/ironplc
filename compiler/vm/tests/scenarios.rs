@@ -28,7 +28,7 @@ fn counter_container() -> ironplc_container::Container {
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
         0x20,              // ADD_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     ContainerBuilder::new()
@@ -90,7 +90,7 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
         0x20,              // ADD_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     // Function 1: always faults
@@ -217,13 +217,13 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
     let fn0_bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (10)
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     #[rustfmt::skip]
     let fn1_bytecode: Vec<u8> = vec![
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (20)
         0x10, 0x02, 0x00,  // STORE_VAR_I32 var[2]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     let c = ContainerBuilder::new()
@@ -274,14 +274,14 @@ fn scenario_when_tasks_share_global_then_communication_works() {
     let fn0_bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (99)
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     // Function 1: copy var[0] to var[2]
     #[rustfmt::skip]
     let fn1_bytecode: Vec<u8> = vec![
         0x0C, 0x00, 0x00,  // LOAD_VAR_I32 var[0]   (global)
         0x10, 0x02, 0x00,  // STORE_VAR_I32 var[2]  (private)
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     let c = ContainerBuilder::new()
@@ -338,7 +338,7 @@ fn scenario_when_watchdog_exceeded_then_trap() {
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
         // END (offset 23):
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
 
     let c = ContainerBuilder::new()
@@ -368,7 +368,7 @@ fn scenario_when_watchdog_disabled_then_no_trap() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     let c = ContainerBuilder::new()

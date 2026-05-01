@@ -46,7 +46,7 @@ END_PROGRAM
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB0, 0x00, 0x00, // JMP offset:+0 (end_label is right here)
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -95,7 +95,7 @@ END_PROGRAM
             0xB0, 0x06, 0x00, // JMP offset:+6
             0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (99)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }

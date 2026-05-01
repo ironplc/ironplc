@@ -856,14 +856,14 @@ END_PROGRAM
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(0))
             .unwrap();
-        assert_eq!(init_bytecode, &[0xB5]);
+        assert_eq!(init_bytecode, &[0x8C]);
 
         // Function 1: scan — LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0, RET_VOID
         let scan_bytecode = container
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(1))
             .unwrap();
-        assert_eq!(scan_bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0xB5]);
+        assert_eq!(scan_bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x8C]);
     }
 
     #[test]
@@ -962,7 +962,7 @@ END_PROGRAM
                 0xA1, // DUP (store-load optimization)
                 0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
                 0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-                0xB5, // RET_VOID
+                0x8C, // RET_VOID
             ]
         );
     }
@@ -993,7 +993,7 @@ END_PROGRAM
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(1))
             .unwrap();
-        assert_eq!(bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0xB5]);
+        assert_eq!(bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x8C]);
     }
 
     #[test]

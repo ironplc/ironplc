@@ -58,7 +58,7 @@ END_PROGRAM
             0x24, // SUB_I32
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xB0, 0xE9, 0xFF, // JMP offset:-23
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -109,7 +109,7 @@ END_PROGRAM
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
             0x50, // GT_I32
             0xB2, 0xEE, 0xFF, // JMP_IF_NOT offset:-18
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -175,7 +175,7 @@ END_PROGRAM
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
-            0x6B, // LE_I32
+            0x4C, // LE_I32
             0xB2, 0x17, 0x00, // JMP_IF_NOT offset:+23
             0x0C, 0x01, 0x00, // LOAD_VAR_I32 var:1
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
@@ -186,7 +186,7 @@ END_PROGRAM
             0x20, // ADD_I32
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xB0, 0xDF, 0xFF, // JMP offset:-33
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }

@@ -16,7 +16,7 @@ fn execute_when_jmp_then_skips_instruction() {
         // jump target (offset 6):
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (99)
         0x10, 0x01, 0x00,       // STORE_VAR_I32 var[1]
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     let c = single_function_container(&bytecode, 2, &[99]);
     let mut b = VmBuffers::from_container(&c);
@@ -37,7 +37,7 @@ fn execute_when_jmp_if_not_true_then_no_jump() {
         0xB2, 0x06, 0x00,       // JMP_IF_NOT offset:+6 (skip to RET_VOID)
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (42)
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[1, 42]), 42);
 }
@@ -52,7 +52,7 @@ fn execute_when_jmp_if_not_false_then_jumps() {
         0xB2, 0x06, 0x00,       // JMP_IF_NOT offset:+6 (skip to RET_VOID)
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (42) -- skipped
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]       -- skipped
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[0, 42]), 0);
 }
@@ -74,7 +74,7 @@ fn execute_when_if_else_true_then_takes_then_branch() {
         0x00, 0x02, 0x00,       // LOAD_CONST_I32 pool[2] (20)
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         // END (offset 21):
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[1, 10, 20]), 10);
 }
@@ -96,7 +96,7 @@ fn execute_when_if_else_false_then_takes_else_branch() {
         0x00, 0x02, 0x00,       // LOAD_CONST_I32 pool[2] (20)
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         // END (offset 21):
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[0, 10, 20]), 20);
 }

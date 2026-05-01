@@ -24,7 +24,7 @@ fn execute_when_while_true_three_iterations_then_loops() {
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
         // END (offset 23):
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     let c = single_function_container(&bytecode, 1, &[0, 1]);
     let mut b = VmBuffers::from_container(&c);
@@ -49,7 +49,7 @@ fn execute_when_while_false_then_skips_body() {
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xF3, 0xFF,       // JMP -13 -> LOOP (offset 0)
         // END (offset 13):
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[99]), 0);
 }
@@ -72,7 +72,7 @@ fn execute_when_repeat_until_then_loops_twice() {
         0x54,                   // GE_I32
         0xB2, 0xEC, 0xFF,       // JMP_IF_NOT -20 -> LOOP (offset 0)
         // END (offset 20):
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[1, 2]), 2);
 }
@@ -105,7 +105,7 @@ fn execute_when_for_loop_then_iterates_correctly() {
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xDC, 0xFF,       // JMP -36 -> LOOP (offset 6)
         // END (offset 42):
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     let c = single_function_container(&bytecode, 2, &[1, 3]);
     let mut b = VmBuffers::from_container(&c);
@@ -134,7 +134,7 @@ fn execute_when_backward_jump_then_loops() {
         0x54,                   // GE_I32
         0xB2, 0xEC, 0xFF,       // JMP_IF_NOT -20 -> LOOP (offset 0)
         // END (offset 20):
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[1, 2]), 2);
 }

@@ -31,7 +31,7 @@ fn execute_when_expt_i32_overflow_then_wraps() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (31)
         0xC4, 0x40, 0x03,  // BUILTIN EXPT_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[2, 31]), i32::MIN);
 }

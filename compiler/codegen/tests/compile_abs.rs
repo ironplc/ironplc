@@ -43,7 +43,7 @@ END_PROGRAM
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xC4, 0x43, 0x03, // BUILTIN ABS_I32
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
