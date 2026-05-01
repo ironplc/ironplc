@@ -342,11 +342,11 @@ Comparison instructions pop two values and push an I32 (0 or 1) result. Separate
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x68 | EQ_I32 | — | [I32, I32] → [I32] | Equal |
-| 0x69 | NE_I32 | — | [I32, I32] → [I32] | Not equal |
+| 0x40 | EQ_I32 | — | [I32, I32] → [I32] | Equal |
+| 0x44 | NE_I32 | — | [I32, I32] → [I32] | Not equal |
 | 0x6A | LT_I32 | — | [I32, I32] → [I32] | Less than (signed) |
 | 0x6B | LE_I32 | — | [I32, I32] → [I32] | Less than or equal (signed) |
-| 0x6C | GT_I32 | — | [I32, I32] → [I32] | Greater than (signed) |
+| 0x50 | GT_I32 | — | [I32, I32] → [I32] | Greater than (signed) |
 | 0x6D | GE_I32 | — | [I32, I32] → [I32] | Greater than or equal (signed) |
 
 #### Unsigned Integer Comparison (32-bit)
