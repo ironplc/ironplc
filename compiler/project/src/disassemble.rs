@@ -215,8 +215,8 @@ fn disassemble_functions(container: &Container) -> Value {
             let instructions = decode_instructions(bytecode, container);
             json!({
                 "id": func.function_id.raw(),
-                "bytecodeOffset": func.bytecode_offset,
-                "bytecodeLength": func.bytecode_length,
+                "bytecodeOffset": func.code_offset,
+                "bytecodeLength": func.code_length,
                 "maxStackDepth": func.max_stack_depth,
                 "numLocals": func.num_locals,
                 "instructions": instructions,
@@ -561,6 +561,50 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 1;
             }
+            opcode::FIND_STR => {
+                let in1 = read_u32(bytecode, pc + 1);
+                let in2 = read_u32(bytecode, pc + 5);
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "FIND_STR",
+                    "operands": format!("data[{}], data[{}]", in1, in2),
+                    "comment": "",
+                }));
+                pc += 9;
+            }
+            opcode::REPLACE_STR => {
+                let in1 = read_u32(bytecode, pc + 1);
+                let in2 = read_u32(bytecode, pc + 5);
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "REPLACE_STR",
+                    "operands": format!("data[{}], data[{}]", in1, in2),
+                    "comment": "",
+                }));
+                pc += 9;
+            }
+            opcode::INSERT_STR => {
+                let in1 = read_u32(bytecode, pc + 1);
+                let in2 = read_u32(bytecode, pc + 5);
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "INSERT_STR",
+                    "operands": format!("data[{}], data[{}]", in1, in2),
+                    "comment": "",
+                }));
+                pc += 9;
+            }
+            opcode::CONCAT_STR => {
+                let in1 = read_u32(bytecode, pc + 1);
+                let in2 = read_u32(bytecode, pc + 5);
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "CONCAT_STR",
+                    "operands": format!("data[{}], data[{}]", in1, in2),
+                    "comment": "",
+                }));
+                pc += 9;
+            }
             unknown => {
                 instructions.push(json!({
                     "offset": offset,
@@ -584,6 +628,16 @@ fn read_u16(bytecode: &[u8], pos: usize) -> u16 {
 /// Reads a little-endian i16 from the bytecode at the given position.
 fn read_i16(bytecode: &[u8], pos: usize) -> i16 {
     i16::from_le_bytes([bytecode[pos], bytecode[pos + 1]])
+}
+
+/// Reads a little-endian u32 from the bytecode at the given position.
+fn read_u32(bytecode: &[u8], pos: usize) -> u32 {
+    u32::from_le_bytes([
+        bytecode[pos],
+        bytecode[pos + 1],
+        bytecode[pos + 2],
+        bytecode[pos + 3],
+    ])
 }
 
 /// Looks up a constant pool entry by index and returns a display comment.
@@ -612,12 +666,12 @@ mod tests {
     fn steel_thread_container() -> Container {
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]
-            0x10, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
-            0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
+            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]
+            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
+            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
             0x30,                   // ADD_I32
-            0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]
+            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
             0xB5,                   // RET_VOID
         ];
 
@@ -1034,12 +1088,14 @@ mod tests {
     #[test]
     fn decode_when_jmp_forward_then_comment_shows_target_address() {
         // JMP offset=+2: target = 0 + 3 + 2 = 5
+        // Note: 0xFE is an unknown opcode (op-class 0x3F is reserved/free), used as
+        // padding so the disassembler doesn't try to decode the byte as a valid op.
         let bytecode = vec![
             opcode::JMP,
             0x02,
             0x00,
             opcode::RET_VOID,
-            0x00,
+            0xFE,
             opcode::RET_VOID,
         ];
         let instr = first_instruction(bytecode);
@@ -1180,6 +1236,72 @@ mod tests {
         assert_eq!(instructions.len(), 2);
         assert_eq!(instructions[0]["opcode"], "UNKNOWN(0xFE)");
         assert_eq!(instructions[0]["operands"], "");
+    }
+
+    // ---------------------------------------------------------------
+    // decode_instructions: 9-byte string opcodes (u32 + u32 operands)
+    // ---------------------------------------------------------------
+
+    /// Builds a 9-byte string-op instruction with two u32 operands.
+    fn string_op_bytecode(op: u8, in1: u32, in2: u32) -> Vec<u8> {
+        let in1_b = in1.to_le_bytes();
+        let in2_b = in2.to_le_bytes();
+        vec![
+            op,
+            in1_b[0],
+            in1_b[1],
+            in1_b[2],
+            in1_b[3],
+            in2_b[0],
+            in2_b[1],
+            in2_b[2],
+            in2_b[3],
+            opcode::RET_VOID,
+        ]
+    }
+
+    #[test]
+    fn decode_when_find_str_then_opcode_and_two_data_offsets() {
+        let instr = first_instruction(string_op_bytecode(opcode::FIND_STR, 0, 0x1C));
+        assert_eq!(instr["opcode"], "FIND_STR");
+        assert_eq!(instr["operands"], "data[0], data[28]");
+    }
+
+    #[test]
+    fn decode_when_replace_str_then_opcode_and_two_data_offsets() {
+        let instr = first_instruction(string_op_bytecode(opcode::REPLACE_STR, 4, 16));
+        assert_eq!(instr["opcode"], "REPLACE_STR");
+        assert_eq!(instr["operands"], "data[4], data[16]");
+    }
+
+    #[test]
+    fn decode_when_insert_str_then_opcode_and_two_data_offsets() {
+        let instr = first_instruction(string_op_bytecode(opcode::INSERT_STR, 8, 32));
+        assert_eq!(instr["opcode"], "INSERT_STR");
+        assert_eq!(instr["operands"], "data[8], data[32]");
+    }
+
+    #[test]
+    fn decode_when_concat_str_then_opcode_and_two_data_offsets() {
+        let instr = first_instruction(string_op_bytecode(opcode::CONCAT_STR, 0, 0x1C));
+        assert_eq!(instr["opcode"], "CONCAT_STR");
+        assert_eq!(instr["operands"], "data[0], data[28]");
+    }
+
+    #[test]
+    fn decode_when_find_str_then_advances_nine_bytes() {
+        let mut bytecode = string_op_bytecode(opcode::FIND_STR, 1, 2);
+        // Append a second instruction so we can confirm the next decode starts at 9.
+        bytecode.pop(); // remove RET_VOID added by helper
+        bytecode.extend_from_slice(&[opcode::ADD_I32, opcode::RET_VOID]);
+        let container = container_with_bytecode(bytecode);
+        let result = disassemble(&container);
+        let instructions = result["functions"][0]["instructions"].as_array().unwrap();
+        assert_eq!(instructions.len(), 3);
+        assert_eq!(instructions[0]["opcode"], "FIND_STR");
+        assert_eq!(instructions[0]["offset"], 0);
+        assert_eq!(instructions[1]["opcode"], "ADD_I32");
+        assert_eq!(instructions[1]["offset"], 9);
     }
 
     // ---------------------------------------------------------------

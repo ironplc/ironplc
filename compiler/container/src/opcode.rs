@@ -1,25 +1,210 @@
 //! Bytecode opcode definitions shared between the compiler and VM.
+//!
+//! # Encoding
+//!
+//! Each `Opcode` is one byte, encoded as `[op_class:6][type:2]`:
+//!
+//! ```text
+//!   bits:    7 6 5 4 3 2 1 0
+//!            └──op_class──┘└type┘
+//! ```
+//!
+//! - **op_class** (high 6 bits) selects the operation. 64 slots total.
+//! - **type tag** (low 2 bits) selects the type variant or, for some
+//!   op-classes, the operation within a small consolidated family
+//!   (`LOAD_BOOL`, `BOOL_OP`, `STACK_OP`).
+//!
+//! Type-tag values: `T_I32 = 0`, `T_I64 = 1`, `T_F32 = 2`, `T_F64 = 3`.
+//! Op-classes that use only the int subset use `T_I32`/`T_I64` and trap
+//! on float type tags. Untyped op-classes (jumps, calls, single-variant
+//! ops) require `type_tag = 0`.
+//!
+//! See `specs/design/bytecode-instruction-set.md` § Encoding for the
+//! design rules (op-class = "what operation"; type-tag = "what kind of
+//! data"; sub-opcode-in-operand = "which family member" for op classes
+//! consolidating large families like STRING_OP).
+//!
+//! This file is being migrated from an ad-hoc encoding to the structured
+//! encoding above in waves; opcodes whose definition still uses a raw
+//! hex literal have not yet been moved. The helpers `encode_opcode` and
+//! `decode_opcode` work for both old and new opcode bytes — they only
+//! interpret the byte's bit layout.
 
 /// A primary bytecode opcode (one byte).
 pub type Opcode = u8;
 
+// --- Type-tag values ---
+
+/// Type tag for 32-bit integer (signed I32 or width-32 unsigned).
+pub const T_I32: u8 = 0;
+/// Type tag for 64-bit integer (signed I64 or width-64 unsigned).
+pub const T_I64: u8 = 1;
+/// Type tag for 32-bit IEEE-754 float.
+pub const T_F32: u8 = 2;
+/// Type tag for 64-bit IEEE-754 float.
+pub const T_F64: u8 = 3;
+
+// --- Op-class values (high 6 bits of the opcode byte) ---
+//
+// All 41 op classes are defined here even though some are not yet used
+// to derive opcode bytes (incremental wave migration). Future waves
+// reference these constants without redefining them.
+
+/// Op class: load a constant from the constant pool. Type tag selects width.
+pub const OP_CLASS_LOAD_CONST: u8 = 0x00;
+/// Op class: push a boolean literal. Type tag *is* the value (0 = FALSE, 1 = TRUE).
+pub const OP_CLASS_LOAD_BOOL: u8 = 0x01;
+/// Op class: load a string literal from the constant pool.
+pub const OP_CLASS_LOAD_CONST_STR: u8 = 0x02;
+/// Op class: load a variable. Type tag selects slot width.
+pub const OP_CLASS_LOAD_VAR: u8 = 0x03;
+/// Op class: store to a variable. Type tag selects slot width.
+pub const OP_CLASS_STORE_VAR: u8 = 0x04;
+/// Op class: indirect load (dereference reference on stack).
+pub const OP_CLASS_LOAD_INDIRECT: u8 = 0x05;
+/// Op class: indirect store.
+pub const OP_CLASS_STORE_INDIRECT: u8 = 0x06;
+/// Op class: truncate to narrow integer width. Type tag selects target (I8/U8/I16/U16).
+pub const OP_CLASS_TRUNC: u8 = 0x07;
+/// Op class: arithmetic addition. Type tag selects width.
+pub const OP_CLASS_ADD: u8 = 0x08;
+/// Op class: arithmetic subtraction.
+pub const OP_CLASS_SUB: u8 = 0x09;
+/// Op class: arithmetic multiplication.
+pub const OP_CLASS_MUL: u8 = 0x0A;
+/// Op class: arithmetic negation.
+pub const OP_CLASS_NEG: u8 = 0x0B;
+/// Op class: signed division (and float division).
+pub const OP_CLASS_DIV_S: u8 = 0x0C;
+/// Op class: unsigned integer division. Only U32/U64 type variants.
+pub const OP_CLASS_DIV_U: u8 = 0x0D;
+/// Op class: signed integer modulo. Only I32/I64; floats have no MOD.
+pub const OP_CLASS_MOD_S: u8 = 0x0E;
+/// Op class: unsigned integer modulo. Only U32/U64.
+pub const OP_CLASS_MOD_U: u8 = 0x0F;
+/// Op class: equality comparison (sign-blind).
+pub const OP_CLASS_EQ: u8 = 0x10;
+/// Op class: inequality comparison (sign-blind).
+pub const OP_CLASS_NE: u8 = 0x11;
+/// Op class: signed less-than (and float less-than).
+pub const OP_CLASS_LT_S: u8 = 0x12;
+/// Op class: signed less-than-or-equal (and float).
+pub const OP_CLASS_LE_S: u8 = 0x13;
+/// Op class: signed greater-than (and float).
+pub const OP_CLASS_GT_S: u8 = 0x14;
+/// Op class: signed greater-than-or-equal (and float).
+pub const OP_CLASS_GE_S: u8 = 0x15;
+/// Op class: unsigned less-than. Only U32/U64.
+pub const OP_CLASS_LT_U: u8 = 0x16;
+/// Op class: unsigned less-than-or-equal.
+pub const OP_CLASS_LE_U: u8 = 0x17;
+/// Op class: unsigned greater-than.
+pub const OP_CLASS_GT_U: u8 = 0x18;
+/// Op class: unsigned greater-than-or-equal.
+pub const OP_CLASS_GE_U: u8 = 0x19;
+/// Op class: bitwise AND. Type tag 0 = W32, 1 = W64.
+pub const OP_CLASS_BIT_AND: u8 = 0x1A;
+/// Op class: bitwise OR.
+pub const OP_CLASS_BIT_OR: u8 = 0x1B;
+/// Op class: bitwise XOR.
+pub const OP_CLASS_BIT_XOR: u8 = 0x1C;
+/// Op class: bitwise NOT.
+pub const OP_CLASS_BIT_NOT: u8 = 0x1D;
+/// Op class: boolean operations (consolidated). Type tag selects: 0 = AND,
+/// 1 = OR, 2 = XOR, 3 = NOT.
+pub const OP_CLASS_BOOL_OP: u8 = 0x1E;
+/// Op class: unconditional jump.
+pub const OP_CLASS_JMP: u8 = 0x1F;
+/// Op class: jump if top-of-stack is zero.
+pub const OP_CLASS_JMP_IF_NOT: u8 = 0x20;
+/// Op class: function call.
+pub const OP_CLASS_CALL: u8 = 0x21;
+/// Op class: function return with value.
+pub const OP_CLASS_RET: u8 = 0x22;
+/// Op class: function return without value.
+pub const OP_CLASS_RET_VOID: u8 = 0x23;
+/// Op class: stack manipulation (consolidated). Type tag selects:
+/// 0 = POP, 1 = DUP, 2 = SWAP.
+pub const OP_CLASS_STACK_OP: u8 = 0x24;
+/// Op class: built-in standard-library function call.
+pub const OP_CLASS_BUILTIN: u8 = 0x25;
+/// Op class: load FB instance reference.
+pub const OP_CLASS_FB_LOAD_INSTANCE: u8 = 0x26;
+/// Op class: store FB input parameter.
+pub const OP_CLASS_FB_STORE_PARAM: u8 = 0x27;
+/// Op class: load FB output parameter.
+pub const OP_CLASS_FB_LOAD_PARAM: u8 = 0x28;
+/// Op class: invoke FB body.
+pub const OP_CLASS_FB_CALL: u8 = 0x29;
+/// Op class: load array element.
+pub const OP_CLASS_LOAD_ARRAY: u8 = 0x2A;
+/// Op class: store array element.
+pub const OP_CLASS_STORE_ARRAY: u8 = 0x2B;
+/// Op class: load array element via reference.
+pub const OP_CLASS_LOAD_ARRAY_DEREF: u8 = 0x2C;
+/// Op class: store array element via reference.
+pub const OP_CLASS_STORE_ARRAY_DEREF: u8 = 0x2D;
+/// Op class: STR_INIT.
+pub const OP_CLASS_STR_INIT: u8 = 0x2E;
+/// Op class: STR_LOAD_VAR.
+pub const OP_CLASS_STR_LOAD_VAR: u8 = 0x2F;
+/// Op class: STR_STORE_VAR.
+pub const OP_CLASS_STR_STORE_VAR: u8 = 0x30;
+/// Op class: LEN_STR.
+pub const OP_CLASS_LEN_STR: u8 = 0x31;
+/// Op class: FIND_STR.
+pub const OP_CLASS_FIND_STR: u8 = 0x32;
+/// Op class: REPLACE_STR.
+pub const OP_CLASS_REPLACE_STR: u8 = 0x33;
+/// Op class: INSERT_STR.
+pub const OP_CLASS_INSERT_STR: u8 = 0x34;
+/// Op class: DELETE_STR.
+pub const OP_CLASS_DELETE_STR: u8 = 0x35;
+/// Op class: LEFT_STR.
+pub const OP_CLASS_LEFT_STR: u8 = 0x36;
+/// Op class: RIGHT_STR.
+pub const OP_CLASS_RIGHT_STR: u8 = 0x37;
+/// Op class: MID_STR.
+pub const OP_CLASS_MID_STR: u8 = 0x38;
+/// Op class: CONCAT_STR.
+pub const OP_CLASS_CONCAT_STR: u8 = 0x39;
+/// Op class: STR_INIT_ARRAY.
+pub const OP_CLASS_STR_INIT_ARRAY: u8 = 0x3A;
+/// Op class: STR_LOAD_ARRAY_ELEM.
+pub const OP_CLASS_STR_LOAD_ARRAY_ELEM: u8 = 0x3B;
+/// Op class: STR_STORE_ARRAY_ELEM.
+pub const OP_CLASS_STR_STORE_ARRAY_ELEM: u8 = 0x3C;
+// 0x3D..0x3F free (3 op-class slots reserved for future use).
+
+/// Decompose a primary opcode byte into `(op_class, type_tag)`.
+#[inline]
+pub const fn decode_opcode(op: Opcode) -> (u8, u8) {
+    (op >> 2, op & 0x03)
+}
+
+/// Compose `(op_class, type_tag)` into a primary opcode byte.
+#[inline]
+pub const fn encode_opcode(op_class: u8, type_tag: u8) -> Opcode {
+    (op_class << 2) | (type_tag & 0x03)
+}
+
 /// Load a 32-bit integer constant from the constant pool.
 /// Operand: u16 constant pool index (little-endian).
-pub const LOAD_CONST_I32: Opcode = 0x01;
+pub const LOAD_CONST_I32: Opcode = encode_opcode(OP_CLASS_LOAD_CONST, T_I32);
 
-/// Push I32 value 1 (boolean TRUE).
-pub const LOAD_TRUE: Opcode = 0x07;
+/// Push I32 value 1 (boolean TRUE). Encoded as `LOAD_BOOL` with type tag = 1.
+pub const LOAD_TRUE: Opcode = encode_opcode(OP_CLASS_LOAD_BOOL, 1);
 
-/// Push I32 value 0 (boolean FALSE).
-pub const LOAD_FALSE: Opcode = 0x08;
+/// Push I32 value 0 (boolean FALSE). Encoded as `LOAD_BOOL` with type tag = 0.
+pub const LOAD_FALSE: Opcode = encode_opcode(OP_CLASS_LOAD_BOOL, 0);
 
 /// Load a 32-bit integer from the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const LOAD_VAR_I32: Opcode = 0x10;
+pub const LOAD_VAR_I32: Opcode = encode_opcode(OP_CLASS_LOAD_VAR, T_I32);
 
 /// Store a 32-bit integer to the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const STORE_VAR_I32: Opcode = 0x18;
+pub const STORE_VAR_I32: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_I32);
 
 /// Add two 32-bit integers (wrapping).
 /// Pops two values, pushes their sum.
@@ -179,7 +364,7 @@ pub const FB_CALL: Opcode = 0xC3;
 /// Load a STRING literal from the constant pool into a temporary buffer.
 /// Operand: u16 constant pool index (little-endian).
 /// Pushes the temp buf_idx onto the stack.
-pub const LOAD_CONST_STR: Opcode = 0x09;
+pub const LOAD_CONST_STR: Opcode = encode_opcode(OP_CLASS_LOAD_CONST_STR, 0);
 
 /// Initialize a STRING variable in the data region.
 /// Operands: data_offset: u32, max_length: u16.
@@ -266,13 +451,13 @@ pub const STR_STORE_ARRAY_ELEM: Opcode = 0xEE;
 /// Operand 1: u16 variable table index (little-endian).
 /// Operand 2: u16 array descriptor index (little-endian).
 /// Pops 1 (flat index), pushes 1 (element value). Net stack: 0.
-pub const LOAD_ARRAY: Opcode = 0x24;
+pub const LOAD_ARRAY: Opcode = encode_opcode(OP_CLASS_LOAD_ARRAY, 0);
 
 /// Store a value to an array element.
 /// Operand 1: u16 variable table index (little-endian).
 /// Operand 2: u16 array descriptor index (little-endian).
 /// Pops 2 (value, flat index). Net stack: -2.
-pub const STORE_ARRAY: Opcode = 0x25;
+pub const STORE_ARRAY: Opcode = encode_opcode(OP_CLASS_STORE_ARRAY, 0);
 
 /// Load a value from an array element through a reference (double indirection).
 /// Operand 1: u16 reference variable index (little-endian). The slot holds the
@@ -292,67 +477,67 @@ pub const STORE_ARRAY_DEREF: Opcode = 0x27;
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.
 /// `(v as i8) as i32` — wraps to -128..127.
-pub const TRUNC_I8: Opcode = 0x20;
+pub const TRUNC_I8: Opcode = encode_opcode(OP_CLASS_TRUNC, 0);
 
 /// Truncate i32 to u8 range, then zero-extend back to i32.
 /// `(v as u8) as i32` — wraps to 0..255.
-pub const TRUNC_U8: Opcode = 0x21;
+pub const TRUNC_U8: Opcode = encode_opcode(OP_CLASS_TRUNC, 1);
 
 /// Truncate i32 to i16 range, then sign-extend back to i32.
 /// `(v as i16) as i32` — wraps to -32768..32767.
-pub const TRUNC_I16: Opcode = 0x22;
+pub const TRUNC_I16: Opcode = encode_opcode(OP_CLASS_TRUNC, 2);
 
 /// Truncate i32 to u16 range, then zero-extend back to i32.
 /// `(v as u16) as i32` — wraps to 0..65535.
-pub const TRUNC_U16: Opcode = 0x23;
+pub const TRUNC_U16: Opcode = encode_opcode(OP_CLASS_TRUNC, 3);
 
 // --- 64-bit load/store opcodes ---
 
 /// Load a 64-bit integer constant from the constant pool.
 /// Operand: u16 constant pool index (little-endian).
-pub const LOAD_CONST_I64: Opcode = 0x02;
+pub const LOAD_CONST_I64: Opcode = encode_opcode(OP_CLASS_LOAD_CONST, T_I64);
 
 /// Load a 32-bit float constant from the constant pool.
 /// Operand: u16 constant pool index (little-endian).
-pub const LOAD_CONST_F32: Opcode = 0x03;
+pub const LOAD_CONST_F32: Opcode = encode_opcode(OP_CLASS_LOAD_CONST, T_F32);
 
 /// Load a 64-bit float constant from the constant pool.
 /// Operand: u16 constant pool index (little-endian).
-pub const LOAD_CONST_F64: Opcode = 0x04;
+pub const LOAD_CONST_F64: Opcode = encode_opcode(OP_CLASS_LOAD_CONST, T_F64);
 
 /// Load a 64-bit integer from the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const LOAD_VAR_I64: Opcode = 0x11;
+pub const LOAD_VAR_I64: Opcode = encode_opcode(OP_CLASS_LOAD_VAR, T_I64);
 
 /// Load a 32-bit float from the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const LOAD_VAR_F32: Opcode = 0x12;
+pub const LOAD_VAR_F32: Opcode = encode_opcode(OP_CLASS_LOAD_VAR, T_F32);
 
 /// Load a 64-bit float from the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const LOAD_VAR_F64: Opcode = 0x13;
+pub const LOAD_VAR_F64: Opcode = encode_opcode(OP_CLASS_LOAD_VAR, T_F64);
 
 /// Indirect load: pops a reference (variable index) from the stack,
 /// loads the referenced variable's value, and pushes it.
 /// No operand. Stack: [..., ref] → [..., value].
-pub const LOAD_INDIRECT: Opcode = 0x14;
+pub const LOAD_INDIRECT: Opcode = encode_opcode(OP_CLASS_LOAD_INDIRECT, 0);
 
 /// Indirect store: pops a value and a reference (variable index) from the stack,
 /// stores the value into the referenced variable.
 /// No operand. Stack: [..., value, ref] → [...].
-pub const STORE_INDIRECT: Opcode = 0x15;
+pub const STORE_INDIRECT: Opcode = encode_opcode(OP_CLASS_STORE_INDIRECT, 0);
 
 /// Store a 64-bit integer to the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const STORE_VAR_I64: Opcode = 0x19;
+pub const STORE_VAR_I64: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_I64);
 
 /// Store a 32-bit float to the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const STORE_VAR_F32: Opcode = 0x1A;
+pub const STORE_VAR_F32: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_F32);
 
 /// Store a 64-bit float to the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const STORE_VAR_F64: Opcode = 0x1B;
+pub const STORE_VAR_F64: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_F64);
 
 // --- 64-bit arithmetic opcodes ---
 
