@@ -1034,12 +1034,14 @@ mod tests {
     #[test]
     fn decode_when_jmp_forward_then_comment_shows_target_address() {
         // JMP offset=+2: target = 0 + 3 + 2 = 5
+        // Note: 0xFE is an unknown opcode (op-class 0x3F is reserved/free), used as
+        // padding so the disassembler doesn't try to decode the byte as a valid op.
         let bytecode = vec![
             opcode::JMP,
             0x02,
             0x00,
             opcode::RET_VOID,
-            0x00,
+            0xFE,
             opcode::RET_VOID,
         ];
         let instr = first_instruction(bytecode);

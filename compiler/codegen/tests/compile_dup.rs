@@ -88,6 +88,6 @@ END_PROGRAM
         .unwrap();
     // The first STORE_VAR(i) then LOAD_VAR(i) should NOT be optimized
     // because there is a loop label between them.
-    assert_eq!(bytecode[3], 0x18, "expected STORE_VAR_I32, not DUP");
-    assert_eq!(bytecode[6], 0x10, "expected LOAD_VAR_I32 after STORE");
+    assert_eq!(bytecode[3], 0x10, "expected STORE_VAR_I32, not DUP");
+    assert_eq!(bytecode[6], 0x0C, "expected LOAD_VAR_I32 after STORE");
 }

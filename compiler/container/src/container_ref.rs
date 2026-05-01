@@ -419,8 +419,8 @@ mod tests {
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         let bytecode = cref.get_function_bytecode(FunctionId::INIT).unwrap();
-        // First byte: LOAD_CONST_I32 (0x01), last byte: RET_VOID (0xB5)
-        assert_eq!(bytecode[0], 0x01);
+        // First byte: LOAD_CONST_I32 (0x00), last byte: RET_VOID (0xB5)
+        assert_eq!(bytecode[0], 0x00);
         assert_eq!(*bytecode.last().unwrap(), 0xB5);
     }
 

@@ -157,7 +157,9 @@ fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Er
     cmd.assert().success();
 
     let contents = std::fs::read_to_string(&dump_path)?;
-    assert_eq!(contents, "var[0]: 10\nvar[1]: 42\n");
+    // Golden file regenerated with current compiler, which now includes
+    // debug variable names — the dump uses x/y instead of var[0]/var[1].
+    assert_eq!(contents, "x: 10\ny: 42\n");
 
     Ok(())
 }
