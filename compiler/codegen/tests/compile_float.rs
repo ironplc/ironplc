@@ -89,14 +89,14 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // Verify that the bytecode contains GT_F32 (0x84)
+    // Verify that the bytecode contains GT_F32 (0x52)
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     assert!(
-        bytecode.contains(&0x84),
-        "expected GT_F32 (0x84) in bytecode: {:02X?}",
+        bytecode.contains(&0x52),
+        "expected GT_F32 (0x52) in bytecode: {:02X?}",
         bytecode
     );
 }
