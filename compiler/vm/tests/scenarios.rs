@@ -24,10 +24,10 @@ use ironplc_vm::error::Trap;
 fn counter_container() -> ironplc_container::Container {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0x10, 0x00, 0x00,  // LOAD_VAR_I32 var[0]
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
-        0x30,              // ADD_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x0C, 0x00, 0x00,  // LOAD_VAR_I32 var[0]
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
+        0x20,              // ADD_I32
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
 
@@ -86,10 +86,10 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
     // Function 0: counter program (x := x + 1)
     #[rustfmt::skip]
     let counter_bytecode: Vec<u8> = vec![
-        0x10, 0x00, 0x00,  // LOAD_VAR_I32 var[0]
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
-        0x30,              // ADD_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x0C, 0x00, 0x00,  // LOAD_VAR_I32 var[0]
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
+        0x20,              // ADD_I32
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
 
@@ -139,8 +139,8 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
     // A program that stores 42 to var[0] then hits an invalid opcode
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xFF,              // invalid opcode — triggers fault
     ];
 
@@ -215,14 +215,14 @@ fn program_instance(
 fn scenario_when_two_freewheeling_tasks_then_both_execute() {
     #[rustfmt::skip]
     let fn0_bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (10)
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (10)
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
     #[rustfmt::skip]
     let fn1_bytecode: Vec<u8> = vec![
-        0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (20)
-        0x18, 0x02, 0x00,  // STORE_VAR_I32 var[2]
+        0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (20)
+        0x10, 0x02, 0x00,  // STORE_VAR_I32 var[2]
         0xB5,              // RET_VOID
     ];
 
@@ -272,15 +272,15 @@ fn scenario_when_tasks_share_global_then_communication_works() {
     // Function 0: store 99 to var[0]
     #[rustfmt::skip]
     let fn0_bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (99)
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (99)
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
     // Function 1: copy var[0] to var[2]
     #[rustfmt::skip]
     let fn1_bytecode: Vec<u8> = vec![
-        0x10, 0x00, 0x00,  // LOAD_VAR_I32 var[0]   (global)
-        0x18, 0x02, 0x00,  // STORE_VAR_I32 var[2]  (private)
+        0x0C, 0x00, 0x00,  // LOAD_VAR_I32 var[0]   (global)
+        0x10, 0x02, 0x00,  // STORE_VAR_I32 var[2]  (private)
         0xB5,              // RET_VOID
     ];
 
@@ -327,15 +327,15 @@ fn scenario_when_watchdog_exceeded_then_trap() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         // LOOP (offset 0):
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0)
         0x6C,                   // GT_I32
         0xB2, 0x0D, 0x00,       // JMP_IF_NOT +13 -> END (offset 23)
         // body:
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (1)
-        0x31,                   // SUB_I32
-        0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (1)
+        0x24,                   // SUB_I32
+        0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
         // END (offset 23):
         0xB5,                   // RET_VOID
@@ -366,8 +366,8 @@ fn scenario_when_watchdog_exceeded_then_trap() {
 fn scenario_when_watchdog_disabled_then_no_trap() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
 
@@ -397,7 +397,7 @@ fn scenario_when_watchdog_disabled_then_no_trap() {
 fn scenario_when_scope_violation_then_trap() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0x10, 0x00, 0x00,  // LOAD_VAR_I32 var[0]  (outside scope)
+        0x0C, 0x00, 0x00,  // LOAD_VAR_I32 var[0]  (outside scope)
     ];
 
     let c = ContainerBuilder::new()

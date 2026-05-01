@@ -11,9 +11,9 @@ use ironplc_vm::error::Trap;
 fn execute_when_div_i32_by_zero_then_trap() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (10)
-        0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (0)
-        0x33,              // DIV_I32
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (10)
+        0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (0)
+        0x30,              // DIV_I32
     ];
     assert_eq!(
         common::run_and_expect_trap_i32(&bytecode, 0, &[10, 0]),
@@ -25,10 +25,10 @@ fn execute_when_div_i32_by_zero_then_trap() {
 fn execute_when_div_i32_min_by_neg_one_then_wraps() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (i32::MIN)
-        0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (-1)
-        0x33,              // DIV_I32
-        0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (i32::MIN)
+        0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (-1)
+        0x30,              // DIV_I32
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
     assert_eq!(

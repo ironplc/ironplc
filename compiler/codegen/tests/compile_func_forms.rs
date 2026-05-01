@@ -39,18 +39,18 @@ fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
     assert_eq!(
         bytecode,
         &[
-            0x01,
+            0x00,
             0x00,
             0x00, // LOAD_CONST_I32 pool:0 (10)
             0xA1, // DUP (store-load optimization)
-            0x18,
+            0x10,
             0x00,
             0x00, // STORE_VAR_I32 var:0
-            0x01,
+            0x00,
             0x01,
             0x00,            // LOAD_CONST_I32 pool:1 (5)
             expected_opcode, // The operator opcode
-            0x18,
+            0x10,
             0x01,
             0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
@@ -62,27 +62,27 @@ fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
 
 #[test]
 fn compile_when_add_function_then_produces_add_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("ADD", "DINT"), 0x30);
+    assert_two_arg_bytecode(&two_arg_program("ADD", "DINT"), 0x20);
 }
 
 #[test]
 fn compile_when_sub_function_then_produces_sub_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("SUB", "DINT"), 0x31);
+    assert_two_arg_bytecode(&two_arg_program("SUB", "DINT"), 0x24);
 }
 
 #[test]
 fn compile_when_mul_function_then_produces_mul_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("MUL", "DINT"), 0x32);
+    assert_two_arg_bytecode(&two_arg_program("MUL", "DINT"), 0x28);
 }
 
 #[test]
 fn compile_when_div_function_then_produces_div_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("DIV", "DINT"), 0x33);
+    assert_two_arg_bytecode(&two_arg_program("DIV", "DINT"), 0x30);
 }
 
 #[test]
 fn compile_when_mod_function_then_produces_mod_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("MOD", "DINT"), 0x34);
+    assert_two_arg_bytecode(&two_arg_program("MOD", "DINT"), 0x38);
 }
 
 // --- Boolean functions ---
@@ -214,10 +214,10 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
             0xA1, // DUP (store-load optimization)
-            0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );

@@ -12,13 +12,13 @@ ironplc-dsl = { path = "../dsl", version = "0.208.0" }
 ironplc-parser = { path = "../parser", version = "0.208.0" }
 ironplc-problems = { path = "../problems", version = "0.208.0" }
 
-log = "0.4.20"
+log = "0.4.29"
 encoding_rs = "0.8"
-roxmltree = { version = "0.20", features = ["positions"] }
-time = "0.3.34"
+roxmltree = { version = "0.21", features = ["positions"] }
+time = "0.3.47"
 
 [dev-dependencies]
 ironplc-test = { path = "../test", version = "0.208.0" }
-tempfile = "3.8"
-ctor = "0.2"
-env_logger = "0.10"
+tempfile = "3.27"
+ctor = "0.11"
+env_logger = "0.11"

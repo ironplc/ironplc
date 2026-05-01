@@ -12,8 +12,8 @@ const FUNC_ENTRY_SIZE: usize = 16;
 #[derive(Clone, Debug)]
 pub struct FuncEntry {
     pub function_id: FunctionId,
-    pub bytecode_offset: u32,
-    pub bytecode_length: u32,
+    pub code_offset: u32,
+    pub code_length: u32,
     pub max_stack_depth: u16,
     pub num_locals: u16,
     pub num_params: u16,
@@ -23,7 +23,7 @@ pub struct FuncEntry {
 #[derive(Clone, Debug, Default)]
 pub struct CodeSection {
     pub functions: Vec<FuncEntry>,
-    pub bytecode: Vec<u8>,
+    pub(crate) bytecode: Vec<u8>,
 }
 
 impl CodeSection {
@@ -45,8 +45,8 @@ impl CodeSection {
     /// sequential indices starting from 0.
     pub fn get_function_bytecode(&self, function_id: FunctionId) -> Option<&[u8]> {
         let entry = self.functions.get(function_id.raw() as usize)?;
-        let start = entry.bytecode_offset as usize;
-        let end = start + entry.bytecode_length as usize;
+        let start = entry.code_offset as usize;
+        let end = start + entry.code_length as usize;
         self.bytecode.get(start..end)
     }
 
@@ -54,8 +54,8 @@ impl CodeSection {
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         for func in &self.functions {
             w.write_all(&func.function_id.to_le_bytes())?;
-            w.write_all(&func.bytecode_offset.to_le_bytes())?;
-            w.write_all(&func.bytecode_length.to_le_bytes())?;
+            w.write_all(&func.code_offset.to_le_bytes())?;
+            w.write_all(&func.code_length.to_le_bytes())?;
             w.write_all(&func.max_stack_depth.to_le_bytes())?;
             w.write_all(&func.num_locals.to_le_bytes())?;
             w.write_all(&func.num_params.to_le_bytes())?;
@@ -83,13 +83,13 @@ impl CodeSection {
             r.read_exact(&mut entry_buf)?;
             functions.push(FuncEntry {
                 function_id: FunctionId::new(u16::from_le_bytes([entry_buf[0], entry_buf[1]])),
-                bytecode_offset: u32::from_le_bytes([
+                code_offset: u32::from_le_bytes([
                     entry_buf[2],
                     entry_buf[3],
                     entry_buf[4],
                     entry_buf[5],
                 ]),
-                bytecode_length: u32::from_le_bytes([
+                code_length: u32::from_le_bytes([
                     entry_buf[6],
                     entry_buf[7],
                     entry_buf[8],
@@ -124,8 +124,8 @@ mod tests {
         let section = CodeSection {
             functions: vec![FuncEntry {
                 function_id: FunctionId::INIT,
-                bytecode_offset: 0,
-                bytecode_length: bytecode.len() as u32,
+                code_offset: 0,
+                code_length: bytecode.len() as u32,
                 max_stack_depth: 2,
                 num_locals: 1,
                 num_params: 0,
@@ -141,7 +141,7 @@ mod tests {
 
         assert_eq!(decoded.functions.len(), 1);
         assert_eq!(decoded.functions[0].function_id, FunctionId::INIT);
-        assert_eq!(decoded.functions[0].bytecode_length, 4);
+        assert_eq!(decoded.functions[0].code_length, 4);
         assert_eq!(decoded.functions[0].max_stack_depth, 2);
         assert_eq!(decoded.functions[0].num_locals, 1);
         assert_eq!(decoded.bytecode, vec![0x01, 0x00, 0x00, 0xB5]);
@@ -152,8 +152,8 @@ mod tests {
         let section = CodeSection {
             functions: vec![FuncEntry {
                 function_id: FunctionId::INIT,
-                bytecode_offset: 0,
-                bytecode_length: 0,
+                code_offset: 0,
+                code_length: 0,
                 max_stack_depth: 0,
                 num_locals: 0,
                 num_params: 0,

@@ -27,8 +27,8 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x03, 0x00, 0x00, // LOAD_CONST_F32 pool:0
-            0x1A, 0x00, 0x00, // STORE_VAR_F32 var:0
+            0x02, 0x00, 0x00, // LOAD_CONST_F32 pool:0
+            0x12, 0x00, 0x00, // STORE_VAR_F32 var:0
             0xB5, // RET_VOID
         ]
     );
@@ -60,12 +60,12 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x04, 0x00, 0x00, // LOAD_CONST_F64 pool:0
+            0x03, 0x00, 0x00, // LOAD_CONST_F64 pool:0
             0xA1, // DUP (store-load optimization)
-            0x1B, 0x00, 0x00, // STORE_VAR_F64 var:0
-            0x04, 0x01, 0x00, // LOAD_CONST_F64 pool:1
-            0x4E, // ADD_F64
-            0x1B, 0x01, 0x00, // STORE_VAR_F64 var:1
+            0x13, 0x00, 0x00, // STORE_VAR_F64 var:0
+            0x03, 0x01, 0x00, // LOAD_CONST_F64 pool:1
+            0x23, // ADD_F64
+            0x13, 0x01, 0x00, // STORE_VAR_F64 var:1
             0xB5, // RET_VOID
         ]
     );
