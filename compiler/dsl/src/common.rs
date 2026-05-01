@@ -42,6 +42,22 @@ impl ConstantKind {
     }
 }
 
+impl Located for ConstantKind {
+    fn span(&self) -> SourceSpan {
+        match self {
+            ConstantKind::IntegerLiteral(lit) => lit.value.value.span(),
+            ConstantKind::BitStringLiteral(lit) => lit.value.span(),
+            ConstantKind::RealLiteral(_)
+            | ConstantKind::Boolean(_)
+            | ConstantKind::CharacterString(_)
+            | ConstantKind::Duration(_)
+            | ConstantKind::TimeOfDay(_)
+            | ConstantKind::Date(_)
+            | ConstantKind::DateAndTime(_) => SourceSpan::default(),
+        }
+    }
+}
+
 impl fmt::Display for ConstantKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
