@@ -29,7 +29,7 @@ END_PROGRAM
         bytecode,
         &[
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (42)
-            0x20, // TRUNC_I8
+            0x1C, // TRUNC_I8
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xB5, // RET_VOID
         ]
@@ -57,7 +57,7 @@ END_PROGRAM
         bytecode,
         &[
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1000)
-            0x23, // TRUNC_U16
+            0x1F, // TRUNC_U16
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xB5, // RET_VOID
         ]

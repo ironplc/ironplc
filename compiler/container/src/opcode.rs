@@ -451,13 +451,13 @@ pub const STR_STORE_ARRAY_ELEM: Opcode = 0xEE;
 /// Operand 1: u16 variable table index (little-endian).
 /// Operand 2: u16 array descriptor index (little-endian).
 /// Pops 1 (flat index), pushes 1 (element value). Net stack: 0.
-pub const LOAD_ARRAY: Opcode = 0x24;
+pub const LOAD_ARRAY: Opcode = encode_opcode(OP_CLASS_LOAD_ARRAY, 0);
 
 /// Store a value to an array element.
 /// Operand 1: u16 variable table index (little-endian).
 /// Operand 2: u16 array descriptor index (little-endian).
 /// Pops 2 (value, flat index). Net stack: -2.
-pub const STORE_ARRAY: Opcode = 0x25;
+pub const STORE_ARRAY: Opcode = encode_opcode(OP_CLASS_STORE_ARRAY, 0);
 
 /// Load a value from an array element through a reference (double indirection).
 /// Operand 1: u16 reference variable index (little-endian). The slot holds the
@@ -477,19 +477,19 @@ pub const STORE_ARRAY_DEREF: Opcode = 0x27;
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.
 /// `(v as i8) as i32` — wraps to -128..127.
-pub const TRUNC_I8: Opcode = 0x20;
+pub const TRUNC_I8: Opcode = encode_opcode(OP_CLASS_TRUNC, 0);
 
 /// Truncate i32 to u8 range, then zero-extend back to i32.
 /// `(v as u8) as i32` — wraps to 0..255.
-pub const TRUNC_U8: Opcode = 0x21;
+pub const TRUNC_U8: Opcode = encode_opcode(OP_CLASS_TRUNC, 1);
 
 /// Truncate i32 to i16 range, then sign-extend back to i32.
 /// `(v as i16) as i32` — wraps to -32768..32767.
-pub const TRUNC_I16: Opcode = 0x22;
+pub const TRUNC_I16: Opcode = encode_opcode(OP_CLASS_TRUNC, 2);
 
 /// Truncate i32 to u16 range, then zero-extend back to i32.
 /// `(v as u16) as i32` — wraps to 0..65535.
-pub const TRUNC_U16: Opcode = 0x23;
+pub const TRUNC_U16: Opcode = encode_opcode(OP_CLASS_TRUNC, 3);
 
 // --- 64-bit load/store opcodes ---
 

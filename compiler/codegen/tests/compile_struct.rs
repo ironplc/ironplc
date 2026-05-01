@@ -188,8 +188,8 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(0))
         .unwrap();
-    // Should contain STORE_ARRAY opcodes (0x25) for field initialization
-    let store_array_count = bytecode.iter().filter(|&&b| b == 0x25).count();
+    // Should contain STORE_ARRAY opcodes (0xAC) for field initialization
+    let store_array_count = bytecode.iter().filter(|&&b| b == 0xAC).count();
     assert!(
         store_array_count >= 2,
         "Expected at least 2 STORE_ARRAY opcodes for 2 fields, got {}",
@@ -219,7 +219,7 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(0))
         .unwrap();
     // Even without explicit init, fields should be zero-initialized via STORE_ARRAY
-    let store_array_count = bytecode.iter().filter(|&&b| b == 0x25).count();
+    let store_array_count = bytecode.iter().filter(|&&b| b == 0xAC).count();
     assert!(
         store_array_count >= 2,
         "Expected at least 2 STORE_ARRAY opcodes for default init, got {}",
@@ -250,7 +250,7 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(0))
         .unwrap();
     // All 3 fields should be initialized (1 explicit, 2 defaults)
-    let store_array_count = bytecode.iter().filter(|&&b| b == 0x25).count();
+    let store_array_count = bytecode.iter().filter(|&&b| b == 0xAC).count();
     assert!(
         store_array_count >= 3,
         "Expected at least 3 STORE_ARRAY opcodes (1 explicit + 2 defaults), got {}",
@@ -277,12 +277,12 @@ PROGRAM main
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
-    // The scan function (function 1) should contain a LOAD_ARRAY opcode (0x24)
+    // The scan function (function 1) should contain a LOAD_ARRAY opcode (0xA8)
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    let load_array_count = bytecode.iter().filter(|&&b| b == 0x24).count();
+    let load_array_count = bytecode.iter().filter(|&&b| b == 0xA8).count();
     assert!(
         load_array_count >= 1,
         "Expected at least 1 LOAD_ARRAY opcode for struct field read, got {}",
