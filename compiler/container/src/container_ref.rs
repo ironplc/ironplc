@@ -237,14 +237,14 @@ impl<'a> ContainerRef<'a> {
         }
         let entry = &self.func_dir[entry_offset..entry_offset + FUNC_ENTRY_SIZE];
 
-        let bytecode_offset = u32::from_le_bytes([entry[2], entry[3], entry[4], entry[5]]) as usize;
-        let bytecode_length = u32::from_le_bytes([entry[6], entry[7], entry[8], entry[9]]) as usize;
+        let code_offset = u32::from_le_bytes([entry[2], entry[3], entry[4], entry[5]]) as usize;
+        let code_length = u32::from_le_bytes([entry[6], entry[7], entry[8], entry[9]]) as usize;
 
-        let end = bytecode_offset + bytecode_length;
+        let end = code_offset + code_length;
         if end > self.code_bytes.len() {
             return None;
         }
-        Some(&self.code_bytes[bytecode_offset..end])
+        Some(&self.code_bytes[code_offset..end])
     }
 
     /// Returns the number of tasks in the task table.
@@ -607,7 +607,7 @@ mod tests {
 
     #[test]
     fn container_ref_get_function_bytecode_when_entry_length_exceeds_code_then_returns_none() {
-        // Tamper the function directory so the entry claims a bytecode_length
+        // Tamper the function directory so the entry claims a code_length
         // that runs past the end of code_bytes. from_slice validates the
         // outer section boundary but not individual func entries, so the
         // bounds check inside get_function_bytecode must catch it.
@@ -618,8 +618,8 @@ mod tests {
 
         let mut data = base.clone();
         // Function directory entry layout (16 bytes):
-        //   function_id(2) + bytecode_offset(4, at bytes 2..6)
-        //   + bytecode_length(4, at bytes 6..10) + ...
+        //   function_id(2) + code_offset(4, at bytes 2..6)
+        //   + code_length(4, at bytes 6..10) + ...
         let length_offset = code_start + 6;
         data[length_offset..length_offset + 4].copy_from_slice(&u32::MAX.to_le_bytes());
 
