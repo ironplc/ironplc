@@ -208,15 +208,15 @@ pub const STORE_VAR_I32: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_I32);
 
 /// Add two 32-bit integers (wrapping).
 /// Pops two values, pushes their sum.
-pub const ADD_I32: Opcode = 0x30;
+pub const ADD_I32: Opcode = encode_opcode(OP_CLASS_ADD, T_I32);
 
 /// Subtract two 32-bit integers (wrapping).
 /// Pops two values (b then a), pushes a - b.
-pub const SUB_I32: Opcode = 0x31;
+pub const SUB_I32: Opcode = encode_opcode(OP_CLASS_SUB, T_I32);
 
 /// Multiply two 32-bit integers (wrapping).
 /// Pops two values, pushes their product.
-pub const MUL_I32: Opcode = 0x32;
+pub const MUL_I32: Opcode = encode_opcode(OP_CLASS_MUL, T_I32);
 
 /// Divide two 32-bit integers (truncating toward zero).
 /// Pops two values (b then a), pushes a / b.
@@ -543,15 +543,15 @@ pub const STORE_VAR_F64: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_F64);
 
 /// Add two 64-bit integers (wrapping).
 /// Pops two values (b then a), pushes a.wrapping_add(b).
-pub const ADD_I64: Opcode = 0x38;
+pub const ADD_I64: Opcode = encode_opcode(OP_CLASS_ADD, T_I64);
 
 /// Subtract two 64-bit integers (wrapping).
 /// Pops two values (b then a), pushes a.wrapping_sub(b).
-pub const SUB_I64: Opcode = 0x39;
+pub const SUB_I64: Opcode = encode_opcode(OP_CLASS_SUB, T_I64);
 
 /// Multiply two 64-bit integers (wrapping).
 /// Pops two values (b then a), pushes a.wrapping_mul(b).
-pub const MUL_I64: Opcode = 0x3A;
+pub const MUL_I64: Opcode = encode_opcode(OP_CLASS_MUL, T_I64);
 
 /// Divide two signed 64-bit integers (truncating toward zero).
 /// Pops two values (b then a), pushes a / b. Traps on division by zero.
@@ -591,7 +591,7 @@ pub const MOD_U64: Opcode = 0x43;
 
 /// Add two 32-bit floats.
 /// Pops two values (b then a), pushes a + b.
-pub const ADD_F32: Opcode = 0x48;
+pub const ADD_F32: Opcode = encode_opcode(OP_CLASS_ADD, T_F32);
 
 /// Subtract two 32-bit floats.
 /// Pops two values (b then a), pushes a - b.
@@ -599,7 +599,7 @@ pub const SUB_F32: Opcode = 0x49;
 
 /// Multiply two 32-bit floats.
 /// Pops two values (b then a), pushes a * b.
-pub const MUL_F32: Opcode = 0x4A;
+pub const MUL_F32: Opcode = encode_opcode(OP_CLASS_MUL, T_F32);
 
 /// Divide two 32-bit floats.
 /// Pops two values (b then a), pushes a / b.
@@ -614,7 +614,7 @@ pub const NEG_F32: Opcode = 0x4C;
 
 /// Add two 64-bit floats.
 /// Pops two values (b then a), pushes a + b.
-pub const ADD_F64: Opcode = 0x4E;
+pub const ADD_F64: Opcode = encode_opcode(OP_CLASS_ADD, T_F64);
 
 /// Subtract two 64-bit floats.
 /// Pops two values (b then a), pushes a - b.
@@ -622,7 +622,7 @@ pub const SUB_F64: Opcode = 0x4F;
 
 /// Multiply two 64-bit floats.
 /// Pops two values (b then a), pushes a * b.
-pub const MUL_F64: Opcode = 0x50;
+pub const MUL_F64: Opcode = encode_opcode(OP_CLASS_MUL, T_F64);
 
 /// Divide two 64-bit floats.
 /// Pops two values (b then a), pushes a / b.

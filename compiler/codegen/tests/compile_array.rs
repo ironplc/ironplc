@@ -99,7 +99,7 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     // Should contain LOAD_VAR for i, LOAD_CONST_I64 (lower bound 1), SUB_I64, LOAD_ARRAY
-    assert!(bytecode.contains(&0x39), "SUB_I64 not found in bytecode");
+    assert!(bytecode.contains(&0x25), "SUB_I64 not found in bytecode");
     assert!(bytecode.contains(&0xA8), "LOAD_ARRAY not found in bytecode");
 }
 
@@ -120,7 +120,7 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert!(bytecode.contains(&0x39), "SUB_I64 not found in bytecode");
+    assert!(bytecode.contains(&0x25), "SUB_I64 not found in bytecode");
     assert!(
         bytecode.contains(&0xAC),
         "STORE_ARRAY not found in bytecode"

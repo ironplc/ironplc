@@ -14,7 +14,7 @@ fn execute_when_sub_i32_wraps_at_min_then_correct() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
-        0x31,              // SUB_I32
+        0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -31,7 +31,7 @@ fn execute_when_sub_i32_wraps_at_max_then_correct() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-1)
-        0x31,              // SUB_I32
+        0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -48,7 +48,7 @@ fn execute_when_sub_i32_min_minus_max_then_wraps_to_one() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MAX)
-        0x31,              // SUB_I32
+        0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -65,7 +65,7 @@ fn execute_when_sub_i32_max_minus_min_then_wraps_to_neg_one() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MIN)
-        0x31,              // SUB_I32
+        0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -82,7 +82,7 @@ fn execute_when_sub_i32_zero_minus_min_then_wraps() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (0)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MIN)
-        0x31,              // SUB_I32
+        0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -95,7 +95,7 @@ fn execute_when_sub_i32_zero_minus_min_then_wraps() {
 #[test]
 fn execute_when_sub_i32_stack_underflow_then_trap() {
     assert_eq!(
-        common::run_and_expect_trap_i32(&[0x31], 0, &[]),
+        common::run_and_expect_trap_i32(&[0x24], 0, &[]),
         Trap::StackUnderflow
     );
 }

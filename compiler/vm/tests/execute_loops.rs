@@ -20,7 +20,7 @@ fn execute_when_while_true_three_iterations_then_loops() {
         // body:
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (1)
-        0x31,                   // SUB_I32
+        0x24,                   // SUB_I32
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
         // END (offset 23):
@@ -64,7 +64,7 @@ fn execute_when_repeat_until_then_loops_twice() {
         // LOOP (offset 0):
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
-        0x30,                   // ADD_I32
+        0x20,                   // ADD_I32
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         // condition: var[0] >= 2
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
@@ -96,12 +96,12 @@ fn execute_when_for_loop_then_iterates_correctly() {
         // BODY (offset 19):
         0x0C, 0x01, 0x00,       // LOAD_VAR_I32 var[1]
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x30,                   // ADD_I32
+        0x20,                   // ADD_I32
         0x10, 0x01, 0x00,       // STORE_VAR_I32 var[1]
         // increment: var[0] := var[0] + 1
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
-        0x30,                   // ADD_I32
+        0x20,                   // ADD_I32
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xDC, 0xFF,       // JMP -36 -> LOOP (offset 6)
         // END (offset 42):
@@ -126,7 +126,7 @@ fn execute_when_backward_jump_then_loops() {
         // LOOP (offset 0):
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
-        0x30,                   // ADD_I32
+        0x20,                   // ADD_I32
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         // check: var[0] >= 2
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]

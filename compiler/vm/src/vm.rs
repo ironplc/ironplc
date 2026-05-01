@@ -2191,7 +2191,7 @@ mod tests {
             0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
             0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
             0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-            0x30,                   // ADD_I32
+            0x20,                   // ADD_I32
             0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
             0xB5,                   // RET_VOID
         ];
@@ -2309,7 +2309,7 @@ mod tests {
     #[test]
     fn execute_when_stack_underflow_then_trap() {
         // ADD_I32 tries to pop 2 values from an empty stack
-        let c = single_function_container(&[0x30], 0, &[]);
+        let c = single_function_container(&[0x20], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
@@ -2380,7 +2380,7 @@ mod tests {
         let func_bytecode: Vec<u8> = vec![
             0x0C, 0x01, 0x00,  // LOAD_VAR_I32 var[1] (A - absolute index)
             0x0C, 0x02, 0x00,  // LOAD_VAR_I32 var[2] (B - absolute index)
-            0x30,              // ADD_I32
+            0x20,              // ADD_I32
             0x10, 0x03, 0x00,  // STORE_VAR_I32 var[3] (return slot - absolute index)
             0x0C, 0x03, 0x00,  // LOAD_VAR_I32 var[3]
             0xB4,              // RET

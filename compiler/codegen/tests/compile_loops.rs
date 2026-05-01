@@ -55,7 +55,7 @@ END_PROGRAM
             0xB2, 0x0D, 0x00, // JMP_IF_NOT offset:+13
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
-            0x31, // SUB_I32
+            0x24, // SUB_I32
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xB0, 0xE9, 0xFF, // JMP offset:-23
             0xB5, // RET_VOID
@@ -103,7 +103,7 @@ END_PROGRAM
         &[
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x30, // ADD_I32
+            0x20, // ADD_I32
             0xA1, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
@@ -179,11 +179,11 @@ END_PROGRAM
             0xB2, 0x17, 0x00, // JMP_IF_NOT offset:+23
             0x0C, 0x01, 0x00, // LOAD_VAR_I32 var:1
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x30, // ADD_I32
+            0x20, // ADD_I32
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x30, // ADD_I32
+            0x20, // ADD_I32
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0xB0, 0xDF, 0xFF, // JMP offset:-33
             0xB5, // RET_VOID

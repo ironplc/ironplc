@@ -26,7 +26,7 @@ fn counter_container() -> ironplc_container::Container {
     let bytecode: Vec<u8> = vec![
         0x0C, 0x00, 0x00,  // LOAD_VAR_I32 var[0]
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
-        0x30,              // ADD_I32
+        0x20,              // ADD_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -88,7 +88,7 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
     let counter_bytecode: Vec<u8> = vec![
         0x0C, 0x00, 0x00,  // LOAD_VAR_I32 var[0]
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
-        0x30,              // ADD_I32
+        0x20,              // ADD_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -334,7 +334,7 @@ fn scenario_when_watchdog_exceeded_then_trap() {
         // body:
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (1)
-        0x31,                   // SUB_I32
+        0x24,                   // SUB_I32
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
         // END (offset 23):

@@ -14,7 +14,7 @@ fn execute_when_mul_i32_max_times_two_then_wraps() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (2)
-        0x32,              // MUL_I32
+        0x28,              // MUL_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -28,7 +28,7 @@ fn execute_when_mul_i32_min_times_two_then_wraps_to_zero() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (2)
-        0x32,              // MUL_I32
+        0x28,              // MUL_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -42,7 +42,7 @@ fn execute_when_mul_i32_min_times_neg_one_then_wraps() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-1)
-        0x32,              // MUL_I32
+        0x28,              // MUL_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -59,7 +59,7 @@ fn execute_when_mul_i32_max_times_max_then_wraps() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
-        0x32,              // MUL_I32
+        0x28,              // MUL_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -76,7 +76,7 @@ fn execute_when_mul_i32_min_times_min_then_wraps() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
-        0x32,              // MUL_I32
+        0x28,              // MUL_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -93,7 +93,7 @@ fn execute_when_mul_i32_max_times_min_then_wraps() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MIN)
-        0x32,              // MUL_I32
+        0x28,              // MUL_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -106,7 +106,7 @@ fn execute_when_mul_i32_max_times_min_then_wraps() {
 #[test]
 fn execute_when_mul_i32_stack_underflow_then_trap() {
     assert_eq!(
-        common::run_and_expect_trap_i32(&[0x32], 0, &[]),
+        common::run_and_expect_trap_i32(&[0x28], 0, &[]),
         Trap::StackUnderflow
     );
 }
