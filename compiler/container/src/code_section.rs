@@ -23,7 +23,7 @@ pub struct FuncEntry {
 #[derive(Clone, Debug, Default)]
 pub struct CodeSection {
     pub functions: Vec<FuncEntry>,
-    pub bytecode: Vec<u8>,
+    pub(crate) bytecode: Vec<u8>,
 }
 
 impl CodeSection {
