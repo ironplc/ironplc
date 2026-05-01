@@ -105,6 +105,15 @@ impl Located for SymbolicVariableKind {
     }
 }
 
+impl Located for Variable {
+    fn span(&self) -> SourceSpan {
+        match self {
+            Variable::Direct(addr) => addr.position.clone(),
+            Variable::Symbolic(sym) => sym.span(),
+        }
+    }
+}
+
 impl Variable {
     pub fn named(name: &str) -> Variable {
         Variable::Symbolic(SymbolicVariableKind::Named(NamedVariable {
@@ -402,6 +411,31 @@ impl fmt::Display for Expr {
     }
 }
 
+impl Located for Expr {
+    fn span(&self) -> SourceSpan {
+        self.kind.span()
+    }
+}
+
+impl Located for ExprKind {
+    fn span(&self) -> SourceSpan {
+        match self {
+            ExprKind::Compare(expr) => SourceSpan::join(&expr.left.span(), &expr.right.span()),
+            ExprKind::BinaryOp(expr) => SourceSpan::join(&expr.left.span(), &expr.right.span()),
+            ExprKind::UnaryOp(expr) => expr.term.span(),
+            ExprKind::Expression(inner) => inner.span(),
+            ExprKind::Const(constant) => constant.span(),
+            ExprKind::EnumeratedValue(value) => value.span(),
+            ExprKind::Variable(var) => var.span(),
+            ExprKind::Function(func) => func.name.span(),
+            ExprKind::LateBound(late) => late.value.span(),
+            ExprKind::Ref(var) => var.span(),
+            ExprKind::Deref(expr) => expr.span(),
+            ExprKind::Null(span) => span.clone(),
+        }
+    }
+}
+
 /// Expression that yields a value derived from the input(s) to the expression.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum ExprKind {
@@ -691,7 +725,6 @@ impl StmtKind {
             body,
             else_ifs: vec![],
             else_body: vec![],
-            span: SourceSpan::default(),
         })
     }
 
@@ -705,7 +738,6 @@ impl StmtKind {
             body,
             else_ifs: vec![],
             else_body,
-            span: SourceSpan::default(),
         })
     }
 
@@ -748,7 +780,6 @@ impl StmtKind {
             target,
             deref: false,
             value: Expr::new(value),
-            span: SourceSpan::default(),
         })
     }
 
@@ -759,7 +790,6 @@ impl StmtKind {
             value: Expr::new(ExprKind::LateBound(LateBound {
                 value: Id::from(src),
             })),
-            span: SourceSpan::default(),
         })
     }
 
@@ -774,7 +804,6 @@ impl StmtKind {
             target: Variable::named(target),
             deref: false,
             value: Expr::new(ExprKind::Variable(variable)),
-            span: SourceSpan::default(),
         })
     }
 }
@@ -788,12 +817,11 @@ pub struct Assignment {
     #[recurse(ignore)]
     pub deref: bool,
     pub value: Expr,
-    pub span: SourceSpan,
 }
 
 impl Located for Assignment {
     fn span(&self) -> SourceSpan {
-        self.span.clone()
+        SourceSpan::join(&self.target.span(), &self.value.span())
     }
 }
 
@@ -806,12 +834,22 @@ pub struct If {
     pub body: Vec<StmtKind>,
     pub else_ifs: Vec<ElseIf>,
     pub else_body: Vec<StmtKind>,
-    pub span: SourceSpan,
 }
 
 impl Located for If {
     fn span(&self) -> SourceSpan {
-        self.span.clone()
+        let end = self
+            .else_body
+            .last()
+            .map(|s| s.span())
+            .or_else(|| {
+                self.else_ifs
+                    .last()
+                    .and_then(|ei| ei.body.last().map(|s| s.span()))
+            })
+            .or_else(|| self.body.last().map(|s| s.span()))
+            .unwrap_or_else(|| self.expr.span());
+        SourceSpan::join(&self.expr.span(), &end)
     }
 }
 
@@ -830,12 +868,21 @@ pub struct Case {
     pub selector: Expr,
     pub statement_groups: Vec<CaseStatementGroup>,
     pub else_body: Vec<StmtKind>,
-    pub span: SourceSpan,
 }
 
 impl Located for Case {
     fn span(&self) -> SourceSpan {
-        self.span.clone()
+        let end = self
+            .else_body
+            .last()
+            .map(|s| s.span())
+            .or_else(|| {
+                self.statement_groups
+                    .last()
+                    .and_then(|g| g.statements.last().map(|s| s.span()))
+            })
+            .unwrap_or_else(|| self.selector.span());
+        SourceSpan::join(&self.selector.span(), &end)
     }
 }
 
@@ -869,12 +916,17 @@ pub struct For {
     pub to: Expr,
     pub step: Option<Expr>,
     pub body: Vec<StmtKind>,
-    pub span: SourceSpan,
 }
 
 impl Located for For {
     fn span(&self) -> SourceSpan {
-        self.span.clone()
+        let end = self
+            .body
+            .last()
+            .map(|s| s.span())
+            .or_else(|| self.step.as_ref().map(|s| s.span()))
+            .unwrap_or_else(|| self.to.span());
+        SourceSpan::join(&self.control.span(), &end)
     }
 }
 
@@ -885,12 +937,16 @@ impl Located for For {
 pub struct While {
     pub condition: Expr,
     pub body: Vec<StmtKind>,
-    pub span: SourceSpan,
 }
 
 impl Located for While {
     fn span(&self) -> SourceSpan {
-        self.span.clone()
+        let end = self
+            .body
+            .last()
+            .map(|s| s.span())
+            .unwrap_or_else(|| self.condition.span());
+        SourceSpan::join(&self.condition.span(), &end)
     }
 }
 
@@ -901,12 +957,16 @@ impl Located for While {
 pub struct Repeat {
     pub until: Expr,
     pub body: Vec<StmtKind>,
-    pub span: SourceSpan,
 }
 
 impl Located for Repeat {
     fn span(&self) -> SourceSpan {
-        self.span.clone()
+        let start = self
+            .body
+            .first()
+            .map(|s| s.span())
+            .unwrap_or_else(|| self.until.span());
+        SourceSpan::join(&start, &self.until.span())
     }
 }
 
