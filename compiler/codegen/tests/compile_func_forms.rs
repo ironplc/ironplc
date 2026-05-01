@@ -77,12 +77,12 @@ fn compile_when_mul_function_then_produces_mul_bytecode() {
 
 #[test]
 fn compile_when_div_function_then_produces_div_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("DIV", "DINT"), 0x33);
+    assert_two_arg_bytecode(&two_arg_program("DIV", "DINT"), 0x30);
 }
 
 #[test]
 fn compile_when_mod_function_then_produces_mod_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("MOD", "DINT"), 0x34);
+    assert_two_arg_bytecode(&two_arg_program("MOD", "DINT"), 0x38);
 }
 
 // --- Boolean functions ---

@@ -221,16 +221,16 @@ pub const MUL_I32: Opcode = encode_opcode(OP_CLASS_MUL, T_I32);
 /// Divide two 32-bit integers (truncating toward zero).
 /// Pops two values (b then a), pushes a / b.
 /// Traps on division by zero.
-pub const DIV_I32: Opcode = 0x33;
+pub const DIV_I32: Opcode = encode_opcode(OP_CLASS_DIV_S, T_I32);
 
 /// Modulo (remainder) of two 32-bit integers (truncating toward zero).
 /// Pops two values (b then a), pushes a % b.
 /// Traps on division by zero.
-pub const MOD_I32: Opcode = 0x34;
+pub const MOD_I32: Opcode = encode_opcode(OP_CLASS_MOD_S, T_I32);
 
 /// Negate a 32-bit integer (wrapping).
 /// Pops one value, pushes its negation.
-pub const NEG_I32: Opcode = 0x35;
+pub const NEG_I32: Opcode = encode_opcode(OP_CLASS_NEG, T_I32);
 
 /// Compare two 32-bit integers for equality.
 /// Pops two values (b then a), pushes 1 if a == b, else 0.
@@ -555,37 +555,37 @@ pub const MUL_I64: Opcode = encode_opcode(OP_CLASS_MUL, T_I64);
 
 /// Divide two signed 64-bit integers (truncating toward zero).
 /// Pops two values (b then a), pushes a / b. Traps on division by zero.
-pub const DIV_I64: Opcode = 0x3B;
+pub const DIV_I64: Opcode = encode_opcode(OP_CLASS_DIV_S, T_I64);
 
 /// Modulo (remainder) of two signed 64-bit integers.
 /// Pops two values (b then a), pushes a % b. Traps on division by zero.
-pub const MOD_I64: Opcode = 0x3C;
+pub const MOD_I64: Opcode = encode_opcode(OP_CLASS_MOD_S, T_I64);
 
 /// Negate a 64-bit integer (wrapping).
 /// Pops one value, pushes its negation.
-pub const NEG_I64: Opcode = 0x3D;
+pub const NEG_I64: Opcode = encode_opcode(OP_CLASS_NEG, T_I64);
 
 // --- Unsigned 32-bit division opcodes ---
 
 /// Divide two unsigned 32-bit integers.
 /// Pops two i32 values (b then a), reinterprets as u32, pushes (a/b) as i32.
 /// Traps on division by zero.
-pub const DIV_U32: Opcode = 0x40;
+pub const DIV_U32: Opcode = encode_opcode(OP_CLASS_DIV_U, T_I32);
 
 /// Modulo (remainder) of two unsigned 32-bit integers.
 /// Pops two i32 values (b then a), reinterprets as u32, pushes (a%b) as i32.
 /// Traps on division by zero.
-pub const MOD_U32: Opcode = 0x41;
+pub const MOD_U32: Opcode = encode_opcode(OP_CLASS_MOD_U, T_I32);
 
 /// Divide two unsigned 64-bit integers.
 /// Pops two i64 values (b then a), reinterprets as u64, pushes (a/b) as i64.
 /// Traps on division by zero.
-pub const DIV_U64: Opcode = 0x42;
+pub const DIV_U64: Opcode = encode_opcode(OP_CLASS_DIV_U, T_I64);
 
 /// Modulo (remainder) of two unsigned 64-bit integers.
 /// Pops two i64 values (b then a), reinterprets as u64, pushes (a%b) as i64.
 /// Traps on division by zero.
-pub const MOD_U64: Opcode = 0x43;
+pub const MOD_U64: Opcode = encode_opcode(OP_CLASS_MOD_U, T_I64);
 
 // --- 32-bit float arithmetic opcodes ---
 
@@ -604,11 +604,11 @@ pub const MUL_F32: Opcode = encode_opcode(OP_CLASS_MUL, T_F32);
 /// Divide two 32-bit floats.
 /// Pops two values (b then a), pushes a / b.
 /// IEEE 754: produces ±Inf or NaN on division by zero.
-pub const DIV_F32: Opcode = 0x4B;
+pub const DIV_F32: Opcode = encode_opcode(OP_CLASS_DIV_S, T_F32);
 
 /// Negate a 32-bit float.
 /// Pops one value, pushes its negation.
-pub const NEG_F32: Opcode = 0x4C;
+pub const NEG_F32: Opcode = encode_opcode(OP_CLASS_NEG, T_F32);
 
 // --- 64-bit float arithmetic opcodes ---
 
@@ -627,11 +627,11 @@ pub const MUL_F64: Opcode = encode_opcode(OP_CLASS_MUL, T_F64);
 /// Divide two 64-bit floats.
 /// Pops two values (b then a), pushes a / b.
 /// IEEE 754: produces ±Inf or NaN on division by zero.
-pub const DIV_F64: Opcode = 0x51;
+pub const DIV_F64: Opcode = encode_opcode(OP_CLASS_DIV_S, T_F64);
 
 /// Negate a 64-bit float.
 /// Pops one value, pushes its negation.
-pub const NEG_F64: Opcode = 0x52;
+pub const NEG_F64: Opcode = encode_opcode(OP_CLASS_NEG, T_F64);
 
 // --- 64-bit comparison opcodes ---
 
