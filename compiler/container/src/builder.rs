@@ -370,7 +370,7 @@ mod tests {
             0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]
             0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
             0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]
-            0x30,                   // ADD_I32
+            0x20,                   // ADD_I32
             0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
             0xB5,                   // RET_VOID
         ];
