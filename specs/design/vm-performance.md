@@ -25,8 +25,7 @@ This spec builds on:
 1. **Per-instruction safety checks**: Every `push()?`, `pop()?`, `load(index)?`, `store(index)?`, `scope.check_access(index)?`, and `constant_pool.get_*(index)?` returns `Result<_, Trap>` with bounds checking. A simple `ADD_I32` involves ~8 conditional branches.
 2. **Dispatch overhead**: A `match` statement with ~150 arms. Each iteration requires: load opcode → branch to handler → execute → jump back to loop top → load next opcode.
 3. **String operations**: Byte-by-byte copy loops instead of `memcpy`/`copy_from_slice`. Each string opcode has 2-4 additional bounds checks.
-4. **Heap allocation in hot path**: MUX operations allocate `vec![0; n]` on every call (also incompatible with `no_std`).
-5. **Variable access indirection**: Two levels of checking per access (scope validation + bounds check).
+4. **Variable access indirection**: Two levels of checking per access (scope validation + bounds check).
 
 ## Tier 1: High Impact, Moderate Effort
 
@@ -103,28 +102,6 @@ data_region[dest_start..dest_start + copy_len]
 When source and destination overlap within the same buffer, use `copy_within` instead. This only applies to data_region-to-data_region copies (which don't currently happen in the opcode set).
 
 **Files**: `vm/src/vm.rs` (string opcode handlers)
-
-### 3. Eliminate MUX Heap Allocation
-
-MUX operations (`builtin.rs`) allocate `vec![0; n]` on every call. This is a heap allocation in the hot path, and incompatible with `no_std`.
-
-MUX can be implemented by peeking into the stack without copying. Since the stack already holds all inputs, index directly into the stack:
-
-```rust
-fn dispatch_mux_i32(n: usize, stack: &mut OperandStack) -> Result<(), Trap> {
-    let k_slot = stack.peek_at(n)?;  // peek at K below the n inputs
-    let k = k_slot.as_i32();
-    let idx = (k.max(0) as usize).min(n - 1);
-    let result = stack.peek_at(n - 1 - idx)?;  // peek at the selected input
-    stack.drop_n(n + 1)?;  // drop all inputs + K
-    stack.push(result)?;
-    Ok(())
-}
-```
-
-This requires adding `peek_at(depth)` and `drop_n(count)` to `OperandStack`.
-
-**Files**: `vm/src/builtin.rs`, `vm/src/stack.rs`
 
 ### 4. Fused Load-Op-Store Superinstructions
 
@@ -387,7 +364,6 @@ Start with Layer 1 (richer abstract interpretation) + Layer 4 (property-based te
 |---|------|--------|--------|--------|--------|
 | 1 | Verification-gated unchecked ops | Very High | Medium | Yes | Maintained via verifier |
 | 2 | String copy_from_slice | High (for string code) | Low | Yes | Equivalent |
-| 3 | MUX stack peek (no alloc) | Medium | Low | Yes (fixes no_std bug) | Equivalent |
 | 4 | Fused superinstructions | High | Medium | Yes | Maintained via verifier |
 | 4b | Opcode consolidation (icache/BTB) | High | Medium | Yes | Equivalent (encoding change) |
 | 7c | Raw pointer PC | Medium | Low | Yes | Requires verifier |
@@ -408,6 +384,6 @@ Start with Layer 1 (richer abstract interpretation) + Layer 4 (property-based te
 ## Recommended First Steps
 
 1. **Add benchmarks first** — without measurement, we're guessing. Create a benchmark harness with representative PLC programs (counter loop, arithmetic-heavy, string-heavy, branching).
-2. **Items 2 & 3** — quick fixes, immediate improvement, fix no_std compatibility.
+2. **Item 2** — quick fix, immediate improvement.
 3. **Item 1** — the biggest win, but requires the verifier. If the verifier is partially built, start with the properties it already checks.
 4. **Items 4 & 8** — superinstructions and inline constants, moderate effort, clear benefit.
