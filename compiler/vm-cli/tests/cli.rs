@@ -208,7 +208,7 @@ fn write_divide_by_zero_container(path: &Path) {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
-        0x33,                   // DIV_I32                  (10 / 0 → trap)
+        0x30,                   // DIV_I32                  (10 / 0 → trap)
         0xB5,                   // RET_VOID
     ];
 
@@ -350,7 +350,7 @@ fn write_fault_with_vars_container(path: &Path) {
         0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
-        0x33,                   // DIV_I32                  (10 / 0 → trap)
+        0x30,                   // DIV_I32                  (10 / 0 → trap)
         0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (unreached)
         0xB5,                   // RET_VOID
     ];
@@ -449,7 +449,7 @@ fn write_scan_divide_by_zero_container(path: &Path) {
     let scan_bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
-        0x33,                   // DIV_I32                  (10 / 0 → trap)
+        0x30,                   // DIV_I32                  (10 / 0 → trap)
         0xB5,                   // RET_VOID
     ];
 

@@ -50,7 +50,7 @@ fn execute_when_div_f64_then_correct() {
     let bytecode: Vec<u8> = vec![
         0x03, 0x00, 0x00,  // LOAD_CONST_F64 pool[0]  (22.0)
         0x03, 0x01, 0x00,  // LOAD_CONST_F64 pool[1]  (7.0)
-        0x51,              // DIV_F64
+        0x33,              // DIV_F64
         0x13, 0x00, 0x00,  // STORE_VAR_F64 var[0]
         0xB5,              // RET_VOID
     ];
@@ -64,7 +64,7 @@ fn execute_when_div_f64_by_zero_then_positive_infinity() {
     let bytecode: Vec<u8> = vec![
         0x03, 0x00, 0x00,  // LOAD_CONST_F64 pool[0]  (1.0)
         0x03, 0x01, 0x00,  // LOAD_CONST_F64 pool[1]  (0.0)
-        0x51,              // DIV_F64
+        0x33,              // DIV_F64
         0x13, 0x00, 0x00,  // STORE_VAR_F64 var[0]
         0xB5,              // RET_VOID
     ];
@@ -77,7 +77,7 @@ fn execute_when_neg_f64_then_correct() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x03, 0x00, 0x00,  // LOAD_CONST_F64 pool[0]  (42.5)
-        0x52,              // NEG_F64
+        0x2F,              // NEG_F64
         0x13, 0x00, 0x00,  // STORE_VAR_F64 var[0]
         0xB5,              // RET_VOID
     ];
