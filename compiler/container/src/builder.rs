@@ -146,8 +146,8 @@ impl ContainerBuilder {
         let offset = self.bytecode.len() as u32;
         self.functions.push(FuncEntry {
             function_id,
-            bytecode_offset: offset,
-            bytecode_length: bytecode.len() as u32,
+            code_offset: offset,
+            code_length: bytecode.len() as u32,
             max_stack_depth,
             num_locals,
             num_params,
