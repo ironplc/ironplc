@@ -22,7 +22,7 @@ END_PROGRAM
     //   LOAD_VAR_I32 var:0
     //   LOAD_CONST_I32 pool:0 (0x0F)
     //   BIT_AND_32 (0x58)
-    //   TRUNC_U8 (0x21)
+    //   TRUNC_U8 (0x1D)
     //   STORE_VAR_I32 var:1
     // RET_VOID
     let bytecode = container
@@ -35,7 +35,7 @@ END_PROGRAM
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x0F)
             0x58, // BIT_AND_32
-            0x21, // TRUNC_U8
+            0x1D, // TRUNC_U8
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
@@ -58,8 +58,8 @@ END_PROGRAM
     // y := NOT x:
     //   LOAD_VAR_I32 var:0
     //   BIT_NOT_32 (0x5B)
-    //   TRUNC_U8 (0x21)  -- inline truncation after NOT
-    //   TRUNC_U8 (0x21)  -- assignment truncation
+    //   TRUNC_U8 (0x1D)  -- inline truncation after NOT
+    //   TRUNC_U8 (0x1D)  -- assignment truncation
     //   STORE_VAR_I32 var:1
     // RET_VOID
     let bytecode = container
@@ -71,8 +71,8 @@ END_PROGRAM
         &[
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x5B, // BIT_NOT_32
-            0x21, // TRUNC_U8 (inline NOT truncation)
-            0x21, // TRUNC_U8 (assignment truncation)
+            0x1D, // TRUNC_U8 (inline NOT truncation)
+            0x1D, // TRUNC_U8 (assignment truncation)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
