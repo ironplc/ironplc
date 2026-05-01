@@ -277,7 +277,7 @@ pub(crate) struct FinalizedFunction {
 /// `emitter.bytecode()` must be called before `max_stack_depth()` because the
 /// peephole optimizer (run inside `bytecode()`) may increase max_stack_depth.
 pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> FinalizedFunction {
-    let bytecode = crate::optimize::optimize(emitter.bytecode(), &ctx.constants);
+    let (bytecode, _offset_map) = crate::optimize::optimize(emitter.bytecode(), &ctx.constants);
     let max_stack_depth = emitter.max_stack_depth();
     FinalizedFunction {
         bytecode,

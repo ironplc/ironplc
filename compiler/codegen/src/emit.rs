@@ -761,7 +761,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_add_i32();
 
-        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x30]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x20]);
     }
 
     #[test]
@@ -771,7 +771,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_sub_i32();
 
-        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x31]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x24]);
     }
 
     #[test]
@@ -793,7 +793,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_mul_i32();
 
-        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x32]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x28]);
     }
 
     #[test]

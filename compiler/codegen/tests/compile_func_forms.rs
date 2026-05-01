@@ -62,17 +62,17 @@ fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
 
 #[test]
 fn compile_when_add_function_then_produces_add_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("ADD", "DINT"), 0x30);
+    assert_two_arg_bytecode(&two_arg_program("ADD", "DINT"), 0x20);
 }
 
 #[test]
 fn compile_when_sub_function_then_produces_sub_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("SUB", "DINT"), 0x31);
+    assert_two_arg_bytecode(&two_arg_program("SUB", "DINT"), 0x24);
 }
 
 #[test]
 fn compile_when_mul_function_then_produces_mul_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("MUL", "DINT"), 0x32);
+    assert_two_arg_bytecode(&two_arg_program("MUL", "DINT"), 0x28);
 }
 
 #[test]
