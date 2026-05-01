@@ -34,6 +34,18 @@ This preserves the no-heap, no-`alloc` execution profile that the existing VM al
 
 This is the largest change in the plan. It must land before any breakpoint, step, or pause feature can work; Phase 2 cannot be skipped or reduced. The alternative — a "scan-boundary-only" debugger — is explicitly rejected because it cannot offer breakpoints in the middle of a function body, which is the headline debugger feature.
 
+## v1 Scope Decisions
+
+The v1 debugger deliberately drops three features from the architecture in order to ship a smaller, more useful first experience. Each cut is paired with a replacement or a documented restriction:
+
+| Dropped from v1 | Reason | Replacement |
+|-----------------|--------|-------------|
+| **Variable forcing** (write to variable while paused) | The industrial-PLC mental model of "force" is "value held across scans." A simple paused-only write is silently overwritten on the next INPUT_FREEZE / program logic, which trains users that the debugger is broken. The full force-table semantics that match Codesys/Beckhoff/TwinCAT need real design and are out of v1 scope. | **Logpoints**: a breakpoint that, instead of pausing, formats a message against current variables and writes to the debug console, then continues. Reuses the line map, breakpoint table, and variable lookup. Single most useful obs feature for scan-cycle code. |
+| **Multi-instance pause semantics** | "Global breakpoints fire on the first instance to arrive" + "instances `k+1..` haven't run this scan; their state is from the previous cycle" is going to confuse every user who tries it. The implementation cost is also non-trivial (mid-scan resume across `instances_for_task`, custom `ironplc/instances` request). | **Refuse the launch**: `launch` rejects programs with `program_instances.len() > 1` with a clear error pointing at this v1 limitation. Multi-instance debugging is a future phase with its own design. |
+| **Pause-while-running (interactive `pause`)** | The `ArcSwap<BreakpointTable>` + `AtomicBool pause_requested` + two-thread DAP server is the heaviest architectural piece in the design and gates DAP server delivery on getting Send/Sync right. For a first debugger, "interrupt a running scan from a button" is a corner case; the common path is set-breakpoints-then-launch. | **Single-threaded DAP loop**: the VM runs to a natural stop point (breakpoint, step landing, scan boundary, completion) and *then* the DAP loop services queued requests synchronously. `pause` returns `requestNotApplicable`. `setBreakpoints` is processed at the next natural stop. Runaway prevention uses the existing `scanLimit` launch option. |
+
+These three cuts are reflected throughout the rest of this document. Each section lists what is in v1 and what is deferred.
+
 ## Architecture
 
 ```
@@ -58,7 +70,7 @@ This is the largest change in the plan. It must land before any breakpoint, step
                             │  (impls DebugHook) │
                             │  BreakpointTable   │
                             │  StepController    │
-                            │  pause_requested   │
+                            │  LogpointTable     │
                             └────────┬──────────┘
                                      │ DebugHook trait
                                      ▼
@@ -76,7 +88,7 @@ The debugger is four layers:
 |-------|----------|----------------|
 | **Debug info** | `codegen` crate + `container` crate | Emit and parse line maps, variable names in the debug section |
 | **VM execution model** | `vm` crate | Iterative dispatch with an explicit `FrameStack`; pausable/resumable. Existing recursive `execute_with_hook` is retired. |
-| **VM debug engine** | `vm` crate | A `DebugHook` implementation (`DebuggerHook`) that holds the breakpoint table, step controller, and a pause-request signal; tracks call depth via `before_call`/`after_return` callbacks |
+| **VM debug engine** | `vm` crate | A `DebugHook` implementation (`DebuggerHook`) that holds the breakpoint table, step controller, and logpoint table; tracks call depth via `before_call`/`after_return` callbacks |
 | **DAP server** | `vm-cli` crate (feature-gated) | Translate DAP protocol messages to VM debug engine API calls |
 | **VS Code integration** | `integrations/vscode` | Launch configuration, debug adapter descriptor, UI contributions |
 
@@ -447,8 +459,10 @@ pub struct Frame {
     pub stack_floor: u32,
     /// Temp-buffer allocator checkpoint at frame entry; restored on RET.
     pub temp_alloc_mark: TempAllocMark,
-    /// The instance this frame belongs to (carried for `current_instance_id`
-    /// during multi-instance execution; see Layer 2 §Multi-instance).
+    /// The instance this frame belongs to. v1 only ever has one instance
+    /// (see §Multi-instance: not supported in v1) so this is always the
+    /// sole instance's id; the field is kept on `Frame` for forward
+    /// compatibility with Phase 6 multi-instance debugging.
     pub instance_id: InstanceId,
 }
 ```
@@ -625,7 +639,8 @@ pub enum HookAction {
 pub enum PauseReason {
     Breakpoint(BreakpointId),
     Step,
-    UserPause,
+    // No `UserPause` variant in v1: the DAP `pause` request is unsupported
+    // (see §Single-threaded DAP loop). All pause origins are VM-internal.
     Trap(Trap),
 }
 ```
@@ -640,13 +655,14 @@ The hook *could* infer call depth by counting `CALL` and `RET` opcodes, but that
 
 ```rust
 /// The DAP server's DebugHook. Holds the breakpoint table, step controller,
-/// pause-request flag, and a reference to the debug info needed to resolve
-/// source locations.
+/// step controller, logpoint table, and a reference to the debug info needed
+/// to resolve source locations.
 pub struct DebuggerHook<'a> {
-    breakpoints: &'a BreakpointTable,    // shared with DAP I/O thread (see §Concurrency)
+    breakpoints: &'a BreakpointTable,
+    logpoints: &'a LogpointTable,
     step: StepController,
-    pause_requested: &'a AtomicBool,     // set by I/O thread to force a pause
     debug_info: &'a DebugInfo,
+    log_sink: &'a mut dyn LogSink,   // writes formatted logpoint output
     /// PLC call depth, maintained via before_call/after_return.
     depth: u16,
 }
@@ -658,11 +674,12 @@ impl<'a> DebugHook for DebuggerHook<'a> {
         pc: usize,
         _op: u8,
     ) -> HookAction {
-        if self.pause_requested.swap(false, Ordering::Acquire) {
-            return HookAction::Pause(PauseReason::UserPause);
-        }
         if let Some(bp_id) = self.breakpoints.hit(function_id, pc as u16) {
             return HookAction::Pause(PauseReason::Breakpoint(bp_id));
+        }
+        if let Some(lp) = self.logpoints.hit(function_id, pc as u16) {
+            // Logpoints format and continue — they never pause.
+            self.log_sink.emit(lp.format(self.debug_info /*, &VariableTable */));
         }
         if let Some(reason) = self.step.check(function_id, pc as u16, self.depth, self.debug_info) {
             return HookAction::Pause(reason);
@@ -678,15 +695,22 @@ impl<'a> DebugHook for DebuggerHook<'a> {
 }
 ```
 
-`StepController` keeps the origin line and origin depth and decides when stepping ends. `BreakpointTable.hit()` returns `Option<BreakpointId>` keyed by `(function_id, bytecode_offset)`.
+`StepController` keeps the origin line and origin depth and decides when stepping ends. `BreakpointTable.hit()` returns `Option<BreakpointId>` keyed by `(function_id, bytecode_offset)`. `LogpointTable.hit()` is the same shape and returns `Option<&Logpoint>` whose `format()` interpolates current variable values into a stored format string.
+
+There is no `pause_requested` flag in v1: the DAP `pause` request is not supported (see §v1 Scope Decisions). All pause transitions originate inside the VM thread itself — breakpoints, step-mode landings, scan-step boundaries, or traps.
 
 ### Breakpoint Table
 
 ```rust
 /// Fast breakpoint lookup, keyed by (FunctionId, bytecode_offset).
 /// Backed by a sorted Vec; linear scan beats HashMap at typical breakpoint
-/// counts (<100) due to cache locality. Wrapped for cross-thread access
-/// — see §Concurrency.
+/// counts (<100) due to cache locality.
+///
+/// v1: the table is owned by the DAP server and only mutated at "natural
+/// stop points" (paused VM, scan boundary, completion, breakpoint hit).
+/// While the VM is running, the DebuggerHook holds a `&BreakpointTable`
+/// reference and reads it without locking — no cross-thread mutation.
+/// See §Single-threaded DAP loop.
 pub struct BreakpointTable {
     entries: Vec<BreakpointEntry>,
 }
@@ -696,12 +720,17 @@ struct BreakpointEntry {
     bytecode_offset: u16,
     id: BreakpointId,
     enabled: bool,
+    /// Optional logpoint — when set, the hook formats this against current
+    /// variables and writes to the log sink instead of pausing.
+    log_message: Option<String>,
 }
 
 pub type BreakpointId = u32;
 ```
 
 **Breakpoint resolution.** The DAP client sends breakpoints as source line numbers. The DAP server resolves each line to the nearest `LineMapEntry` with `source_line >= requested_line` for the appropriate function, **after** optimization (see §Optimizer Contract). The resolved line is reported back in the DAP `Breakpoint` response so the client highlights the actual stop line, which may differ from the requested line.
+
+**Logpoint vs. breakpoint.** A breakpoint with a `log_message` is a logpoint: it never pauses, it only formats and emits. Internally it lives in the same sorted Vec as breakpoints, but the `DebuggerHook` checks `log_message` first and continues without returning `HookAction::Pause`. This means setting a logpoint costs the same as setting a breakpoint and uses the same `setBreakpoints` DAP request.
 
 ### Step Modes
 
@@ -739,33 +768,62 @@ A pause leaves the VM in a well-defined `PausedAt(PauseReason)` sub-state inside
 
 Resume calls `execute_with_hook` with the same arguments. No reconstruction; nothing is rebuilt. **Operand-stack and frame-stack invariants** are tested by a property test that pauses at every opcode boundary in a corpus of programs and asserts that resume produces the same final state as an unpaused run.
 
-### Multi-instance pause semantics
+### Multi-instance: not supported in v1
 
-`run_round` iterates `program_instances` and calls `execute_with_hook` for each instance in sequence (`vm.rs:320`). When a pause fires inside instance *k*:
+v1 supports debugging **single-instance programs only**. The DAP `launch` request rejects programs with `program_instances.len() > 1` with the error message:
 
-- Instances `0..k` have run to completion this round; their state changes are committed in `variables`.
-- Instance *k* is paused mid-execution; its `frames`/`stack` are the live checkpoint.
-- Instances `k+1..` have not been executed this round.
+> `MultiInstanceUnsupported: this program declares N program instances; the v1 debugger supports single-instance programs only. Multi-instance debugging is planned for a future phase.`
 
-The DAP server records `current_instance_id = k` and exposes it via `stackTrace` (frames belong to instance *k*) and `variables` (locals are those of instance *k*; globals are shared). On resume, instance *k* finishes, then instances `k+1..` execute as usual; the round then completes normally.
+This is a **deliberate v1 cut** (see §v1 Scope Decisions). The half-implemented multi-instance pause behavior in earlier drafts of this spec — "global breakpoints fire on the first instance to arrive" plus "instances `k+1..` show stale state from the previous cycle" — would confuse every user who tried it. Refusing the launch is one explicit error message instead of a permanently confusing experience.
 
-For v1, **breakpoints are global** (any instance hitting them pauses); a future `instance_filter` field on `BreakpointEntry` can scope them. v1 documents this explicitly in `--help` output for the `Debug` subcommand.
+A future phase will add proper multi-instance debugging: per-instance breakpoint filters (`instance_filter` field on `BreakpointEntry`), DAP threads exposing each instance, `current_instance_id` tracking on pause, and mid-round resume across `instances_for_task`. That design has its own spec; it is not implied by anything in this document.
 
-### Concurrency model
+The VM's `run_round_debug` is therefore simplified for v1: there is no `current_instance_id` field, no mid-round resume across instance boundaries, and no `ironplc/instances` custom request. When the lone instance's frame stack drains, the round is complete.
 
-The concurrency model below applies to the **hosted DAP server only** (`vm-cli` with `--features dap`). `no_std` embedders have no DAP server — they run the VM with `NoopDebugHook` and pay zero overhead. The `vm` crate exposes the same `DebugHook` trait on both targets, but the Arc/Atomic/thread machinery lives in `vm-cli`, not `vm`, so the core VM stays `no_std` clean.
+### Single-threaded DAP loop (v1)
 
-The DAP I/O thread and the VM thread share three pieces of state. Each one has a specific synchronization rule:
+v1 uses a **single-threaded** DAP server. There is no I/O thread separate from the VM thread; one event loop alternates between two modes:
 
-| State | Sharing pattern | Mechanism |
-|-------|-----------------|-----------|
-| `BreakpointTable` | I/O writes (setBreakpoints), VM reads (every instruction) | `arc_swap::ArcSwap<BreakpointTable>` — the I/O thread builds a new table off-thread and atomically swaps the `Arc` pointer. The VM does one `Arc` load per instruction (no contention, no locking). Hosted-only (requires `alloc`). |
-| `pause_requested` | I/O writes (DAP `pause`), VM reads (every instruction) | `core::sync::atomic::AtomicBool` with `Acquire` load + `Release` store. Available on `no_std` too, though `no_std` builds never construct one. |
-| Frame stack, operand stack, variables, data region | VM mutates while running; I/O reads only when **paused** | Ownership transfer via channels: while RUNNING, the VM owns these; on pause it sends a `Paused` event with a `&mut`-equivalent handle (in practice a re-entrant `Mutex` held only when paused). DAP requests for variables/stackTrace are serviced from the paused state synchronously by the VM thread itself, fed by a request channel; the I/O thread never touches the VM's data structures directly. |
+1. **Running mode**: the VM is executing under `run_round_debug`. The DAP server is not reading stdin. JSON input accumulates in the OS pipe buffer.
+2. **Stopped mode**: the VM has reached a natural stop point (breakpoint hit, step landing, scan boundary, completion, trap). The loop drains any queued DAP requests and services them synchronously, then returns to running mode (or exits).
 
-This last point is important: `variables`, `stackTrace`, and `evaluate` requests are dispatched **on the VM thread** while it is paused, not on the I/O thread. The I/O thread only owns the JSON pipe. This eliminates every Send/Sync hazard the original plan glossed over.
+The natural stop points are:
 
-Per-instruction cost of a real debugger session: one `ArcSwap` load (relaxed-ordering atomic pointer read; ~1 ns) + one `AtomicBool::swap` (~1 ns) + a sorted-Vec scan of the breakpoint table (~5 ns at 10 breakpoints). Roughly 5–10 ns per instruction on top of dispatch — measurable but acceptable for an interactive debug session, and zero when no debugger is attached because `NoopDebugHook` is monomorphized.
+| Stop reason | When |
+|-------------|------|
+| Breakpoint | `DebuggerHook` returns `HookAction::Pause(Breakpoint)` |
+| Step landing | `DebuggerHook` returns `HookAction::Pause(Step)` |
+| Scan boundary | `run_round_debug` returns `RoundOutcome::Completed` (one complete scan finished) |
+| Step Scan landing | `run_round_debug` returns `RoundOutcome::PausedAfterScan` |
+| Trap | `Err(Trap)` from the dispatch loop, with trap-bp enabled |
+| Disconnect timer | `scanLimit` reached (launch-config; runaway prevention) |
+
+**No pause-while-running.** The DAP `pause` request is **not supported in v1** — it returns `requestNotApplicable`. Users who want to interrupt a running program either set a breakpoint in advance, use a `scanLimit` to bound execution, or use `disconnect` to terminate. This is a deliberate v1 cut (see §v1 Scope Decisions); it eliminates the entire two-thread / `ArcSwap` / `AtomicBool` machinery from the original design.
+
+**Implications for `setBreakpoints` while running.** A `setBreakpoints` request that arrives while the VM is in running mode is *queued* and processed at the next natural stop point. The VS Code UI shows the breakpoint as "pending" until then. In practice this is invisible because the VM's between-stop interval is short (one scan cycle) and most users set breakpoints either before launch or while paused.
+
+**State sharing.** Because the VM thread *is* the DAP thread, no synchronization primitives are needed. The DAP server holds `&mut VmRunning` directly when stopped; while running, it holds nothing. There is no `Send`, no `Sync`, no `Arc`, no `AtomicBool`. The `vm` crate's `DebuggerHook` reads a plain `&BreakpointTable` reference owned by the DAP server.
+
+```text
+       ┌──────────────────────────────────────┐
+       │ DAP server event loop (single thread)│
+       │                                      │
+       │  loop {                              │
+       │    if stopped {                      │
+       │      drain stdin → service requests  │
+       │      handle continue/step/disconnect │
+       │    }                                 │
+       │    run_round_debug(&mut hook)        │
+       │     ───► VM runs to next stop point  │
+       │  }                                   │
+       └──────────────────────────────────────┘
+```
+
+This is the same shape as the LSP server already uses. It also keeps the core `vm` crate `no_std`-clean: there is no Arc/Atomic/thread code in `vm` at all.
+
+**Per-instruction cost of a real debugger session:** a sorted-Vec scan of the breakpoint table (~5 ns at 10 breakpoints) — and zero when no debugger is attached because `NoopDebugHook` is monomorphized. Lower than the original two-thread design because the `ArcSwap` load and `AtomicBool::swap` are gone.
+
+**What v1 trades away.** `pause` while running, `setBreakpoints` taking effect mid-instruction. **What v1 keeps**: every other DAP request, all stepping modes, breakpoints, logpoints, scan stepping, variable inspection, trap pause. The cost is a corner-case UX limit; the savings are most of the architectural risk in the design.
 
 ### Scan Cycle Control
 
@@ -777,7 +835,7 @@ For PLC-specific debugging, users need scan-level control:
 | **Pause Between Scans** | Always pause after OUTPUT_FLUSH, before the next INPUT_FREEZE |
 | **Run to Scan N** | Continue until `scan_count` reaches a target value |
 
-A new `VmRunning::run_round_debug` method drives a single round under a `DebuggerHook`. It is structured around the iterative `execute_with_hook` so that mid-scan pauses leave instance state intact:
+A new `VmRunning::run_round_debug` method drives a single round under a `DebuggerHook`. v1 supports a single program instance only (see §Multi-instance: not supported in v1), so the `instances_for_task` loop is collapsed to "the one instance":
 
 ```rust
 impl<'a> VmRunning<'a> {
@@ -788,31 +846,26 @@ impl<'a> VmRunning<'a> {
     ) -> Result<RoundOutcome, FaultContext> {
         // collect_ready_tasks, INPUT_FREEZE, system-uptime injection — unchanged
 
-        for ri in 0..ready_count {
-            for pi in instances_for_task(ready[ri]) {
-                // If we are resuming a previously paused instance, frames is
-                // already populated and we just call execute. Otherwise we
-                // push the entry frame for the program's entry function.
-                if self.frames.is_empty() {
-                    self.frames.push(entry_frame_for(pi))?;
-                    self.current_instance_id = pi.instance_id;
-                }
+        // v1: exactly one program instance; the launch precondition rejects
+        // multi-instance programs.
+        let pi = self.sole_instance();
+        if self.frames.is_empty() {
+            self.frames.push(entry_frame_for(pi))?;
+        }
 
-                match execute_with_hook(self.container, &mut self.stack,
-                                        &mut self.variables, self.data_region,
-                                        self.temp_buf, self.max_temp_buf_bytes,
-                                        &mut self.frames, current_time_us, hook)? {
-                    ExecuteOutcome::Completed => { /* frames drained: instance done */ }
-                    ExecuteOutcome::Paused(reason) => {
-                        // Mid-instance pause: frames non-empty, current_instance_id
-                        // marks where we will resume. Outputs are NOT flushed.
-                        return Ok(RoundOutcome::Paused(reason));
-                    }
-                }
+        match execute_with_hook(self.container, &mut self.stack,
+                                &mut self.variables, self.data_region,
+                                self.temp_buf, self.max_temp_buf_bytes,
+                                &mut self.frames, current_time_us, hook)? {
+            ExecuteOutcome::Completed => { /* frames drained: instance done */ }
+            ExecuteOutcome::Paused(reason) => {
+                // Mid-instance pause: frames non-empty marks where we will
+                // resume. Outputs are NOT flushed.
+                return Ok(RoundOutcome::Paused(reason));
             }
         }
 
-        // OUTPUT_FLUSH and scan_count++ run only when every instance completed.
+        // OUTPUT_FLUSH and scan_count++ run only when the instance completed.
         self.flush_outputs();
         self.scan_count += 1;
         if hook.took_step_scan_now() {
@@ -823,7 +876,7 @@ impl<'a> VmRunning<'a> {
 }
 ```
 
-`run_round_debug` is the single re-entry point: a paused VM resumes by calling it again. The non-empty `self.frames` and `self.current_instance_id` are how we know we're resuming.
+`run_round_debug` is the single re-entry point: a paused VM resumes by calling it again. The non-empty `self.frames` is how we know we're resuming.
 
 ### Variable Inspection
 
@@ -882,25 +935,53 @@ The "global" sentinel is `FunctionId::GLOBAL_SCOPE` (defined in `compiler/contai
 | STRING | Quoted string content |
 | (FB type) | `{type_name}` (expand via field names in Phase 5) |
 
-### Variable Forcing (Write)
+### Variable forcing: not in v1
 
-Variable forcing is **only** legal while the VM is paused. The DAP request handler runs on the VM thread (see §Concurrency model), so the write happens with no other reader/writer of `VariableTable`. Forcing while RUNNING returns DAP error `requestNotApplicable`.
+Variable forcing is **deliberately out of v1 scope** (see §v1 Scope Decisions). A simple paused-only write that gets overwritten on the next INPUT_FREEZE / program logic teaches users that the debugger is broken. A correct implementation needs a force-table (re-applied at each INPUT_FREEZE, persisted across scans, surfaced in the UI as "forced") plus the matching DAP UX, plus an unforce request — that is its own design and will be specified separately.
 
-```rust
-impl<'a> VmRunning<'a> {
-    /// Force a variable to a value. Caller must ensure the VM is in PausedAt.
-    pub fn force_variable(
-        &mut self,
-        var_index: VarIndex,
-        value: Slot,
-    ) -> Result<(), Trap> {
-        debug_assert!(matches!(self.phase, Phase::PausedAt(_)));
-        self.variables.store(var_index, value)
+The DAP capabilities advertised by v1 reflect this: `supportsSetVariable: false`. The `ironplc/forceVariable` and `ironplc/unforceVariable` custom requests are removed from v1.
+
+### Logpoints (replaces Variable Forcing in v1)
+
+A logpoint is a breakpoint that, instead of pausing, formats a message against current variables and writes it to the DAP debug console — then continues. v1 logpoints are the v1 replacement for variable forcing as the headline observability feature: they are the way a user observes scan-cycle behavior without breaking timing.
+
+#### DAP wiring
+
+Logpoints arrive on the standard `setBreakpoints` request via the per-breakpoint `logMessage` field (DAP 1.51+):
+
+```jsonc
+{
+    "command": "setBreakpoints",
+    "arguments": {
+        "source": { "path": "...MAIN.st" },
+        "breakpoints": [
+            { "line": 12, "logMessage": "speed = {motor.speed}, err = {err}" }
+        ]
     }
 }
 ```
 
-**Safety considerations.** Variable forcing can cause unexpected program behavior. The DAP server displays forced variables with a marker and logs every force operation. A future extension can add a "force table" that re-applies forced values at each INPUT_FREEZE phase (matching industrial PLC behavior); v1 ships simple write-through with the paused-only restriction.
+A breakpoint with `logMessage` set becomes a `BreakpointEntry { log_message: Some(...), .. }` in the table. The DAP server advertises `supportsLogPoints: true` in the `initialize` response.
+
+#### Format string syntax
+
+| Token | Meaning |
+|-------|---------|
+| `{name}` | Look up the bare identifier in the current frame's locals; fall back to globals; format using the variable's `iec_type_tag` (same as the Variables pane) |
+| `{name.field}` | Field access on a struct or FB instance |
+| `{name[N]}` | Constant subscript on an array (N is a decimal literal) |
+| `{{` / `}}` | Literal `{` / `}` |
+| anything else | Literal text |
+
+The supported expressions are exactly the v1 `evaluate` subset (§Evaluate scope) — by design, so the same lookup path serves both `evaluate` and logpoints. Unsupported tokens render as `<unsupported: motor.speed * 2>` rather than failing the logpoint, so a typo never silently disables observability.
+
+#### Implementation
+
+`Logpoint::format(debug_info, variables)` walks the format string once, emits each `{...}` against the lookup path, and returns a `String`. The `DebuggerHook` calls it inline (see the implementation in §DebuggerHook above), writes the result to the `LogSink`, and returns `HookAction::Continue`. No pause occurs.
+
+**Cost.** A logpoint adds the cost of one variable lookup per `{...}` token plus formatting — measured on the VM thread, but only when the logpoint actually fires. Between hits it is cheaper than a breakpoint because the table check is shared. Users can drop a logpoint into a 1 ms scan loop without breaking timing in practice; the plan documents this in `--help`.
+
+**Why this is the v1 obs feature.** Pausing a 50 Hz scan with a regular breakpoint desynchronizes timers and I/O timing — you can't actually step through real PLC code without breaking the very behavior you're debugging. Logpoints let you observe without stopping, and they reuse the line map, breakpoint table, and variable lookup that v1 already needs. They cost a few hundred lines on top of the rest of the debugger.
 
 ### State machine
 
@@ -910,17 +991,16 @@ The VM's `Phase` enum gains paused sub-states. All DAP requests are evaluated ag
                     configurationDone
         READY ───────────────────────────► RUNNING ─────► (round done) ─┐
           ▲                                  │                          │
-          │ disconnect                       │ pause / breakpoint /     │
-          │                                  │ step / step-scan         │
+          │ disconnect                       │ breakpoint / step /      │
+          │                                  │ step-scan                │
           │                                  ▼                          │
         EXITED                            PausedAt(reason) ◄────────────┘
                                               │  ▲
                                               │  │  (variables, scopes,
                                               │  │   stackTrace, evaluate,
-                                              │  │   forceVariable,
                                               │  │   setBreakpoints)
                                               │  │
-                                continue/next/stepIn/stepOut
+                                continue/next/stepIn/stepOut/stepScan
                                               │
                                               ▼ (re-enter run_round_debug)
                                           RUNNING
@@ -932,6 +1012,10 @@ The VM's `Phase` enum gains paused sub-states. All DAP requests are evaluated ag
    PausedAt(Trap) is a *terminal pause*: only inspection requests
    (variables, stackTrace, evaluate) and `disconnect` are legal. Continue
    and stepping are rejected. Disconnect transitions to EXITED.
+
+   v1 omits a RUNNING → PausedAt edge for an interactive `pause` request:
+   the DAP `pause` request is not supported. All pause transitions
+   originate inside the VM thread (breakpoint, step, step-scan, trap).
 ```
 
 The state diagram is the contract for §DAP Request Mapping below — every request lists the states in which it is legal.
@@ -959,19 +1043,20 @@ The "Legal in" column lists the VM `Phase` values in which each request is accep
 | DAP Request | Legal in | VM Debug Engine Action |
 |-------------|----------|------------------------|
 | `initialize` | (any) | Return capabilities |
-| `launch` | READY | Load container, allocate VM |
-| `setBreakpoints` | READY, RUNNING, PausedAt | Resolve source lines via line map; build a new `BreakpointTable` and `ArcSwap` it in. While RUNNING, the new table takes effect on the next instruction. |
+| `launch` | READY | Load container, validate single-instance precondition (else `MultiInstanceUnsupported`), allocate VM |
+| `setBreakpoints` | READY, PausedAt | Resolve source lines via line map; replace the `BreakpointTable`. Logpoints (entries with `logMessage`) and breakpoints share this request. **Queued while RUNNING** and applied at the next natural stop point (see §Single-threaded DAP loop). |
 | `setExceptionBreakpoints` | READY, PausedAt | Toggle `traps` filter for trap pauses |
 | `configurationDone` | READY | Start VM: transition READY → RUNNING, call `run_round_debug` |
-| `threads` | RUNNING, PausedAt | One DAP thread per active program instance (v1 limit: one instance) |
+| `threads` | RUNNING, PausedAt | One DAP thread for the single program instance (v1 hard limit: one instance, enforced at launch) |
 | `stackTrace` | PausedAt | Walk `frames` top-to-bottom; for each frame produce `name = func_names[function_id]`, `line/column = line_map.lookup(function_id, pc)` |
 | `scopes` | PausedAt | IEC-specific scopes, filtered by `var_section` of the topmost frame's `function_id` |
-| `variables` | PausedAt | Read from `VariableTable` on the VM thread; format per `iec_type_tag` |
+| `variables` | PausedAt | Read from `VariableTable`; format per `iec_type_tag` |
 | `continue` | PausedAt (non-terminal) | Clear step mode; re-enter `run_round_debug` |
 | `next` | PausedAt (non-terminal) | Set `StepMode::StepOver` (origin = current line, depth = current depth); re-enter |
 | `stepIn` | PausedAt (non-terminal) | Set `StepMode::StepIn`; re-enter |
 | `stepOut` | PausedAt (non-terminal) | Set `StepMode::StepOut`; re-enter |
-| `pause` | RUNNING | `pause_requested.store(true, Release)` — VM observes and pauses on next instruction |
+| `pause` | — | **Not supported in v1.** Always returns `requestNotApplicable`. See §Single-threaded DAP loop and §v1 Scope Decisions. |
+| `setVariable` | — | **Not supported in v1.** Variable forcing is deferred; see §Variable forcing: not in v1. |
 | `disconnect` | (any) | Drop VM, exit |
 | `evaluate` | PausedAt | Bare-identifier lookup in v1 (see §Evaluate scope below) |
 
@@ -993,15 +1078,17 @@ It does **not** support arithmetic, function calls, or non-constant subscripts. 
 |----------------|-------------|
 | `ironplc/stepScan` | Run one complete scan cycle, then pause |
 | `ironplc/scanCount` | Return current scan_count |
-| `ironplc/forceVariable` | Force a variable to a value (PausedAt only) |
-| `ironplc/unforceVariable` | Remove a variable force (PausedAt only) |
-| `ironplc/instances` | List running program instances with their `instance_id` and current frame summary |
+
+Removed from v1 (deferred):
+
+- `ironplc/forceVariable` / `ironplc/unforceVariable` — variable forcing is out of v1 scope (see §Variable forcing: not in v1).
+- `ironplc/instances` — multi-instance debugging is rejected at launch in v1 (see §Multi-instance: not supported in v1), so there is nothing to enumerate.
 
 VS Code does not surface custom requests automatically. The extension registers VS Code commands that wrap each custom request and contributes them to the debug toolbar/menus via `package.json` `menus.debug/toolBar`. Without those contributions the requests are unreachable.
 
 ### Threading
 
-(Already specified in Layer 2 §Concurrency model.) Briefly: DAP I/O is one thread, VM execution is another, breakpoints flow via `ArcSwap`, pause flows via `AtomicBool`, all reads of `frames`/`stack`/`variables` are serviced **on the VM thread** while paused.
+(Already specified in Layer 2 §Single-threaded DAP loop.) Briefly: the DAP server and VM run in a single thread; the loop alternates between draining DAP requests at natural stop points and running the VM under `run_round_debug`. There is no `ArcSwap`, no `AtomicBool`, no `Send`/`Sync` boundary.
 
 ### Capabilities
 
@@ -1011,7 +1098,8 @@ The DAP server advertises these capabilities in the `initialize` response:
 {
     "supportsConfigurationDoneRequest": true,
     "supportsSingleThreadExecutionRequests": true,
-    "supportsSetVariable": true,
+    "supportsSetVariable": false,
+    "supportsLogPoints": true,
     "supportsEvaluateForHovers": true,
     "supportsTerminateRequest": true,
     "supportsSteppingGranularity": false,
@@ -1025,6 +1113,8 @@ The DAP server advertises these capabilities in the `initialize` response:
     ]
 }
 ```
+
+Note that `supportsSetVariable` is **false** for v1 (variable forcing deferred — see §Variable forcing: not in v1) and `supportsLogPoints` is **true** (§Logpoints replaces forcing as the v1 obs feature). The `pause` request is omitted entirely and returns `requestNotApplicable` (see §Single-threaded DAP loop).
 
 ### Trap Breakpoints
 
@@ -1160,7 +1250,7 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 |-------|-------|---------|
 | `vm` | new `frame_stack.rs` | `Frame`, `FrameStack` (bounded by `MAX_CALL_DEPTH`), `TempAllocMark` |
 | `vm` | `vm.rs` | Replace recursive `CALL` arm (`vm.rs:1044`, `vm.rs:1865`) with `frames.push(...)`; lift the dispatch loop to iterate `frames`; `execute_with_hook` becomes the loop body's wrapper. Remove `depth` parameter — depth is now `frames.len()`. Add `ExecuteOutcome::{Completed, Paused}` (Paused only reachable after Phase 3 extends the hook signature; for now it's unreachable but the type exists). |
-| `vm` | `vm.rs` | `VmRunning<'a>` gains `frames: FrameStack<'a>`, `phase: Phase`, `current_instance_id`. The frame backing slice is supplied to `Vm::new()` alongside the existing operand-stack and variable-table backing slices; no allocation is added. `Phase::Running` is the only legal phase reached in this phase; `PausedAt` is added but only used in Phase 3. |
+| `vm` | `vm.rs` | `VmRunning<'a>` gains `frames: FrameStack<'a>`, `phase: Phase`. (No `current_instance_id`: v1 is single-instance — see §Multi-instance: not supported in v1.) The frame backing slice is supplied to `Vm::new()` alongside the existing operand-stack and variable-table backing slices; no allocation is added. `Phase::Running` is the only legal phase reached in this phase; `PausedAt` is added but only used in Phase 3. |
 | `vm` | `vm.rs` | `Vm::load()` validates `header.max_call_depth ≤ frames.capacity()` and returns `LoadError::ProgramExceedsCallDepth` otherwise (matches the existing operand-stack/variable-table sizing checks). |
 | `codegen` | `compile_fn.rs` / `compile.rs` | Compute worst-case call depth from the call graph (longest path; the recursion ban guarantees acyclicity) and write it to `FileHeader.max_call_depth`. |
 | `codegen` | `spec_conformance.rs` | Verify the call graph is acyclic and that the emitted `max_call_depth` is at least the longest path + 1. |
@@ -1178,7 +1268,7 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 
 ### Phase 3: VM Debug Engine
 
-**Goal:** With iterative dispatch in place, add the debugger-grade `DebugHook` extension and the `DebuggerHook` impl. The VM can pause at breakpoints, single-step (over/in/out/scan), and inspect variables.
+**Goal:** With iterative dispatch in place, add the debugger-grade `DebugHook` extension and the `DebuggerHook` impl. The VM can pause at breakpoints, single-step (over/in/out/scan), inspect variables, and emit logpoints.
 
 **Changes:**
 
@@ -1186,18 +1276,25 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 |-------|-------|---------|
 | `vm` | `debug_hook.rs` | Extend trait: `before_instruction(function_id, pc, op) -> HookAction`; add `before_call`/`after_return` with default empty bodies; add `HookAction`, `PauseReason`. `NoopDebugHook` returns `HookAction::Continue` from `#[inline(always)]`. |
 | `vm` | `vm.rs` (dispatch loop) | Inspect `HookAction` from `before_instruction`; call `before_call` before pushing a frame; call `after_return` after popping. Surface `ExecuteOutcome::Paused` from the loop. |
-| `vm` | new `debug.rs` | `BreakpointTable` (sorted Vec, `ArcSwap`-able), `BreakpointId`, `StepMode`, `StepController`, `DebuggerHook` (impls `DebugHook`). |
-| `vm` | `vm.rs` | `VmRunning::run_round_debug<H: DebugHook>` — re-entrant; advances all instances of the current scan or returns `RoundOutcome::Paused`. `Phase::PausedAt(reason)` set on pause. `force_variable` allowed only in `PausedAt`. |
-| `vm` | `lib.rs` | Export `DebuggerHook`, `BreakpointTable`, `BreakpointId`, `StepMode`, `PauseReason`, `RoundOutcome`. |
+| `vm` | new `debug.rs` | `BreakpointTable` (plain sorted Vec — no `ArcSwap`, no atomics; the single-threaded DAP loop owns it directly), `BreakpointId`, `StepMode`, `StepController`, `Logpoint`, `LogpointTable`, `LogSink` trait, `DebuggerHook` (impls `DebugHook`). |
+| `vm` | `vm.rs` | `VmRunning::run_round_debug<H: DebugHook>` — re-entrant; runs the (single) instance to a stop point and returns `RoundOutcome::{Completed, PausedAfterScan, Paused(reason)}`. `Phase::PausedAt(reason)` set on pause. **No `force_variable` API** (variable forcing deferred — see §Variable forcing: not in v1). |
+| `vm` | `lib.rs` | Export `DebuggerHook`, `BreakpointTable`, `BreakpointId`, `StepMode`, `PauseReason`, `RoundOutcome`, `Logpoint`, `LogpointTable`, `LogSink`. |
+
+**Explicitly NOT in this phase (deferred / cut):**
+- `pause_requested: AtomicBool` and any cross-thread pause mechanism (see §Single-threaded DAP loop).
+- `arc_swap` / `ArcSwap<BreakpointTable>` (same reason).
+- `current_instance_id` / multi-instance pause/resume (see §Multi-instance: not supported in v1).
+- `force_variable` API (see §Variable forcing: not in v1).
 
 **Tests:**
 - Breakpoint: set bp on a line in the entry function — pauses at the correct `(function_id, bytecode_offset)`.
 - Breakpoint: set bp on a line **inside a callee** — pauses with the callee's frame on top of the frame stack; `stackTrace` walks back to the caller.
+- Logpoint: set a logpoint with `"x = {x}, y = {y}"` on a hot statement — VM does not pause; `LogSink` captures one formatted message per hit; final variable values match an unhooked run.
+- Logpoint: format string with unsupported token (`"{x * 2}"`) — emits `<unsupported: x * 2>` rather than failing the logpoint.
 - Step-over across a CALL: at line with a CALL, step-over lands on the next line *after* the CALL with depth equal to origin.
 - Step-in into a CALL: lands on the first statement of the callee with depth = origin + 1.
 - Step-out from inside a callee: lands on the line after the CALL in the caller, depth = origin − 1.
 - Pause/Resume parity: from a corpus of programs, pause at every instruction boundary, resume, assert final `variables` and `data_region` are bitwise identical to an unpaused run.
-- Concurrency: spawn DAP I/O thread analogue, swap the breakpoint table while the VM thread is running, verify the swap is observed within one instruction and no torn reads occur (run under `loom` or `shuttle`).
 - No overhead with `NoopDebugHook`: a `criterion` bench shows < 1% delta vs main on the existing benchmark suite.
 - Trap during debug: with trap-bp enabled, transitions to `PausedAt(Trap)`; only inspection requests are accepted; `continue`/`step` return `requestNotApplicable`; `disconnect` cleanly tears down.
 
@@ -1215,16 +1312,19 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 | `vm-cli` | `main.rs` | Behind `#[cfg(feature = "dap")]`: add `Debug` subcommand with `--dap` flag |
 | `vm-cli` | new `dap/framing.rs` | Content-Length framing reader/writer |
 | `vm-cli` | new `dap/types.rs` | DAP protocol types (Request, Response, Event, Capabilities). Prefer the `dap-types` crate if it's a fit; otherwise hand-rolled with `serde`. |
-| `vm-cli` | new `dap/server.rs` | Two-thread server: I/O thread + VM thread. I/O thread routes requests through a channel to the VM thread; VM thread services them while paused. |
-| `vm-cli` | new `dap/state.rs` | `Phase` mirror plus per-state legality checks (returns `requestNotApplicable` for illegal requests) |
+| `vm-cli` | new `dap/server.rs` | **Single-threaded** event loop: alternate between draining queued DAP requests at natural stop points and running the VM under `run_round_debug` (see §Single-threaded DAP loop). No I/O thread, no `Send`/`Sync`, no `Arc`, no `AtomicBool`. |
+| `vm-cli` | new `dap/state.rs` | `Phase` mirror plus per-state legality checks (returns `requestNotApplicable` for illegal requests, including `pause` and `setVariable` which are unsupported in v1) |
+| `vm-cli` | new `dap/launch.rs` | `launch` precondition: reject containers with multiple program instances (`MultiInstanceUnsupported`); reject containers without a debug section (`NoDebugInfo`) — see §Launch errors. |
 
 **Tests:**
 - Unit: Content-Length framing roundtrip.
-- Unit: state-machine legality table — every (state, request) pair returns the documented response.
+- Unit: state-machine legality table — every (state, request) pair returns the documented response. Includes `pause` → `requestNotApplicable` and `setVariable` → `requestNotApplicable`.
+- Unit: launch precondition for multi-instance program returns `MultiInstanceUnsupported` cleanly.
 - Integration: spawn `ironplcvm-debug --dap` as a subprocess, send `initialize` + `launch` + `setBreakpoints` + `configurationDone`, expect `stopped` at the breakpoint.
 - Integration: from `stopped`, request `stackTrace`, `scopes`, `variables`; verify entries.
-- Integration: send `pause` while RUNNING, verify `stopped` event with `reason: pause`.
-- Integration: send `setBreakpoints` while RUNNING, verify the new breakpoint takes effect.
+- Integration: send `setBreakpoints` while RUNNING, verify it is queued and applied at the next breakpoint hit / scan boundary (no immediate effect mid-instruction — that's expected per §Single-threaded DAP loop).
+- Integration: send `pause` while RUNNING, verify it returns `requestNotApplicable` (v1 cut).
+- Integration: set a logpoint via `setBreakpoints` with `logMessage`, verify the VM does not pause and the formatted message appears as an `output` event.
 - Integration: trigger a trap with trap-bp enabled, verify `stopped` event with `reason: exception` and `disconnect` returns cleanly.
 
 ### Phase 5: VS Code Integration
@@ -1233,7 +1333,7 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 |----------|-------|---------|
 | `integrations/vscode` | `package.json` | Add `debuggers` contribution; **also add `commands` and `menus.debug/toolBar` entries for `ironplc.stepScan` and `ironplc.scanCount`** (otherwise custom DAP requests are unreachable) |
 | `integrations/vscode/src` | new `debugAdapter.ts` | `DebugAdapterDescriptorFactory`; if `program` is `.st`, run the compiler with debug info enabled to emit a temp `.iplc`; launch `ironplcvm-debug --dap <file.iplc>` |
-| `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan`, `ironplc/forceVariable` etc. as VS Code commands |
+| `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan`, `ironplc/scanCount` as VS Code commands. (No force/unforce — those are out of v1 scope.) |
 | `integrations/vscode/src` | `extension.ts` | Register debug adapter factory and custom-request commands |
 
 **Tests:**
@@ -1241,18 +1341,20 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 - Extension: launch configuration resolves the `ironplcvm-debug` path (env var, settings, then bundled).
 - Manual: F5 with a breakpoint hits, variable inspection populates, Step Scan toolbar works.
 
-### Phase 6: PLC-Specific Enhancements (Future)
+### Phase 6: Beyond v1 (Future)
 
-These enhancements build on the core debugger but are not required for initial functionality:
+These enhancements build on the v1 debugger. Several were dropped from v1 (see §v1 Scope Decisions) and have explicit follow-up phases.
 
-1. **Scan cycle status bar** — show `scan_count` and a "step scan" button (the toolbar button itself ships in Phase 5)
-2. **Process image inspection** — view %I, %Q, %M regions with bit/byte/word addressing
-3. **Conditional breakpoints** — DAP `condition` field on breakpoints, evaluated by the VM (requires the v1 evaluate restriction to be lifted first)
-4. **Compound expression evaluation** — full `evaluate` (arithmetic, function calls), via a sandboxed evaluator that reuses the constant-folder
-5. **Logpoints** — DAP `logMessage` field, VM prints message without stopping
-6. **Hot reload during debug** — recompile and online-change while paused, preserving breakpoints
-7. **Multi-task and multi-instance debugging** — expose tasks/instances as DAP threads; per-instance breakpoint filters
-8. **Type-name string deduplication** — intern `type_name` strings in a separate sub-table to shrink debug sections
+1. **Variable forcing with a force-table** — paused-write that *persists* across scans, re-applied at INPUT_FREEZE, surfaced in the UI as "forced". Replaces the placeholder "no forcing in v1." Adds `ironplc/forceVariable` and `ironplc/unforceVariable`, sets `supportsSetVariable: true`. (Cut from v1: see §Variable forcing: not in v1.)
+2. **Multi-task and multi-instance debugging** — per-instance breakpoint filters (`instance_filter` field on `BreakpointEntry`), DAP threads per instance, `current_instance_id` tracking, mid-round resume across `instances_for_task`, `ironplc/instances` custom request. Removes the v1 launch precondition. (Cut from v1: see §Multi-instance: not supported in v1.)
+3. **Pause-while-running** — `ArcSwap<BreakpointTable>` + `AtomicBool pause_requested` + two-thread DAP server. Adds the DAP `pause` request and `setBreakpoints`-takes-effect-mid-instruction. (Cut from v1: see §Single-threaded DAP loop.)
+4. **Conditional breakpoints** — DAP `condition` field on breakpoints, evaluated by the VM. The same expression evaluator that powers conditional breakpoints also powers full `evaluate`. (Builds on the v1 evaluate subset and the v1 logpoint format strings.)
+5. **Compound expression evaluation** — full `evaluate` (arithmetic, function calls), via a sandboxed evaluator that reuses the constant-folder. Logpoint format strings inherit it.
+6. **Scan cycle status bar** — show `scan_count` and a "step scan" button (the toolbar button itself ships in Phase 5)
+7. **Process image inspection** — view %I, %Q, %M regions with bit/byte/word addressing
+8. **Hot reload during debug** — recompile and online-change while paused, preserving breakpoints
+9. **Type-name string deduplication** — intern `type_name` strings in a separate sub-table to shrink debug sections
+10. **Watchpoints (data breakpoints)** — instrument `STORE_VAR` opcodes to fire when a specific variable's value changes. Cheap in a VM (no page-fault tricks needed); listed here as a Phase 6 because v1's first reviewer feedback called it out as a notable miss.
 
 ## Optimizer Contract
 
@@ -1302,14 +1404,19 @@ This means bytecode debugging works even when the debug section is stripped — 
 
 ## Out of Scope
 
-1. **Remote debugging** — DAP over TCP to debug programs on remote targets (embedded PLCs). The initial implementation uses stdin/stdout only.
-2. **Multi-file debugging** — debugging programs that span multiple source files. The initial implementation assumes a single source file per container. The debug section format reserves space for a source file table (via a future sub-table) but does not define it in v1.
-3. **Ladder Diagram / FBD debugging** — graphical IEC 61131-3 languages (LD, FBD) have fundamentally different debugging UIs (highlighting rungs, showing power flow, animating contacts/coils). The debug section format reserves tags 7 (LD_RUNG_MAP) and 8 (FBD_NETWORK_MAP) for this purpose — future compilers can emit these sub-tables and existing ST debuggers will skip them harmlessly. However, the compilation pipeline, DAP server, and VS Code extension would all need LD/FBD-specific support. This is deferred until graphical language compilation is implemented.
-4. **Memory breakpoints** — breaking when a specific variable's value changes (hardware watchpoints). These require polling or page-fault tricks that are not practical in the VM.
-5. **Time-travel debugging** — recording and replaying execution. Would require snapshotting VM state at each scan cycle, which is a significant memory and performance cost.
-6. **Compound expression evaluation in `evaluate`** — v1 supports bare identifiers, dotted field access on identifiers, and constant subscripts only. Arithmetic, function calls, and non-constant subscripts return `evaluateUnsupported`. Lifted in Phase 6.
-7. **Conditional breakpoints / logpoints** — DAP `condition` and `logMessage` fields require compound expression evaluation; deferred to Phase 6.
-8. **Per-instance breakpoint filtering** — v1 breakpoints are global across all instances of a program. `ironplc/instances` exposes instance state for inspection but breakpoints fire on the first instance to reach them.
+The items below are out of v1 scope. The first three are the **deliberate v1 cuts** documented in §v1 Scope Decisions; the rest are out-of-scope for independent reasons.
+
+1. **Variable forcing** (paused-write to variables) — deferred. A simple write-while-paused gets overwritten on the next scan and trains users that the debugger is broken; a correct force-table design is a separate effort. v1 replaces this with **logpoints**. See §Variable forcing: not in v1 and Phase 6 item 1.
+2. **Multi-instance debugging** — deferred. v1 rejects multi-instance programs at launch with `MultiInstanceUnsupported`. See §Multi-instance: not supported in v1 and Phase 6 item 2.
+3. **Pause-while-running (DAP `pause` request)** — deferred. v1 uses a single-threaded DAP loop; users set breakpoints in advance, use `scanLimit`, or `disconnect`. The `ArcSwap<BreakpointTable>` + `AtomicBool` two-thread design ships in Phase 6. See §Single-threaded DAP loop and Phase 6 item 3.
+4. **Conditional breakpoints** — DAP `condition` field requires compound expression evaluation; deferred to Phase 6.
+5. **Compound expression evaluation in `evaluate` and logpoints** — v1 supports bare identifiers, dotted field access on identifiers, and constant subscripts only. Arithmetic, function calls, and non-constant subscripts return `evaluateUnsupported` (or `<unsupported: ...>` in logpoints). Lifted in Phase 6.
+6. **Watchpoints (data breakpoints)** — break when a specific variable's value changes. Cheap to add in a VM (instrument `STORE_VAR`); listed for Phase 6.
+7. **Remote debugging** — DAP over TCP to debug programs on remote targets (embedded PLCs). The initial implementation uses stdin/stdout only.
+8. **Multi-file debugging** — debugging programs that span multiple source files. The initial implementation assumes a single source file per container. The debug section format reserves space for a source file table (via a future sub-table) but does not define it in v1.
+9. **Ladder Diagram / FBD debugging** — graphical IEC 61131-3 languages (LD, FBD) have fundamentally different debugging UIs (highlighting rungs, showing power flow, animating contacts/coils). The debug section format reserves tags 7 (LD_RUNG_MAP) and 8 (FBD_NETWORK_MAP) for this purpose — future compilers can emit these sub-tables and existing ST debuggers will skip them harmlessly. However, the compilation pipeline, DAP server, and VS Code extension would all need LD/FBD-specific support. This is deferred until graphical language compilation is implemented.
+10. **Time-travel debugging** — recording and replaying execution. Would require snapshotting VM state at each scan cycle, which is a significant memory and performance cost.
+11. **`attach` / online-change** — v1 supports `launch` only. Attaching to a running VM and online code change are deferred.
 
 ## Summary of architectural changes from the original plan
 
@@ -1317,11 +1424,22 @@ For reviewers familiar with the prior version of this document:
 
 1. **Iterative dispatch with explicit `FrameStack`** replaces the recursive `execute_with_hook`. The frame stack is a **borrowed slice** sized at load time from `header.max_call_depth` (computed by the compiler from the call graph; recursion is forbidden by IEC 61131-3 so the longest path is well-defined). No heap allocation; matches the existing `OperandStack` / `VariableTable` model and works on Arduino-class targets. This is the prerequisite for instruction-level pausing.
 2. **`DebugHook` trait extension** — `before_instruction` returns `HookAction`; new `before_call`/`after_return` callbacks; `function_id` parameter added. The existing `NoopDebugHook` + monomorphization model is retained, **not** replaced by `Option<&mut DebugState>`.
-3. **`DebuggerHook` is a `DebugHook` impl**, not a fourth-thing-named-`DebugState`. It owns the breakpoint table reference, step controller, and pause flag.
-4. **Concurrency model is explicit**: `ArcSwap<BreakpointTable>` for the breakpoint table, `AtomicBool` for the pause flag, and DAP request servicing happens *on the VM thread* while paused.
-5. **Pause/Resume protocol is defined**: a complete checkpoint table lists every piece of state preserved across a pause, plus a property test asserting bitwise resume parity.
-6. **Multi-instance pause semantics specified** (`current_instance_id` is the paused instance; later instances run on resume).
-7. **Optimizer contract** spelled out: post-optimization line map, snap-forward, instruction-boundary invariant, breakpoint-resolution feedback.
-8. **State machine documented** with a Phase enum and a per-DAP-request legality column.
-9. **Tag registry reconciled** with the existing `Tag 9 = ENUM_DEF` implementation.
-10. **DAP packaging** is `--features dap` on `vm-cli`, distributed as `ironplcvm-debug` for the VS Code extension.
+3. **`DebuggerHook` is a `DebugHook` impl**, not a fourth-thing-named-`DebugState`. It owns the breakpoint table reference, step controller, and logpoint table.
+4. **Pause/Resume protocol is defined**: a complete checkpoint table lists every piece of state preserved across a pause, plus a property test asserting bitwise resume parity.
+5. **Optimizer contract** spelled out: post-optimization line map, snap-forward, instruction-boundary invariant, breakpoint-resolution feedback.
+6. **State machine documented** with a Phase enum and a per-DAP-request legality column.
+7. **Tag registry reconciled** with the existing `Tag 9 = ENUM_DEF` implementation.
+8. **DAP packaging** is `--features dap` on `vm-cli`, distributed as `ironplcvm-debug` for the VS Code extension.
+
+### v1 scope cuts (changes vs. earlier drafts)
+
+The current draft makes three deliberate v1 cuts (§v1 Scope Decisions). Each is paired with a replacement or a clean error path; each unlocks engineering capacity that earlier drafts spent on partial implementations.
+
+| Earlier draft | Current v1 | Phase 6 plan |
+|---------------|-----------|--------------|
+| Variable forcing as paused write-through (broken across scans) | **Removed** — `supportsSetVariable: false`; `force_variable` API not present | Force-table with INPUT_FREEZE re-application |
+| Multi-instance pause semantics with `current_instance_id` and global breakpoints | **Removed** — `launch` rejects multi-instance with `MultiInstanceUnsupported` | Per-instance breakpoint filters + DAP threads |
+| Two-thread DAP server with `ArcSwap<BreakpointTable>` and `AtomicBool pause_requested` | **Removed** — single-threaded DAP loop, DAP `pause` returns `requestNotApplicable` | Add interactive pause + mid-instruction setBreakpoints |
+| Logpoints listed as Phase 6 future work | **Promoted to v1** — `supportsLogPoints: true`, format strings reuse the v1 `evaluate` subset | Compound expression evaluator extends logpoint syntax |
+
+These trade specific UX corner cases (interactive pause, multi-instance, write-to-variable) for a smaller, simpler v1 that ships logpoints — the headline observability feature for scan-cycle code — and removes the most architecturally heavy machinery from the critical path. The full features ship in Phase 6 with proper designs of their own.
