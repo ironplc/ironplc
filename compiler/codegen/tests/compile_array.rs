@@ -32,7 +32,7 @@ END_PROGRAM
     // Before LOAD_ARRAY should be LOAD_CONST_I32 with flat index 2
     assert!(load_array_pos >= 3);
     // Preceding byte should be LOAD_CONST_I32
-    assert_eq!(bytecode[load_array_pos - 3], 0x01);
+    assert_eq!(bytecode[load_array_pos - 3], 0x00);
     // Verify the constant pool contains the flat index 2
     let const_idx =
         u16::from_le_bytes([bytecode[load_array_pos - 2], bytecode[load_array_pos - 1]]);
@@ -68,7 +68,7 @@ END_PROGRAM
         .expect("STORE_ARRAY opcode not found");
     // Before STORE_ARRAY should be LOAD_CONST_I32 with flat index 2
     assert!(store_array_pos >= 3);
-    assert_eq!(bytecode[store_array_pos - 3], 0x01); // LOAD_CONST_I32
+    assert_eq!(bytecode[store_array_pos - 3], 0x00); // LOAD_CONST_I32
     let const_idx =
         u16::from_le_bytes([bytecode[store_array_pos - 2], bytecode[store_array_pos - 1]]);
     assert_eq!(
@@ -151,7 +151,7 @@ END_PROGRAM
         .position(|&b| b == 0x24)
         .expect("LOAD_ARRAY opcode not found");
     assert!(load_array_pos >= 3);
-    assert_eq!(bytecode[load_array_pos - 3], 0x01); // LOAD_CONST_I32
+    assert_eq!(bytecode[load_array_pos - 3], 0x00); // LOAD_CONST_I32
     let const_idx =
         u16::from_le_bytes([bytecode[load_array_pos - 2], bytecode[load_array_pos - 1]]);
     assert_eq!(
@@ -186,7 +186,7 @@ END_PROGRAM
         .position(|&b| b == 0x24)
         .expect("LOAD_ARRAY opcode not found");
     assert!(load_array_pos >= 3);
-    assert_eq!(bytecode[load_array_pos - 3], 0x01); // LOAD_CONST_I32
+    assert_eq!(bytecode[load_array_pos - 3], 0x00); // LOAD_CONST_I32
     let const_idx =
         u16::from_le_bytes([bytecode[load_array_pos - 2], bytecode[load_array_pos - 1]]);
     assert_eq!(

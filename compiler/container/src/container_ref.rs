@@ -333,12 +333,12 @@ mod tests {
         use crate::ContainerBuilder;
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]
-            0x10, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
-            0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
+            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]
+            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
+            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
             0x30,                   // ADD_I32
-            0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]
+            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
             0xB5,                   // RET_VOID
         ];
         let container = ContainerBuilder::new()
@@ -419,8 +419,8 @@ mod tests {
         let cref = ContainerRef::from_slice(&data, &mut offsets).unwrap();
 
         let bytecode = cref.get_function_bytecode(FunctionId::INIT).unwrap();
-        // First byte: LOAD_CONST_I32 (0x01), last byte: RET_VOID (0xB5)
-        assert_eq!(bytecode[0], 0x01);
+        // First byte: LOAD_CONST_I32 (0x00), last byte: RET_VOID (0xB5)
+        assert_eq!(bytecode[0], 0x00);
         assert_eq!(*bytecode.last().unwrap(), 0xB5);
     }
 
