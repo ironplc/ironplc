@@ -1,59 +1,244 @@
 //! Bytecode opcode definitions shared between the compiler and VM.
+//!
+//! # Encoding
+//!
+//! Each `Opcode` is one byte, encoded as `[op_class:6][type:2]`:
+//!
+//! ```text
+//!   bits:    7 6 5 4 3 2 1 0
+//!            └──op_class──┘└type┘
+//! ```
+//!
+//! - **op_class** (high 6 bits) selects the operation. 64 slots total.
+//! - **type tag** (low 2 bits) selects the type variant or, for some
+//!   op-classes, the operation within a small consolidated family
+//!   (`LOAD_BOOL`, `BOOL_OP`, `STACK_OP`).
+//!
+//! Type-tag values: `T_I32 = 0`, `T_I64 = 1`, `T_F32 = 2`, `T_F64 = 3`.
+//! Op-classes that use only the int subset use `T_I32`/`T_I64` and trap
+//! on float type tags. Untyped op-classes (jumps, calls, single-variant
+//! ops) require `type_tag = 0`.
+//!
+//! See `specs/design/bytecode-instruction-set.md` § Encoding for the
+//! design rules (op-class = "what operation"; type-tag = "what kind of
+//! data"; sub-opcode-in-operand = "which family member" for op classes
+//! consolidating large families like STRING_OP).
+//!
+//! This file is being migrated from an ad-hoc encoding to the structured
+//! encoding above in waves; opcodes whose definition still uses a raw
+//! hex literal have not yet been moved. The helpers `encode_opcode` and
+//! `decode_opcode` work for both old and new opcode bytes — they only
+//! interpret the byte's bit layout.
 
 /// A primary bytecode opcode (one byte).
 pub type Opcode = u8;
 
+// --- Type-tag values ---
+
+/// Type tag for 32-bit integer (signed I32 or width-32 unsigned).
+pub const T_I32: u8 = 0;
+/// Type tag for 64-bit integer (signed I64 or width-64 unsigned).
+pub const T_I64: u8 = 1;
+/// Type tag for 32-bit IEEE-754 float.
+pub const T_F32: u8 = 2;
+/// Type tag for 64-bit IEEE-754 float.
+pub const T_F64: u8 = 3;
+
+// --- Op-class values (high 6 bits of the opcode byte) ---
+//
+// All 41 op classes are defined here even though some are not yet used
+// to derive opcode bytes (incremental wave migration). Future waves
+// reference these constants without redefining them.
+
+/// Op class: load a constant from the constant pool. Type tag selects width.
+pub const OP_CLASS_LOAD_CONST: u8 = 0x00;
+/// Op class: push a boolean literal. Type tag *is* the value (0 = FALSE, 1 = TRUE).
+pub const OP_CLASS_LOAD_BOOL: u8 = 0x01;
+/// Op class: load a string literal from the constant pool.
+pub const OP_CLASS_LOAD_CONST_STR: u8 = 0x02;
+/// Op class: load a variable. Type tag selects slot width.
+pub const OP_CLASS_LOAD_VAR: u8 = 0x03;
+/// Op class: store to a variable. Type tag selects slot width.
+pub const OP_CLASS_STORE_VAR: u8 = 0x04;
+/// Op class: indirect load (dereference reference on stack).
+pub const OP_CLASS_LOAD_INDIRECT: u8 = 0x05;
+/// Op class: indirect store.
+pub const OP_CLASS_STORE_INDIRECT: u8 = 0x06;
+/// Op class: truncate to narrow integer width. Type tag selects target (I8/U8/I16/U16).
+pub const OP_CLASS_TRUNC: u8 = 0x07;
+/// Op class: arithmetic addition. Type tag selects width.
+pub const OP_CLASS_ADD: u8 = 0x08;
+/// Op class: arithmetic subtraction.
+pub const OP_CLASS_SUB: u8 = 0x09;
+/// Op class: arithmetic multiplication.
+pub const OP_CLASS_MUL: u8 = 0x0A;
+/// Op class: arithmetic negation.
+pub const OP_CLASS_NEG: u8 = 0x0B;
+/// Op class: signed division (and float division).
+pub const OP_CLASS_DIV_S: u8 = 0x0C;
+/// Op class: unsigned integer division. Only U32/U64 type variants.
+pub const OP_CLASS_DIV_U: u8 = 0x0D;
+/// Op class: signed integer modulo. Only I32/I64; floats have no MOD.
+pub const OP_CLASS_MOD_S: u8 = 0x0E;
+/// Op class: unsigned integer modulo. Only U32/U64.
+pub const OP_CLASS_MOD_U: u8 = 0x0F;
+/// Op class: equality comparison (sign-blind).
+pub const OP_CLASS_EQ: u8 = 0x10;
+/// Op class: inequality comparison (sign-blind).
+pub const OP_CLASS_NE: u8 = 0x11;
+/// Op class: signed less-than (and float less-than).
+pub const OP_CLASS_LT_S: u8 = 0x12;
+/// Op class: signed less-than-or-equal (and float).
+pub const OP_CLASS_LE_S: u8 = 0x13;
+/// Op class: signed greater-than (and float).
+pub const OP_CLASS_GT_S: u8 = 0x14;
+/// Op class: signed greater-than-or-equal (and float).
+pub const OP_CLASS_GE_S: u8 = 0x15;
+/// Op class: unsigned less-than. Only U32/U64.
+pub const OP_CLASS_LT_U: u8 = 0x16;
+/// Op class: unsigned less-than-or-equal.
+pub const OP_CLASS_LE_U: u8 = 0x17;
+/// Op class: unsigned greater-than.
+pub const OP_CLASS_GT_U: u8 = 0x18;
+/// Op class: unsigned greater-than-or-equal.
+pub const OP_CLASS_GE_U: u8 = 0x19;
+/// Op class: bitwise AND. Type tag 0 = W32, 1 = W64.
+pub const OP_CLASS_BIT_AND: u8 = 0x1A;
+/// Op class: bitwise OR.
+pub const OP_CLASS_BIT_OR: u8 = 0x1B;
+/// Op class: bitwise XOR.
+pub const OP_CLASS_BIT_XOR: u8 = 0x1C;
+/// Op class: bitwise NOT.
+pub const OP_CLASS_BIT_NOT: u8 = 0x1D;
+/// Op class: boolean operations (consolidated). Type tag selects: 0 = AND,
+/// 1 = OR, 2 = XOR, 3 = NOT.
+pub const OP_CLASS_BOOL_OP: u8 = 0x1E;
+/// Op class: unconditional jump.
+pub const OP_CLASS_JMP: u8 = 0x1F;
+/// Op class: jump if top-of-stack is zero.
+pub const OP_CLASS_JMP_IF_NOT: u8 = 0x20;
+/// Op class: function call.
+pub const OP_CLASS_CALL: u8 = 0x21;
+/// Op class: function return with value.
+pub const OP_CLASS_RET: u8 = 0x22;
+/// Op class: function return without value.
+pub const OP_CLASS_RET_VOID: u8 = 0x23;
+/// Op class: stack manipulation (consolidated). Type tag selects:
+/// 0 = POP, 1 = DUP, 2 = SWAP.
+pub const OP_CLASS_STACK_OP: u8 = 0x24;
+/// Op class: built-in standard-library function call.
+pub const OP_CLASS_BUILTIN: u8 = 0x25;
+/// Op class: load FB instance reference.
+pub const OP_CLASS_FB_LOAD_INSTANCE: u8 = 0x26;
+/// Op class: store FB input parameter.
+pub const OP_CLASS_FB_STORE_PARAM: u8 = 0x27;
+/// Op class: load FB output parameter.
+pub const OP_CLASS_FB_LOAD_PARAM: u8 = 0x28;
+/// Op class: invoke FB body.
+pub const OP_CLASS_FB_CALL: u8 = 0x29;
+/// Op class: load array element.
+pub const OP_CLASS_LOAD_ARRAY: u8 = 0x2A;
+/// Op class: store array element.
+pub const OP_CLASS_STORE_ARRAY: u8 = 0x2B;
+/// Op class: load array element via reference.
+pub const OP_CLASS_LOAD_ARRAY_DEREF: u8 = 0x2C;
+/// Op class: store array element via reference.
+pub const OP_CLASS_STORE_ARRAY_DEREF: u8 = 0x2D;
+/// Op class: STR_INIT.
+pub const OP_CLASS_STR_INIT: u8 = 0x2E;
+/// Op class: STR_LOAD_VAR.
+pub const OP_CLASS_STR_LOAD_VAR: u8 = 0x2F;
+/// Op class: STR_STORE_VAR.
+pub const OP_CLASS_STR_STORE_VAR: u8 = 0x30;
+/// Op class: LEN_STR.
+pub const OP_CLASS_LEN_STR: u8 = 0x31;
+/// Op class: FIND_STR.
+pub const OP_CLASS_FIND_STR: u8 = 0x32;
+/// Op class: REPLACE_STR.
+pub const OP_CLASS_REPLACE_STR: u8 = 0x33;
+/// Op class: INSERT_STR.
+pub const OP_CLASS_INSERT_STR: u8 = 0x34;
+/// Op class: DELETE_STR.
+pub const OP_CLASS_DELETE_STR: u8 = 0x35;
+/// Op class: LEFT_STR.
+pub const OP_CLASS_LEFT_STR: u8 = 0x36;
+/// Op class: RIGHT_STR.
+pub const OP_CLASS_RIGHT_STR: u8 = 0x37;
+/// Op class: MID_STR.
+pub const OP_CLASS_MID_STR: u8 = 0x38;
+/// Op class: CONCAT_STR.
+pub const OP_CLASS_CONCAT_STR: u8 = 0x39;
+/// Op class: STR_INIT_ARRAY.
+pub const OP_CLASS_STR_INIT_ARRAY: u8 = 0x3A;
+/// Op class: STR_LOAD_ARRAY_ELEM.
+pub const OP_CLASS_STR_LOAD_ARRAY_ELEM: u8 = 0x3B;
+/// Op class: STR_STORE_ARRAY_ELEM.
+pub const OP_CLASS_STR_STORE_ARRAY_ELEM: u8 = 0x3C;
+// 0x3D..0x3F free (3 op-class slots reserved for future use).
+
+/// Decompose a primary opcode byte into `(op_class, type_tag)`.
+#[inline]
+pub const fn decode_opcode(op: Opcode) -> (u8, u8) {
+    (op >> 2, op & 0x03)
+}
+
+/// Compose `(op_class, type_tag)` into a primary opcode byte.
+#[inline]
+pub const fn encode_opcode(op_class: u8, type_tag: u8) -> Opcode {
+    (op_class << 2) | (type_tag & 0x03)
+}
+
 /// Load a 32-bit integer constant from the constant pool.
 /// Operand: u16 constant pool index (little-endian).
-pub const LOAD_CONST_I32: Opcode = 0x01;
+pub const LOAD_CONST_I32: Opcode = encode_opcode(OP_CLASS_LOAD_CONST, T_I32);
 
-/// Push I32 value 1 (boolean TRUE).
-pub const LOAD_TRUE: Opcode = 0x07;
+/// Push I32 value 1 (boolean TRUE). Encoded as `LOAD_BOOL` with type tag = 1.
+pub const LOAD_TRUE: Opcode = encode_opcode(OP_CLASS_LOAD_BOOL, 1);
 
-/// Push I32 value 0 (boolean FALSE).
-pub const LOAD_FALSE: Opcode = 0x08;
+/// Push I32 value 0 (boolean FALSE). Encoded as `LOAD_BOOL` with type tag = 0.
+pub const LOAD_FALSE: Opcode = encode_opcode(OP_CLASS_LOAD_BOOL, 0);
 
 /// Load a 32-bit integer from the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const LOAD_VAR_I32: Opcode = 0x10;
+pub const LOAD_VAR_I32: Opcode = encode_opcode(OP_CLASS_LOAD_VAR, T_I32);
 
 /// Store a 32-bit integer to the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const STORE_VAR_I32: Opcode = 0x18;
+pub const STORE_VAR_I32: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_I32);
 
 /// Add two 32-bit integers (wrapping).
 /// Pops two values, pushes their sum.
-pub const ADD_I32: Opcode = 0x30;
+pub const ADD_I32: Opcode = encode_opcode(OP_CLASS_ADD, T_I32);
 
 /// Subtract two 32-bit integers (wrapping).
 /// Pops two values (b then a), pushes a - b.
-pub const SUB_I32: Opcode = 0x31;
+pub const SUB_I32: Opcode = encode_opcode(OP_CLASS_SUB, T_I32);
 
 /// Multiply two 32-bit integers (wrapping).
 /// Pops two values, pushes their product.
-pub const MUL_I32: Opcode = 0x32;
+pub const MUL_I32: Opcode = encode_opcode(OP_CLASS_MUL, T_I32);
 
 /// Divide two 32-bit integers (truncating toward zero).
 /// Pops two values (b then a), pushes a / b.
 /// Traps on division by zero.
-pub const DIV_I32: Opcode = 0x33;
+pub const DIV_I32: Opcode = encode_opcode(OP_CLASS_DIV_S, T_I32);
 
 /// Modulo (remainder) of two 32-bit integers (truncating toward zero).
 /// Pops two values (b then a), pushes a % b.
 /// Traps on division by zero.
-pub const MOD_I32: Opcode = 0x34;
+pub const MOD_I32: Opcode = encode_opcode(OP_CLASS_MOD_S, T_I32);
 
 /// Negate a 32-bit integer (wrapping).
 /// Pops one value, pushes its negation.
-pub const NEG_I32: Opcode = 0x35;
+pub const NEG_I32: Opcode = encode_opcode(OP_CLASS_NEG, T_I32);
 
 /// Compare two 32-bit integers for equality.
 /// Pops two values (b then a), pushes 1 if a == b, else 0.
-pub const EQ_I32: Opcode = 0x68;
+pub const EQ_I32: Opcode = encode_opcode(OP_CLASS_EQ, T_I32);
 
 /// Compare two 32-bit integers for inequality.
 /// Pops two values (b then a), pushes 1 if a != b, else 0.
-pub const NE_I32: Opcode = 0x69;
+pub const NE_I32: Opcode = encode_opcode(OP_CLASS_NE, T_I32);
 
 /// Compare two signed 32-bit integers (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0.
@@ -65,63 +250,63 @@ pub const LE_I32: Opcode = 0x6B;
 
 /// Compare two signed 32-bit integers (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0.
-pub const GT_I32: Opcode = 0x6C;
+pub const GT_I32: Opcode = encode_opcode(OP_CLASS_GT_S, T_I32);
 
 /// Compare two signed 32-bit integers (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0.
-pub const GE_I32: Opcode = 0x6D;
+pub const GE_I32: Opcode = encode_opcode(OP_CLASS_GE_S, T_I32);
 
 /// Logical AND of two values.
 /// Pops two values (b then a), coerces non-zero to 1, pushes 1 if both are non-zero, else 0.
-pub const BOOL_AND: Opcode = 0x54;
+pub const BOOL_AND: Opcode = encode_opcode(OP_CLASS_BOOL_OP, 0);
 
 /// Logical OR of two values.
 /// Pops two values (b then a), coerces non-zero to 1, pushes 1 if either is non-zero, else 0.
-pub const BOOL_OR: Opcode = 0x55;
+pub const BOOL_OR: Opcode = encode_opcode(OP_CLASS_BOOL_OP, 1);
 
 /// Logical XOR of two values.
 /// Pops two values (b then a), coerces non-zero to 1, pushes 1 if exactly one is non-zero, else 0.
-pub const BOOL_XOR: Opcode = 0x56;
+pub const BOOL_XOR: Opcode = encode_opcode(OP_CLASS_BOOL_OP, 2);
 
 /// Logical NOT of a value.
 /// Pops one value, pushes 1 if it is zero, else 0.
-pub const BOOL_NOT: Opcode = 0x57;
+pub const BOOL_NOT: Opcode = encode_opcode(OP_CLASS_BOOL_OP, 3);
 
 // --- Bitwise opcodes (32-bit) ---
 
 /// Bitwise AND of two 32-bit integers.
 /// Pops two values (b then a), pushes a & b.
-pub const BIT_AND_32: Opcode = 0x58;
+pub const BIT_AND_32: Opcode = encode_opcode(OP_CLASS_BIT_AND, 0);
 
 /// Bitwise OR of two 32-bit integers.
 /// Pops two values (b then a), pushes a | b.
-pub const BIT_OR_32: Opcode = 0x59;
+pub const BIT_OR_32: Opcode = encode_opcode(OP_CLASS_BIT_OR, 0);
 
 /// Bitwise XOR of two 32-bit integers.
 /// Pops two values (b then a), pushes a ^ b.
-pub const BIT_XOR_32: Opcode = 0x5A;
+pub const BIT_XOR_32: Opcode = encode_opcode(OP_CLASS_BIT_XOR, 0);
 
 /// Bitwise NOT of a 32-bit integer.
 /// Pops one value, pushes !a.
-pub const BIT_NOT_32: Opcode = 0x5B;
+pub const BIT_NOT_32: Opcode = encode_opcode(OP_CLASS_BIT_NOT, 0);
 
 // --- Bitwise opcodes (64-bit) ---
 
 /// Bitwise AND of two 64-bit integers.
 /// Pops two values (b then a), pushes a & b.
-pub const BIT_AND_64: Opcode = 0x60;
+pub const BIT_AND_64: Opcode = encode_opcode(OP_CLASS_BIT_AND, 1);
 
 /// Bitwise OR of two 64-bit integers.
 /// Pops two values (b then a), pushes a | b.
-pub const BIT_OR_64: Opcode = 0x61;
+pub const BIT_OR_64: Opcode = encode_opcode(OP_CLASS_BIT_OR, 1);
 
 /// Bitwise XOR of two 64-bit integers.
 /// Pops two values (b then a), pushes a ^ b.
-pub const BIT_XOR_64: Opcode = 0x62;
+pub const BIT_XOR_64: Opcode = encode_opcode(OP_CLASS_BIT_XOR, 1);
 
 /// Bitwise NOT of a 64-bit integer.
 /// Pops one value, pushes !a.
-pub const BIT_NOT_64: Opcode = 0x63;
+pub const BIT_NOT_64: Opcode = encode_opcode(OP_CLASS_BIT_NOT, 1);
 
 /// Unconditional jump. Operand: i16 offset relative to next instruction.
 pub const JMP: Opcode = 0xB0;
@@ -179,7 +364,7 @@ pub const FB_CALL: Opcode = 0xC3;
 /// Load a STRING literal from the constant pool into a temporary buffer.
 /// Operand: u16 constant pool index (little-endian).
 /// Pushes the temp buf_idx onto the stack.
-pub const LOAD_CONST_STR: Opcode = 0x09;
+pub const LOAD_CONST_STR: Opcode = encode_opcode(OP_CLASS_LOAD_CONST_STR, 0);
 
 /// Initialize a STRING variable in the data region.
 /// Operands: data_offset: u32, max_length: u16.
@@ -266,13 +451,13 @@ pub const STR_STORE_ARRAY_ELEM: Opcode = 0xEE;
 /// Operand 1: u16 variable table index (little-endian).
 /// Operand 2: u16 array descriptor index (little-endian).
 /// Pops 1 (flat index), pushes 1 (element value). Net stack: 0.
-pub const LOAD_ARRAY: Opcode = 0x24;
+pub const LOAD_ARRAY: Opcode = encode_opcode(OP_CLASS_LOAD_ARRAY, 0);
 
 /// Store a value to an array element.
 /// Operand 1: u16 variable table index (little-endian).
 /// Operand 2: u16 array descriptor index (little-endian).
 /// Pops 2 (value, flat index). Net stack: -2.
-pub const STORE_ARRAY: Opcode = 0x25;
+pub const STORE_ARRAY: Opcode = encode_opcode(OP_CLASS_STORE_ARRAY, 0);
 
 /// Load a value from an array element through a reference (double indirection).
 /// Operand 1: u16 reference variable index (little-endian). The slot holds the
@@ -292,121 +477,121 @@ pub const STORE_ARRAY_DEREF: Opcode = 0x27;
 
 /// Truncate i32 to i8 range, then sign-extend back to i32.
 /// `(v as i8) as i32` — wraps to -128..127.
-pub const TRUNC_I8: Opcode = 0x20;
+pub const TRUNC_I8: Opcode = encode_opcode(OP_CLASS_TRUNC, 0);
 
 /// Truncate i32 to u8 range, then zero-extend back to i32.
 /// `(v as u8) as i32` — wraps to 0..255.
-pub const TRUNC_U8: Opcode = 0x21;
+pub const TRUNC_U8: Opcode = encode_opcode(OP_CLASS_TRUNC, 1);
 
 /// Truncate i32 to i16 range, then sign-extend back to i32.
 /// `(v as i16) as i32` — wraps to -32768..32767.
-pub const TRUNC_I16: Opcode = 0x22;
+pub const TRUNC_I16: Opcode = encode_opcode(OP_CLASS_TRUNC, 2);
 
 /// Truncate i32 to u16 range, then zero-extend back to i32.
 /// `(v as u16) as i32` — wraps to 0..65535.
-pub const TRUNC_U16: Opcode = 0x23;
+pub const TRUNC_U16: Opcode = encode_opcode(OP_CLASS_TRUNC, 3);
 
 // --- 64-bit load/store opcodes ---
 
 /// Load a 64-bit integer constant from the constant pool.
 /// Operand: u16 constant pool index (little-endian).
-pub const LOAD_CONST_I64: Opcode = 0x02;
+pub const LOAD_CONST_I64: Opcode = encode_opcode(OP_CLASS_LOAD_CONST, T_I64);
 
 /// Load a 32-bit float constant from the constant pool.
 /// Operand: u16 constant pool index (little-endian).
-pub const LOAD_CONST_F32: Opcode = 0x03;
+pub const LOAD_CONST_F32: Opcode = encode_opcode(OP_CLASS_LOAD_CONST, T_F32);
 
 /// Load a 64-bit float constant from the constant pool.
 /// Operand: u16 constant pool index (little-endian).
-pub const LOAD_CONST_F64: Opcode = 0x04;
+pub const LOAD_CONST_F64: Opcode = encode_opcode(OP_CLASS_LOAD_CONST, T_F64);
 
 /// Load a 64-bit integer from the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const LOAD_VAR_I64: Opcode = 0x11;
+pub const LOAD_VAR_I64: Opcode = encode_opcode(OP_CLASS_LOAD_VAR, T_I64);
 
 /// Load a 32-bit float from the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const LOAD_VAR_F32: Opcode = 0x12;
+pub const LOAD_VAR_F32: Opcode = encode_opcode(OP_CLASS_LOAD_VAR, T_F32);
 
 /// Load a 64-bit float from the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const LOAD_VAR_F64: Opcode = 0x13;
+pub const LOAD_VAR_F64: Opcode = encode_opcode(OP_CLASS_LOAD_VAR, T_F64);
 
 /// Indirect load: pops a reference (variable index) from the stack,
 /// loads the referenced variable's value, and pushes it.
 /// No operand. Stack: [..., ref] → [..., value].
-pub const LOAD_INDIRECT: Opcode = 0x14;
+pub const LOAD_INDIRECT: Opcode = encode_opcode(OP_CLASS_LOAD_INDIRECT, 0);
 
 /// Indirect store: pops a value and a reference (variable index) from the stack,
 /// stores the value into the referenced variable.
 /// No operand. Stack: [..., value, ref] → [...].
-pub const STORE_INDIRECT: Opcode = 0x15;
+pub const STORE_INDIRECT: Opcode = encode_opcode(OP_CLASS_STORE_INDIRECT, 0);
 
 /// Store a 64-bit integer to the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const STORE_VAR_I64: Opcode = 0x19;
+pub const STORE_VAR_I64: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_I64);
 
 /// Store a 32-bit float to the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const STORE_VAR_F32: Opcode = 0x1A;
+pub const STORE_VAR_F32: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_F32);
 
 /// Store a 64-bit float to the variable table.
 /// Operand: u16 variable index (little-endian).
-pub const STORE_VAR_F64: Opcode = 0x1B;
+pub const STORE_VAR_F64: Opcode = encode_opcode(OP_CLASS_STORE_VAR, T_F64);
 
 // --- 64-bit arithmetic opcodes ---
 
 /// Add two 64-bit integers (wrapping).
 /// Pops two values (b then a), pushes a.wrapping_add(b).
-pub const ADD_I64: Opcode = 0x38;
+pub const ADD_I64: Opcode = encode_opcode(OP_CLASS_ADD, T_I64);
 
 /// Subtract two 64-bit integers (wrapping).
 /// Pops two values (b then a), pushes a.wrapping_sub(b).
-pub const SUB_I64: Opcode = 0x39;
+pub const SUB_I64: Opcode = encode_opcode(OP_CLASS_SUB, T_I64);
 
 /// Multiply two 64-bit integers (wrapping).
 /// Pops two values (b then a), pushes a.wrapping_mul(b).
-pub const MUL_I64: Opcode = 0x3A;
+pub const MUL_I64: Opcode = encode_opcode(OP_CLASS_MUL, T_I64);
 
 /// Divide two signed 64-bit integers (truncating toward zero).
 /// Pops two values (b then a), pushes a / b. Traps on division by zero.
-pub const DIV_I64: Opcode = 0x3B;
+pub const DIV_I64: Opcode = encode_opcode(OP_CLASS_DIV_S, T_I64);
 
 /// Modulo (remainder) of two signed 64-bit integers.
 /// Pops two values (b then a), pushes a % b. Traps on division by zero.
-pub const MOD_I64: Opcode = 0x3C;
+pub const MOD_I64: Opcode = encode_opcode(OP_CLASS_MOD_S, T_I64);
 
 /// Negate a 64-bit integer (wrapping).
 /// Pops one value, pushes its negation.
-pub const NEG_I64: Opcode = 0x3D;
+pub const NEG_I64: Opcode = encode_opcode(OP_CLASS_NEG, T_I64);
 
 // --- Unsigned 32-bit division opcodes ---
 
 /// Divide two unsigned 32-bit integers.
 /// Pops two i32 values (b then a), reinterprets as u32, pushes (a/b) as i32.
 /// Traps on division by zero.
-pub const DIV_U32: Opcode = 0x40;
+pub const DIV_U32: Opcode = encode_opcode(OP_CLASS_DIV_U, T_I32);
 
 /// Modulo (remainder) of two unsigned 32-bit integers.
 /// Pops two i32 values (b then a), reinterprets as u32, pushes (a%b) as i32.
 /// Traps on division by zero.
-pub const MOD_U32: Opcode = 0x41;
+pub const MOD_U32: Opcode = encode_opcode(OP_CLASS_MOD_U, T_I32);
 
 /// Divide two unsigned 64-bit integers.
 /// Pops two i64 values (b then a), reinterprets as u64, pushes (a/b) as i64.
 /// Traps on division by zero.
-pub const DIV_U64: Opcode = 0x42;
+pub const DIV_U64: Opcode = encode_opcode(OP_CLASS_DIV_U, T_I64);
 
 /// Modulo (remainder) of two unsigned 64-bit integers.
 /// Pops two i64 values (b then a), reinterprets as u64, pushes (a%b) as i64.
 /// Traps on division by zero.
-pub const MOD_U64: Opcode = 0x43;
+pub const MOD_U64: Opcode = encode_opcode(OP_CLASS_MOD_U, T_I64);
 
 // --- 32-bit float arithmetic opcodes ---
 
 /// Add two 32-bit floats.
 /// Pops two values (b then a), pushes a + b.
-pub const ADD_F32: Opcode = 0x48;
+pub const ADD_F32: Opcode = encode_opcode(OP_CLASS_ADD, T_F32);
 
 /// Subtract two 32-bit floats.
 /// Pops two values (b then a), pushes a - b.
@@ -414,22 +599,22 @@ pub const SUB_F32: Opcode = 0x49;
 
 /// Multiply two 32-bit floats.
 /// Pops two values (b then a), pushes a * b.
-pub const MUL_F32: Opcode = 0x4A;
+pub const MUL_F32: Opcode = encode_opcode(OP_CLASS_MUL, T_F32);
 
 /// Divide two 32-bit floats.
 /// Pops two values (b then a), pushes a / b.
 /// IEEE 754: produces ±Inf or NaN on division by zero.
-pub const DIV_F32: Opcode = 0x4B;
+pub const DIV_F32: Opcode = encode_opcode(OP_CLASS_DIV_S, T_F32);
 
 /// Negate a 32-bit float.
 /// Pops one value, pushes its negation.
-pub const NEG_F32: Opcode = 0x4C;
+pub const NEG_F32: Opcode = encode_opcode(OP_CLASS_NEG, T_F32);
 
 // --- 64-bit float arithmetic opcodes ---
 
 /// Add two 64-bit floats.
 /// Pops two values (b then a), pushes a + b.
-pub const ADD_F64: Opcode = 0x4E;
+pub const ADD_F64: Opcode = encode_opcode(OP_CLASS_ADD, T_F64);
 
 /// Subtract two 64-bit floats.
 /// Pops two values (b then a), pushes a - b.
@@ -437,26 +622,26 @@ pub const SUB_F64: Opcode = 0x4F;
 
 /// Multiply two 64-bit floats.
 /// Pops two values (b then a), pushes a * b.
-pub const MUL_F64: Opcode = 0x50;
+pub const MUL_F64: Opcode = encode_opcode(OP_CLASS_MUL, T_F64);
 
 /// Divide two 64-bit floats.
 /// Pops two values (b then a), pushes a / b.
 /// IEEE 754: produces ±Inf or NaN on division by zero.
-pub const DIV_F64: Opcode = 0x51;
+pub const DIV_F64: Opcode = encode_opcode(OP_CLASS_DIV_S, T_F64);
 
 /// Negate a 64-bit float.
 /// Pops one value, pushes its negation.
-pub const NEG_F64: Opcode = 0x52;
+pub const NEG_F64: Opcode = encode_opcode(OP_CLASS_NEG, T_F64);
 
 // --- 64-bit comparison opcodes ---
 
 /// Compare two 64-bit integers for equality.
 /// Pops two values (b then a), pushes 1 if a == b, else 0.
-pub const EQ_I64: Opcode = 0x70;
+pub const EQ_I64: Opcode = encode_opcode(OP_CLASS_EQ, T_I64);
 
 /// Compare two 64-bit integers for inequality.
 /// Pops two values (b then a), pushes 1 if a != b, else 0.
-pub const NE_I64: Opcode = 0x71;
+pub const NE_I64: Opcode = encode_opcode(OP_CLASS_NE, T_I64);
 
 /// Compare two signed 64-bit integers (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0.
@@ -468,55 +653,55 @@ pub const LE_I64: Opcode = 0x73;
 
 /// Compare two signed 64-bit integers (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0.
-pub const GT_I64: Opcode = 0x74;
+pub const GT_I64: Opcode = encode_opcode(OP_CLASS_GT_S, T_I64);
 
 /// Compare two signed 64-bit integers (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0.
-pub const GE_I64: Opcode = 0x75;
+pub const GE_I64: Opcode = encode_opcode(OP_CLASS_GE_S, T_I64);
 
 // --- Unsigned comparison opcodes ---
 
 /// Compare two unsigned 32-bit integers (less than).
 /// Pops two i32 values (b then a), pushes 1 if (a as u32) < (b as u32), else 0.
-pub const LT_U32: Opcode = 0x78;
+pub const LT_U32: Opcode = encode_opcode(OP_CLASS_LT_U, T_I32);
 
 /// Compare two unsigned 32-bit integers (less than or equal).
 /// Pops two i32 values (b then a), pushes 1 if (a as u32) <= (b as u32), else 0.
-pub const LE_U32: Opcode = 0x79;
+pub const LE_U32: Opcode = encode_opcode(OP_CLASS_LE_U, T_I32);
 
 /// Compare two unsigned 32-bit integers (greater than).
 /// Pops two i32 values (b then a), pushes 1 if (a as u32) > (b as u32), else 0.
-pub const GT_U32: Opcode = 0x7A;
+pub const GT_U32: Opcode = encode_opcode(OP_CLASS_GT_U, T_I32);
 
 /// Compare two unsigned 32-bit integers (greater than or equal).
 /// Pops two i32 values (b then a), pushes 1 if (a as u32) >= (b as u32), else 0.
-pub const GE_U32: Opcode = 0x7B;
+pub const GE_U32: Opcode = encode_opcode(OP_CLASS_GE_U, T_I32);
 
 /// Compare two unsigned 64-bit integers (less than).
 /// Pops two i64 values (b then a), pushes 1 if (a as u64) < (b as u64), else 0.
-pub const LT_U64: Opcode = 0x7C;
+pub const LT_U64: Opcode = encode_opcode(OP_CLASS_LT_U, T_I64);
 
 /// Compare two unsigned 64-bit integers (less than or equal).
 /// Pops two i64 values (b then a), pushes 1 if (a as u64) <= (b as u64), else 0.
-pub const LE_U64: Opcode = 0x7D;
+pub const LE_U64: Opcode = encode_opcode(OP_CLASS_LE_U, T_I64);
 
 /// Compare two unsigned 64-bit integers (greater than).
 /// Pops two i64 values (b then a), pushes 1 if (a as u64) > (b as u64), else 0.
-pub const GT_U64: Opcode = 0x7E;
+pub const GT_U64: Opcode = encode_opcode(OP_CLASS_GT_U, T_I64);
 
 /// Compare two unsigned 64-bit integers (greater than or equal).
 /// Pops two i64 values (b then a), pushes 1 if (a as u64) >= (b as u64), else 0.
-pub const GE_U64: Opcode = 0x7F;
+pub const GE_U64: Opcode = encode_opcode(OP_CLASS_GE_U, T_I64);
 
 // --- 32-bit float comparison opcodes ---
 
 /// Compare two 32-bit floats for equality.
 /// Pops two values (b then a), pushes 1 if a == b, else 0 (as i32).
-pub const EQ_F32: Opcode = 0x80;
+pub const EQ_F32: Opcode = encode_opcode(OP_CLASS_EQ, T_F32);
 
 /// Compare two 32-bit floats for inequality.
 /// Pops two values (b then a), pushes 1 if a != b, else 0 (as i32).
-pub const NE_F32: Opcode = 0x81;
+pub const NE_F32: Opcode = encode_opcode(OP_CLASS_NE, T_F32);
 
 /// Compare two 32-bit floats (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0 (as i32).
@@ -528,21 +713,21 @@ pub const LE_F32: Opcode = 0x83;
 
 /// Compare two 32-bit floats (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0 (as i32).
-pub const GT_F32: Opcode = 0x84;
+pub const GT_F32: Opcode = encode_opcode(OP_CLASS_GT_S, T_F32);
 
 /// Compare two 32-bit floats (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
-pub const GE_F32: Opcode = 0x85;
+pub const GE_F32: Opcode = encode_opcode(OP_CLASS_GE_S, T_F32);
 
 // --- 64-bit float comparison opcodes ---
 
 /// Compare two 64-bit floats for equality.
 /// Pops two values (b then a), pushes 1 if a == b, else 0 (as i32).
-pub const EQ_F64: Opcode = 0x88;
+pub const EQ_F64: Opcode = encode_opcode(OP_CLASS_EQ, T_F64);
 
 /// Compare two 64-bit floats for inequality.
 /// Pops two values (b then a), pushes 1 if a != b, else 0 (as i32).
-pub const NE_F64: Opcode = 0x89;
+pub const NE_F64: Opcode = encode_opcode(OP_CLASS_NE, T_F64);
 
 /// Compare two 64-bit floats (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0 (as i32).
@@ -554,11 +739,11 @@ pub const LE_F64: Opcode = 0x8B;
 
 /// Compare two 64-bit floats (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0 (as i32).
-pub const GT_F64: Opcode = 0x8C;
+pub const GT_F64: Opcode = encode_opcode(OP_CLASS_GT_S, T_F64);
 
 /// Compare two 64-bit floats (greater than or equal).
 /// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
-pub const GE_F64: Opcode = 0x8D;
+pub const GE_F64: Opcode = encode_opcode(OP_CLASS_GE_S, T_F64);
 
 /// Returns the total byte size of the instruction starting with `op`.
 ///

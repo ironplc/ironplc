@@ -39,18 +39,18 @@ fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
     assert_eq!(
         bytecode,
         &[
-            0x01,
+            0x00,
             0x00,
             0x00, // LOAD_CONST_I32 pool:0 (10)
             0xA1, // DUP (store-load optimization)
-            0x18,
+            0x10,
             0x00,
             0x00, // STORE_VAR_I32 var:0
-            0x01,
+            0x00,
             0x01,
             0x00,            // LOAD_CONST_I32 pool:1 (5)
             expected_opcode, // The operator opcode
-            0x18,
+            0x10,
             0x01,
             0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
@@ -62,27 +62,27 @@ fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
 
 #[test]
 fn compile_when_add_function_then_produces_add_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("ADD", "DINT"), 0x30);
+    assert_two_arg_bytecode(&two_arg_program("ADD", "DINT"), 0x20);
 }
 
 #[test]
 fn compile_when_sub_function_then_produces_sub_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("SUB", "DINT"), 0x31);
+    assert_two_arg_bytecode(&two_arg_program("SUB", "DINT"), 0x24);
 }
 
 #[test]
 fn compile_when_mul_function_then_produces_mul_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("MUL", "DINT"), 0x32);
+    assert_two_arg_bytecode(&two_arg_program("MUL", "DINT"), 0x28);
 }
 
 #[test]
 fn compile_when_div_function_then_produces_div_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("DIV", "DINT"), 0x33);
+    assert_two_arg_bytecode(&two_arg_program("DIV", "DINT"), 0x30);
 }
 
 #[test]
 fn compile_when_mod_function_then_produces_mod_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("MOD", "DINT"), 0x34);
+    assert_two_arg_bytecode(&two_arg_program("MOD", "DINT"), 0x38);
 }
 
 // --- Boolean functions ---
@@ -105,8 +105,8 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     assert!(
-        bytecode.contains(&0x54),
-        "Expected BOOL_AND opcode 0x54 in bytecode: {:02X?}",
+        bytecode.contains(&0x78),
+        "Expected BOOL_AND opcode 0x78 in bytecode: {:02X?}",
         bytecode
     );
 }
@@ -129,8 +129,8 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     assert!(
-        bytecode.contains(&0x55),
-        "Expected BOOL_OR opcode 0x55 in bytecode: {:02X?}",
+        bytecode.contains(&0x79),
+        "Expected BOOL_OR opcode 0x79 in bytecode: {:02X?}",
         bytecode
     );
 }
@@ -153,8 +153,8 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     assert!(
-        bytecode.contains(&0x56),
-        "Expected BOOL_XOR opcode 0x56 in bytecode: {:02X?}",
+        bytecode.contains(&0x7A),
+        "Expected BOOL_XOR opcode 0x7A in bytecode: {:02X?}",
         bytecode
     );
 }
@@ -163,12 +163,12 @@ END_PROGRAM
 
 #[test]
 fn compile_when_eq_function_then_produces_eq_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("EQ", "DINT"), 0x68);
+    assert_two_arg_bytecode(&two_arg_program("EQ", "DINT"), 0x40);
 }
 
 #[test]
 fn compile_when_ne_function_then_produces_ne_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("NE", "DINT"), 0x69);
+    assert_two_arg_bytecode(&two_arg_program("NE", "DINT"), 0x44);
 }
 
 #[test]
@@ -183,12 +183,12 @@ fn compile_when_le_function_then_produces_le_bytecode() {
 
 #[test]
 fn compile_when_gt_function_then_produces_gt_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("GT", "DINT"), 0x6C);
+    assert_two_arg_bytecode(&two_arg_program("GT", "DINT"), 0x50);
 }
 
 #[test]
 fn compile_when_ge_function_then_produces_ge_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("GE", "DINT"), 0x6D);
+    assert_two_arg_bytecode(&two_arg_program("GE", "DINT"), 0x54);
 }
 
 // --- Assignment function ---
@@ -214,10 +214,10 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
             0xA1, // DUP (store-load optimization)
-            0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );

@@ -7,30 +7,11 @@
 //!
 //! Run with: `cargo bench --package ironplc-benchmarks`
 
-use criterion::{
-    black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput,
-};
-use ironplc_codegen::compile;
-use ironplc_container::Container;
-use ironplc_dsl::core::FileId;
-use ironplc_parser::options::CompilerOptions;
-use ironplc_parser::parse_program;
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
+use ironplc_benchmarks::compile_st;
 use ironplc_vm::test_support::load_and_start;
 use ironplc_vm::{Slot, VmBuffers};
-
-/// Compiles an IEC 61131-3 source string through the full pipeline:
-/// parse → analyze (all semantic rules) → codegen.
-fn compile_st(source: &str) -> Container {
-    let options = CompilerOptions::default();
-    let library = parse_program(source, &FileId::default(), &options).unwrap();
-    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&library], &options).unwrap();
-    assert!(
-        !context.has_diagnostics(),
-        "Benchmark source has semantic diagnostics"
-    );
-    let codegen_options = ironplc_codegen::CodegenOptions::default();
-    compile(&analyzed, &context, &codegen_options).unwrap()
-}
+use std::hint::black_box;
 
 /// Runs one benchmark iteration: creates `VmBuffers`, applies `$setup`,
 /// then executes one VM scan cycle.
@@ -331,6 +312,119 @@ END_PROGRAM",
     group.finish();
 }
 
+/// Five distinct INT arithmetic operations on the same operands —
+/// covers ADD, SUB, MUL, DIV, MOD in one scan. Single iteration; the
+/// program does no looping.
+fn bench_arithmetic(c: &mut Criterion) {
+    let mut group = c.benchmark_group("st_arithmetic");
+    let container = compile_st(
+        "PROGRAM arithmetic
+  VAR
+      a : INT := 20;
+      b : INT := 10;
+      result_add : INT;
+      result_sub : INT;
+      result_mul : INT;
+      result_div : INT;
+      result_mod : INT;
+  END_VAR
+      result_add := a + b;
+      result_sub := a - b;
+      result_mul := a * b;
+      result_div := a / b;
+      result_mod := a MOD b;
+  END_PROGRAM",
+    );
+    bench_run!(
+        group,
+        BenchmarkId::from_parameter("5ops"),
+        &container,
+        |_bufs| {}
+    );
+    group.finish();
+}
+
+/// CASE statement state machine — exercises CASE dispatch with four
+/// states that advance per scan. Each scan executes one branch's body
+/// (five assignments) plus the CASE selector load.
+fn bench_case_state(c: &mut Criterion) {
+    let mut group = c.benchmark_group("st_case_state");
+    let container = compile_st(
+        "PROGRAM case_state
+  VAR
+      state : INT := 0;
+      output_a : BOOL := FALSE;
+      output_b : BOOL := FALSE;
+      output_c : BOOL := FALSE;
+      output_d : BOOL := FALSE;
+  END_VAR
+      CASE state OF
+          0:
+              output_a := TRUE;
+              output_b := FALSE;
+              output_c := FALSE;
+              output_d := FALSE;
+              state := 1;
+          1:
+              output_a := FALSE;
+              output_b := TRUE;
+              output_c := FALSE;
+              output_d := FALSE;
+              state := 2;
+          2:
+              output_a := FALSE;
+              output_b := FALSE;
+              output_c := TRUE;
+              output_d := FALSE;
+              state := 3;
+          3:
+              output_a := FALSE;
+              output_b := FALSE;
+              output_c := FALSE;
+              output_d := TRUE;
+              state := 0;
+      END_CASE;
+  END_PROGRAM",
+    );
+    bench_run!(
+        group,
+        BenchmarkId::from_parameter("4states"),
+        &container,
+        |_bufs| {}
+    );
+    group.finish();
+}
+
+/// IF/ELSE counter with a saturation reset — minimal state-machine shape
+/// representative of typical PLC scan code. Each scan does one comparison
+/// plus either an increment (the common path) or a reset (1 in 1001 scans).
+fn bench_counter_up(c: &mut Criterion) {
+    let mut group = c.benchmark_group("st_counter_up");
+    let container = compile_st(
+        "PROGRAM counter_up
+  VAR
+      count : INT := 0;
+      threshold : INT := 1000;
+      reset_flag : BOOL := FALSE;
+  END_VAR
+      IF count >= threshold THEN
+          count := 0;
+          reset_flag := TRUE;
+      ELSE
+          count := count + 1;
+          reset_flag := FALSE;
+      END_IF;
+  END_PROGRAM",
+    );
+    bench_run!(
+        group,
+        BenchmarkId::from_parameter("1iter"),
+        &container,
+        |_bufs| {}
+    );
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_counter_loop,
@@ -341,5 +435,8 @@ criterion_group!(
     bench_nested_loops,
     bench_narrow_opcodes,
     bench_diverse_opcodes,
+    bench_arithmetic,
+    bench_case_state,
+    bench_counter_up,
 );
 criterion_main!(benches);

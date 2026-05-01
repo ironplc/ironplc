@@ -733,7 +733,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0);
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00]);
     }
 
     #[test]
@@ -741,7 +741,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_var_i32(VarIndex::new(1));
 
-        assert_eq!(em.bytecode(), &[0x10, 0x01, 0x00]);
+        assert_eq!(em.bytecode(), &[0x0C, 0x01, 0x00]);
     }
 
     #[test]
@@ -751,7 +751,7 @@ mod tests {
         em.emit_load_const_i32(0);
         em.emit_store_var_i32(VarIndex::new(0));
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00]);
     }
 
     #[test]
@@ -761,7 +761,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_add_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x30]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x20]);
     }
 
     #[test]
@@ -771,7 +771,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_sub_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x31]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x24]);
     }
 
     #[test]
@@ -793,7 +793,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_mul_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x32]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x28]);
     }
 
     #[test]
@@ -815,7 +815,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_div_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x33]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x30]);
     }
 
     #[test]
@@ -837,7 +837,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_mod_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x34]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x38]);
     }
 
     #[test]
@@ -858,7 +858,7 @@ mod tests {
         em.emit_load_var_i32(VarIndex::new(0));
         em.emit_neg_i32();
 
-        assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0x35]);
+        assert_eq!(em.bytecode(), &[0x0C, 0x00, 0x00, 0x2C]);
     }
 
     #[test]
@@ -902,7 +902,7 @@ mod tests {
         em.emit_load_const_i32(256);
 
         // 256 in little-endian u16 is [0x00, 0x01]
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x01]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x01]);
     }
 
     #[test]
@@ -915,7 +915,7 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_CONST pool:1, BUILTIN 0x0340
         assert_eq!(
             em.bytecode(),
-            &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0xC4, 0x40, 0x03]
+            &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0xC4, 0x40, 0x03]
         );
     }
 
@@ -962,7 +962,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_eq_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x68]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x40]);
     }
 
     #[test]
@@ -984,7 +984,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_ne_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x69]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x44]);
     }
 
     #[test]
@@ -1006,7 +1006,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_lt_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x6A]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x6A]);
     }
 
     #[test]
@@ -1028,7 +1028,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_le_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x6B]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x6B]);
     }
 
     #[test]
@@ -1050,7 +1050,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_gt_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x6C]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x50]);
     }
 
     #[test]
@@ -1072,7 +1072,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_ge_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x6D]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x54]);
     }
 
     #[test]
@@ -1094,7 +1094,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_bool_and();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x54]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x78]);
     }
 
     #[test]
@@ -1115,7 +1115,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_bool_or();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x55]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x79]);
     }
 
     #[test]
@@ -1136,7 +1136,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_bool_xor();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x56]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x7A]);
     }
 
     #[test]
@@ -1156,7 +1156,7 @@ mod tests {
         em.emit_load_var_i32(VarIndex::new(0));
         em.emit_bool_not();
 
-        assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0x57]);
+        assert_eq!(em.bytecode(), &[0x0C, 0x00, 0x00, 0x7B]);
     }
 
     #[test]
@@ -1175,7 +1175,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_true();
 
-        assert_eq!(em.bytecode(), &[0x07]);
+        assert_eq!(em.bytecode(), &[0x05]);
     }
 
     #[test]
@@ -1192,7 +1192,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_false();
 
-        assert_eq!(em.bytecode(), &[0x08]);
+        assert_eq!(em.bytecode(), &[0x04]);
     }
 
     #[test]
@@ -1237,7 +1237,7 @@ mod tests {
         em.bind_label(label);
 
         // LOAD_CONST_I32 pool:0, JMP_IF_NOT offset:0
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0xB2, 0x00, 0x00]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0xB2, 0x00, 0x00]);
     }
 
     #[test]
@@ -1261,7 +1261,7 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_CONST pool:1, CALL func:2 var_offset:5
         assert_eq!(
             em.bytecode(),
-            &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0xB3, 0x02, 0x00, 0x05, 0x00]
+            &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0xB3, 0x02, 0x00, 0x05, 0x00]
         );
     }
 
@@ -1282,7 +1282,7 @@ mod tests {
         em.emit_load_var_i32(VarIndex::new(0));
         em.emit_ret();
 
-        assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0xB4]);
+        assert_eq!(em.bytecode(), &[0x0C, 0x00, 0x00, 0xB4]);
     }
 
     #[test]
@@ -1295,7 +1295,7 @@ mod tests {
         em.bind_label(label);
 
         // JMP offset should be 3 (skip over the LOAD_CONST_I32 which is 3 bytes)
-        assert_eq!(em.bytecode(), &[0xB0, 0x03, 0x00, 0x01, 0x00, 0x00]);
+        assert_eq!(em.bytecode(), &[0xB0, 0x03, 0x00, 0x00, 0x00, 0x00]);
     }
 
     #[test]
@@ -1307,7 +1307,7 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_ARRAY var:3 desc:7
         assert_eq!(
             em.bytecode(),
-            &[0x01, 0x00, 0x00, 0x24, 0x03, 0x00, 0x07, 0x00]
+            &[0x00, 0x00, 0x00, 0xA8, 0x03, 0x00, 0x07, 0x00]
         );
     }
 
@@ -1331,7 +1331,7 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_CONST pool:1, STORE_ARRAY var:5 desc:2
         assert_eq!(
             em.bytecode(),
-            &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x25, 0x05, 0x00, 0x02, 0x00]
+            &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0xAC, 0x05, 0x00, 0x02, 0x00]
         );
     }
 
@@ -1350,7 +1350,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_dup();
 
-        assert_eq!(em.bytecode(), &[opcode::DUP]);
+        assert_eq!(em.bytecode(), &[0xA1]);
         assert_eq!(em.max_stack_depth(), 1);
     }
 
@@ -1359,7 +1359,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_swap();
 
-        assert_eq!(em.bytecode(), &[opcode::SWAP]);
+        assert_eq!(em.bytecode(), &[0xA2]);
         assert_eq!(em.max_stack_depth(), 0);
     }
 

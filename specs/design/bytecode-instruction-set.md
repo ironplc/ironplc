@@ -24,6 +24,92 @@ All opcodes are encoded as a single byte (0x00–0xFF). Operands follow the opco
 | i32 | 4 bytes | Signed jump offset (far jumps) |
 | u32 | 4 bytes | Extended index (for large constant pools) |
 
+### Opcode Byte Layout
+
+The opcode byte itself is structured as `[op_class:6][type:2]`:
+
+```text
+  bits:    7 6 5 4 3 2 1 0
+           └──op_class──┘└type┘
+```
+
+- **op_class** (high 6 bits) selects the operation. 64 op-class slots in total.
+- **type tag** (low 2 bits) selects the type variant (or, for some op classes, the operation within a small consolidated family).
+
+Type tag values:
+
+| Tag | Name | Meaning |
+|-----|------|---------|
+| 0 | `T_I32` | 32-bit integer (signed, or width-32 unsigned) |
+| 1 | `T_I64` | 64-bit integer (signed, or width-64 unsigned) |
+| 2 | `T_F32` | 32-bit IEEE-754 float |
+| 3 | `T_F64` | 64-bit IEEE-754 float |
+
+Op-classes that operate only on integer subsets use `T_I32`/`T_I64` and trap on float type tags. Untyped op-classes (jumps, calls, single-variant ops) require `type_tag = 0`.
+
+### Three structural rules
+
+The encoding bakes in three rules that determine where future capacity comes from:
+
+1. **Op class encodes "what operation."** Scarce: 64 slots total. One per top-level operation. Used for distinct operations.
+2. **Type tag encodes "what kind of data."** Plentiful: 4 slots per op class, scoped locally. Used for genuine data-shape variation (width, signedness, int/float, narrow/wide string).
+3. **Sub-opcode (in the operand stream) encodes "which family member."** When a family of related operations shares structure (e.g., string operations: `INIT`, `LOAD`, `STORE`, `LEN`, `FIND`, ...), they may share an op-class slot with the first operand byte distinguishing the family member.
+
+The third rule is reserved for future family consolidation; in the current encoding all string and FB ops have their own op-class slots.
+
+### Future extension principle
+
+Future type extensions consume **type-tag bits within an existing op class**, not op-class slots. For example, adding WSTRING (16-bit-character strings) does not consume a new op-class slot: it consumes one type-tag bit on a future consolidated `STRING_OP` class, with `type_tag = 0` meaning narrow and `type_tag = 1` meaning wide.
+
+### In-class consolidations
+
+Three small op-classes pack multiple opcodes into a single op-class slot using the type-tag bits as the operation discriminator (no sub-opcode byte needed):
+
+- `LOAD_BOOL` — collapses `LOAD_TRUE` / `LOAD_FALSE`. Type tag is the boolean value (`0 = FALSE`, `1 = TRUE`).
+- `BOOL_OP` — collapses `BOOL_AND` / `BOOL_OR` / `BOOL_XOR` / `BOOL_NOT`. Type tag selects the operator.
+- `STACK_OP` — collapses `POP` / `DUP` / `SWAP`. Type tag selects the operator.
+
+### Op-class assignments
+
+The full op-class table (61 of 64 slots used; 0x3D-0x3F reserved):
+
+| Class | Op class | Type variants used | Notes |
+|---|---|---|---|
+| `LOAD_CONST` | 0x00 | I32, I64, F32, F64 | constant pool index operand |
+| `LOAD_BOOL` | 0x01 | tags 0=FALSE, 1=TRUE | type tag *is* the value |
+| `LOAD_CONST_STR` | 0x02 | only tag 0 | string pool index |
+| `LOAD_VAR` | 0x03 | I32, I64, F32, F64 | u16 var index operand |
+| `STORE_VAR` | 0x04 | I32, I64, F32, F64 | u16 var index operand |
+| `LOAD_INDIRECT` | 0x05 | only tag 0 | |
+| `STORE_INDIRECT` | 0x06 | only tag 0 | |
+| `TRUNC` | 0x07 | tags 0=I8, 1=U8, 2=I16, 3=U16 | |
+| `ADD` | 0x08 | I32, I64, F32, F64 | wrapping for ints |
+| `SUB` | 0x09 | I32, I64, F32, F64 | wrapping for ints |
+| `MUL` | 0x0A | I32, I64, F32, F64 | wrapping for ints |
+| `NEG` | 0x0B | I32, I64, F32, F64 | |
+| `DIV_S` | 0x0C | I32, I64, F32, F64 | signed int + float |
+| `DIV_U` | 0x0D | tags 0=U32, 1=U64 | unsigned int only |
+| `MOD_S` | 0x0E | tags 0=I32, 1=I64 | no float MOD |
+| `MOD_U` | 0x0F | tags 0=U32, 1=U64 | unsigned int only |
+| `EQ` | 0x10 | I32, I64, F32, F64 | sign-blind |
+| `NE` | 0x11 | I32, I64, F32, F64 | sign-blind |
+| `LT_S`, `LE_S`, `GT_S`, `GE_S` | 0x12-0x15 | I32, I64, F32, F64 | signed int + float |
+| `LT_U`, `LE_U`, `GT_U`, `GE_U` | 0x16-0x19 | tags 0=U32, 1=U64 | unsigned int only |
+| `BIT_AND`, `BIT_OR`, `BIT_XOR`, `BIT_NOT` | 0x1A-0x1D | tags 0=W32, 1=W64 | |
+| `BOOL_OP` | 0x1E | tags 0=AND, 1=OR, 2=XOR, 3=NOT | type tag selects op |
+| `JMP`, `JMP_IF_NOT` | 0x1F-0x20 | only tag 0 | i16 offset operand |
+| `CALL`, `RET`, `RET_VOID` | 0x21-0x23 | only tag 0 | |
+| `STACK_OP` | 0x24 | tags 0=POP, 1=DUP, 2=SWAP | type tag selects op |
+| `BUILTIN` | 0x25 | only tag 0 | u16 builtin id operand |
+| `FB_LOAD_INSTANCE`, `FB_STORE_PARAM`, `FB_LOAD_PARAM`, `FB_CALL` | 0x26-0x29 | only tag 0 | |
+| `LOAD_ARRAY`, `STORE_ARRAY`, `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF` | 0x2A-0x2D | only tag 0 | |
+| `STR_INIT`, `STR_LOAD_VAR`, `STR_STORE_VAR`, `LEN_STR`, `FIND_STR`, `REPLACE_STR`, `INSERT_STR`, `DELETE_STR`, `LEFT_STR`, `RIGHT_STR`, `MID_STR`, `CONCAT_STR`, `STR_INIT_ARRAY`, `STR_LOAD_ARRAY_ELEM`, `STR_STORE_ARRAY_ELEM` | 0x2E-0x3C | only tag 0 | future Phase 2B may consolidate these under one `STRING_OP` class |
+| _free_ | 0x3D-0x3F | — | reserved for future fused superinstructions |
+
+### Migration status
+
+The encoding is being applied incrementally in waves. Opcodes whose Rust definition uses `encode_opcode(...)` follow the rules above; opcodes still defined as raw hex literals (`pub const NAME: Opcode = 0xNN;`) are at legacy byte values pending migration. Tests assert specific hex bytes to guard against accidental renumbering — any change to a hex value in opcode.rs requires updating the corresponding test bytes (and ultimately bumping `FORMAT_VERSION` once the migration is complete).
+
 ## Type System
 
 The VM operates on six value types internally, following the two-width model from ADR-0001:
@@ -141,8 +227,8 @@ The `type` byte encodes the element type: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x24 | LOAD_ARRAY | array: u16, type: u8 | [I32] → [value] | Load element from array; index on stack; traps on out-of-bounds |
-| 0x25 | STORE_ARRAY | array: u16, type: u8 | [value, I32] → [] | Store element to array; index on stack; traps on out-of-bounds |
+| 0xA8 | LOAD_ARRAY | array: u16, type: u8 | [I32] → [value] | Load element from array; index on stack; traps on out-of-bounds |
+| 0xAC | STORE_ARRAY | array: u16, type: u8 | [value, I32] → [] | Store element to array; index on stack; traps on out-of-bounds |
 
 #### Struct and FB Fields
 
@@ -163,12 +249,12 @@ All arithmetic operates at the promoted width per ADR-0001. The compiler emits N
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x30 | ADD_I32 | — | [I32, I32] → [I32] | Signed 32-bit addition |
-| 0x31 | SUB_I32 | — | [I32, I32] → [I32] | Signed 32-bit subtraction |
-| 0x32 | MUL_I32 | — | [I32, I32] → [I32] | Signed 32-bit multiplication |
-| 0x33 | DIV_I32 | — | [I32, I32] → [I32] | Signed 32-bit division (truncates toward zero) |
-| 0x34 | MOD_I32 | — | [I32, I32] → [I32] | Signed 32-bit modulo |
-| 0x35 | NEG_I32 | — | [I32] → [I32] | Signed 32-bit negation |
+| 0x20 | ADD_I32 | — | [I32, I32] → [I32] | Signed 32-bit addition |
+| 0x24 | SUB_I32 | — | [I32, I32] → [I32] | Signed 32-bit subtraction |
+| 0x28 | MUL_I32 | — | [I32, I32] → [I32] | Signed 32-bit multiplication |
+| 0x30 | DIV_I32 | — | [I32, I32] → [I32] | Signed 32-bit division (truncates toward zero) |
+| 0x38 | MOD_I32 | — | [I32, I32] → [I32] | Signed 32-bit modulo |
+| 0x2C | NEG_I32 | — | [I32] → [I32] | Signed 32-bit negation |
 | 0x36 | ADD_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit addition |
 | 0x37 | SUB_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit subtraction |
 | 0x38 | MUL_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit multiplication |
@@ -195,11 +281,11 @@ All arithmetic operates at the promoted width per ADR-0001. The compiler emits N
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x48 | ADD_F32 | — | [F32, F32] → [F32] | 32-bit float addition |
-| 0x49 | SUB_F32 | — | [F32, F32] → [F32] | 32-bit float subtraction |
-| 0x4A | MUL_F32 | — | [F32, F32] → [F32] | 32-bit float multiplication |
-| 0x4B | DIV_F32 | — | [F32, F32] → [F32] | 32-bit float division |
-| 0x4C | NEG_F32 | — | [F32] → [F32] | 32-bit float negation |
+| 0x22 | ADD_F32 | — | [F32, F32] → [F32] | 32-bit float addition |
+| 0x49 | SUB_F32 | — | [F32, F32] → [F32] | 32-bit float subtraction (Wave 3 deferred) |
+| 0x2A | MUL_F32 | — | [F32, F32] → [F32] | 32-bit float multiplication |
+| 0x32 | DIV_F32 | — | [F32, F32] → [F32] | 32-bit float division |
+| 0x2E | NEG_F32 | — | [F32] → [F32] | 32-bit float negation |
 | 0x4D | ADD_F64 | — | [F64, F64] → [F64] | 64-bit float addition |
 | 0x4E | SUB_F64 | — | [F64, F64] → [F64] | 64-bit float subtraction |
 | 0x4F | MUL_F64 | — | [F64, F64] → [F64] | 64-bit float multiplication |
@@ -216,10 +302,10 @@ Boolean operations operate on I32 values where 0 = FALSE and 1 = TRUE. Bitwise o
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x54 | BOOL_AND | — | [I32, I32] → [I32] | Logical AND (result is 0 or 1) |
-| 0x55 | BOOL_OR | — | [I32, I32] → [I32] | Logical OR (result is 0 or 1) |
-| 0x56 | BOOL_XOR | — | [I32, I32] → [I32] | Logical XOR (result is 0 or 1) |
-| 0x57 | BOOL_NOT | — | [I32] → [I32] | Logical NOT (result is 0 or 1) |
+| 0x78 | BOOL_AND | — | [I32, I32] → [I32] | Logical AND (result is 0 or 1) |
+| 0x79 | BOOL_OR | — | [I32, I32] → [I32] | Logical OR (result is 0 or 1) |
+| 0x7A | BOOL_XOR | — | [I32, I32] → [I32] | Logical XOR (result is 0 or 1) |
+| 0x7B | BOOL_NOT | — | [I32] → [I32] | Logical NOT (result is 0 or 1) |
 
 Boolean operations coerce inputs: any non-zero I32 value is treated as TRUE and normalized to 1 before the operation. The result is always 0 or 1. This means `BOOL_AND` on inputs (5, 3) produces 1, not a bitwise AND. The compiler is responsible for ensuring BOOL-typed variables contain only 0 or 1, but the boolean opcodes are defensive against non-canonical inputs.
 
@@ -227,18 +313,18 @@ Boolean operations coerce inputs: any non-zero I32 value is treated as TRUE and 
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x58 | BIT_AND_32 | — | [U32, U32] → [U32] | Bitwise AND, 32-bit |
-| 0x59 | BIT_OR_32 | — | [U32, U32] → [U32] | Bitwise OR, 32-bit |
-| 0x5A | BIT_XOR_32 | — | [U32, U32] → [U32] | Bitwise XOR, 32-bit |
-| 0x5B | BIT_NOT_32 | — | [U32] → [U32] | Bitwise NOT, 32-bit |
+| 0x68 | BIT_AND_32 | — | [U32, U32] → [U32] | Bitwise AND, 32-bit |
+| 0x6C | BIT_OR_32 | — | [U32, U32] → [U32] | Bitwise OR, 32-bit |
+| 0x70 | BIT_XOR_32 | — | [U32, U32] → [U32] | Bitwise XOR, 32-bit |
+| 0x74 | BIT_NOT_32 | — | [U32] → [U32] | Bitwise NOT, 32-bit |
 | 0x5C | SHL_32 | — | [U32, U32] → [U32] | Shift left, 32-bit (shift amount on top) |
 | 0x5D | SHR_32 | — | [U32, U32] → [U32] | Shift right (logical), 32-bit |
 | 0x5E | ROL_32 | — | [U32, U32] → [U32] | Rotate left, 32-bit |
 | 0x5F | ROR_32 | — | [U32, U32] → [U32] | Rotate right, 32-bit |
-| 0x60 | BIT_AND_64 | — | [U64, U64] → [U64] | Bitwise AND, 64-bit |
-| 0x61 | BIT_OR_64 | — | [U64, U64] → [U64] | Bitwise OR, 64-bit |
-| 0x62 | BIT_XOR_64 | — | [U64, U64] → [U64] | Bitwise XOR, 64-bit |
-| 0x63 | BIT_NOT_64 | — | [U64] → [U64] | Bitwise NOT, 64-bit |
+| 0x69 | BIT_AND_64 | — | [U64, U64] → [U64] | Bitwise AND, 64-bit |
+| 0x6D | BIT_OR_64 | — | [U64, U64] → [U64] | Bitwise OR, 64-bit |
+| 0x71 | BIT_XOR_64 | — | [U64, U64] → [U64] | Bitwise XOR, 64-bit |
+| 0x75 | BIT_NOT_64 | — | [U64] → [U64] | Bitwise NOT, 64-bit |
 | 0x64 | SHL_64 | — | [U64, U64] → [U64] | Shift left, 64-bit |
 | 0x65 | SHR_64 | — | [U64, U64] → [U64] | Shift right (logical), 64-bit |
 | 0x66 | ROL_64 | — | [U64, U64] → [U64] | Rotate left, 64-bit |
@@ -256,12 +342,12 @@ Comparison instructions pop two values and push an I32 (0 or 1) result. Separate
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x68 | EQ_I32 | — | [I32, I32] → [I32] | Equal |
-| 0x69 | NE_I32 | — | [I32, I32] → [I32] | Not equal |
+| 0x40 | EQ_I32 | — | [I32, I32] → [I32] | Equal |
+| 0x44 | NE_I32 | — | [I32, I32] → [I32] | Not equal |
 | 0x6A | LT_I32 | — | [I32, I32] → [I32] | Less than (signed) |
 | 0x6B | LE_I32 | — | [I32, I32] → [I32] | Less than or equal (signed) |
-| 0x6C | GT_I32 | — | [I32, I32] → [I32] | Greater than (signed) |
-| 0x6D | GE_I32 | — | [I32, I32] → [I32] | Greater than or equal (signed) |
+| 0x50 | GT_I32 | — | [I32, I32] → [I32] | Greater than (signed) |
+| 0x54 | GE_I32 | — | [I32, I32] → [I32] | Greater than or equal (signed) |
 
 #### Unsigned Integer Comparison (32-bit)
 

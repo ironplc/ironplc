@@ -71,9 +71,12 @@ jobs:
     name: Merge Changes
     needs: [update-dependencies, build-vscode-extension, build-platform-package, build-docs]
     runs-on: ubuntu-latest
+    # Scopes IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN to deployments from main.
+    # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+    environment: production
     steps:
       - name: Checkout branch ${{ needs.update-dependencies.outputs.branch-name }}
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: ${{ needs.update-dependencies.outputs.branch-name }}
         with:
           ref: ${{ needs.update-dependencies.outputs.branch-name }}

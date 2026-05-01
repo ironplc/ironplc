@@ -39,12 +39,12 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x68, // EQ_I32
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
+            0x40, // EQ_I32
             0xB2, 0x09, 0x00, // JMP_IF_NOT offset:+9
-            0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB0, 0x00, 0x00, // JMP offset:+0 (end_label is right here)
             0xB5, // RET_VOID
         ]
@@ -86,15 +86,15 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x68, // EQ_I32
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
+            0x40, // EQ_I32
             0xB2, 0x09, 0x00, // JMP_IF_NOT offset:+9
-            0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB0, 0x06, 0x00, // JMP offset:+6
-            0x01, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (99)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (99)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );

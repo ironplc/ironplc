@@ -17,13 +17,14 @@ use ironplc_dsl::textual::{
 use ironplc_problems::Problem;
 
 use super::compile::{
-    CompileContext, OpType, OpWidth, Signedness, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH_U16,
+    CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_OP_TYPE,
+    DEFAULT_STRING_MAX_LENGTH_U16,
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
-    condition_op_type, emit_add, emit_ge, emit_gt, emit_le, emit_load_var, emit_lt, emit_store_var,
-    emit_truncation, extract_bit_access_target, extract_partial_access_target, op_type,
-    resolve_variable, resolve_variable_name, signed_integer_to_i64, variable_span,
+    condition_op_type, emit_add, emit_ge, emit_le, emit_load_var, emit_store_var, emit_truncation,
+    extract_bit_access_target, extract_partial_access_target, op_type, resolve_variable,
+    resolve_variable_name, signed_integer_to_i64, variable_span,
 };
 use crate::emit::Emitter;
 
@@ -775,26 +776,95 @@ enum StepSign {
 /// integer literal (positive or negative). Returns `None` for non-constant
 /// expressions.
 fn try_constant_sign(expr: &Expr) -> Option<StepSign> {
+    match try_constant_i64(expr)? {
+        v if v > 0 => Some(StepSign::Positive),
+        v if v < 0 => Some(StepSign::Negative),
+        _ => None,
+    }
+}
+
+/// Returns the `i64` value of an expression if it is a compile-time constant
+/// integer literal (positive, negative, or unary-negated). Returns `None`
+/// for non-constant expressions or values outside the `i64` range.
+fn try_constant_i64(expr: &Expr) -> Option<i64> {
     match &expr.kind {
         ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-            if lit.value.is_neg {
-                Some(StepSign::Negative)
-            } else {
-                Some(StepSign::Positive)
-            }
+            signed_integer_to_i64(&lit.value).ok()
         }
-        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => {
-            // -<literal> is negative
-            if matches!(
-                &unary.term.kind,
-                ExprKind::Const(ConstantKind::IntegerLiteral(_))
-            ) {
-                Some(StepSign::Negative)
-            } else {
-                None
-            }
-        }
+        ExprKind::UnaryOp(unary) if unary.op == UnaryOp::Neg => match &unary.term.kind {
+            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => signed_integer_to_i64(&lit.value)
+                .ok()
+                .and_then(i64::checked_neg),
+            _ => None,
+        },
         _ => None,
+    }
+}
+
+/// Returns the `(min, max)` value range for a narrow integer type, or `None`
+/// for 32- and 64-bit types where `emit_truncation` is already a no-op.
+fn narrow_type_range(type_info: VarTypeInfo) -> Option<(i64, i64)> {
+    match (type_info.signedness, type_info.storage_bits) {
+        (Signedness::Signed, 8) => Some((i8::MIN as i64, i8::MAX as i64)),
+        (Signedness::Signed, 16) => Some((i16::MIN as i64, i16::MAX as i64)),
+        (Signedness::Unsigned, 8) => Some((0, u8::MAX as i64)),
+        (Signedness::Unsigned, 16) => Some((0, u16::MAX as i64)),
+        _ => None,
+    }
+}
+
+/// Returns `true` when both `TRUNC` sites in a FOR loop can safely be elided
+/// because every value the control variable will hold (initial, body-visible,
+/// and post-final-increment) is provably within the declared narrow type's
+/// range. Conservative: any non-constant bound, or any boundary that could
+/// trigger wrap-around, returns `false` and preserves the existing TRUNC.
+fn for_loop_trunc_can_be_elided(
+    from: &Expr,
+    to: &Expr,
+    step: Option<&Expr>,
+    type_info: VarTypeInfo,
+) -> bool {
+    let Some((t_min, t_max)) = narrow_type_range(type_info) else {
+        // Wide type: emit_truncation is already a no-op; flag is irrelevant.
+        return true;
+    };
+    let Some(from_v) = try_constant_i64(from) else {
+        return false;
+    };
+    let Some(to_v) = try_constant_i64(to) else {
+        return false;
+    };
+    let step_v = match step {
+        None => 1,
+        Some(expr) => match try_constant_i64(expr) {
+            Some(v) => v,
+            None => return false,
+        },
+    };
+    if from_v < t_min || from_v > t_max {
+        return false;
+    }
+    match step_v {
+        s if s > 0 => {
+            // Body sees values in [from, to]; post-final stored value is to + step.
+            if to_v > t_max {
+                return false;
+            }
+            match to_v.checked_add(s) {
+                Some(post) => post <= t_max,
+                None => false,
+            }
+        }
+        s if s < 0 => {
+            if to_v < t_min {
+                return false;
+            }
+            match to_v.checked_add(s) {
+                Some(post) => post >= t_min,
+                None => false,
+            }
+        }
+        _ => false,
     }
 }
 
@@ -806,10 +876,8 @@ fn try_constant_sign(expr: &Expr) -> Option<StepSign> {
 /// LOOP:
 ///   LOAD_VAR control
 ///   compile(to)
-///   GT_I32 (or LT_I32 for negative step)
-///   JMP_IF_NOT → BODY
-///   JMP → END
-/// BODY:
+///   LE_I32 (or GE_I32 for negative step)  // continuation predicate
+///   JMP_IF_NOT → END                       // exit when continuation fails
 ///   compile(body)
 ///   LOAD_VAR control
 ///   compile(step)  // default: LOAD_CONST 1
@@ -818,6 +886,11 @@ fn try_constant_sign(expr: &Expr) -> Option<StepSign> {
 ///   JMP → LOOP
 /// END:
 /// ```
+///
+/// The continuation predicate is `i <= to` (positive step) / `i >= to`
+/// (negative step). Inverting the predicate lets the body fall through
+/// from the conditional branch, eliminating one `JMP` dispatch per
+/// iteration. See `specs/plans/2026-04-30-elide-for-loop-exit-jmp.md`.
 fn compile_for(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -844,30 +917,39 @@ fn compile_for(
         },
     };
 
+    // Decide whether the per-loop TRUNC can be elided based on a local interval
+    // check over the constant bounds. See specs/plans/2026-04-30-elide-for-loop-trunc.md.
+    let elide_trunc = match type_info {
+        Some(ti) => {
+            for_loop_trunc_can_be_elided(&for_stmt.from, &for_stmt.to, for_stmt.step.as_ref(), ti)
+        }
+        None => true,
+    };
+
     // Initialize: compile(from), STORE_VAR control
     compile_expr(emitter, ctx, &for_stmt.from, op_type)?;
     if let Some(ti) = type_info {
-        emit_truncation(emitter, ti);
+        if !elide_trunc {
+            emit_truncation(emitter, ti);
+        }
     }
     emit_store_var(emitter, var_index, op_type);
 
     let loop_label = emitter.create_label();
-    let body_label = emitter.create_label();
     let end_label = emitter.create_label();
 
-    // LOOP: check termination condition
+    // LOOP: check continuation condition; exit straight to END when it
+    // fails so the body falls through without an extra JMP dispatch.
     emitter.bind_label(loop_label);
     emit_load_var(emitter, var_index, op_type);
     compile_expr(emitter, ctx, &for_stmt.to, op_type)?;
     match step_sign {
-        StepSign::Positive => emit_gt(emitter, op_type),
-        StepSign::Negative => emit_lt(emitter, op_type),
+        StepSign::Positive => emit_le(emitter, op_type),
+        StepSign::Negative => emit_ge(emitter, op_type),
     }
-    emitter.emit_jmp_if_not(body_label);
-    emitter.emit_jmp(end_label);
+    emitter.emit_jmp_if_not(end_label);
 
     // BODY:
-    emitter.bind_label(body_label);
     ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &for_stmt.body)?;
     ctx.loop_exit_labels.pop();
@@ -897,7 +979,9 @@ fn compile_for(
     }
     emit_add(emitter, op_type);
     if let Some(ti) = type_info {
-        emit_truncation(emitter, ti);
+        if !elide_trunc {
+            emit_truncation(emitter, ti);
+        }
     }
     emit_store_var(emitter, var_index, op_type);
     emitter.emit_jmp(loop_label);

@@ -73,7 +73,7 @@ pub enum TokenType {
     #[regex(r"\(\*(?:[^*]|\*[^\)])*\*\)", priority = 0)]
     // The following are common but not valid IEC 61131-3. We want to recognize the
     // tokens so that we can generate meaningful errors.
-    #[regex(r"//[^\r\n]*(\r\n|\n)?", priority = 0)]
+    #[regex(r"//[^\r\n]*(\r\n|\n)?", priority = 0, allow_greedy = true)]
     #[regex(r"/\*(?:[^*]|\*[^/])*\*/", priority = 0)]
     Comment,
 

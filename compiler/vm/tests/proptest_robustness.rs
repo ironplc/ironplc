@@ -34,10 +34,10 @@ proptest! {
     fn execute_when_add_i32_with_zero_then_identity(a in any::<i32>()) {
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (0)
-            0x30,              // ADD_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
+            0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (0)
+            0x20,              // ADD_I32
+            0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
             0xB5,              // RET_VOID
         ];
         let result = common::run_and_read_i32(&bytecode, 1, &[a, 0]);
@@ -48,10 +48,10 @@ proptest! {
     fn execute_when_mul_i32_with_one_then_identity(a in any::<i32>()) {
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
-            0x32,              // MUL_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
+            0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
+            0x28,              // MUL_I32
+            0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
             0xB5,              // RET_VOID
         ];
         let result = common::run_and_read_i32(&bytecode, 1, &[a, 1]);
@@ -62,10 +62,10 @@ proptest! {
     fn execute_when_sub_i32_self_then_zero(a in any::<i32>()) {
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
-            0x31,              // SUB_I32
-            0x18, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
+            0x24,              // SUB_I32
+            0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
             0xB5,              // RET_VOID
         ];
         let result = common::run_and_read_i32(&bytecode, 1, &[a]);

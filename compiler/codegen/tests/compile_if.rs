@@ -36,12 +36,12 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
-            0x6C, // GT_I32
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
+            0x50, // GT_I32
             0xB2, 0x06, 0x00, // JMP_IF_NOT offset:+6
-            0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );
@@ -82,15 +82,15 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
-            0x6C, // GT_I32
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
+            0x50, // GT_I32
             0xB2, 0x09, 0x00, // JMP_IF_NOT offset:+9
-            0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB0, 0x06, 0x00, // JMP offset:+6
-            0x01, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (2)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (2)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );
@@ -140,22 +140,22 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0         (0)
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (5)  (3)
-            0x6C, // GT_I32                      (6)
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0         (0)
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (5)  (3)
+            0x50, // GT_I32                      (6)
             0xB2, 0x09, 0x00, // JMP_IF_NOT offset:+9       (7)
-            0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)  (10)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1         (13)
+            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)  (10)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1         (13)
             0xB0, 0x19, 0x00, // JMP offset:+25              (16)
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0         (19)
-            0x01, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (0)  (22)
-            0x6C, // GT_I32                      (25)
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0         (19)
+            0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (0)  (22)
+            0x50, // GT_I32                      (25)
             0xB2, 0x09, 0x00, // JMP_IF_NOT offset:+9       (26)
-            0x01, 0x03, 0x00, // LOAD_CONST_I32 pool:3 (2)  (29)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1         (32)
+            0x00, 0x03, 0x00, // LOAD_CONST_I32 pool:3 (2)  (29)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1         (32)
             0xB0, 0x06, 0x00, // JMP offset:+6              (35)
-            0x01, 0x04, 0x00, // LOAD_CONST_I32 pool:4 (3)  (38)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1         (41)
+            0x00, 0x04, 0x00, // LOAD_CONST_I32 pool:4 (3)  (38)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1         (41)
             0xB5, // RET_VOID                    (44)
         ]
     );
