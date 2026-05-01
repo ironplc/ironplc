@@ -28,6 +28,11 @@ use ironplc_container::opcode;
 
 use crate::compile::PoolConstant;
 
+/// Maps every old (pre-optimization) byte offset to its new offset in the
+/// optimized bytecode. Includes one-past-the-end so spans that touch the end
+/// of the function can still be remapped.
+pub(crate) type OffsetMap = HashMap<usize, usize>;
+
 /// A decoded instruction: its original byte offset and raw bytes.
 struct Instruction {
     offset: usize,
@@ -168,12 +173,15 @@ fn is_removable_pair(a: &Instruction, b: &Instruction, constants: &[PoolConstant
 
 /// Runs the peephole optimizer on `bytecode`.
 ///
-/// Returns a new byte vector with removable identity patterns stripped and
-/// jump offsets adjusted. If no patterns are found, the output is equal to
-/// the input.
-pub(crate) fn optimize(bytecode: &[u8], constants: &[PoolConstant]) -> Vec<u8> {
+/// Returns the optimized byte vector along with an old→new offset map. The
+/// offset map covers every original instruction's start offset plus the
+/// one-past-the-end position, so callers can remap any span that points into
+/// (or just past) the original bytecode. If no patterns are found, the
+/// output bytes equal the input and the map is the identity over instruction
+/// boundaries.
+pub(crate) fn optimize(bytecode: &[u8], constants: &[PoolConstant]) -> (Vec<u8>, OffsetMap) {
     if bytecode.is_empty() {
-        return Vec::new();
+        return (Vec::new(), OffsetMap::new());
     }
 
     let (instructions, jump_targets) = decode(bytecode);
@@ -203,7 +211,7 @@ pub(crate) fn optimize(bytecode: &[u8], constants: &[PoolConstant]) -> Vec<u8> {
     // Build an old-offset -> new-offset map covering every instruction and
     // the one-past-the-end position (used when a jump's target equals the
     // end of the function).
-    let mut offset_map: HashMap<usize, usize> = HashMap::new();
+    let mut offset_map: OffsetMap = OffsetMap::new();
     let mut new_offset = 0usize;
     for (idx, instr) in instructions.iter().enumerate() {
         offset_map.insert(instr.offset, new_offset);
@@ -233,7 +241,7 @@ pub(crate) fn optimize(bytecode: &[u8], constants: &[PoolConstant]) -> Vec<u8> {
         }
     }
 
-    output
+    (output, offset_map)
 }
 
 #[cfg(test)]
@@ -316,7 +324,7 @@ mod tests {
 
     #[test]
     fn optimize_when_empty_bytecode_then_returns_empty() {
-        let result = optimize(&[], &[]);
+        let (result, _) = optimize(&[], &[]);
         assert!(result.is_empty());
     }
 
@@ -329,7 +337,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I32(10), PoolConstant::I32(20)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, bytecode);
     }
 
@@ -342,7 +350,7 @@ mod tests {
         bytecode.extend_from_slice(&store_var_i32(5));
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -353,7 +361,7 @@ mod tests {
         bytecode.extend_from_slice(&store_var_i64(3));
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -364,7 +372,7 @@ mod tests {
         bytecode.extend_from_slice(&store_var_i32(6));
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }
 
@@ -375,7 +383,7 @@ mod tests {
         bytecode.extend_from_slice(&store_var_i64(5));
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }
 
@@ -389,7 +397,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I32(0)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -401,7 +409,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I32(0)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -413,7 +421,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I64(0)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -425,7 +433,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::F32(0.0)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -437,7 +445,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::F64(0.0)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -449,7 +457,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I32(42)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, bytecode);
     }
 
@@ -463,7 +471,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I32(1)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -475,7 +483,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I32(1)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -487,7 +495,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I64(1)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -499,7 +507,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::F32(1.0)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -511,7 +519,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::F64(1.0)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -523,7 +531,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I32(5)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, bytecode);
     }
 
@@ -539,7 +547,7 @@ mod tests {
         bytecode.extend_from_slice(&store_var_i32(5));
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }
 
@@ -558,7 +566,7 @@ mod tests {
         bytecode.push(opcode::LOAD_TRUE);
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
 
         // After removing 6 bytes, new layout:
         //   [0] JMP +1
@@ -582,7 +590,7 @@ mod tests {
         bytecode.push(opcode::RET_VOID);
 
         let constants = vec![PoolConstant::I32(0)];
-        let result = optimize(&bytecode, &constants);
+        let (result, _) = optimize(&bytecode, &constants);
         assert_eq!(result, vec![opcode::RET_VOID]);
     }
 
@@ -600,7 +608,7 @@ mod tests {
         bytecode.push(opcode::POP);
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }
 
@@ -615,7 +623,7 @@ mod tests {
         bytecode.push(opcode::POP);
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }
 
@@ -629,7 +637,7 @@ mod tests {
         bytecode.push(opcode::POP);
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }
 
@@ -642,7 +650,7 @@ mod tests {
         bytecode.push(opcode::ADD_I32);
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }
 
@@ -654,7 +662,7 @@ mod tests {
         bytecode.push(opcode::MUL_I32);
         bytecode.push(opcode::RET_VOID);
 
-        let result = optimize(&bytecode, &[]);
+        let (result, _) = optimize(&bytecode, &[]);
         assert_eq!(result, bytecode);
     }
 }
