@@ -11,7 +11,7 @@ fn execute_when_dup_then_duplicates_top_value() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
         0xA1,              // DUP
-        0x30,              // ADD_I32
+        0x20,              // ADD_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -45,7 +45,7 @@ fn execute_when_swap_then_reverses_top_two() {
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (10)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (3)
         0xA2,              // SWAP
-        0x31,              // SUB_I32
+        0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -61,7 +61,7 @@ fn execute_when_dup_and_swap_combined_then_correct() {
         0xA1,              // DUP
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (20)
         0xA2,              // SWAP
-        0x31,              // SUB_I32
+        0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
