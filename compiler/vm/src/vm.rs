@@ -179,6 +179,7 @@ impl<'a> VmReady<'a> {
                 &scope,
                 0, // init functions don't need real time
                 0, // top-of-chain call: depth starts at zero
+                init_fn,
                 #[cfg(feature = "profiling")]
                 &mut self.profile,
             )
@@ -354,6 +355,7 @@ impl<'a> VmRunning<'a> {
                     &scope,
                     current_time_us,
                     0, // top-of-chain call: depth starts at zero
+                    entry_function_id,
                     #[cfg(feature = "profiling")]
                     &mut self.profile,
                 )
@@ -633,6 +635,7 @@ fn execute(
     scope: &VariableScope,
     current_time_us: u64,
     depth: u32,
+    current_function_id: FunctionId,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
     let mut hook = NoopDebugHook;
@@ -647,6 +650,7 @@ fn execute(
         scope,
         current_time_us,
         depth,
+        current_function_id,
         #[cfg(feature = "profiling")]
         profile,
         &mut hook,
@@ -655,6 +659,12 @@ fn execute(
 
 /// Executes bytecode until RET_VOID or a trap, invoking `hook.before_instruction`
 /// before each opcode.
+///
+/// `current_function_id` identifies the function whose bytecode is being
+/// executed in this frame; it is forwarded to the debug hook so consumers
+/// can resolve `(function_id, pc)` pairs (e.g. via
+/// `DebugSection::lookup_source_location`) even across nested CALL /
+/// FB_CALL frames.
 ///
 /// This is a free function so that the borrow checker can see
 /// independent borrows of container (immutable) vs stack/variables
@@ -673,6 +683,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     scope: &VariableScope,
     current_time_us: u64,
     depth: u32,
+    current_function_id: FunctionId,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
     hook: &mut H,
 ) -> Result<(), Trap> {
@@ -684,7 +695,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         // Notify the debug hook before advancing pc so the hook sees the
         // offset of the opcode itself, not its operand bytes. With
         // NoopDebugHook this call is inlined away to nothing.
-        hook.before_instruction(pc, op);
+        hook.before_instruction(current_function_id, pc, op);
         pc += 1;
 
         #[cfg(feature = "profiling")]
@@ -1052,6 +1063,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     &func_scope,
                     current_time_us,
                     depth + 1,
+                    FunctionId::new(func_id),
                     #[cfg(feature = "profiling")]
                     profile,
                     hook,
@@ -1873,6 +1885,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             &func_scope,
                             current_time_us,
                             depth + 1,
+                            func_id,
                             #[cfg(feature = "profiling")]
                             profile,
                             hook,
