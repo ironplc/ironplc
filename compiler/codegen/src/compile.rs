@@ -260,6 +260,31 @@ pub(crate) struct CompiledFunction {
     pub(crate) name: String,
 }
 
+/// Holds the finalized bytecode and stack depth for a single emitted function.
+///
+/// Returned by [`finalize_function`] to centralize the
+/// `emitter.bytecode()` → optimize → `max_stack_depth()` sequence shared by
+/// every code path that emits a function (init, scan, user functions, FB
+/// bodies). Centralizing this makes future cross-cutting additions (e.g.
+/// source-map plumbing) a one-site change.
+pub(crate) struct FinalizedFunction {
+    pub(crate) bytecode: Vec<u8>,
+    pub(crate) max_stack_depth: u16,
+}
+
+/// Finalizes an emitter into ready-to-store bytecode plus stack depth.
+///
+/// `emitter.bytecode()` must be called before `max_stack_depth()` because the
+/// peephole optimizer (run inside `bytecode()`) may increase max_stack_depth.
+pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> FinalizedFunction {
+    let bytecode = crate::optimize::optimize(emitter.bytecode(), &ctx.constants);
+    let max_stack_depth = emitter.max_stack_depth();
+    FinalizedFunction {
+        bytecode,
+        max_stack_depth,
+    }
+}
+
 /// Compiles a PROGRAM and its user-defined functions into a container.
 ///
 /// Always emits at least two functions:
@@ -449,24 +474,23 @@ fn compile_program_with_functions(
         .unwrap_or(0);
 
     // Function 0: init, Function 1: scan
-    // bytecode() must be called before max_stack_depth() because the
-    // peephole optimizer (run inside bytecode()) may increase max_stack_depth.
-    let init_bytecode = crate::optimize::optimize(init_emitter.bytecode(), &ctx.constants);
-    let init_stack = init_emitter.max_stack_depth();
+    let init = finalize_function(&mut init_emitter, &ctx);
     builder = builder.add_function(
         FunctionId::INIT,
-        &init_bytecode,
-        init_stack,
+        &init.bytecode,
+        init.max_stack_depth,
         program_var_count,
         0,
     );
 
-    let scan_bytecode = crate::optimize::optimize(scan_emitter.bytecode(), &ctx.constants);
-    let scan_stack = scan_emitter.max_stack_depth() + max_fb_body_stack;
+    let scan = finalize_function(&mut scan_emitter, &ctx);
     builder = builder.add_function(
         FunctionId::SCAN,
-        &scan_bytecode,
-        scan_stack,
+        &scan.bytecode,
+        // FB_CALL recursively enters execute() on the shared stack, so the
+        // scan function's reported stack depth must include the deepest FB
+        // body's depth.
+        scan.max_stack_depth + max_fb_body_stack,
         program_var_count,
         0,
     );
