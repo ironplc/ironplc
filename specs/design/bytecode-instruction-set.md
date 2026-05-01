@@ -227,8 +227,8 @@ The `type` byte encodes the element type: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x24 | LOAD_ARRAY | array: u16, type: u8 | [I32] → [value] | Load element from array; index on stack; traps on out-of-bounds |
-| 0x25 | STORE_ARRAY | array: u16, type: u8 | [value, I32] → [] | Store element to array; index on stack; traps on out-of-bounds |
+| 0xA8 | LOAD_ARRAY | array: u16, type: u8 | [I32] → [value] | Load element from array; index on stack; traps on out-of-bounds |
+| 0xAC | STORE_ARRAY | array: u16, type: u8 | [value, I32] → [] | Store element to array; index on stack; traps on out-of-bounds |
 
 #### Struct and FB Fields
 
