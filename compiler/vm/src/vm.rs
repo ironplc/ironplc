@@ -2187,12 +2187,12 @@ mod tests {
     fn steel_thread_container() -> Container {
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
-            0x10, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
-            0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
+            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
+            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
+            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
             0x30,                   // ADD_I32
-            0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
+            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
             0xB5,                   // RET_VOID
         ];
 
@@ -2288,8 +2288,8 @@ mod tests {
         // Cannot use single_function_container because it uses max_stack=16.
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+            0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]
         ];
         let c = ContainerBuilder::new()
             .num_variables(0)
@@ -2321,7 +2321,7 @@ mod tests {
         // 0 constants in pool, but bytecode references pool[0]
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
         ];
         let c = single_function_container(&bytecode, 0, &[]);
         let mut b = VmBuffers::from_container(&c);
@@ -2335,8 +2335,8 @@ mod tests {
         // 1 variable, but bytecode stores to var[5]
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
-            0x18, 0x05, 0x00,  // STORE_VAR_I32 var[5]
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+            0x10, 0x05, 0x00,  // STORE_VAR_I32 var[5]
         ];
         let c = single_function_container(&bytecode, 1, &[42]);
         let mut b = VmBuffers::from_container(&c);
@@ -2350,7 +2350,7 @@ mod tests {
         // 1 variable, but bytecode loads from var[5]
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x10, 0x05, 0x00,  // LOAD_VAR_I32 var[5]
+            0x0C, 0x05, 0x00,  // LOAD_VAR_I32 var[5]
         ];
         let c = single_function_container(&bytecode, 1, &[]);
         let mut b = VmBuffers::from_container(&c);
@@ -2370,19 +2370,19 @@ mod tests {
         //   num_params=2, num_locals=3 (A, B, return_slot)
         #[rustfmt::skip]
         let scan_bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,        // LOAD_CONST_I32 pool[0] (3)
-            0x01, 0x01, 0x00,        // LOAD_CONST_I32 pool[1] (7)
+            0x00, 0x00, 0x00,        // LOAD_CONST_I32 pool[0] (3)
+            0x00, 0x01, 0x00,        // LOAD_CONST_I32 pool[1] (7)
             0xB3, 0x02, 0x00, 0x01, 0x00,  // CALL function 2, var_offset=1
-            0x18, 0x00, 0x00,        // STORE_VAR_I32 var[0] (result)
+            0x10, 0x00, 0x00,        // STORE_VAR_I32 var[0] (result)
             0xB5,                    // RET_VOID
         ];
         #[rustfmt::skip]
         let func_bytecode: Vec<u8> = vec![
-            0x10, 0x01, 0x00,  // LOAD_VAR_I32 var[1] (A - absolute index)
-            0x10, 0x02, 0x00,  // LOAD_VAR_I32 var[2] (B - absolute index)
+            0x0C, 0x01, 0x00,  // LOAD_VAR_I32 var[1] (A - absolute index)
+            0x0C, 0x02, 0x00,  // LOAD_VAR_I32 var[2] (B - absolute index)
             0x30,              // ADD_I32
-            0x18, 0x03, 0x00,  // STORE_VAR_I32 var[3] (return slot - absolute index)
-            0x10, 0x03, 0x00,  // LOAD_VAR_I32 var[3]
+            0x10, 0x03, 0x00,  // STORE_VAR_I32 var[3] (return slot - absolute index)
+            0x0C, 0x03, 0x00,  // LOAD_VAR_I32 var[3]
             0xB4,              // RET
         ];
 

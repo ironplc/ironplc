@@ -32,11 +32,11 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x0F)
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x0F)
             0x58, // BIT_AND_32
             0x21, // TRUNC_U8
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );
@@ -69,11 +69,11 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x5B, // BIT_NOT_32
             0x21, // TRUNC_U8 (inline NOT truncation)
             0x21, // TRUNC_U8 (assignment truncation)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );
@@ -101,14 +101,14 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
             0x6C, // GT_I32
-            0x10, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x01, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
+            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
             0x6A, // LT_I32
             0x54, // BOOL_AND (not BIT_AND_32)
-            0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]
     );

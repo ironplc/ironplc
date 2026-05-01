@@ -13,15 +13,15 @@ fn execute_when_while_true_three_iterations_then_loops() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         // LOOP (offset 0):
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0)
         0x6C,                   // GT_I32
         0xB2, 0x0D, 0x00,       // JMP_IF_NOT +13 -> END (offset 23)
         // body:
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (1)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (1)
         0x31,                   // SUB_I32
-        0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]
+        0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
         // END (offset 23):
         0xB5,                   // RET_VOID
@@ -42,11 +42,11 @@ fn execute_when_while_false_then_skips_body() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         // LOOP (offset 0):
-        0x08,                   // LOAD_FALSE
+        0x04,                   // LOAD_FALSE
         0xB2, 0x09, 0x00,       // JMP_IF_NOT +9 -> END (offset 13)
         // body:
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (99)
-        0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (99)
+        0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xF3, 0xFF,       // JMP -13 -> LOOP (offset 0)
         // END (offset 13):
         0xB5,                   // RET_VOID
@@ -62,13 +62,13 @@ fn execute_when_repeat_until_then_loops_twice() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         // LOOP (offset 0):
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
         0x30,                   // ADD_I32
-        0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]
+        0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         // condition: var[0] >= 2
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (2)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (2)
         0x6D,                   // GE_I32
         0xB2, 0xEC, 0xFF,       // JMP_IF_NOT -20 -> LOOP (offset 0)
         // END (offset 20):
@@ -85,24 +85,24 @@ fn execute_when_for_loop_then_iterates_correctly() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         // init: var[0] := 1
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
-        0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
+        0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         // LOOP (offset 6):
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (3)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (3)
         0x6C,                   // GT_I32
         0xB2, 0x03, 0x00,       // JMP_IF_NOT +3 -> BODY (offset 19)
         0xB0, 0x17, 0x00,       // JMP +23 -> END (offset 42)
         // BODY (offset 19):
-        0x10, 0x01, 0x00,       // LOAD_VAR_I32 var[1]
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x0C, 0x01, 0x00,       // LOAD_VAR_I32 var[1]
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x30,                   // ADD_I32
-        0x18, 0x01, 0x00,       // STORE_VAR_I32 var[1]
+        0x10, 0x01, 0x00,       // STORE_VAR_I32 var[1]
         // increment: var[0] := var[0] + 1
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
         0x30,                   // ADD_I32
-        0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]
+        0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0xB0, 0xDC, 0xFF,       // JMP -36 -> LOOP (offset 6)
         // END (offset 42):
         0xB5,                   // RET_VOID
@@ -124,13 +124,13 @@ fn execute_when_backward_jump_then_loops() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         // LOOP (offset 0):
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
         0x30,                   // ADD_I32
-        0x18, 0x00, 0x00,       // STORE_VAR_I32 var[0]
+        0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         // check: var[0] >= 2
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
-        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (2)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (2)
         0x6D,                   // GE_I32
         0xB2, 0xEC, 0xFF,       // JMP_IF_NOT -20 -> LOOP (offset 0)
         // END (offset 20):
