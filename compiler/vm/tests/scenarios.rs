@@ -329,7 +329,7 @@ fn scenario_when_watchdog_exceeded_then_trap() {
         // LOOP (offset 0):
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0)
-        0x6C,                   // GT_I32
+        0x50,                   // GT_I32
         0xB2, 0x0D, 0x00,       // JMP_IF_NOT +13 -> END (offset 23)
         // body:
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]

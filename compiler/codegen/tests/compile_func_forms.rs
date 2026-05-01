@@ -163,12 +163,12 @@ END_PROGRAM
 
 #[test]
 fn compile_when_eq_function_then_produces_eq_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("EQ", "DINT"), 0x68);
+    assert_two_arg_bytecode(&two_arg_program("EQ", "DINT"), 0x40);
 }
 
 #[test]
 fn compile_when_ne_function_then_produces_ne_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("NE", "DINT"), 0x69);
+    assert_two_arg_bytecode(&two_arg_program("NE", "DINT"), 0x44);
 }
 
 #[test]
@@ -183,7 +183,7 @@ fn compile_when_le_function_then_produces_le_bytecode() {
 
 #[test]
 fn compile_when_gt_function_then_produces_gt_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("GT", "DINT"), 0x6C);
+    assert_two_arg_bytecode(&two_arg_program("GT", "DINT"), 0x50);
 }
 
 #[test]
