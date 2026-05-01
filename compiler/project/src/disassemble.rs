@@ -666,12 +666,12 @@ mod tests {
     fn steel_thread_container() -> Container {
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]
-            0x10, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
-            0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
+            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]
+            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]
+            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
             0x30,                   // ADD_I32
-            0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]
+            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
             0xB5,                   // RET_VOID
         ];
 
@@ -1088,12 +1088,14 @@ mod tests {
     #[test]
     fn decode_when_jmp_forward_then_comment_shows_target_address() {
         // JMP offset=+2: target = 0 + 3 + 2 = 5
+        // Note: 0xFE is an unknown opcode (op-class 0x3F is reserved/free), used as
+        // padding so the disassembler doesn't try to decode the byte as a valid op.
         let bytecode = vec![
             opcode::JMP,
             0x02,
             0x00,
             opcode::RET_VOID,
-            0x00,
+            0xFE,
             opcode::RET_VOID,
         ];
         let instr = first_instruction(bytecode);
