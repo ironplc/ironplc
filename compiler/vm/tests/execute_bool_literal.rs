@@ -29,7 +29,7 @@ fn execute_when_load_true_with_bool_not_then_zero() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x05,              // LOAD_TRUE
-        0x57,              // BOOL_NOT
+        0x7B,              // BOOL_NOT
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -41,7 +41,7 @@ fn execute_when_load_false_with_bool_not_then_one() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x04,              // LOAD_FALSE
-        0x57,              // BOOL_NOT
+        0x7B,              // BOOL_NOT
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];

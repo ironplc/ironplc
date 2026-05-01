@@ -69,7 +69,7 @@ fn execute_when_repeat_until_then_loops_twice() {
         // condition: var[0] >= 2
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (2)
-        0x6D,                   // GE_I32
+        0x54,                   // GE_I32
         0xB2, 0xEC, 0xFF,       // JMP_IF_NOT -20 -> LOOP (offset 0)
         // END (offset 20):
         0xB5,                   // RET_VOID
@@ -131,7 +131,7 @@ fn execute_when_backward_jump_then_loops() {
         // check: var[0] >= 2
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (2)
-        0x6D,                   // GE_I32
+        0x54,                   // GE_I32
         0xB2, 0xEC, 0xFF,       // JMP_IF_NOT -20 -> LOOP (offset 0)
         // END (offset 20):
         0xB5,                   // RET_VOID

@@ -258,7 +258,7 @@ fn write_doorbell_container(path: &Path) {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push Button)
-        0x57,                   // BOOL_NOT                 (NOT Button)
+        0x7B,                   // BOOL_NOT                 (NOT Button)
         0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (Buzzer := result)
         0xB5,                   // RET_VOID
     ];

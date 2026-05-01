@@ -21,7 +21,7 @@ END_PROGRAM
     // y := x AND BYTE#16#0F:
     //   LOAD_VAR_I32 var:0
     //   LOAD_CONST_I32 pool:0 (0x0F)
-    //   BIT_AND_32 (0x58)
+    //   BIT_AND_32 (0x68)
     //   TRUNC_U8 (0x1D)
     //   STORE_VAR_I32 var:1
     // RET_VOID
@@ -34,7 +34,7 @@ END_PROGRAM
         &[
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x0F)
-            0x58, // BIT_AND_32
+            0x68, // BIT_AND_32
             0x1D, // TRUNC_U8
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
@@ -57,7 +57,7 @@ END_PROGRAM
 
     // y := NOT x:
     //   LOAD_VAR_I32 var:0
-    //   BIT_NOT_32 (0x5B)
+    //   BIT_NOT_32 (0x74)
     //   TRUNC_U8 (0x1D)  -- inline truncation after NOT
     //   TRUNC_U8 (0x1D)  -- assignment truncation
     //   STORE_VAR_I32 var:1
@@ -70,7 +70,7 @@ END_PROGRAM
         bytecode,
         &[
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x5B, // BIT_NOT_32
+            0x74, // BIT_NOT_32
             0x1D, // TRUNC_U8 (inline NOT truncation)
             0x1D, // TRUNC_U8 (assignment truncation)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
@@ -93,7 +93,7 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     // The AND here is in a comparison context (DINT is signed)
-    // so it should still produce BOOL_AND (0x54), not BIT_AND_32.
+    // so it should still produce BOOL_AND (0x78), not BIT_AND_32.
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -107,7 +107,7 @@ END_PROGRAM
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
             0x6A, // LT_I32
-            0x54, // BOOL_AND (not BIT_AND_32)
+            0x78, // BOOL_AND (not BIT_AND_32)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0xB5, // RET_VOID
         ]

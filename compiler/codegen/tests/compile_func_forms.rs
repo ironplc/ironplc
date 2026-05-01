@@ -105,8 +105,8 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     assert!(
-        bytecode.contains(&0x54),
-        "Expected BOOL_AND opcode 0x54 in bytecode: {:02X?}",
+        bytecode.contains(&0x78),
+        "Expected BOOL_AND opcode 0x78 in bytecode: {:02X?}",
         bytecode
     );
 }
@@ -129,8 +129,8 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     assert!(
-        bytecode.contains(&0x55),
-        "Expected BOOL_OR opcode 0x55 in bytecode: {:02X?}",
+        bytecode.contains(&0x79),
+        "Expected BOOL_OR opcode 0x79 in bytecode: {:02X?}",
         bytecode
     );
 }
@@ -153,8 +153,8 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     assert!(
-        bytecode.contains(&0x56),
-        "Expected BOOL_XOR opcode 0x56 in bytecode: {:02X?}",
+        bytecode.contains(&0x7A),
+        "Expected BOOL_XOR opcode 0x7A in bytecode: {:02X?}",
         bytecode
     );
 }
@@ -188,7 +188,7 @@ fn compile_when_gt_function_then_produces_gt_bytecode() {
 
 #[test]
 fn compile_when_ge_function_then_produces_ge_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("GE", "DINT"), 0x6D);
+    assert_two_arg_bytecode(&two_arg_program("GE", "DINT"), 0x54);
 }
 
 // --- Assignment function ---

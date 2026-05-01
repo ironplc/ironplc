@@ -14,7 +14,7 @@ fn execute_when_bit_and_32_then_bitwise_and() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (0xFF = 255)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (0x0F = 15)
-        0x58,              // BIT_AND_32
+        0x68,              // BIT_AND_32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -32,7 +32,7 @@ fn execute_when_bit_or_32_then_bitwise_or() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (0xF0 = 240)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (0x0F = 15)
-        0x59,              // BIT_OR_32
+        0x6C,              // BIT_OR_32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -50,7 +50,7 @@ fn execute_when_bit_xor_32_then_bitwise_xor() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (0xFF = 255)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (0x0F = 15)
-        0x5A,              // BIT_XOR_32
+        0x70,              // BIT_XOR_32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -67,7 +67,7 @@ fn execute_when_bit_not_32_then_bitwise_not() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (0x0F = 15)
-        0x5B,              // BIT_NOT_32
+        0x74,              // BIT_NOT_32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0xB5,              // RET_VOID
     ];
@@ -85,7 +85,7 @@ fn execute_when_bit_and_64_then_bitwise_and() {
     let bytecode: Vec<u8> = vec![
         0x01, 0x00, 0x00,  // LOAD_CONST_I64 pool[0] (0xFF)
         0x01, 0x01, 0x00,  // LOAD_CONST_I64 pool[1] (0x0F)
-        0x60,              // BIT_AND_64
+        0x69,              // BIT_AND_64
         0x11, 0x00, 0x00,  // STORE_VAR_I64 var[0]
         0xB5,              // RET_VOID
     ];
@@ -102,7 +102,7 @@ fn execute_when_bit_or_64_then_bitwise_or() {
     let bytecode: Vec<u8> = vec![
         0x01, 0x00, 0x00,  // LOAD_CONST_I64 pool[0] (0xF0)
         0x01, 0x01, 0x00,  // LOAD_CONST_I64 pool[1] (0x0F)
-        0x61,              // BIT_OR_64
+        0x6D,              // BIT_OR_64
         0x11, 0x00, 0x00,  // STORE_VAR_I64 var[0]
         0xB5,              // RET_VOID
     ];
@@ -119,7 +119,7 @@ fn execute_when_bit_xor_64_then_bitwise_xor() {
     let bytecode: Vec<u8> = vec![
         0x01, 0x00, 0x00,  // LOAD_CONST_I64 pool[0] (0xFF)
         0x01, 0x01, 0x00,  // LOAD_CONST_I64 pool[1] (0x0F)
-        0x62,              // BIT_XOR_64
+        0x71,              // BIT_XOR_64
         0x11, 0x00, 0x00,  // STORE_VAR_I64 var[0]
         0xB5,              // RET_VOID
     ];
@@ -135,7 +135,7 @@ fn execute_when_bit_not_64_then_bitwise_not() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x01, 0x00, 0x00,  // LOAD_CONST_I64 pool[0] (0x0F)
-        0x63,              // BIT_NOT_64
+        0x75,              // BIT_NOT_64
         0x11, 0x00, 0x00,  // STORE_VAR_I64 var[0]
         0xB5,              // RET_VOID
     ];
