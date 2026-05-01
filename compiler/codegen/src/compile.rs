@@ -451,7 +451,7 @@ fn compile_program_with_functions(
     // Function 0: init, Function 1: scan
     // bytecode() must be called before max_stack_depth() because the
     // peephole optimizer (run inside bytecode()) may increase max_stack_depth.
-    let init_bytecode = crate::optimize::optimize(init_emitter.bytecode(), &ctx.constants);
+    let (init_bytecode, _) = crate::optimize::optimize(init_emitter.bytecode(), &ctx.constants);
     let init_stack = init_emitter.max_stack_depth();
     builder = builder.add_function(
         FunctionId::INIT,
@@ -461,7 +461,7 @@ fn compile_program_with_functions(
         0,
     );
 
-    let scan_bytecode = crate::optimize::optimize(scan_emitter.bytecode(), &ctx.constants);
+    let (scan_bytecode, _) = crate::optimize::optimize(scan_emitter.bytecode(), &ctx.constants);
     let scan_stack = scan_emitter.max_stack_depth() + max_fb_body_stack;
     builder = builder.add_function(
         FunctionId::SCAN,
