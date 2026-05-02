@@ -1,0 +1,16 @@
+=====
+V9013
+=====
+
+.. problem-summary:: V9013
+
+The VM encountered a ``CMP_BR_*`` instruction whose first operand byte (the
+comparison-operator code) does not match any defined value in
+``opcode::cmp_op`` (``EQ``, ``NE``, ``LT_S``, ``LE_S``, ``GT_S``, ``GE_S``).
+
+This error should not occur during normal operation. It indicates a bug in the
+IronPLC compiler or VM, or that the bytecode has been corrupted or
+hand-modified.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.

@@ -86,8 +86,12 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    // The first STORE_VAR(i) then LOAD_VAR(i) should NOT be optimized
-    // because there is a loop label between them.
+    // The initial STORE_VAR(i) must NOT be preceded by a DUP (the FOR-loop
+    // back-edge target sits immediately after STORE, so the next iteration
+    // would jump past the implicit DUP). With the CMP_BR_I32 fusion, the
+    // FOR head test loads `i` directly inside the CMP_BR opcode rather than
+    // through a separate LOAD_VAR_I32, so the head opcode at offset 6 is
+    // now CMP_BR_I32.
     assert_eq!(
         bytecode[3],
         opcode::STORE_VAR_I32,
@@ -95,7 +99,7 @@ END_PROGRAM
     );
     assert_eq!(
         bytecode[6],
-        opcode::LOAD_VAR_I32,
-        "expected LOAD_VAR_I32 after STORE"
+        opcode::CMP_BR_I32,
+        "expected CMP_BR_I32 head test after STORE"
     );
 }

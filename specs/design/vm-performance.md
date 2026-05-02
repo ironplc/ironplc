@@ -291,6 +291,8 @@ Currently, jumps use relative i16 offsets that require signed arithmetic at runt
 
 The common pattern `if x > 10` compiles to 4 instructions (LOAD_VAR, LOAD_CONST, GT, JMP_IF_NOT). A fused `CMP_GT_JMP_I32 var_idx, const_pool_idx, target` does the same in one dispatch. PLC programs are dominated by comparisons-then-branches (IF, CASE, WHILE). This could reduce instruction count for control flow by 75%.
 
+**Status (partial):** implemented in `specs/plans/2026-05-02-cmp-br-superinstruction.md` for I32 and I64 signed-integer compares against constant pool entries. A single op-class `OP_CLASS_CMP_BR` (`0x3D`) collapses all six comparison operators (`EQ`, `NE`, `LT_S`, `LE_S`, `GT_S`, `GE_S`) under a 1-byte `cmp_op` operand, with two type-tag variants (`CMP_BR_I32`, `CMP_BR_I64`). Codegen wires `CMP_BR` into the FOR head test, REPEAT `UNTIL` tail, and IF/ELSIF predicates; WHILE is restructured into do-while shape when the condition is fusable so the per-iteration unconditional `JMP` back-edge collapses into the same `CMP_BR`. Remaining work: F32/F64 (NaN-aware polarity), var-var comparisons, CASE-selector fusion, and complex-condition WHILE restructuring (would require a `JMP_IF` opcode).
+
 **Files**: `container/src/opcode.rs`, `vm/src/vm.rs`, `codegen/src/emit.rs`
 
 ### 12. Copy-and-Patch Compilation

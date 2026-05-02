@@ -113,6 +113,8 @@ fn opcode_name(op: u8) -> &'static str {
         opcode::GE_I32 => "GE_I32",
         opcode::JMP => "JMP",
         opcode::JMP_IF_NOT => "JMP_IF_NOT",
+        opcode::CMP_BR_I32 => "CMP_BR_I32",
+        opcode::CMP_BR_I64 => "CMP_BR_I64",
         opcode::CALL => "CALL",
         opcode::RET => "RET",
         opcode::RET_VOID => "RET_VOID",
@@ -134,7 +136,12 @@ fn profile_for_loop_int_then_expected_hot_opcodes_dominate() {
     assert!(profile.count(opcode::ADD_I32) >= 100);
     assert!(profile.count(opcode::LOAD_VAR_I32) >= 200);
     assert!(profile.count(opcode::STORE_VAR_I32) >= 100);
-    assert!(profile.count(opcode::GT_I32) >= 50);
+    // FOR head test is now fused into a single CMP_BR_I32 per iteration,
+    // replacing the per-iteration LOAD_VAR + LOAD_CONST + LE_I32 +
+    // JMP_IF_NOT sequence. See specs/plans/2026-05-02-cmp-br-superinstruction.md.
+    assert!(profile.count(opcode::CMP_BR_I32) >= 50);
+    assert_eq!(profile.count(opcode::GT_I32), 0);
+    assert_eq!(profile.count(opcode::LE_I32), 0);
 
     // The two FOR-loop-internal TRUNC_I16 sites (init and per-iteration
     // increment) are now elided because `1 TO 100` keeps every value of `i`

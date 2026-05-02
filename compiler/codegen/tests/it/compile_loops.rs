@@ -1,12 +1,13 @@
 //! Bytecode-level integration tests for WHILE, REPEAT, and FOR loop compilation.
 
 use ironplc_container::opcode;
+use ironplc_container::opcode::cmp_op;
 use ironplc_parser::options::CompilerOptions;
 
 use crate::common::{bc, parse_and_compile};
 
 #[test]
-fn compile_when_while_then_produces_loop_with_jmp_if_not() {
+fn compile_when_while_with_simple_cmp_then_emits_do_while_cmp_br() {
     let source = "
 PROGRAM main
   VAR
@@ -20,50 +21,50 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     // x=var:0, constants: pool:0=0, pool:1=1
-    // Bytecode layout:
-    //   0: LOAD_VAR_I32 var:0          (condition: x)
-    //   3: LOAD_CONST_I32 pool:0 (0)   (condition: 0)
-    //   6: GT_I32                       (x > 0)
-    //   7: JMP_IF_NOT offset:+13 -> 23 (exit if false)
-    //  10: LOAD_VAR_I32 var:0          (body: x)
-    //  13: LOAD_CONST_I32 pool:1 (1)   (body: 1)
-    //  16: SUB_I32                      (x - 1)
-    //  17: STORE_VAR_I32 var:0         (x := ...)
-    //  20: JMP offset:-23 -> 0         (back to LOOP)
-    //  23: RET_VOID
+    //
+    // After do-while restructure with CMP_BR fusion:
+    //   0: CMP_BR_I32 LE_S, var:0, pool:0 (0), offset:+18 -> 26  (zero-trip)
+    //   8: LOAD_VAR_I32 var:0          (body: x)
+    //  11: LOAD_CONST_I32 pool:1 (1)   (body: 1)
+    //  14: SUB_I32                      (x - 1)
+    //  15: STORE_VAR_I32 var:0         (x := ...)
+    //  18: CMP_BR_I32 GT_S, var:0, pool:0 (0), offset:-18 -> 8   (back-edge)
+    //  26: RET_VOID
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
 
-    // Verify JMP_IF_NOT at offset 7 with forward offset +13
-    assert_eq!(bytecode[7], opcode::JMP_IF_NOT);
-    assert_eq!(i16::from_le_bytes([bytecode[8], bytecode[9]]), 13);
+    // Two CMP_BR_I32 instructions (zero-trip + back-edge), no JMP_IF_NOT, no JMP.
+    let cmp_br_count = bytecode
+        .iter()
+        .filter(|&&b| b == opcode::CMP_BR_I32)
+        .count();
+    let jmp_if_not_count = bytecode
+        .iter()
+        .filter(|&&b| b == opcode::JMP_IF_NOT)
+        .count();
+    let jmp_count = bytecode.iter().filter(|&&b| b == opcode::JMP).count();
+    assert_eq!(cmp_br_count, 2, "bytecode = {bytecode:?}");
+    assert_eq!(jmp_if_not_count, 0, "bytecode = {bytecode:?}");
+    assert_eq!(jmp_count, 0, "bytecode = {bytecode:?}");
 
-    // Verify JMP at offset 20 with backward offset -23
-    assert_eq!(bytecode[20], opcode::JMP);
-    assert_eq!(i16::from_le_bytes([bytecode[21], bytecode[22]]), -23);
-
-    // Verify overall structure
     assert_bytecode!(
         bytecode,
         [
-            bc::load_var_i32(0),   // condition: x
-            bc::load_const_i32(0), // condition: 0
-            bc::gt_i32(),          // x > 0
-            bc::jmp_if_not(13),    // exit if false
-            bc::load_var_i32(0),   // body: x
-            bc::load_const_i32(1), // body: 1
-            bc::sub_i32(),         // x - 1
-            bc::store_var_i32(0),  // x := ...
-            bc::jmp(-23),          // back to LOOP
+            bc::cmp_br_i32(cmp_op::LE_S, 0, 0, 18), // zero-trip: exit if NOT (x > 0)
+            bc::load_var_i32(0),                    // body: x
+            bc::load_const_i32(1),                  // body: 1
+            bc::sub_i32(),                          // x - 1
+            bc::store_var_i32(0),                   // x := ...
+            bc::cmp_br_i32(cmp_op::GT_S, 0, 0, -18), // back-edge: continue if (x > 0)
             bc::ret_void(),
         ]
     );
 }
 
 #[test]
-fn compile_when_repeat_until_then_produces_backward_jmp_if_not() {
+fn compile_when_repeat_until_with_simple_cmp_then_emits_cmp_br_back_edge() {
     let source = "
 PROGRAM main
   VAR
@@ -77,44 +78,48 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // x=var:0, constants: pool:0=1, pool:1=5
-    // Bytecode layout (store-load optimization inserts DUP before STORE x):
+    // x=var:0, constants: pool:0=5, pool:1=1
+    // (try_classify_cmp pools the until literal first; the body's `1` is
+    // pooled second.)
+    //
     //   0: LOAD_VAR_I32 var:0          (body: x)
-    //   3: LOAD_CONST_I32 pool:0 (1)   (body: 1)
+    //   3: LOAD_CONST_I32 pool:1 (1)   (body: 1)
     //   6: ADD_I32                      (x + 1)
-    //   7: DUP                          (store-load optimization)
-    //   8: STORE_VAR_I32 var:0         (x := ...)
-    //  11: LOAD_CONST_I32 pool:1 (5)   (condition: 5)
-    //  14: GT_I32                       (x > 5)
-    //  15: JMP_IF_NOT offset:-18 -> 0  (back to LOOP if false)
+    //   7: STORE_VAR_I32 var:0         (x := ...)
+    //  10: CMP_BR_I32 LE_S, var:0, pool:0 (5), offset:-18 -> 0   (back-edge if !until)
     //  18: RET_VOID
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
 
-    // Verify JMP_IF_NOT at offset 15 with backward offset -18
-    assert_eq!(bytecode[15], opcode::JMP_IF_NOT);
-    assert_eq!(i16::from_le_bytes([bytecode[16], bytecode[17]]), -18);
+    // One CMP_BR_I32 (back-edge), no JMP_IF_NOT.
+    let cmp_br_count = bytecode
+        .iter()
+        .filter(|&&b| b == opcode::CMP_BR_I32)
+        .count();
+    let jmp_if_not_count = bytecode
+        .iter()
+        .filter(|&&b| b == opcode::JMP_IF_NOT)
+        .count();
+    assert_eq!(cmp_br_count, 1, "bytecode = {bytecode:?}");
+    assert_eq!(jmp_if_not_count, 0, "bytecode = {bytecode:?}");
 
     assert_bytecode!(
         bytecode,
         [
-            bc::load_var_i32(0),   // body: x
-            bc::load_const_i32(0), // body: 1
-            bc::add_i32(),         // x + 1
-            bc::dup(),             // store-load optimization
-            bc::store_var_i32(0),  // x := ...
-            bc::load_const_i32(1), // condition: 5
-            bc::gt_i32(),          // x > 5
-            bc::jmp_if_not(-18),   // back to LOOP if false
+            bc::load_var_i32(0),                     // body: x
+            bc::load_const_i32(1),                   // body: 1 (pool:1)
+            bc::add_i32(),                           // x + 1
+            bc::store_var_i32(0),                    // x := ...
+            bc::cmp_br_i32(cmp_op::LE_S, 0, 0, -18), // back to LOOP if NOT (x > 5)
             bc::ret_void(),
         ]
     );
 }
 
 #[test]
-fn compile_when_for_default_step_then_produces_loop_with_le() {
+fn compile_when_for_default_step_then_produces_loop_with_cmp_br() {
     let source = "
 PROGRAM main
   VAR
@@ -130,68 +135,60 @@ END_PROGRAM
 
     // i=var:0, y=var:1
     // constants: pool:0=1, pool:1=5
-    // Bytecode layout (specs/plans/2026-04-30-elide-for-loop-exit-jmp.md):
+    //
     //   0: LOAD_CONST_I32 pool:0 (1)   (from value)
     //   3: STORE_VAR_I32 var:0         (i := 1)
-    //   6: LOAD_VAR_I32 var:0          (LOOP: load i)
-    //   9: LOAD_CONST_I32 pool:1 (5)   (to value)
-    //  12: LE_I32                       (i <= 5? continuation)
-    //  13: JMP_IF_NOT offset:+23 -> 39 (exit when i > 5)
-    //  16: LOAD_VAR_I32 var:1          (BODY: y)
-    //  19: LOAD_VAR_I32 var:0          (i)
-    //  22: ADD_I32                      (y + i)
-    //  23: STORE_VAR_I32 var:1         (y := ...)
-    //  26: LOAD_VAR_I32 var:0          (increment: i)
-    //  29: LOAD_CONST_I32 pool:0 (1)   (step: 1)
-    //  32: ADD_I32                      (i + 1)
-    //  33: STORE_VAR_I32 var:0         (i := ...)
-    //  36: JMP offset:-33 -> 6         (back to LOOP)
-    //  39: RET_VOID
+    //   6: CMP_BR_I32 GT_S, var:0, pool:1 (5), offset:+23 -> 37  (exit if i > 5)
+    //  14: LOAD_VAR_I32 var:1          (BODY: y)
+    //  17: LOAD_VAR_I32 var:0          (i)
+    //  20: ADD_I32                      (y + i)
+    //  21: STORE_VAR_I32 var:1         (y := ...)
+    //  24: LOAD_VAR_I32 var:0          (increment: i)
+    //  27: LOAD_CONST_I32 pool:0 (1)   (step: 1)
+    //  30: ADD_I32                      (i + 1)
+    //  31: STORE_VAR_I32 var:0         (i := ...)
+    //  34: JMP offset:-31 -> 6         (back to head test)
+    //  37: RET_VOID
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
 
-    // Verify LE_I32 for positive step (replaces old GT_I32)
-    assert_eq!(bytecode[12], opcode::LE_I32);
-
-    // Exactly one JMP_IF_NOT (the exit) and one JMP (the loop back-edge) —
-    // the per-iteration exit JMP that used to follow JMP_IF_NOT body_label is
-    // now elided.
+    let cmp_br_count = bytecode
+        .iter()
+        .filter(|&&b| b == opcode::CMP_BR_I32)
+        .count();
     let jmp_if_not_count = bytecode
         .iter()
         .filter(|&&b| b == opcode::JMP_IF_NOT)
         .count();
     let jmp_count = bytecode.iter().filter(|&&b| b == opcode::JMP).count();
-    assert_eq!(jmp_if_not_count, 1, "bytecode = {bytecode:?}");
+    assert_eq!(cmp_br_count, 1, "bytecode = {bytecode:?}");
+    assert_eq!(jmp_if_not_count, 0, "bytecode = {bytecode:?}");
     assert_eq!(jmp_count, 1, "bytecode = {bytecode:?}");
 
-    // Verify structure
     assert_bytecode!(
         bytecode,
         [
-            bc::load_const_i32(0), // from value
-            bc::store_var_i32(0),  // i := 1
-            bc::load_var_i32(0),   // LOOP: load i
-            bc::load_const_i32(1), // to value
-            bc::le_i32(),          // i <= 5? continuation
-            bc::jmp_if_not(23),    // exit when i > 5
-            bc::load_var_i32(1),   // BODY: y
-            bc::load_var_i32(0),   // i
-            bc::add_i32(),         // y + i
-            bc::store_var_i32(1),  // y := ...
-            bc::load_var_i32(0),   // increment: i
-            bc::load_const_i32(0), // step: 1
-            bc::add_i32(),         // i + 1
-            bc::store_var_i32(0),  // i := ...
-            bc::jmp(-33),          // back to LOOP
+            bc::load_const_i32(0),                  // from value (pool:0 = 1)
+            bc::store_var_i32(0),                   // i := 1
+            bc::cmp_br_i32(cmp_op::GT_S, 0, 1, 23), // exit if i > 5 (negated continuation)
+            bc::load_var_i32(1),                    // BODY: y
+            bc::load_var_i32(0),                    // i
+            bc::add_i32(),                          // y + i
+            bc::store_var_i32(1),                   // y := ...
+            bc::load_var_i32(0),                    // increment: i
+            bc::load_const_i32(0),                  // step: 1
+            bc::add_i32(),                          // i + 1
+            bc::store_var_i32(0),                   // i := ...
+            bc::jmp(-31),                           // back to head test
             bc::ret_void(),
         ]
     );
 }
 
 #[test]
-fn compile_when_for_negative_step_then_produces_loop_with_ge() {
+fn compile_when_for_negative_step_then_produces_loop_with_cmp_br_lt() {
     let source = "
 PROGRAM main
   VAR
@@ -210,17 +207,25 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
 
-    // Verify GE_I32 for negative step (continuation predicate; replaces old LT_I32)
-    assert_eq!(bytecode[12], opcode::GE_I32);
-
-    // And confirm the per-iteration exit JMP is gone here too.
+    // FOR head test fused into one CMP_BR_I32 with cmp_op = LT_S
+    // (negation of the negative-step continuation predicate `i >= to`).
+    let cmp_br_count = bytecode
+        .iter()
+        .filter(|&&b| b == opcode::CMP_BR_I32)
+        .count();
     let jmp_if_not_count = bytecode
         .iter()
         .filter(|&&b| b == opcode::JMP_IF_NOT)
         .count();
     let jmp_count = bytecode.iter().filter(|&&b| b == opcode::JMP).count();
-    assert_eq!(jmp_if_not_count, 1, "bytecode = {bytecode:?}");
+    assert_eq!(cmp_br_count, 1, "bytecode = {bytecode:?}");
+    assert_eq!(jmp_if_not_count, 0, "bytecode = {bytecode:?}");
     assert_eq!(jmp_count, 1, "bytecode = {bytecode:?}");
+
+    // The CMP_BR opcode is at offset 6 (after LOAD_CONST + STORE_VAR for the
+    // initial assignment). The cmp_op operand at offset 7 must be LT_S.
+    assert_eq!(bytecode[6], opcode::CMP_BR_I32);
+    assert_eq!(bytecode[7], opcode::cmp_op::LT_S);
 }
 
 // FOR-loop TRUNC elision (specs/plans/2026-04-30-elide-for-loop-trunc.md):
