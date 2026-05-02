@@ -1168,8 +1168,10 @@ END_VAR
     result := TAKES_INT(y);
 END_PROGRAM";
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let mut opts = CompilerOptions::default();
-        opts.allow_cross_family_widening = true;
+        let opts = CompilerOptions {
+            allow_cross_family_widening: true,
+            ..CompilerOptions::default()
+        };
         let result = apply(&library, &context, &opts);
         assert!(result.is_ok());
     }
@@ -1191,8 +1193,10 @@ END_VAR
     result := TAKES_BYTE(0);
 END_PROGRAM";
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let mut opts = CompilerOptions::default();
-        opts.allow_cross_family_widening = true;
+        let opts = CompilerOptions {
+            allow_cross_family_widening: true,
+            ..CompilerOptions::default()
+        };
         let result = apply(&library, &context, &opts);
         assert!(result.is_ok());
     }
@@ -1236,8 +1240,10 @@ END_VAR
     result := GET_BYTE(y);
 END_PROGRAM";
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let mut opts = CompilerOptions::default();
-        opts.allow_cross_family_widening = true;
+        let opts = CompilerOptions {
+            allow_cross_family_widening: true,
+            ..CompilerOptions::default()
+        };
         let result = apply(&library, &context, &opts);
         assert!(result.is_ok());
     }
@@ -1283,8 +1289,10 @@ END_VAR
     result := TAKES_BYTE(y);
 END_PROGRAM";
         let (library, context) = parse_and_resolve_types_with_context(program);
-        let mut opts = CompilerOptions::default();
-        opts.allow_cross_family_widening = true;
+        let opts = CompilerOptions {
+            allow_cross_family_widening: true,
+            ..CompilerOptions::default()
+        };
         let result = apply(&library, &context, &opts);
         assert!(result.is_err());
     }

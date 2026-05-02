@@ -380,5 +380,4 @@ fn flat_index_arithmetic_when_worst_case_subscript_then_fits_i64() {
     let max_stride: i64 = 32768;
     let result = max_range.checked_mul(max_stride);
     assert!(result.is_some(), "flat index must fit in i64");
-    assert!(result.unwrap() <= i64::MAX);
 }

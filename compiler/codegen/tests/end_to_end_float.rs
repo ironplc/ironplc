@@ -107,8 +107,8 @@ e2e_f32_near!(
 e2e_f32_near!(
     end_to_end_when_real_initial_value_then_variable_initialized,
     1e-5,
-    "PROGRAM main VAR x : REAL := 3.14; END_VAR END_PROGRAM",
-    &[(0, 3.14)],
+    "PROGRAM main VAR x : REAL := 3.25; END_VAR END_PROGRAM",
+    &[(0, 3.25)],
 );
 
 // --- LREAL (f64) arithmetic ---

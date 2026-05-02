@@ -3055,10 +3055,10 @@ mod tests {
     #[test]
     fn display_when_real_literal_with_type_then_formatted() {
         let rl = RealLiteral {
-            value: 3.14,
+            value: 3.25,
             data_type: Some(RealTypeName::REAL),
         };
-        assert_eq!(format!("{rl}"), "REAL#3.14");
+        assert_eq!(format!("{rl}"), "REAL#3.25");
     }
 
     #[test]

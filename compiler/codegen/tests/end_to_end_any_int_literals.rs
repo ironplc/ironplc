@@ -86,12 +86,12 @@ PROGRAM main
 VAR
     result : LREAL;
 END_VAR
-    result := ADD_PI(3.14);
+    result := ADD_PI(3.25);
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     let val = bufs.vars[0].as_f64();
-    assert!((val - 3.14).abs() < 0.001);
+    assert!((val - 3.25).abs() < 0.001);
 }
 
 #[test]

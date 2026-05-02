@@ -131,7 +131,7 @@ fn bench_branching(c: &mut Criterion) {
             BenchmarkId::from_parameter(branches),
             &container,
             |bufs| {
-                bufs.vars[0] = Slot::from_i32((branches - 1) as i32);
+                bufs.vars[0] = Slot::from_i32(branches - 1);
             }
         );
     }
