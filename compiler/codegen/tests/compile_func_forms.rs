@@ -6,10 +6,11 @@
 //! Note: NOT function form is not tested because the parser treats NOT(x) as
 //! unary NOT applied to parenthesized expression (x), which is semantically equivalent.
 
+#[macro_use]
 mod common;
 use ironplc_parser::options::CompilerOptions;
 
-use common::parse_and_compile;
+use common::{bc, parse_and_compile};
 
 /// Helper to build an IEC 61131-3 program that calls a two-arg function form.
 fn two_arg_program(func_name: &str, var_type: &str) -> String {
@@ -211,14 +212,11 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
-        bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (10)
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
-        ]
-    );
+    assert_bytecode!(bytecode, [
+            bc::load_const_i32(0),  // pool:0 (10)
+            bc::dup(),  // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::store_var_i32(1),  // var:1
+            bc::ret_void(),
+    ]);
 }

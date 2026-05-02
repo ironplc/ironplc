@@ -39,11 +39,11 @@ END_PROGRAM
         .unwrap();
 
     // Verify JMP_IF_NOT at offset 7 with forward offset +13
-    assert_eq!(bytecode[7], 0x80); // JMP_IF_NOT
+    assert_eq!(bytecode[7], opcode::JMP_IF_NOT);
     assert_eq!(i16::from_le_bytes([bytecode[8], bytecode[9]]), 13);
 
     // Verify JMP at offset 20 with backward offset -23
-    assert_eq!(bytecode[20], 0x7C); // JMP
+    assert_eq!(bytecode[20], opcode::JMP);
     assert_eq!(i16::from_le_bytes([bytecode[21], bytecode[22]]), -23);
 
     // Verify overall structure
@@ -93,7 +93,7 @@ END_PROGRAM
         .unwrap();
 
     // Verify JMP_IF_NOT at offset 15 with backward offset -18
-    assert_eq!(bytecode[15], 0x80); // JMP_IF_NOT
+    assert_eq!(bytecode[15], opcode::JMP_IF_NOT);
     assert_eq!(i16::from_le_bytes([bytecode[16], bytecode[17]]), -18);
 
     assert_bytecode!(bytecode, [

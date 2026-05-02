@@ -1,9 +1,11 @@
 //! Bytecode-level integration tests for MUX function compilation.
 
+#[macro_use]
 mod common;
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
-use common::parse_and_compile;
+use common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_mux_3_inputs_then_produces_builtin_bytecode() {
@@ -59,18 +61,15 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
-        bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
-            0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (20)
-            0x00, 0x03, 0x00, // LOAD_CONST_I32 pool:3 (30)
-            0x94, 0x03, 0x04, // BUILTIN MUX_I32(3) = 0x0403
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x8C, // RET_VOID
-        ]
-    );
+    assert_bytecode!(bytecode, [
+            bc::load_const_i32(0),  // pool:0 (1)
+            bc::load_const_i32(1),  // pool:1 (10)
+            bc::load_const_i32(2),  // pool:2 (20)
+            bc::load_const_i32(3),  // pool:3 (30)
+            bc::builtin(opcode::builtin::MUX_I32_BASE + 3),  // MUX with 3 inputs
+            bc::store_var_i32(0),  // var:0
+            bc::ret_void(),
+    ]);
 }
 
 #[test]
@@ -90,17 +89,14 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     // BUILTIN MUX_I32_BASE+2 = 0x0402
-    assert_eq!(
-        bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (100)
-            0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (200)
-            0x94, 0x02, 0x04, // BUILTIN MUX_I32(2) = 0x0402
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x8C, // RET_VOID
-        ]
-    );
+    assert_bytecode!(bytecode, [
+            bc::load_const_i32(0),  // pool:0 (0)
+            bc::load_const_i32(1),  // pool:1 (100)
+            bc::load_const_i32(2),  // pool:2 (200)
+            bc::builtin(opcode::builtin::MUX_I32_BASE + 2),  // MUX with 2 inputs
+            bc::store_var_i32(0),  // var:0
+            bc::ret_void(),
+    ]);
 }
 
 #[test]

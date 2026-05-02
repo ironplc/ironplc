@@ -1,9 +1,11 @@
 //! Bytecode-level integration tests for the SEL function compilation.
 
+#[macro_use]
 mod common;
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
-use common::parse_and_compile;
+use common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_sel_function_then_produces_builtin_bytecode() {
@@ -50,17 +52,14 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
-        bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
-            0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (20)
-            0x94, 0x47, 0x03, // BUILTIN SEL_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
-        ]
-    );
+    assert_bytecode!(bytecode, [
+            bc::load_const_i32(0),  // pool:0 (1)
+            bc::dup(),  // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1),  // pool:1 (10)
+            bc::load_const_i32(2),  // pool:2 (20)
+            bc::builtin(opcode::builtin::SEL_I32),  // SEL_I32
+            bc::store_var_i32(1),  // var:1
+            bc::ret_void(),
+    ]);
 }

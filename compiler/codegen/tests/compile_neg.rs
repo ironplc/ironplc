@@ -1,9 +1,10 @@
 //! Bytecode-level integration tests for the NEG operator compilation.
 
+#[macro_use]
 mod common;
 use ironplc_parser::options::CompilerOptions;
 
-use common::parse_and_compile;
+use common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_neg_variable_then_produces_neg_bytecode() {
@@ -35,17 +36,14 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
-        bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x2C, // NEG_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
-        ]
-    );
+    assert_bytecode!(bytecode, [
+        bc::load_const_i32(0),
+        bc::dup(),              // store-load optimization
+        bc::store_var_i32(0),
+        bc::neg_i32(),
+        bc::store_var_i32(1),
+        bc::ret_void(),
+    ]);
 }
 
 #[test]
@@ -74,5 +72,9 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x8C]);
+    assert_bytecode!(bytecode, [
+        bc::load_const_i32(0), // (-5)
+        bc::store_var_i32(0),
+        bc::ret_void(),
+    ]);
 }
