@@ -108,7 +108,7 @@ The full op-class table (61 of 64 slots used; 0x3D-0x3F reserved):
 
 ### Migration status
 
-The encoding is being applied incrementally in waves. Opcodes whose Rust definition uses `encode_opcode(...)` follow the rules above; opcodes still defined as raw hex literals (`pub const NAME: Opcode = 0xNN;`) are at legacy byte values pending migration. Tests assert specific hex bytes to guard against accidental renumbering — any change to a hex value in opcode.rs requires updating the corresponding test bytes (and ultimately bumping `FORMAT_VERSION` once the migration is complete).
+The encoding migration is **complete** as of `FORMAT_VERSION = 2`. Every opcode in `opcode.rs` is derived via `encode_opcode(OP_CLASS_*, type_tag)` and matches the byte values in this document. Tests assert specific hex bytes to guard against accidental renumbering — any change to a hex value in `opcode.rs` requires updating the corresponding test bytes and bumping `FORMAT_VERSION`.
 
 ## Type System
 
@@ -165,15 +165,15 @@ These instructions move values between the operand stack and memory regions.
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x01 | LOAD_CONST_I32 | index: u16 | [] → [I32] | Push 32-bit signed integer from constant pool |
+| 0x00 | LOAD_CONST_I32 | index: u16 | [] → [I32] | Push 32-bit signed integer from constant pool |
 | 0x02 | LOAD_CONST_U32 | index: u16 | [] → [U32] | Push 32-bit unsigned integer from constant pool |
-| 0x03 | LOAD_CONST_I64 | index: u16 | [] → [I64] | Push 64-bit signed integer from constant pool |
+| 0x01 | LOAD_CONST_I64 | index: u16 | [] → [I64] | Push 64-bit signed integer from constant pool |
 | 0x04 | LOAD_CONST_U64 | index: u16 | [] → [U64] | Push 64-bit unsigned integer from constant pool |
-| 0x05 | LOAD_CONST_F32 | index: u16 | [] → [F32] | Push 32-bit float from constant pool |
-| 0x06 | LOAD_CONST_F64 | index: u16 | [] → [F64] | Push 64-bit float from constant pool |
-| 0x07 | LOAD_TRUE | — | [] → [I32] | Push I32 value 1 (boolean TRUE) |
-| 0x08 | LOAD_FALSE | — | [] → [I32] | Push I32 value 0 (boolean FALSE) |
-| 0x09 | LOAD_CONST_STR | index: u16 | [] → [buf_idx] | Copy STRING literal from constant pool into a temporary buffer; push buf_idx |
+| 0x02 | LOAD_CONST_F32 | index: u16 | [] → [F32] | Push 32-bit float from constant pool |
+| 0x03 | LOAD_CONST_F64 | index: u16 | [] → [F64] | Push 64-bit float from constant pool |
+| 0x05 | LOAD_TRUE | — | [] → [I32] | Push I32 value 1 (boolean TRUE) |
+| 0x04 | LOAD_FALSE | — | [] → [I32] | Push I32 value 0 (boolean FALSE) |
+| 0x08 | LOAD_CONST_STR | index: u16 | [] → [buf_idx] | Copy STRING literal from constant pool into a temporary buffer; push buf_idx |
 | 0x0A | LOAD_CONST_WSTR | index: u16 | [] → [buf_idx] | Copy WSTRING literal from constant pool into a temporary buffer; push buf_idx |
 | 0x0B | LOAD_CONST_TIME | index: u16 | [] → [I64] | Push TIME/DATE/TOD/DT constant from constant pool as I64 microseconds; verifier produces I64_time subtype |
 
@@ -183,18 +183,18 @@ Variable instructions use a 16-bit index into the current scope's variable table
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x10 | LOAD_VAR_I32 | index: u16 | [] → [I32] | Load 32-bit signed variable (includes promoted SINT, INT, DINT) |
+| 0x0C | LOAD_VAR_I32 | index: u16 | [] → [I32] | Load 32-bit signed variable (includes promoted SINT, INT, DINT) |
 | 0x11 | LOAD_VAR_U32 | index: u16 | [] → [U32] | Load 32-bit unsigned variable (includes promoted USINT, UINT, UDINT) |
-| 0x12 | LOAD_VAR_I64 | index: u16 | [] → [I64] | Load 64-bit signed variable |
+| 0x0D | LOAD_VAR_I64 | index: u16 | [] → [I64] | Load 64-bit signed variable |
 | 0x13 | LOAD_VAR_U64 | index: u16 | [] → [U64] | Load 64-bit unsigned variable |
-| 0x14 | LOAD_VAR_F32 | index: u16 | [] → [F32] | Load 32-bit float variable |
-| 0x15 | LOAD_VAR_F64 | index: u16 | [] → [F64] | Load 64-bit float variable |
-| 0x18 | STORE_VAR_I32 | index: u16 | [I32] → [] | Store to 32-bit signed variable |
+| 0x0E | LOAD_VAR_F32 | index: u16 | [] → [F32] | Load 32-bit float variable |
+| 0x0F | LOAD_VAR_F64 | index: u16 | [] → [F64] | Load 64-bit float variable |
+| 0x10 | STORE_VAR_I32 | index: u16 | [I32] → [] | Store to 32-bit signed variable |
 | 0x19 | STORE_VAR_U32 | index: u16 | [U32] → [] | Store to 32-bit unsigned variable |
-| 0x1A | STORE_VAR_I64 | index: u16 | [I64] → [] | Store to 64-bit signed variable |
+| 0x11 | STORE_VAR_I64 | index: u16 | [I64] → [] | Store to 64-bit signed variable |
 | 0x1B | STORE_VAR_U64 | index: u16 | [U64] → [] | Store to 64-bit unsigned variable |
-| 0x1C | STORE_VAR_F32 | index: u16 | [F32] → [] | Store to 32-bit float variable |
-| 0x1D | STORE_VAR_F64 | index: u16 | [F64] → [] | Store to 64-bit float variable |
+| 0x12 | STORE_VAR_F32 | index: u16 | [F32] → [] | Store to 32-bit float variable |
+| 0x13 | STORE_VAR_F64 | index: u16 | [F64] → [] | Store to 64-bit float variable |
 
 #### Process Image (I/O)
 
@@ -258,24 +258,24 @@ All arithmetic operates at the promoted width per ADR-0001. The compiler emits N
 | 0x36 | ADD_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit addition |
 | 0x37 | SUB_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit subtraction |
 | 0x38 | MUL_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit multiplication |
-| 0x39 | DIV_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit division |
-| 0x3A | MOD_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit modulo |
+| 0x34 | DIV_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit division |
+| 0x3C | MOD_U32 | — | [U32, U32] → [U32] | Unsigned 32-bit modulo |
 
 #### Integer Arithmetic (64-bit)
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x3C | ADD_I64 | — | [I64, I64] → [I64] | Signed 64-bit addition |
-| 0x3D | SUB_I64 | — | [I64, I64] → [I64] | Signed 64-bit subtraction |
-| 0x3E | MUL_I64 | — | [I64, I64] → [I64] | Signed 64-bit multiplication |
-| 0x3F | DIV_I64 | — | [I64, I64] → [I64] | Signed 64-bit division |
-| 0x40 | MOD_I64 | — | [I64, I64] → [I64] | Signed 64-bit modulo |
-| 0x41 | NEG_I64 | — | [I64] → [I64] | Signed 64-bit negation |
+| 0x21 | ADD_I64 | — | [I64, I64] → [I64] | Signed 64-bit addition |
+| 0x25 | SUB_I64 | — | [I64, I64] → [I64] | Signed 64-bit subtraction |
+| 0x29 | MUL_I64 | — | [I64, I64] → [I64] | Signed 64-bit multiplication |
+| 0x31 | DIV_I64 | — | [I64, I64] → [I64] | Signed 64-bit division |
+| 0x39 | MOD_I64 | — | [I64, I64] → [I64] | Signed 64-bit modulo |
+| 0x2D | NEG_I64 | — | [I64] → [I64] | Signed 64-bit negation |
 | 0x42 | ADD_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit addition |
 | 0x43 | SUB_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit subtraction |
 | 0x44 | MUL_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit multiplication |
-| 0x45 | DIV_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit division |
-| 0x46 | MOD_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit modulo |
+| 0x35 | DIV_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit division |
+| 0x3D | MOD_U64 | — | [U64, U64] → [U64] | Unsigned 64-bit modulo |
 
 #### Floating-Point Arithmetic
 
@@ -286,11 +286,11 @@ All arithmetic operates at the promoted width per ADR-0001. The compiler emits N
 | 0x2A | MUL_F32 | — | [F32, F32] → [F32] | 32-bit float multiplication |
 | 0x32 | DIV_F32 | — | [F32, F32] → [F32] | 32-bit float division |
 | 0x2E | NEG_F32 | — | [F32] → [F32] | 32-bit float negation |
-| 0x4D | ADD_F64 | — | [F64, F64] → [F64] | 64-bit float addition |
-| 0x4E | SUB_F64 | — | [F64, F64] → [F64] | 64-bit float subtraction |
-| 0x4F | MUL_F64 | — | [F64, F64] → [F64] | 64-bit float multiplication |
-| 0x50 | DIV_F64 | — | [F64, F64] → [F64] | 64-bit float division |
-| 0x51 | NEG_F64 | — | [F64] → [F64] | 64-bit float negation |
+| 0x23 | ADD_F64 | — | [F64, F64] → [F64] | 64-bit float addition |
+| 0x27 | SUB_F64 | — | [F64, F64] → [F64] | 64-bit float subtraction |
+| 0x2B | MUL_F64 | — | [F64, F64] → [F64] | 64-bit float multiplication |
+| 0x33 | DIV_F64 | — | [F64, F64] → [F64] | 64-bit float division |
+| 0x2F | NEG_F64 | — | [F64] → [F64] | 64-bit float negation |
 
 ---
 
@@ -355,44 +355,44 @@ Comparison instructions pop two values and push an I32 (0 or 1) result. Separate
 |---|--------|----------|-------------|-------------|
 | 0x6E | EQ_U32 | — | [U32, U32] → [I32] | Equal |
 | 0x6F | NE_U32 | — | [U32, U32] → [I32] | Not equal |
-| 0x70 | LT_U32 | — | [U32, U32] → [I32] | Less than (unsigned) |
-| 0x71 | LE_U32 | — | [U32, U32] → [I32] | Less than or equal (unsigned) |
-| 0x72 | GT_U32 | — | [U32, U32] → [I32] | Greater than (unsigned) |
-| 0x73 | GE_U32 | — | [U32, U32] → [I32] | Greater than or equal (unsigned) |
+| 0x58 | LT_U32 | — | [U32, U32] → [I32] | Less than (unsigned) |
+| 0x5C | LE_U32 | — | [U32, U32] → [I32] | Less than or equal (unsigned) |
+| 0x60 | GT_U32 | — | [U32, U32] → [I32] | Greater than (unsigned) |
+| 0x64 | GE_U32 | — | [U32, U32] → [I32] | Greater than or equal (unsigned) |
 
 #### 64-bit Comparison (signed and unsigned)
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x74 | EQ_I64 | — | [I64, I64] → [I32] | Equal (signed 64-bit) |
-| 0x75 | NE_I64 | — | [I64, I64] → [I32] | Not equal (signed 64-bit) |
-| 0x76 | LT_I64 | — | [I64, I64] → [I32] | Less than (signed 64-bit) |
-| 0x77 | LE_I64 | — | [I64, I64] → [I32] | Less than or equal (signed 64-bit) |
-| 0x78 | GT_I64 | — | [I64, I64] → [I32] | Greater than (signed 64-bit) |
-| 0x79 | GE_I64 | — | [I64, I64] → [I32] | Greater than or equal (signed 64-bit) |
+| 0x41 | EQ_I64 | — | [I64, I64] → [I32] | Equal (signed 64-bit) |
+| 0x45 | NE_I64 | — | [I64, I64] → [I32] | Not equal (signed 64-bit) |
+| 0x49 | LT_I64 | — | [I64, I64] → [I32] | Less than (signed 64-bit) |
+| 0x4D | LE_I64 | — | [I64, I64] → [I32] | Less than or equal (signed 64-bit) |
+| 0x51 | GT_I64 | — | [I64, I64] → [I32] | Greater than (signed 64-bit) |
+| 0x55 | GE_I64 | — | [I64, I64] → [I32] | Greater than or equal (signed 64-bit) |
 | 0x7A | EQ_U64 | — | [U64, U64] → [I32] | Equal (unsigned 64-bit) |
 | 0x7B | NE_U64 | — | [U64, U64] → [I32] | Not equal (unsigned 64-bit) |
-| 0x7C | LT_U64 | — | [U64, U64] → [I32] | Less than (unsigned 64-bit) |
-| 0x7D | LE_U64 | — | [U64, U64] → [I32] | Less than or equal (unsigned 64-bit) |
-| 0x7E | GT_U64 | — | [U64, U64] → [I32] | Greater than (unsigned 64-bit) |
-| 0x7F | GE_U64 | — | [U64, U64] → [I32] | Greater than or equal (unsigned 64-bit) |
+| 0x59 | LT_U64 | — | [U64, U64] → [I32] | Less than (unsigned 64-bit) |
+| 0x5D | LE_U64 | — | [U64, U64] → [I32] | Less than or equal (unsigned 64-bit) |
+| 0x61 | GT_U64 | — | [U64, U64] → [I32] | Greater than (unsigned 64-bit) |
+| 0x65 | GE_U64 | — | [U64, U64] → [I32] | Greater than or equal (unsigned 64-bit) |
 
 #### Float Comparison
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0x80 | EQ_F32 | — | [F32, F32] → [I32] | Equal (NaN ≠ NaN → 0) |
-| 0x81 | NE_F32 | — | [F32, F32] → [I32] | Not equal |
-| 0x82 | LT_F32 | — | [F32, F32] → [I32] | Less than |
-| 0x83 | LE_F32 | — | [F32, F32] → [I32] | Less than or equal |
-| 0x84 | GT_F32 | — | [F32, F32] → [I32] | Greater than |
-| 0x85 | GE_F32 | — | [F32, F32] → [I32] | Greater than or equal |
-| 0x86 | EQ_F64 | — | [F64, F64] → [I32] | Equal (NaN ≠ NaN → 0) |
-| 0x87 | NE_F64 | — | [F64, F64] → [I32] | Not equal |
-| 0x88 | LT_F64 | — | [F64, F64] → [I32] | Less than |
-| 0x89 | LE_F64 | — | [F64, F64] → [I32] | Less than or equal |
-| 0x8A | GT_F64 | — | [F64, F64] → [I32] | Greater than |
-| 0x8B | GE_F64 | — | [F64, F64] → [I32] | Greater than or equal |
+| 0x42 | EQ_F32 | — | [F32, F32] → [I32] | Equal (NaN ≠ NaN → 0) |
+| 0x46 | NE_F32 | — | [F32, F32] → [I32] | Not equal |
+| 0x4A | LT_F32 | — | [F32, F32] → [I32] | Less than |
+| 0x4E | LE_F32 | — | [F32, F32] → [I32] | Less than or equal |
+| 0x52 | GT_F32 | — | [F32, F32] → [I32] | Greater than |
+| 0x56 | GE_F32 | — | [F32, F32] → [I32] | Greater than or equal |
+| 0x43 | EQ_F64 | — | [F64, F64] → [I32] | Equal (NaN ≠ NaN → 0) |
+| 0x47 | NE_F64 | — | [F64, F64] → [I32] | Not equal |
+| 0x4B | LT_F64 | — | [F64, F64] → [I32] | Less than |
+| 0x4F | LE_F64 | — | [F64, F64] → [I32] | Less than or equal |
+| 0x53 | GT_F64 | — | [F64, F64] → [I32] | Greater than |
+| 0x57 | GE_F64 | — | [F64, F64] → [I32] | Greater than or equal |
 
 ---
 
@@ -483,10 +483,10 @@ Function block invocation follows the pattern: load the FB instance reference, s
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xC0 | FB_LOAD_INSTANCE | index: u16 | [] → [fb_ref] | Push FB instance reference from variable table |
-| 0xC1 | FB_STORE_PARAM | field: u8 | [value, fb_ref] → [fb_ref] | Store input parameter on FB instance; keeps fb_ref on stack |
-| 0xC2 | FB_LOAD_PARAM | field: u8 | [fb_ref] → [value, fb_ref] | Load output parameter from FB instance; keeps fb_ref on stack |
-| 0xC3 | FB_CALL | type_id: u16 | [fb_ref] → [fb_ref] | Call function block (VM dispatches to intrinsic or bytecode body per ADR-0003); preserves fb_ref for output parameter access |
+| 0x98 | FB_LOAD_INSTANCE | index: u16 | [] → [fb_ref] | Push FB instance reference from variable table |
+| 0x9C | FB_STORE_PARAM | field: u8 | [value, fb_ref] → [fb_ref] | Store input parameter on FB instance; keeps fb_ref on stack |
+| 0xA0 | FB_LOAD_PARAM | field: u8 | [fb_ref] → [value, fb_ref] | Load output parameter from FB instance; keeps fb_ref on stack |
+| 0xA4 | FB_CALL | type_id: u16 | [fb_ref] → [fb_ref] | Call function block (VM dispatches to intrinsic or bytecode body per ADR-0003); preserves fb_ref for output parameter access |
 
 #### Calling Convention
 
@@ -566,7 +566,7 @@ This approach parallels FB_CALL: one opcode handles an extensible family of oper
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xC4 | BUILTIN | func_id: u16 | [args...] → [result] | Call built-in function; stack effect depends on func_id |
+| 0x94 | BUILTIN | func_id: u16 | [args...] → [result] | Call built-in function; stack effect depends on func_id |
 
 #### Built-in Function Table
 
@@ -651,9 +651,9 @@ STRING and WSTRING functions are in separate func_id ranges so the verifier can 
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xD0 | POP | — | [value] → [] | Discard top of stack |
-| 0xD1 | DUP | — | [value] → [value, value] | Duplicate top of stack |
-| 0xD2 | SWAP | — | [a, b] → [b, a] | Swap top two stack values |
+| 0x90 | POP | — | [value] → [] | Discard top of stack |
+| 0x91 | DUP | — | [value] → [value, value] | Duplicate top of stack |
+| 0x92 | SWAP | — | [a, b] → [b, a] | Swap top two stack values |
 
 ---
 
@@ -682,8 +682,8 @@ String variable access uses dedicated opcodes because string assignment has diff
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xE0 | STR_LOAD_VAR | data_offset: u16 | [] → [buf_idx] | Copy STRING from data region into a temp buffer; push temp buf_idx |
-| 0xE1 | STR_STORE_VAR | data_offset: u16 | [buf_idx] → [] | Copy temp buffer contents into STRING variable at data_offset (value-copy assignment) |
+| 0xBC | STR_LOAD_VAR | data_offset: u16 | [] → [buf_idx] | Copy STRING from data region into a temp buffer; push temp buf_idx |
+| 0xC0 | STR_STORE_VAR | data_offset: u16 | [buf_idx] → [] | Copy temp buffer contents into STRING variable at data_offset (value-copy assignment) |
 
 #### WSTRING Variable Access
 
@@ -710,34 +710,77 @@ String functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, 
 
 ## Opcode Summary
 
-| Category | Range | Count | Description |
-|----------|-------|-------|-------------|
-| Load/Store Constants | 0x01–0x0B | 11 | Constant pool loads, boolean literals, string constants, TIME constant |
-| Load/Store Variables | 0x10–0x1D | 12 | Typed variable access (numeric types only) |
-| Process Image | 0x20–0x23 | 4 | I/O and memory access (%I, %Q, %M) |
-| Array Access | 0x24–0x25 | 2 | Bounds-checked array element load/store |
-| Struct/FB Fields | 0x28–0x29 | 2 | Field access on FB references |
-| Integer Arithmetic 32 | 0x30–0x3A | 11 | I32 and U32 arithmetic |
-| Integer Arithmetic 64 | 0x3C–0x46 | 11 | I64 and U64 arithmetic |
-| Float Arithmetic | 0x48–0x51 | 10 | F32 and F64 arithmetic |
-| Boolean | 0x54–0x57 | 4 | Logical AND/OR/XOR/NOT |
-| Bitwise | 0x58–0x67 | 16 | Bitwise ops and shifts, 32 and 64-bit |
-| Comparison | 0x68–0x8B | 36 | Typed comparisons across all VM types |
-| Type Conversion (narrow/widen) | 0x90–0xA3 | 16 | Narrowing, widening, cross-domain |
-| Float-to-Unsigned Conversion | 0xA6–0xA8 | 3 | Float/double to unsigned integer |
-| Reinterpretation | 0xA9–0xAC | 4 | Signed/unsigned bitcast (zero-cost) |
-| TIME Arithmetic | 0xA4–0xA5 | 2 | Type-checked TIME addition and subtraction |
-| Control Flow | 0xB0–0xB8 | 9 | Jumps (near/far), calls, returns |
-| Function Block | 0xC0–0xC3 | 4 | FB instance management and invocation |
-| Built-in Functions | 0xC4 | 1 | BUILTIN dispatch for standard library functions |
-| Reference Operations | 0xC5–0xC7 | 3 | VAR_IN_OUT reference load/deref/store |
-| Stack | 0xD0–0xD2 | 3 | Stack manipulation |
-| STRING Variable Access | 0xE0–0xE1 | 2 | STRING variable load/store |
-| WSTRING Variable Access | 0xE2–0xE3 | 2 | WSTRING variable load/store |
-| Debug | 0xFC–0xFE | 3 | NOP, breakpoint, line info |
-| **Total** | | **171** | |
+The current encoding (post-Wave-8 migration, `FORMAT_VERSION = 2`)
+allocates 61 of 64 op-class slots. Within each op-class, the type tag
+(low 2 bits of the opcode byte) selects either the data-type variant
+or a family-member operation (for the consolidated `BOOL_OP` and
+`STACK_OP` classes).
 
-The opcode budget uses 171 of 256 slots (67%), leaving 85 slots for future extensions (e.g., OOP method dispatch).
+| Op-class | Bytes | Count | Description |
+|----------|-------|-------|-------------|
+| `LOAD_CONST` (0x00) | 0x00–0x03 | 4 | Constant pool loads — type tag selects width (I32/I64/F32/F64) |
+| `LOAD_BOOL` (0x01) | 0x04–0x05 | 2 | Boolean literal — type tag *is* the value (0=FALSE, 1=TRUE) |
+| `LOAD_CONST_STR` (0x02) | 0x08 | 1 | Load STRING literal from the constant pool |
+| `LOAD_VAR` (0x03) | 0x0C–0x0F | 4 | Variable load — type tag selects slot width |
+| `STORE_VAR` (0x04) | 0x10–0x13 | 4 | Variable store — type tag selects slot width |
+| `LOAD_INDIRECT` (0x05) | 0x14 | 1 | Indirect load (dereference reference on stack) |
+| `STORE_INDIRECT` (0x06) | 0x18 | 1 | Indirect store |
+| `TRUNC` (0x07) | 0x1C–0x1F | 4 | Narrow integer (type tag: 0=I8, 1=U8, 2=I16, 3=U16) |
+| `ADD` (0x08) | 0x20–0x23 | 4 | Arithmetic addition |
+| `SUB` (0x09) | 0x24–0x27 | 4 | Arithmetic subtraction |
+| `MUL` (0x0A) | 0x28–0x2B | 4 | Arithmetic multiplication |
+| `NEG` (0x0B) | 0x2C–0x2F | 4 | Arithmetic negation |
+| `DIV_S` (0x0C) | 0x30–0x33 | 4 | Signed integer / float division |
+| `DIV_U` (0x0D) | 0x34–0x35 | 2 | Unsigned integer division (U32/U64 only) |
+| `MOD_S` (0x0E) | 0x38–0x39 | 2 | Signed integer modulo (I32/I64; floats have no MOD) |
+| `MOD_U` (0x0F) | 0x3C–0x3D | 2 | Unsigned integer modulo (U32/U64) |
+| `EQ` (0x10) | 0x40–0x43 | 4 | Equality (sign-blind) |
+| `NE` (0x11) | 0x44–0x47 | 4 | Inequality (sign-blind) |
+| `LT_S` (0x12) | 0x48–0x4B | 4 | Signed less-than (and float) |
+| `LE_S` (0x13) | 0x4C–0x4F | 4 | Signed less-than-or-equal (and float) |
+| `GT_S` (0x14) | 0x50–0x53 | 4 | Signed greater-than (and float) |
+| `GE_S` (0x15) | 0x54–0x57 | 4 | Signed greater-than-or-equal (and float) |
+| `LT_U` (0x16) | 0x58–0x59 | 2 | Unsigned less-than (U32/U64 only) |
+| `LE_U` (0x17) | 0x5C–0x5D | 2 | Unsigned less-than-or-equal |
+| `GT_U` (0x18) | 0x60–0x61 | 2 | Unsigned greater-than |
+| `GE_U` (0x19) | 0x64–0x65 | 2 | Unsigned greater-than-or-equal |
+| `BIT_AND` (0x1A) | 0x68–0x69 | 2 | Bitwise AND (type tag: 0=W32, 1=W64) |
+| `BIT_OR` (0x1B) | 0x6C–0x6D | 2 | Bitwise OR |
+| `BIT_XOR` (0x1C) | 0x70–0x71 | 2 | Bitwise XOR |
+| `BIT_NOT` (0x1D) | 0x74–0x75 | 2 | Bitwise NOT |
+| `BOOL_OP` (0x1E) | 0x78–0x7B | 4 | Boolean ops (type tag: 0=AND, 1=OR, 2=XOR, 3=NOT) |
+| `JMP` (0x1F) | 0x7C | 1 | Unconditional jump (i16 offset operand) |
+| `JMP_IF_NOT` (0x20) | 0x80 | 1 | Jump if top-of-stack is zero |
+| `CALL` (0x21) | 0x84 | 1 | Function call (u16 function id) |
+| `RET` (0x22) | 0x88 | 1 | Return with value |
+| `RET_VOID` (0x23) | 0x8C | 1 | Return without value |
+| `STACK_OP` (0x24) | 0x90–0x92 | 3 | Stack manipulation (type tag: 0=POP, 1=DUP, 2=SWAP) |
+| `BUILTIN` (0x25) | 0x94 | 1 | Built-in standard-library call (u16 builtin id) |
+| `FB_LOAD_INSTANCE` (0x26) | 0x98 | 1 | Push FB instance reference from variable table |
+| `FB_STORE_PARAM` (0x27) | 0x9C | 1 | Store FB input parameter |
+| `FB_LOAD_PARAM` (0x28) | 0xA0 | 1 | Load FB output parameter |
+| `FB_CALL` (0x29) | 0xA4 | 1 | Invoke FB body |
+| `LOAD_ARRAY` (0x2A) | 0xA8 | 1 | Load array element |
+| `STORE_ARRAY` (0x2B) | 0xAC | 1 | Store array element |
+| `LOAD_ARRAY_DEREF` (0x2C) | 0xB0 | 1 | Load array element via reference (double indirection) |
+| `STORE_ARRAY_DEREF` (0x2D) | 0xB4 | 1 | Store array element via reference |
+| `STR_INIT` (0x2E) | 0xB8 | 1 | Initialize STRING variable in data region |
+| `STR_LOAD_VAR` (0x2F) | 0xBC | 1 | Copy STRING variable into temp buffer |
+| `STR_STORE_VAR` (0x30) | 0xC0 | 1 | Copy temp buffer into STRING variable |
+| `LEN_STR` (0x31) | 0xC4 | 1 | Read STRING length |
+| `FIND_STR` (0x32) | 0xC8 | 1 | Find substring position |
+| `REPLACE_STR` (0x33) | 0xCC | 1 | Replace substring |
+| `INSERT_STR` (0x34) | 0xD0 | 1 | Insert substring |
+| `DELETE_STR` (0x35) | 0xD4 | 1 | Delete substring |
+| `LEFT_STR` (0x36) | 0xD8 | 1 | Leftmost N characters |
+| `RIGHT_STR` (0x37) | 0xDC | 1 | Rightmost N characters |
+| `MID_STR` (0x38) | 0xE0 | 1 | Middle substring |
+| `CONCAT_STR` (0x39) | 0xE4 | 1 | Concatenate strings |
+| `STR_INIT_ARRAY` (0x3A) | 0xE8 | 1 | Initialize all string headers in array |
+| `STR_LOAD_ARRAY_ELEM` (0x3B) | 0xEC | 1 | Load string from array element |
+| `STR_STORE_ARRAY_ELEM` (0x3C) | 0xF0 | 1 | Store temp buffer into string array element |
+| _free_ (0x3D–0x3F) | — | 0 | Reserved for future fused superinstructions |
+| **Total** | | **123** | 61 of 64 op-class slots in use |
 
 ## Compilation Examples
 
