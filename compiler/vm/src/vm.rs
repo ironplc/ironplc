@@ -604,6 +604,65 @@ macro_rules! checked_divop {
         $stack.push(Slot::$from_ty($result))?;
     }};
 }
+/// Generates a `#[inline(never)]` handler fn whose body expands the
+/// existing `binop!` macro. Used to outline each arithmetic opcode into
+/// its own function so LLVM can allocate registers per-handler.
+macro_rules! gen_handler_binop {
+    ($name:ident, $as_ty:ident, $from_ty:ident, $a:ident, $b:ident, $expr:expr) => {
+        #[inline(never)]
+        fn $name(stack: &mut OperandStack) -> Result<(), Trap> {
+            binop!(stack, $as_ty, $from_ty, $a, $b, $expr);
+            Ok(())
+        }
+    };
+}
+
+macro_rules! gen_handler_cmpop {
+    ($name:ident, $as_ty:ident, $a:ident, $b:ident, $expr:expr) => {
+        #[inline(never)]
+        fn $name(stack: &mut OperandStack) -> Result<(), Trap> {
+            cmpop!(stack, $as_ty, $a, $b, $expr);
+            Ok(())
+        }
+    };
+}
+
+macro_rules! gen_handler_unaryop {
+    ($name:ident, $as_ty:ident, $from_ty:ident, $a:ident, $expr:expr) => {
+        #[inline(never)]
+        fn $name(stack: &mut OperandStack) -> Result<(), Trap> {
+            unaryop!(stack, $as_ty, $from_ty, $a, $expr);
+            Ok(())
+        }
+    };
+}
+
+macro_rules! gen_handler_checked_divop {
+    ($name:ident, $as_ty:ident, $from_ty:ident, $zero:expr, $a:ident, $b:ident, $expr:expr) => {
+        #[inline(never)]
+        fn $name(stack: &mut OperandStack) -> Result<(), Trap> {
+            checked_divop!(stack, $as_ty, $from_ty, $zero, $a, $b, $expr);
+            Ok(())
+        }
+    };
+}
+
+macro_rules! gen_handler_load_const {
+    ($name:ident, $get:ident, $from:ident) => {
+        #[inline(never)]
+        fn $name(bytecode: &[u8], pc: &mut usize, container: &Container, stack: &mut OperandStack) -> Result<(), Trap> {
+            let index = read_u16_le(bytecode, pc)?;
+            let value = container
+                .constant_pool
+                .$get(ConstantIndex::new(index))
+                .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
+            stack.push(Slot::$from(value))?;
+            Ok(())
+        }
+    };
+}
+
+
 
 /// Load constant from pool: read index, look up, push.
 macro_rules! load_const {
@@ -703,206 +762,113 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
         match op {
             // --- Load constants ---
-            opcode::LOAD_CONST_I32 => {
-                load_const!(bytecode, pc, container, stack, get_i32, from_i32)
-            }
-            opcode::LOAD_CONST_I64 => {
-                load_const!(bytecode, pc, container, stack, get_i64, from_i64)
-            }
-            opcode::LOAD_CONST_F32 => {
-                load_const!(bytecode, pc, container, stack, get_f32, from_f32)
-            }
-            opcode::LOAD_CONST_F64 => {
-                load_const!(bytecode, pc, container, stack, get_f64, from_f64)
-            }
-            opcode::LOAD_TRUE => {
-                stack.push(Slot::from_i32(1))?;
-            }
-            opcode::LOAD_FALSE => {
-                stack.push(Slot::from_i32(0))?;
-            }
+            opcode::LOAD_CONST_I32 => op_load_const_i32(bytecode, &mut pc, container, stack)?,
+            opcode::LOAD_CONST_I64 => op_load_const_i64(bytecode, &mut pc, container, stack)?,
+            opcode::LOAD_CONST_F32 => op_load_const_f32(bytecode, &mut pc, container, stack)?,
+            opcode::LOAD_CONST_F64 => op_load_const_f64(bytecode, &mut pc, container, stack)?,
+            opcode::LOAD_TRUE => op_load_true(stack)?,
+            opcode::LOAD_FALSE => op_load_false(stack)?,
             // --- Load/store variables (type-erased slots) ---
             opcode::LOAD_VAR_I32
             | opcode::LOAD_VAR_I64
             | opcode::LOAD_VAR_F32
-            | opcode::LOAD_VAR_F64 => {
-                let index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
-                scope.check_access(index)?;
-                let slot = variables.load(index)?;
-                stack.push(slot)?;
-            }
+            | opcode::LOAD_VAR_F64 => op_load_var(bytecode, &mut pc, scope, variables, stack)?,
             opcode::STORE_VAR_I32
             | opcode::STORE_VAR_I64
             | opcode::STORE_VAR_F32
-            | opcode::STORE_VAR_F64 => {
-                let index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
-                scope.check_access(index)?;
-                let slot = stack.pop()?;
-                variables.store(index, slot)?;
-            }
+            | opcode::STORE_VAR_F64 => op_store_var(bytecode, &mut pc, scope, variables, stack)?,
             // --- Indirect load/store (reference dereference) ---
-            opcode::LOAD_INDIRECT => {
-                let ref_slot = stack.pop()?;
-                if ref_slot.is_null_ref() {
-                    return Err(Trap::NullDereference);
-                }
-                let target_index = ref_slot
-                    .as_var_index()
-                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
-                scope.check_access(target_index)?;
-                let value = variables.load(target_index)?;
-                stack.push(value)?;
-            }
-            opcode::STORE_INDIRECT => {
-                let ref_slot = stack.pop()?;
-                if ref_slot.is_null_ref() {
-                    return Err(Trap::NullDereference);
-                }
-                let target_index = ref_slot
-                    .as_var_index()
-                    .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
-                scope.check_access(target_index)?;
-                let value = stack.pop()?;
-                variables.store(target_index, value)?;
-            }
+            opcode::LOAD_INDIRECT => op_load_indirect(scope, variables, stack)?,
+            opcode::STORE_INDIRECT => op_store_indirect(scope, variables, stack)?,
             // --- Integer arithmetic (wrapping) ---
-            opcode::ADD_I32 => binop!(stack, as_i32, from_i32, a, b, a.wrapping_add(b)),
-            opcode::SUB_I32 => binop!(stack, as_i32, from_i32, a, b, a.wrapping_sub(b)),
-            opcode::MUL_I32 => binop!(stack, as_i32, from_i32, a, b, a.wrapping_mul(b)),
-            opcode::ADD_I64 => binop!(stack, as_i64, from_i64, a, b, a.wrapping_add(b)),
-            opcode::SUB_I64 => binop!(stack, as_i64, from_i64, a, b, a.wrapping_sub(b)),
-            opcode::MUL_I64 => binop!(stack, as_i64, from_i64, a, b, a.wrapping_mul(b)),
+            opcode::ADD_I32 => op_add_i32(stack)?,
+            opcode::SUB_I32 => op_sub_i32(stack)?,
+            opcode::MUL_I32 => op_mul_i32(stack)?,
+            opcode::ADD_I64 => op_add_i64(stack)?,
+            opcode::SUB_I64 => op_sub_i64(stack)?,
+            opcode::MUL_I64 => op_mul_i64(stack)?,
             // --- Integer division (checked for zero) ---
-            opcode::DIV_I32 => {
-                checked_divop!(stack, as_i32, from_i32, 0i32, a, b, a.wrapping_div(b))
-            }
-            opcode::MOD_I32 => {
-                checked_divop!(stack, as_i32, from_i32, 0i32, a, b, a.wrapping_rem(b))
-            }
-            opcode::DIV_I64 => {
-                checked_divop!(stack, as_i64, from_i64, 0i64, a, b, a.wrapping_div(b))
-            }
-            opcode::MOD_I64 => {
-                checked_divop!(stack, as_i64, from_i64, 0i64, a, b, a.wrapping_rem(b))
-            }
+            opcode::DIV_I32 => op_div_i32(stack)?,
+            opcode::MOD_I32 => op_mod_i32(stack)?,
+            opcode::DIV_I64 => op_div_i64(stack)?,
+            opcode::MOD_I64 => op_mod_i64(stack)?,
             // --- Unsigned integer division (checked for zero) ---
-            opcode::DIV_U32 => checked_divop!(
-                stack,
-                as_i32,
-                from_i32,
-                0i32,
-                a,
-                b,
-                ((a as u32) / (b as u32)) as i32
-            ),
-            opcode::MOD_U32 => checked_divop!(
-                stack,
-                as_i32,
-                from_i32,
-                0i32,
-                a,
-                b,
-                ((a as u32) % (b as u32)) as i32
-            ),
-            opcode::DIV_U64 => checked_divop!(
-                stack,
-                as_i64,
-                from_i64,
-                0i64,
-                a,
-                b,
-                ((a as u64) / (b as u64)) as i64
-            ),
-            opcode::MOD_U64 => checked_divop!(
-                stack,
-                as_i64,
-                from_i64,
-                0i64,
-                a,
-                b,
-                ((a as u64) % (b as u64)) as i64
-            ),
+            opcode::DIV_U32 => op_div_u32(stack)?,
+            opcode::MOD_U32 => op_mod_u32(stack)?,
+            opcode::DIV_U64 => op_div_u64(stack)?,
+            opcode::MOD_U64 => op_mod_u64(stack)?,
             // --- Float arithmetic ---
-            opcode::ADD_F32 => binop!(stack, as_f32, from_f32, a, b, a + b),
-            opcode::SUB_F32 => binop!(stack, as_f32, from_f32, a, b, a - b),
-            opcode::MUL_F32 => binop!(stack, as_f32, from_f32, a, b, a * b),
-            opcode::DIV_F32 => binop!(stack, as_f32, from_f32, a, b, a / b),
-            opcode::ADD_F64 => binop!(stack, as_f64, from_f64, a, b, a + b),
-            opcode::SUB_F64 => binop!(stack, as_f64, from_f64, a, b, a - b),
-            opcode::MUL_F64 => binop!(stack, as_f64, from_f64, a, b, a * b),
-            opcode::DIV_F64 => binop!(stack, as_f64, from_f64, a, b, a / b),
+            opcode::ADD_F32 => op_add_f32(stack)?,
+            opcode::SUB_F32 => op_sub_f32(stack)?,
+            opcode::MUL_F32 => op_mul_f32(stack)?,
+            opcode::DIV_F32 => op_div_f32(stack)?,
+            opcode::ADD_F64 => op_add_f64(stack)?,
+            opcode::SUB_F64 => op_sub_f64(stack)?,
+            opcode::MUL_F64 => op_mul_f64(stack)?,
+            opcode::DIV_F64 => op_div_f64(stack)?,
             // --- Negation ---
-            opcode::NEG_I32 => unaryop!(stack, as_i32, from_i32, a, a.wrapping_neg()),
-            opcode::NEG_I64 => unaryop!(stack, as_i64, from_i64, a, a.wrapping_neg()),
-            opcode::NEG_F32 => unaryop!(stack, as_f32, from_f32, a, -a),
-            opcode::NEG_F64 => unaryop!(stack, as_f64, from_f64, a, -a),
+            opcode::NEG_I32 => op_neg_i32(stack)?,
+            opcode::NEG_I64 => op_neg_i64(stack)?,
+            opcode::NEG_F32 => op_neg_f32(stack)?,
+            opcode::NEG_F64 => op_neg_f64(stack)?,
             // --- Truncation ---
-            opcode::TRUNC_I8 => unaryop!(stack, as_i32, from_i32, a, (a as i8) as i32),
-            opcode::TRUNC_U8 => unaryop!(stack, as_i32, from_i32, a, (a as u8) as i32),
-            opcode::TRUNC_I16 => unaryop!(stack, as_i32, from_i32, a, (a as i16) as i32),
-            opcode::TRUNC_U16 => unaryop!(stack, as_i32, from_i32, a, (a as u16) as i32),
+            opcode::TRUNC_I8 => op_trunc_i8(stack)?,
+            opcode::TRUNC_U8 => op_trunc_u8(stack)?,
+            opcode::TRUNC_I16 => op_trunc_i16(stack)?,
+            opcode::TRUNC_U16 => op_trunc_u16(stack)?,
             // --- Signed comparison ---
-            opcode::EQ_I32 => cmpop!(stack, as_i32, a, b, a == b),
-            opcode::NE_I32 => cmpop!(stack, as_i32, a, b, a != b),
-            opcode::LT_I32 => cmpop!(stack, as_i32, a, b, a < b),
-            opcode::LE_I32 => cmpop!(stack, as_i32, a, b, a <= b),
-            opcode::GT_I32 => cmpop!(stack, as_i32, a, b, a > b),
-            opcode::GE_I32 => cmpop!(stack, as_i32, a, b, a >= b),
-            opcode::EQ_I64 => cmpop!(stack, as_i64, a, b, a == b),
-            opcode::NE_I64 => cmpop!(stack, as_i64, a, b, a != b),
-            opcode::LT_I64 => cmpop!(stack, as_i64, a, b, a < b),
-            opcode::LE_I64 => cmpop!(stack, as_i64, a, b, a <= b),
-            opcode::GT_I64 => cmpop!(stack, as_i64, a, b, a > b),
-            opcode::GE_I64 => cmpop!(stack, as_i64, a, b, a >= b),
+            opcode::EQ_I32 => op_eq_i32(stack)?,
+            opcode::NE_I32 => op_ne_i32(stack)?,
+            opcode::LT_I32 => op_lt_i32(stack)?,
+            opcode::LE_I32 => op_le_i32(stack)?,
+            opcode::GT_I32 => op_gt_i32(stack)?,
+            opcode::GE_I32 => op_ge_i32(stack)?,
+            opcode::EQ_I64 => op_eq_i64(stack)?,
+            opcode::NE_I64 => op_ne_i64(stack)?,
+            opcode::LT_I64 => op_lt_i64(stack)?,
+            opcode::LE_I64 => op_le_i64(stack)?,
+            opcode::GT_I64 => op_gt_i64(stack)?,
+            opcode::GE_I64 => op_ge_i64(stack)?,
             // --- Unsigned comparison ---
-            opcode::LT_U32 => cmpop!(stack, as_i32, a, b, (a as u32) < (b as u32)),
-            opcode::LE_U32 => cmpop!(stack, as_i32, a, b, (a as u32) <= (b as u32)),
-            opcode::GT_U32 => cmpop!(stack, as_i32, a, b, (a as u32) > (b as u32)),
-            opcode::GE_U32 => cmpop!(stack, as_i32, a, b, (a as u32) >= (b as u32)),
-            opcode::LT_U64 => cmpop!(stack, as_i64, a, b, (a as u64) < (b as u64)),
-            opcode::LE_U64 => cmpop!(stack, as_i64, a, b, (a as u64) <= (b as u64)),
-            opcode::GT_U64 => cmpop!(stack, as_i64, a, b, (a as u64) > (b as u64)),
-            opcode::GE_U64 => cmpop!(stack, as_i64, a, b, (a as u64) >= (b as u64)),
+            opcode::LT_U32 => op_lt_u32(stack)?,
+            opcode::LE_U32 => op_le_u32(stack)?,
+            opcode::GT_U32 => op_gt_u32(stack)?,
+            opcode::GE_U32 => op_ge_u32(stack)?,
+            opcode::LT_U64 => op_lt_u64(stack)?,
+            opcode::LE_U64 => op_le_u64(stack)?,
+            opcode::GT_U64 => op_gt_u64(stack)?,
+            opcode::GE_U64 => op_ge_u64(stack)?,
             // --- Float comparison ---
-            opcode::EQ_F32 => cmpop!(stack, as_f32, a, b, a == b),
-            opcode::NE_F32 => cmpop!(stack, as_f32, a, b, a != b),
-            opcode::LT_F32 => cmpop!(stack, as_f32, a, b, a < b),
-            opcode::LE_F32 => cmpop!(stack, as_f32, a, b, a <= b),
-            opcode::GT_F32 => cmpop!(stack, as_f32, a, b, a > b),
-            opcode::GE_F32 => cmpop!(stack, as_f32, a, b, a >= b),
-            opcode::EQ_F64 => cmpop!(stack, as_f64, a, b, a == b),
-            opcode::NE_F64 => cmpop!(stack, as_f64, a, b, a != b),
-            opcode::LT_F64 => cmpop!(stack, as_f64, a, b, a < b),
-            opcode::LE_F64 => cmpop!(stack, as_f64, a, b, a <= b),
-            opcode::GT_F64 => cmpop!(stack, as_f64, a, b, a > b),
-            opcode::GE_F64 => cmpop!(stack, as_f64, a, b, a >= b),
+            opcode::EQ_F32 => op_eq_f32(stack)?,
+            opcode::NE_F32 => op_ne_f32(stack)?,
+            opcode::LT_F32 => op_lt_f32(stack)?,
+            opcode::LE_F32 => op_le_f32(stack)?,
+            opcode::GT_F32 => op_gt_f32(stack)?,
+            opcode::GE_F32 => op_ge_f32(stack)?,
+            opcode::EQ_F64 => op_eq_f64(stack)?,
+            opcode::NE_F64 => op_ne_f64(stack)?,
+            opcode::LT_F64 => op_lt_f64(stack)?,
+            opcode::LE_F64 => op_le_f64(stack)?,
+            opcode::GT_F64 => op_gt_f64(stack)?,
+            opcode::GE_F64 => op_ge_f64(stack)?,
             // --- Boolean logic ---
-            opcode::BOOL_AND => cmpop!(stack, as_i32, a, b, (a != 0) && (b != 0)),
-            opcode::BOOL_OR => cmpop!(stack, as_i32, a, b, (a != 0) || (b != 0)),
-            opcode::BOOL_XOR => cmpop!(stack, as_i32, a, b, (a != 0) != (b != 0)),
-            opcode::BOOL_NOT => unaryop!(stack, as_i32, from_i32, a, if a == 0 { 1 } else { 0 }),
+            opcode::BOOL_AND => op_bool_and(stack)?,
+            opcode::BOOL_OR => op_bool_or(stack)?,
+            opcode::BOOL_XOR => op_bool_xor(stack)?,
+            opcode::BOOL_NOT => op_bool_not(stack)?,
             // --- Bitwise (32-bit) ---
-            opcode::BIT_AND_32 => binop!(stack, as_i32, from_i32, a, b, a & b),
-            opcode::BIT_OR_32 => binop!(stack, as_i32, from_i32, a, b, a | b),
-            opcode::BIT_XOR_32 => binop!(stack, as_i32, from_i32, a, b, a ^ b),
-            opcode::BIT_NOT_32 => unaryop!(stack, as_i32, from_i32, a, !a),
+            opcode::BIT_AND_32 => op_bit_and_32(stack)?,
+            opcode::BIT_OR_32 => op_bit_or_32(stack)?,
+            opcode::BIT_XOR_32 => op_bit_xor_32(stack)?,
+            opcode::BIT_NOT_32 => op_bit_not_32(stack)?,
             // --- Bitwise (64-bit) ---
-            opcode::BIT_AND_64 => binop!(stack, as_i64, from_i64, a, b, a & b),
-            opcode::BIT_OR_64 => binop!(stack, as_i64, from_i64, a, b, a | b),
-            opcode::BIT_XOR_64 => binop!(stack, as_i64, from_i64, a, b, a ^ b),
-            opcode::BIT_NOT_64 => unaryop!(stack, as_i64, from_i64, a, !a),
+            opcode::BIT_AND_64 => op_bit_and_64(stack)?,
+            opcode::BIT_OR_64 => op_bit_or_64(stack)?,
+            opcode::BIT_XOR_64 => op_bit_xor_64(stack)?,
+            opcode::BIT_NOT_64 => op_bit_not_64(stack)?,
             // --- Control flow ---
-            opcode::JMP => {
-                let offset = read_i16_le(bytecode, &mut pc)?;
-                pc = (pc as isize + offset as isize) as usize;
-            }
-            opcode::JMP_IF_NOT => {
-                let offset = read_i16_le(bytecode, &mut pc)?;
-                let cond = stack.pop()?.as_i32();
-                if cond == 0 {
-                    pc = (pc as isize + offset as isize) as usize;
-                }
-            }
+            opcode::JMP => op_jmp(bytecode, &mut pc)?,
+            opcode::JMP_IF_NOT => op_jmp_if_not(bytecode, &mut pc, stack)?,
             opcode::CMP_BR_I32 | opcode::CMP_BR_I64 => {
                 let cmp_op_byte = read_u8(bytecode, &mut pc)?;
                 let var_idx = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
@@ -1748,15 +1714,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .copy_from_slice(&(copy_len as u16).to_le_bytes());
             }
 
-            opcode::POP => {
-                stack.pop()?;
-            }
-            opcode::DUP => {
-                stack.dup()?;
-            }
-            opcode::SWAP => {
-                stack.swap()?;
-            }
+            opcode::POP => op_pop(stack)?,
+            opcode::DUP => op_dup(stack)?,
+            opcode::SWAP => op_swap(stack)?,
             // --- Function block opcodes ---
             opcode::FB_LOAD_INSTANCE => {
                 let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
@@ -2171,6 +2131,219 @@ fn read_i16_le(bytecode: &[u8], pc: &mut usize) -> Result<i16, Trap> {
     *pc = end;
     Ok(value)
 }
+
+
+
+// ============================================================================
+// Per-opcode handler functions (extracted from `execute_with_hook` match).
+// Each marked `#[inline(never)]` so LLVM allocates registers per-handler
+// instead of one giant function. See specs/plans/ for the experiment plan.
+// ============================================================================
+
+// --- Load constants (typed primitives) ---
+gen_handler_load_const!(op_load_const_i32, get_i32, from_i32);
+gen_handler_load_const!(op_load_const_i64, get_i64, from_i64);
+gen_handler_load_const!(op_load_const_f32, get_f32, from_f32);
+gen_handler_load_const!(op_load_const_f64, get_f64, from_f64);
+
+#[inline(never)]
+fn op_load_true(stack: &mut OperandStack) -> Result<(), Trap> {
+    stack.push(Slot::from_i32(1))
+}
+
+#[inline(never)]
+fn op_load_false(stack: &mut OperandStack) -> Result<(), Trap> {
+    stack.push(Slot::from_i32(0))
+}
+
+// --- Variable access ---
+#[inline(never)]
+fn op_load_var(
+    bytecode: &[u8],
+    pc: &mut usize,
+    scope: &VariableScope,
+    variables: &VariableTable,
+    stack: &mut OperandStack,
+) -> Result<(), Trap> {
+    let index = VarIndex::new(read_u16_le(bytecode, pc)?);
+    scope.check_access(index)?;
+    let slot = variables.load(index)?;
+    stack.push(slot)
+}
+
+#[inline(never)]
+fn op_store_var(
+    bytecode: &[u8],
+    pc: &mut usize,
+    scope: &VariableScope,
+    variables: &mut VariableTable,
+    stack: &mut OperandStack,
+) -> Result<(), Trap> {
+    let index = VarIndex::new(read_u16_le(bytecode, pc)?);
+    scope.check_access(index)?;
+    let slot = stack.pop()?;
+    variables.store(index, slot)
+}
+
+#[inline(never)]
+fn op_load_indirect(
+    scope: &VariableScope,
+    variables: &VariableTable,
+    stack: &mut OperandStack,
+) -> Result<(), Trap> {
+    let ref_slot = stack.pop()?;
+    if ref_slot.is_null_ref() {
+        return Err(Trap::NullDereference);
+    }
+    let target_index = ref_slot
+        .as_var_index()
+        .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
+    scope.check_access(target_index)?;
+    let value = variables.load(target_index)?;
+    stack.push(value)
+}
+
+#[inline(never)]
+fn op_store_indirect(
+    scope: &VariableScope,
+    variables: &mut VariableTable,
+    stack: &mut OperandStack,
+) -> Result<(), Trap> {
+    let ref_slot = stack.pop()?;
+    if ref_slot.is_null_ref() {
+        return Err(Trap::NullDereference);
+    }
+    let target_index = ref_slot
+        .as_var_index()
+        .ok_or(Trap::InvalidVariableIndex(VarIndex::new(u16::MAX)))?;
+    scope.check_access(target_index)?;
+    let value = stack.pop()?;
+    variables.store(target_index, value)
+}
+
+// --- Integer arithmetic ---
+gen_handler_binop!(op_add_i32, as_i32, from_i32, a, b, a.wrapping_add(b));
+gen_handler_binop!(op_sub_i32, as_i32, from_i32, a, b, a.wrapping_sub(b));
+gen_handler_binop!(op_mul_i32, as_i32, from_i32, a, b, a.wrapping_mul(b));
+gen_handler_binop!(op_add_i64, as_i64, from_i64, a, b, a.wrapping_add(b));
+gen_handler_binop!(op_sub_i64, as_i64, from_i64, a, b, a.wrapping_sub(b));
+gen_handler_binop!(op_mul_i64, as_i64, from_i64, a, b, a.wrapping_mul(b));
+
+// --- Integer division ---
+gen_handler_checked_divop!(op_div_i32, as_i32, from_i32, 0i32, a, b, a.wrapping_div(b));
+gen_handler_checked_divop!(op_mod_i32, as_i32, from_i32, 0i32, a, b, a.wrapping_rem(b));
+gen_handler_checked_divop!(op_div_i64, as_i64, from_i64, 0i64, a, b, a.wrapping_div(b));
+gen_handler_checked_divop!(op_mod_i64, as_i64, from_i64, 0i64, a, b, a.wrapping_rem(b));
+gen_handler_checked_divop!(op_div_u32, as_i32, from_i32, 0i32, a, b, ((a as u32) / (b as u32)) as i32);
+gen_handler_checked_divop!(op_mod_u32, as_i32, from_i32, 0i32, a, b, ((a as u32) % (b as u32)) as i32);
+gen_handler_checked_divop!(op_div_u64, as_i64, from_i64, 0i64, a, b, ((a as u64) / (b as u64)) as i64);
+gen_handler_checked_divop!(op_mod_u64, as_i64, from_i64, 0i64, a, b, ((a as u64) % (b as u64)) as i64);
+
+// --- Float arithmetic ---
+gen_handler_binop!(op_add_f32, as_f32, from_f32, a, b, a + b);
+gen_handler_binop!(op_sub_f32, as_f32, from_f32, a, b, a - b);
+gen_handler_binop!(op_mul_f32, as_f32, from_f32, a, b, a * b);
+gen_handler_binop!(op_div_f32, as_f32, from_f32, a, b, a / b);
+gen_handler_binop!(op_add_f64, as_f64, from_f64, a, b, a + b);
+gen_handler_binop!(op_sub_f64, as_f64, from_f64, a, b, a - b);
+gen_handler_binop!(op_mul_f64, as_f64, from_f64, a, b, a * b);
+gen_handler_binop!(op_div_f64, as_f64, from_f64, a, b, a / b);
+
+// --- Negation ---
+gen_handler_unaryop!(op_neg_i32, as_i32, from_i32, a, a.wrapping_neg());
+gen_handler_unaryop!(op_neg_i64, as_i64, from_i64, a, a.wrapping_neg());
+gen_handler_unaryop!(op_neg_f32, as_f32, from_f32, a, -a);
+gen_handler_unaryop!(op_neg_f64, as_f64, from_f64, a, -a);
+
+// --- Truncation ---
+gen_handler_unaryop!(op_trunc_i8, as_i32, from_i32, a, (a as i8) as i32);
+gen_handler_unaryop!(op_trunc_u8, as_i32, from_i32, a, (a as u8) as i32);
+gen_handler_unaryop!(op_trunc_i16, as_i32, from_i32, a, (a as i16) as i32);
+gen_handler_unaryop!(op_trunc_u16, as_i32, from_i32, a, (a as u16) as i32);
+
+// --- Comparison ---
+gen_handler_cmpop!(op_eq_i32, as_i32, a, b, a == b);
+gen_handler_cmpop!(op_ne_i32, as_i32, a, b, a != b);
+gen_handler_cmpop!(op_lt_i32, as_i32, a, b, a < b);
+gen_handler_cmpop!(op_le_i32, as_i32, a, b, a <= b);
+gen_handler_cmpop!(op_gt_i32, as_i32, a, b, a > b);
+gen_handler_cmpop!(op_ge_i32, as_i32, a, b, a >= b);
+gen_handler_cmpop!(op_eq_i64, as_i64, a, b, a == b);
+gen_handler_cmpop!(op_ne_i64, as_i64, a, b, a != b);
+gen_handler_cmpop!(op_lt_i64, as_i64, a, b, a < b);
+gen_handler_cmpop!(op_le_i64, as_i64, a, b, a <= b);
+gen_handler_cmpop!(op_gt_i64, as_i64, a, b, a > b);
+gen_handler_cmpop!(op_ge_i64, as_i64, a, b, a >= b);
+gen_handler_cmpop!(op_lt_u32, as_i32, a, b, (a as u32) < (b as u32));
+gen_handler_cmpop!(op_le_u32, as_i32, a, b, (a as u32) <= (b as u32));
+gen_handler_cmpop!(op_gt_u32, as_i32, a, b, (a as u32) > (b as u32));
+gen_handler_cmpop!(op_ge_u32, as_i32, a, b, (a as u32) >= (b as u32));
+gen_handler_cmpop!(op_lt_u64, as_i64, a, b, (a as u64) < (b as u64));
+gen_handler_cmpop!(op_le_u64, as_i64, a, b, (a as u64) <= (b as u64));
+gen_handler_cmpop!(op_gt_u64, as_i64, a, b, (a as u64) > (b as u64));
+gen_handler_cmpop!(op_ge_u64, as_i64, a, b, (a as u64) >= (b as u64));
+gen_handler_cmpop!(op_eq_f32, as_f32, a, b, a == b);
+gen_handler_cmpop!(op_ne_f32, as_f32, a, b, a != b);
+gen_handler_cmpop!(op_lt_f32, as_f32, a, b, a < b);
+gen_handler_cmpop!(op_le_f32, as_f32, a, b, a <= b);
+gen_handler_cmpop!(op_gt_f32, as_f32, a, b, a > b);
+gen_handler_cmpop!(op_ge_f32, as_f32, a, b, a >= b);
+gen_handler_cmpop!(op_eq_f64, as_f64, a, b, a == b);
+gen_handler_cmpop!(op_ne_f64, as_f64, a, b, a != b);
+gen_handler_cmpop!(op_lt_f64, as_f64, a, b, a < b);
+gen_handler_cmpop!(op_le_f64, as_f64, a, b, a <= b);
+gen_handler_cmpop!(op_gt_f64, as_f64, a, b, a > b);
+gen_handler_cmpop!(op_ge_f64, as_f64, a, b, a >= b);
+
+// --- Boolean / bitwise ---
+gen_handler_cmpop!(op_bool_and, as_i32, a, b, (a != 0) && (b != 0));
+gen_handler_cmpop!(op_bool_or, as_i32, a, b, (a != 0) || (b != 0));
+gen_handler_cmpop!(op_bool_xor, as_i32, a, b, (a != 0) != (b != 0));
+gen_handler_unaryop!(op_bool_not, as_i32, from_i32, a, if a == 0 { 1 } else { 0 });
+gen_handler_binop!(op_bit_and_32, as_i32, from_i32, a, b, a & b);
+gen_handler_binop!(op_bit_or_32, as_i32, from_i32, a, b, a | b);
+gen_handler_binop!(op_bit_xor_32, as_i32, from_i32, a, b, a ^ b);
+gen_handler_unaryop!(op_bit_not_32, as_i32, from_i32, a, !a);
+gen_handler_binop!(op_bit_and_64, as_i64, from_i64, a, b, a & b);
+gen_handler_binop!(op_bit_or_64, as_i64, from_i64, a, b, a | b);
+gen_handler_binop!(op_bit_xor_64, as_i64, from_i64, a, b, a ^ b);
+gen_handler_unaryop!(op_bit_not_64, as_i64, from_i64, a, !a);
+
+// --- Control flow ---
+#[inline(never)]
+fn op_jmp(bytecode: &[u8], pc: &mut usize) -> Result<(), Trap> {
+    let offset = read_i16_le(bytecode, pc)?;
+    *pc = (*pc as isize + offset as isize) as usize;
+    Ok(())
+}
+
+#[inline(never)]
+fn op_jmp_if_not(bytecode: &[u8], pc: &mut usize, stack: &mut OperandStack) -> Result<(), Trap> {
+    let offset = read_i16_le(bytecode, pc)?;
+    let cond = stack.pop()?.as_i32();
+    if cond == 0 {
+        *pc = (*pc as isize + offset as isize) as usize;
+    }
+    Ok(())
+}
+
+// --- Stack manipulation ---
+#[inline(never)]
+fn op_pop(stack: &mut OperandStack) -> Result<(), Trap> {
+    stack.pop()?;
+    Ok(())
+}
+
+#[inline(never)]
+fn op_dup(stack: &mut OperandStack) -> Result<(), Trap> {
+    stack.dup()
+}
+
+#[inline(never)]
+fn op_swap(stack: &mut OperandStack) -> Result<(), Trap> {
+    stack.swap()
+}
+
 
 /// A small stack-allocated buffer for formatting numbers as strings.
 ///
