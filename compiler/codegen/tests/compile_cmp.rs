@@ -46,7 +46,7 @@ END_PROGRAM
         bytecode,
         &[
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
             0x40, // EQ_I32
@@ -78,7 +78,7 @@ END_PROGRAM
         bytecode,
         &[
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
             0x44, // NE_I32
@@ -110,7 +110,7 @@ END_PROGRAM
         bytecode,
         &[
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
             0x48, // LT_I32
@@ -142,7 +142,7 @@ END_PROGRAM
         bytecode,
         &[
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
             0x4C, // LE_I32
@@ -174,7 +174,7 @@ END_PROGRAM
         bytecode,
         &[
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
             0x50, // GT_I32
@@ -206,7 +206,7 @@ END_PROGRAM
         bytecode,
         &[
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
             0x54, // GE_I32

@@ -11,7 +11,7 @@ fn execute_when_abs_i32_min_then_wraps() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (i32::MIN)
-        0xC4, 0x43, 0x03,  // BUILTIN ABS_I32
+        0x94, 0x43, 0x03,  // BUILTIN ABS_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0x8C,              // RET_VOID
     ];
