@@ -16,7 +16,7 @@ fn execute_when_sub_i32_wraps_at_min_then_correct() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
         0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(
         common::run_and_read_i32(&bytecode, 1, &[i32::MIN, 1]),
@@ -33,7 +33,7 @@ fn execute_when_sub_i32_wraps_at_max_then_correct() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-1)
         0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(
         common::run_and_read_i32(&bytecode, 1, &[i32::MAX, -1]),
@@ -50,7 +50,7 @@ fn execute_when_sub_i32_min_minus_max_then_wraps_to_one() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MAX)
         0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(
         common::run_and_read_i32(&bytecode, 1, &[i32::MIN, i32::MAX]),
@@ -67,7 +67,7 @@ fn execute_when_sub_i32_max_minus_min_then_wraps_to_neg_one() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MIN)
         0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(
         common::run_and_read_i32(&bytecode, 1, &[i32::MAX, i32::MIN]),
@@ -84,7 +84,7 @@ fn execute_when_sub_i32_zero_minus_min_then_wraps() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (i32::MIN)
         0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(
         common::run_and_read_i32(&bytecode, 1, &[0, i32::MIN]),

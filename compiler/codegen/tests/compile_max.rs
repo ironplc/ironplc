@@ -51,7 +51,7 @@ END_PROGRAM
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
             0xC4, 0x45, 0x03, // BUILTIN MAX_I32
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }

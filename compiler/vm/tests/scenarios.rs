@@ -28,13 +28,13 @@ fn counter_container() -> ironplc_container::Container {
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
         0x20,              // ADD_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
-        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(0), &[0x8C], 0, 1, 0) // init: RET_VOID
         .add_function(ironplc_container::FunctionId::new(1), &bytecode, 2, 1, 0) // scan: counter
         .init_function_id(ironplc_container::FunctionId::new(0))
         .entry_function_id(ironplc_container::FunctionId::new(1))
@@ -90,7 +90,7 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (1)
         0x20,              // ADD_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     // Function 1: always faults
@@ -99,7 +99,7 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(1)
-        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(0), &[0x8C], 0, 1, 0) // init: RET_VOID
         .add_function(
             ironplc_container::FunctionId::new(1),
             &counter_bytecode,
@@ -147,7 +147,7 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(42)
-        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(0), &[0x8C], 0, 1, 0) // init: RET_VOID
         .add_function(ironplc_container::FunctionId::new(1), &bytecode, 1, 1, 0) // scan: stores then faults
         .init_function_id(ironplc_container::FunctionId::new(0))
         .entry_function_id(ironplc_container::FunctionId::new(1))
@@ -217,20 +217,20 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
     let fn0_bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (10)
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     #[rustfmt::skip]
     let fn1_bytecode: Vec<u8> = vec![
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (20)
         0x10, 0x02, 0x00,  // STORE_VAR_I32 var[2]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     let c = ContainerBuilder::new()
         .num_variables(4)
         .add_i32_constant(10)
         .add_i32_constant(20)
-        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 0, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(0), &[0x8C], 0, 0, 0) // init: RET_VOID
         .add_function(
             ironplc_container::FunctionId::new(1),
             &fn0_bytecode,
@@ -274,21 +274,21 @@ fn scenario_when_tasks_share_global_then_communication_works() {
     let fn0_bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (99)
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     // Function 1: copy var[0] to var[2]
     #[rustfmt::skip]
     let fn1_bytecode: Vec<u8> = vec![
         0x0C, 0x00, 0x00,  // LOAD_VAR_I32 var[0]   (global)
         0x10, 0x02, 0x00,  // STORE_VAR_I32 var[2]  (private)
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     let c = ContainerBuilder::new()
         .num_variables(4)
         .shared_globals_size(1)
         .add_i32_constant(99)
-        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 0, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(0), &[0x8C], 0, 0, 0) // init: RET_VOID
         .add_function(
             ironplc_container::FunctionId::new(1),
             &fn0_bytecode,
@@ -330,22 +330,22 @@ fn scenario_when_watchdog_exceeded_then_trap() {
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0)
         0x50,                   // GT_I32
-        0xB2, 0x0D, 0x00,       // JMP_IF_NOT +13 -> END (offset 23)
+        0x80, 0x0D, 0x00,       // JMP_IF_NOT +13 -> END (offset 23)
         // body:
         0x0C, 0x00, 0x00,       // LOAD_VAR_I32 var[0]
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (1)
         0x24,                   // SUB_I32
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
-        0xB0, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
+        0x7C, 0xE9, 0xFF,       // JMP -23 -> LOOP (offset 0)
         // END (offset 23):
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
 
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(0)
         .add_i32_constant(1)
-        .add_function(FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0) // init: RET_VOID
         .add_function(FunctionId::new(1), &bytecode, 2, 1, 0) // scan: busy loop
         .add_task(freewheeling_task(0, 0, 1)) // watchdog_us = 1 (1µs)
         .add_program_instance(program_instance(0, 0, 1, 0, 1))
@@ -368,13 +368,13 @@ fn scenario_when_watchdog_disabled_then_no_trap() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
 
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_i32_constant(42)
-        .add_function(FunctionId::new(0), &[0xB5], 0, 1, 0) // init: RET_VOID
+        .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0) // init: RET_VOID
         .add_function(FunctionId::new(1), &bytecode, 1, 1, 0) // scan
         .add_task(freewheeling_task(0, 0, 0)) // watchdog_us = 0 (disabled)
         .add_program_instance(program_instance(0, 0, 1, 0, 1))
@@ -402,7 +402,7 @@ fn scenario_when_scope_violation_then_trap() {
 
     let c = ContainerBuilder::new()
         .num_variables(4)
-        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 0, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(0), &[0x8C], 0, 0, 0) // init: RET_VOID
         .add_function(ironplc_container::FunctionId::new(1), &bytecode, 1, 2, 0) // scan: scope violation
         .add_task(freewheeling_task(0, 0, 0))
         .add_program_instance(program_instance(0, 0, 1, 2, 2)) // scope [2, 4)
