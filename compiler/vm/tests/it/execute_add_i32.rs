@@ -1,0 +1,33 @@
+//! Integration tests for the ADD_I32 opcode.
+
+#[test]
+fn execute_when_add_i32_wraps_at_max_then_correct() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MAX)
+        0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
+        0x20,              // ADD_I32
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x8C,              // RET_VOID
+    ];
+    assert_eq!(
+        crate::common::run_and_read_i32(&bytecode, 1, &[i32::MAX, 1]),
+        i32::MIN
+    );
+}
+
+#[test]
+fn execute_when_add_i32_wraps_at_min_then_correct() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (i32::MIN)
+        0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (-1)
+        0x20,              // ADD_I32
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x8C,              // RET_VOID
+    ];
+    assert_eq!(
+        crate::common::run_and_read_i32(&bytecode, 1, &[i32::MIN, -1]),
+        i32::MAX
+    );
+}

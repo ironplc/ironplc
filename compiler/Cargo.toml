@@ -27,3 +27,13 @@ edition = "2021"
 authors = [ "Garret Fick" ]
 license = "MIT"
 repository = "https://github.com/ironplc/ironplc"
+
+# Reduce per-binary debug-info size. `line-tables-only` retains the file/line
+# tables that `cargo llvm-cov` needs to map coverage hits to source, but drops
+# the type-, variable-, and inline-scope DWARF sections that dominate target/
+# disk usage and link time across the test fan-out.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"

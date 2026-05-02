@@ -1,0 +1,47 @@
+//! Integration tests for LOAD_TRUE and LOAD_FALSE opcodes.
+
+#[test]
+fn execute_when_load_true_then_one() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x05,              // LOAD_TRUE
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x8C,              // RET_VOID
+    ];
+    assert_eq!(crate::common::run_and_read_i32(&bytecode, 1, &[]), 1);
+}
+
+#[test]
+fn execute_when_load_false_then_zero() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x04,              // LOAD_FALSE
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x8C,              // RET_VOID
+    ];
+    assert_eq!(crate::common::run_and_read_i32(&bytecode, 1, &[]), 0);
+}
+
+#[test]
+fn execute_when_load_true_with_bool_not_then_zero() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x05,              // LOAD_TRUE
+        0x7B,              // BOOL_NOT
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x8C,              // RET_VOID
+    ];
+    assert_eq!(crate::common::run_and_read_i32(&bytecode, 1, &[]), 0);
+}
+
+#[test]
+fn execute_when_load_false_with_bool_not_then_one() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x04,              // LOAD_FALSE
+        0x7B,              // BOOL_NOT
+        0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+        0x8C,              // RET_VOID
+    ];
+    assert_eq!(crate::common::run_and_read_i32(&bytecode, 1, &[]), 1);
+}

@@ -20,3 +20,11 @@ proptest = "1"
 
 [build-dependencies]
 csv = "1"
+
+# All integration tests live in a single binary so compile/link work (and
+# llvm-cov instrumentation) is amortized across the whole suite instead of
+# paid per-file. With every test file moved into `tests/it/`, no top-level
+# `tests/*.rs` remain for Cargo to auto-discover — only this explicit target.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
