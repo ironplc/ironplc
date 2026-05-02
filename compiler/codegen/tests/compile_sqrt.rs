@@ -30,9 +30,9 @@ END_PROGRAM
         bytecode,
         &[
             0x02, 0x00, 0x00, // LOAD_CONST_F32 pool:0
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x12, 0x00, 0x00, // STORE_VAR_F32 var:0
-            0xC4, 0x5E, 0x03, // BUILTIN SQRT_F32
+            0x94, 0x5E, 0x03, // BUILTIN SQRT_F32
             0x12, 0x01, 0x00, // STORE_VAR_F32 var:1
             0x8C, // RET_VOID
         ]
@@ -64,9 +64,9 @@ END_PROGRAM
         bytecode,
         &[
             0x03, 0x00, 0x00, // LOAD_CONST_F64 pool:0
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x13, 0x00, 0x00, // STORE_VAR_F64 var:0
-            0xC4, 0x5F, 0x03, // BUILTIN SQRT_F64
+            0x94, 0x5F, 0x03, // BUILTIN SQRT_F64
             0x13, 0x01, 0x00, // STORE_VAR_F64 var:1
             0x8C, // RET_VOID
         ]

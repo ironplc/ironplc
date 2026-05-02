@@ -104,7 +104,7 @@ END_PROGRAM
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
             0x20, // ADD_I32
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
             0x50, // GT_I32

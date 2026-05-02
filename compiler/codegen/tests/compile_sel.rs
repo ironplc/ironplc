@@ -54,11 +54,11 @@ END_PROGRAM
         bytecode,
         &[
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
             0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (20)
-            0xC4, 0x47, 0x03, // BUILTIN SEL_I32
+            0x94, 0x47, 0x03, // BUILTIN SEL_I32
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0x8C, // RET_VOID
         ]
