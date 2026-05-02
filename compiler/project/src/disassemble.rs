@@ -717,7 +717,7 @@ mod tests {
     fn disassemble_when_steel_thread_then_header_has_format_version() {
         let container = steel_thread_container();
         let result = disassemble(&container);
-        assert_eq!(result["header"]["formatVersion"], 1);
+        assert_eq!(result["header"]["formatVersion"], 2);
     }
 
     #[test]
@@ -877,7 +877,7 @@ mod tests {
         tmp.flush().unwrap();
 
         let result = disassemble_file(tmp.path());
-        assert_eq!(result["header"]["formatVersion"], 1);
+        assert_eq!(result["header"]["formatVersion"], 2);
         assert_eq!(result["header"]["numVariables"], 2);
     }
 
