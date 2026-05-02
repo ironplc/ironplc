@@ -62,6 +62,54 @@ The same baseline code, run three times, produced 232 µs / 288 µs / 287 µs fo
 - The CPU is already hiding the per-instruction bounds-check cost via branch prediction (the checks always succeed) and instruction-level parallelism. The asm shows checks; the pipeline schedules around them for free.
 - Therefore, no structural change is warranted purely for bounds-check elimination. The cost of cells (RAM growth, broken zero-copy in `ContainerRef`, breaking std/no_std uniformity) buys nothing.
 
+## Where the VM cost actually goes (callgrind)
+
+The original investigation was prompted by a "VM is ~200x slower than native" observation. To see whether bounds checks could possibly explain that gap, we measured exact instruction counts via callgrind on a counter-loop workload (`total := total + counter; counter := counter - 1;`) — see `compiler/benchmarks/examples/vm_vs_native.rs`.
+
+| Workload | Wall-clock per iter | Instructions per iter |
+|---|---|---|
+| Native scalar Rust (with `black_box`) | ~3 ns | 7.59 |
+| IronPLC VM | ~45 ns | 499.71 |
+| **Ratio** | **~15x** | **~66x** |
+
+Wall-clock VM:native is ~15x — not 200x. The wider gap to "200x" almost certainly comes from comparing IronPLC against a **compiled** native-PLC runtime (MATIEC, RuSTy compile ST → native machine code with loop optimizations), where native achieves ~1-2 instrs/iter and the ratio jumps to ~250x. That is fundamentally a "interpreter vs compiler" gap, not a "bounds check" gap.
+
+**Where the 500 VM instructions per iteration go:**
+
+| Function | Instr % | Per VM iter |
+|---|---|---|
+| `vm::execute_with_hook` (dispatch + handlers) | **90.33%** | ~451 instr |
+| `container::ConstantPool::get_i32` | **8.01%** | ~40 instr (called 2x/iter) |
+| Everything else (malloc, memcpy, container setup) | <2% | ~9 instr |
+
+The body `total := total + counter; counter := counter - 1;` compiles to roughly 12 VM opcodes per iteration (load_var ×3, load_const ×2, add, sub, store_var ×2, plus the WHILE comparison/branch). At 451 dispatch instructions for ~12 opcodes, that's **~37 native instructions per VM opcode**.
+
+The ~37 instr/opcode breaks down (per the asm at vm.rs dispatch loop and handlers):
+
+- **~10 instr** dispatch overhead per opcode: load pc from stack, bounds check, fetch opcode, jump-table lookup, indirect jump. PC lives on the stack (`[rsp+64]`) because the function is too register-pressured — every opcode pays 2 memory ops just to maintain pc.
+- **~15-20 instr** for stack push/pop with type tags (each `Slot` carries a tag, every push/pop checks/sets it).
+- **~5-10 instr** for the actual operation (add, load var, etc.).
+
+## Two concrete bottlenecks visible in this data
+
+1. **`ConstantPool::get_i32` is unnecessarily expensive (~40 instr/call, 8% of total).** In `compiler/container/src/constant_pool.rs:75`, `ConstEntry` stores `value: Vec<u8>` (heap allocation per constant). Every i32 load does: vec bounds check → pointer chase to ConstEntry → pointer chase to its inner Vec → `copy_from_slice` + `from_le_bytes`. A dense `Vec<i32>` (or inline u8 array) would cut this to ~5 instr. Estimated win: ~7% wall-clock on constant-heavy workloads.
+
+2. **The dispatch function is monolithic and stack-spilled.** 7600 lines of asm, 2200-byte stack frame, pc lives in memory. This is exactly what the existing `specs/design/vm-performance.md` Tier 1 (superinstructions, fused load-op-store, opcode consolidation) and Tier 2 (register-based translation, tail-call threading) are designed to attack. Bounds-check elimination — what we measured here — is *not* the lever; the structural improvements in that doc are.
+
+## Concrete recommendations
+
+### Skip
+- Cells / enum-decoded instruction array — provably no benefit (variant B was slower).
+- Variant A's safe-Rust `read_*` rewrite — no measurable benefit, possibly negative.
+- Streaming load via `BufReader` — was only relevant if cells.
+
+### Worth doing
+- **Restructure `ConstantPool` storage** — separate `Vec<i32>`/`Vec<f32>`/`Vec<f64>` per type, or inline-typed bytes. Eliminates the heap-Vec-per-entry indirection. Small, mechanical change. ~7% expected win on constant-heavy code, possibly more.
+- **Pursue items already cataloged in `specs/design/vm-performance.md`** — superinstructions, fused load-op-store, opcode consolidation (Tier 1), then register-based translation or tail-call threading (Tier 2). These attack the per-opcode count and per-opcode dispatch cost, which is where the 90% lives. They were always the right answer; this measurement just confirms it.
+
+### Worth doing first (orthogonal)
+- **Stabilize the criterion bench environment.** 24% drift between cold and warm runs makes any future micro-optimization claim noisy. Pin CPU frequency and isolate cores before any of the above optimizations are landed.
+
 ## Recommendations
 
 ### Don't do
