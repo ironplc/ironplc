@@ -2468,6 +2468,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
     fn vm_default_when_called_then_loads_container() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
