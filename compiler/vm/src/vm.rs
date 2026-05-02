@@ -903,6 +903,47 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     pc = (pc as isize + offset as isize) as usize;
                 }
             }
+            opcode::CMP_BR_I32 | opcode::CMP_BR_I64 => {
+                let cmp_op_byte = read_u8(bytecode, &mut pc)?;
+                let var_idx = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let const_idx = ConstantIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let offset = read_i16_le(bytecode, &mut pc)?;
+                scope.check_access(var_idx)?;
+                let truth = if op == opcode::CMP_BR_I32 {
+                    let cur = variables.load(var_idx)?.as_i32();
+                    let cnst = container
+                        .constant_pool
+                        .get_i32(const_idx)
+                        .map_err(|_| Trap::InvalidConstantIndex(const_idx))?;
+                    match cmp_op_byte {
+                        opcode::cmp_op::EQ => cur == cnst,
+                        opcode::cmp_op::NE => cur != cnst,
+                        opcode::cmp_op::LT_S => cur < cnst,
+                        opcode::cmp_op::LE_S => cur <= cnst,
+                        opcode::cmp_op::GT_S => cur > cnst,
+                        opcode::cmp_op::GE_S => cur >= cnst,
+                        _ => return Err(Trap::InvalidCmpOp(cmp_op_byte)),
+                    }
+                } else {
+                    let cur = variables.load(var_idx)?.as_i64();
+                    let cnst = container
+                        .constant_pool
+                        .get_i64(const_idx)
+                        .map_err(|_| Trap::InvalidConstantIndex(const_idx))?;
+                    match cmp_op_byte {
+                        opcode::cmp_op::EQ => cur == cnst,
+                        opcode::cmp_op::NE => cur != cnst,
+                        opcode::cmp_op::LT_S => cur < cnst,
+                        opcode::cmp_op::LE_S => cur <= cnst,
+                        opcode::cmp_op::GT_S => cur > cnst,
+                        opcode::cmp_op::GE_S => cur >= cnst,
+                        _ => return Err(Trap::InvalidCmpOp(cmp_op_byte)),
+                    }
+                };
+                if truth {
+                    pc = (pc as isize + offset as isize) as usize;
+                }
+            }
             opcode::BUILTIN => {
                 let func_id = read_u16_le(bytecode, &mut pc)?;
                 match func_id {

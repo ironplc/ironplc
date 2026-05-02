@@ -511,25 +511,36 @@ END_PROGRAM
 
 #[test]
 fn wire_when_jmp_then_le_i16_signed_offset() {
-    // WHILE loop produces JMP_IF_NOT (forward) and JMP (backward).
+    // WHILE loop with a non-fusable boolean-variable condition (so it
+    // falls back to the LOAD_VAR + JMP_IF_NOT shape rather than the
+    // fused CMP_BR_I32 path) validates LE i16 encoding for both
+    // JMP_IF_NOT (forward) and JMP (backward).
     let bc = bytecode_of(
         "
 PROGRAM main
   VAR
+    flag : BOOL;
     x : DINT;
   END_VAR
-  WHILE x > 0 DO
+  WHILE flag DO
     x := x - 1;
   END_WHILE;
 END_PROGRAM
 ",
     );
-    // From compile_loops.rs: JMP_IF_NOT at offset 7 with +13 forward,
-    // JMP at offset 20 with -23 backward. Validates LE i16 encoding.
-    assert_eq!(bc[7], 0x80, "JMP_IF_NOT");
-    assert_eq!(i16::from_le_bytes([bc[8], bc[9]]), 13, "forward LE i16");
-    assert_eq!(bc[20], 0x7C, "JMP");
-    assert_eq!(i16::from_le_bytes([bc[21], bc[22]]), -23, "backward LE i16");
+    // Layout:
+    //   0: LOAD_VAR_I32 var:0 (flag)
+    //   3: JMP_IF_NOT +13 -> 19
+    //   6: LOAD_VAR_I32 var:1 (x)
+    //   9: LOAD_CONST_I32 pool:0 (1)
+    //  12: SUB_I32
+    //  13: STORE_VAR_I32 var:1
+    //  16: JMP -19 -> 0
+    //  19: RET_VOID
+    assert_eq!(bc[3], 0x80, "JMP_IF_NOT");
+    assert_eq!(i16::from_le_bytes([bc[4], bc[5]]), 13, "forward LE i16");
+    assert_eq!(bc[16], 0x7C, "JMP");
+    assert_eq!(i16::from_le_bytes([bc[17], bc[18]]), -19, "backward LE i16");
 }
 
 #[test]

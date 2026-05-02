@@ -22,11 +22,13 @@ use super::compile::{
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
-    condition_op_type, emit_add, emit_ge, emit_le, emit_load_var, emit_store_var, emit_truncation,
-    extract_bit_access_target, extract_partial_access_target, op_type, resolve_variable,
-    resolve_variable_name, signed_integer_to_i64, variable_span,
+    condition_op_type, emit_add, emit_classified_cmp_br, emit_ge, emit_le, emit_load_var,
+    emit_store_var, emit_truncation, extract_bit_access_target, extract_partial_access_target,
+    op_type, resolve_variable, resolve_variable_name, signed_integer_to_i64, try_classify_cmp,
+    variable_span, ClassifiedCmp,
 };
 use crate::emit::Emitter;
+use ironplc_container::opcode;
 
 /// Compiles a function block body.
 pub(crate) fn compile_body(
@@ -464,13 +466,17 @@ fn compile_if(
         None
     };
 
-    // Compile the IF condition at its inferred operation type.
-    let cond_type = condition_op_type(&if_stmt.expr)?;
-    compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
-
-    // Jump past the then-body if condition is false.
+    // Jump past the then-body if condition is false. When the condition is
+    // a fusable `var <cmp> const`, replace LOAD_VAR + LOAD_CONST + CMP +
+    // JMP_IF_NOT with a single `CMP_BR_*` using the negated comparison.
     let next_label = emitter.create_label();
-    emitter.emit_jmp_if_not(next_label);
+    if let Some(classified) = try_classify_cmp(ctx, &if_stmt.expr) {
+        emit_classified_cmp_br(emitter, classified, false, next_label);
+    } else {
+        let cond_type = condition_op_type(&if_stmt.expr)?;
+        compile_expr(emitter, ctx, &if_stmt.expr, cond_type)?;
+        emitter.emit_jmp_if_not(next_label);
+    }
 
     // Compile the then-body.
     compile_stmts(emitter, ctx, &if_stmt.body)?;
@@ -484,10 +490,14 @@ fn compile_if(
 
     // Compile ELSIF clauses.
     for elsif in &if_stmt.else_ifs {
-        let elsif_op_type = condition_op_type(&elsif.expr)?;
-        compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
         let elsif_next = emitter.create_label();
-        emitter.emit_jmp_if_not(elsif_next);
+        if let Some(classified) = try_classify_cmp(ctx, &elsif.expr) {
+            emit_classified_cmp_br(emitter, classified, false, elsif_next);
+        } else {
+            let elsif_op_type = condition_op_type(&elsif.expr)?;
+            compile_expr(emitter, ctx, &elsif.expr, elsif_op_type)?;
+            emitter.emit_jmp_if_not(elsif_next);
+        }
 
         compile_stmts(emitter, ctx, &elsif.body)?;
 
@@ -722,6 +732,31 @@ fn compile_while(
     ctx: &mut CompileContext,
     while_stmt: &ironplc_dsl::textual::While,
 ) -> Result<(), Diagnostic> {
+    // Fast path: when the condition is a fusable `var <cmp> const`, emit a
+    // do-while shape so the per-iteration overhead collapses to a single
+    // `CMP_BR_*` (zero-trip head + back-edge tail).
+    //
+    // ```text
+    //   CMP_BR_<t>  NEG(cmp), var, k, END     ; zero-trip: exit if !cond
+    // BODY:
+    //   ...body...
+    //   CMP_BR_<t>  cmp,      var, k, BODY    ; back-edge: continue if cond
+    // END:
+    // ```
+    if let Some(classified) = try_classify_cmp(ctx, &while_stmt.condition) {
+        let body_label = emitter.create_label();
+        let end_label = emitter.create_label();
+        emit_classified_cmp_br(emitter, classified, false, end_label);
+        emitter.bind_label(body_label);
+        ctx.loop_exit_labels.push(end_label);
+        compile_stmts(emitter, ctx, &while_stmt.body)?;
+        ctx.loop_exit_labels.pop();
+        emit_classified_cmp_br(emitter, classified, true, body_label);
+        emitter.bind_label(end_label);
+        return Ok(());
+    }
+
+    // Fallback: complex condition. Today's emission, unchanged.
     let loop_label = emitter.create_label();
     let end_label = emitter.create_label();
 
@@ -754,19 +789,29 @@ fn compile_repeat(
     let loop_label = emitter.create_label();
     let end_label = emitter.create_label();
 
+    // Fast path: when `until` is a fusable `var <cmp> const`, replace the
+    // tail `compile(cond) + JMP_IF_NOT LOOP` (4 dispatches) with a single
+    // `CMP_BR_*` using the negated comparison (continue while NOT cond).
+    let classified_until = try_classify_cmp(ctx, &repeat_stmt.until);
+
     emitter.bind_label(loop_label);
     ctx.loop_exit_labels.push(end_label);
     compile_stmts(emitter, ctx, &repeat_stmt.body)?;
     ctx.loop_exit_labels.pop();
-    let cond_type = condition_op_type(&repeat_stmt.until)?;
-    compile_expr(emitter, ctx, &repeat_stmt.until, cond_type)?;
-    emitter.emit_jmp_if_not(loop_label);
+    if let Some(classified) = classified_until {
+        emit_classified_cmp_br(emitter, classified, false, loop_label);
+    } else {
+        let cond_type = condition_op_type(&repeat_stmt.until)?;
+        compile_expr(emitter, ctx, &repeat_stmt.until, cond_type)?;
+        emitter.emit_jmp_if_not(loop_label);
+    }
     emitter.bind_label(end_label);
 
     Ok(())
 }
 
 /// Whether a compile-time constant step is positive or negative.
+#[derive(Clone, Copy)]
 enum StepSign {
     Positive,
     Negative,
@@ -868,6 +913,52 @@ fn for_loop_trunc_can_be_elided(
     }
 }
 
+/// Attempts to fuse a FOR loop's head test into a single `CMP_BR_*`
+/// instruction. Returns `Some(ClassifiedCmp)` representing the
+/// continuation predicate (`i <= to` for positive step, `i >= to` for
+/// negative step) when the control variable is a 32- or 64-bit signed
+/// integer and `to` is a constant integer literal that fits the
+/// variable's width. Returns `None` otherwise so the caller falls back to
+/// the unfused emission.
+fn try_classify_for_head(
+    ctx: &mut CompileContext,
+    var_index: ironplc_container::VarIndex,
+    op_type: OpType,
+    to: &Expr,
+    step_sign: StepSign,
+) -> Option<ClassifiedCmp> {
+    if op_type.1 != Signedness::Signed {
+        return None;
+    }
+    let to_value = try_constant_i64(to)?;
+    let cmp_op_byte = match step_sign {
+        StepSign::Positive => opcode::cmp_op::LE_S,
+        StepSign::Negative => opcode::cmp_op::GE_S,
+    };
+    match op_type.0 {
+        OpWidth::W32 => {
+            let v32 = i32::try_from(to_value).ok()?;
+            let const_idx = ctx.add_i32_constant(v32);
+            Some(ClassifiedCmp {
+                cmp_op_byte,
+                var_index,
+                const_idx,
+                op_width: OpWidth::W32,
+            })
+        }
+        OpWidth::W64 => {
+            let const_idx = ctx.add_i64_constant(to_value);
+            Some(ClassifiedCmp {
+                cmp_op_byte,
+                var_index,
+                const_idx,
+                op_width: OpWidth::W64,
+            })
+        }
+        OpWidth::F32 | OpWidth::F64 => None,
+    }
+}
+
 /// Compiles a FOR statement.
 ///
 /// ```text
@@ -941,13 +1032,21 @@ fn compile_for(
     // LOOP: check continuation condition; exit straight to END when it
     // fails so the body falls through without an extra JMP dispatch.
     emitter.bind_label(loop_label);
-    emit_load_var(emitter, var_index, op_type);
-    compile_expr(emitter, ctx, &for_stmt.to, op_type)?;
-    match step_sign {
-        StepSign::Positive => emit_le(emitter, op_type),
-        StepSign::Negative => emit_ge(emitter, op_type),
+    if let Some(classified) =
+        try_classify_for_head(ctx, var_index, op_type, &for_stmt.to, step_sign)
+    {
+        // Fused path: one CMP_BR replacing LOAD_VAR + LOAD_CONST + LE/GE + JMP_IF_NOT.
+        // Branch to END when the continuation predicate is FALSE.
+        emit_classified_cmp_br(emitter, classified, false, end_label);
+    } else {
+        emit_load_var(emitter, var_index, op_type);
+        compile_expr(emitter, ctx, &for_stmt.to, op_type)?;
+        match step_sign {
+            StepSign::Positive => emit_le(emitter, op_type),
+            StepSign::Negative => emit_ge(emitter, op_type),
+        }
+        emitter.emit_jmp_if_not(end_label);
     }
-    emitter.emit_jmp_if_not(end_label);
 
     // BODY:
     ctx.loop_exit_labels.push(end_label);
