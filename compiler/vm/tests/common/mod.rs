@@ -16,7 +16,7 @@ pub fn single_function_container(bytecode: &[u8], num_vars: u16, constants: &[i3
         builder = builder.add_i32_constant(c);
     }
     builder
-        .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0) // init: RET_VOID
+        .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0) // init: RET_VOID
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0) // scan: test bytecode
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)

@@ -11,7 +11,7 @@ fn execute_when_jmp_then_skips_instruction() {
     // var[1] gets set to 99 after the jump target.
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0xB0, 0x03, 0x00,       // JMP offset:+3 (skip next instruction)
+        0x7C, 0x03, 0x00,       // JMP offset:+3 (skip next instruction)
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (99) -- skipped
         // jump target (offset 6):
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (99)
@@ -34,7 +34,7 @@ fn execute_when_jmp_if_not_true_then_no_jump() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1) -- condition
-        0xB2, 0x06, 0x00,       // JMP_IF_NOT offset:+6 (skip to RET_VOID)
+        0x80, 0x06, 0x00,       // JMP_IF_NOT offset:+6 (skip to RET_VOID)
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (42)
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
         0x8C,                   // RET_VOID
@@ -49,7 +49,7 @@ fn execute_when_jmp_if_not_false_then_jumps() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0) -- condition
-        0xB2, 0x06, 0x00,       // JMP_IF_NOT offset:+6 (skip to RET_VOID)
+        0x80, 0x06, 0x00,       // JMP_IF_NOT offset:+6 (skip to RET_VOID)
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (42) -- skipped
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]       -- skipped
         0x8C,                   // RET_VOID
@@ -65,11 +65,11 @@ fn execute_when_if_else_true_then_takes_then_branch() {
     let bytecode: Vec<u8> = vec![
         // IF condition:
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (1)
-        0xB2, 0x09, 0x00,       // JMP_IF_NOT offset:+9 -> else branch (offset 15)
+        0x80, 0x09, 0x00,       // JMP_IF_NOT offset:+9 -> else branch (offset 15)
         // THEN body:
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (10)
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
-        0xB0, 0x06, 0x00,       // JMP offset:+6 -> end (offset 21)
+        0x7C, 0x06, 0x00,       // JMP offset:+6 -> end (offset 21)
         // ELSE body (offset 15):
         0x00, 0x02, 0x00,       // LOAD_CONST_I32 pool[2] (20)
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
@@ -87,11 +87,11 @@ fn execute_when_if_else_false_then_takes_else_branch() {
     let bytecode: Vec<u8> = vec![
         // IF condition:
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0] (0)
-        0xB2, 0x09, 0x00,       // JMP_IF_NOT offset:+9 -> else branch (offset 15)
+        0x80, 0x09, 0x00,       // JMP_IF_NOT offset:+9 -> else branch (offset 15)
         // THEN body:
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1] (10)
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]
-        0xB0, 0x06, 0x00,       // JMP offset:+6 -> end (offset 21)
+        0x7C, 0x06, 0x00,       // JMP offset:+6 -> end (offset 21)
         // ELSE body (offset 15):
         0x00, 0x02, 0x00,       // LOAD_CONST_I32 pool[2] (20)
         0x10, 0x00, 0x00,       // STORE_VAR_I32 var[0]

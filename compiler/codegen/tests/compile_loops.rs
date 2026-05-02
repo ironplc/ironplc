@@ -38,11 +38,11 @@ END_PROGRAM
         .unwrap();
 
     // Verify JMP_IF_NOT at offset 7 with forward offset +13
-    assert_eq!(bytecode[7], 0xB2); // JMP_IF_NOT
+    assert_eq!(bytecode[7], 0x80); // JMP_IF_NOT
     assert_eq!(i16::from_le_bytes([bytecode[8], bytecode[9]]), 13);
 
     // Verify JMP at offset 20 with backward offset -23
-    assert_eq!(bytecode[20], 0xB0); // JMP
+    assert_eq!(bytecode[20], 0x7C); // JMP
     assert_eq!(i16::from_le_bytes([bytecode[21], bytecode[22]]), -23);
 
     // Verify overall structure
@@ -52,12 +52,12 @@ END_PROGRAM
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
             0x50, // GT_I32
-            0xB2, 0x0D, 0x00, // JMP_IF_NOT offset:+13
+            0x80, 0x0D, 0x00, // JMP_IF_NOT offset:+13
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
             0x24, // SUB_I32
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0xB0, 0xE9, 0xFF, // JMP offset:-23
+            0x7C, 0xE9, 0xFF, // JMP offset:-23
             0x8C, // RET_VOID
         ]
     );
@@ -95,7 +95,7 @@ END_PROGRAM
         .unwrap();
 
     // Verify JMP_IF_NOT at offset 15 with backward offset -18
-    assert_eq!(bytecode[15], 0xB2); // JMP_IF_NOT
+    assert_eq!(bytecode[15], 0x80); // JMP_IF_NOT
     assert_eq!(i16::from_le_bytes([bytecode[16], bytecode[17]]), -18);
 
     assert_eq!(
@@ -108,7 +108,7 @@ END_PROGRAM
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
             0x50, // GT_I32
-            0xB2, 0xEE, 0xFF, // JMP_IF_NOT offset:-18
+            0x80, 0xEE, 0xFF, // JMP_IF_NOT offset:-18
             0x8C, // RET_VOID
         ]
     );
@@ -176,7 +176,7 @@ END_PROGRAM
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
             0x4C, // LE_I32
-            0xB2, 0x17, 0x00, // JMP_IF_NOT offset:+23
+            0x80, 0x17, 0x00, // JMP_IF_NOT offset:+23
             0x0C, 0x01, 0x00, // LOAD_VAR_I32 var:1
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x20, // ADD_I32
@@ -185,7 +185,7 @@ END_PROGRAM
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
             0x20, // ADD_I32
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0xB0, 0xDF, 0xFF, // JMP offset:-33
+            0x7C, 0xDF, 0xFF, // JMP offset:-33
             0x8C, // RET_VOID
         ]
     );

@@ -444,7 +444,7 @@ fn benchmark_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std
 /// which is the path used by `benchmark`'s warmup and measured loops.
 fn write_scan_divide_by_zero_container(path: &Path) {
     #[rustfmt::skip]
-    let init_bytecode: Vec<u8> = vec![0xB5]; // RET_VOID
+    let init_bytecode: Vec<u8> = vec![0x8C]; // RET_VOID
     #[rustfmt::skip]
     let scan_bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)

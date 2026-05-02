@@ -901,12 +901,12 @@ END_PROGRAM
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(0))
             .unwrap();
-        assert_eq!(init_bytecode, &[0xB5]); // RET_VOID only
+        assert_eq!(init_bytecode, &[0x8C]); // RET_VOID only
         let scan_bytecode = container
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(1))
             .unwrap();
-        assert_eq!(scan_bytecode, &[0xB5]); // RET_VOID only
+        assert_eq!(scan_bytecode, &[0x8C]); // RET_VOID only
     }
 
     #[test]
