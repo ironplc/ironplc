@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_mod_expression_then_produces_mod_bytecode() {
@@ -41,16 +41,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
-            0x38, // MOD_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1), // pool:1
+            bc::mod_i32(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -81,12 +81,12 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (2)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0 (2)
+            bc::store_var_i32(0),  // var:0
+            bc::ret_void(),
         ]
     );
 }

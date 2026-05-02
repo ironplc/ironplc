@@ -1,8 +1,9 @@
 //! Bytecode-level integration tests for the ABS function with float types.
 
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_abs_real_then_produces_abs_f32_bytecode() {
@@ -25,15 +26,15 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x02, 0x00, 0x00, // LOAD_CONST_F32 pool:0
-            0x91, // DUP (store-load optimization)
-            0x12, 0x00, 0x00, // STORE_VAR_F32 var:0
-            0x94, 0x54, 0x03, // BUILTIN ABS_F32
-            0x12, 0x01, 0x00, // STORE_VAR_F32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_f32(0),                 // pool:0
+            bc::dup(),                             // (store-load optimization)
+            bc::store_var_f32(0),                  // var:0
+            bc::builtin(opcode::builtin::ABS_F32), // ABS_F32
+            bc::store_var_f32(1),                  // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -59,15 +60,15 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x03, 0x00, 0x00, // LOAD_CONST_F64 pool:0
-            0x91, // DUP (store-load optimization)
-            0x13, 0x00, 0x00, // STORE_VAR_F64 var:0
-            0x94, 0x55, 0x03, // BUILTIN ABS_F64
-            0x13, 0x01, 0x00, // STORE_VAR_F64 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_f64(0),                 // pool:0
+            bc::dup(),                             // (store-load optimization)
+            bc::store_var_f64(0),                  // var:0
+            bc::builtin(opcode::builtin::ABS_F64), // ABS_F64
+            bc::store_var_f64(1),                  // var:1
+            bc::ret_void(),
         ]
     );
 }

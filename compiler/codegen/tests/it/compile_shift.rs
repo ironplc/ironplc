@@ -1,8 +1,9 @@
 //! Bytecode-level integration tests for shift/rotate function compilation.
 
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_shl_byte_then_produces_shl_i32_builtin() {
@@ -27,18 +28,18 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x0F)
-            0x1D, // TRUNC_U8
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (4)
-            0x94, 0x48, 0x03, // BUILTIN SHL_I32 (0x0348)
-            0x1D, // TRUNC_U8
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0 (0x0F)
+            bc::trunc_u8(),
+            bc::dup(),                             // (store-load optimization)
+            bc::store_var_i32(0),                  // var:0
+            bc::load_const_i32(1),                 // pool:1 (4)
+            bc::builtin(opcode::builtin::SHL_I32), // SHL_I32 (0x0348)
+            bc::trunc_u8(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -62,18 +63,18 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     // Verify the ROL on BYTE emits ROL_U8 (0x0350), not ROL_I32
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x81)
-            0x1D, // TRUNC_U8
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
-            0x94, 0x50, 0x03, // BUILTIN ROL_U8 (0x0350)
-            0x1D, // TRUNC_U8
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0 (0x81)
+            bc::trunc_u8(),
+            bc::dup(),                            // (store-load optimization)
+            bc::store_var_i32(0),                 // var:0
+            bc::load_const_i32(1),                // pool:1 (1)
+            bc::builtin(opcode::builtin::ROL_U8), // ROL_U8 (0x0350)
+            bc::trunc_u8(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -97,18 +98,18 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     // Verify the ROR on WORD emits ROR_U16 (0x0353)
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x8001)
-            0x1F, // TRUNC_U16
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
-            0x94, 0x53, 0x03, // BUILTIN ROR_U16 (0x0353)
-            0x1F, // TRUNC_U16
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0 (0x8001)
+            bc::trunc_u16(),
+            bc::dup(),                             // (store-load optimization)
+            bc::store_var_i32(0),                  // var:0
+            bc::load_const_i32(1),                 // pool:1 (1)
+            bc::builtin(opcode::builtin::ROR_U16), // ROR_U16 (0x0353)
+            bc::trunc_u16(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -132,16 +133,16 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     // DWORD is 32-bit so no TRUNC needed
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x0F)
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (4)
-            0x94, 0x48, 0x03, // BUILTIN SHL_I32 (0x0348)
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0),                 // pool:0 (0x0F)
+            bc::dup(),                             // (store-load optimization)
+            bc::store_var_i32(0),                  // var:0
+            bc::load_const_i32(1),                 // pool:1 (4)
+            bc::builtin(opcode::builtin::SHL_I32), // SHL_I32 (0x0348)
+            bc::store_var_i32(1),                  // var:1
+            bc::ret_void(),
         ]
     );
 }

@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_eq_expression_then_produces_eq_bytecode() {
@@ -41,16 +41,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
-            0x40, // EQ_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1), // pool:1
+            bc::eq_i32(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -73,16 +73,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
-            0x44, // NE_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1), // pool:1
+            bc::ne_i32(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -105,16 +105,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
-            0x48, // LT_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1), // pool:1
+            bc::lt_i32(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -137,16 +137,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
-            0x4C, // LE_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1), // pool:1
+            bc::le_i32(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -169,16 +169,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
-            0x50, // GT_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1), // pool:1
+            bc::gt_i32(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -201,16 +201,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1
-            0x54, // GE_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1), // pool:1
+            bc::ge_i32(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }

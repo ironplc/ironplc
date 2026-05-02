@@ -1,8 +1,9 @@
 //! Bytecode-level integration tests for the LIMIT function compilation.
 
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_limit_function_then_produces_builtin_bytecode() {
@@ -49,17 +50,17 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (5)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (0)
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (10)
-            0x94, 0x46, 0x03, // BUILTIN LIMIT_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0),                   // pool:0 (5)
+            bc::store_var_i32(0),                    // var:0
+            bc::load_const_i32(1),                   // pool:1 (0)
+            bc::load_var_i32(0),                     // var:0
+            bc::load_const_i32(2),                   // pool:2 (10)
+            bc::builtin(opcode::builtin::LIMIT_I32), // LIMIT_I32
+            bc::store_var_i32(1),                    // var:1
+            bc::ret_void(),
         ]
     );
 }

@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_real_then_produces_f32_opcodes() {
@@ -23,12 +23,12 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x02, 0x00, 0x00, // LOAD_CONST_F32 pool:0
-            0x12, 0x00, 0x00, // STORE_VAR_F32 var:0
-            0x8C, // RET_VOID
+        [
+            bc::load_const_f32(0), // pool:0
+            bc::store_var_f32(0),  // var:0
+            bc::ret_void(),
         ]
     );
 }
@@ -56,16 +56,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x03, 0x00, 0x00, // LOAD_CONST_F64 pool:0
-            0x91, // DUP (store-load optimization)
-            0x13, 0x00, 0x00, // STORE_VAR_F64 var:0
-            0x03, 0x01, 0x00, // LOAD_CONST_F64 pool:1
-            0x23, // ADD_F64
-            0x13, 0x01, 0x00, // STORE_VAR_F64 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_f64(0), // pool:0
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_f64(0),  // var:0
+            bc::load_const_f64(1), // pool:1
+            bc::add_f64(),
+            bc::store_var_f64(1), // var:1
+            bc::ret_void(),
         ]
     );
 }

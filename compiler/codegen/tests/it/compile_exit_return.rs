@@ -1,5 +1,6 @@
 //! Bytecode-level integration tests for EXIT and RETURN statement compilation.
 
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_compile;
@@ -30,12 +31,12 @@ END_PROGRAM
         .unwrap();
 
     // EXIT produces a JMP at offset 4 targeting the same end label as JMP_IF_NOT
-    assert_eq!(bytecode[4], 0x7C); // JMP (from EXIT)
+    assert_eq!(bytecode[4], opcode::JMP); // JMP (from EXIT)
     let exit_offset = i16::from_le_bytes([bytecode[5], bytecode[6]]);
     assert_eq!(exit_offset, 3); // jumps forward 3 to offset 10 (end)
 
     // The end should be RET_VOID
-    assert_eq!(bytecode[10], 0x8C); // RET_VOID
+    assert_eq!(bytecode[10], opcode::RET_VOID);
 }
 
 #[test]
@@ -65,8 +66,8 @@ END_PROGRAM
         .unwrap();
 
     // RETURN produces RET_VOID at offset 6
-    assert_eq!(bytecode[6], 0x8C); // RET_VOID (from RETURN)
+    assert_eq!(bytecode[6], opcode::RET_VOID); // RET_VOID (from RETURN)
 
     // Program still ends with RET_VOID
-    assert_eq!(*bytecode.last().unwrap(), 0x8C); // RET_VOID (program end)
+    assert_eq!(*bytecode.last().unwrap(), opcode::RET_VOID);
 }

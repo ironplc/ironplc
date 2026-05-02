@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_byte_and_then_produces_bit_and_32_bytecode() {
@@ -28,15 +28,15 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0x0F)
-            0x68, // BIT_AND_32
-            0x1D, // TRUNC_U8
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_var_i32(0),   // var:0
+            bc::load_const_i32(0), // pool:0 (0x0F)
+            bc::bit_and_32(),
+            bc::trunc_u8(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -65,15 +65,15 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x74, // BIT_NOT_32
-            0x1D, // TRUNC_U8 (inline NOT truncation)
-            0x1D, // TRUNC_U8 (assignment truncation)
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_var_i32(0), // var:0
+            bc::bit_not_32(),
+            bc::trunc_u8(),       // (inline NOT truncation)
+            bc::trunc_u8(),       // (assignment truncation)
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -97,18 +97,18 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
-            0x50, // GT_I32
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
-            0x48, // LT_I32
-            0x78, // BOOL_AND (not BIT_AND_32)
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_var_i32(0),   // var:0
+            bc::load_const_i32(0), // pool:0 (0)
+            bc::gt_i32(),
+            bc::load_var_i32(0),   // var:0
+            bc::load_const_i32(1), // pool:1 (10)
+            bc::lt_i32(),
+            bc::bool_and(),       // (not BIT_AND_32)
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }

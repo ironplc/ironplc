@@ -1,8 +1,9 @@
 //! Bytecode-level integration tests for DUP and NOP peephole optimizations.
 
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_same_var_twice_then_emits_dup() {
@@ -22,14 +23,14 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x91, // DUP (consecutive identical load)
-            0x28, // MUL_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_var_i32(0), // var:0
+            bc::dup(),           // (consecutive identical load)
+            bc::mul_i32(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -53,14 +54,14 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (7)
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0 (7)
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::store_var_i32(1),  // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -87,6 +88,14 @@ END_PROGRAM
         .unwrap();
     // The first STORE_VAR(i) then LOAD_VAR(i) should NOT be optimized
     // because there is a loop label between them.
-    assert_eq!(bytecode[3], 0x10, "expected STORE_VAR_I32, not DUP");
-    assert_eq!(bytecode[6], 0x0C, "expected LOAD_VAR_I32 after STORE");
+    assert_eq!(
+        bytecode[3],
+        opcode::STORE_VAR_I32,
+        "expected STORE_VAR_I32, not DUP"
+    );
+    assert_eq!(
+        bytecode[6],
+        opcode::LOAD_VAR_I32,
+        "expected LOAD_VAR_I32 after STORE"
+    );
 }

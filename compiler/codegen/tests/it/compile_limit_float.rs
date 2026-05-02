@@ -1,8 +1,9 @@
 //! Bytecode-level integration tests for the LIMIT function with float types.
 
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_compile;
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_limit_real_then_produces_limit_f32_bytecode() {
@@ -26,17 +27,17 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x02, 0x00, 0x00, // LOAD_CONST_F32 pool:0 (5.0)
-            0x12, 0x00, 0x00, // STORE_VAR_F32 var:0
-            0x02, 0x01, 0x00, // LOAD_CONST_F32 pool:1 (0.0)
-            0x0E, 0x00, 0x00, // LOAD_VAR_F32 var:0
-            0x02, 0x02, 0x00, // LOAD_CONST_F32 pool:2 (10.0)
-            0x94, 0x5A, 0x03, // BUILTIN LIMIT_F32
-            0x12, 0x01, 0x00, // STORE_VAR_F32 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_f32(0),                   // pool:0 (5.0)
+            bc::store_var_f32(0),                    // var:0
+            bc::load_const_f32(1),                   // pool:1 (0.0)
+            bc::load_var_f32(0),                     // var:0
+            bc::load_const_f32(2),                   // pool:2 (10.0)
+            bc::builtin(opcode::builtin::LIMIT_F32), // LIMIT_F32
+            bc::store_var_f32(1),                    // var:1
+            bc::ret_void(),
         ]
     );
 }
@@ -59,17 +60,17 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x03, 0x00, 0x00, // LOAD_CONST_F64 pool:0 (5.0)
-            0x13, 0x00, 0x00, // STORE_VAR_F64 var:0
-            0x03, 0x01, 0x00, // LOAD_CONST_F64 pool:1 (0.0)
-            0x0F, 0x00, 0x00, // LOAD_VAR_F64 var:0
-            0x03, 0x02, 0x00, // LOAD_CONST_F64 pool:2 (10.0)
-            0x94, 0x5B, 0x03, // BUILTIN LIMIT_F64
-            0x13, 0x01, 0x00, // STORE_VAR_F64 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_f64(0),                   // pool:0 (5.0)
+            bc::store_var_f64(0),                    // var:0
+            bc::load_const_f64(1),                   // pool:1 (0.0)
+            bc::load_var_f64(0),                     // var:0
+            bc::load_const_f64(2),                   // pool:2 (10.0)
+            bc::builtin(opcode::builtin::LIMIT_F64), // LIMIT_F64
+            bc::store_var_f64(1),                    // var:1
+            bc::ret_void(),
         ]
     );
 }
