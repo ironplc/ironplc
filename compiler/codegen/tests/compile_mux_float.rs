@@ -23,10 +23,10 @@ END_PROGRAM
         .unwrap();
     // K=0 is an integer constant (i32), IN values are f32
     // BUILTIN MUX_F32_BASE+3 = 0x0443
-    // Look for the BUILTIN opcode byte (0xC4) followed by the func_id
+    // Look for the BUILTIN opcode byte (0x94) followed by the func_id
     let builtin_pos = bytecode
         .windows(3)
-        .position(|w| w[0] == 0xC4 && w[1] == 0x43 && w[2] == 0x04)
+        .position(|w| w[0] == 0x94 && w[1] == 0x43 && w[2] == 0x04)
         .expect("should contain BUILTIN MUX_F32(3)");
     assert!(builtin_pos > 0);
 }
@@ -50,7 +50,7 @@ END_PROGRAM
     // BUILTIN MUX_F64_BASE+2 = 0x0462
     let builtin_pos = bytecode
         .windows(3)
-        .position(|w| w[0] == 0xC4 && w[1] == 0x62 && w[2] == 0x04)
+        .position(|w| w[0] == 0x94 && w[1] == 0x62 && w[2] == 0x04)
         .expect("should contain BUILTIN MUX_F64(2)");
     assert!(builtin_pos > 0);
 }

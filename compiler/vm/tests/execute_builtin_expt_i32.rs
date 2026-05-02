@@ -14,7 +14,7 @@ fn execute_when_expt_i32_negative_exponent_then_trap() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (2)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (-1)
-        0xC4, 0x40, 0x03,  // BUILTIN EXPT_I32
+        0x94, 0x40, 0x03,  // BUILTIN EXPT_I32
     ];
     assert_eq!(
         common::run_and_expect_trap_i32(&bytecode, 0, &[2, -1]),
@@ -29,7 +29,7 @@ fn execute_when_expt_i32_overflow_then_wraps() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (2)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (31)
-        0xC4, 0x40, 0x03,  // BUILTIN EXPT_I32
+        0x94, 0x40, 0x03,  // BUILTIN EXPT_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0x8C,              // RET_VOID
     ];
@@ -42,7 +42,7 @@ fn execute_when_invalid_builtin_func_id_then_trap() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (1)
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (1)
-        0xC4, 0xFF, 0xFF,  // BUILTIN 0xFFFF (unknown)
+        0x94, 0xFF, 0xFF,  // BUILTIN 0xFFFF (unknown)
     ];
     assert_eq!(
         common::run_and_expect_trap_i32(&bytecode, 0, &[1]),

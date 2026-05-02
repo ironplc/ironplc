@@ -10,7 +10,7 @@ fn execute_when_dup_then_duplicates_top_value() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (42)
-        0xA1,              // DUP
+        0x91,              // DUP
         0x20,              // ADD_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0x8C,              // RET_VOID
@@ -24,7 +24,7 @@ fn execute_when_dup_then_both_copies_independent() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (10)
-        0xA1,              // DUP
+        0x91,              // DUP
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0x10, 0x01, 0x00,  // STORE_VAR_I32 var[1]
         0x8C,              // RET_VOID
@@ -44,7 +44,7 @@ fn execute_when_swap_then_reverses_top_two() {
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (10)
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (3)
-        0xA2,              // SWAP
+        0x92,              // SWAP
         0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0x8C,              // RET_VOID
@@ -58,9 +58,9 @@ fn execute_when_dup_and_swap_combined_then_correct() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (5)
-        0xA1,              // DUP
+        0x91,              // DUP
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (20)
-        0xA2,              // SWAP
+        0x92,              // SWAP
         0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0x8C,              // RET_VOID

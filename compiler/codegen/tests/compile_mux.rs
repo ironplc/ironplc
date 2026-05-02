@@ -66,7 +66,7 @@ END_PROGRAM
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
             0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (20)
             0x00, 0x03, 0x00, // LOAD_CONST_I32 pool:3 (30)
-            0xC4, 0x03, 0x04, // BUILTIN MUX_I32(3) = 0x0403
+            0x94, 0x03, 0x04, // BUILTIN MUX_I32(3) = 0x0403
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x8C, // RET_VOID
         ]
@@ -96,7 +96,7 @@ END_PROGRAM
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (100)
             0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (200)
-            0xC4, 0x02, 0x04, // BUILTIN MUX_I32(2) = 0x0402
+            0x94, 0x02, 0x04, // BUILTIN MUX_I32(2) = 0x0402
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x8C, // RET_VOID
         ]

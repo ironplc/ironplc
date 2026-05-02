@@ -26,7 +26,7 @@ END_PROGRAM
     // BUILTIN MUX_I64_BASE+3 = 0x0423
     let builtin_pos = bytecode
         .windows(3)
-        .position(|w| w[0] == 0xC4 && w[1] == 0x23 && w[2] == 0x04)
+        .position(|w| w[0] == 0x94 && w[1] == 0x23 && w[2] == 0x04)
         .expect("should contain BUILTIN MUX_I64(3)");
     assert!(builtin_pos > 0);
 }

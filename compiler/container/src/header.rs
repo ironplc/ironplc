@@ -7,7 +7,7 @@ use crate::ContainerError;
 pub const MAGIC: u32 = 0x49504C43;
 
 /// Current container format version.
-pub const FORMAT_VERSION: u16 = 1;
+pub const FORMAT_VERSION: u16 = 2;
 
 /// Size in bytes of the string header (max_length: u16 + cur_length: u16).
 ///

@@ -61,7 +61,7 @@ END_PROGRAM
         bytecode,
         &[
             0x03, 0x00, 0x00, // LOAD_CONST_F64 pool:0
-            0xA1, // DUP (store-load optimization)
+            0x91, // DUP (store-load optimization)
             0x13, 0x00, 0x00, // STORE_VAR_F64 var:0
             0x03, 0x01, 0x00, // LOAD_CONST_F64 pool:1
             0x23, // ADD_F64

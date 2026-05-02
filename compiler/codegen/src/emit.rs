@@ -915,7 +915,7 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_CONST pool:1, BUILTIN 0x0340
         assert_eq!(
             em.bytecode(),
-            &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0xC4, 0x40, 0x03]
+            &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x94, 0x40, 0x03]
         );
     }
 
@@ -1350,7 +1350,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_dup();
 
-        assert_eq!(em.bytecode(), &[0xA1]);
+        assert_eq!(em.bytecode(), &[0x91]);
         assert_eq!(em.max_stack_depth(), 1);
     }
 
@@ -1359,7 +1359,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_swap();
 
-        assert_eq!(em.bytecode(), &[0xA2]);
+        assert_eq!(em.bytecode(), &[0x92]);
         assert_eq!(em.max_stack_depth(), 0);
     }
 

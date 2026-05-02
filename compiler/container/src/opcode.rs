@@ -317,7 +317,7 @@ pub const JMP_IF_NOT: Opcode = encode_opcode(OP_CLASS_JMP_IF_NOT, 0);
 /// Call a built-in standard library function.
 /// Operand: u16 function ID (little-endian).
 /// Stack effect depends on the specific function.
-pub const BUILTIN: Opcode = 0xC4;
+pub const BUILTIN: Opcode = encode_opcode(OP_CLASS_BUILTIN, 0);
 
 /// Call function by index. Pops arguments, executes function body,
 /// pushes return value.
@@ -331,33 +331,33 @@ pub const RET: Opcode = encode_opcode(OP_CLASS_RET, 0);
 pub const RET_VOID: Opcode = encode_opcode(OP_CLASS_RET_VOID, 0);
 
 /// Discard the top value from the operand stack.
-pub const POP: Opcode = 0xA0;
+pub const POP: Opcode = encode_opcode(OP_CLASS_STACK_OP, 0);
 
 /// Duplicate the top value on the operand stack.
 /// Stack effect: [..., a] -> [..., a, a]
-pub const DUP: Opcode = 0xA1;
+pub const DUP: Opcode = encode_opcode(OP_CLASS_STACK_OP, 1);
 
 /// Swap the top two values on the operand stack.
 /// Stack effect: [..., a, b] -> [..., b, a]
-pub const SWAP: Opcode = 0xA2;
+pub const SWAP: Opcode = encode_opcode(OP_CLASS_STACK_OP, 2);
 
 // --- Function block opcodes ---
 
 /// Push FB instance reference from variable table.
 /// Operand: u16 variable index (little-endian).
-pub const FB_LOAD_INSTANCE: Opcode = 0xC0;
+pub const FB_LOAD_INSTANCE: Opcode = encode_opcode(OP_CLASS_FB_LOAD_INSTANCE, 0);
 
 /// Store input parameter on FB instance; keeps fb_ref on stack.
 /// Operand: u8 field index.
-pub const FB_STORE_PARAM: Opcode = 0xC1;
+pub const FB_STORE_PARAM: Opcode = encode_opcode(OP_CLASS_FB_STORE_PARAM, 0);
 
 /// Load output parameter from FB instance; keeps fb_ref on stack.
 /// Operand: u8 field index.
-pub const FB_LOAD_PARAM: Opcode = 0xC2;
+pub const FB_LOAD_PARAM: Opcode = encode_opcode(OP_CLASS_FB_LOAD_PARAM, 0);
 
 /// Call function block (VM dispatches to intrinsic or bytecode body).
 /// Operand: u16 type_id (little-endian).
-pub const FB_CALL: Opcode = 0xC3;
+pub const FB_CALL: Opcode = encode_opcode(OP_CLASS_FB_CALL, 0);
 
 // --- String opcodes ---
 
@@ -369,60 +369,60 @@ pub const LOAD_CONST_STR: Opcode = encode_opcode(OP_CLASS_LOAD_CONST_STR, 0);
 /// Initialize a STRING variable in the data region.
 /// Operands: data_offset: u32, max_length: u16.
 /// Sets max_length and cur_length=0 at the given data_offset.
-pub const STR_INIT: Opcode = 0xE4;
+pub const STR_INIT: Opcode = encode_opcode(OP_CLASS_STR_INIT, 0);
 
 /// Copy STRING from data region into a temp buffer; push temp buf_idx.
 /// Operand: data_offset: u32.
-pub const STR_LOAD_VAR: Opcode = 0xE0;
+pub const STR_LOAD_VAR: Opcode = encode_opcode(OP_CLASS_STR_LOAD_VAR, 0);
 
 /// Copy temp buffer contents into STRING variable at data_offset.
 /// Operand: data_offset: u32. Pops buf_idx from stack.
-pub const STR_STORE_VAR: Opcode = 0xE1;
+pub const STR_STORE_VAR: Opcode = encode_opcode(OP_CLASS_STR_STORE_VAR, 0);
 
 /// Read the current length of a STRING variable from the data region.
 /// Operand: data_offset: u32.
 /// Pushes the cur_length as an i32 onto the stack.
-pub const LEN_STR: Opcode = 0xE2;
+pub const LEN_STR: Opcode = encode_opcode(OP_CLASS_LEN_STR, 0);
 
 /// Find the first occurrence of IN2 within IN1.
 /// Operands: in1_data_offset: u32, in2_data_offset: u32.
 /// Pushes the 1-based position as i32 (0 if not found).
-pub const FIND_STR: Opcode = 0xE3;
+pub const FIND_STR: Opcode = encode_opcode(OP_CLASS_FIND_STR, 0);
 
 /// Replace L characters starting at position P in IN1 with IN2.
 /// Operands: in1_data_offset: u32, in2_data_offset: u32.
 /// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
-pub const REPLACE_STR: Opcode = 0xE5;
+pub const REPLACE_STR: Opcode = encode_opcode(OP_CLASS_REPLACE_STR, 0);
 
 /// Insert IN2 into IN1 after position P.
 /// Operands: in1_data_offset: u32, in2_data_offset: u32.
 /// Pops P (i32) from stack. Pushes buf_idx (i32).
-pub const INSERT_STR: Opcode = 0xE6;
+pub const INSERT_STR: Opcode = encode_opcode(OP_CLASS_INSERT_STR, 0);
 
 /// Delete L characters from IN1 starting at position P.
 /// Operand: in1_data_offset: u32.
 /// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
-pub const DELETE_STR: Opcode = 0xE7;
+pub const DELETE_STR: Opcode = encode_opcode(OP_CLASS_DELETE_STR, 0);
 
 /// Return the leftmost L characters of IN.
 /// Operand: in_data_offset: u32.
 /// Pops L (i32) from stack. Pushes buf_idx (i32).
-pub const LEFT_STR: Opcode = 0xE8;
+pub const LEFT_STR: Opcode = encode_opcode(OP_CLASS_LEFT_STR, 0);
 
 /// Return the rightmost L characters of IN.
 /// Operand: in_data_offset: u32.
 /// Pops L (i32) from stack. Pushes buf_idx (i32).
-pub const RIGHT_STR: Opcode = 0xE9;
+pub const RIGHT_STR: Opcode = encode_opcode(OP_CLASS_RIGHT_STR, 0);
 
 /// Return L characters from IN starting at position P.
 /// Operand: in_data_offset: u32.
 /// Pops P (i32) then L (i32) from stack. Pushes buf_idx (i32).
-pub const MID_STR: Opcode = 0xEA;
+pub const MID_STR: Opcode = encode_opcode(OP_CLASS_MID_STR, 0);
 
 /// Concatenate IN1 and IN2.
 /// Operands: in1_data_offset: u32, in2_data_offset: u32.
 /// Pushes buf_idx (i32).
-pub const CONCAT_STR: Opcode = 0xEB;
+pub const CONCAT_STR: Opcode = encode_opcode(OP_CLASS_CONCAT_STR, 0);
 
 // --- String array opcodes ---
 
@@ -431,19 +431,19 @@ pub const CONCAT_STR: Opcode = 0xEB;
 /// Operand 2: u16 array descriptor index.
 /// Uses element_extra from the descriptor as max_string_length.
 /// Stack effect: none.
-pub const STR_INIT_ARRAY: Opcode = 0xEC;
+pub const STR_INIT_ARRAY: Opcode = encode_opcode(OP_CLASS_STR_INIT_ARRAY, 0);
 
 /// Load a string from an array element into a temp buffer.
 /// Operand 1: u16 variable table index (base data_offset).
 /// Operand 2: u16 array descriptor index.
 /// Pops flat_index, pushes buf_idx. Net stack: 0.
-pub const STR_LOAD_ARRAY_ELEM: Opcode = 0xED;
+pub const STR_LOAD_ARRAY_ELEM: Opcode = encode_opcode(OP_CLASS_STR_LOAD_ARRAY_ELEM, 0);
 
 /// Store a temp buffer into an array element's string slot.
 /// Operand 1: u16 variable table index (base data_offset).
 /// Operand 2: u16 array descriptor index.
 /// Pops flat_index, then pops buf_idx. Net stack: -2.
-pub const STR_STORE_ARRAY_ELEM: Opcode = 0xEE;
+pub const STR_STORE_ARRAY_ELEM: Opcode = encode_opcode(OP_CLASS_STR_STORE_ARRAY_ELEM, 0);
 
 // --- Array opcodes ---
 
