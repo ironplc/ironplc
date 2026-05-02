@@ -375,6 +375,43 @@ pub mod bc {
         vec![opcode::JMP_IF_NOT, b[0], b[1]]
     }
 
+    /// CMP_BR_I32 (fused compare-and-branch on 32-bit signed integers).
+    /// Operands: cmp_op byte, var index (u16), constant pool index (u16),
+    /// signed i16 jump offset.
+    pub fn cmp_br_i32(cmp_op_byte: u8, var_idx: u16, const_idx: u16, offset: i16) -> Vec<u8> {
+        let v = var_idx.to_le_bytes();
+        let c = const_idx.to_le_bytes();
+        let o = offset.to_le_bytes();
+        vec![
+            opcode::CMP_BR_I32,
+            cmp_op_byte,
+            v[0],
+            v[1],
+            c[0],
+            c[1],
+            o[0],
+            o[1],
+        ]
+    }
+
+    /// CMP_BR_I64 (fused compare-and-branch on 64-bit signed integers).
+    /// See `cmp_br_i32` for operand layout.
+    pub fn cmp_br_i64(cmp_op_byte: u8, var_idx: u16, const_idx: u16, offset: i16) -> Vec<u8> {
+        let v = var_idx.to_le_bytes();
+        let c = const_idx.to_le_bytes();
+        let o = offset.to_le_bytes();
+        vec![
+            opcode::CMP_BR_I64,
+            cmp_op_byte,
+            v[0],
+            v[1],
+            c[0],
+            c[1],
+            o[0],
+            o[1],
+        ]
+    }
+
     // --- 2-byte instructions: opcode + u8 operand. ------------------------
 
     pub fn fb_store_param(field: u8) -> Vec<u8> {

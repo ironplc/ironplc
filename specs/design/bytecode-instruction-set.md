@@ -475,6 +475,40 @@ TIME values are I64 microseconds. Although raw I64 arithmetic produces correct r
 | 0xB7 | JMP_IF_FAR | offset: i32 | [I32] → [] | Far conditional jump if top of stack is nonzero (TRUE) |
 | 0xB8 | JMP_IF_NOT_FAR | offset: i32 | [I32] → [] | Far conditional jump if top of stack is zero (FALSE) |
 
+### Fused compare-and-branch (CMP_BR)
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xF4 | CMP_BR_I32 | cmp_op: u8, var_idx: u16, const_idx: u16, target: i16 | [] → [] | Compare `vars[var_idx]` (i32) to `const_pool[const_idx]` (i32) using `cmp_op`; branch by `target` if true |
+| 0xF5 | CMP_BR_I64 | cmp_op: u8, var_idx: u16, const_idx: u16, target: i16 | [] → [] | As `CMP_BR_I32` but on 64-bit signed integers |
+
+`cmp_op` byte values (`opcode::cmp_op`):
+
+| Code | Mnemonic | Predicate |
+|------|----------|-----------|
+| 0    | EQ       | `var == const` |
+| 1    | NE       | `var != const` |
+| 2    | LT_S     | `var <  const` (signed) |
+| 3    | LE_S     | `var <= const` (signed) |
+| 4    | GT_S     | `var >  const` (signed) |
+| 5    | GE_S     | `var >= const` (signed) |
+
+Out-of-range `cmp_op` values trap as `V9013 InvalidCmpOp`. F32/F64 type tags
+(`encode_opcode(OP_CLASS_CMP_BR, T_F32 | T_F64)`) are reserved for a future
+NaN-aware extension.
+
+`CMP_BR_*` is a "branch if true" opcode. Codegen flips the comparison code to
+get "branch if false" semantics (`EQ ↔ NE`, `LT_S ↔ GE_S`, `LE_S ↔ GT_S`),
+and commutes the operator (`LT_S ↔ GT_S`, `LE_S ↔ GE_S`) when rewriting
+`const <cmp> var` to the canonical `var <cmp> const` operand layout.
+
+The compiler emits `CMP_BR_*` for FOR head tests, WHILE conditions (after a
+do-while restructure), REPEAT `UNTIL` tails, and IF/ELSIF predicates whenever
+the comparison fits the shape `var <cmp> const` with a 32- or 64-bit signed
+integer variable and a constant integer literal that fits the variable's
+width. Other shapes (var-var comparisons, complex conditions, unsigned types,
+floats) fall back to the unfused emission. See `vm-performance.md` §11.
+
 ---
 
 ### Function Block Operations
