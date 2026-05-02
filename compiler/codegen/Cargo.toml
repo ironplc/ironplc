@@ -23,3 +23,11 @@ ironplc-vm = { path = "../vm", version = "0.208.0", features = ["test-support"] 
 spec_test_macro = { path = "../spec_test_macro" }
 proptest = "1"
 rstest = "0.26"
+
+# All integration tests live in a single binary so compile/link work (and
+# llvm-cov instrumentation) is amortized across the whole suite instead of
+# paid per-file. With every test file moved into `tests/it/`, no top-level
+# `tests/*.rs` remain for Cargo to auto-discover — only this explicit target.
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
