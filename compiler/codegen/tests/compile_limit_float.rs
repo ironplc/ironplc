@@ -29,16 +29,19 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_f32(0),  // pool:0 (5.0)
-            bc::store_var_f32(0),  // var:0
-            bc::load_const_f32(1),  // pool:1 (0.0)
-            bc::load_var_f32(0),  // var:0
-            bc::load_const_f32(2),  // pool:2 (10.0)
-            bc::builtin(opcode::builtin::LIMIT_F32),  // LIMIT_F32
-            bc::store_var_f32(1),  // var:1
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_f32(0),                   // pool:0 (5.0)
+            bc::store_var_f32(0),                    // var:0
+            bc::load_const_f32(1),                   // pool:1 (0.0)
+            bc::load_var_f32(0),                     // var:0
+            bc::load_const_f32(2),                   // pool:2 (10.0)
+            bc::builtin(opcode::builtin::LIMIT_F32), // LIMIT_F32
+            bc::store_var_f32(1),                    // var:1
             bc::ret_void(),
-    ]);
+        ]
+    );
 }
 
 #[test]
@@ -59,14 +62,17 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_f64(0),  // pool:0 (5.0)
-            bc::store_var_f64(0),  // var:0
-            bc::load_const_f64(1),  // pool:1 (0.0)
-            bc::load_var_f64(0),  // var:0
-            bc::load_const_f64(2),  // pool:2 (10.0)
-            bc::builtin(opcode::builtin::LIMIT_F64),  // LIMIT_F64
-            bc::store_var_f64(1),  // var:1
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_f64(0),                   // pool:0 (5.0)
+            bc::store_var_f64(0),                    // var:0
+            bc::load_const_f64(1),                   // pool:1 (0.0)
+            bc::load_var_f64(0),                     // var:0
+            bc::load_const_f64(2),                   // pool:2 (10.0)
+            bc::builtin(opcode::builtin::LIMIT_F64), // LIMIT_F64
+            bc::store_var_f64(1),                    // var:1
             bc::ret_void(),
-    ]);
+        ]
+    );
 }

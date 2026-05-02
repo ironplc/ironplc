@@ -61,15 +61,18 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_i32(0),  // pool:0 (1)
-            bc::load_const_i32(1),  // pool:1 (10)
-            bc::load_const_i32(2),  // pool:2 (20)
-            bc::load_const_i32(3),  // pool:3 (30)
-            bc::builtin(opcode::builtin::MUX_I32_BASE + 3),  // MUX with 3 inputs
-            bc::store_var_i32(0),  // var:0
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_i32(0),                          // pool:0 (1)
+            bc::load_const_i32(1),                          // pool:1 (10)
+            bc::load_const_i32(2),                          // pool:2 (20)
+            bc::load_const_i32(3),                          // pool:3 (30)
+            bc::builtin(opcode::builtin::MUX_I32_BASE + 3), // MUX with 3 inputs
+            bc::store_var_i32(0),                           // var:0
             bc::ret_void(),
-    ]);
+        ]
+    );
 }
 
 #[test]
@@ -89,14 +92,17 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     // BUILTIN MUX_I32_BASE+2 = 0x0402
-    assert_bytecode!(bytecode, [
-            bc::load_const_i32(0),  // pool:0 (0)
-            bc::load_const_i32(1),  // pool:1 (100)
-            bc::load_const_i32(2),  // pool:2 (200)
-            bc::builtin(opcode::builtin::MUX_I32_BASE + 2),  // MUX with 2 inputs
-            bc::store_var_i32(0),  // var:0
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_i32(0),                          // pool:0 (0)
+            bc::load_const_i32(1),                          // pool:1 (100)
+            bc::load_const_i32(2),                          // pool:2 (200)
+            bc::builtin(opcode::builtin::MUX_I32_BASE + 2), // MUX with 2 inputs
+            bc::store_var_i32(0),                           // var:0
             bc::ret_void(),
-    ]);
+        ]
+    );
 }
 
 #[test]

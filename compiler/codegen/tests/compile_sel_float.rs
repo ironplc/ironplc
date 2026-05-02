@@ -30,14 +30,17 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_i32(0),  // pool:0 (0)
-            bc::load_const_f32(1),  // pool:1 (10.0)
-            bc::load_const_f32(2),  // pool:2 (20.0)
-            bc::builtin(opcode::builtin::SEL_F32),  // SEL_F32
-            bc::store_var_f32(0),  // var:0
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_i32(0),                 // pool:0 (0)
+            bc::load_const_f32(1),                 // pool:1 (10.0)
+            bc::load_const_f32(2),                 // pool:2 (20.0)
+            bc::builtin(opcode::builtin::SEL_F32), // SEL_F32
+            bc::store_var_f32(0),                  // var:0
             bc::ret_void(),
-    ]);
+        ]
+    );
 }
 
 #[test]
@@ -56,12 +59,15 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_i32(0),  // pool:0 (1)
-            bc::load_const_f64(1),  // pool:1 (10.0)
-            bc::load_const_f64(2),  // pool:2 (20.0)
-            bc::builtin(opcode::builtin::SEL_F64),  // SEL_F64
-            bc::store_var_f64(0),  // var:0
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_i32(0),                 // pool:0 (1)
+            bc::load_const_f64(1),                 // pool:1 (10.0)
+            bc::load_const_f64(2),                 // pool:2 (20.0)
+            bc::builtin(opcode::builtin::SEL_F64), // SEL_F64
+            bc::store_var_f64(0),                  // var:0
             bc::ret_void(),
-    ]);
+        ]
+    );
 }

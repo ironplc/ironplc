@@ -28,14 +28,17 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_f32(0),  // pool:0
-            bc::dup(),  // (store-load optimization)
-            bc::store_var_f32(0),  // var:0
-            bc::builtin(opcode::builtin::SQRT_F32),  // SQRT_F32
-            bc::store_var_f32(1),  // var:1
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_f32(0),                  // pool:0
+            bc::dup(),                              // (store-load optimization)
+            bc::store_var_f32(0),                   // var:0
+            bc::builtin(opcode::builtin::SQRT_F32), // SQRT_F32
+            bc::store_var_f32(1),                   // var:1
             bc::ret_void(),
-    ]);
+        ]
+    );
 }
 
 #[test]
@@ -59,12 +62,15 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_f64(0),  // pool:0
-            bc::dup(),  // (store-load optimization)
-            bc::store_var_f64(0),  // var:0
-            bc::builtin(opcode::builtin::SQRT_F64),  // SQRT_F64
-            bc::store_var_f64(1),  // var:1
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_f64(0),                  // pool:0
+            bc::dup(),                              // (store-load optimization)
+            bc::store_var_f64(0),                   // var:0
+            bc::builtin(opcode::builtin::SQRT_F64), // SQRT_F64
+            bc::store_var_f64(1),                   // var:1
             bc::ret_void(),
-    ]);
+        ]
+    );
 }

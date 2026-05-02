@@ -25,13 +25,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_var_i32(0),  // var:0
-            bc::dup(),  // (consecutive identical load)
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_var_i32(0), // var:0
+            bc::dup(),           // (consecutive identical load)
             bc::mul_i32(),
-            bc::store_var_i32(1),  // var:1
+            bc::store_var_i32(1), // var:1
             bc::ret_void(),
-    ]);
+        ]
+    );
 }
 
 #[test]
@@ -53,13 +56,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_i32(0),  // pool:0 (7)
-            bc::dup(),  // (store-load optimization)
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_i32(0), // pool:0 (7)
+            bc::dup(),             // (store-load optimization)
             bc::store_var_i32(0),  // var:0
             bc::store_var_i32(1),  // var:1
             bc::ret_void(),
-    ]);
+        ]
+    );
 }
 
 #[test]
@@ -84,6 +90,14 @@ END_PROGRAM
         .unwrap();
     // The first STORE_VAR(i) then LOAD_VAR(i) should NOT be optimized
     // because there is a loop label between them.
-    assert_eq!(bytecode[3], opcode::STORE_VAR_I32, "expected STORE_VAR_I32, not DUP");
-    assert_eq!(bytecode[6], opcode::LOAD_VAR_I32, "expected LOAD_VAR_I32 after STORE");
+    assert_eq!(
+        bytecode[3],
+        opcode::STORE_VAR_I32,
+        "expected STORE_VAR_I32, not DUP"
+    );
+    assert_eq!(
+        bytecode[6],
+        opcode::LOAD_VAR_I32,
+        "expected LOAD_VAR_I32 after STORE"
+    );
 }

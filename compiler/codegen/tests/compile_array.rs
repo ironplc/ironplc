@@ -100,8 +100,14 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     // Should contain LOAD_VAR for i, LOAD_CONST_I64 (lower bound 1), SUB_I64, LOAD_ARRAY
-    assert!(bytecode.contains(&opcode::SUB_I64), "SUB_I64 not found in bytecode");
-    assert!(bytecode.contains(&opcode::LOAD_ARRAY), "LOAD_ARRAY not found in bytecode");
+    assert!(
+        bytecode.contains(&opcode::SUB_I64),
+        "SUB_I64 not found in bytecode"
+    );
+    assert!(
+        bytecode.contains(&opcode::LOAD_ARRAY),
+        "LOAD_ARRAY not found in bytecode"
+    );
 }
 
 #[test]
@@ -121,7 +127,10 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert!(bytecode.contains(&opcode::SUB_I64), "SUB_I64 not found in bytecode");
+    assert!(
+        bytecode.contains(&opcode::SUB_I64),
+        "SUB_I64 not found in bytecode"
+    );
     assert!(
         bytecode.contains(&opcode::STORE_ARRAY),
         "STORE_ARRAY not found in bytecode"
@@ -311,7 +320,10 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(0))
         .unwrap();
-    let store_count = init_bytecode.iter().filter(|&&b| b == opcode::STORE_ARRAY).count();
+    let store_count = init_bytecode
+        .iter()
+        .filter(|&&b| b == opcode::STORE_ARRAY)
+        .count();
     assert_eq!(
         store_count, 3,
         "Expected 3 STORE_ARRAY in init for 3 initial values"
@@ -333,7 +345,10 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(0))
         .unwrap();
-    let store_count = init_bytecode.iter().filter(|&&b| b == opcode::STORE_ARRAY).count();
+    let store_count = init_bytecode
+        .iter()
+        .filter(|&&b| b == opcode::STORE_ARRAY)
+        .count();
     assert_eq!(
         store_count, 6,
         "Expected 6 STORE_ARRAY in init for 3(10), 3(20)"

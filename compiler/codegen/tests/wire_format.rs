@@ -294,11 +294,36 @@ fn encoding_when_store_var_family_then_consistent_op_class() {
 #[test]
 fn encoding_when_arithmetic_family_then_consistent_op_class() {
     for (i32_op, i64_op, f32_op, f64_op) in [
-        (opcode::ADD_I32, opcode::ADD_I64, opcode::ADD_F32, opcode::ADD_F64),
-        (opcode::SUB_I32, opcode::SUB_I64, opcode::SUB_F32, opcode::SUB_F64),
-        (opcode::MUL_I32, opcode::MUL_I64, opcode::MUL_F32, opcode::MUL_F64),
-        (opcode::NEG_I32, opcode::NEG_I64, opcode::NEG_F32, opcode::NEG_F64),
-        (opcode::DIV_I32, opcode::DIV_I64, opcode::DIV_F32, opcode::DIV_F64),
+        (
+            opcode::ADD_I32,
+            opcode::ADD_I64,
+            opcode::ADD_F32,
+            opcode::ADD_F64,
+        ),
+        (
+            opcode::SUB_I32,
+            opcode::SUB_I64,
+            opcode::SUB_F32,
+            opcode::SUB_F64,
+        ),
+        (
+            opcode::MUL_I32,
+            opcode::MUL_I64,
+            opcode::MUL_F32,
+            opcode::MUL_F64,
+        ),
+        (
+            opcode::NEG_I32,
+            opcode::NEG_I64,
+            opcode::NEG_F32,
+            opcode::NEG_F64,
+        ),
+        (
+            opcode::DIV_I32,
+            opcode::DIV_I64,
+            opcode::DIV_F32,
+            opcode::DIV_F64,
+        ),
     ] {
         let class = i32_op >> 2;
         assert_eq!(i64_op >> 2, class, "i64 vs i32 op_class mismatch");
@@ -314,12 +339,42 @@ fn encoding_when_arithmetic_family_then_consistent_op_class() {
 #[test]
 fn encoding_when_comparison_family_then_consistent_op_class() {
     for (i32_op, i64_op, f32_op, f64_op) in [
-        (opcode::EQ_I32, opcode::EQ_I64, opcode::EQ_F32, opcode::EQ_F64),
-        (opcode::NE_I32, opcode::NE_I64, opcode::NE_F32, opcode::NE_F64),
-        (opcode::LT_I32, opcode::LT_I64, opcode::LT_F32, opcode::LT_F64),
-        (opcode::LE_I32, opcode::LE_I64, opcode::LE_F32, opcode::LE_F64),
-        (opcode::GT_I32, opcode::GT_I64, opcode::GT_F32, opcode::GT_F64),
-        (opcode::GE_I32, opcode::GE_I64, opcode::GE_F32, opcode::GE_F64),
+        (
+            opcode::EQ_I32,
+            opcode::EQ_I64,
+            opcode::EQ_F32,
+            opcode::EQ_F64,
+        ),
+        (
+            opcode::NE_I32,
+            opcode::NE_I64,
+            opcode::NE_F32,
+            opcode::NE_F64,
+        ),
+        (
+            opcode::LT_I32,
+            opcode::LT_I64,
+            opcode::LT_F32,
+            opcode::LT_F64,
+        ),
+        (
+            opcode::LE_I32,
+            opcode::LE_I64,
+            opcode::LE_F32,
+            opcode::LE_F64,
+        ),
+        (
+            opcode::GT_I32,
+            opcode::GT_I64,
+            opcode::GT_F32,
+            opcode::GT_F64,
+        ),
+        (
+            opcode::GE_I32,
+            opcode::GE_I64,
+            opcode::GE_F32,
+            opcode::GE_F64,
+        ),
     ] {
         let class = i32_op >> 2;
         assert_eq!(i64_op >> 2, class);
@@ -410,7 +465,11 @@ END_PROGRAM
     // Last 5 bytes: SUB_I32 (1) + STORE_VAR_I32 (3) + RET_VOID (1).
     let len = bc.len();
     assert_eq!(bc[len - 5], 0x24, "SUB_I32 is one byte at expected offset");
-    assert_eq!(&bc[len - 4..len - 1], &[0x10, 0x00, 0x00], "STORE_VAR_I32 var:0");
+    assert_eq!(
+        &bc[len - 4..len - 1],
+        &[0x10, 0x00, 0x00],
+        "STORE_VAR_I32 var:0"
+    );
     assert_eq!(bc[len - 1], 0x8C, "RET_VOID");
 }
 
@@ -429,7 +488,11 @@ END_PROGRAM
 ",
     );
     // First 3 bytes: LOAD_VAR_I32 followed by LE u16.
-    assert_eq!(&bc[0..3], &[0x0C, 0x01, 0x00], "LOAD_VAR_I32 var:1 (LE u16)");
+    assert_eq!(
+        &bc[0..3],
+        &[0x0C, 0x01, 0x00],
+        "LOAD_VAR_I32 var:1 (LE u16)"
+    );
 }
 
 #[test]
@@ -542,7 +605,10 @@ END_PROGRAM
         .position(|&b| b == 0xB8)
         .expect("STR_INIT opcode present in program init");
     assert_eq!(opcode::instruction_size(opcode::STR_INIT), 7);
-    assert!(pos + 7 <= init_bc.len(), "STR_INIT has 6 trailing operand bytes");
+    assert!(
+        pos + 7 <= init_bc.len(),
+        "STR_INIT has 6 trailing operand bytes"
+    );
     let _data_offset = u32::from_le_bytes([
         init_bc[pos + 1],
         init_bc[pos + 2],
@@ -573,12 +639,7 @@ END_PROGRAM
         .expect("LEN_STR opcode present");
     assert_eq!(opcode::instruction_size(opcode::LEN_STR), 5);
     assert!(pos + 5 <= bc.len(), "LEN_STR has 4 trailing u32 bytes");
-    let _data_offset = u32::from_le_bytes([
-        bc[pos + 1],
-        bc[pos + 2],
-        bc[pos + 3],
-        bc[pos + 4],
-    ]);
+    let _data_offset = u32::from_le_bytes([bc[pos + 1], bc[pos + 2], bc[pos + 3], bc[pos + 4]]);
 }
 
 #[test]
@@ -621,5 +682,9 @@ PROGRAM main
 END_PROGRAM
 ",
     );
-    assert_eq!(bc.last().copied(), Some(0x8C), "RET_VOID terminates program");
+    assert_eq!(
+        bc.last().copied(),
+        Some(0x8C),
+        "RET_VOID terminates program"
+    );
 }

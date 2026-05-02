@@ -40,95 +40,261 @@ pub mod bc {
         vec![op]
     }
 
-    pub fn add_i32() -> Vec<u8> { op1(opcode::ADD_I32) }
-    pub fn add_i64() -> Vec<u8> { op1(opcode::ADD_I64) }
-    pub fn add_f32() -> Vec<u8> { op1(opcode::ADD_F32) }
-    pub fn add_f64() -> Vec<u8> { op1(opcode::ADD_F64) }
-    pub fn sub_i32() -> Vec<u8> { op1(opcode::SUB_I32) }
-    pub fn sub_i64() -> Vec<u8> { op1(opcode::SUB_I64) }
-    pub fn sub_f32() -> Vec<u8> { op1(opcode::SUB_F32) }
-    pub fn sub_f64() -> Vec<u8> { op1(opcode::SUB_F64) }
-    pub fn mul_i32() -> Vec<u8> { op1(opcode::MUL_I32) }
-    pub fn mul_i64() -> Vec<u8> { op1(opcode::MUL_I64) }
-    pub fn mul_f32() -> Vec<u8> { op1(opcode::MUL_F32) }
-    pub fn mul_f64() -> Vec<u8> { op1(opcode::MUL_F64) }
-    pub fn div_i32() -> Vec<u8> { op1(opcode::DIV_I32) }
-    pub fn div_i64() -> Vec<u8> { op1(opcode::DIV_I64) }
-    pub fn div_f32() -> Vec<u8> { op1(opcode::DIV_F32) }
-    pub fn div_f64() -> Vec<u8> { op1(opcode::DIV_F64) }
-    pub fn div_u32() -> Vec<u8> { op1(opcode::DIV_U32) }
-    pub fn div_u64() -> Vec<u8> { op1(opcode::DIV_U64) }
-    pub fn mod_i32() -> Vec<u8> { op1(opcode::MOD_I32) }
-    pub fn mod_i64() -> Vec<u8> { op1(opcode::MOD_I64) }
-    pub fn mod_u32() -> Vec<u8> { op1(opcode::MOD_U32) }
-    pub fn mod_u64() -> Vec<u8> { op1(opcode::MOD_U64) }
-    pub fn neg_i32() -> Vec<u8> { op1(opcode::NEG_I32) }
-    pub fn neg_i64() -> Vec<u8> { op1(opcode::NEG_I64) }
-    pub fn neg_f32() -> Vec<u8> { op1(opcode::NEG_F32) }
-    pub fn neg_f64() -> Vec<u8> { op1(opcode::NEG_F64) }
+    pub fn add_i32() -> Vec<u8> {
+        op1(opcode::ADD_I32)
+    }
+    pub fn add_i64() -> Vec<u8> {
+        op1(opcode::ADD_I64)
+    }
+    pub fn add_f32() -> Vec<u8> {
+        op1(opcode::ADD_F32)
+    }
+    pub fn add_f64() -> Vec<u8> {
+        op1(opcode::ADD_F64)
+    }
+    pub fn sub_i32() -> Vec<u8> {
+        op1(opcode::SUB_I32)
+    }
+    pub fn sub_i64() -> Vec<u8> {
+        op1(opcode::SUB_I64)
+    }
+    pub fn sub_f32() -> Vec<u8> {
+        op1(opcode::SUB_F32)
+    }
+    pub fn sub_f64() -> Vec<u8> {
+        op1(opcode::SUB_F64)
+    }
+    pub fn mul_i32() -> Vec<u8> {
+        op1(opcode::MUL_I32)
+    }
+    pub fn mul_i64() -> Vec<u8> {
+        op1(opcode::MUL_I64)
+    }
+    pub fn mul_f32() -> Vec<u8> {
+        op1(opcode::MUL_F32)
+    }
+    pub fn mul_f64() -> Vec<u8> {
+        op1(opcode::MUL_F64)
+    }
+    pub fn div_i32() -> Vec<u8> {
+        op1(opcode::DIV_I32)
+    }
+    pub fn div_i64() -> Vec<u8> {
+        op1(opcode::DIV_I64)
+    }
+    pub fn div_f32() -> Vec<u8> {
+        op1(opcode::DIV_F32)
+    }
+    pub fn div_f64() -> Vec<u8> {
+        op1(opcode::DIV_F64)
+    }
+    pub fn div_u32() -> Vec<u8> {
+        op1(opcode::DIV_U32)
+    }
+    pub fn div_u64() -> Vec<u8> {
+        op1(opcode::DIV_U64)
+    }
+    pub fn mod_i32() -> Vec<u8> {
+        op1(opcode::MOD_I32)
+    }
+    pub fn mod_i64() -> Vec<u8> {
+        op1(opcode::MOD_I64)
+    }
+    pub fn mod_u32() -> Vec<u8> {
+        op1(opcode::MOD_U32)
+    }
+    pub fn mod_u64() -> Vec<u8> {
+        op1(opcode::MOD_U64)
+    }
+    pub fn neg_i32() -> Vec<u8> {
+        op1(opcode::NEG_I32)
+    }
+    pub fn neg_i64() -> Vec<u8> {
+        op1(opcode::NEG_I64)
+    }
+    pub fn neg_f32() -> Vec<u8> {
+        op1(opcode::NEG_F32)
+    }
+    pub fn neg_f64() -> Vec<u8> {
+        op1(opcode::NEG_F64)
+    }
 
-    pub fn eq_i32() -> Vec<u8> { op1(opcode::EQ_I32) }
-    pub fn eq_i64() -> Vec<u8> { op1(opcode::EQ_I64) }
-    pub fn eq_f32() -> Vec<u8> { op1(opcode::EQ_F32) }
-    pub fn eq_f64() -> Vec<u8> { op1(opcode::EQ_F64) }
-    pub fn ne_i32() -> Vec<u8> { op1(opcode::NE_I32) }
-    pub fn ne_i64() -> Vec<u8> { op1(opcode::NE_I64) }
-    pub fn ne_f32() -> Vec<u8> { op1(opcode::NE_F32) }
-    pub fn ne_f64() -> Vec<u8> { op1(opcode::NE_F64) }
-    pub fn lt_i32() -> Vec<u8> { op1(opcode::LT_I32) }
-    pub fn lt_i64() -> Vec<u8> { op1(opcode::LT_I64) }
-    pub fn lt_f32() -> Vec<u8> { op1(opcode::LT_F32) }
-    pub fn lt_f64() -> Vec<u8> { op1(opcode::LT_F64) }
-    pub fn lt_u32() -> Vec<u8> { op1(opcode::LT_U32) }
-    pub fn lt_u64() -> Vec<u8> { op1(opcode::LT_U64) }
-    pub fn le_i32() -> Vec<u8> { op1(opcode::LE_I32) }
-    pub fn le_i64() -> Vec<u8> { op1(opcode::LE_I64) }
-    pub fn le_f32() -> Vec<u8> { op1(opcode::LE_F32) }
-    pub fn le_f64() -> Vec<u8> { op1(opcode::LE_F64) }
-    pub fn le_u32() -> Vec<u8> { op1(opcode::LE_U32) }
-    pub fn le_u64() -> Vec<u8> { op1(opcode::LE_U64) }
-    pub fn gt_i32() -> Vec<u8> { op1(opcode::GT_I32) }
-    pub fn gt_i64() -> Vec<u8> { op1(opcode::GT_I64) }
-    pub fn gt_f32() -> Vec<u8> { op1(opcode::GT_F32) }
-    pub fn gt_f64() -> Vec<u8> { op1(opcode::GT_F64) }
-    pub fn gt_u32() -> Vec<u8> { op1(opcode::GT_U32) }
-    pub fn gt_u64() -> Vec<u8> { op1(opcode::GT_U64) }
-    pub fn ge_i32() -> Vec<u8> { op1(opcode::GE_I32) }
-    pub fn ge_i64() -> Vec<u8> { op1(opcode::GE_I64) }
-    pub fn ge_f32() -> Vec<u8> { op1(opcode::GE_F32) }
-    pub fn ge_f64() -> Vec<u8> { op1(opcode::GE_F64) }
-    pub fn ge_u32() -> Vec<u8> { op1(opcode::GE_U32) }
-    pub fn ge_u64() -> Vec<u8> { op1(opcode::GE_U64) }
+    pub fn eq_i32() -> Vec<u8> {
+        op1(opcode::EQ_I32)
+    }
+    pub fn eq_i64() -> Vec<u8> {
+        op1(opcode::EQ_I64)
+    }
+    pub fn eq_f32() -> Vec<u8> {
+        op1(opcode::EQ_F32)
+    }
+    pub fn eq_f64() -> Vec<u8> {
+        op1(opcode::EQ_F64)
+    }
+    pub fn ne_i32() -> Vec<u8> {
+        op1(opcode::NE_I32)
+    }
+    pub fn ne_i64() -> Vec<u8> {
+        op1(opcode::NE_I64)
+    }
+    pub fn ne_f32() -> Vec<u8> {
+        op1(opcode::NE_F32)
+    }
+    pub fn ne_f64() -> Vec<u8> {
+        op1(opcode::NE_F64)
+    }
+    pub fn lt_i32() -> Vec<u8> {
+        op1(opcode::LT_I32)
+    }
+    pub fn lt_i64() -> Vec<u8> {
+        op1(opcode::LT_I64)
+    }
+    pub fn lt_f32() -> Vec<u8> {
+        op1(opcode::LT_F32)
+    }
+    pub fn lt_f64() -> Vec<u8> {
+        op1(opcode::LT_F64)
+    }
+    pub fn lt_u32() -> Vec<u8> {
+        op1(opcode::LT_U32)
+    }
+    pub fn lt_u64() -> Vec<u8> {
+        op1(opcode::LT_U64)
+    }
+    pub fn le_i32() -> Vec<u8> {
+        op1(opcode::LE_I32)
+    }
+    pub fn le_i64() -> Vec<u8> {
+        op1(opcode::LE_I64)
+    }
+    pub fn le_f32() -> Vec<u8> {
+        op1(opcode::LE_F32)
+    }
+    pub fn le_f64() -> Vec<u8> {
+        op1(opcode::LE_F64)
+    }
+    pub fn le_u32() -> Vec<u8> {
+        op1(opcode::LE_U32)
+    }
+    pub fn le_u64() -> Vec<u8> {
+        op1(opcode::LE_U64)
+    }
+    pub fn gt_i32() -> Vec<u8> {
+        op1(opcode::GT_I32)
+    }
+    pub fn gt_i64() -> Vec<u8> {
+        op1(opcode::GT_I64)
+    }
+    pub fn gt_f32() -> Vec<u8> {
+        op1(opcode::GT_F32)
+    }
+    pub fn gt_f64() -> Vec<u8> {
+        op1(opcode::GT_F64)
+    }
+    pub fn gt_u32() -> Vec<u8> {
+        op1(opcode::GT_U32)
+    }
+    pub fn gt_u64() -> Vec<u8> {
+        op1(opcode::GT_U64)
+    }
+    pub fn ge_i32() -> Vec<u8> {
+        op1(opcode::GE_I32)
+    }
+    pub fn ge_i64() -> Vec<u8> {
+        op1(opcode::GE_I64)
+    }
+    pub fn ge_f32() -> Vec<u8> {
+        op1(opcode::GE_F32)
+    }
+    pub fn ge_f64() -> Vec<u8> {
+        op1(opcode::GE_F64)
+    }
+    pub fn ge_u32() -> Vec<u8> {
+        op1(opcode::GE_U32)
+    }
+    pub fn ge_u64() -> Vec<u8> {
+        op1(opcode::GE_U64)
+    }
 
-    pub fn bool_and() -> Vec<u8> { op1(opcode::BOOL_AND) }
-    pub fn bool_or() -> Vec<u8> { op1(opcode::BOOL_OR) }
-    pub fn bool_xor() -> Vec<u8> { op1(opcode::BOOL_XOR) }
-    pub fn bool_not() -> Vec<u8> { op1(opcode::BOOL_NOT) }
+    pub fn bool_and() -> Vec<u8> {
+        op1(opcode::BOOL_AND)
+    }
+    pub fn bool_or() -> Vec<u8> {
+        op1(opcode::BOOL_OR)
+    }
+    pub fn bool_xor() -> Vec<u8> {
+        op1(opcode::BOOL_XOR)
+    }
+    pub fn bool_not() -> Vec<u8> {
+        op1(opcode::BOOL_NOT)
+    }
 
-    pub fn bit_and_32() -> Vec<u8> { op1(opcode::BIT_AND_32) }
-    pub fn bit_and_64() -> Vec<u8> { op1(opcode::BIT_AND_64) }
-    pub fn bit_or_32() -> Vec<u8> { op1(opcode::BIT_OR_32) }
-    pub fn bit_or_64() -> Vec<u8> { op1(opcode::BIT_OR_64) }
-    pub fn bit_xor_32() -> Vec<u8> { op1(opcode::BIT_XOR_32) }
-    pub fn bit_xor_64() -> Vec<u8> { op1(opcode::BIT_XOR_64) }
-    pub fn bit_not_32() -> Vec<u8> { op1(opcode::BIT_NOT_32) }
-    pub fn bit_not_64() -> Vec<u8> { op1(opcode::BIT_NOT_64) }
+    pub fn bit_and_32() -> Vec<u8> {
+        op1(opcode::BIT_AND_32)
+    }
+    pub fn bit_and_64() -> Vec<u8> {
+        op1(opcode::BIT_AND_64)
+    }
+    pub fn bit_or_32() -> Vec<u8> {
+        op1(opcode::BIT_OR_32)
+    }
+    pub fn bit_or_64() -> Vec<u8> {
+        op1(opcode::BIT_OR_64)
+    }
+    pub fn bit_xor_32() -> Vec<u8> {
+        op1(opcode::BIT_XOR_32)
+    }
+    pub fn bit_xor_64() -> Vec<u8> {
+        op1(opcode::BIT_XOR_64)
+    }
+    pub fn bit_not_32() -> Vec<u8> {
+        op1(opcode::BIT_NOT_32)
+    }
+    pub fn bit_not_64() -> Vec<u8> {
+        op1(opcode::BIT_NOT_64)
+    }
 
-    pub fn trunc_i8() -> Vec<u8> { op1(opcode::TRUNC_I8) }
-    pub fn trunc_u8() -> Vec<u8> { op1(opcode::TRUNC_U8) }
-    pub fn trunc_i16() -> Vec<u8> { op1(opcode::TRUNC_I16) }
-    pub fn trunc_u16() -> Vec<u8> { op1(opcode::TRUNC_U16) }
+    pub fn trunc_i8() -> Vec<u8> {
+        op1(opcode::TRUNC_I8)
+    }
+    pub fn trunc_u8() -> Vec<u8> {
+        op1(opcode::TRUNC_U8)
+    }
+    pub fn trunc_i16() -> Vec<u8> {
+        op1(opcode::TRUNC_I16)
+    }
+    pub fn trunc_u16() -> Vec<u8> {
+        op1(opcode::TRUNC_U16)
+    }
 
-    pub fn load_true() -> Vec<u8> { op1(opcode::LOAD_TRUE) }
-    pub fn load_false() -> Vec<u8> { op1(opcode::LOAD_FALSE) }
-    pub fn load_indirect() -> Vec<u8> { op1(opcode::LOAD_INDIRECT) }
-    pub fn store_indirect() -> Vec<u8> { op1(opcode::STORE_INDIRECT) }
+    pub fn load_true() -> Vec<u8> {
+        op1(opcode::LOAD_TRUE)
+    }
+    pub fn load_false() -> Vec<u8> {
+        op1(opcode::LOAD_FALSE)
+    }
+    pub fn load_indirect() -> Vec<u8> {
+        op1(opcode::LOAD_INDIRECT)
+    }
+    pub fn store_indirect() -> Vec<u8> {
+        op1(opcode::STORE_INDIRECT)
+    }
 
-    pub fn pop() -> Vec<u8> { op1(opcode::POP) }
-    pub fn dup() -> Vec<u8> { op1(opcode::DUP) }
-    pub fn swap() -> Vec<u8> { op1(opcode::SWAP) }
-    pub fn ret() -> Vec<u8> { op1(opcode::RET) }
-    pub fn ret_void() -> Vec<u8> { op1(opcode::RET_VOID) }
+    pub fn pop() -> Vec<u8> {
+        op1(opcode::POP)
+    }
+    pub fn dup() -> Vec<u8> {
+        op1(opcode::DUP)
+    }
+    pub fn swap() -> Vec<u8> {
+        op1(opcode::SWAP)
+    }
+    pub fn ret() -> Vec<u8> {
+        op1(opcode::RET)
+    }
+    pub fn ret_void() -> Vec<u8> {
+        op1(opcode::RET_VOID)
+    }
 
     // --- 3-byte instructions: opcode + LE u16 operand. --------------------
 
@@ -138,27 +304,63 @@ pub mod bc {
         vec![op, b[0], b[1]]
     }
 
-    pub fn load_const_i32(pool_index: u16) -> Vec<u8> { op_u16(opcode::LOAD_CONST_I32, pool_index) }
-    pub fn load_const_i64(pool_index: u16) -> Vec<u8> { op_u16(opcode::LOAD_CONST_I64, pool_index) }
-    pub fn load_const_f32(pool_index: u16) -> Vec<u8> { op_u16(opcode::LOAD_CONST_F32, pool_index) }
-    pub fn load_const_f64(pool_index: u16) -> Vec<u8> { op_u16(opcode::LOAD_CONST_F64, pool_index) }
-    pub fn load_const_str(pool_index: u16) -> Vec<u8> { op_u16(opcode::LOAD_CONST_STR, pool_index) }
+    pub fn load_const_i32(pool_index: u16) -> Vec<u8> {
+        op_u16(opcode::LOAD_CONST_I32, pool_index)
+    }
+    pub fn load_const_i64(pool_index: u16) -> Vec<u8> {
+        op_u16(opcode::LOAD_CONST_I64, pool_index)
+    }
+    pub fn load_const_f32(pool_index: u16) -> Vec<u8> {
+        op_u16(opcode::LOAD_CONST_F32, pool_index)
+    }
+    pub fn load_const_f64(pool_index: u16) -> Vec<u8> {
+        op_u16(opcode::LOAD_CONST_F64, pool_index)
+    }
+    pub fn load_const_str(pool_index: u16) -> Vec<u8> {
+        op_u16(opcode::LOAD_CONST_STR, pool_index)
+    }
 
-    pub fn load_var_i32(idx: u16) -> Vec<u8> { op_u16(opcode::LOAD_VAR_I32, idx) }
-    pub fn load_var_i64(idx: u16) -> Vec<u8> { op_u16(opcode::LOAD_VAR_I64, idx) }
-    pub fn load_var_f32(idx: u16) -> Vec<u8> { op_u16(opcode::LOAD_VAR_F32, idx) }
-    pub fn load_var_f64(idx: u16) -> Vec<u8> { op_u16(opcode::LOAD_VAR_F64, idx) }
-    pub fn store_var_i32(idx: u16) -> Vec<u8> { op_u16(opcode::STORE_VAR_I32, idx) }
-    pub fn store_var_i64(idx: u16) -> Vec<u8> { op_u16(opcode::STORE_VAR_I64, idx) }
-    pub fn store_var_f32(idx: u16) -> Vec<u8> { op_u16(opcode::STORE_VAR_F32, idx) }
-    pub fn store_var_f64(idx: u16) -> Vec<u8> { op_u16(opcode::STORE_VAR_F64, idx) }
+    pub fn load_var_i32(idx: u16) -> Vec<u8> {
+        op_u16(opcode::LOAD_VAR_I32, idx)
+    }
+    pub fn load_var_i64(idx: u16) -> Vec<u8> {
+        op_u16(opcode::LOAD_VAR_I64, idx)
+    }
+    pub fn load_var_f32(idx: u16) -> Vec<u8> {
+        op_u16(opcode::LOAD_VAR_F32, idx)
+    }
+    pub fn load_var_f64(idx: u16) -> Vec<u8> {
+        op_u16(opcode::LOAD_VAR_F64, idx)
+    }
+    pub fn store_var_i32(idx: u16) -> Vec<u8> {
+        op_u16(opcode::STORE_VAR_I32, idx)
+    }
+    pub fn store_var_i64(idx: u16) -> Vec<u8> {
+        op_u16(opcode::STORE_VAR_I64, idx)
+    }
+    pub fn store_var_f32(idx: u16) -> Vec<u8> {
+        op_u16(opcode::STORE_VAR_F32, idx)
+    }
+    pub fn store_var_f64(idx: u16) -> Vec<u8> {
+        op_u16(opcode::STORE_VAR_F64, idx)
+    }
 
-    pub fn load_var_i32_idx(idx: VarIndex) -> Vec<u8> { op_u16(opcode::LOAD_VAR_I32, idx.raw()) }
-    pub fn store_var_i32_idx(idx: VarIndex) -> Vec<u8> { op_u16(opcode::STORE_VAR_I32, idx.raw()) }
+    pub fn load_var_i32_idx(idx: VarIndex) -> Vec<u8> {
+        op_u16(opcode::LOAD_VAR_I32, idx.raw())
+    }
+    pub fn store_var_i32_idx(idx: VarIndex) -> Vec<u8> {
+        op_u16(opcode::STORE_VAR_I32, idx.raw())
+    }
 
-    pub fn fb_load_instance(idx: u16) -> Vec<u8> { op_u16(opcode::FB_LOAD_INSTANCE, idx) }
-    pub fn fb_call(type_id: u16) -> Vec<u8> { op_u16(opcode::FB_CALL, type_id) }
-    pub fn builtin(func_id: u16) -> Vec<u8> { op_u16(opcode::BUILTIN, func_id) }
+    pub fn fb_load_instance(idx: u16) -> Vec<u8> {
+        op_u16(opcode::FB_LOAD_INSTANCE, idx)
+    }
+    pub fn fb_call(type_id: u16) -> Vec<u8> {
+        op_u16(opcode::FB_CALL, type_id)
+    }
+    pub fn builtin(func_id: u16) -> Vec<u8> {
+        op_u16(opcode::BUILTIN, func_id)
+    }
 
     /// JMP with signed i16 offset (relative, in bytes, from the byte
     /// after the operand).
@@ -222,13 +424,27 @@ pub mod bc {
         vec![op, b[0], b[1], b[2], b[3]]
     }
 
-    pub fn str_load_var(data_offset: u32) -> Vec<u8> { op_u32(opcode::STR_LOAD_VAR, data_offset) }
-    pub fn str_store_var(data_offset: u32) -> Vec<u8> { op_u32(opcode::STR_STORE_VAR, data_offset) }
-    pub fn len_str(data_offset: u32) -> Vec<u8> { op_u32(opcode::LEN_STR, data_offset) }
-    pub fn delete_str(data_offset: u32) -> Vec<u8> { op_u32(opcode::DELETE_STR, data_offset) }
-    pub fn left_str(data_offset: u32) -> Vec<u8> { op_u32(opcode::LEFT_STR, data_offset) }
-    pub fn right_str(data_offset: u32) -> Vec<u8> { op_u32(opcode::RIGHT_STR, data_offset) }
-    pub fn mid_str(data_offset: u32) -> Vec<u8> { op_u32(opcode::MID_STR, data_offset) }
+    pub fn str_load_var(data_offset: u32) -> Vec<u8> {
+        op_u32(opcode::STR_LOAD_VAR, data_offset)
+    }
+    pub fn str_store_var(data_offset: u32) -> Vec<u8> {
+        op_u32(opcode::STR_STORE_VAR, data_offset)
+    }
+    pub fn len_str(data_offset: u32) -> Vec<u8> {
+        op_u32(opcode::LEN_STR, data_offset)
+    }
+    pub fn delete_str(data_offset: u32) -> Vec<u8> {
+        op_u32(opcode::DELETE_STR, data_offset)
+    }
+    pub fn left_str(data_offset: u32) -> Vec<u8> {
+        op_u32(opcode::LEFT_STR, data_offset)
+    }
+    pub fn right_str(data_offset: u32) -> Vec<u8> {
+        op_u32(opcode::RIGHT_STR, data_offset)
+    }
+    pub fn mid_str(data_offset: u32) -> Vec<u8> {
+        op_u32(opcode::MID_STR, data_offset)
+    }
 
     // --- 7-byte instruction: opcode + u32 + u16. --------------------------
 
@@ -246,10 +462,18 @@ pub mod bc {
         vec![op, ab[0], ab[1], ab[2], ab[3], bb[0], bb[1], bb[2], bb[3]]
     }
 
-    pub fn find_str(in1: u32, in2: u32) -> Vec<u8> { op_u32_u32(opcode::FIND_STR, in1, in2) }
-    pub fn replace_str(in1: u32, in2: u32) -> Vec<u8> { op_u32_u32(opcode::REPLACE_STR, in1, in2) }
-    pub fn insert_str(in1: u32, in2: u32) -> Vec<u8> { op_u32_u32(opcode::INSERT_STR, in1, in2) }
-    pub fn concat_str(in1: u32, in2: u32) -> Vec<u8> { op_u32_u32(opcode::CONCAT_STR, in1, in2) }
+    pub fn find_str(in1: u32, in2: u32) -> Vec<u8> {
+        op_u32_u32(opcode::FIND_STR, in1, in2)
+    }
+    pub fn replace_str(in1: u32, in2: u32) -> Vec<u8> {
+        op_u32_u32(opcode::REPLACE_STR, in1, in2)
+    }
+    pub fn insert_str(in1: u32, in2: u32) -> Vec<u8> {
+        op_u32_u32(opcode::INSERT_STR, in1, in2)
+    }
+    pub fn concat_str(in1: u32, in2: u32) -> Vec<u8> {
+        op_u32_u32(opcode::CONCAT_STR, in1, in2)
+    }
 }
 
 /// Asserts that `actual` matches the given expected sequence of

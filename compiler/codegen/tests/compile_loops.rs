@@ -47,18 +47,21 @@ END_PROGRAM
     assert_eq!(i16::from_le_bytes([bytecode[21], bytecode[22]]), -23);
 
     // Verify overall structure
-    assert_bytecode!(bytecode, [
-        bc::load_var_i32(0),    // condition: x
-        bc::load_const_i32(0),  // condition: 0
-        bc::gt_i32(),           // x > 0
-        bc::jmp_if_not(13),     // exit if false
-        bc::load_var_i32(0),    // body: x
-        bc::load_const_i32(1),  // body: 1
-        bc::sub_i32(),          // x - 1
-        bc::store_var_i32(0),   // x := ...
-        bc::jmp(-23),           // back to LOOP
-        bc::ret_void(),
-    ]);
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_var_i32(0),   // condition: x
+            bc::load_const_i32(0), // condition: 0
+            bc::gt_i32(),          // x > 0
+            bc::jmp_if_not(13),    // exit if false
+            bc::load_var_i32(0),   // body: x
+            bc::load_const_i32(1), // body: 1
+            bc::sub_i32(),         // x - 1
+            bc::store_var_i32(0),  // x := ...
+            bc::jmp(-23),          // back to LOOP
+            bc::ret_void(),
+        ]
+    );
 }
 
 #[test]
@@ -96,17 +99,20 @@ END_PROGRAM
     assert_eq!(bytecode[15], opcode::JMP_IF_NOT);
     assert_eq!(i16::from_le_bytes([bytecode[16], bytecode[17]]), -18);
 
-    assert_bytecode!(bytecode, [
-        bc::load_var_i32(0),    // body: x
-        bc::load_const_i32(0),  // body: 1
-        bc::add_i32(),          // x + 1
-        bc::dup(),              // store-load optimization
-        bc::store_var_i32(0),   // x := ...
-        bc::load_const_i32(1),  // condition: 5
-        bc::gt_i32(),           // x > 5
-        bc::jmp_if_not(-18),    // back to LOOP if false
-        bc::ret_void(),
-    ]);
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_var_i32(0),   // body: x
+            bc::load_const_i32(0), // body: 1
+            bc::add_i32(),         // x + 1
+            bc::dup(),             // store-load optimization
+            bc::store_var_i32(0),  // x := ...
+            bc::load_const_i32(1), // condition: 5
+            bc::gt_i32(),          // x > 5
+            bc::jmp_if_not(-18),   // back to LOOP if false
+            bc::ret_void(),
+        ]
+    );
 }
 
 #[test]
@@ -163,24 +169,27 @@ END_PROGRAM
     assert_eq!(jmp_count, 1, "bytecode = {bytecode:?}");
 
     // Verify structure
-    assert_bytecode!(bytecode, [
-        bc::load_const_i32(0),  // from value
-        bc::store_var_i32(0),   // i := 1
-        bc::load_var_i32(0),    // LOOP: load i
-        bc::load_const_i32(1),  // to value
-        bc::le_i32(),           // i <= 5? continuation
-        bc::jmp_if_not(23),     // exit when i > 5
-        bc::load_var_i32(1),    // BODY: y
-        bc::load_var_i32(0),    // i
-        bc::add_i32(),          // y + i
-        bc::store_var_i32(1),   // y := ...
-        bc::load_var_i32(0),    // increment: i
-        bc::load_const_i32(0),  // step: 1
-        bc::add_i32(),          // i + 1
-        bc::store_var_i32(0),   // i := ...
-        bc::jmp(-33),           // back to LOOP
-        bc::ret_void(),
-    ]);
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_i32(0), // from value
+            bc::store_var_i32(0),  // i := 1
+            bc::load_var_i32(0),   // LOOP: load i
+            bc::load_const_i32(1), // to value
+            bc::le_i32(),          // i <= 5? continuation
+            bc::jmp_if_not(23),    // exit when i > 5
+            bc::load_var_i32(1),   // BODY: y
+            bc::load_var_i32(0),   // i
+            bc::add_i32(),         // y + i
+            bc::store_var_i32(1),  // y := ...
+            bc::load_var_i32(0),   // increment: i
+            bc::load_const_i32(0), // step: 1
+            bc::add_i32(),         // i + 1
+            bc::store_var_i32(0),  // i := ...
+            bc::jmp(-33),          // back to LOOP
+            bc::ret_void(),
+        ]
+    );
 }
 
 #[test]

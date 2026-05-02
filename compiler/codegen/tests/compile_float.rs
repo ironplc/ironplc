@@ -25,11 +25,14 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_f32(0),  // pool:0
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_f32(0), // pool:0
             bc::store_var_f32(0),  // var:0
             bc::ret_void(),
-    ]);
+        ]
+    );
 }
 
 #[test]
@@ -55,15 +58,18 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_bytecode!(bytecode, [
-            bc::load_const_f64(0),  // pool:0
-            bc::dup(),  // (store-load optimization)
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_f64(0), // pool:0
+            bc::dup(),             // (store-load optimization)
             bc::store_var_f64(0),  // var:0
-            bc::load_const_f64(1),  // pool:1
+            bc::load_const_f64(1), // pool:1
             bc::add_f64(),
-            bc::store_var_f64(1),  // var:1
+            bc::store_var_f64(1), // var:1
             bc::ret_void(),
-    ]);
+        ]
+    );
 }
 
 #[test]
