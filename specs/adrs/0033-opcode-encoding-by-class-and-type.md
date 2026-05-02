@@ -1,7 +1,8 @@
 # Opcode Encoding by Operation Class and Type Tag
 
-status: proposed
+status: accepted
 date: 2026-04-28
+accepted: 2026-05-02
 
 ## Context and Problem Statement
 
