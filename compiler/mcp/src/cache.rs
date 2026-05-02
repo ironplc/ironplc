@@ -124,6 +124,11 @@ impl VariableSymbolMap {
     pub fn len(&self) -> usize {
         self.by_qualified.len()
     }
+
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.by_qualified.is_empty()
+    }
 }
 
 /// Returns the last dot-separated component of `name`, or `name` itself
@@ -258,6 +263,11 @@ impl ContainerCache {
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }
 

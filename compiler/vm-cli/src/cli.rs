@@ -484,10 +484,7 @@ mod tests {
     struct FailingWriter;
     impl Write for FailingWriter {
         fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "simulated write failure",
-            ))
+            Err(std::io::Error::other("simulated write failure"))
         }
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())

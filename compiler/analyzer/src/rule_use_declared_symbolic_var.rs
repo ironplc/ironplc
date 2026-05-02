@@ -335,8 +335,10 @@ END_PROGRAM";
 
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
-        let mut options = CompilerOptions::default();
-        options.allow_system_uptime_global = true;
+        let options = CompilerOptions {
+            allow_system_uptime_global: true,
+            ..CompilerOptions::default()
+        };
         let result = apply(&library, &context, &options);
 
         assert!(result.is_ok());

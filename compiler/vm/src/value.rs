@@ -142,10 +142,10 @@ mod tests {
 
     #[test]
     fn slot_from_u64_when_f32_roundtrip_then_matches() {
-        let original = Slot::from_f32(3.14);
+        let original = Slot::from_f32(3.25);
         let raw = original.as_u64();
         let restored = Slot::from_u64(raw);
-        assert_eq!(restored.as_f32(), 3.14_f32);
+        assert_eq!(restored.as_f32(), 3.25_f32);
     }
 
     #[test]
