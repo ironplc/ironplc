@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn code_section_write_read_when_single_function_then_roundtrips() {
-        let bytecode = vec![0x01, 0x00, 0x00, 0xB5];
+        let bytecode = vec![0x01, 0x00, 0x00, 0x8C];
         let section = CodeSection {
             functions: vec![FuncEntry {
                 function_id: FunctionId::INIT,
@@ -144,7 +144,7 @@ mod tests {
         assert_eq!(decoded.functions[0].code_length, 4);
         assert_eq!(decoded.functions[0].max_stack_depth, 2);
         assert_eq!(decoded.functions[0].num_locals, 1);
-        assert_eq!(decoded.bytecode, vec![0x01, 0x00, 0x00, 0xB5]);
+        assert_eq!(decoded.bytecode, vec![0x01, 0x00, 0x00, 0x8C]);
     }
 
     #[test]

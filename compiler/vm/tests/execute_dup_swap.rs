@@ -13,7 +13,7 @@ fn execute_when_dup_then_duplicates_top_value() {
         0xA1,              // DUP
         0x20,              // ADD_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[42]), 84);
 }
@@ -27,7 +27,7 @@ fn execute_when_dup_then_both_copies_independent() {
         0xA1,              // DUP
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
         0x10, 0x01, 0x00,  // STORE_VAR_I32 var[1]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     let c = common::single_function_container(&bytecode, 2, &[10]);
     let mut b = ironplc_vm::VmBuffers::from_container(&c);
@@ -47,7 +47,7 @@ fn execute_when_swap_then_reverses_top_two() {
         0xA2,              // SWAP
         0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[10, 3]), -7);
 }
@@ -63,7 +63,7 @@ fn execute_when_dup_and_swap_combined_then_correct() {
         0xA2,              // SWAP
         0x24,              // SUB_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[5, 20]), 15);
 }

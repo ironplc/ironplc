@@ -242,11 +242,11 @@ pub const NE_I32: Opcode = encode_opcode(OP_CLASS_NE, T_I32);
 
 /// Compare two signed 32-bit integers (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0.
-pub const LT_I32: Opcode = 0x6A;
+pub const LT_I32: Opcode = encode_opcode(OP_CLASS_LT_S, T_I32);
 
 /// Compare two signed 32-bit integers (less than or equal).
 /// Pops two values (b then a), pushes 1 if a <= b, else 0.
-pub const LE_I32: Opcode = 0x6B;
+pub const LE_I32: Opcode = encode_opcode(OP_CLASS_LE_S, T_I32);
 
 /// Compare two signed 32-bit integers (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0.
@@ -309,10 +309,10 @@ pub const BIT_XOR_64: Opcode = encode_opcode(OP_CLASS_BIT_XOR, 1);
 pub const BIT_NOT_64: Opcode = encode_opcode(OP_CLASS_BIT_NOT, 1);
 
 /// Unconditional jump. Operand: i16 offset relative to next instruction.
-pub const JMP: Opcode = 0xB0;
+pub const JMP: Opcode = encode_opcode(OP_CLASS_JMP, 0);
 
 /// Jump if top of stack is zero (FALSE). Operand: i16 offset. Pops condition.
-pub const JMP_IF_NOT: Opcode = 0xB2;
+pub const JMP_IF_NOT: Opcode = encode_opcode(OP_CLASS_JMP_IF_NOT, 0);
 
 /// Call a built-in standard library function.
 /// Operand: u16 function ID (little-endian).
@@ -322,13 +322,13 @@ pub const BUILTIN: Opcode = 0xC4;
 /// Call function by index. Pops arguments, executes function body,
 /// pushes return value.
 /// Operand: u16 function_id (little-endian).
-pub const CALL: Opcode = 0xB3;
+pub const CALL: Opcode = encode_opcode(OP_CLASS_CALL, 0);
 
 /// Return from function with a value on the stack.
-pub const RET: Opcode = 0xB4;
+pub const RET: Opcode = encode_opcode(OP_CLASS_RET, 0);
 
 /// Return from the current function (void return).
-pub const RET_VOID: Opcode = 0xB5;
+pub const RET_VOID: Opcode = encode_opcode(OP_CLASS_RET_VOID, 0);
 
 /// Discard the top value from the operand stack.
 pub const POP: Opcode = 0xA0;
@@ -464,14 +464,14 @@ pub const STORE_ARRAY: Opcode = encode_opcode(OP_CLASS_STORE_ARRAY, 0);
 ///            target array's variable index.
 /// Operand 2: u16 array descriptor index (little-endian).
 /// Pops 1 (flat index), pushes 1 (element value). Net stack: 0.
-pub const LOAD_ARRAY_DEREF: Opcode = 0x26;
+pub const LOAD_ARRAY_DEREF: Opcode = encode_opcode(OP_CLASS_LOAD_ARRAY_DEREF, 0);
 
 /// Store a value to an array element through a reference (double indirection).
 /// Operand 1: u16 reference variable index (little-endian). The slot holds the
 ///            target array's variable index.
 /// Operand 2: u16 array descriptor index (little-endian).
 /// Pops 2 (value, flat index). Net stack: -2.
-pub const STORE_ARRAY_DEREF: Opcode = 0x27;
+pub const STORE_ARRAY_DEREF: Opcode = encode_opcode(OP_CLASS_STORE_ARRAY_DEREF, 0);
 
 // --- Truncation opcodes ---
 
@@ -595,7 +595,7 @@ pub const ADD_F32: Opcode = encode_opcode(OP_CLASS_ADD, T_F32);
 
 /// Subtract two 32-bit floats.
 /// Pops two values (b then a), pushes a - b.
-pub const SUB_F32: Opcode = 0x49;
+pub const SUB_F32: Opcode = encode_opcode(OP_CLASS_SUB, T_F32);
 
 /// Multiply two 32-bit floats.
 /// Pops two values (b then a), pushes a * b.
@@ -618,7 +618,7 @@ pub const ADD_F64: Opcode = encode_opcode(OP_CLASS_ADD, T_F64);
 
 /// Subtract two 64-bit floats.
 /// Pops two values (b then a), pushes a - b.
-pub const SUB_F64: Opcode = 0x4F;
+pub const SUB_F64: Opcode = encode_opcode(OP_CLASS_SUB, T_F64);
 
 /// Multiply two 64-bit floats.
 /// Pops two values (b then a), pushes a * b.
@@ -645,11 +645,11 @@ pub const NE_I64: Opcode = encode_opcode(OP_CLASS_NE, T_I64);
 
 /// Compare two signed 64-bit integers (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0.
-pub const LT_I64: Opcode = 0x72;
+pub const LT_I64: Opcode = encode_opcode(OP_CLASS_LT_S, T_I64);
 
 /// Compare two signed 64-bit integers (less than or equal).
 /// Pops two values (b then a), pushes 1 if a <= b, else 0.
-pub const LE_I64: Opcode = 0x73;
+pub const LE_I64: Opcode = encode_opcode(OP_CLASS_LE_S, T_I64);
 
 /// Compare two signed 64-bit integers (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0.
@@ -705,11 +705,11 @@ pub const NE_F32: Opcode = encode_opcode(OP_CLASS_NE, T_F32);
 
 /// Compare two 32-bit floats (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0 (as i32).
-pub const LT_F32: Opcode = 0x82;
+pub const LT_F32: Opcode = encode_opcode(OP_CLASS_LT_S, T_F32);
 
 /// Compare two 32-bit floats (less than or equal).
 /// Pops two values (b then a), pushes 1 if a <= b, else 0 (as i32).
-pub const LE_F32: Opcode = 0x83;
+pub const LE_F32: Opcode = encode_opcode(OP_CLASS_LE_S, T_F32);
 
 /// Compare two 32-bit floats (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0 (as i32).
@@ -731,11 +731,11 @@ pub const NE_F64: Opcode = encode_opcode(OP_CLASS_NE, T_F64);
 
 /// Compare two 64-bit floats (less than).
 /// Pops two values (b then a), pushes 1 if a < b, else 0 (as i32).
-pub const LT_F64: Opcode = 0x8A;
+pub const LT_F64: Opcode = encode_opcode(OP_CLASS_LT_S, T_F64);
 
 /// Compare two 64-bit floats (less than or equal).
 /// Pops two values (b then a), pushes 1 if a <= b, else 0 (as i32).
-pub const LE_F64: Opcode = 0x8B;
+pub const LE_F64: Opcode = encode_opcode(OP_CLASS_LE_S, T_F64);
 
 /// Compare two 64-bit floats (greater than).
 /// Pops two values (b then a), pushes 1 if a > b, else 0 (as i32).

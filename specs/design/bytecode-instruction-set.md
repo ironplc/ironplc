@@ -282,7 +282,7 @@ All arithmetic operates at the promoted width per ADR-0001. The compiler emits N
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
 | 0x22 | ADD_F32 | — | [F32, F32] → [F32] | 32-bit float addition |
-| 0x49 | SUB_F32 | — | [F32, F32] → [F32] | 32-bit float subtraction (Wave 3 deferred) |
+| 0x26 | SUB_F32 | — | [F32, F32] → [F32] | 32-bit float subtraction |
 | 0x2A | MUL_F32 | — | [F32, F32] → [F32] | 32-bit float multiplication |
 | 0x32 | DIV_F32 | — | [F32, F32] → [F32] | 32-bit float division |
 | 0x2E | NEG_F32 | — | [F32] → [F32] | 32-bit float negation |
@@ -344,8 +344,8 @@ Comparison instructions pop two values and push an I32 (0 or 1) result. Separate
 |---|--------|----------|-------------|-------------|
 | 0x40 | EQ_I32 | — | [I32, I32] → [I32] | Equal |
 | 0x44 | NE_I32 | — | [I32, I32] → [I32] | Not equal |
-| 0x6A | LT_I32 | — | [I32, I32] → [I32] | Less than (signed) |
-| 0x6B | LE_I32 | — | [I32, I32] → [I32] | Less than or equal (signed) |
+| 0x48 | LT_I32 | — | [I32, I32] → [I32] | Less than (signed) |
+| 0x4C | LE_I32 | — | [I32, I32] → [I32] | Less than or equal (signed) |
 | 0x50 | GT_I32 | — | [I32, I32] → [I32] | Greater than (signed) |
 | 0x54 | GE_I32 | — | [I32, I32] → [I32] | Greater than or equal (signed) |
 
@@ -465,12 +465,12 @@ TIME values are I64 microseconds. Although raw I64 arithmetic produces correct r
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xB0 | JMP | offset: i16 | [] → [] | Unconditional jump (relative to next instruction) |
+| 0x7C | JMP | offset: i16 | [] → [] | Unconditional jump (relative to next instruction) |
 | 0xB1 | JMP_IF | offset: i16 | [I32] → [] | Jump if top of stack is nonzero (TRUE) |
-| 0xB2 | JMP_IF_NOT | offset: i16 | [I32] → [] | Jump if top of stack is zero (FALSE) |
-| 0xB3 | CALL | index: u16 | [args...] → [result] | Call function by index; pushes return value |
-| 0xB4 | RET | — | [result] → [] | Return from function; pops return value |
-| 0xB5 | RET_VOID | — | [] → [] | Return from function with no return value |
+| 0x80 | JMP_IF_NOT | offset: i16 | [I32] → [] | Jump if top of stack is zero (FALSE) |
+| 0x84 | CALL | index: u16 | [args...] → [result] | Call function by index; pushes return value |
+| 0x88 | RET | — | [result] → [] | Return from function; pops return value |
+| 0x8C | RET_VOID | — | [] → [] | Return from function with no return value |
 | 0xB6 | JMP_FAR | offset: i32 | [] → [] | Unconditional far jump (relative to next instruction); for functions exceeding i16 range |
 | 0xB7 | JMP_IF_FAR | offset: i32 | [I32] → [] | Far conditional jump if top of stack is nonzero (TRUE) |
 | 0xB8 | JMP_IF_NOT_FAR | offset: i32 | [I32] → [] | Far conditional jump if top of stack is zero (FALSE) |

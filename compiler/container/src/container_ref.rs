@@ -339,7 +339,7 @@ mod tests {
             0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
             0x20,                   // ADD_I32
             0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]
-            0xB5,                   // RET_VOID
+            0x8C,                   // RET_VOID
         ];
         let container = ContainerBuilder::new()
             .num_variables(2)
@@ -421,7 +421,7 @@ mod tests {
         let bytecode = cref.get_function_bytecode(FunctionId::INIT).unwrap();
         // First byte: LOAD_CONST_I32 (0x00), last byte: RET_VOID (0xB5)
         assert_eq!(bytecode[0], 0x00);
-        assert_eq!(*bytecode.last().unwrap(), 0xB5);
+        assert_eq!(*bytecode.last().unwrap(), 0x8C);
     }
 
     #[test]
@@ -453,7 +453,7 @@ mod tests {
     fn f32_constant_bytes() -> Vec<u8> {
         use crate::ContainerBuilder;
         #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![0xB5];
+        let bytecode: Vec<u8> = vec![0x8C];
         let container = ContainerBuilder::new()
             .num_variables(0)
             .add_f32_constant(1.5)
@@ -467,7 +467,7 @@ mod tests {
     fn empty_pool_bytes() -> Vec<u8> {
         use crate::ContainerBuilder;
         #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![0xB5];
+        let bytecode: Vec<u8> = vec![0x8C];
         let container = ContainerBuilder::new()
             .num_variables(0)
             .add_function(FunctionId::INIT, &bytecode, 0, 0, 0)

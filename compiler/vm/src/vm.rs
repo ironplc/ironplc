@@ -2180,7 +2180,7 @@ mod tests {
             builder = builder.add_i32_constant(c);
         }
         builder
-            .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0) // init: RET_VOID
+            .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0) // init: RET_VOID
             .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0) // scan: test bytecode
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
@@ -2206,14 +2206,14 @@ mod tests {
             0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
             0x20,                   // ADD_I32
             0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
-            0xB5,                   // RET_VOID
+            0x8C,                   // RET_VOID
         ];
 
         ContainerBuilder::new()
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(FunctionId::INIT, &[0xB5], 0, 2, 0) // init: RET_VOID
+            .add_function(FunctionId::INIT, &[0x8C], 0, 2, 0) // init: RET_VOID
             .add_function(FunctionId::SCAN, &bytecode, 2, 2, 0) // scan: program body
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
@@ -2308,7 +2308,7 @@ mod tests {
             .num_variables(0)
             .add_i32_constant(1)
             .add_i32_constant(2)
-            .add_function(FunctionId::INIT, &[0xB5], 0, 0, 0) // init: RET_VOID
+            .add_function(FunctionId::INIT, &[0x8C], 0, 0, 0) // init: RET_VOID
             .add_function(FunctionId::SCAN, &bytecode, 1, 0, 0) // scan: triggers overflow
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
@@ -2385,9 +2385,9 @@ mod tests {
         let scan_bytecode: Vec<u8> = vec![
             0x00, 0x00, 0x00,        // LOAD_CONST_I32 pool[0] (3)
             0x00, 0x01, 0x00,        // LOAD_CONST_I32 pool[1] (7)
-            0xB3, 0x02, 0x00, 0x01, 0x00,  // CALL function 2, var_offset=1
+            0x84, 0x02, 0x00, 0x01, 0x00,  // CALL function 2, var_offset=1
             0x10, 0x00, 0x00,        // STORE_VAR_I32 var[0] (result)
-            0xB5,                    // RET_VOID
+            0x8C,                    // RET_VOID
         ];
         #[rustfmt::skip]
         let func_bytecode: Vec<u8> = vec![
@@ -2396,14 +2396,14 @@ mod tests {
             0x20,              // ADD_I32
             0x10, 0x03, 0x00,  // STORE_VAR_I32 var[3] (return slot - absolute index)
             0x0C, 0x03, 0x00,  // LOAD_VAR_I32 var[3]
-            0xB4,              // RET
+            0x88,              // RET
         ];
 
         let c = ContainerBuilder::new()
             .num_variables(4) // 1 program var + 3 function vars
             .add_i32_constant(3)
             .add_i32_constant(7)
-            .add_function(FunctionId::INIT, &[0xB5], 0, 1, 0) // init
+            .add_function(FunctionId::INIT, &[0x8C], 0, 1, 0) // init
             .add_function(FunctionId::SCAN, &scan_bytecode, 2, 1, 0) // scan
             .add_function(FunctionId::new(2), &func_bytecode, 2, 3, 2) // add (num_params=2)
             .init_function_id(FunctionId::INIT)
@@ -2451,8 +2451,8 @@ mod tests {
 
         let c = ContainerBuilder::new()
             .num_variables(0)
-            .add_function(FunctionId::INIT, &[0xB5], 0, 0, 0)
-            .add_function(FunctionId::SCAN, &[0xB5], 0, 0, 0)
+            .add_function(FunctionId::INIT, &[0x8C], 0, 0, 0)
+            .add_function(FunctionId::SCAN, &[0x8C], 0, 0, 0)
             .add_task(TaskEntry {
                 task_id: TaskId::DEFAULT,
                 priority: 0,

@@ -16,7 +16,7 @@ fn execute_when_bit_and_32_then_bitwise_and() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (0x0F = 15)
         0x68,              // BIT_AND_32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[0xFF, 0x0F]), 0x0F);
 }
@@ -34,7 +34,7 @@ fn execute_when_bit_or_32_then_bitwise_or() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (0x0F = 15)
         0x6C,              // BIT_OR_32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[0xF0, 0x0F]), 0xFF);
 }
@@ -52,7 +52,7 @@ fn execute_when_bit_xor_32_then_bitwise_xor() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (0x0F = 15)
         0x70,              // BIT_XOR_32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[0xFF, 0x0F]), 0xF0);
 }
@@ -69,7 +69,7 @@ fn execute_when_bit_not_32_then_bitwise_not() {
         0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0] (0x0F = 15)
         0x74,              // BIT_NOT_32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i32(&bytecode, 1, &[0x0F]), !0x0F_i32);
 }
@@ -87,7 +87,7 @@ fn execute_when_bit_and_64_then_bitwise_and() {
         0x01, 0x01, 0x00,  // LOAD_CONST_I64 pool[1] (0x0F)
         0x69,              // BIT_AND_64
         0x11, 0x00, 0x00,  // STORE_VAR_I64 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i64(&bytecode, 1, &[0xFF, 0x0F]), 0x0F);
 }
@@ -104,7 +104,7 @@ fn execute_when_bit_or_64_then_bitwise_or() {
         0x01, 0x01, 0x00,  // LOAD_CONST_I64 pool[1] (0x0F)
         0x6D,              // BIT_OR_64
         0x11, 0x00, 0x00,  // STORE_VAR_I64 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i64(&bytecode, 1, &[0xF0, 0x0F]), 0xFF);
 }
@@ -121,7 +121,7 @@ fn execute_when_bit_xor_64_then_bitwise_xor() {
         0x01, 0x01, 0x00,  // LOAD_CONST_I64 pool[1] (0x0F)
         0x71,              // BIT_XOR_64
         0x11, 0x00, 0x00,  // STORE_VAR_I64 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i64(&bytecode, 1, &[0xFF, 0x0F]), 0xF0);
 }
@@ -137,7 +137,7 @@ fn execute_when_bit_not_64_then_bitwise_not() {
         0x01, 0x00, 0x00,  // LOAD_CONST_I64 pool[0] (0x0F)
         0x75,              // BIT_NOT_64
         0x11, 0x00, 0x00,  // STORE_VAR_I64 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(common::run_and_read_i64(&bytecode, 1, &[0x0F]), !0x0F_i64);
 }

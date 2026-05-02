@@ -30,7 +30,7 @@ END_PROGRAM
             0xA1, // DUP (consecutive identical load)
             0x28, // MUL_I32
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -61,7 +61,7 @@ END_PROGRAM
             0xA1, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }

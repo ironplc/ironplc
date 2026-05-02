@@ -38,7 +38,7 @@ proptest! {
             0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (0)
             0x20,              // ADD_I32
             0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
+            0x8C,              // RET_VOID
         ];
         let result = common::run_and_read_i32(&bytecode, 1, &[a, 0]);
         prop_assert_eq!(result, a);
@@ -52,7 +52,7 @@ proptest! {
             0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (1)
             0x28,              // MUL_I32
             0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
+            0x8C,              // RET_VOID
         ];
         let result = common::run_and_read_i32(&bytecode, 1, &[a, 1]);
         prop_assert_eq!(result, a);
@@ -66,7 +66,7 @@ proptest! {
             0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
             0x24,              // SUB_I32
             0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-            0xB5,              // RET_VOID
+            0x8C,              // RET_VOID
         ];
         let result = common::run_and_read_i32(&bytecode, 1, &[a]);
         prop_assert_eq!(result, 0);

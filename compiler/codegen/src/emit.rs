@@ -877,7 +877,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_ret_void();
 
-        assert_eq!(em.bytecode(), &[0xB5]);
+        assert_eq!(em.bytecode(), &[0x8C]);
     }
 
     #[test]
@@ -1006,7 +1006,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_lt_i32();
 
-        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x6A]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x48]);
     }
 
     #[test]
@@ -1028,7 +1028,7 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_le_i32();
 
-        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x6B]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x4C]);
     }
 
     #[test]
@@ -1212,7 +1212,7 @@ mod tests {
         em.bind_label(label);
 
         // JMP with offset 0 (target is immediately after the instruction)
-        assert_eq!(em.bytecode(), &[0xB0, 0x00, 0x00]);
+        assert_eq!(em.bytecode(), &[0x7C, 0x00, 0x00]);
     }
 
     #[test]
@@ -1237,7 +1237,7 @@ mod tests {
         em.bind_label(label);
 
         // LOAD_CONST_I32 pool:0, JMP_IF_NOT offset:0
-        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0xB2, 0x00, 0x00]);
+        assert_eq!(em.bytecode(), &[0x00, 0x00, 0x00, 0x80, 0x00, 0x00]);
     }
 
     #[test]
@@ -1261,7 +1261,7 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_CONST pool:1, CALL func:2 var_offset:5
         assert_eq!(
             em.bytecode(),
-            &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0xB3, 0x02, 0x00, 0x05, 0x00]
+            &[0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x84, 0x02, 0x00, 0x05, 0x00]
         );
     }
 
@@ -1282,7 +1282,7 @@ mod tests {
         em.emit_load_var_i32(VarIndex::new(0));
         em.emit_ret();
 
-        assert_eq!(em.bytecode(), &[0x0C, 0x00, 0x00, 0xB4]);
+        assert_eq!(em.bytecode(), &[0x0C, 0x00, 0x00, 0x88]);
     }
 
     #[test]
@@ -1295,7 +1295,7 @@ mod tests {
         em.bind_label(label);
 
         // JMP offset should be 3 (skip over the LOAD_CONST_I32 which is 3 bytes)
-        assert_eq!(em.bytecode(), &[0xB0, 0x03, 0x00, 0x00, 0x00, 0x00]);
+        assert_eq!(em.bytecode(), &[0x7C, 0x03, 0x00, 0x00, 0x00, 0x00]);
     }
 
     #[test]

@@ -23,14 +23,14 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
         0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
         0x20,                   // ADD_I32                  (10 + 32)
         0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
 
     let container = ContainerBuilder::new()
         .num_variables(2)
         .add_i32_constant(10)
         .add_i32_constant(32)
-        .add_function(ironplc_container::FunctionId::new(0), &[0xB5], 0, 2, 0) // init: RET_VOID
+        .add_function(ironplc_container::FunctionId::new(0), &[0x8C], 0, 2, 0) // init: RET_VOID
         .add_function(ironplc_container::FunctionId::new(1), &bytecode, 2, 2, 0) // scan: program body
         .init_function_id(ironplc_container::FunctionId::new(0))
         .entry_function_id(ironplc_container::FunctionId::new(1))

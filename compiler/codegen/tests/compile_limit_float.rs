@@ -37,7 +37,7 @@ END_PROGRAM
             0x02, 0x02, 0x00, // LOAD_CONST_F32 pool:2 (10.0)
             0xC4, 0x5A, 0x03, // BUILTIN LIMIT_F32
             0x12, 0x01, 0x00, // STORE_VAR_F32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -70,7 +70,7 @@ END_PROGRAM
             0x03, 0x02, 0x00, // LOAD_CONST_F64 pool:2 (10.0)
             0xC4, 0x5B, 0x03, // BUILTIN LIMIT_F64
             0x13, 0x01, 0x00, // STORE_VAR_F64 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }

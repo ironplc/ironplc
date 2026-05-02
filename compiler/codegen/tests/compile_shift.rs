@@ -39,7 +39,7 @@ END_PROGRAM
             0xC4, 0x48, 0x03, // BUILTIN SHL_I32 (0x0348)
             0x1D, // TRUNC_U8
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -74,7 +74,7 @@ END_PROGRAM
             0xC4, 0x50, 0x03, // BUILTIN ROL_U8 (0x0350)
             0x1D, // TRUNC_U8
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -109,7 +109,7 @@ END_PROGRAM
             0xC4, 0x53, 0x03, // BUILTIN ROR_U16 (0x0353)
             0x1F, // TRUNC_U16
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -142,7 +142,7 @@ END_PROGRAM
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (4)
             0xC4, 0x48, 0x03, // BUILTIN SHL_I32 (0x0348)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }

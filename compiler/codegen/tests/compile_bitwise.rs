@@ -37,7 +37,7 @@ END_PROGRAM
             0x68, // BIT_AND_32
             0x1D, // TRUNC_U8
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -74,7 +74,7 @@ END_PROGRAM
             0x1D, // TRUNC_U8 (inline NOT truncation)
             0x1D, // TRUNC_U8 (assignment truncation)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -106,10 +106,10 @@ END_PROGRAM
             0x50, // GT_I32
             0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (10)
-            0x6A, // LT_I32
+            0x48, // LT_I32
             0x78, // BOOL_AND (not BIT_AND_32)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }

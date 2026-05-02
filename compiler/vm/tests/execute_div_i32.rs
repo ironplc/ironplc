@@ -29,7 +29,7 @@ fn execute_when_div_i32_min_by_neg_one_then_wraps() {
         0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1] (-1)
         0x30,              // DIV_I32
         0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
-        0xB5,              // RET_VOID
+        0x8C,              // RET_VOID
     ];
     assert_eq!(
         common::run_and_read_i32(&bytecode, 1, &[i32::MIN, -1]),

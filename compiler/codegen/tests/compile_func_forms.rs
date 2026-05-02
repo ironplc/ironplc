@@ -53,7 +53,7 @@ fn assert_two_arg_bytecode(source: &str, expected_opcode: u8) {
             0x10,
             0x01,
             0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
@@ -173,12 +173,12 @@ fn compile_when_ne_function_then_produces_ne_bytecode() {
 
 #[test]
 fn compile_when_lt_function_then_produces_lt_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("LT", "DINT"), 0x6A);
+    assert_two_arg_bytecode(&two_arg_program("LT", "DINT"), 0x48);
 }
 
 #[test]
 fn compile_when_le_function_then_produces_le_bytecode() {
-    assert_two_arg_bytecode(&two_arg_program("LE", "DINT"), 0x6B);
+    assert_two_arg_bytecode(&two_arg_program("LE", "DINT"), 0x4C);
 }
 
 #[test]
@@ -218,7 +218,7 @@ END_PROGRAM
             0xA1, // DUP (store-load optimization)
             0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0xB5, // RET_VOID
+            0x8C, // RET_VOID
         ]
     );
 }
