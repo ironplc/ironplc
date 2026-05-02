@@ -161,7 +161,7 @@ fn disassemble_constants(container: &Container) -> Value {
         .iter()
         .enumerate()
         .map(|(index, entry)| {
-            let value_str = format_const_value(entry.const_type, &entry.value);
+            let value_str = format_const_value(entry.const_type, entry.bytes());
             json!({
                 "index": index,
                 "type": entry.const_type.as_str(),
@@ -672,7 +672,7 @@ fn read_u32(bytecode: &[u8], pos: usize) -> u32 {
 fn lookup_const_comment(container: &Container, pool_index: u16) -> String {
     let entry = container.constant_pool.iter().nth(pool_index as usize);
     match entry {
-        Some(e) => format!("= {}", format_const_value(e.const_type, &e.value)),
+        Some(e) => format!("= {}", format_const_value(e.const_type, e.bytes())),
         None => format!("= <invalid pool index {}>", pool_index),
     }
 }
