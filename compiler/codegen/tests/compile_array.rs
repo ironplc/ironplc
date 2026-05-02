@@ -1,6 +1,7 @@
 //! Bytecode-level integration tests for array compilation.
 
 mod common;
+use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
 use common::{parse_and_compile, try_parse_and_compile};
@@ -27,12 +28,12 @@ END_PROGRAM
     // Find the LOAD_ARRAY opcode
     let load_array_pos = bytecode
         .iter()
-        .position(|&b| b == 0xA8)
+        .position(|&b| b == opcode::LOAD_ARRAY)
         .expect("LOAD_ARRAY opcode not found");
     // Before LOAD_ARRAY should be LOAD_CONST_I32 with flat index 2
     assert!(load_array_pos >= 3);
     // Preceding byte should be LOAD_CONST_I32
-    assert_eq!(bytecode[load_array_pos - 3], 0x00);
+    assert_eq!(bytecode[load_array_pos - 3], opcode::LOAD_CONST_I32);
     // Verify the constant pool contains the flat index 2
     let const_idx =
         u16::from_le_bytes([bytecode[load_array_pos - 2], bytecode[load_array_pos - 1]]);
@@ -64,11 +65,11 @@ END_PROGRAM
     // Find the STORE_ARRAY opcode
     let store_array_pos = bytecode
         .iter()
-        .position(|&b| b == 0xAC)
+        .position(|&b| b == opcode::STORE_ARRAY)
         .expect("STORE_ARRAY opcode not found");
     // Before STORE_ARRAY should be LOAD_CONST_I32 with flat index 2
     assert!(store_array_pos >= 3);
-    assert_eq!(bytecode[store_array_pos - 3], 0x00); // LOAD_CONST_I32
+    assert_eq!(bytecode[store_array_pos - 3], opcode::LOAD_CONST_I32); // LOAD_CONST_I32
     let const_idx =
         u16::from_le_bytes([bytecode[store_array_pos - 2], bytecode[store_array_pos - 1]]);
     assert_eq!(
@@ -99,8 +100,14 @@ END_PROGRAM
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
     // Should contain LOAD_VAR for i, LOAD_CONST_I64 (lower bound 1), SUB_I64, LOAD_ARRAY
-    assert!(bytecode.contains(&0x25), "SUB_I64 not found in bytecode");
-    assert!(bytecode.contains(&0xA8), "LOAD_ARRAY not found in bytecode");
+    assert!(
+        bytecode.contains(&opcode::SUB_I64),
+        "SUB_I64 not found in bytecode"
+    );
+    assert!(
+        bytecode.contains(&opcode::LOAD_ARRAY),
+        "LOAD_ARRAY not found in bytecode"
+    );
 }
 
 #[test]
@@ -120,9 +127,12 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert!(bytecode.contains(&0x25), "SUB_I64 not found in bytecode");
     assert!(
-        bytecode.contains(&0xAC),
+        bytecode.contains(&opcode::SUB_I64),
+        "SUB_I64 not found in bytecode"
+    );
+    assert!(
+        bytecode.contains(&opcode::STORE_ARRAY),
         "STORE_ARRAY not found in bytecode"
     );
 }
@@ -148,10 +158,10 @@ END_PROGRAM
         .unwrap();
     let load_array_pos = bytecode
         .iter()
-        .position(|&b| b == 0xA8)
+        .position(|&b| b == opcode::LOAD_ARRAY)
         .expect("LOAD_ARRAY opcode not found");
     assert!(load_array_pos >= 3);
-    assert_eq!(bytecode[load_array_pos - 3], 0x00); // LOAD_CONST_I32
+    assert_eq!(bytecode[load_array_pos - 3], opcode::LOAD_CONST_I32); // LOAD_CONST_I32
     let const_idx =
         u16::from_le_bytes([bytecode[load_array_pos - 2], bytecode[load_array_pos - 1]]);
     assert_eq!(
@@ -183,10 +193,10 @@ END_PROGRAM
         .unwrap();
     let load_array_pos = bytecode
         .iter()
-        .position(|&b| b == 0xA8)
+        .position(|&b| b == opcode::LOAD_ARRAY)
         .expect("LOAD_ARRAY opcode not found");
     assert!(load_array_pos >= 3);
-    assert_eq!(bytecode[load_array_pos - 3], 0x00); // LOAD_CONST_I32
+    assert_eq!(bytecode[load_array_pos - 3], opcode::LOAD_CONST_I32); // LOAD_CONST_I32
     let const_idx =
         u16::from_le_bytes([bytecode[load_array_pos - 2], bytecode[load_array_pos - 1]]);
     assert_eq!(
@@ -253,11 +263,11 @@ END_PROGRAM
     // Should contain TRUNC_I8 (0x1C) before STORE_ARRAY (0xAC)
     let trunc_pos = bytecode
         .iter()
-        .position(|&b| b == 0x1C)
+        .position(|&b| b == opcode::TRUNC_I8)
         .expect("TRUNC_I8 not found");
     let store_pos = bytecode
         .iter()
-        .position(|&b| b == 0xAC)
+        .position(|&b| b == opcode::STORE_ARRAY)
         .expect("STORE_ARRAY not found");
     assert!(
         trunc_pos < store_pos,
@@ -286,7 +296,7 @@ END_PROGRAM
     // the LOAD_ARRAY and the STORE_VAR (truncation happens at store-to-var, not load-from-array)
     let load_array_pos = bytecode
         .iter()
-        .position(|&b| b == 0xA8)
+        .position(|&b| b == opcode::LOAD_ARRAY)
         .expect("LOAD_ARRAY not found");
     // The TRUNC should appear after LOAD_ARRAY (for the final STORE_VAR), not before it.
     // There may or may not be a TRUNC — the key is LOAD_ARRAY itself doesn't truncate.
@@ -310,7 +320,10 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(0))
         .unwrap();
-    let store_count = init_bytecode.iter().filter(|&&b| b == 0xAC).count();
+    let store_count = init_bytecode
+        .iter()
+        .filter(|&&b| b == opcode::STORE_ARRAY)
+        .count();
     assert_eq!(
         store_count, 3,
         "Expected 3 STORE_ARRAY in init for 3 initial values"
@@ -332,7 +345,10 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(0))
         .unwrap();
-    let store_count = init_bytecode.iter().filter(|&&b| b == 0xAC).count();
+    let store_count = init_bytecode
+        .iter()
+        .filter(|&&b| b == opcode::STORE_ARRAY)
+        .count();
     assert_eq!(
         store_count, 6,
         "Expected 6 STORE_ARRAY in init for 3(10), 3(20)"

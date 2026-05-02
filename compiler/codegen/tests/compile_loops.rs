@@ -1,10 +1,11 @@
 //! Bytecode-level integration tests for WHILE, REPEAT, and FOR loop compilation.
 
+#[macro_use]
 mod common;
 use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;
 
-use common::parse_and_compile;
+use common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_while_then_produces_loop_with_jmp_if_not() {
@@ -38,27 +39,27 @@ END_PROGRAM
         .unwrap();
 
     // Verify JMP_IF_NOT at offset 7 with forward offset +13
-    assert_eq!(bytecode[7], 0x80); // JMP_IF_NOT
+    assert_eq!(bytecode[7], opcode::JMP_IF_NOT);
     assert_eq!(i16::from_le_bytes([bytecode[8], bytecode[9]]), 13);
 
     // Verify JMP at offset 20 with backward offset -23
-    assert_eq!(bytecode[20], 0x7C); // JMP
+    assert_eq!(bytecode[20], opcode::JMP);
     assert_eq!(i16::from_le_bytes([bytecode[21], bytecode[22]]), -23);
 
     // Verify overall structure
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
-            0x50, // GT_I32
-            0x80, 0x0D, 0x00, // JMP_IF_NOT offset:+13
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
-            0x24, // SUB_I32
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x7C, 0xE9, 0xFF, // JMP offset:-23
-            0x8C, // RET_VOID
+        [
+            bc::load_var_i32(0),   // condition: x
+            bc::load_const_i32(0), // condition: 0
+            bc::gt_i32(),          // x > 0
+            bc::jmp_if_not(13),    // exit if false
+            bc::load_var_i32(0),   // body: x
+            bc::load_const_i32(1), // body: 1
+            bc::sub_i32(),         // x - 1
+            bc::store_var_i32(0),  // x := ...
+            bc::jmp(-23),          // back to LOOP
+            bc::ret_void(),
         ]
     );
 }
@@ -95,21 +96,21 @@ END_PROGRAM
         .unwrap();
 
     // Verify JMP_IF_NOT at offset 15 with backward offset -18
-    assert_eq!(bytecode[15], 0x80); // JMP_IF_NOT
+    assert_eq!(bytecode[15], opcode::JMP_IF_NOT);
     assert_eq!(i16::from_le_bytes([bytecode[16], bytecode[17]]), -18);
 
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x20, // ADD_I32
-            0x91, // DUP (store-load optimization)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
-            0x50, // GT_I32
-            0x80, 0xEE, 0xFF, // JMP_IF_NOT offset:-18
-            0x8C, // RET_VOID
+        [
+            bc::load_var_i32(0),   // body: x
+            bc::load_const_i32(0), // body: 1
+            bc::add_i32(),         // x + 1
+            bc::dup(),             // store-load optimization
+            bc::store_var_i32(0),  // x := ...
+            bc::load_const_i32(1), // condition: 5
+            bc::gt_i32(),          // x > 5
+            bc::jmp_if_not(-18),   // back to LOOP if false
+            bc::ret_void(),
         ]
     );
 }
@@ -168,25 +169,25 @@ END_PROGRAM
     assert_eq!(jmp_count, 1, "bytecode = {bytecode:?}");
 
     // Verify structure
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (5)
-            0x4C, // LE_I32
-            0x80, 0x17, 0x00, // JMP_IF_NOT offset:+23
-            0x0C, 0x01, 0x00, // LOAD_VAR_I32 var:1
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x20, // ADD_I32
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1)
-            0x20, // ADD_I32
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x7C, 0xDF, 0xFF, // JMP offset:-33
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // from value
+            bc::store_var_i32(0),  // i := 1
+            bc::load_var_i32(0),   // LOOP: load i
+            bc::load_const_i32(1), // to value
+            bc::le_i32(),          // i <= 5? continuation
+            bc::jmp_if_not(23),    // exit when i > 5
+            bc::load_var_i32(1),   // BODY: y
+            bc::load_var_i32(0),   // i
+            bc::add_i32(),         // y + i
+            bc::store_var_i32(1),  // y := ...
+            bc::load_var_i32(0),   // increment: i
+            bc::load_const_i32(0), // step: 1
+            bc::add_i32(),         // i + 1
+            bc::store_var_i32(0),  // i := ...
+            bc::jmp(-33),          // back to LOOP
+            bc::ret_void(),
         ]
     );
 }
