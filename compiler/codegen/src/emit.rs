@@ -471,6 +471,69 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits `CMP_BR_I32` (fused compare-and-branch on a 32-bit signed
+    /// integer variable against a constant pool entry). Branches to `target`
+    /// when `cmp_op(vars[var_index], const_pool[const_idx])` is true.
+    /// Stack effect: 0.
+    pub fn emit_cmp_br_i32(
+        &mut self,
+        cmp_op_byte: u8,
+        var_index: VarIndex,
+        const_idx: u16,
+        target: Label,
+    ) {
+        self.emit_cmp_br(
+            opcode::CMP_BR_I32,
+            cmp_op_byte,
+            var_index,
+            const_idx,
+            target,
+        );
+    }
+
+    /// Emits `CMP_BR_I64` (fused compare-and-branch on a 64-bit signed
+    /// integer variable against a constant pool entry). See `emit_cmp_br_i32`.
+    pub fn emit_cmp_br_i64(
+        &mut self,
+        cmp_op_byte: u8,
+        var_index: VarIndex,
+        const_idx: u16,
+        target: Label,
+    ) {
+        self.emit_cmp_br(
+            opcode::CMP_BR_I64,
+            cmp_op_byte,
+            var_index,
+            const_idx,
+            target,
+        );
+    }
+
+    fn emit_cmp_br(
+        &mut self,
+        op: u8,
+        cmp_op_byte: u8,
+        var_index: VarIndex,
+        const_idx: u16,
+        target: Label,
+    ) {
+        debug_assert!(
+            opcode::cmp_op::is_valid(cmp_op_byte),
+            "emit_cmp_br requires a valid cmp_op byte"
+        );
+        self.emit_opcode(op);
+        self.bytecode.push(cmp_op_byte);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&const_idx.to_le_bytes());
+        let patch_offset = self.bytecode.len();
+        self.bytecode.extend_from_slice(&0i16.to_le_bytes());
+        self.patches.push(PendingPatch {
+            patch_offset,
+            label: target,
+        });
+        // Stack effect: 0 (no pushes, no pops).
+    }
+
     /// Emits STR_INIT with data_offset and max_length operands.
     /// Initializes a STRING variable's header in the data region.
     pub fn emit_str_init(&mut self, data_offset: u32, max_length: u16) {

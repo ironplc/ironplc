@@ -174,7 +174,11 @@ pub const OP_CLASS_STR_INIT_ARRAY: u8 = 0x3A;
 pub const OP_CLASS_STR_LOAD_ARRAY_ELEM: u8 = 0x3B;
 /// Op class: STR_STORE_ARRAY_ELEM.
 pub const OP_CLASS_STR_STORE_ARRAY_ELEM: u8 = 0x3C;
-// 0x3D..0x3F free (3 op-class slots reserved for future use).
+/// Op class: fused compare-and-branch. Type tag selects the type family
+/// (`T_I32`/`T_I64`; floats reserved). The comparison operator is encoded
+/// as a 1-byte operand (`cmp_op` enum). See `vm-performance.md` §11.
+pub const OP_CLASS_CMP_BR: u8 = 0x3D;
+// 0x3E..0x3F free (2 op-class slots reserved for future use).
 
 /// Decompose a primary opcode byte into `(op_class, type_tag)`.
 #[inline]
@@ -745,6 +749,78 @@ pub const GT_F64: Opcode = encode_opcode(OP_CLASS_GT_S, T_F64);
 /// Pops two values (b then a), pushes 1 if a >= b, else 0 (as i32).
 pub const GE_F64: Opcode = encode_opcode(OP_CLASS_GE_S, T_F64);
 
+// --- Fused compare-and-branch opcodes ---
+
+/// Fused compare-and-branch on 32-bit signed integers.
+///
+/// Operands:
+/// - `cmp_op:u8` — comparison operator (see `cmp_op` module).
+/// - `var_idx:u16` — variable index of the LHS.
+/// - `const_idx:u16` — constant pool index of the RHS.
+/// - `target:i16` — branch offset relative to the next instruction.
+///
+/// Semantics: load `cur = vars[var_idx]` and `cnst = const_pool[const_idx]`
+/// directly (no stack), evaluate `cmp_op(cur, cnst)`. If the result is true,
+/// add `target` to the program counter; otherwise fall through.
+///
+/// Stack effect: 0.
+pub const CMP_BR_I32: Opcode = encode_opcode(OP_CLASS_CMP_BR, T_I32);
+
+/// Fused compare-and-branch on 64-bit signed integers.
+/// See `CMP_BR_I32` for operand layout and semantics.
+pub const CMP_BR_I64: Opcode = encode_opcode(OP_CLASS_CMP_BR, T_I64);
+
+/// Comparison-operator codes used as the first operand of `CMP_BR_*`.
+///
+/// Negation pairs (used by codegen to emit a "branch if false" predicate
+/// from a "branch if true" opcode):
+///   EQ ↔ NE,  LT_S ↔ GE_S,  LE_S ↔ GT_S.
+///
+/// Commutation pairs (used to rewrite `const <cmp> var` to `var <cmp> const`):
+///   EQ ↔ EQ,  NE ↔ NE,  LT_S ↔ GT_S,  LE_S ↔ GE_S.
+pub mod cmp_op {
+    pub const EQ: u8 = 0;
+    pub const NE: u8 = 1;
+    pub const LT_S: u8 = 2;
+    pub const LE_S: u8 = 3;
+    pub const GT_S: u8 = 4;
+    pub const GE_S: u8 = 5;
+
+    /// Returns the negation of the given comparison operator (e.g.
+    /// `LT_S` ↔ `GE_S`). Returns `None` for unrecognised codes.
+    pub const fn negate(cmp_op: u8) -> Option<u8> {
+        match cmp_op {
+            EQ => Some(NE),
+            NE => Some(EQ),
+            LT_S => Some(GE_S),
+            GE_S => Some(LT_S),
+            LE_S => Some(GT_S),
+            GT_S => Some(LE_S),
+            _ => None,
+        }
+    }
+
+    /// Returns the commutation of the given comparison operator
+    /// (i.e. the operator equivalent under operand swap).
+    /// Returns `None` for unrecognised codes.
+    pub const fn commute(cmp_op: u8) -> Option<u8> {
+        match cmp_op {
+            EQ => Some(EQ),
+            NE => Some(NE),
+            LT_S => Some(GT_S),
+            GT_S => Some(LT_S),
+            LE_S => Some(GE_S),
+            GE_S => Some(LE_S),
+            _ => None,
+        }
+    }
+
+    /// Whether `cmp_op` is a recognised comparison operator code.
+    pub const fn is_valid(cmp_op: u8) -> bool {
+        matches!(cmp_op, EQ | NE | LT_S | LE_S | GT_S | GE_S)
+    }
+}
+
 /// Returns the total byte size of the instruction starting with `op`.
 ///
 /// This is the single source of truth for instruction sizes, shared by both
@@ -782,6 +858,9 @@ pub fn instruction_size(op: Opcode) -> usize {
 
         // 7-byte: opcode + u32 + u16.
         STR_INIT => 7,
+
+        // 8-byte: opcode + u8 + u16 + u16 + i16.
+        CMP_BR_I32 | CMP_BR_I64 => 8,
 
         // 9-byte: opcode + u32 + u32.
         FIND_STR | REPLACE_STR | INSERT_STR | CONCAT_STR => 9,

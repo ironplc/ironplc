@@ -6,7 +6,7 @@ use ironplc_parser::options::CompilerOptions;
 use common::parse_and_compile;
 
 #[test]
-fn compile_when_simple_if_then_produces_jmp_if_not() {
+fn compile_when_simple_if_then_produces_cmp_br() {
     let source = "
 PROGRAM main
   VAR
@@ -21,14 +21,13 @@ END_PROGRAM
     let container = parse_and_compile(source, &CompilerOptions::default());
 
     // x=var:0, y=var:1
-    // Bytecode layout:
-    //   0: LOAD_VAR_I32 var:0
-    //   3: LOAD_CONST_I32 pool:0 (0)
-    //   6: GT_I32
-    //   7: JMP_IF_NOT offset:+6 -> 16
-    //  10: LOAD_CONST_I32 pool:1 (1)
-    //  13: STORE_VAR_I32 var:1
-    //  16: RET_VOID
+    // Fused emission via CMP_BR_I32 (compare-and-branch): IF x > 0 THEN ...
+    // becomes "branch to END if NOT(x > 0)" i.e. cmp_op = LE_S (= negation
+    // of GT_S).
+    //   0: CMP_BR_I32 LE_S, var:0, pool:0 (0), offset:+6 -> 14
+    //   8: LOAD_CONST_I32 pool:1 (1)
+    //  11: STORE_VAR_I32 var:1
+    //  14: RET_VOID
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -36,10 +35,8 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
-            0x50, // GT_I32
-            0x80, 0x06, 0x00, // JMP_IF_NOT offset:+6
+            0xF4, 0x03, 0x00, 0x00, 0x00, 0x00, 0x06,
+            0x00, // CMP_BR_I32 LE_S, var:0, pool:0, +6
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0x8C, // RET_VOID
@@ -48,7 +45,7 @@ END_PROGRAM
 }
 
 #[test]
-fn compile_when_if_else_then_produces_jmp_and_jmp_if_not() {
+fn compile_when_if_else_then_produces_cmp_br_and_jmp() {
     let source = "
 PROGRAM main
   VAR
@@ -64,17 +61,14 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // Bytecode layout:
-    //   0: LOAD_VAR_I32 var:0
-    //   3: LOAD_CONST_I32 pool:0 (0)
-    //   6: GT_I32
-    //   7: JMP_IF_NOT offset:+9 -> 19
-    //  10: LOAD_CONST_I32 pool:1 (1)
-    //  13: STORE_VAR_I32 var:1
-    //  16: JMP offset:+6 -> 25
-    //  19: LOAD_CONST_I32 pool:2 (2)
-    //  22: STORE_VAR_I32 var:1
-    //  25: RET_VOID
+    // Fused emission via CMP_BR_I32:
+    //   0: CMP_BR_I32 LE_S, var:0, pool:0 (0), offset:+9 -> 17
+    //   8: LOAD_CONST_I32 pool:1 (1)
+    //  11: STORE_VAR_I32 var:1
+    //  14: JMP offset:+6 -> 23
+    //  17: LOAD_CONST_I32 pool:2 (2)
+    //  20: STORE_VAR_I32 var:1
+    //  23: RET_VOID
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -82,10 +76,8 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (0)
-            0x50, // GT_I32
-            0x80, 0x09, 0x00, // JMP_IF_NOT offset:+9
+            0xF4, 0x03, 0x00, 0x00, 0x00, 0x00, 0x09,
+            0x00, // CMP_BR_I32 LE_S, var:0, pool:0, +9
             0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)
             0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
             0x7C, 0x06, 0x00, // JMP offset:+6
@@ -97,7 +89,7 @@ END_PROGRAM
 }
 
 #[test]
-fn compile_when_if_elsif_else_then_produces_chained_jumps() {
+fn compile_when_if_elsif_else_then_produces_chained_cmp_br() {
     let source = "
 PROGRAM main
   VAR
@@ -115,24 +107,18 @@ END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // Bytecode layout:
-    //   0: LOAD_VAR_I32 var:0
-    //   3: LOAD_CONST_I32 pool:0 (5)
-    //   6: GT_I32
-    //   7: JMP_IF_NOT offset:+9 -> 19
-    //  10: LOAD_CONST_I32 pool:1 (1)
-    //  13: STORE_VAR_I32 var:1
-    //  16: JMP offset:+25 -> 44
-    //  19: LOAD_VAR_I32 var:0
-    //  22: LOAD_CONST_I32 pool:2 (0)
-    //  25: GT_I32
-    //  26: JMP_IF_NOT offset:+9 -> 38
-    //  29: LOAD_CONST_I32 pool:3 (2)
-    //  32: STORE_VAR_I32 var:1
-    //  35: JMP offset:+6 -> 44
-    //  38: LOAD_CONST_I32 pool:4 (3)
-    //  41: STORE_VAR_I32 var:1
-    //  44: RET_VOID
+    // Fused emission via CMP_BR_I32:
+    //   0: CMP_BR_I32 LE_S, var:0, pool:0 (5), offset:+9 -> 17
+    //   8: LOAD_CONST_I32 pool:1 (1)
+    //  11: STORE_VAR_I32 var:1
+    //  14: JMP offset:+23 -> 40
+    //  17: CMP_BR_I32 LE_S, var:0, pool:2 (0), offset:+9 -> 34
+    //  25: LOAD_CONST_I32 pool:3 (2)
+    //  28: STORE_VAR_I32 var:1
+    //  31: JMP offset:+6 -> 40
+    //  34: LOAD_CONST_I32 pool:4 (3)
+    //  37: STORE_VAR_I32 var:1
+    //  40: RET_VOID
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -140,23 +126,19 @@ END_PROGRAM
     assert_eq!(
         bytecode,
         &[
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0         (0)
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (5)  (3)
-            0x50, // GT_I32                      (6)
-            0x80, 0x09, 0x00, // JMP_IF_NOT offset:+9       (7)
-            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)  (10)
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1         (13)
-            0x7C, 0x19, 0x00, // JMP offset:+25              (16)
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32 var:0         (19)
-            0x00, 0x02, 0x00, // LOAD_CONST_I32 pool:2 (0)  (22)
-            0x50, // GT_I32                      (25)
-            0x80, 0x09, 0x00, // JMP_IF_NOT offset:+9       (26)
-            0x00, 0x03, 0x00, // LOAD_CONST_I32 pool:3 (2)  (29)
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1         (32)
-            0x7C, 0x06, 0x00, // JMP offset:+6              (35)
-            0x00, 0x04, 0x00, // LOAD_CONST_I32 pool:4 (3)  (38)
-            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1         (41)
-            0x8C, // RET_VOID                    (44)
+            0xF4, 0x03, 0x00, 0x00, 0x00, 0x00, 0x09,
+            0x00, // CMP_BR_I32 LE_S, var:0, pool:0 (5), +9        (0)
+            0x00, 0x01, 0x00, // LOAD_CONST_I32 pool:1 (1)                       (8)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1                              (11)
+            0x7C, 0x17, 0x00, // JMP offset:+23                                   (14)
+            0xF4, 0x03, 0x00, 0x00, 0x02, 0x00, 0x09,
+            0x00, // CMP_BR_I32 LE_S, var:0, pool:2 (0), +9       (17)
+            0x00, 0x03, 0x00, // LOAD_CONST_I32 pool:3 (2)                       (25)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1                              (28)
+            0x7C, 0x06, 0x00, // JMP offset:+6                                    (31)
+            0x00, 0x04, 0x00, // LOAD_CONST_I32 pool:4 (3)                       (34)
+            0x10, 0x01, 0x00, // STORE_VAR_I32 var:1                              (37)
+            0x8C, // RET_VOID                                          (40)
         ]
     );
 }
