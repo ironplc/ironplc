@@ -3,10 +3,11 @@
 //! These tests verify that the compiler selects the correct opcodes
 //! for different IEC 61131-3 integer types.
 
+#[macro_use]
 mod common;
 use ironplc_parser::options::CompilerOptions;
 
-use common::parse_and_compile;
+use common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_sint_then_produces_trunc_i8() {
@@ -25,13 +26,13 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (42)
-            0x1C, // TRUNC_I8
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0 (42)
+            bc::trunc_i8(),
+            bc::store_var_i32(0), // var:0
+            bc::ret_void(),
         ]
     );
 }
@@ -53,13 +54,13 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0 (1000)
-            0x1F, // TRUNC_U16
-            0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i32(0), // pool:0 (1000)
+            bc::trunc_u16(),
+            bc::store_var_i32(0), // var:0
+            bc::ret_void(),
         ]
     );
 }
@@ -85,16 +86,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
         .unwrap();
-    assert_eq!(
+    assert_bytecode!(
         bytecode,
-        &[
-            0x01, 0x00, 0x00, // LOAD_CONST_I64 pool:0 (10)
-            0x91, // DUP (store-load optimization)
-            0x11, 0x00, 0x00, // STORE_VAR_I64 var:0
-            0x01, 0x01, 0x00, // LOAD_CONST_I64 pool:1 (1)
-            0x21, // ADD_I64
-            0x11, 0x01, 0x00, // STORE_VAR_I64 var:1
-            0x8C, // RET_VOID
+        [
+            bc::load_const_i64(0), // pool:0 (10)
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i64(0),  // var:0
+            bc::load_const_i64(1), // pool:1 (1)
+            bc::add_i64(),
+            bc::store_var_i64(1), // var:1
+            bc::ret_void(),
         ]
     );
 }
