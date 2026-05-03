@@ -66,13 +66,13 @@ Example
 
 .. playground::
 
-   FUNCTION Add : DINT
+   FUNCTION MyAdd : DINT
        VAR_INPUT
            a : DINT;
            b : DINT;
        END_VAR
 
-       Add := a + b;
+       MyAdd := a + b;
    END_FUNCTION
 
    PROGRAM main
@@ -81,10 +81,10 @@ Example
        END_VAR
 
        (* Positional call *)
-       result := Add(3, 4);
+       result := MyAdd(3, 4);
 
        (* Named call *)
-       result := Add(a := 10, b := 20);
+       result := MyAdd(a := 10, b := 20);
    END_PROGRAM
 
 Related Problem Codes
