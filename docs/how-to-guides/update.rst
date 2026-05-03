@@ -13,7 +13,7 @@ Follow the steps below to update IronPLC.
 
 .. tab:: Windows
 
-   **Update IronPLC CLI**
+   .. rubric:: Update IronPLC CLI
 
    #. In search on the taskbar, enter :guilabel:`Control Panel` and select it from the results.
    #. Select :menuselection:`Programs --> Programs and Features`.
@@ -27,7 +27,7 @@ Follow the steps below to update IronPLC.
    #. Run the installer and follow the prompts to complete
       installation of the CLI.
 
-   **Update IronPLC Extension**
+   .. rubric:: Update IronPLC Extension
 
    #. Download the latest IronPLC extension
       :download_artifact:`ironplc-vscode-extension.vsix` from
@@ -44,7 +44,7 @@ Follow the steps below to update IronPLC.
 
 .. tab:: macOS
 
-   **Update IronPLC CLI**
+   .. rubric:: Update IronPLC CLI
 
    If you installed IronPLC with Homebrew, open a Terminal and run:
 
@@ -60,7 +60,7 @@ Follow the steps below to update IronPLC.
 
       curl -fsSL https://www.ironplc.com/install.sh | sh
 
-   **Update IronPLC Extension**
+   .. rubric:: Update IronPLC Extension
 
    #. Download the latest IronPLC extension
       :download_artifact:`ironplc-vscode-extension.vsix` from
@@ -77,7 +77,7 @@ Follow the steps below to update IronPLC.
 
 .. tab:: Linux
 
-   **Update IronPLC CLI**
+   .. rubric:: Update IronPLC CLI
 
    Open a terminal and re-run the install script to install the latest
    version:
@@ -86,7 +86,7 @@ Follow the steps below to update IronPLC.
 
       curl -fsSL https://www.ironplc.com/install.sh | sh
 
-   **Update IronPLC Extension**
+   .. rubric:: Update IronPLC Extension
 
    #. Download the latest IronPLC extension
       :download_artifact:`ironplc-vscode-extension.vsix` from

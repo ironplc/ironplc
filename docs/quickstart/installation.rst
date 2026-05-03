@@ -32,7 +32,7 @@ Follow the steps below to install IronPLC.
 
 .. tab:: Windows
 
-   **Install IronPLC CLI**
+   .. rubric:: Install IronPLC CLI
 
    #. Download the latest IronPLC installer from `IronPLC GitHub releases`_:
    
@@ -43,7 +43,7 @@ Follow the steps below to install IronPLC.
    #. Run the installer and follow the prompts to complete
       installation of the CLI.
 
-   **Install IronPLC Extension**
+   .. rubric:: Install IronPLC Extension
 
    Run your development environment, then:
 
@@ -55,7 +55,7 @@ Follow the steps below to install IronPLC.
 
 .. tab:: macOS
 
-   **Install IronPLC CLI**
+   .. rubric:: Install IronPLC CLI
 
    Option 1 — Homebrew (recommended):
 
@@ -80,7 +80,7 @@ Follow the steps below to install IronPLC.
    ``$HOME/.ironplc/bin`` and adds that directory to your ``PATH`` via
    your shell profile.
 
-   **Install IronPLC Extension**
+   .. rubric:: Install IronPLC Extension
 
    Run your development environment, then:
 
@@ -92,7 +92,7 @@ Follow the steps below to install IronPLC.
 
 .. tab:: Linux
 
-   **Install IronPLC CLI**
+   .. rubric:: Install IronPLC CLI
 
    Open a terminal and run:
 
@@ -112,7 +112,7 @@ Follow the steps below to install IronPLC.
 
    Prebuilt binaries are currently provided for x86_64 Linux only.
 
-   **Install IronPLC Extension**
+   .. rubric:: Install IronPLC Extension
 
    Run your development environment, then:
 
