@@ -674,6 +674,23 @@ pub(crate) struct CompileContext {
     pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
     /// Next available type ID for user-defined function blocks.
     next_user_fb_type_id: u16,
+    /// When compiling a function body that returns a value, describes how an
+    /// early `RETURN` statement should produce the return value before the
+    /// `RET` opcode. `None` for programs and FBs (RETURN emits `RET_VOID`).
+    pub(crate) current_function_return: Option<CurrentFunctionReturn>,
+}
+
+/// Describes how a `RETURN` statement should yield the function's value.
+#[derive(Clone, Copy)]
+pub(crate) enum CurrentFunctionReturn {
+    /// Scalar return: load the variable, then emit `RET`.
+    Scalar {
+        var_index: VarIndex,
+        op_type: OpType,
+    },
+    /// STRING/WSTRING return: load the string from the data region into a
+    /// temp buffer, then emit `RET`.
+    String { data_offset: u32 },
 }
 
 impl CompileContext {
@@ -695,6 +712,7 @@ impl CompileContext {
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
+            current_function_return: None,
         }
     }
 

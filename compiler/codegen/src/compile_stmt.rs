@@ -17,8 +17,8 @@ use ironplc_dsl::textual::{
 use ironplc_problems::Problem;
 
 use super::compile::{
-    CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, DEFAULT_OP_TYPE,
-    DEFAULT_STRING_MAX_LENGTH_U16,
+    CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness, VarTypeInfo,
+    DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH_U16,
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
@@ -343,7 +343,24 @@ fn compile_statement(
         StmtKind::While(while_stmt) => compile_while(emitter, ctx, while_stmt),
         StmtKind::Repeat(repeat_stmt) => compile_repeat(emitter, ctx, repeat_stmt),
         StmtKind::Return => {
-            emitter.emit_ret_void();
+            // Inside a function with a return value, an early RETURN must
+            // first push the current return-value variable so the caller
+            // sees a value on the stack (matching the trailing load+RET
+            // emitted at the end of the function body).
+            match ctx.current_function_return {
+                Some(CurrentFunctionReturn::Scalar { var_index, op_type }) => {
+                    emit_load_var(emitter, var_index, op_type);
+                    emitter.emit_ret();
+                }
+                Some(CurrentFunctionReturn::String { data_offset }) => {
+                    ctx.num_temp_bufs += 1;
+                    emitter.emit_str_load_var(data_offset);
+                    emitter.emit_ret();
+                }
+                None => {
+                    emitter.emit_ret_void();
+                }
+            }
             Ok(())
         }
         StmtKind::Exit(span) => {
