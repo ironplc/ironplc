@@ -17,20 +17,18 @@ Signatures
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 15 15 15 15 30
+   :widths: 10 15 15 15 15
 
    * - #
      - Input (K)
      - Input (IN0)
      - Input (IN1, ...)
      - Return Type
-     - Support
    * - 1
      - ``INT``
      - *ANY*
      - *ANY*
      - *ANY*
-     - Supported
 
 Description
 -----------

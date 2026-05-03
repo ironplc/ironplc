@@ -21,28 +21,23 @@ BCD_TO_INT
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 30 30 30
+   :widths: 10 30 30
 
    * - #
      - Input (IN)
      - Return Type
-     - Support
    * - 1
      - ``BYTE``
      - ``USINT``
-     - Supported
    * - 2
      - ``WORD``
      - ``UINT``
-     - Supported
    * - 3
      - ``DWORD``
      - ``UDINT``
-     - Supported
    * - 4
      - ``LWORD``
      - ``ULINT``
-     - Supported
 
 INT_TO_BCD
 ^^^^^^^^^^

@@ -17,63 +17,52 @@ Signatures
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 20 20 20 30
+   :widths: 10 20 20 20
 
    * - #
      - Input (IN1)
      - Input (IN2)
      - Return Type
-     - Support
    * - 1
      - ``SINT``
      - ``SINT``
      - ``BOOL``
-     - Supported
    * - 2
      - ``INT``
      - ``INT``
      - ``BOOL``
-     - Supported
    * - 3
      - ``DINT``
      - ``DINT``
      - ``BOOL``
-     - Supported
    * - 4
      - ``LINT``
      - ``LINT``
      - ``BOOL``
-     - Supported
    * - 5
      - ``USINT``
      - ``USINT``
      - ``BOOL``
-     - Supported
    * - 6
      - ``UINT``
      - ``UINT``
      - ``BOOL``
-     - Supported
    * - 7
      - ``UDINT``
      - ``UDINT``
      - ``BOOL``
-     - Supported
    * - 8
      - ``ULINT``
      - ``ULINT``
      - ``BOOL``
-     - Supported
    * - 9
      - ``REAL``
      - ``REAL``
      - ``BOOL``
-     - Supported
    * - 10
      - ``LREAL``
      - ``LREAL``
      - ``BOOL``
-     - Supported
 
 Description
 -----------

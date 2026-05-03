@@ -16,15 +16,6 @@ Time of day value.
    * - **Support**
      - Supported
 
-Example
--------
-
-.. playground-with-program::
-   :vars: shift_start : TIME_OF_DAY; now : TIME_OF_DAY; started : BOOL;
-
-   shift_start := TOD#08:00:00;
-   now := TOD#09:30:00;
-   started := now > shift_start;  (* started = TRUE *)
 
 Literals
 --------
@@ -34,6 +25,16 @@ Literals
    TOD#14:30:00
    TIME_OF_DAY#08:00:00
    TOD#23:59:59.999
+
+Example
+-------
+
+.. playground-with-program::
+   :vars: shift_start : TIME_OF_DAY; now : TIME_OF_DAY; started : BOOL;
+
+   shift_start := TOD#08:00:00;
+   now := TOD#09:30:00;
+   started := now > shift_start;  (* started = TRUE *)
 
 See Also
 --------

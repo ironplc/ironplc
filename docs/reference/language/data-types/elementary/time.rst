@@ -16,13 +16,10 @@ Duration value representing an interval of time.
    * - **Support**
      - Supported
 
-Example
--------
-
-.. playground-with-program::
-   :vars: duration : TIME;
-
-   duration := T#2s;
+Supported units: days (``d``), hours (``h``), minutes (``m``),
+seconds (``s``), milliseconds (``ms``). Units are case-insensitive,
+so ``T#5S`` and ``T#5s`` are equivalent. The prefix ``T#`` (or
+``TIME#``) is likewise case-insensitive.
 
 Literals
 --------
@@ -34,10 +31,13 @@ Literals
    T#-500ms
    TIME#5S
 
-Supported units: days (``d``), hours (``h``), minutes (``m``),
-seconds (``s``), milliseconds (``ms``). Units are case-insensitive,
-so ``T#5S`` and ``T#5s`` are equivalent. The prefix ``T#`` (or
-``TIME#``) is likewise case-insensitive.
+Example
+-------
+
+.. playground-with-program::
+   :vars: duration : TIME;
+
+   duration := T#2s;
 
 See Also
 --------

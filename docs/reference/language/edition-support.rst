@@ -35,13 +35,13 @@ Edition 3 introduced the following features, which require
    * - :doc:`REF_TO <data-types/derived/reference-types>`
      - Data type
      - Reference (pointer) to a variable
-   * - ``REF()``
+   * - :ref:`REF() <ref-operator-ref>`
      - Operator
      - Create a reference to a variable
-   * - ``^``
+   * - :ref:`^ <ref-operator-deref>`
      - Operator
      - Dereference a reference
-   * - ``NULL``
+   * - :ref:`NULL <ref-operator-null>`
      - Literal
      - Null reference value
    * - :doc:`.%Xn <structured-text/bit-access>`

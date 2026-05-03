@@ -18,6 +18,15 @@ LTIME_OF_DAY
    * - **Support**
      - Supported (:doc:`Edition 3 </reference/language/edition-support>`)
 
+Literals
+--------
+
+.. code-block::
+
+   LTOD#14:30:00
+   LTIME_OF_DAY#08:00:00
+   LTOD#23:59:59.999
+
 Example
 -------
 
@@ -27,15 +36,6 @@ Example
    shift_start := LTOD#08:00:00;
    now := LTOD#09:30:00;
    started := now > shift_start;  (* started = TRUE *)
-
-Literals
---------
-
-.. code-block::
-
-   LTOD#14:30:00
-   LTIME_OF_DAY#08:00:00
-   LTOD#23:59:59.999
 
 See Also
 --------

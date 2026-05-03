@@ -85,9 +85,7 @@ html_theme_options = {
     "source_directory": "docs/"
 }
 
-rst_prolog = """.. attention::
-    IronPLC supports IEC 61131-3 Structured Text excluding I/O mapping.
-"""
+html_favicon = '_static/favicon.ico'
 
 # -- Version configuration ---------------------------------------------------
 

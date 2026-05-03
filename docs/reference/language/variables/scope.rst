@@ -110,7 +110,7 @@ outside of a :code:`CONFIGURATION` block. IronPLC supports this common
 extension to improve compatibility with code written for other PLC
 environments.
 
-Enable with ``--allow-top-level-var-global`` or ``--allow-all`` on the
+Enable with ``--allow-top-level-var-global`` on the
 command line.
 
 .. playground::
