@@ -91,46 +91,43 @@ impl ContainerBuilder {
 
     /// Adds an i32 constant to the constant pool.
     pub fn add_i32_constant(mut self, value: i32) -> Self {
-        self.constant_pool.push(ConstEntry {
-            const_type: ConstType::I32,
-            value: value.to_le_bytes().to_vec(),
-        });
+        self.constant_pool.push(ConstEntry::primitive_le(
+            ConstType::I32,
+            &value.to_le_bytes(),
+        ));
         self
     }
 
     /// Adds an f32 constant to the constant pool.
     pub fn add_f32_constant(mut self, value: f32) -> Self {
-        self.constant_pool.push(ConstEntry {
-            const_type: ConstType::F32,
-            value: value.to_le_bytes().to_vec(),
-        });
+        self.constant_pool.push(ConstEntry::primitive_le(
+            ConstType::F32,
+            &value.to_le_bytes(),
+        ));
         self
     }
 
     /// Adds an f64 constant to the constant pool.
     pub fn add_f64_constant(mut self, value: f64) -> Self {
-        self.constant_pool.push(ConstEntry {
-            const_type: ConstType::F64,
-            value: value.to_le_bytes().to_vec(),
-        });
+        self.constant_pool.push(ConstEntry::primitive_le(
+            ConstType::F64,
+            &value.to_le_bytes(),
+        ));
         self
     }
 
     /// Adds a string constant (Latin-1 bytes) to the constant pool.
     pub fn add_str_constant(mut self, value: &[u8]) -> Self {
-        self.constant_pool.push(ConstEntry {
-            const_type: ConstType::Str,
-            value: value.to_vec(),
-        });
+        self.constant_pool.push(ConstEntry::string(value.to_vec()));
         self
     }
 
     /// Adds an i64 constant to the constant pool.
     pub fn add_i64_constant(mut self, value: i64) -> Self {
-        self.constant_pool.push(ConstEntry {
-            const_type: ConstType::I64,
-            value: value.to_le_bytes().to_vec(),
-        });
+        self.constant_pool.push(ConstEntry::primitive_le(
+            ConstType::I64,
+            &value.to_le_bytes(),
+        ));
         self
     }
 

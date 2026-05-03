@@ -161,7 +161,7 @@ fn disassemble_constants(container: &Container) -> Value {
         .iter()
         .enumerate()
         .map(|(index, entry)| {
-            let value_str = format_const_value(entry.const_type, &entry.value);
+            let value_str = format_const_value(entry.const_type, entry.bytes());
             json!({
                 "index": index,
                 "type": entry.const_type.as_str(),
@@ -605,6 +605,34 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 9;
             }
+            opcode::CMP_BR_I32 | opcode::CMP_BR_I64 => {
+                let cmp_op_byte = bytecode[pc + 1];
+                let var_idx = read_u16(bytecode, pc + 2);
+                let const_idx = read_u16(bytecode, pc + 4);
+                let jump_offset = read_i16(bytecode, pc + 6);
+                let target = (pc as isize + 8 + jump_offset as isize) as usize;
+                let mnemonic = if opcode_byte == opcode::CMP_BR_I32 {
+                    "CMP_BR_I32"
+                } else {
+                    "CMP_BR_I64"
+                };
+                let cmp_str = match cmp_op_byte {
+                    opcode::cmp_op::EQ => "EQ",
+                    opcode::cmp_op::NE => "NE",
+                    opcode::cmp_op::LT_S => "LT_S",
+                    opcode::cmp_op::LE_S => "LE_S",
+                    opcode::cmp_op::GT_S => "GT_S",
+                    opcode::cmp_op::GE_S => "GE_S",
+                    _ => "INVALID",
+                };
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": mnemonic,
+                    "operands": format!("{}, var[{}], const[{}], offset: {:+}", cmp_str, var_idx, const_idx, jump_offset),
+                    "comment": format!("-> {}", target),
+                }));
+                pc += 8;
+            }
             unknown => {
                 instructions.push(json!({
                     "offset": offset,
@@ -644,7 +672,7 @@ fn read_u32(bytecode: &[u8], pos: usize) -> u32 {
 fn lookup_const_comment(container: &Container, pool_index: u16) -> String {
     let entry = container.constant_pool.iter().nth(pool_index as usize);
     match entry {
-        Some(e) => format!("= {}", format_const_value(e.const_type, &e.value)),
+        Some(e) => format!("= {}", format_const_value(e.const_type, e.bytes())),
         None => format!("= <invalid pool index {}>", pool_index),
     }
 }
