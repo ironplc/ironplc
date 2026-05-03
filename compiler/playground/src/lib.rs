@@ -68,34 +68,10 @@ fn compiler_options_from(dialect: &str, allows: &str) -> CompilerOptions {
             .iter()
             .find(|fd: &&FeatureDescriptor| fd.cli_flag == cli_flag)
         {
-            apply_allow(&mut options, fd.option_key);
+            options.set_flag_by_key(fd.option_key, true);
         }
     }
     options
-}
-
-/// Set a feature flag on `options` by its `option_key`.
-///
-/// Unknown keys are ignored.
-fn apply_allow(options: &mut CompilerOptions, key: &str) {
-    match key {
-        "allow_c_style_comments" => options.allow_c_style_comments = true,
-        "allow_missing_semicolon" => options.allow_missing_semicolon = true,
-        "allow_top_level_var_global" => options.allow_top_level_var_global = true,
-        "allow_constant_type_params" => options.allow_constant_type_params = true,
-        "allow_empty_var_blocks" => options.allow_empty_var_blocks = true,
-        "allow_time_as_function_name" => options.allow_time_as_function_name = true,
-        "allow_ref_to" => options.allow_ref_to = true,
-        "allow_ref_arithmetic" => options.allow_ref_arithmetic = true,
-        "allow_ref_stack_variables" => options.allow_ref_stack_variables = true,
-        "allow_ref_type_punning" => options.allow_ref_type_punning = true,
-        "allow_int_to_bool_initializer" => options.allow_int_to_bool_initializer = true,
-        "allow_sizeof" => options.allow_sizeof = true,
-        "allow_system_uptime_global" => options.allow_system_uptime_global = true,
-        "allow_cross_family_widening" => options.allow_cross_family_widening = true,
-        "allow_partial_access_syntax" => options.allow_partial_access_syntax = true,
-        _ => {}
-    }
 }
 
 /// Install a panic hook that logs to `console.error` with a full stack trace.
