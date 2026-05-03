@@ -41,7 +41,9 @@
 
 use std::collections::HashMap;
 
-use ironplc_container::debug_section::{EnumDefEntry, FuncNameEntry, VarNameEntry};
+use ironplc_container::debug_section::{
+    EnumDefEntry, FuncNameEntry, StringLayoutEntry, VarNameEntry,
+};
 use ironplc_container::{
     Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
     STRING_HEADER_BYTES,
@@ -559,6 +561,9 @@ fn compile_program_with_functions(
     for entry in ctx.debug_var_names {
         builder = builder.add_var_name(entry);
     }
+    for entry in ctx.debug_string_layouts {
+        builder = builder.add_string_layout(entry);
+    }
     for (type_name, values) in &ctx.enum_map.definitions {
         builder = builder.add_enum_def(EnumDefEntry {
             type_name: type_name.clone(),
@@ -668,6 +673,8 @@ pub(crate) struct CompileContext {
     pub(crate) num_temp_bufs: u16,
     /// Debug info: variable name entries collected during assign_variables.
     pub(crate) debug_var_names: Vec<VarNameEntry>,
+    /// Debug info: STRING variable data-region layouts collected during assign_variables.
+    pub(crate) debug_string_layouts: Vec<StringLayoutEntry>,
     /// Maps user-defined function name (lowercase) to compilation metadata.
     pub(crate) user_functions: HashMap<String, UserFunctionInfo>,
     /// Maps user-defined FB type name (uppercase) to compilation metadata.
@@ -691,6 +698,7 @@ impl CompileContext {
             max_string_capacity: 0,
             num_temp_bufs: 0,
             debug_var_names: Vec::new(),
+            debug_string_layouts: Vec::new(),
             user_functions: HashMap::new(),
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,

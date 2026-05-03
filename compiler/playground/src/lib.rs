@@ -18,7 +18,7 @@ use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_format::{build_var_debug_map, VarDebugInfo};
 use ironplc_container::debug_section::iec_type_tag;
-use ironplc_container::Container;
+use ironplc_container::{Container, STRING_HEADER_BYTES};
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
 use ironplc_parser::options::{CompilerOptions, Dialect};
@@ -156,6 +156,39 @@ fn build_enum_value_map(container: &Container) -> EnumValueMap {
     map
 }
 
+/// Maps STRING var_index → data_region offset.
+type StringLayoutMap = HashMap<u16, u32>;
+
+/// Builds a lookup map of STRING variable layouts from the container's debug section.
+fn build_string_layout_map(container: &Container) -> StringLayoutMap {
+    let mut map = HashMap::new();
+    if let Some(debug) = &container.debug_section {
+        for entry in &debug.string_layouts {
+            map.insert(entry.var_index.raw(), entry.data_offset);
+        }
+    }
+    map
+}
+
+/// Reads a STRING value from the data region at the given offset and renders
+/// it as a single-quoted IEC literal. Returns `'<invalid>'` if the offset
+/// or length would read out of bounds.
+fn read_string_value(data_region: &[u8], data_offset: u32) -> String {
+    let off = data_offset as usize;
+    if off + STRING_HEADER_BYTES > data_region.len() {
+        return "'<invalid>'".into();
+    }
+    let cur_len = u16::from_le_bytes([data_region[off + 2], data_region[off + 3]]) as usize;
+    let start = off + STRING_HEADER_BYTES;
+    let end = start + cur_len;
+    if end > data_region.len() {
+        return "'<invalid>'".into();
+    }
+    let bytes = &data_region[start..end];
+    let text = String::from_utf8_lossy(bytes);
+    format!("'{text}'")
+}
+
 /// Formats a raw 64-bit slot value according to the IEC type tag,
 /// with optional enum value name lookup.
 fn format_variable_value_with_enum(
@@ -173,6 +206,24 @@ fn format_variable_value_with_enum(
     }
     // Fall back to standard formatting.
     format_variable_value(raw, tag)
+}
+
+/// Like [`format_variable_value_with_enum`], but routes STRING tags through
+/// the data-region reader when the variable's layout is known.
+fn format_variable_value_with_string(
+    raw: u64,
+    tag: u8,
+    type_name: &str,
+    enum_map: &EnumValueMap,
+    string_offset: Option<u32>,
+    data_region: &[u8],
+) -> String {
+    if tag == iec_type_tag::STRING {
+        if let Some(off) = string_offset {
+            return read_string_value(data_region, off);
+        }
+    }
+    format_variable_value_with_enum(raw, tag, type_name, enum_map)
 }
 
 /// Formats a raw 64-bit slot value according to the IEC type tag.
@@ -204,6 +255,8 @@ fn format_variable_value(raw: u64, tag: u8) -> String {
         iec_type_tag::DATE => format_date_value(raw as u32),
         iec_type_tag::TIME_OF_DAY => format_tod_value(raw as u32),
         iec_type_tag::DATE_AND_TIME => format_dt_value(raw),
+        // STRING bytes are read from the data region at the call site.
+        iec_type_tag::WSTRING => "<WSTRING>".into(),
         _ => format!("{}", raw as i32), // fallback
     }
 }
@@ -482,12 +535,22 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 
     let debug_map = build_var_debug_map(&container);
     let enum_map = build_enum_value_map(&container);
+    let string_layouts = build_string_layout_map(&container);
 
     for round in 0..scans {
         let current_us = (round as u64) * 1000;
         if let Err(ctx) = running.run_round(current_us) {
+            // Snapshot variables (incl. data-region strings) before consuming
+            // `running` via `fault`, which releases its borrow on the buffers.
+            let num_vars = running.num_variables();
+            let variables = read_all_variables_running(
+                &running,
+                num_vars,
+                &debug_map,
+                &enum_map,
+                &string_layouts,
+            );
             let faulted = running.fault(ctx);
-            let variables = read_all_variables_faulted(&faulted, &debug_map, &enum_map);
             return RunResult {
                 ok: false,
                 variables,
@@ -503,7 +566,8 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     }
 
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars, &debug_map, &enum_map);
+    let variables =
+        read_all_variables_running(&running, num_vars, &debug_map, &enum_map, &string_layouts);
     let scans_completed = running.scan_count();
     running.stop();
 
@@ -556,59 +620,24 @@ fn read_all_variables_running(
     num_vars: u16,
     debug_map: &HashMap<u16, VarDebugInfo>,
     enum_map: &EnumValueMap,
+    string_layouts: &StringLayoutMap,
 ) -> Vec<VariableInfo> {
+    let data_region = vm.data_region();
     (0..num_vars)
         .filter_map(|i| {
             vm.read_variable_raw(ironplc_container::VarIndex::new(i))
                 .ok()
                 .map(|raw| {
                     let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
-                        (
-                            info.name.clone(),
-                            info.type_name.clone(),
-                            format_variable_value_with_enum(
-                                raw,
-                                info.iec_type_tag,
-                                &info.type_name,
-                                enum_map,
-                            ),
-                        )
-                    } else {
-                        (String::new(), String::new(), format!("{}", raw as i32))
-                    };
-                    VariableInfo {
-                        index: i,
-                        value,
-                        name,
-                        type_name,
-                    }
-                })
-        })
-        .collect()
-}
-
-fn read_all_variables_faulted(
-    vm: &ironplc_vm::VmFaulted,
-    debug_map: &HashMap<u16, VarDebugInfo>,
-    enum_map: &EnumValueMap,
-) -> Vec<VariableInfo> {
-    let num_vars = vm.num_variables();
-    (0..num_vars)
-        .filter_map(|i| {
-            vm.read_variable_raw(ironplc_container::VarIndex::new(i))
-                .ok()
-                .map(|raw| {
-                    let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
-                        (
-                            info.name.clone(),
-                            info.type_name.clone(),
-                            format_variable_value_with_enum(
-                                raw,
-                                info.iec_type_tag,
-                                &info.type_name,
-                                enum_map,
-                            ),
-                        )
+                        let value = format_variable_value_with_string(
+                            raw,
+                            info.iec_type_tag,
+                            &info.type_name,
+                            enum_map,
+                            string_layouts.get(&i).copied(),
+                            data_region,
+                        );
+                        (info.name.clone(), info.type_name.clone(), value)
                     } else {
                         (String::new(), String::new(), format!("{}", raw as i32))
                     };
@@ -822,10 +851,20 @@ fn run_vm_scans(
         let current_us = running.scan_count() * cycle_time_us;
         if let Err(ctx) = running.run_round(current_us) {
             let total_scans = running.scan_count();
-            let faulted = running.fault(ctx);
             let debug_map = build_var_debug_map(container);
             let enum_map = build_enum_value_map(container);
-            let variables = read_all_variables_faulted(&faulted, &debug_map, &enum_map);
+            let string_layouts = build_string_layout_map(container);
+            // Snapshot variables (incl. data-region strings) before consuming
+            // `running` via `fault`, which releases its borrow on the buffers.
+            let num_vars = running.num_variables();
+            let variables = read_all_variables_running(
+                &running,
+                num_vars,
+                &debug_map,
+                &enum_map,
+                &string_layouts,
+            );
+            let faulted = running.fault(ctx);
             let error = format!(
                 "VM trap: {} (task {}, instance {})",
                 faulted.trap(),
@@ -838,8 +877,10 @@ fn run_vm_scans(
 
     let debug_map = build_var_debug_map(container);
     let enum_map = build_enum_value_map(container);
+    let string_layouts = build_string_layout_map(container);
     let num_vars = running.num_variables();
-    let variables = read_all_variables_running(&running, num_vars, &debug_map, &enum_map);
+    let variables =
+        read_all_variables_running(&running, num_vars, &debug_map, &enum_map, &string_layouts);
     let total_scans = running.scan_count();
     running.stop();
     (variables, total_scans, None)
@@ -1413,6 +1454,64 @@ END_PROGRAM
         assert!(r1.ok, "step(10) failed: {:?}", r1.error);
         let active_var = r1.variables.iter().find(|v| v.name == "active").unwrap();
         assert_eq!(active_var.value, "TRUE");
+    }
+
+    #[test]
+    fn read_string_value_when_valid_header_then_decodes_bytes() {
+        // [max_len=10][cur_len=5]"hello"
+        let mut data = vec![0u8; 16];
+        data[0..2].copy_from_slice(&10u16.to_le_bytes());
+        data[2..4].copy_from_slice(&5u16.to_le_bytes());
+        data[4..9].copy_from_slice(b"hello");
+        assert_eq!(read_string_value(&data, 0), "'hello'");
+    }
+
+    #[test]
+    fn read_string_value_when_zero_length_then_empty_quotes() {
+        let data = vec![0u8; 16];
+        assert_eq!(read_string_value(&data, 0), "''");
+    }
+
+    #[test]
+    fn read_string_value_when_offset_beyond_region_then_invalid() {
+        let data = vec![0u8; 4];
+        assert_eq!(read_string_value(&data, 8), "'<invalid>'");
+    }
+
+    #[test]
+    fn read_string_value_when_cur_len_overruns_then_invalid() {
+        let mut data = vec![0u8; 8];
+        data[0..2].copy_from_slice(&10u16.to_le_bytes());
+        data[2..4].copy_from_slice(&100u16.to_le_bytes());
+        assert_eq!(read_string_value(&data, 0), "'<invalid>'");
+    }
+
+    #[test]
+    fn format_variable_value_when_wstring_tag_then_placeholder() {
+        assert_eq!(format_variable_value(0, iec_type_tag::WSTRING), "<WSTRING>");
+    }
+
+    #[test]
+    fn run_source_when_string_assignment_then_value_displays() {
+        let source = "
+PROGRAM main
+  VAR
+    s : STRING := 'hello';
+  END_VAR
+END_PROGRAM
+";
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
+        assert!(
+            result.ok,
+            "Expected ok but got diagnostics: {:?}, error: {:?}",
+            result.diagnostics, result.error
+        );
+        let s = result
+            .variables
+            .iter()
+            .find(|v| v.name == "s")
+            .expect("variable 's' present");
+        assert_eq!(s.value, "'hello'");
     }
 
     #[test]

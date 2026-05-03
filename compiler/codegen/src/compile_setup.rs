@@ -4,7 +4,9 @@
 //! prologue, and type name resolution. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_container::debug_section::{function_id, iec_type_tag, var_section, VarNameEntry};
+use ironplc_container::debug_section::{
+    function_id, iec_type_tag, var_section, StringLayoutEntry, VarNameEntry,
+};
 use ironplc_container::{ContainerBuilder, VarIndex, STRING_HEADER_BYTES};
 use ironplc_dsl::common::{
     ElementaryTypeName, FunctionDeclaration, GenericTypeName, InitialValueAssignmentKind,
@@ -104,6 +106,11 @@ pub(crate) fn assign_variables(
                             max_length,
                         },
                     );
+                    ctx.debug_string_layouts.push(StringLayoutEntry {
+                        var_index: index,
+                        data_offset,
+                        max_length,
+                    });
                     (iec_type_tag::STRING, "STRING".into())
                 }
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
