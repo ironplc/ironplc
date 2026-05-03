@@ -23,7 +23,6 @@ Signatures
      - Input (IN)
      - Input (N)
      - Return Type
-     - Support
    * - 1
      - ``BYTE``
      - ``INT``
