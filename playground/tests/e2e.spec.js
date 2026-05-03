@@ -330,6 +330,45 @@ END_PROGRAM
     await expect(badge).toHaveText("IEC 61131-3:2013");
   });
 
+  test("dialect_badge_when_allows_set_then_shows_custom_with_tooltip", async ({ page }) => {
+    await page.goto("/?embed=true&dialect=2013&allows=sizeof,c-style-comments");
+    await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
+      timeout: 15000,
+    });
+
+    const badge = page.locator('[data-testid="dialect-badge"]');
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveText("Custom");
+    await expect(badge).toHaveAttribute(
+      "title",
+      "IEC 61131-3:2013 + --allow-sizeof, --allow-c-style-comments",
+    );
+  });
+
+  test("start_when_allows_sizeof_set_and_strict_dialect_then_compiles", async ({ page }) => {
+    await page.goto("/?embed=true&dialect=2013&allows=sizeof");
+    await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
+      timeout: 15000,
+    });
+
+    const editor = page.locator('[data-testid="editor"]');
+    await editor.fill(`PROGRAM main
+  VAR
+    x : INT;
+    s : DINT;
+  END_VAR
+  s := SIZEOF(x);
+END_PROGRAM
+`);
+
+    await page.click('[data-testid="start-btn"]');
+
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).toContainText("2", { timeout: 10000 });
+
+    await page.click('[data-testid="stop-btn"]');
+  });
+
   test("start_when_dialect_2013_and_ltime_program_then_runs", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     const select = page.locator('[data-testid="dialect-select"]');

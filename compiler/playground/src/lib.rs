@@ -21,7 +21,7 @@ use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::Container;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
-use ironplc_parser::options::{CompilerOptions, Dialect};
+use ironplc_parser::options::{CompilerOptions, Dialect, FeatureDescriptor};
 use ironplc_sources::{parse_source, FileType};
 use ironplc_vm::{Slot, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
@@ -45,17 +45,56 @@ thread_local! {
     static SESSION: RefCell<Option<VmSession>> = const { RefCell::new(None) };
 }
 
-/// Build [`CompilerOptions`] from a dialect string.
+/// Build [`CompilerOptions`] from a dialect string and an optional list of
+/// `--allow-*` feature flags layered on top.
 ///
 /// `"2013"` selects the IEC 61131-3 Edition 3 dialect.
 /// Any other value (including empty) uses the RuSTy dialect, which enables
 /// all vendor extensions so playground users can explore non-standard
 /// features without toggling flags.
-fn compiler_options_from_dialect(dialect: &str) -> CompilerOptions {
-    if dialect == "2013" {
+///
+/// `allows` is a comma-separated list of feature short names — the part
+/// after `--allow-` in the CLI flag, e.g. `"sizeof,c-style-comments"`.
+/// Unknown names are ignored.
+fn compiler_options_from(dialect: &str, allows: &str) -> CompilerOptions {
+    let mut options = if dialect == "2013" {
         CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
     } else {
         CompilerOptions::from_dialect(Dialect::Rusty)
+    };
+    for name in allows.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        let cli_flag = format!("--allow-{name}");
+        if let Some(fd) = CompilerOptions::FEATURE_DESCRIPTORS
+            .iter()
+            .find(|fd: &&FeatureDescriptor| fd.cli_flag == cli_flag)
+        {
+            apply_allow(&mut options, fd.option_key);
+        }
+    }
+    options
+}
+
+/// Set a feature flag on `options` by its `option_key`.
+///
+/// Unknown keys are ignored.
+fn apply_allow(options: &mut CompilerOptions, key: &str) {
+    match key {
+        "allow_c_style_comments" => options.allow_c_style_comments = true,
+        "allow_missing_semicolon" => options.allow_missing_semicolon = true,
+        "allow_top_level_var_global" => options.allow_top_level_var_global = true,
+        "allow_constant_type_params" => options.allow_constant_type_params = true,
+        "allow_empty_var_blocks" => options.allow_empty_var_blocks = true,
+        "allow_time_as_function_name" => options.allow_time_as_function_name = true,
+        "allow_ref_to" => options.allow_ref_to = true,
+        "allow_ref_arithmetic" => options.allow_ref_arithmetic = true,
+        "allow_ref_stack_variables" => options.allow_ref_stack_variables = true,
+        "allow_ref_type_punning" => options.allow_ref_type_punning = true,
+        "allow_int_to_bool_initializer" => options.allow_int_to_bool_initializer = true,
+        "allow_sizeof" => options.allow_sizeof = true,
+        "allow_system_uptime_global" => options.allow_system_uptime_global = true,
+        "allow_cross_family_widening" => options.allow_cross_family_widening = true,
+        "allow_partial_access_syntax" => options.allow_partial_access_syntax = true,
+        _ => {}
     }
 }
 
@@ -330,16 +369,16 @@ struct StepResult {
 /// ```
 /// Line and column are 1-based.
 #[wasm_bindgen]
-pub fn compile(source: &str, dialect: &str) -> String {
-    let result = compile_inner(source, dialect);
+pub fn compile(source: &str, dialect: &str, allows: &str) -> String {
+    let result = compile_inner(source, dialect, allows);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","label":"","start_line":1,"start_column":1,"end_line":1,"end_column":1}}]}}"#)
     })
 }
 
-fn compile_inner(source: &str, dialect: &str) -> CompileResult {
+fn compile_inner(source: &str, dialect: &str, allows: &str) -> CompileResult {
     let file_type = FileType::from_content(source);
-    let options = compiler_options_from_dialect(dialect);
+    let options = compiler_options_from(dialect, allows);
     let library = match parse_source(file_type, source, &FileId::default(), &options) {
         Ok(lib) => lib,
         Err(diag) => {
@@ -519,15 +558,15 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 ///
 /// Returns a JSON string with both compilation diagnostics and execution results.
 #[wasm_bindgen]
-pub fn run_source(source: &str, scans: u32, dialect: &str) -> String {
-    let result = run_source_inner(source, scans, dialect);
+pub fn run_source(source: &str, scans: u32, dialect: &str, allows: &str) -> String {
+    let result = run_source_inner(source, scans, dialect, allows);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"scans_completed":0,"error":"Serialization error: {e}"}}"#)
     })
 }
 
-fn run_source_inner(source: &str, scans: u32, dialect: &str) -> RunSourceResult {
-    let compile_result = compile_inner(source, dialect);
+fn run_source_inner(source: &str, scans: u32, dialect: &str, allows: &str) -> RunSourceResult {
+    let compile_result = compile_inner(source, dialect, allows);
     if !compile_result.ok {
         return RunSourceResult {
             ok: false,
@@ -628,15 +667,15 @@ fn read_all_variables_faulted(
 /// The session stores compiled bytecode and a variable buffer that persists
 /// across calls to [`step`]. Returns a JSON `StepResult` with `total_scans: 0`.
 #[wasm_bindgen]
-pub fn load_program(source: &str, cycle_time_us: u32, dialect: &str) -> String {
-    let result = load_program_inner(source, cycle_time_us, dialect);
+pub fn load_program(source: &str, cycle_time_us: u32, dialect: &str, allows: &str) -> String {
+    let result = load_program_inner(source, cycle_time_us, dialect, allows);
     serde_json::to_string(&result).unwrap_or_else(|e| {
         format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
     })
 }
 
-fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str) -> StepResult {
-    let compile_result = compile_inner(source, dialect);
+fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &str) -> StepResult {
+    let compile_result = compile_inner(source, dialect, allows);
     if !compile_result.ok {
         return StepResult {
             ok: false,
@@ -870,7 +909,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         assert!(result.ok);
         assert!(result.bytecode.is_some());
         assert!(result.diagnostics.is_empty());
@@ -879,7 +918,7 @@ END_PROGRAM
     #[test]
     fn compile_when_syntax_error_then_returns_diagnostics() {
         let source = "PROGRAM main INVALID END_PROGRAM";
-        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         assert!(!result.ok);
         assert!(result.bytecode.is_none());
         assert!(!result.diagnostics.is_empty());
@@ -890,7 +929,7 @@ END_PROGRAM
     fn compile_when_error_on_later_line_then_diagnostic_has_line_and_column() {
         // Line numbers are 1-based; the error is after the first line.
         let source = "PROGRAM main\nVAR\nEND_VAR\nINVALID\nEND_PROGRAM";
-        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
         let diag = &result.diagnostics[0];
@@ -913,7 +952,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let compile_result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let compile_result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         let bytecode = compile_result.bytecode.unwrap();
 
         let result: RunResult = serde_json::from_str(&run(&bytecode, 1)).unwrap();
@@ -950,7 +989,7 @@ PROGRAM main
   y := x + 32;
 END_PROGRAM
 ";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "", "")).unwrap();
         assert!(result.ok);
         assert!(result.diagnostics.is_empty());
         assert!(result.error.is_none());
@@ -963,7 +1002,7 @@ END_PROGRAM
     #[test]
     fn run_source_when_syntax_error_then_returns_diagnostics() {
         let source = "PROGRAM main INVALID END_PROGRAM";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "", "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
         assert_eq!(result.scans_completed, 0);
@@ -979,7 +1018,7 @@ PROGRAM main
   x := 99;
 END_PROGRAM
 ";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 5, "")).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 5, "", "")).unwrap();
         assert!(result.ok);
         assert_eq!(result.scans_completed, 5);
         assert_eq!(result.variables[2].value, "99"); // indices 0-1 are system globals
@@ -995,7 +1034,7 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         let bytecode = result.bytecode.unwrap();
         let decoded = BASE64.decode(&bytecode);
         assert!(decoded.is_ok());
@@ -1012,7 +1051,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let compile_result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let compile_result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         let bytecode = compile_result.bytecode.unwrap();
 
         let result: RunResult = serde_json::from_str(&run(&bytecode, 0)).unwrap();
@@ -1033,7 +1072,8 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        let result: StepResult = serde_json::from_str(&load_program(source, 100_000, "")).unwrap();
+        let result: StepResult =
+            serde_json::from_str(&load_program(source, 100_000, "", "")).unwrap();
         assert!(result.ok);
         assert_eq!(result.total_scans, 0);
         assert!(result.diagnostics.is_empty());
@@ -1044,7 +1084,8 @@ END_PROGRAM
     fn load_program_when_syntax_error_then_returns_diagnostics() {
         reset_session();
         let source = "PROGRAM main INVALID END_PROGRAM";
-        let result: StepResult = serde_json::from_str(&load_program(source, 100_000, "")).unwrap();
+        let result: StepResult =
+            serde_json::from_str(&load_program(source, 100_000, "", "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -1068,7 +1109,7 @@ PROGRAM main
   x := 42;
 END_PROGRAM
 ";
-        load_program(source, 100_000, "");
+        load_program(source, 100_000, "", "");
         let result: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(result.ok);
         assert_eq!(result.total_scans, 1);
@@ -1087,7 +1128,7 @@ PROGRAM main
   count := count + 1;
 END_PROGRAM
 ";
-        load_program(source, 100_000, "");
+        load_program(source, 100_000, "", "");
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
@@ -1109,7 +1150,7 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
-        load_program(source, 100_000, "");
+        load_program(source, 100_000, "", "");
 
         let r1: StepResult = serde_json::from_str(&step(3)).unwrap();
         assert_eq!(r1.total_scans, 3);
@@ -1131,7 +1172,7 @@ PROGRAM main
   x := 1 / y;
 END_PROGRAM
 ";
-        load_program(source, 100_000, "");
+        load_program(source, 100_000, "", "");
 
         // First step should fault (divide by zero)
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
@@ -1154,7 +1195,7 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
-        load_program(source, 100_000, "");
+        load_program(source, 100_000, "", "");
         step(1);
 
         reset_session();
@@ -1199,7 +1240,7 @@ bSwitch := TRUE;
     </pous>
   </types>
 </project>"#;
-        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}",
@@ -1222,7 +1263,7 @@ END_VAR]]></Declaration>
     </Implementation>
   </POU>
 </TcPlcObject>"#;
-        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}",
@@ -1234,7 +1275,7 @@ END_VAR]]></Declaration>
     #[test]
     fn compile_when_malformed_xml_then_returns_diagnostics() {
         let source = "<?xml version=\"1.0\"?><project><invalid";
-        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -1250,7 +1291,7 @@ PROGRAM main
   x := 10;
 END_PROGRAM
 ";
-        load_program(source_a, 100_000, "");
+        load_program(source_a, 100_000, "", "");
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert_eq!(r1.variables[2].value, "10"); // indices 0-1 are system globals
 
@@ -1262,7 +1303,7 @@ PROGRAM main
   x := 20;
 END_PROGRAM
 ";
-        load_program(source_b, 100_000, "");
+        load_program(source_b, 100_000, "", "");
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert_eq!(r2.variables[2].value, "20"); // indices 0-1 are system globals
         assert_eq!(r2.total_scans, 1);
@@ -1279,7 +1320,7 @@ PROGRAM main
   exponentially := exponentially * 2;
 END_PROGRAM
 ";
-        load_program(source, 100_000, "");
+        load_program(source, 100_000, "", "");
 
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok);
@@ -1307,7 +1348,7 @@ PROGRAM main
   int_val := BCD_TO_INT(BYTE#16#42);
 END_PROGRAM
 ";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "", "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
         assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
     }
@@ -1322,7 +1363,7 @@ PROGRAM main
   bcd_val := INT_TO_BCD(USINT#42);
 END_PROGRAM
 ";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "", "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
         assert_eq!(result.variables[2].value, "16#42"); // indices 0-1 are system globals
     }
@@ -1337,7 +1378,7 @@ PROGRAM main
   x := undeclared_var;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -1358,7 +1399,8 @@ PROGRAM main
   myTimer(IN := start, PT := T#5s, Q => done, ET => elapsed);
 END_PROGRAM
 ";
-        let load: StepResult = serde_json::from_str(&load_program(source, 100_000, "")).unwrap();
+        let load: StepResult =
+            serde_json::from_str(&load_program(source, 100_000, "", "")).unwrap();
         assert!(
             load.ok,
             "load failed: error={:?}, diagnostics={:?}",
@@ -1401,7 +1443,8 @@ PROGRAM main
   myTimer(IN := run, PT := T#5s, Q => active, ET => elapsed);
 END_PROGRAM
 ";
-        let load: StepResult = serde_json::from_str(&load_program(source, 100_000, "")).unwrap();
+        let load: StepResult =
+            serde_json::from_str(&load_program(source, 100_000, "", "")).unwrap();
         assert!(
             load.ok,
             "load failed: error={:?}, diagnostics={:?}",
@@ -1455,7 +1498,7 @@ PROGRAM main
   duration := LTIME#100ms;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source, "2013")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "2013", "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}",
@@ -1474,7 +1517,7 @@ PROGRAM main
   duration := LTIME#100ms;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source, "")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -1491,7 +1534,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let result: StepResult =
-            serde_json::from_str(&load_program(source, 100_000, "2013")).unwrap();
+            serde_json::from_str(&load_program(source, 100_000, "2013", "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got error: {:?}, diagnostics: {:?}",
@@ -1501,5 +1544,75 @@ END_PROGRAM
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(r1.ok, "step failed: {:?}", r1.error);
         assert!(!r1.variables.is_empty());
+    }
+
+    #[test]
+    fn compile_when_dialect_2013_without_allow_sizeof_then_rejects_sizeof() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+    s : DINT;
+  END_VAR
+  s := SIZEOF(x);
+END_PROGRAM
+";
+        let result: CompileResult = serde_json::from_str(&compile(source, "2013", "")).unwrap();
+        assert!(!result.ok);
+        assert!(!result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn compile_when_dialect_2013_with_allow_sizeof_then_accepts_sizeof() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+    s : DINT;
+  END_VAR
+  s := SIZEOF(x);
+END_PROGRAM
+";
+        let result: CompileResult =
+            serde_json::from_str(&compile(source, "2013", "sizeof")).unwrap();
+        assert!(
+            result.ok,
+            "Expected ok but got diagnostics: {:?}",
+            result.diagnostics
+        );
+        assert!(result.bytecode.is_some());
+    }
+
+    #[test]
+    fn compile_when_allows_has_unknown_name_then_ignored() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+";
+        let result: CompileResult =
+            serde_json::from_str(&compile(source, "2013", "not-a-real-flag,sizeof")).unwrap();
+        assert!(result.ok);
+    }
+
+    #[test]
+    fn compile_when_allows_has_multiple_then_each_applied() {
+        // Use Ed3 baseline + two allows. Just verify it compiles successfully
+        // (the program itself doesn't exercise the flags — we're checking the
+        // allows parser handles whitespace and commas).
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+";
+        let result: CompileResult =
+            serde_json::from_str(&compile(source, "2013", " sizeof , c-style-comments ")).unwrap();
+        assert!(result.ok, "Expected ok but got: {:?}", result.diagnostics);
     }
 }
