@@ -1,17 +1,16 @@
 .. meta::
    :description: IronPLC is an open-source IEC 61131-3 toolchain with an extension for your development environment, command-line compiler, and browser-based playground for Structured Text programming.
 
-=======
-IronPLC
-=======
+.. |logo| image:: _static/ironplc-banner.svg
+   :alt: IronPLC
 
-.. image:: _static/ironplc-banner.svg
-   :align: center
+======
+|logo|
+======
 
-IronPLC is an open-source toolchain for checking and compiling IEC 61131-3
-programs. It integrates into your development environment to provide
-auto-completion, syntax highlighting, and real-time error checking as you
-type. It also includes a command-line compiler and an early-stage runtime.
+IronPLC is a compiler, runtime, editor extension,
+browser playground, and MCP server for writing and running IEC 61131-3
+programs on off-the-shelf hardware — no proprietary IDE required.
 
 IronPLC reads Structured Text, PLCopen XML (Beremiz), and TwinCAT 3 source
 files, so you can use it alongside your existing PLC development environment.

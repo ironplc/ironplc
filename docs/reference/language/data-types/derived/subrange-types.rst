@@ -10,7 +10,7 @@ A subrange type restricts an integer type to a specified range of values.
    * - **IEC 61131-3**
      - Section 2.3.3.1
    * - **Support**
-     - Partial
+     - Partial (parsing only)
 
 Syntax
 ------
@@ -47,7 +47,7 @@ Constant Bounds (Vendor Extension)
 
 .. include:: ../../../../includes/requires-vendor-extension.rst
 
-With the ``--allow-constant-type-params`` flag (or ``--allow-all``), you can
+With the ``--allow-constant-type-params`` flag, you can
 use global constants for the subrange bounds:
 
 .. code-block::
