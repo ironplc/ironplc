@@ -124,37 +124,27 @@ pub fn parse_options(value: &serde_json::Value) -> Result<CompilerOptions, Vec<D
     })?;
 
     let mut options = CompilerOptions::from_dialect(dialect);
-
-    // Build a lookup for known feature-flag keys
-    let feature_keys: std::collections::HashMap<&str, usize> = CompilerOptions::FEATURE_DESCRIPTORS
-        .iter()
-        .enumerate()
-        .map(|(i, fd)| (fd.option_key, i))
-        .collect();
-
     let mut errors = Vec::new();
 
     for (key, val) in obj {
         if key == "dialect" {
             continue;
         }
-        if let Some(&idx) = feature_keys.get(key.as_str()) {
-            match val.as_bool() {
-                Some(b) => {
-                    apply_flag(&mut options, idx, b);
-                }
-                None => {
+        match val.as_bool() {
+            Some(b) => {
+                if !options.set_flag_by_key(key, b) {
                     errors.push(validation_diagnostic(&format!(
-                        "Option '{}' must be a boolean.",
+                        "Unknown option key '{}'.",
                         key
                     )));
                 }
             }
-        } else {
-            errors.push(validation_diagnostic(&format!(
-                "Unknown option key '{}'.",
-                key
-            )));
+            None => {
+                errors.push(validation_diagnostic(&format!(
+                    "Option '{}' must be a boolean.",
+                    key
+                )));
+            }
         }
     }
 
@@ -167,29 +157,6 @@ pub fn parse_options(value: &serde_json::Value) -> Result<CompilerOptions, Vec<D
 /// Resolves a dialect string (e.g. `"iec61131-3-ed2"`) to a `Dialect`.
 fn resolve_dialect(s: &str) -> Option<Dialect> {
     Dialect::ALL.iter().find(|d| d.to_string() == s).copied()
-}
-
-/// Applies a boolean feature flag override by index into `FEATURE_DESCRIPTORS`.
-fn apply_flag(options: &mut CompilerOptions, idx: usize, value: bool) {
-    let key = CompilerOptions::FEATURE_DESCRIPTORS[idx].option_key;
-    match key {
-        "allow_c_style_comments" => options.allow_c_style_comments = value,
-        "allow_missing_semicolon" => options.allow_missing_semicolon = value,
-        "allow_top_level_var_global" => options.allow_top_level_var_global = value,
-        "allow_constant_type_params" => options.allow_constant_type_params = value,
-        "allow_empty_var_blocks" => options.allow_empty_var_blocks = value,
-        "allow_time_as_function_name" => options.allow_time_as_function_name = value,
-        "allow_ref_to" => options.allow_ref_to = value,
-        "allow_ref_arithmetic" => options.allow_ref_arithmetic = value,
-        "allow_ref_stack_variables" => options.allow_ref_stack_variables = value,
-        "allow_ref_type_punning" => options.allow_ref_type_punning = value,
-        "allow_int_to_bool_initializer" => options.allow_int_to_bool_initializer = value,
-        "allow_sizeof" => options.allow_sizeof = value,
-        "allow_system_uptime_global" => options.allow_system_uptime_global = value,
-        "allow_cross_family_widening" => options.allow_cross_family_widening = value,
-        "allow_partial_access_syntax" => options.allow_partial_access_syntax = value,
-        _ => {} // unreachable if FEATURE_DESCRIPTORS is consistent
-    }
 }
 
 // ───────────────────────────────────────────────────────────────────

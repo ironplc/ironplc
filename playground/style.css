@@ -134,6 +134,10 @@ main {
   display: inline-block;
 }
 
+.dialect-badge[title] {
+  cursor: help;
+}
+
 .toolbar label {
   font-size: 0.875rem;
   color: var(--text-muted);
