@@ -42,6 +42,22 @@ impl ConstantKind {
     }
 }
 
+impl Located for ConstantKind {
+    fn span(&self) -> SourceSpan {
+        match self {
+            ConstantKind::IntegerLiteral(lit) => lit.value.value.span(),
+            ConstantKind::BitStringLiteral(lit) => lit.value.span(),
+            ConstantKind::RealLiteral(_)
+            | ConstantKind::Boolean(_)
+            | ConstantKind::CharacterString(_)
+            | ConstantKind::Duration(_)
+            | ConstantKind::TimeOfDay(_)
+            | ConstantKind::Date(_)
+            | ConstantKind::DateAndTime(_) => SourceSpan::default(),
+        }
+    }
+}
+
 impl fmt::Display for ConstantKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -3039,10 +3055,10 @@ mod tests {
     #[test]
     fn display_when_real_literal_with_type_then_formatted() {
         let rl = RealLiteral {
-            value: 3.14,
+            value: 3.25,
             data_type: Some(RealTypeName::REAL),
         };
-        assert_eq!(format!("{rl}"), "REAL#3.14");
+        assert_eq!(format!("{rl}"), "REAL#3.25");
     }
 
     #[test]

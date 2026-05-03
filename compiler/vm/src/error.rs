@@ -26,6 +26,7 @@ pub enum Trap {
     },
     UnexpectedEndOfBytecode,
     CallStackOverflow,
+    InvalidCmpOp(u8),
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -66,6 +67,7 @@ impl fmt::Display for Trap {
             }
             Trap::UnexpectedEndOfBytecode => write!(f, "bytecode ended mid-instruction"),
             Trap::CallStackOverflow => write!(f, "call stack overflow"),
+            Trap::InvalidCmpOp(code) => write!(f, "invalid comparison operator code: 0x{code:02X}"),
         }
     }
 }
@@ -314,6 +316,19 @@ mod tests {
     }
 
     #[test]
+    fn trap_display_when_invalid_cmp_op_then_includes_hex_code() {
+        assert_eq!(
+            format!("{}", Trap::InvalidCmpOp(0x07)),
+            "invalid comparison operator code: 0x07"
+        );
+    }
+
+    #[test]
+    fn v_code_when_invalid_cmp_op_then_v9013() {
+        assert_eq!(Trap::InvalidCmpOp(0xFF).v_code(), "V9013");
+    }
+
+    #[test]
     fn exit_code_when_internal_error_then_3() {
         assert_eq!(Trap::StackOverflow.exit_code(), 3);
         assert_eq!(Trap::StackUnderflow.exit_code(), 3);
@@ -330,5 +345,6 @@ mod tests {
         );
         assert_eq!(Trap::InvalidFbTypeId(FbTypeId::new(0)).exit_code(), 3);
         assert_eq!(Trap::UnexpectedEndOfBytecode.exit_code(), 3);
+        assert_eq!(Trap::InvalidCmpOp(0).exit_code(), 3);
     }
 }

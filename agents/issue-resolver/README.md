@@ -104,7 +104,7 @@ Drive the orchestrator into the requirements stage (will fail at the
 LLM call without a real Anthropic key, which is fine):
 
 ```bash
-just webhook ACTION=labeled LABEL=status/triage NUMBER=42
+just webhook labeled status/triage 42
 ```
 
 ## Simulate a real issue without writing back (dry run)
@@ -120,7 +120,8 @@ safety net in case the wrapper is bypassed.
 just serve-dryrun
 
 # In another terminal, fabricate the trigger for a real issue number.
-just webhook ACTION=labeled LABEL=status/triage NUMBER=<real issue #>
+# Recipe args are positional: ACTION LABEL NUMBER [EVENT] [port]
+just webhook labeled status/triage <real issue #>
 ```
 
 The would-be comment body and label changes print to the `serve-dryrun`
@@ -167,6 +168,17 @@ Point the webhook (managed by Terraform) at
 | Issue missing info | "What's missing: …" | `+status/needs-info`, `-status/triage` | `NEEDS_INFO` |
 | Agent/API failure | Error notice | `+flag/agent-error` | `AGENT_ERROR` |
 | 4th retry at one stage | Revision-limit notice | `+flag/revision-limit` | `REVISION_LIMIT` |
+
+## System prompts
+
+LLM system prompts live as Markdown files in `agents/prompts/`:
+
+- `requirements_validate.md` — the "is the issue ready?" prompt
+- `requirements_generate.md` — the "draft the requirements doc" prompt
+
+Edit them directly to tune agent behavior; no code changes needed.
+The files are read at module import in `agents/requirements.py`, so a
+restart of `just serve` picks up changes.
 
 ## Tests
 

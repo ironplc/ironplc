@@ -16,8 +16,9 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
-    CompileContext, CompiledFunction, OpType, OpWidth, Signedness, StringParamInfo,
-    StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, OpType, OpWidth,
+    Signedness, StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
+    DEFAULT_OP_TYPE,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{emit_function_local_prologue, resolve_type_name};
@@ -300,7 +301,26 @@ pub(crate) fn compile_user_function(
     let body = ironplc_dsl::textual::Statements {
         body: func_decl.body.clone(),
     };
+
+    // Make the return descriptor visible to nested `RETURN` statements so an
+    // early RETURN produces the function's value before the RET opcode (rather
+    // than emitting a bare RET_VOID, which would leave the caller's stack
+    // empty and trigger a stack underflow on the assignment).
+    let saved_return_ctx = ctx.current_function_return.take();
+    ctx.current_function_return = Some(if let Some(ref str_info) = return_string_info {
+        CurrentFunctionReturn::String {
+            data_offset: str_info.data_offset,
+        }
+    } else {
+        CurrentFunctionReturn::Scalar {
+            var_index: return_var_index,
+            op_type: return_op_type,
+        }
+    });
+
     compile_statements(&mut func_emitter, ctx, &body)?;
+
+    ctx.current_function_return = saved_return_ctx;
 
     // Load the return value and emit RET.
     if let Some(ref str_info) = return_string_info {
@@ -313,8 +333,7 @@ pub(crate) fn compile_user_function(
     }
     func_emitter.emit_ret();
 
-    let bytecode = crate::optimize::optimize(func_emitter.bytecode(), &ctx.constants);
-    let max_stack_depth = func_emitter.max_stack_depth();
+    let finalized = finalize_function(&mut func_emitter, ctx);
 
     // Record function metadata for use at call sites.
     let func_name = func_decl.name.lower_case();
@@ -379,7 +398,7 @@ pub(crate) fn compile_user_function(
             param_op_types,
             param_string_info,
             return_string_info,
-            max_stack_depth,
+            max_stack_depth: finalized.max_stack_depth,
         },
     );
 
@@ -392,8 +411,8 @@ pub(crate) fn compile_user_function(
 
     Ok(CompiledFunction {
         function_id,
-        bytecode,
-        max_stack_depth,
+        bytecode: finalized.bytecode,
+        max_stack_depth: finalized.max_stack_depth,
         num_locals,
         num_params,
         name: func_name.to_string(),
@@ -545,8 +564,7 @@ pub(crate) fn compile_user_function_block(
     compile_body(&mut fb_emitter, ctx, &fb_decl.body)?;
     fb_emitter.emit_ret_void();
 
-    let bytecode = crate::optimize::optimize(fb_emitter.bytecode(), &ctx.constants);
-    let max_stack_depth = fb_emitter.max_stack_depth();
+    let finalized = finalize_function(&mut fb_emitter, ctx);
 
     // Restore the program's variable mappings.
     ctx.variables = saved_variables;
@@ -558,8 +576,8 @@ pub(crate) fn compile_user_function_block(
 
     Ok(CompiledFunction {
         function_id,
-        bytecode,
-        max_stack_depth,
+        bytecode: finalized.bytecode,
+        max_stack_depth: finalized.max_stack_depth,
         num_locals,
         num_params: 0,
         name: fb_name,

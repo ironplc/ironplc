@@ -129,6 +129,22 @@ macro_rules! define_compiler_options {
                     },
                 )*
             ];
+
+            /// Set a vendor-extension feature flag by its `option_key` (the
+            /// field name from [`FeatureDescriptor`]).
+            ///
+            /// Returns `true` if the key matched a known flag.
+            pub fn set_flag_by_key(&mut self, key: &str, value: bool) -> bool {
+                match key {
+                    $(
+                        stringify!($vendor_field) => {
+                            self.$vendor_field = value;
+                            true
+                        }
+                    )*
+                    _ => false,
+                }
+            }
         }
     };
 }

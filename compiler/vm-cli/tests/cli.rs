@@ -54,13 +54,13 @@ fn path_to_golden_resource(name: &str) -> PathBuf {
 fn write_steel_thread_container(path: &Path) {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-        0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
-        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-        0x30,                   // ADD_I32                  (10 + 32)
-        0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
-        0xB5,                   // RET_VOID
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
+        0x20,                   // ADD_I32                  (10 + 32)
+        0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
+        0x8C,                   // RET_VOID
     ];
 
     let container = ContainerBuilder::new()
@@ -157,7 +157,9 @@ fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Er
     cmd.assert().success();
 
     let contents = std::fs::read_to_string(&dump_path)?;
-    assert_eq!(contents, "var[0]: 10\nvar[1]: 42\n");
+    // Golden file regenerated with current compiler, which now includes
+    // debug variable names — the dump uses x/y instead of var[0]/var[1].
+    assert_eq!(contents, "x: 10\ny: 42\n");
 
     Ok(())
 }
@@ -204,10 +206,10 @@ fn benchmark_when_file_not_found_then_exit_2_and_v6001() -> Result<(), Box<dyn s
 fn write_divide_by_zero_container(path: &Path) {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
-        0x33,                   // DIV_I32                  (10 / 0 → trap)
-        0xB5,                   // RET_VOID
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
+        0x30,                   // DIV_I32                  (10 / 0 → trap)
+        0x8C,                   // RET_VOID
     ];
 
     let container = ContainerBuilder::new()
@@ -255,10 +257,10 @@ fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
 fn write_doorbell_container(path: &Path) {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0x10, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push Button)
-        0x57,                   // BOOL_NOT                 (NOT Button)
-        0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (Buzzer := result)
-        0xB5,                   // RET_VOID
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push Button)
+        0x7B,                   // BOOL_NOT                 (NOT Button)
+        0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (Buzzer := result)
+        0x8C,                   // RET_VOID
     ];
 
     let container = ContainerBuilder::new()
@@ -340,17 +342,17 @@ fn run_when_dump_vars_without_path_then_prints_to_stdout() -> Result<(), Box<dyn
 fn write_fault_with_vars_container(path: &Path) {
     #[rustfmt::skip]
     let init_bytecode: Vec<u8> = vec![
-        0xB5,                   // RET_VOID — init is a no-op.
+        0x8C,                   // RET_VOID — init is a no-op.
     ];
     #[rustfmt::skip]
     let scan_bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-        0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
-        0x33,                   // DIV_I32                  (10 / 0 → trap)
-        0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (unreached)
-        0xB5,                   // RET_VOID
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
+        0x30,                   // DIV_I32                  (10 / 0 → trap)
+        0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (unreached)
+        0x8C,                   // RET_VOID
     ];
 
     let container = ContainerBuilder::new()
@@ -442,13 +444,13 @@ fn benchmark_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std
 /// which is the path used by `benchmark`'s warmup and measured loops.
 fn write_scan_divide_by_zero_container(path: &Path) {
     #[rustfmt::skip]
-    let init_bytecode: Vec<u8> = vec![0xB5]; // RET_VOID
+    let init_bytecode: Vec<u8> = vec![0x8C]; // RET_VOID
     #[rustfmt::skip]
     let scan_bytecode: Vec<u8> = vec![
-        0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-        0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
-        0x33,                   // DIV_I32                  (10 / 0 → trap)
-        0xB5,                   // RET_VOID
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (0)
+        0x30,                   // DIV_I32                  (10 / 0 → trap)
+        0x8C,                   // RET_VOID
     ];
 
     let container = ContainerBuilder::new()
@@ -540,7 +542,7 @@ fn benchmark_when_zero_cycles_then_outputs_zero_stats() -> Result<(), Box<dyn st
 fn write_cyclic_task_container(path: &Path, interval_us: u64) {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        0xB5,                   // RET_VOID
+        0x8C,                   // RET_VOID
     ];
 
     let task = TaskEntry {

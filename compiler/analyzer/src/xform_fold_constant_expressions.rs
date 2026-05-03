@@ -359,9 +359,9 @@ mod tests {
 
     #[test]
     fn fold_expr_when_negate_real_then_produces_constant() {
-        let lib = apply_fold("PROGRAM main VAR x : REAL; END_VAR x := -3.14; END_PROGRAM");
+        let lib = apply_fold("PROGRAM main VAR x : REAL; END_VAR x := -3.25; END_PROGRAM");
         let exprs = collect_exprs(&lib);
-        assert_has_real_const(&exprs, -3.14);
+        assert_has_real_const(&exprs, -3.25);
         let has_unary = exprs.iter().any(|e| matches!(e, ExprKind::UnaryOp(_)));
         assert!(!has_unary, "Unary negation should be folded");
     }

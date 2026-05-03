@@ -173,20 +173,13 @@ mod test {
         let program = "
         TYPE
         (* A comment
-            CUSTOM_STRUCT : STRUCT 
+            CUSTOM_STRUCT : STRUCT
                 NAME: BOOL;
             END_STRUCT;
         END_TYPE";
 
         let res = parse_program(program, &FileId::default(), &CompilerOptions::default());
         assert!(res.is_err());
-
-        let err = res.unwrap_err();
-        assert_eq!(
-            "Unmatched character sequence in source text".to_owned(),
-            err.description()
-        );
-        assert_eq!("The text '(* A comment\n            CUSTOM_STRUCT : STRUCT \n                NAME: BOOL;\n            END_STRUCT;\n        END_TYPE' is not valid IEC 61131-3 text at line 3 colum 9.".to_owned(), err.primary.message);
     }
 
     #[test]

@@ -260,6 +260,31 @@ pub(crate) struct CompiledFunction {
     pub(crate) name: String,
 }
 
+/// Holds the finalized bytecode and stack depth for a single emitted function.
+///
+/// Returned by [`finalize_function`] to centralize the
+/// `emitter.bytecode()` → optimize → `max_stack_depth()` sequence shared by
+/// every code path that emits a function (init, scan, user functions, FB
+/// bodies). Centralizing this makes future cross-cutting additions (e.g.
+/// source-map plumbing) a one-site change.
+pub(crate) struct FinalizedFunction {
+    pub(crate) bytecode: Vec<u8>,
+    pub(crate) max_stack_depth: u16,
+}
+
+/// Finalizes an emitter into ready-to-store bytecode plus stack depth.
+///
+/// `emitter.bytecode()` must be called before `max_stack_depth()` because the
+/// peephole optimizer (run inside `bytecode()`) may increase max_stack_depth.
+pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> FinalizedFunction {
+    let (bytecode, _offset_map) = crate::optimize::optimize(emitter.bytecode(), &ctx.constants);
+    let max_stack_depth = emitter.max_stack_depth();
+    FinalizedFunction {
+        bytecode,
+        max_stack_depth,
+    }
+}
+
 /// Compiles a PROGRAM and its user-defined functions into a container.
 ///
 /// Always emits at least two functions:
@@ -449,24 +474,23 @@ fn compile_program_with_functions(
         .unwrap_or(0);
 
     // Function 0: init, Function 1: scan
-    // bytecode() must be called before max_stack_depth() because the
-    // peephole optimizer (run inside bytecode()) may increase max_stack_depth.
-    let init_bytecode = crate::optimize::optimize(init_emitter.bytecode(), &ctx.constants);
-    let init_stack = init_emitter.max_stack_depth();
+    let init = finalize_function(&mut init_emitter, &ctx);
     builder = builder.add_function(
         FunctionId::INIT,
-        &init_bytecode,
-        init_stack,
+        &init.bytecode,
+        init.max_stack_depth,
         program_var_count,
         0,
     );
 
-    let scan_bytecode = crate::optimize::optimize(scan_emitter.bytecode(), &ctx.constants);
-    let scan_stack = scan_emitter.max_stack_depth() + max_fb_body_stack;
+    let scan = finalize_function(&mut scan_emitter, &ctx);
     builder = builder.add_function(
         FunctionId::SCAN,
-        &scan_bytecode,
-        scan_stack,
+        &scan.bytecode,
+        // FB_CALL recursively enters execute() on the shared stack, so the
+        // scan function's reported stack depth must include the deepest FB
+        // body's depth.
+        scan.max_stack_depth + max_fb_body_stack,
         program_var_count,
         0,
     );
@@ -650,6 +674,23 @@ pub(crate) struct CompileContext {
     pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
     /// Next available type ID for user-defined function blocks.
     next_user_fb_type_id: u16,
+    /// When compiling a function body that returns a value, describes how an
+    /// early `RETURN` statement should produce the return value before the
+    /// `RET` opcode. `None` for programs and FBs (RETURN emits `RET_VOID`).
+    pub(crate) current_function_return: Option<CurrentFunctionReturn>,
+}
+
+/// Describes how a `RETURN` statement should yield the function's value.
+#[derive(Clone, Copy)]
+pub(crate) enum CurrentFunctionReturn {
+    /// Scalar return: load the variable, then emit `RET`.
+    Scalar {
+        var_index: VarIndex,
+        op_type: OpType,
+    },
+    /// STRING/WSTRING return: load the string from the data region into a
+    /// temp buffer, then emit `RET`.
+    String { data_offset: u32 },
 }
 
 impl CompileContext {
@@ -671,6 +712,7 @@ impl CompileContext {
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
+            current_function_return: None,
         }
     }
 
@@ -714,70 +756,67 @@ impl CompileContext {
         idx
     }
 
-    /// Adds an i32 constant to the pool and returns its index.
-    pub(crate) fn add_i32_constant(&mut self, value: i32) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::I32(v) = existing {
-                if *v == value {
-                    return i as u16;
-                }
-            }
+    /// Returns the index of an existing constant matching `matches`, or
+    /// pushes `new_value` and returns its index.
+    fn intern_constant(
+        &mut self,
+        matches: impl FnMut(&PoolConstant) -> bool,
+        new_value: PoolConstant,
+    ) -> u16 {
+        if let Some(i) = self.constants.iter().position(matches) {
+            return i as u16;
         }
         let index = self.constants.len() as u16;
-        self.constants.push(PoolConstant::I32(value));
+        self.constants.push(new_value);
         index
+    }
+
+    /// Adds an i32 constant to the pool and returns its index.
+    pub(crate) fn add_i32_constant(&mut self, value: i32) -> u16 {
+        self.intern_constant(
+            |c| matches!(c, PoolConstant::I32(v) if *v == value),
+            PoolConstant::I32(value),
+        )
     }
 
     /// Adds an f32 constant to the pool and returns its index.
+    ///
+    /// Equality uses `to_bits()` so that distinct NaN bit patterns are not
+    /// collapsed to the same pool entry.
     pub(crate) fn add_f32_constant(&mut self, value: f32) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::F32(v) = existing {
-                if v.to_bits() == value.to_bits() {
-                    return i as u16;
-                }
-            }
-        }
-        let index = self.constants.len() as u16;
-        self.constants.push(PoolConstant::F32(value));
-        index
+        self.intern_constant(
+            |c| matches!(c, PoolConstant::F32(v) if v.to_bits() == value.to_bits()),
+            PoolConstant::F32(value),
+        )
     }
 
     /// Adds an f64 constant to the pool and returns its index.
+    ///
+    /// Equality uses `to_bits()` so that distinct NaN bit patterns are not
+    /// collapsed to the same pool entry.
     pub(crate) fn add_f64_constant(&mut self, value: f64) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::F64(v) = existing {
-                if v.to_bits() == value.to_bits() {
-                    return i as u16;
-                }
-            }
-        }
-        let index = self.constants.len() as u16;
-        self.constants.push(PoolConstant::F64(value));
-        index
+        self.intern_constant(
+            |c| matches!(c, PoolConstant::F64(v) if v.to_bits() == value.to_bits()),
+            PoolConstant::F64(value),
+        )
     }
 
     /// Adds an i64 constant to the pool and returns its index.
     pub(crate) fn add_i64_constant(&mut self, value: i64) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::I64(v) = existing {
-                if *v == value {
-                    return i as u16;
-                }
-            }
-        }
-        let index = self.constants.len() as u16;
-        self.constants.push(PoolConstant::I64(value));
-        index
+        self.intern_constant(
+            |c| matches!(c, PoolConstant::I64(v) if *v == value),
+            PoolConstant::I64(value),
+        )
     }
 
     /// Adds a string constant (raw bytes) to the pool and returns its index.
     pub(crate) fn add_str_constant(&mut self, value: Vec<u8>) -> u16 {
-        for (i, existing) in self.constants.iter().enumerate() {
-            if let PoolConstant::Str(v) = existing {
-                if *v == value {
-                    return i as u16;
-                }
-            }
+        if let Some(i) = self
+            .constants
+            .iter()
+            .position(|c| matches!(c, PoolConstant::Str(v) if v == &value))
+        {
+            return i as u16;
         }
         let index = self.constants.len() as u16;
         self.constants.push(PoolConstant::Str(value));
@@ -835,14 +874,14 @@ END_PROGRAM
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(0))
             .unwrap();
-        assert_eq!(init_bytecode, &[0xB5]);
+        assert_eq!(init_bytecode, &[0x8C]);
 
         // Function 1: scan — LOAD_CONST_I32 pool:0, STORE_VAR_I32 var:0, RET_VOID
         let scan_bytecode = container
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(1))
             .unwrap();
-        assert_eq!(scan_bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
+        assert_eq!(scan_bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x8C]);
     }
 
     #[test]
@@ -880,12 +919,12 @@ END_PROGRAM
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(0))
             .unwrap();
-        assert_eq!(init_bytecode, &[0xB5]); // RET_VOID only
+        assert_eq!(init_bytecode, &[0x8C]); // RET_VOID only
         let scan_bytecode = container
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(1))
             .unwrap();
-        assert_eq!(scan_bytecode, &[0xB5]); // RET_VOID only
+        assert_eq!(scan_bytecode, &[0x8C]); // RET_VOID only
     }
 
     #[test]
@@ -937,11 +976,11 @@ END_PROGRAM
         assert_eq!(
             bytecode,
             &[
-                0x01, 0x00, 0x00, // LOAD_CONST_I32 pool:0
-                0xA1, // DUP (store-load optimization)
-                0x18, 0x00, 0x00, // STORE_VAR_I32 var:0
-                0x18, 0x01, 0x00, // STORE_VAR_I32 var:1
-                0xB5, // RET_VOID
+                0x00, 0x00, 0x00, // LOAD_CONST_I32 pool:0
+                0x91, // DUP (store-load optimization)
+                0x10, 0x00, 0x00, // STORE_VAR_I32 var:0
+                0x10, 0x01, 0x00, // STORE_VAR_I32 var:1
+                0x8C, // RET_VOID
             ]
         );
     }
@@ -972,7 +1011,7 @@ END_PROGRAM
             .code
             .get_function_bytecode(ironplc_container::FunctionId::new(1))
             .unwrap();
-        assert_eq!(bytecode, &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00, 0xB5]);
+        assert_eq!(bytecode, &[0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x8C]);
     }
 
     #[test]

@@ -17,36 +17,29 @@ Signatures
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 30 30 30
+   :widths: 10 30 30
 
    * - #
      - Input (IN)
      - Return Type
-     - Support
    * - 1
      - ``SINT``
      - ``SINT``
-     - Supported
    * - 2
      - ``INT``
      - ``INT``
-     - Supported
    * - 3
      - ``DINT``
      - ``DINT``
-     - Supported
    * - 4
      - ``LINT``
      - ``LINT``
-     - Supported
    * - 5
      - ``REAL``
      - ``REAL``
-     - Supported
    * - 6
      - ``LREAL``
      - ``LREAL``
-     - Supported
 
 Description
 -----------

@@ -179,6 +179,7 @@ impl<'a> VmReady<'a> {
                 &scope,
                 0, // init functions don't need real time
                 0, // top-of-chain call: depth starts at zero
+                init_fn,
                 #[cfg(feature = "profiling")]
                 &mut self.profile,
             )
@@ -354,6 +355,7 @@ impl<'a> VmRunning<'a> {
                     &scope,
                     current_time_us,
                     0, // top-of-chain call: depth starts at zero
+                    entry_function_id,
                     #[cfg(feature = "profiling")]
                     &mut self.profile,
                 )
@@ -633,6 +635,7 @@ fn execute(
     scope: &VariableScope,
     current_time_us: u64,
     depth: u32,
+    current_function_id: FunctionId,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
     let mut hook = NoopDebugHook;
@@ -647,6 +650,7 @@ fn execute(
         scope,
         current_time_us,
         depth,
+        current_function_id,
         #[cfg(feature = "profiling")]
         profile,
         &mut hook,
@@ -655,6 +659,12 @@ fn execute(
 
 /// Executes bytecode until RET_VOID or a trap, invoking `hook.before_instruction`
 /// before each opcode.
+///
+/// `current_function_id` identifies the function whose bytecode is being
+/// executed in this frame; it is forwarded to the debug hook so consumers
+/// can resolve `(function_id, pc)` pairs (e.g. via
+/// `DebugSection::lookup_source_location`) even across nested CALL /
+/// FB_CALL frames.
 ///
 /// This is a free function so that the borrow checker can see
 /// independent borrows of container (immutable) vs stack/variables
@@ -673,6 +683,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     scope: &VariableScope,
     current_time_us: u64,
     depth: u32,
+    current_function_id: FunctionId,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
     hook: &mut H,
 ) -> Result<(), Trap> {
@@ -684,7 +695,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         // Notify the debug hook before advancing pc so the hook sees the
         // offset of the opcode itself, not its operand bytes. With
         // NoopDebugHook this call is inlined away to nothing.
-        hook.before_instruction(pc, op);
+        hook.before_instruction(current_function_id, pc, op);
         pc += 1;
 
         #[cfg(feature = "profiling")]
@@ -892,6 +903,47 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     pc = (pc as isize + offset as isize) as usize;
                 }
             }
+            opcode::CMP_BR_I32 | opcode::CMP_BR_I64 => {
+                let cmp_op_byte = read_u8(bytecode, &mut pc)?;
+                let var_idx = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let const_idx = ConstantIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let offset = read_i16_le(bytecode, &mut pc)?;
+                scope.check_access(var_idx)?;
+                let truth = if op == opcode::CMP_BR_I32 {
+                    let cur = variables.load(var_idx)?.as_i32();
+                    let cnst = container
+                        .constant_pool
+                        .get_i32(const_idx)
+                        .map_err(|_| Trap::InvalidConstantIndex(const_idx))?;
+                    match cmp_op_byte {
+                        opcode::cmp_op::EQ => cur == cnst,
+                        opcode::cmp_op::NE => cur != cnst,
+                        opcode::cmp_op::LT_S => cur < cnst,
+                        opcode::cmp_op::LE_S => cur <= cnst,
+                        opcode::cmp_op::GT_S => cur > cnst,
+                        opcode::cmp_op::GE_S => cur >= cnst,
+                        _ => return Err(Trap::InvalidCmpOp(cmp_op_byte)),
+                    }
+                } else {
+                    let cur = variables.load(var_idx)?.as_i64();
+                    let cnst = container
+                        .constant_pool
+                        .get_i64(const_idx)
+                        .map_err(|_| Trap::InvalidConstantIndex(const_idx))?;
+                    match cmp_op_byte {
+                        opcode::cmp_op::EQ => cur == cnst,
+                        opcode::cmp_op::NE => cur != cnst,
+                        opcode::cmp_op::LT_S => cur < cnst,
+                        opcode::cmp_op::LE_S => cur <= cnst,
+                        opcode::cmp_op::GT_S => cur > cnst,
+                        opcode::cmp_op::GE_S => cur >= cnst,
+                        _ => return Err(Trap::InvalidCmpOp(cmp_op_byte)),
+                    }
+                };
+                if truth {
+                    pc = (pc as isize + offset as isize) as usize;
+                }
+            }
             opcode::BUILTIN => {
                 let func_id = read_u16_le(bytecode, &mut pc)?;
                 match func_id {
@@ -1052,6 +1104,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     &func_scope,
                     current_time_us,
                     depth + 1,
+                    FunctionId::new(func_id),
                     #[cfg(feature = "profiling")]
                     profile,
                     hook,
@@ -1873,6 +1926,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             &func_scope,
                             current_time_us,
                             depth + 1,
+                            func_id,
                             #[cfg(feature = "profiling")]
                             profile,
                             hook,
@@ -2167,7 +2221,7 @@ mod tests {
             builder = builder.add_i32_constant(c);
         }
         builder
-            .add_function(FunctionId::INIT, &[0xB5], 0, num_vars, 0) // init: RET_VOID
+            .add_function(FunctionId::INIT, &[0x8C], 0, num_vars, 0) // init: RET_VOID
             .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0) // scan: test bytecode
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
@@ -2187,20 +2241,20 @@ mod tests {
     fn steel_thread_container() -> Container {
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x18, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
-            0x10, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
-            0x01, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-            0x30,                   // ADD_I32
-            0x18, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
-            0xB5,                   // RET_VOID
+            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
+            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
+            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
+            0x20,                   // ADD_I32
+            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
+            0x8C,                   // RET_VOID
         ];
 
         ContainerBuilder::new()
             .num_variables(2)
             .add_i32_constant(10)
             .add_i32_constant(32)
-            .add_function(FunctionId::INIT, &[0xB5], 0, 2, 0) // init: RET_VOID
+            .add_function(FunctionId::INIT, &[0x8C], 0, 2, 0) // init: RET_VOID
             .add_function(FunctionId::SCAN, &bytecode, 2, 2, 0) // scan: program body
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
@@ -2288,14 +2342,14 @@ mod tests {
         // Cannot use single_function_container because it uses max_stack=16.
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
-            0x01, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+            0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]
         ];
         let c = ContainerBuilder::new()
             .num_variables(0)
             .add_i32_constant(1)
             .add_i32_constant(2)
-            .add_function(FunctionId::INIT, &[0xB5], 0, 0, 0) // init: RET_VOID
+            .add_function(FunctionId::INIT, &[0x8C], 0, 0, 0) // init: RET_VOID
             .add_function(FunctionId::SCAN, &bytecode, 1, 0, 0) // scan: triggers overflow
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
@@ -2309,7 +2363,7 @@ mod tests {
     #[test]
     fn execute_when_stack_underflow_then_trap() {
         // ADD_I32 tries to pop 2 values from an empty stack
-        let c = single_function_container(&[0x30], 0, &[]);
+        let c = single_function_container(&[0x20], 0, &[]);
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
@@ -2321,7 +2375,7 @@ mod tests {
         // 0 constants in pool, but bytecode references pool[0]
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
         ];
         let c = single_function_container(&bytecode, 0, &[]);
         let mut b = VmBuffers::from_container(&c);
@@ -2335,8 +2389,8 @@ mod tests {
         // 1 variable, but bytecode stores to var[5]
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
-            0x18, 0x05, 0x00,  // STORE_VAR_I32 var[5]
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]
+            0x10, 0x05, 0x00,  // STORE_VAR_I32 var[5]
         ];
         let c = single_function_container(&bytecode, 1, &[42]);
         let mut b = VmBuffers::from_container(&c);
@@ -2350,7 +2404,7 @@ mod tests {
         // 1 variable, but bytecode loads from var[5]
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
-            0x10, 0x05, 0x00,  // LOAD_VAR_I32 var[5]
+            0x0C, 0x05, 0x00,  // LOAD_VAR_I32 var[5]
         ];
         let c = single_function_container(&bytecode, 1, &[]);
         let mut b = VmBuffers::from_container(&c);
@@ -2370,27 +2424,27 @@ mod tests {
         //   num_params=2, num_locals=3 (A, B, return_slot)
         #[rustfmt::skip]
         let scan_bytecode: Vec<u8> = vec![
-            0x01, 0x00, 0x00,        // LOAD_CONST_I32 pool[0] (3)
-            0x01, 0x01, 0x00,        // LOAD_CONST_I32 pool[1] (7)
-            0xB3, 0x02, 0x00, 0x01, 0x00,  // CALL function 2, var_offset=1
-            0x18, 0x00, 0x00,        // STORE_VAR_I32 var[0] (result)
-            0xB5,                    // RET_VOID
+            0x00, 0x00, 0x00,        // LOAD_CONST_I32 pool[0] (3)
+            0x00, 0x01, 0x00,        // LOAD_CONST_I32 pool[1] (7)
+            0x84, 0x02, 0x00, 0x01, 0x00,  // CALL function 2, var_offset=1
+            0x10, 0x00, 0x00,        // STORE_VAR_I32 var[0] (result)
+            0x8C,                    // RET_VOID
         ];
         #[rustfmt::skip]
         let func_bytecode: Vec<u8> = vec![
-            0x10, 0x01, 0x00,  // LOAD_VAR_I32 var[1] (A - absolute index)
-            0x10, 0x02, 0x00,  // LOAD_VAR_I32 var[2] (B - absolute index)
-            0x30,              // ADD_I32
-            0x18, 0x03, 0x00,  // STORE_VAR_I32 var[3] (return slot - absolute index)
-            0x10, 0x03, 0x00,  // LOAD_VAR_I32 var[3]
-            0xB4,              // RET
+            0x0C, 0x01, 0x00,  // LOAD_VAR_I32 var[1] (A - absolute index)
+            0x0C, 0x02, 0x00,  // LOAD_VAR_I32 var[2] (B - absolute index)
+            0x20,              // ADD_I32
+            0x10, 0x03, 0x00,  // STORE_VAR_I32 var[3] (return slot - absolute index)
+            0x0C, 0x03, 0x00,  // LOAD_VAR_I32 var[3]
+            0x88,              // RET
         ];
 
         let c = ContainerBuilder::new()
             .num_variables(4) // 1 program var + 3 function vars
             .add_i32_constant(3)
             .add_i32_constant(7)
-            .add_function(FunctionId::INIT, &[0xB5], 0, 1, 0) // init
+            .add_function(FunctionId::INIT, &[0x8C], 0, 1, 0) // init
             .add_function(FunctionId::SCAN, &scan_bytecode, 2, 1, 0) // scan
             .add_function(FunctionId::new(2), &func_bytecode, 2, 3, 2) // add (num_params=2)
             .init_function_id(FunctionId::INIT)
@@ -2414,6 +2468,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
     fn vm_default_when_called_then_loads_container() {
         let c = steel_thread_container();
         let mut b = VmBuffers::from_container(&c);
@@ -2438,8 +2493,8 @@ mod tests {
 
         let c = ContainerBuilder::new()
             .num_variables(0)
-            .add_function(FunctionId::INIT, &[0xB5], 0, 0, 0)
-            .add_function(FunctionId::SCAN, &[0xB5], 0, 0, 0)
+            .add_function(FunctionId::INIT, &[0x8C], 0, 0, 0)
+            .add_function(FunctionId::SCAN, &[0x8C], 0, 0, 0)
             .add_task(TaskEntry {
                 task_id: TaskId::DEFAULT,
                 priority: 0,

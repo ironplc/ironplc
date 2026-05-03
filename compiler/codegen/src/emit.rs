@@ -471,6 +471,69 @@ impl Emitter {
         self.pop_stack(1);
     }
 
+    /// Emits `CMP_BR_I32` (fused compare-and-branch on a 32-bit signed
+    /// integer variable against a constant pool entry). Branches to `target`
+    /// when `cmp_op(vars[var_index], const_pool[const_idx])` is true.
+    /// Stack effect: 0.
+    pub fn emit_cmp_br_i32(
+        &mut self,
+        cmp_op_byte: u8,
+        var_index: VarIndex,
+        const_idx: u16,
+        target: Label,
+    ) {
+        self.emit_cmp_br(
+            opcode::CMP_BR_I32,
+            cmp_op_byte,
+            var_index,
+            const_idx,
+            target,
+        );
+    }
+
+    /// Emits `CMP_BR_I64` (fused compare-and-branch on a 64-bit signed
+    /// integer variable against a constant pool entry). See `emit_cmp_br_i32`.
+    pub fn emit_cmp_br_i64(
+        &mut self,
+        cmp_op_byte: u8,
+        var_index: VarIndex,
+        const_idx: u16,
+        target: Label,
+    ) {
+        self.emit_cmp_br(
+            opcode::CMP_BR_I64,
+            cmp_op_byte,
+            var_index,
+            const_idx,
+            target,
+        );
+    }
+
+    fn emit_cmp_br(
+        &mut self,
+        op: u8,
+        cmp_op_byte: u8,
+        var_index: VarIndex,
+        const_idx: u16,
+        target: Label,
+    ) {
+        debug_assert!(
+            opcode::cmp_op::is_valid(cmp_op_byte),
+            "emit_cmp_br requires a valid cmp_op byte"
+        );
+        self.emit_opcode(op);
+        self.bytecode.push(cmp_op_byte);
+        self.bytecode.extend_from_slice(&var_index.to_le_bytes());
+        self.bytecode.extend_from_slice(&const_idx.to_le_bytes());
+        let patch_offset = self.bytecode.len();
+        self.bytecode.extend_from_slice(&0i16.to_le_bytes());
+        self.patches.push(PendingPatch {
+            patch_offset,
+            label: target,
+        });
+        // Stack effect: 0 (no pushes, no pops).
+    }
+
     /// Emits STR_INIT with data_offset and max_length operands.
     /// Initializes a STRING variable's header in the data region.
     pub fn emit_str_init(&mut self, data_offset: u32, max_length: u16) {
@@ -733,7 +796,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0);
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00]);
+        assert_eq!(em.bytecode(), &[opcode::LOAD_CONST_I32, 0x00, 0x00]);
     }
 
     #[test]
@@ -741,7 +804,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_var_i32(VarIndex::new(1));
 
-        assert_eq!(em.bytecode(), &[0x10, 0x01, 0x00]);
+        assert_eq!(em.bytecode(), &[opcode::LOAD_VAR_I32, 0x01, 0x00]);
     }
 
     #[test]
@@ -751,7 +814,17 @@ mod tests {
         em.emit_load_const_i32(0);
         em.emit_store_var_i32(VarIndex::new(0));
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x18, 0x00, 0x00]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::STORE_VAR_I32,
+                0x00,
+                0x00
+            ]
+        );
     }
 
     #[test]
@@ -761,7 +834,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_add_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x30]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::ADD_I32
+            ]
+        );
     }
 
     #[test]
@@ -771,7 +855,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_sub_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x31]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::SUB_I32
+            ]
+        );
     }
 
     #[test]
@@ -793,7 +888,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_mul_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x32]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::MUL_I32
+            ]
+        );
     }
 
     #[test]
@@ -815,7 +921,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_div_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x33]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::DIV_I32
+            ]
+        );
     }
 
     #[test]
@@ -837,7 +954,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_mod_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x34]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::MOD_I32
+            ]
+        );
     }
 
     #[test]
@@ -858,7 +986,10 @@ mod tests {
         em.emit_load_var_i32(VarIndex::new(0));
         em.emit_neg_i32();
 
-        assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0x35]);
+        assert_eq!(
+            em.bytecode(),
+            &[opcode::LOAD_VAR_I32, 0x00, 0x00, opcode::NEG_I32]
+        );
     }
 
     #[test]
@@ -877,7 +1008,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_ret_void();
 
-        assert_eq!(em.bytecode(), &[0xB5]);
+        assert_eq!(em.bytecode(), &[opcode::RET_VOID]);
     }
 
     #[test]
@@ -902,7 +1033,7 @@ mod tests {
         em.emit_load_const_i32(256);
 
         // 256 in little-endian u16 is [0x00, 0x01]
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x01]);
+        assert_eq!(em.bytecode(), &[opcode::LOAD_CONST_I32, 0x00, 0x01]);
     }
 
     #[test]
@@ -915,7 +1046,17 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_CONST pool:1, BUILTIN 0x0340
         assert_eq!(
             em.bytecode(),
-            &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0xC4, 0x40, 0x03]
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::BUILTIN,
+                0x40,
+                0x03
+            ]
         );
     }
 
@@ -962,7 +1103,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_eq_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x68]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::EQ_I32
+            ]
+        );
     }
 
     #[test]
@@ -984,7 +1136,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_ne_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x69]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::NE_I32
+            ]
+        );
     }
 
     #[test]
@@ -1006,7 +1169,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_lt_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x6A]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::LT_I32
+            ]
+        );
     }
 
     #[test]
@@ -1028,7 +1202,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_le_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x6B]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::LE_I32
+            ]
+        );
     }
 
     #[test]
@@ -1050,7 +1235,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_gt_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x6C]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::GT_I32
+            ]
+        );
     }
 
     #[test]
@@ -1072,7 +1268,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_ge_i32();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x6D]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::GE_I32
+            ]
+        );
     }
 
     #[test]
@@ -1094,7 +1301,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_bool_and();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x54]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::BOOL_AND
+            ]
+        );
     }
 
     #[test]
@@ -1115,7 +1333,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_bool_or();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x55]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::BOOL_OR
+            ]
+        );
     }
 
     #[test]
@@ -1136,7 +1365,18 @@ mod tests {
         em.emit_load_const_i32(1);
         em.emit_bool_xor();
 
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x56]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::BOOL_XOR
+            ]
+        );
     }
 
     #[test]
@@ -1156,7 +1396,10 @@ mod tests {
         em.emit_load_var_i32(VarIndex::new(0));
         em.emit_bool_not();
 
-        assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0x57]);
+        assert_eq!(
+            em.bytecode(),
+            &[opcode::LOAD_VAR_I32, 0x00, 0x00, opcode::BOOL_NOT]
+        );
     }
 
     #[test]
@@ -1175,7 +1418,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_true();
 
-        assert_eq!(em.bytecode(), &[0x07]);
+        assert_eq!(em.bytecode(), &[opcode::LOAD_TRUE]);
     }
 
     #[test]
@@ -1192,7 +1435,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_false();
 
-        assert_eq!(em.bytecode(), &[0x08]);
+        assert_eq!(em.bytecode(), &[opcode::LOAD_FALSE]);
     }
 
     #[test]
@@ -1212,7 +1455,7 @@ mod tests {
         em.bind_label(label);
 
         // JMP with offset 0 (target is immediately after the instruction)
-        assert_eq!(em.bytecode(), &[0xB0, 0x00, 0x00]);
+        assert_eq!(em.bytecode(), &[opcode::JMP, 0x00, 0x00]);
     }
 
     #[test]
@@ -1237,7 +1480,17 @@ mod tests {
         em.bind_label(label);
 
         // LOAD_CONST_I32 pool:0, JMP_IF_NOT offset:0
-        assert_eq!(em.bytecode(), &[0x01, 0x00, 0x00, 0xB2, 0x00, 0x00]);
+        assert_eq!(
+            em.bytecode(),
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::JMP_IF_NOT,
+                0x00,
+                0x00
+            ]
+        );
     }
 
     #[test]
@@ -1261,7 +1514,19 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_CONST pool:1, CALL func:2 var_offset:5
         assert_eq!(
             em.bytecode(),
-            &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0xB3, 0x02, 0x00, 0x05, 0x00]
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::CALL,
+                0x02,
+                0x00,
+                0x05,
+                0x00
+            ]
         );
     }
 
@@ -1282,7 +1547,10 @@ mod tests {
         em.emit_load_var_i32(VarIndex::new(0));
         em.emit_ret();
 
-        assert_eq!(em.bytecode(), &[0x10, 0x00, 0x00, 0xB4]);
+        assert_eq!(
+            em.bytecode(),
+            &[opcode::LOAD_VAR_I32, 0x00, 0x00, opcode::RET]
+        );
     }
 
     #[test]
@@ -1295,7 +1563,10 @@ mod tests {
         em.bind_label(label);
 
         // JMP offset should be 3 (skip over the LOAD_CONST_I32 which is 3 bytes)
-        assert_eq!(em.bytecode(), &[0xB0, 0x03, 0x00, 0x01, 0x00, 0x00]);
+        assert_eq!(
+            em.bytecode(),
+            &[opcode::JMP, 0x03, 0x00, opcode::LOAD_CONST_I32, 0x00, 0x00]
+        );
     }
 
     #[test]
@@ -1307,7 +1578,16 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_ARRAY var:3 desc:7
         assert_eq!(
             em.bytecode(),
-            &[0x01, 0x00, 0x00, 0x24, 0x03, 0x00, 0x07, 0x00]
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_ARRAY,
+                0x03,
+                0x00,
+                0x07,
+                0x00
+            ]
         );
     }
 
@@ -1331,7 +1611,19 @@ mod tests {
         // LOAD_CONST pool:0, LOAD_CONST pool:1, STORE_ARRAY var:5 desc:2
         assert_eq!(
             em.bytecode(),
-            &[0x01, 0x00, 0x00, 0x01, 0x01, 0x00, 0x25, 0x05, 0x00, 0x02, 0x00]
+            &[
+                opcode::LOAD_CONST_I32,
+                0x00,
+                0x00,
+                opcode::LOAD_CONST_I32,
+                0x01,
+                0x00,
+                opcode::STORE_ARRAY,
+                0x05,
+                0x00,
+                0x02,
+                0x00
+            ]
         );
     }
 

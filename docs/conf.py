@@ -30,7 +30,7 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'includes']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'includes', '.venv']
 
 
 # -- Options for HTML output -------------------------------------------------
@@ -85,9 +85,7 @@ html_theme_options = {
     "source_directory": "docs/"
 }
 
-rst_prolog = """.. attention::
-    IronPLC supports IEC 61131-3 Structured Text excluding I/O mapping.
-"""
+html_favicon = '_static/favicon.ico'
 
 # -- Version configuration ---------------------------------------------------
 

@@ -16,6 +16,14 @@ Calendar date value.
    * - **Support**
      - Supported
 
+Literals
+--------
+
+.. code-block::
+
+   D#2024-01-15
+   DATE#2024-12-31
+
 Example
 -------
 
@@ -25,14 +33,6 @@ Example
    today := D#2024-06-15;
    launch := D#2024-01-01;
    is_after := today > launch;  (* is_after = TRUE *)
-
-Literals
---------
-
-.. code-block::
-
-   D#2024-01-15
-   DATE#2024-12-31
 
 See Also
 --------
