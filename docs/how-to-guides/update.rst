@@ -13,7 +13,7 @@ Follow the steps below to update IronPLC.
 
 .. tab:: Windows
 
-   **Update IronPLC CLI**
+   .. rubric:: Update IronPLC CLI
 
    #. In search on the taskbar, enter :guilabel:`Control Panel` and select it from the results.
    #. Select :menuselection:`Programs --> Programs and Features`.
@@ -27,7 +27,7 @@ Follow the steps below to update IronPLC.
    #. Run the installer and follow the prompts to complete
       installation of the CLI.
 
-   **Update IronPLC Extension**
+   .. rubric:: Update IronPLC Extension
 
    #. Download the latest IronPLC extension
       :download_artifact:`ironplc-vscode-extension.vsix` from
@@ -44,11 +44,23 @@ Follow the steps below to update IronPLC.
 
 .. tab:: macOS
 
-   **Update IronPLC CLI**
+   .. rubric:: Update IronPLC CLI
 
-   #. In a Terminal, enter :program:`brew update`, then enter :program:`brew upgrade ironplc`.
+   If you installed IronPLC with Homebrew, open a Terminal and run:
 
-   **Update IronPLC Extension**
+   .. code-block:: sh
+
+      brew update
+      brew upgrade ironplc
+
+   If you installed IronPLC with the install script, open a Terminal
+   and re-run the script to install the latest version:
+
+   .. code-block:: sh
+
+      curl -fsSL https://www.ironplc.com/install.sh | sh
+
+   .. rubric:: Update IronPLC Extension
 
    #. Download the latest IronPLC extension
       :download_artifact:`ironplc-vscode-extension.vsix` from
@@ -59,6 +71,32 @@ Follow the steps below to update IronPLC.
    #. Go to the Extensions view by clicking on the Extensions icon in
       :guilabel:`Activity Bar` on the side of the window or using the
       View: Extensions command (:kbd:`⌘+Shift+X`).
+   #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
+   #. In the dialog, select the VISX file you downloaded earlier.
+
+
+.. tab:: Linux
+
+   .. rubric:: Update IronPLC CLI
+
+   Open a terminal and re-run the install script to install the latest
+   version:
+
+   .. code-block:: sh
+
+      curl -fsSL https://www.ironplc.com/install.sh | sh
+
+   .. rubric:: Update IronPLC Extension
+
+   #. Download the latest IronPLC extension
+      :download_artifact:`ironplc-vscode-extension.vsix` from
+      `IronPLC GitHub releases`_.
+
+   Run your development environment, then:
+
+   #. Go to the Extensions view by clicking on the Extensions icon in
+      :guilabel:`Activity Bar` on the side of the window or using the
+      View: Extensions command (:kbd:`Ctrl+Shift+X`).
    #. In the Extensions view, select :menuselection:`... (View and More Actions) --> Install from VSIX...` button.
    #. In the dialog, select the VISX file you downloaded earlier.
 
