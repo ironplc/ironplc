@@ -126,3 +126,38 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 1);
     assert_eq!(bufs.vars[1].as_i32(), 0); // y not assigned
 }
+
+#[test]
+fn end_to_end_when_early_return_in_function_then_caller_gets_assigned_value() {
+    // Regression: an early RETURN inside a value-returning FUNCTION used to
+    // emit RET_VOID, leaving the caller's stack empty and triggering a stack
+    // underflow when assigning the call result to a variable.
+    let source = "
+FUNCTION Divide : DINT
+    VAR_INPUT
+        numerator : DINT;
+        denominator : DINT;
+    END_VAR
+
+    IF denominator = 0 THEN
+        Divide := 0;
+        RETURN;
+    END_IF;
+
+    Divide := numerator / denominator;
+END_FUNCTION
+
+PROGRAM main
+    VAR
+        safe_result : DINT;
+        normal_result : DINT;
+    END_VAR
+
+    safe_result := Divide(10, 0);
+    normal_result := Divide(10, 3);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[0].as_i32(), 0); // safe_result: early-return path
+    assert_eq!(bufs.vars[1].as_i32(), 3); // normal_result: 10 / 3
+}

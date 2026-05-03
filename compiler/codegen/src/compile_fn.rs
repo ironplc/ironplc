@@ -16,8 +16,8 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
-    finalize_function, CompileContext, CompiledFunction, OpType, OpWidth, Signedness,
-    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
+    finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, OpType, OpWidth,
+    Signedness, StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
     DEFAULT_OP_TYPE,
 };
 use super::compile_expr::emit_load_var;
@@ -301,7 +301,26 @@ pub(crate) fn compile_user_function(
     let body = ironplc_dsl::textual::Statements {
         body: func_decl.body.clone(),
     };
+
+    // Make the return descriptor visible to nested `RETURN` statements so an
+    // early RETURN produces the function's value before the RET opcode (rather
+    // than emitting a bare RET_VOID, which would leave the caller's stack
+    // empty and trigger a stack underflow on the assignment).
+    let saved_return_ctx = ctx.current_function_return.take();
+    ctx.current_function_return = Some(if let Some(ref str_info) = return_string_info {
+        CurrentFunctionReturn::String {
+            data_offset: str_info.data_offset,
+        }
+    } else {
+        CurrentFunctionReturn::Scalar {
+            var_index: return_var_index,
+            op_type: return_op_type,
+        }
+    });
+
     compile_statements(&mut func_emitter, ctx, &body)?;
+
+    ctx.current_function_return = saved_return_ctx;
 
     // Load the return value and emit RET.
     if let Some(ref str_info) = return_string_info {
