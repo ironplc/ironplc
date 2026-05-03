@@ -18,6 +18,14 @@ LDATE
    * - **Support**
      - Supported (:doc:`Edition 3 </reference/language/edition-support>`)
 
+Literals
+--------
+
+.. code-block::
+
+   LDATE#2024-01-15
+   LDATE#2024-12-31
+
 Example
 -------
 
@@ -27,14 +35,6 @@ Example
    today := LDATE#2024-06-15;
    launch := LDATE#2024-01-01;
    is_after := today > launch;  (* is_after = TRUE *)
-
-Literals
---------
-
-.. code-block::
-
-   LDATE#2024-01-15
-   LDATE#2024-12-31
 
 See Also
 --------
