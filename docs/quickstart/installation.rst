@@ -61,9 +61,16 @@ Follow the steps below to install IronPLC.
 
    #. Go to `Homebrew <https://brew.sh/>`_ then follow the instructions to
       install Homebrew.
-   #. In a Terminal, enter :program:`brew tap ironplc/tap`, then enter :program:`brew install ironplc`.
+   #. Open a Terminal and run:
+
+      .. code-block:: sh
+
+         brew tap ironplc/tap
+         brew install ironplc
 
    Option 2 — install script:
+
+   Open a Terminal and run:
 
    .. code-block:: sh
 
@@ -87,7 +94,7 @@ Follow the steps below to install IronPLC.
 
    **Install IronPLC CLI**
 
-   Run the following in a terminal:
+   Open a terminal and run:
 
    .. code-block:: sh
 
