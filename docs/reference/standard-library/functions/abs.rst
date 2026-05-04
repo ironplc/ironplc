@@ -4,42 +4,25 @@ ABS
 
 Returns the absolute value of a numeric input.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.2
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤   ABS   ├─ OUT
+           └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 30 30
+.. code-block:: text
 
-   * - #
-     - Input (IN)
-     - Return Type
-   * - 1
-     - ``SINT``
-     - ``SINT``
-   * - 2
-     - ``INT``
-     - ``INT``
-   * - 3
-     - ``DINT``
-     - ``DINT``
-   * - 4
-     - ``LINT``
-     - ``LINT``
-   * - 5
-     - ``REAL``
-     - ``REAL``
-   * - 6
-     - ``LREAL``
-     - ``LREAL``
+   FUNCTION ABS : ANY_NUM
+     VAR_INPUT
+       IN : ANY_NUM;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``ABS`` accepts ``SINT``,
+``INT``, ``DINT``, ``LINT``, ``REAL``, ``LREAL``.
 
 Description
 -----------
@@ -60,5 +43,13 @@ Example
 See Also
 --------
 
-- :doc:`sqrt` — square root
-- :doc:`expt` — exponentiation
+* :doc:`sqrt` — square root
+* :doc:`expt` — exponentiation
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.2
+* `CODESYS: ABS <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_abs.html>`_
+* `Beckhoff TwinCAT 3: ABS <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529095819.html>`_
+* `Fernhill SCADA: Mathematical Functions <https://www.fernhillsoftware.com/help/iec-61131/common-elements/functions-mathematical.html>`_

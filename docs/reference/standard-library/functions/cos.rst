@@ -4,30 +4,25 @@ COS
 
 Returns the cosine of an angle in radians.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.2
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤   COS   ├─ OUT
+           └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 30 30
+.. code-block:: text
 
-   * - #
-     - Input (IN)
-     - Return Type
-   * - 1
-     - ``REAL``
-     - ``REAL``
-   * - 2
-     - ``LREAL``
-     - ``LREAL``
+   FUNCTION COS : ANY_REAL
+     VAR_INPUT
+       IN : ANY_REAL;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``COS`` accepts ``REAL``,
+``LREAL``.
 
 Description
 -----------
@@ -47,6 +42,14 @@ Example
 See Also
 --------
 
-- :doc:`sin` — sine
-- :doc:`tan` — tangent
-- :doc:`acos` — arc cosine
+* :doc:`sin` — sine
+* :doc:`tan` — tangent
+* :doc:`acos` — arc cosine
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.2
+* `CODESYS: COS <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_cos.html>`_
+* `Beckhoff TwinCAT 3: COS <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/18014401038615435.html>`_
+* `Fernhill SCADA: Mathematical Functions <https://www.fernhillsoftware.com/help/iec-61131/common-elements/functions-mathematical.html>`_

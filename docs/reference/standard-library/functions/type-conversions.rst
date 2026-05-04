@@ -6,14 +6,6 @@ IEC 61131-3 defines a set of type conversion functions that convert
 values between data types. Each function follows the naming pattern
 ``<source>_TO_<target>``.
 
-.. list-table::
-   :widths: 30 70
-
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.1
-   * - **Support** (numeric and time/date conversions)
-     - Partial
-
 Conversion Categories
 ---------------------
 
@@ -470,4 +462,12 @@ Example
 See Also
 --------
 
-- :doc:`/reference/language/data-types/index` — data type reference
+* :doc:`/reference/language/data-types/index` — data type reference
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.1
+* `CODESYS: Operators (overview) <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_struct_reference_operators.html>`_
+* `Beckhoff TwinCAT 3: Type conversion (overview) <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/63050398781277579.html>`_
+* `Fernhill SCADA: Conversion Functions <https://www.fernhillsoftware.com/help/iec-61131/common-elements/conversion-functions/index.html>`_

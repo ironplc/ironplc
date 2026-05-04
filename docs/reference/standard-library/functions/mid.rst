@@ -4,39 +4,29 @@ MID
 
 Returns a substring from the middle of a string.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.7
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤         │
+        L ─┤   MID   ├─ OUT
+        P ─┤         │
+           └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 15 15 15 15 30
+.. code-block:: text
 
-   * - #
-     - Input (IN)
-     - Input (L)
-     - Input (P)
-     - Return Type
-     - Support
-   * - 1
-     - ``STRING``
-     - ``INT``
-     - ``INT``
-     - ``STRING``
-     - Supported
-   * - 2
-     - ``WSTRING``
-     - ``INT``
-     - ``INT``
-     - ``WSTRING``
-     - Not yet supported
+   FUNCTION MID : ANY_STRING
+     VAR_INPUT
+       IN : ANY_STRING;
+       L  : ANY_INT;
+       P  : ANY_INT;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the type of *IN*. ``MID`` accepts ``STRING``
+for *IN*; *L* and *P* are ``INT``.
 
 Description
 -----------
@@ -57,6 +47,14 @@ Example
 See Also
 --------
 
-- :doc:`left` — left substring
-- :doc:`right` — right substring
-- :doc:`len` — string length
+* :doc:`left` — left substring
+* :doc:`right` — right substring
+* :doc:`len` — string length
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.7
+* `CODESYS: MID <https://content.helpme-codesys.com/en/libs/Standard/Current/String-Functions/MID.html>`_
+* `Beckhoff TwinCAT 3: MID <https://infosys.beckhoff.com/content/1033/tcplclib_tc2_standard/74420235.html>`_
+* `Fernhill SCADA: MID <https://www.fernhillsoftware.com/help/iec-61131/common-elements/string-functions/string-mid.html>`_

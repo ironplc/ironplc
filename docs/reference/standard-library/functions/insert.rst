@@ -4,39 +4,30 @@ INSERT
 
 Inserts a string into another string at a specified position.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.7
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+       IN2 ─┤ INSERT  ├─ OUT
+         P ─┤         │
+            └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 15 15 15 15 30
+.. code-block:: text
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Input (P)
-     - Return Type
-     - Support
-   * - 1
-     - ``STRING``
-     - ``STRING``
-     - ``INT``
-     - ``STRING``
-     - Supported
-   * - 2
-     - ``WSTRING``
-     - ``WSTRING``
-     - ``INT``
-     - ``WSTRING``
-     - Not yet supported
+   FUNCTION INSERT : ANY_STRING
+     VAR_INPUT
+       IN1 : ANY_STRING;
+       IN2 : ANY_STRING;
+       P   : ANY_INT;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``INSERT`` accepts ``STRING``
+for *IN1* and *IN2*; *P* is ``INT``. Both string inputs must share the
+same type.
 
 Description
 -----------
@@ -57,6 +48,14 @@ Example
 See Also
 --------
 
-- :doc:`delete` — string deletion
-- :doc:`replace` — string replacement
-- :doc:`concat` — string concatenation
+* :doc:`delete` — string deletion
+* :doc:`replace` — string replacement
+* :doc:`concat` — string concatenation
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.7
+* `CODESYS: INSERT <https://content.helpme-codesys.com/en/libs/Standard/Current/String-Functions/INSERT.html>`_
+* `Beckhoff TwinCAT 3: INSERT <https://infosys.beckhoff.com/content/1033/tcplclib_tc2_standard/74415627.html>`_
+* `Fernhill SCADA: INSERT <https://www.fernhillsoftware.com/help/iec-61131/common-elements/string-functions/string-insert.html>`_

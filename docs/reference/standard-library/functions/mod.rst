@@ -4,57 +4,29 @@ MOD
 
 Returns the remainder after integer division.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.3
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+            │   MOD   ├─ OUT
+       IN2 ─┤         │
+            └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 20 20 20
+.. code-block:: text
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-   * - 1
-     - ``SINT``
-     - ``SINT``
-     - ``SINT``
-   * - 2
-     - ``INT``
-     - ``INT``
-     - ``INT``
-   * - 3
-     - ``DINT``
-     - ``DINT``
-     - ``DINT``
-   * - 4
-     - ``LINT``
-     - ``LINT``
-     - ``LINT``
-   * - 5
-     - ``USINT``
-     - ``USINT``
-     - ``USINT``
-   * - 6
-     - ``UINT``
-     - ``UINT``
-     - ``UINT``
-   * - 7
-     - ``UDINT``
-     - ``UDINT``
-     - ``UDINT``
-   * - 8
-     - ``ULINT``
-     - ``ULINT``
-     - ``ULINT``
+   FUNCTION MOD : ANY_INT
+     VAR_INPUT
+       IN1 : ANY_INT;
+       IN2 : ANY_INT;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``MOD`` accepts ``SINT``,
+``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``.
+Both inputs must share the same type.
 
 Description
 -----------
@@ -79,5 +51,13 @@ Example
 See Also
 --------
 
-- :doc:`div` — division
-- :doc:`mul` — multiplication
+* :doc:`div` — division
+* :doc:`mul` — multiplication
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.3
+* `CODESYS: MOD <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_mod.html>`_
+* `Beckhoff TwinCAT 3: MOD <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528880779.html>`_
+* `Fernhill SCADA: Arithmetic Functions <https://www.fernhillsoftware.com/help/iec-61131/common-elements/functions-arithmetic.html>`_

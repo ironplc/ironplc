@@ -4,41 +4,28 @@ ROR
 
 Rotates a bit string right by a specified number of positions.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.6
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤         │
+           │   ROR   ├─ OUT
+        N ─┤         │
+           └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 20 20 20
+.. code-block:: text
 
-   * - #
-     - Input (IN)
-     - Input (N)
-     - Return Type
-   * - 1
-     - ``BYTE``
-     - ``INT``
-     - ``BYTE``
-   * - 2
-     - ``WORD``
-     - ``INT``
-     - ``WORD``
-   * - 3
-     - ``DWORD``
-     - ``INT``
-     - ``DWORD``
-   * - 4
-     - ``LWORD``
-     - ``INT``
-     - ``LWORD``
+   FUNCTION ROR : ANY_BIT
+     VAR_INPUT
+       IN : ANY_BIT;
+       N  : ANY_INT;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the type of *IN*. ``ROR`` accepts ``BYTE``,
+``WORD``, ``DWORD``, ``LWORD`` for *IN*; *N* is ``INT``.
 
 Description
 -----------
@@ -58,6 +45,14 @@ Example
 See Also
 --------
 
-- :doc:`rol` — rotate left
-- :doc:`shr` — shift right
-- :doc:`shl` — shift left
+* :doc:`rol` — rotate left
+* :doc:`shr` — shift right
+* :doc:`shl` — shift left
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.6
+* `CODESYS: ROR <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_ror.html>`_
+* `Beckhoff TwinCAT 3: ROR <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528950667.html>`_
+* `Fernhill SCADA: ROR <https://www.fernhillsoftware.com/help/iec-61131/common-elements/bitshift-functions/rotate-right.html>`_
