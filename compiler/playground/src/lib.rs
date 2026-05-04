@@ -1608,7 +1608,7 @@ PROGRAM main
   END_VAR
 END_PROGRAM
 ";
-        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "")).unwrap();
+        let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "", "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}, error: {:?}",
