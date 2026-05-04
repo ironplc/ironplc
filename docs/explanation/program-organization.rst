@@ -93,7 +93,7 @@ Tasks control the scan rate. A fast task (``T#10ms``) reads inputs and
 writes outputs more frequently, which gives tighter control but uses more
 CPU. A slow task (``T#1s``) is gentler on the CPU but less responsive.
 
-You can define multiple tasks with different intervals — for example, a
+You can define multiple tasks with different intervals. For example, a
 fast task for motion control and a slow task for temperature monitoring.
 
 --------------------------------------
@@ -165,6 +165,3 @@ Reading from the bottom up:
 2. The **resource** named ``res`` defines one task and one program instance.
 3. The **task** named ``plc_task`` runs every 100 ms.
 4. The **program** named ``main`` increments a counter on each scan.
-
-For a step-by-step guide to building this up from scratch, see the
-:doc:`/quickstart/index`.

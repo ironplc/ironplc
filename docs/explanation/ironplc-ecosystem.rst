@@ -14,8 +14,7 @@ to their hardware. For example:
 
 - **Beckhoff** provides TwinCAT, which runs inside Visual Studio.
 - **Siemens** provides TIA Portal for its S7 family.
-- **Codesys** provides a vendor-neutral IDE that many smaller manufacturers
-  rebrand (including the open-source **Beremiz** project).
+- **Codesys** provides a hardward-neutral IDE and runtime.
 
 These tools handle everything: editing, compiling, downloading to hardware,
 debugging, and visualization. They are powerful, but they are also
@@ -25,15 +24,16 @@ proprietary, expensive, and locked to specific hardware.
 What IronPLC Does Today
 --------------------------------------
 
-IronPLC is an open-source toolchain for working with IEC 61131-3 code. Today
-it provides:
+IronPLC is an open-source toolchain for working with IEC 61131-3
+Structured Text code. Today it provides:
 
 - **A compiler** (:program:`ironplcc`) that parses and checks IEC 61131-3
   programs for correctness. It catches syntax errors, type mismatches, and
   other problems before you ever download code to a PLC.
-- **A VS Code extension** that provides auto-completion, syntax highlighting
+- **A Visual Studio Code extension** that provides auto-completion, syntax highlighting
   and real-time error checking as you type.
 - **A runtime** (:program:`ironplcvm`) that can execute compiled programs.
+- **An MCP server** (:program:`ironplcvm`) that AI agents can use to understand and run programs.
 
 Try it now — this program increments a counter on every scan cycle:
 

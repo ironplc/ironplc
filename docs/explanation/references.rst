@@ -221,7 +221,7 @@ For the complete list of restrictions and related compiler diagnostics, see
 :doc:`/reference/language/data-types/derived/reference-types`.
 
 --------------------------------------
-Next Steps
+See Also
 --------------------------------------
 
 - :doc:`/reference/language/data-types/derived/reference-types` — full syntax,
