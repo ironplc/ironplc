@@ -4,36 +4,28 @@ CONCAT
 
 Concatenates two strings.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.7
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+            │ CONCAT  ├─ OUT
+       IN2 ─┤         │
+            └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 20 20 20 30
+.. code-block:: text
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-     - Support
-   * - 1
-     - ``STRING``
-     - ``STRING``
-     - ``STRING``
-     - Supported
-   * - 2
-     - ``WSTRING``
-     - ``WSTRING``
-     - ``WSTRING``
-     - Not yet supported
+   FUNCTION CONCAT : ANY_STRING
+     VAR_INPUT
+       IN1 : ANY_STRING;
+       IN2 : ANY_STRING;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``CONCAT`` accepts ``STRING``.
+Both inputs must share the same type.
 
 Description
 -----------
@@ -52,6 +44,14 @@ Example
 See Also
 --------
 
-- :doc:`insert` — string insertion
-- :doc:`len` — string length
-- :doc:`left` — left substring
+* :doc:`insert` — string insertion
+* :doc:`len` — string length
+* :doc:`left` — left substring
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.7
+* `CODESYS: CONCAT <https://content.helpme-codesys.com/en/libs/Standard/Current/String-Functions/CONCAT.html>`_
+* `Beckhoff TwinCAT 3: CONCAT <https://infosys.beckhoff.com/content/1033/tcplclib_tc2_standard/74411019.html>`_
+* `Fernhill SCADA: CONCAT <https://www.fernhillsoftware.com/help/iec-61131/common-elements/string-functions/string-concat.html>`_

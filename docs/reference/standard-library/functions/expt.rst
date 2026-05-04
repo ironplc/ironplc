@@ -4,49 +4,28 @@ EXPT
 
 Returns the result of raising a base to an exponent.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.2
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+            │  EXPT   ├─ OUT
+       IN2 ─┤         │
+            └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 20 20 20
+.. code-block:: text
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-   * - 1
-     - ``SINT``
-     - ``SINT``
-     - ``SINT``
-   * - 2
-     - ``INT``
-     - ``INT``
-     - ``INT``
-   * - 3
-     - ``DINT``
-     - ``DINT``
-     - ``DINT``
-   * - 4
-     - ``LINT``
-     - ``LINT``
-     - ``LINT``
-   * - 5
-     - ``REAL``
-     - ``REAL``
-     - ``REAL``
-   * - 6
-     - ``LREAL``
-     - ``LREAL``
-     - ``LREAL``
+   FUNCTION EXPT : ANY_REAL
+     VAR_INPUT
+       IN1 : ANY_REAL;
+       IN2 : ANY_NUM;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the type of *IN1*. ``EXPT`` accepts ``REAL``,
+``LREAL`` for the base and any numeric type for the exponent.
 
 Description
 -----------
@@ -67,6 +46,14 @@ Example
 See Also
 --------
 
-- :doc:`exp` — natural exponential (*e*\ :sup:`x`)
-- :doc:`sqrt` — square root
-- :doc:`abs` — absolute value
+* :doc:`exp` — natural exponential (*e*\ :sup:`x`)
+* :doc:`sqrt` — square root
+* :doc:`abs` — absolute value
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.2
+* `CODESYS: EXPT <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_expt.html>`_
+* `Beckhoff TwinCAT 3: EXPT <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529122699.html>`_
+* `Fernhill SCADA: POW <https://www.fernhillsoftware.com/help/iec-61131/common-elements/functions-arithmetic.html>`_

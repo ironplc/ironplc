@@ -4,41 +4,28 @@ ROL
 
 Rotates a bit string left by a specified number of positions.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.6
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤         │
+           │   ROL   ├─ OUT
+        N ─┤         │
+           └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 20 20 20
+.. code-block:: text
 
-   * - #
-     - Input (IN)
-     - Input (N)
-     - Return Type
-   * - 1
-     - ``BYTE``
-     - ``INT``
-     - ``BYTE``
-   * - 2
-     - ``WORD``
-     - ``INT``
-     - ``WORD``
-   * - 3
-     - ``DWORD``
-     - ``INT``
-     - ``DWORD``
-   * - 4
-     - ``LWORD``
-     - ``INT``
-     - ``LWORD``
+   FUNCTION ROL : ANY_BIT
+     VAR_INPUT
+       IN : ANY_BIT;
+       N  : ANY_INT;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the type of *IN*. ``ROL`` accepts ``BYTE``,
+``WORD``, ``DWORD``, ``LWORD`` for *IN*; *N* is ``INT``.
 
 Description
 -----------
@@ -58,6 +45,14 @@ Example
 See Also
 --------
 
-- :doc:`ror` — rotate right
-- :doc:`shl` — shift left
-- :doc:`shr` — shift right
+* :doc:`ror` — rotate right
+* :doc:`shl` — shift left
+* :doc:`shr` — shift right
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.6
+* `CODESYS: ROL <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_rol.html>`_
+* `Beckhoff TwinCAT 3: ROL <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528945291.html>`_
+* `Fernhill SCADA: ROL <https://www.fernhillsoftware.com/help/iec-61131/common-elements/bitshift-functions/rotate-left.html>`_
