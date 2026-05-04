@@ -70,7 +70,8 @@ Example
 -------
 
 .. playground-with-program::
-   :vars: x : INT; arr : ARRAY[1..10] OF INT;
+   :vars: x : INT; arr : ARRAY[1..10] OF INT; s : DINT;
+   :allows: sizeof
 
    s := SIZEOF(x);     (* s = 2 *)
    s := SIZEOF(arr);   (* s = 20 *)

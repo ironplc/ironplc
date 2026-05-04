@@ -18,6 +18,14 @@ LDATE_AND_TIME
    * - **Support**
      - Supported (:doc:`Edition 3 </reference/language/edition-support>`)
 
+Literals
+--------
+
+.. code-block::
+
+   LDT#2024-01-15-14:30:00
+   LDATE_AND_TIME#2024-12-31-23:59:59
+
 Example
 -------
 
@@ -27,14 +35,6 @@ Example
    event := LDT#2024-06-15-10:30:00;
    deadline := LDT#2024-06-15-12:00:00;
    on_time := event < deadline;  (* on_time = TRUE *)
-
-Literals
---------
-
-.. code-block::
-
-   LDT#2024-01-15-14:30:00
-   LDATE_AND_TIME#2024-12-31-23:59:59
 
 See Also
 --------

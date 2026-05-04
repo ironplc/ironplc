@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta property="og:title" content="Execution Cycle" />
+<meta property="og:title" content="IronPLC Execution Cycle" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/explanation/execution-cycle.html" />
 <meta property="og:site_name" content="IronPLC" />
@@ -12,8 +12,8 @@
 <link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Variables and I/O" href="variables-and-io.html"><link rel="prev" title="Program Organization" href="program-organization.html">
         <link rel="canonical" href="https://www.ironplc.com/explanation/execution-cycle.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Execution Cycle - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
+    <link rel="shortcut icon" href="../_static/favicon.ico"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>IronPLC Execution Cycle - IronPLC - Open-Source IEC 61131-3 Toolchain</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.206.0">
+<meta name="ironplc-version" content="0.209.0">
 </head>
   <body>
     
@@ -258,6 +258,7 @@
 <li class="toctree-l2"><a class="reference internal" href="program-organization.html">Program Organization</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Execution Cycle</a></li>
 <li class="toctree-l2"><a class="reference internal" href="variables-and-io.html">Variables and I/O</a></li>
+<li class="toctree-l2"><a class="reference internal" href="system-clock-and-uptime.html">System Clock and Uptime</a></li>
 <li class="toctree-l2"><a class="reference internal" href="references.html">References and Indirection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="type-conversions.html">Type Conversions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="enabling-dialects-and-features.html">Enabling Dialects and Features</a></li>
@@ -541,7 +542,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../reference/runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-24" name="toctree-checkbox-24" role="switch" type="checkbox"/><label for="toctree-checkbox-24"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../reference/runtime/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/runtime/ironplcvm.html">Command Reference</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/runtime/problems/index.html">Error Codes</a><input aria-label="Toggle navigation of Error Codes" class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" role="switch" type="checkbox"/><label for="toctree-checkbox-25"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/runtime/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" role="switch" type="checkbox"/><label for="toctree-checkbox-25"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4001.html">V4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4002.html">V4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4003.html">V4003</a></li>
@@ -566,16 +567,23 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9010.html">V9010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9011.html">V9011</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9012.html">V9012</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9013.html">V9013</a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/mcp/index.html">MCP Server</a><input aria-label="Toggle navigation of MCP Server" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../reference/mcp/overview.html">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/mcp/ironplcmcp.html">Command Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/mcp/tools.html">Tool Reference</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../reference/editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" role="switch" type="checkbox"/><label for="toctree-checkbox-27"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/build-tasks.html">Build Tasks</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/bytecode-viewer.html">Bytecode Viewer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/settings.html">Settings</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" role="switch" type="checkbox"/><label for="toctree-checkbox-27"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../reference/editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-28" name="toctree-checkbox-28" role="switch" type="checkbox"/><label for="toctree-checkbox-28"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/editor/problems/E0001.html">E0001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/editor/problems/E0002.html">E0002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/editor/problems/E0003.html">E0003</a></li>
@@ -627,12 +635,8 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <div class="admonition attention">
-<p class="admonition-title">Attention</p>
-<p>IronPLC supports IEC 61131-3 Structured Text excluding I/O mapping.</p>
-</div>
-<section id="execution-cycle">
-<h1>Execution Cycle<a class="headerlink" href="#execution-cycle" title="Link to this heading">¶</a></h1>
+          <section id="ironplc-execution-cycle">
+<h1>IronPLC Execution Cycle<a class="headerlink" href="#ironplc-execution-cycle" title="Link to this heading">¶</a></h1>
 <p>IronPLC runs your programs on a repeating cycle. This page explains what
 happens during each cycle, how the runtime decides which tasks to run, and
 what happens when things take longer than expected.</p>
@@ -640,7 +644,7 @@ what happens when things take longer than expected.</p>
 together, see <a class="reference internal" href="program-organization.html"><span class="doc">Program Organization</span></a>.</p>
 <section id="what-is-the-scan-cycle">
 <h2>What Is the Scan Cycle?<a class="headerlink" href="#what-is-the-scan-cycle" title="Link to this heading">¶</a></h2>
-<p>A PLC does not run code once and exit. It runs in a continuous loop called
+<p>A PLC does not run code once and exit. The PLC runs in a continuous loop called
 the <strong>scan cycle</strong>. Each pass through the loop is one <strong>scheduling round</strong>.
 During each round, the runtime:</p>
 <ol class="arabic simple">
@@ -649,12 +653,16 @@ During each round, the runtime:</p>
 <li><p>Executes the due tasks in priority order.</p></li>
 <li><p>Records timing information and advances each task’s next-due time.</p></li>
 </ol>
-<p>This loop repeats until the runtime is stopped (for example, with
-<kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">C</kbd>) or until a fault occurs.</p>
-<p>The <strong class="program">ironplcvm</strong> command runs this loop continuously by default.
-You can limit execution to a fixed number of rounds with the <code class="docutils literal notranslate"><span class="pre">--scans</span></code>
-option — useful for testing and debugging. See the
-<a class="reference internal" href="../reference/runtime/ironplcvm.html"><span class="doc">ironplcvm</span></a> command reference for details.</p>
+<p>This loop repeats until the runtime is stopped. On an embedded device, the
+loop repeats so long as the device has power. On a general purpose
+computer (e.g. a Raspberry PI or laptop), the loop repeats until terminated
+with <kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">C</kbd> or until a fault occurs.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>The development environment typically take control away from the scan cycle so that
+you can test and debug your code. See the <a class="reference internal" href="../reference/runtime/ironplcvm.html"><span class="doc">ironplcvm</span></a>
+command reference for details.</p>
+</div>
 </section>
 <section id="how-tasks-are-scheduled">
 <h2>How Tasks Are Scheduled<a class="headerlink" href="#how-tasks-are-scheduled" title="Link to this heading">¶</a></h2>
@@ -742,10 +750,6 @@ increase the interval.</p></li>
 </section>
 <section id="watchdog-timeout">
 <h2>Watchdog Timeout<a class="headerlink" href="#watchdog-timeout" title="Link to this heading">¶</a></h2>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>Watchdog enforcement is under active development.</p>
-</div>
 <p>While an overrun causes the runtime to skip a cycle and continue, a
 <strong>watchdog timeout</strong> is a hard limit that halts the VM.</p>
 <p>Each task can have a watchdog timeout. If a single execution of the task
@@ -858,7 +862,7 @@ configurations fit together</p></li>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Execution Cycle</a><ul>
+<li><a class="reference internal" href="#">IronPLC Execution Cycle</a><ul>
 <li><a class="reference internal" href="#what-is-the-scan-cycle">What Is the Scan Cycle?</a></li>
 <li><a class="reference internal" href="#how-tasks-are-scheduled">How Tasks Are Scheduled</a></li>
 <li><a class="reference internal" href="#inside-a-single-round">Inside a Single Round</a></li>

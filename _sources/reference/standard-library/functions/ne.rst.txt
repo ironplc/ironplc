@@ -4,76 +4,29 @@ NE
 
 Returns TRUE if two inputs are not equal.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.4
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+            │   NE    ├─ OUT
+       IN2 ─┤         │
+            └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 20 20 20 30
+.. code-block:: text
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-     - Support
-   * - 1
-     - ``SINT``
-     - ``SINT``
-     - ``BOOL``
-     - Supported
-   * - 2
-     - ``INT``
-     - ``INT``
-     - ``BOOL``
-     - Supported
-   * - 3
-     - ``DINT``
-     - ``DINT``
-     - ``BOOL``
-     - Supported
-   * - 4
-     - ``LINT``
-     - ``LINT``
-     - ``BOOL``
-     - Supported
-   * - 5
-     - ``USINT``
-     - ``USINT``
-     - ``BOOL``
-     - Supported
-   * - 6
-     - ``UINT``
-     - ``UINT``
-     - ``BOOL``
-     - Supported
-   * - 7
-     - ``UDINT``
-     - ``UDINT``
-     - ``BOOL``
-     - Supported
-   * - 8
-     - ``ULINT``
-     - ``ULINT``
-     - ``BOOL``
-     - Supported
-   * - 9
-     - ``REAL``
-     - ``REAL``
-     - ``BOOL``
-     - Supported
-   * - 10
-     - ``LREAL``
-     - ``LREAL``
-     - ``BOOL``
-     - Supported
+   FUNCTION NE : BOOL
+     VAR_INPUT
+       IN1 : ANY_ELEMENTARY;
+       IN2 : ANY_ELEMENTARY;
+     END_VAR
+   END_FUNCTION
+
+Returns ``BOOL``. ``NE`` accepts ``SINT``, ``INT``, ``DINT``, ``LINT``,
+``USINT``, ``UINT``, ``UDINT``, ``ULINT``, ``REAL``, ``LREAL``. Both
+inputs must share the same type.
 
 Description
 -----------
@@ -98,6 +51,14 @@ Example
 See Also
 --------
 
-- :doc:`eq` — equal
-- :doc:`gt` — greater than
-- :doc:`lt` — less than
+* :doc:`eq` — equal
+* :doc:`gt` — greater than
+* :doc:`lt` — less than
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.4
+* `CODESYS: NE <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_ne.html>`_
+* `Beckhoff TwinCAT 3: NE <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/27021600293232779.html>`_
+* `Fernhill SCADA: NE <https://www.fernhillsoftware.com/help/iec-61131/common-elements/functions-comparison.html>`_
