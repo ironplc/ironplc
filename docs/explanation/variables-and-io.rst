@@ -142,7 +142,7 @@ ensures that all input values are consistent within a single scan — a
 sensor value does not change halfway through your logic.
 
 --------------------------------------
-Next Steps
+See Also
 --------------------------------------
 
 To see these concepts in action, work through the :doc:`/quickstart/index`

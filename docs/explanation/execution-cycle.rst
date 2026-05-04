@@ -1,6 +1,6 @@
-===============
-Execution Cycle
-===============
+=======================
+IronPLC Execution Cycle
+=======================
 
 IronPLC runs your programs on a repeating cycle. This page explains what
 happens during each cycle, how the runtime decides which tasks to run, and
@@ -13,7 +13,7 @@ together, see :doc:`program-organization`.
 What Is the Scan Cycle?
 --------------------------------------
 
-A PLC does not run code once and exit. It runs in a continuous loop called
+A PLC does not run code once and exit. The PLC runs in a continuous loop called
 the **scan cycle**. Each pass through the loop is one **scheduling round**.
 During each round, the runtime:
 
@@ -22,13 +22,16 @@ During each round, the runtime:
 3. Executes the due tasks in priority order.
 4. Records timing information and advances each task's next-due time.
 
-This loop repeats until the runtime is stopped (for example, with
-:kbd:`Ctrl+C`) or until a fault occurs.
+This loop repeats until the runtime is stopped. On an embedded device, the
+loop repeats so long as the device has power. On a general purpose
+computer (e.g. a Raspberry PI or laptop), the loop repeats until terminated
+with :kbd:`Ctrl+C` or until a fault occurs.
 
-The :program:`ironplcvm` command runs this loop continuously by default.
-You can limit execution to a fixed number of rounds with the ``--scans``
-option — useful for testing and debugging. See the
-:doc:`/reference/runtime/ironplcvm` command reference for details.
+.. tip::
+
+   The development environment typically take control away from the scan cycle so that
+   you can test and debug your code. See the :doc:`/reference/runtime/ironplcvm`
+   command reference for details.
 
 --------------------------------------
 How Tasks Are Scheduled
@@ -132,10 +135,6 @@ forward, never backward.
 --------------------------------------
 Watchdog Timeout
 --------------------------------------
-
-.. note::
-
-   Watchdog enforcement is under active development.
 
 While an overrun causes the runtime to skip a cycle and continue, a
 **watchdog timeout** is a hard limit that halts the VM.

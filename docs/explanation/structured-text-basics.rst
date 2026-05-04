@@ -42,16 +42,16 @@ Some things to notice:
   at the top.
 - Assignment uses ``:=`` (not ``=``).
 - Statements end with a semicolon.
-- Blocks are closed with :code:`END_PROGRAM`, :code:`END_IF`, and so on
-  rather than curly braces.
+- Blocks open with a keyword and blocks are closed with a keyword such as :code:`END_PROGRAM`, :code:`END_IF`, and so on
+  (rather than curly braces).
 
 --------------------------------------
 Data Types
 --------------------------------------
 
-IEC 61131-3 provides a set of elementary data types:
+IEC 61131-3 defines a set of elementary :doc:`/reference/language/data-types/index`:
 
-.. list-table::
+.. list-table:: Examples of IEC 61131-3 elementary data types
    :header-rows: 1
    :widths: 20 30 50
 
@@ -78,7 +78,7 @@ IEC 61131-3 provides a set of elementary data types:
      - Duration (for example, ``T#100ms``)
 
 You can also define your own types: enumerations, arrays, structures, and
-subranges. These are covered in the :doc:`/reference/language/data-types/index`.
+subranges.
 
 --------------------------------------
 Control Flow
@@ -86,7 +86,8 @@ Control Flow
 
 Structured Text supports the control flow statements you would expect:
 
-**IF / ELSIF / ELSE:**
+
+.. rubric:: IF / ELSIF / ELSE
 
 .. code-block::
 
@@ -99,7 +100,7 @@ Structured Text supports the control flow statements you would expect:
       Warning := FALSE;
    END_IF;
 
-**CASE:**
+.. rubric:: CASE
 
 .. code-block::
 
@@ -110,7 +111,7 @@ Structured Text supports the control flow statements you would expect:
          Alarm := TRUE;
    END_CASE;
 
-**FOR:**
+.. rubric:: FOR
 
 .. code-block::
 
@@ -118,7 +119,7 @@ Structured Text supports the control flow statements you would expect:
       Values[i] := 0;
    END_FOR;
 
-**WHILE:**
+.. rubric:: WHILE
 
 .. code-block::
 
@@ -147,11 +148,3 @@ differences compared to languages like Python or C:
 
 These constraints exist because PLCs must respond within strict time
 deadlines. Predictability matters more than flexibility.
-
---------------------------------------
-Next Steps
---------------------------------------
-
-Now that you have a feel for the language, try writing your first program
-in the :doc:`/quickstart/index`. When you need precise details about
-syntax and semantics, consult the :doc:`/reference/compiler/index`.
