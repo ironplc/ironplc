@@ -4,30 +4,25 @@ ASIN
 
 Returns the arc sine (inverse sine) of a numeric input.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.2
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤  ASIN   ├─ OUT
+           └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 30 30
+.. code-block:: text
 
-   * - #
-     - Input (IN)
-     - Return Type
-   * - 1
-     - ``REAL``
-     - ``REAL``
-   * - 2
-     - ``LREAL``
-     - ``LREAL``
+   FUNCTION ASIN : ANY_REAL
+     VAR_INPUT
+       IN : ANY_REAL;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``ASIN`` accepts ``REAL``,
+``LREAL``.
 
 Description
 -----------
@@ -47,6 +42,14 @@ Example
 See Also
 --------
 
-- :doc:`sin` — sine
-- :doc:`acos` — arc cosine
-- :doc:`atan` — arc tangent
+* :doc:`sin` — sine
+* :doc:`acos` — arc cosine
+* :doc:`atan` — arc tangent
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.2
+* `CODESYS: ASIN <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_asin.html>`_
+* `Beckhoff TwinCAT 3: ASIN <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529144203.html>`_
+* `Fernhill SCADA: Mathematical Functions <https://www.fernhillsoftware.com/help/iec-61131/common-elements/functions-mathematical.html>`_

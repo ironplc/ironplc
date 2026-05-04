@@ -4,65 +4,29 @@ NE
 
 Returns TRUE if two inputs are not equal.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.4
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+            │   NE    ├─ OUT
+       IN2 ─┤         │
+            └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 20 20 20
+.. code-block:: text
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-   * - 1
-     - ``SINT``
-     - ``SINT``
-     - ``BOOL``
-   * - 2
-     - ``INT``
-     - ``INT``
-     - ``BOOL``
-   * - 3
-     - ``DINT``
-     - ``DINT``
-     - ``BOOL``
-   * - 4
-     - ``LINT``
-     - ``LINT``
-     - ``BOOL``
-   * - 5
-     - ``USINT``
-     - ``USINT``
-     - ``BOOL``
-   * - 6
-     - ``UINT``
-     - ``UINT``
-     - ``BOOL``
-   * - 7
-     - ``UDINT``
-     - ``UDINT``
-     - ``BOOL``
-   * - 8
-     - ``ULINT``
-     - ``ULINT``
-     - ``BOOL``
-   * - 9
-     - ``REAL``
-     - ``REAL``
-     - ``BOOL``
-   * - 10
-     - ``LREAL``
-     - ``LREAL``
-     - ``BOOL``
+   FUNCTION NE : BOOL
+     VAR_INPUT
+       IN1 : ANY_ELEMENTARY;
+       IN2 : ANY_ELEMENTARY;
+     END_VAR
+   END_FUNCTION
+
+Returns ``BOOL``. ``NE`` accepts ``SINT``, ``INT``, ``DINT``, ``LINT``,
+``USINT``, ``UINT``, ``UDINT``, ``ULINT``, ``REAL``, ``LREAL``. Both
+inputs must share the same type.
 
 Description
 -----------
@@ -87,6 +51,14 @@ Example
 See Also
 --------
 
-- :doc:`eq` — equal
-- :doc:`gt` — greater than
-- :doc:`lt` — less than
+* :doc:`eq` — equal
+* :doc:`gt` — greater than
+* :doc:`lt` — less than
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.4
+* `CODESYS: NE <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_ne.html>`_
+* `Beckhoff TwinCAT 3: NE <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/27021600293232779.html>`_
+* `Fernhill SCADA: NE <https://www.fernhillsoftware.com/help/iec-61131/common-elements/functions-comparison.html>`_

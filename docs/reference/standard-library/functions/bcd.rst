@@ -5,67 +5,48 @@ BCD_TO_INT / INT_TO_BCD
 Convert between Binary-Coded Decimal (BCD) encoded bit strings and
 integer values.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.1
-   * - **Support**
-     - Supported
+``BCD_TO_INT``:
 
-Signatures
-----------
+.. code-block:: text
 
-BCD_TO_INT
-^^^^^^^^^^
+           ┌─────────────┐
+       IN ─┤  BCD_TO_INT ├─ OUT
+           └─────────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 30 30
+.. code-block:: text
 
-   * - #
-     - Input (IN)
-     - Return Type
-   * - 1
-     - ``BYTE``
-     - ``USINT``
-   * - 2
-     - ``WORD``
-     - ``UINT``
-   * - 3
-     - ``DWORD``
-     - ``UDINT``
-   * - 4
-     - ``LWORD``
-     - ``ULINT``
+   FUNCTION BCD_TO_INT : ANY_INT
+     VAR_INPUT
+       IN : ANY_BIT;
+     END_VAR
+   END_FUNCTION
 
-INT_TO_BCD
-^^^^^^^^^^
+``BCD_TO_INT`` accepts ``BYTE``, ``WORD``, ``DWORD``, ``LWORD`` for
+*IN*; the return type is the corresponding unsigned integer (``USINT``,
+``UINT``, ``UDINT``, ``ULINT``).
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 30 30 30
+``INT_TO_BCD``:
 
-   * - #
-     - Input (IN)
-     - Return Type
-     - Support
-   * - 1
-     - ``USINT``
-     - ``BYTE``
-     - Supported
-   * - 2
-     - ``UINT``
-     - ``WORD``
-     - Supported
-   * - 3
-     - ``UDINT``
-     - ``DWORD``
-     - Supported
-   * - 4
-     - ``ULINT``
-     - ``LWORD``
-     - Supported
+.. code-block:: text
+
+           ┌─────────────┐
+       IN ─┤  INT_TO_BCD ├─ OUT
+           └─────────────┘
+
+.. code-block:: text
+
+   FUNCTION INT_TO_BCD : ANY_BIT
+     VAR_INPUT
+       IN : ANY_INT;
+     END_VAR
+   END_FUNCTION
+
+``INT_TO_BCD`` accepts ``USINT``, ``UINT``, ``UDINT``, ``ULINT`` for
+*IN*; the return type is the corresponding bit string (``BYTE``,
+``WORD``, ``DWORD``, ``LWORD``).
 
 Description
 -----------
@@ -100,4 +81,13 @@ Example
 See Also
 --------
 
-- :doc:`type-conversions` — other type conversion functions
+* :doc:`type-conversions` — other type conversion functions
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.1
+* `CODESYS: Operators (overview) <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_struct_reference_operators.html>`_
+* `Beckhoff TwinCAT 3: Type conversion (overview) <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/63050398781277579.html>`_
+* `Fernhill SCADA: BCD_TO_INT <https://www.fernhillsoftware.com/help/iec-61131/common-elements/conversion-functions/bcd-to-integer.html>`_
+* `Fernhill SCADA: INT_TO_BCD <https://www.fernhillsoftware.com/help/iec-61131/common-elements/conversion-functions/integer-to-bcd.html>`_
