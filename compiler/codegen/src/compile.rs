@@ -116,9 +116,6 @@ pub(crate) enum PoolConstant {
 /// The IEC 61131-3 default maximum length for STRING (254 characters).
 pub(crate) const DEFAULT_STRING_MAX_LENGTH_U16: u16 = 254;
 
-/// STRING_HEADER_BYTES re-exported as u32 for arithmetic in compile_array.
-pub(crate) const STRING_HEADER_BYTES_U32: u32 = STRING_HEADER_BYTES as u32;
-
 /// Metadata for a STRING variable allocated in the data region.
 #[derive(Clone)]
 pub(crate) struct StringVarInfo {
@@ -126,6 +123,29 @@ pub(crate) struct StringVarInfo {
     pub(crate) data_offset: u32,
     /// Maximum number of characters this string can hold.
     pub(crate) max_length: u16,
+    /// Bytes per character: 1 for STRING, 2 for WSTRING (not yet supported).
+    pub(crate) char_width: u16,
+}
+
+/// Bytes per character for STRING. WSTRING (when supported) will use 2.
+pub(crate) const STRING_CHAR_WIDTH: u16 = 1;
+
+/// Total bytes needed in the data region for a STRING value with the given
+/// maximum length: header plus per-character storage.
+pub(crate) fn string_region_size(max_length: u16) -> u32 {
+    STRING_HEADER_BYTES as u32 + (max_length as u32) * (STRING_CHAR_WIDTH as u32)
+}
+
+/// Encode a character-string literal into bytes for the constant pool.
+///
+/// `char_width` selects the encoding: 1 for STRING (Latin-1 per ADR-0016).
+/// WSTRING (`char_width = 2`) is not yet supported and will panic; the
+/// parameter exists so call sites already pass the value.
+pub(crate) fn encode_string_literal(chars: &[char], char_width: u16) -> Vec<u8> {
+    match char_width {
+        STRING_CHAR_WIDTH => chars.iter().map(|&ch| ch as u8).collect(),
+        _ => unreachable!("WSTRING literal encoding is not yet supported"),
+    }
 }
 
 /// Compiles a library into a bytecode container.
@@ -449,7 +469,7 @@ fn compile_program_with_functions(
         if ctx.num_temp_bufs > 0 {
             builder = builder
                 .num_temp_bufs(ctx.num_temp_bufs)
-                .max_temp_buf_bytes((STRING_HEADER_BYTES as u16 + ctx.max_string_capacity) as u32);
+                .max_temp_buf_bytes(string_region_size(ctx.max_string_capacity));
         }
     }
 
@@ -575,6 +595,9 @@ pub(crate) struct StringParamInfo {
     pub(crate) data_offset: u32,
     /// Maximum number of characters this parameter can hold.
     pub(crate) max_length: u16,
+    /// Bytes per character: 1 for STRING, 2 for WSTRING (not yet supported).
+    #[allow(dead_code)]
+    pub(crate) char_width: u16,
 }
 
 /// Metadata for a STRING return value in a user-defined function.
@@ -587,6 +610,9 @@ pub(crate) struct StringReturnInfo {
     pub(crate) data_offset: u32,
     /// Maximum number of characters the return string can hold.
     pub(crate) max_length: u16,
+    /// Bytes per character: 1 for STRING, 2 for WSTRING (not yet supported).
+    #[allow(dead_code)]
+    pub(crate) char_width: u16,
 }
 
 /// Metadata for a compiled user-defined function.

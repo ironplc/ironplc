@@ -4,13 +4,16 @@
 //! INSERT, DELETE, LEFT, RIGHT, MID, CONCAT) and string comparison.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
-use ironplc_container::{opcode, STRING_HEADER_BYTES};
+use ironplc_container::opcode;
 use ironplc_dsl::common::ConstantKind;
 use ironplc_dsl::core::{Located, SourceSpan};
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::textual::{CompareExpr, CompareOp, Expr, ExprKind, Function, ParamAssignmentKind};
 
-use super::compile::{CompileContext, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH_U16};
+use super::compile::{
+    encode_string_literal, string_region_size, CompileContext, DEFAULT_OP_TYPE,
+    DEFAULT_STRING_MAX_LENGTH_U16, STRING_CHAR_WIDTH,
+};
 use super::compile_expr::{compile_expr, resolve_variable_name};
 use crate::emit::Emitter;
 
@@ -121,7 +124,7 @@ pub(crate) fn resolve_string_arg(
             // through to the general expression path below.
             let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
             let data_offset = ctx.data_region_offset;
-            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+            let total_bytes = string_region_size(max_length);
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
@@ -141,10 +144,10 @@ pub(crate) fn resolve_string_arg(
         }
         ExprKind::Const(ConstantKind::CharacterString(lit)) => {
             // Allocate space in the data region for this string literal.
-            let bytes: Vec<u8> = lit.value.iter().map(|&ch| ch as u8).collect();
+            let bytes = encode_string_literal(&lit.value, STRING_CHAR_WIDTH);
             let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
             let data_offset = ctx.data_region_offset;
-            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+            let total_bytes = string_region_size(max_length);
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
@@ -170,7 +173,7 @@ pub(crate) fn resolve_string_arg(
             // temporary data region slot so the caller gets a data_offset.
             let max_length = DEFAULT_STRING_MAX_LENGTH_U16;
             let data_offset = ctx.data_region_offset;
-            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+            let total_bytes = string_region_size(max_length);
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
