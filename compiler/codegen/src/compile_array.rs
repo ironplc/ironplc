@@ -558,7 +558,7 @@ pub(crate) fn register_array_variable(
     let data_offset = ctx.data_region_offset;
     let total_bytes = if is_string {
         // STRING elements: each element is [max_len:u16][cur_len:u16][data:max_len bytes]
-        let element_stride = super::compile::STRING_HEADER_BYTES_U32 + string_max_len as u32;
+        let element_stride = super::compile::string_region_size(string_max_len);
         total_elements.checked_mul(element_stride).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::NotImplemented,
