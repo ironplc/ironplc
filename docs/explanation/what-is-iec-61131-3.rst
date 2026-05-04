@@ -81,9 +81,9 @@ a web server waiting for HTTP requests) or batch processing (like a script
 that runs once). When you write IEC 61131-3 code, you are writing the logic
 for a single scan, and the runtime takes care of calling it repeatedly.
 
---------------------------------------
-Why Does This Matter for IronPLC?
---------------------------------------
+---------------------------------------------
+Why Does Understanding the Scan Cycle Matter?
+---------------------------------------------
 
 Understanding the scan cycle helps you make sense of concepts you will
 encounter in the tutorials:
