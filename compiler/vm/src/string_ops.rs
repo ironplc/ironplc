@@ -2,6 +2,11 @@ use ironplc_container::STRING_HEADER_BYTES;
 
 use crate::error::Trap;
 
+/// Byte offset of the `max_length` field within a string header.
+pub(crate) const MAX_LEN_OFFSET: usize = 0;
+/// Byte offset of the `cur_length` field within a string header.
+pub(crate) const CUR_LEN_OFFSET: usize = 2;
+
 /// Metadata for an allocated temp buffer slot.
 pub(crate) struct TempBufferSlot {
     /// Index of this buffer slot (the value pushed onto the stack).
@@ -64,7 +69,10 @@ pub(crate) fn read_string_header(
     if offset + STRING_HEADER_BYTES > data_region.len() {
         return Err(Trap::DataRegionOutOfBounds(offset as u32));
     }
-    let cur_len = u16::from_le_bytes([data_region[offset + 2], data_region[offset + 3]]) as usize;
+    let cur_len = u16::from_le_bytes([
+        data_region[offset + CUR_LEN_OFFSET],
+        data_region[offset + CUR_LEN_OFFSET + 1],
+    ]) as usize;
     let data_start = offset + STRING_HEADER_BYTES;
     Ok((cur_len, data_start))
 }
@@ -79,8 +87,9 @@ pub(crate) fn write_string_header(
     result_len: usize,
 ) -> (u16, usize) {
     let cur_len = (result_len as u16).min(max_len);
-    temp_buf[buf_start..buf_start + 2].copy_from_slice(&max_len.to_le_bytes());
-    temp_buf[buf_start + 2..buf_start + STRING_HEADER_BYTES]
+    temp_buf[buf_start + MAX_LEN_OFFSET..buf_start + MAX_LEN_OFFSET + 2]
+        .copy_from_slice(&max_len.to_le_bytes());
+    temp_buf[buf_start + CUR_LEN_OFFSET..buf_start + STRING_HEADER_BYTES]
         .copy_from_slice(&cur_len.to_le_bytes());
     let data_start = buf_start + STRING_HEADER_BYTES;
     (cur_len, data_start)
@@ -88,18 +97,26 @@ pub(crate) fn write_string_header(
 
 /// Read max_length from a string header at `offset` in `buf`.
 pub(crate) fn str_read_max_len(buf: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([buf[offset], buf[offset + 1]])
+    u16::from_le_bytes([
+        buf[offset + MAX_LEN_OFFSET],
+        buf[offset + MAX_LEN_OFFSET + 1],
+    ])
 }
 
 /// Read cur_length from a string header at `offset` in `buf`.
 pub(crate) fn str_read_cur_len(buf: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([buf[offset + 2], buf[offset + 3]])
+    u16::from_le_bytes([
+        buf[offset + CUR_LEN_OFFSET],
+        buf[offset + CUR_LEN_OFFSET + 1],
+    ])
 }
 
 /// Write a string header (max_length, cur_length) at `offset` in `buf`.
 pub(crate) fn str_write_header(buf: &mut [u8], offset: usize, max_len: u16, cur_len: u16) {
-    buf[offset..offset + 2].copy_from_slice(&max_len.to_le_bytes());
-    buf[offset + 2..offset + STRING_HEADER_BYTES].copy_from_slice(&cur_len.to_le_bytes());
+    buf[offset + MAX_LEN_OFFSET..offset + MAX_LEN_OFFSET + 2]
+        .copy_from_slice(&max_len.to_le_bytes());
+    buf[offset + CUR_LEN_OFFSET..offset + STRING_HEADER_BYTES]
+        .copy_from_slice(&cur_len.to_le_bytes());
 }
 
 #[cfg(test)]

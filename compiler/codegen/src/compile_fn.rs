@@ -4,7 +4,7 @@
 //! including variable setup, body compilation, and metadata registration.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
-use ironplc_container::{ContainerBuilder, VarIndex, STRING_HEADER_BYTES};
+use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind,
     VarDecl, VariableType,
@@ -16,9 +16,9 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
-    finalize_function, CompileContext, CompiledFunction, CurrentFunctionReturn, OpType, OpWidth,
-    Signedness, StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
-    DEFAULT_OP_TYPE,
+    finalize_function, string_region_size, CompileContext, CompiledFunction, CurrentFunctionReturn,
+    OpType, OpWidth, Signedness, StringParamInfo, StringReturnInfo, StringVarInfo,
+    UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE, STRING_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{emit_function_local_prologue, resolve_type_name};
@@ -109,7 +109,7 @@ pub(crate) fn compile_user_function(
                     let max_length = resolve_string_max_length(string_init)?;
 
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+                    let total_bytes = string_region_size(max_length);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -129,6 +129,7 @@ pub(crate) fn compile_user_function(
                         StringVarInfo {
                             data_offset,
                             max_length,
+                            char_width: STRING_CHAR_WIDTH,
                         },
                     );
                 }
@@ -173,7 +174,7 @@ pub(crate) fn compile_user_function(
                     let max_length = resolve_string_max_length(string_init)?;
 
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+                    let total_bytes = string_region_size(max_length);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -193,6 +194,7 @@ pub(crate) fn compile_user_function(
                         StringVarInfo {
                             data_offset,
                             max_length,
+                            char_width: STRING_CHAR_WIDTH,
                         },
                     );
                 }
@@ -230,7 +232,7 @@ pub(crate) fn compile_user_function(
             let max_length = resolve_string_spec_max_length(spec)?;
 
             let data_offset = ctx.data_region_offset;
-            let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+            let total_bytes = string_region_size(max_length);
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
@@ -245,11 +247,13 @@ pub(crate) fn compile_user_function(
                 StringVarInfo {
                     data_offset,
                     max_length,
+                    char_width: STRING_CHAR_WIDTH,
                 },
             );
             Some(StringReturnInfo {
                 data_offset,
                 max_length,
+                char_width: STRING_CHAR_WIDTH,
             })
         }
         FunctionReturnType::Named(_) => {
@@ -353,6 +357,7 @@ pub(crate) fn compile_user_function(
                         param_string_info.push(Some(StringParamInfo {
                             data_offset: info.data_offset,
                             max_length: info.max_length,
+                            char_width: info.char_width,
                         }));
                     } else {
                         param_string_info.push(None);
@@ -528,7 +533,7 @@ pub(crate) fn compile_user_function_block(
                     let max_length = resolve_string_max_length(string_init)?;
 
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+                    let total_bytes = string_region_size(max_length);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -548,6 +553,7 @@ pub(crate) fn compile_user_function_block(
                         StringVarInfo {
                             data_offset,
                             max_length,
+                            char_width: STRING_CHAR_WIDTH,
                         },
                     );
                 }
