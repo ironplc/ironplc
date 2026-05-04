@@ -218,6 +218,7 @@ main {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .output-tabs {
@@ -243,6 +244,7 @@ main {
 .panel {
   display: none;
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 1rem;
   font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
@@ -326,6 +328,11 @@ a.diagnostic-code:hover {
 
 table.var-table tr.changed td {
   background: rgba(107, 255, 155, 0.15);
+}
+
+table.var-table td.value-invalid {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .raw-bytes-note {
