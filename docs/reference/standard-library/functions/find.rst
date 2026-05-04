@@ -4,36 +4,28 @@ FIND
 
 Searches for a substring within a string.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.7
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+            │  FIND   ├─ OUT
+       IN2 ─┤         │
+            └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 20 20 20 30
+.. code-block:: text
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-     - Support
-   * - 1
-     - ``STRING``
-     - ``STRING``
-     - ``INT``
-     - Supported
-   * - 2
-     - ``WSTRING``
-     - ``WSTRING``
-     - ``INT``
-     - Not yet supported
+   FUNCTION FIND : ANY_INT
+     VAR_INPUT
+       IN1 : ANY_STRING;
+       IN2 : ANY_STRING;
+     END_VAR
+   END_FUNCTION
+
+Returns ``INT``. ``FIND`` accepts ``STRING`` for *IN1* and *IN2*. Both
+inputs must share the same type.
 
 Description
 -----------
@@ -55,6 +47,14 @@ Example
 See Also
 --------
 
-- :doc:`replace` — string replacement
-- :doc:`mid` — middle substring
-- :doc:`len` — string length
+* :doc:`replace` — string replacement
+* :doc:`mid` — middle substring
+* :doc:`len` — string length
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.7
+* `CODESYS: FIND <https://content.helpme-codesys.com/en/libs/Standard/Current/String-Functions/FIND.html>`_
+* `Beckhoff TwinCAT 3: FIND <https://infosys.beckhoff.com/content/1033/tcplclib_tc2_standard/74414091.html>`_
+* `Fernhill SCADA: FIND <https://www.fernhillsoftware.com/help/iec-61131/common-elements/string-functions/string-find.html>`_
