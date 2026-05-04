@@ -624,7 +624,8 @@ function renderVariables(variables) {
     const changed = prev !== undefined && prev !== v.value;
     html += `<tr${changed ? ' class="changed"' : ''}>`;
     const label = v.name ? `${escapeHtml(v.name)} : ${escapeHtml(v.type_name)}` : `var[${v.index}]`;
-    html += `<td>${label}</td><td>${v.value}</td>`;
+    const valueClass = v.valid === false ? ' class="value-invalid"' : '';
+    html += `<td>${label}</td><td${valueClass}>${escapeHtml(v.value)}</td>`;
     html += `<td class="sparkline-cell" data-var-idx="${v.index}"></td>`;
     html += '</tr>';
   }

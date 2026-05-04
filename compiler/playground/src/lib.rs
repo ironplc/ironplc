@@ -135,6 +135,19 @@ struct VariableInfo {
     name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     type_name: String,
+    /// `false` when `value` is a placeholder shown because the actual value
+    /// could not be read (e.g., STRING data-region offset out of bounds, or
+    /// WSTRING which is not yet implemented).
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    valid: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
 /// Maps (type_name, ordinal) → value_name for enum display.
@@ -170,23 +183,59 @@ fn build_string_layout_map(container: &Container) -> StringLayoutMap {
     map
 }
 
+/// Reasons a STRING variable's bytes could not be read from the data region.
+#[derive(Debug, PartialEq, Eq)]
+enum StringReadError {
+    /// The recorded `data_offset` plus the 4-byte header would read past the
+    /// end of the data region.
+    OffsetOutOfBounds,
+    /// The header was readable but `cur_len` plus the data start would read
+    /// past the end of the data region.
+    LengthOutOfBounds,
+}
+
 /// Reads a STRING value from the data region at the given offset and renders
-/// it as a single-quoted IEC literal. Returns `'<invalid>'` if the offset
-/// or length would read out of bounds.
-fn read_string_value(data_region: &[u8], data_offset: u32) -> String {
+/// it as a single-quoted IEC literal with IEC 61131-3 `$`-escape sequences
+/// for non-printable bytes, `$`, and `'`.
+///
+/// Returns an error variant (rather than a sentinel string) so the caller
+/// can mark the value as invalid and the UI can render it differently from
+/// real string content like `'<invalid>'`.
+fn read_string_value(data_region: &[u8], data_offset: u32) -> Result<String, StringReadError> {
     let off = data_offset as usize;
     if off + STRING_HEADER_BYTES > data_region.len() {
-        return "'<invalid>'".into();
+        return Err(StringReadError::OffsetOutOfBounds);
     }
     let cur_len = u16::from_le_bytes([data_region[off + 2], data_region[off + 3]]) as usize;
     let start = off + STRING_HEADER_BYTES;
     let end = start + cur_len;
     if end > data_region.len() {
-        return "'<invalid>'".into();
+        return Err(StringReadError::LengthOutOfBounds);
     }
-    let bytes = &data_region[start..end];
-    let text = String::from_utf8_lossy(bytes);
-    format!("'{text}'")
+    Ok(format_iec_string_literal(&data_region[start..end]))
+}
+
+/// Renders raw STRING bytes as an IEC 61131-3 single-quoted string literal.
+/// Each byte is either passed through as printable ASCII, replaced with one
+/// of the named `$`-escapes (`$T`, `$L`, `$P`, `$R`, `$$`, `$'`), or emitted
+/// as a `$XX` two-digit hex escape.
+fn format_iec_string_literal(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() + 2);
+    out.push('\'');
+    for &b in bytes {
+        match b {
+            b'$' => out.push_str("$$"),
+            b'\'' => out.push_str("$'"),
+            0x09 => out.push_str("$T"),
+            0x0A => out.push_str("$L"),
+            0x0C => out.push_str("$P"),
+            0x0D => out.push_str("$R"),
+            0x20..=0x7E => out.push(b as char),
+            _ => out.push_str(&format!("${b:02X}")),
+        }
+    }
+    out.push('\'');
+    out
 }
 
 /// Formats a raw 64-bit slot value according to the IEC type tag,
@@ -206,24 +255,6 @@ fn format_variable_value_with_enum(
     }
     // Fall back to standard formatting.
     format_variable_value(raw, tag)
-}
-
-/// Like [`format_variable_value_with_enum`], but routes STRING tags through
-/// the data-region reader when the variable's layout is known.
-fn format_variable_value_with_string(
-    raw: u64,
-    tag: u8,
-    type_name: &str,
-    enum_map: &EnumValueMap,
-    string_offset: Option<u32>,
-    data_region: &[u8],
-) -> String {
-    if tag == iec_type_tag::STRING {
-        if let Some(off) = string_offset {
-            return read_string_value(data_region, off);
-        }
-    }
-    format_variable_value_with_enum(raw, tag, type_name, enum_map)
 }
 
 /// Formats a raw 64-bit slot value according to the IEC type tag.
@@ -255,8 +286,8 @@ fn format_variable_value(raw: u64, tag: u8) -> String {
         iec_type_tag::DATE => format_date_value(raw as u32),
         iec_type_tag::TIME_OF_DAY => format_tod_value(raw as u32),
         iec_type_tag::DATE_AND_TIME => format_dt_value(raw),
-        // STRING bytes are read from the data region at the call site.
-        iec_type_tag::WSTRING => "<WSTRING>".into(),
+        // STRING and WSTRING are handled at the call site so the result can
+        // also report whether the value is real or a placeholder.
         _ => format!("{}", raw as i32), // fallback
     }
 }
@@ -628,8 +659,8 @@ fn read_all_variables_running(
             vm.read_variable_raw(ironplc_container::VarIndex::new(i))
                 .ok()
                 .map(|raw| {
-                    let (name, type_name, value) = if let Some(info) = debug_map.get(&i) {
-                        let value = format_variable_value_with_string(
+                    let (name, type_name, value, valid) = if let Some(info) = debug_map.get(&i) {
+                        let (value, valid) = format_value(
                             raw,
                             info.iec_type_tag,
                             &info.type_name,
@@ -637,19 +668,56 @@ fn read_all_variables_running(
                             string_layouts.get(&i).copied(),
                             data_region,
                         );
-                        (info.name.clone(), info.type_name.clone(), value)
+                        (info.name.clone(), info.type_name.clone(), value, valid)
                     } else {
-                        (String::new(), String::new(), format!("{}", raw as i32))
+                        (
+                            String::new(),
+                            String::new(),
+                            format!("{}", raw as i32),
+                            true,
+                        )
                     };
                     VariableInfo {
                         index: i,
                         value,
                         name,
                         type_name,
+                        valid,
                     }
                 })
         })
         .collect()
+}
+
+/// Render a variable's value as `(text, valid)`. STRING bytes are read from
+/// the data region; WSTRING returns a placeholder; everything else uses the
+/// slot-based formatter.
+fn format_value(
+    raw: u64,
+    tag: u8,
+    type_name: &str,
+    enum_map: &EnumValueMap,
+    string_offset: Option<u32>,
+    data_region: &[u8],
+) -> (String, bool) {
+    if tag == iec_type_tag::STRING {
+        return match string_offset {
+            Some(off) => match read_string_value(data_region, off) {
+                Ok(text) => (text, true),
+                Err(_) => ("<invalid>".into(), false),
+            },
+            // STRING tag with no layout entry: container was built before the
+            // layout sub-table existed (or the variable didn't get one).
+            None => ("<unknown>".into(), false),
+        };
+    }
+    if tag == iec_type_tag::WSTRING {
+        return ("<WSTRING>".into(), false);
+    }
+    (
+        format_variable_value_with_enum(raw, tag, type_name, enum_map),
+        true,
+    )
 }
 
 /// Compile IEC 61131-3 source and create a stepping session.
@@ -1458,37 +1526,58 @@ END_PROGRAM
 
     #[test]
     fn read_string_value_when_valid_header_then_decodes_bytes() {
-        // [max_len=10][cur_len=5]"hello"
         let mut data = vec![0u8; 16];
         data[0..2].copy_from_slice(&10u16.to_le_bytes());
         data[2..4].copy_from_slice(&5u16.to_le_bytes());
         data[4..9].copy_from_slice(b"hello");
-        assert_eq!(read_string_value(&data, 0), "'hello'");
+        assert_eq!(read_string_value(&data, 0).unwrap(), "'hello'");
     }
 
     #[test]
     fn read_string_value_when_zero_length_then_empty_quotes() {
         let data = vec![0u8; 16];
-        assert_eq!(read_string_value(&data, 0), "''");
+        assert_eq!(read_string_value(&data, 0).unwrap(), "''");
     }
 
     #[test]
-    fn read_string_value_when_offset_beyond_region_then_invalid() {
+    fn read_string_value_when_offset_beyond_region_then_offset_error() {
         let data = vec![0u8; 4];
-        assert_eq!(read_string_value(&data, 8), "'<invalid>'");
+        assert_eq!(
+            read_string_value(&data, 8),
+            Err(StringReadError::OffsetOutOfBounds)
+        );
     }
 
     #[test]
-    fn read_string_value_when_cur_len_overruns_then_invalid() {
+    fn read_string_value_when_cur_len_overruns_then_length_error() {
         let mut data = vec![0u8; 8];
         data[0..2].copy_from_slice(&10u16.to_le_bytes());
         data[2..4].copy_from_slice(&100u16.to_le_bytes());
-        assert_eq!(read_string_value(&data, 0), "'<invalid>'");
+        assert_eq!(
+            read_string_value(&data, 0),
+            Err(StringReadError::LengthOutOfBounds)
+        );
     }
 
     #[test]
-    fn format_variable_value_when_wstring_tag_then_placeholder() {
-        assert_eq!(format_variable_value(0, iec_type_tag::WSTRING), "<WSTRING>");
+    fn format_iec_string_literal_when_named_escapes_then_iec_form() {
+        assert_eq!(
+            format_iec_string_literal(b"a\tb\nc\rd\x0Ce"),
+            "'a$Tb$Lc$Rd$Pe'"
+        );
+    }
+
+    #[test]
+    fn format_iec_string_literal_when_dollar_or_quote_then_doubled() {
+        assert_eq!(format_iec_string_literal(b"$1.50 'hi'"), "'$$1.50 $'hi$''");
+    }
+
+    #[test]
+    fn format_iec_string_literal_when_null_or_high_byte_then_hex_escape() {
+        assert_eq!(
+            format_iec_string_literal(&[0x00, 0x01, 0xFF]),
+            "'$00$01$FF'"
+        );
     }
 
     #[test]
@@ -1512,6 +1601,7 @@ END_PROGRAM
             .find(|v| v.name == "s")
             .expect("variable 's' present");
         assert_eq!(s.value, "'hello'");
+        assert!(s.valid, "expected s.valid == true for a real STRING value");
     }
 
     #[test]

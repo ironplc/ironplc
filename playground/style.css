@@ -326,6 +326,11 @@ table.var-table tr.changed td {
   background: rgba(107, 255, 155, 0.15);
 }
 
+table.var-table td.value-invalid {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .raw-bytes-note {
   color: var(--text-muted);
   font-size: 0.8rem;
