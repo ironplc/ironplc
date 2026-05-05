@@ -17,20 +17,17 @@ Signatures
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 30 30 30
+   :widths: 10 30 30
 
    * - #
      - Input (IN)
      - Return Type
-     - Support
    * - 1
      - ``REAL``
      - ``REAL``
-     - Supported
    * - 2
      - ``LREAL``
      - ``LREAL``
-     - Supported
 
 Description
 -----------

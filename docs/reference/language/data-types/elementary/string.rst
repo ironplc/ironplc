@@ -14,7 +14,7 @@ Single-byte character string with a maximum length.
    * - **IEC 61131-3**
      - Section 2.3.1
    * - **Support**
-     - Not yet supported
+     - Supported
 
 Literals
 --------
@@ -34,12 +34,21 @@ The maximum length can be specified in the declaration:
        msg  : STRING;       (* default max length *)
    END_VAR
 
+Example
+-------
+
+.. playground-with-program::
+   :vars: name : STRING[50]; msg: STRING;
+
+   name := 'my name';
+   msg := 'a message';
+
 Constant Length (Vendor Extension)
 ----------------------------------
 
 .. include:: ../../../../includes/requires-vendor-extension.rst
 
-With the ``--allow-constant-type-params`` flag (or ``--allow-all``), you can
+With the ``--allow-constant-type-params`` flag, you can
 use a global constant for the maximum length instead of a literal:
 
 .. code-block::

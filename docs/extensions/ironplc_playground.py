@@ -33,6 +33,12 @@ playground (no iframe)::
            x := 42;
        END_PROGRAM
 
+Options (all directives):
+    :dialect: Force the playground dialect (e.g. ``2013`` for IEC 61131-3:2013).
+    :allows:  Comma-separated list of ``--allow-*`` feature flags to enable on
+              top of the dialect (e.g. ``sizeof,c-style-comments``). The short
+              name is the part after ``--allow-``.
+
 Options (both embed directives):
     :height:  Iframe height (default auto-calculated from line count).
 
@@ -88,7 +94,9 @@ def _auto_height(code_lines, scaffold=False, vars_decl=""):
     return f"{max(_MIN_HEIGHT_PX, height)}px"
 
 
-def _build_playground_url(code, scaffold=False, vars_decl="", embed=False, dialect=""):
+def _build_playground_url(
+    code, scaffold=False, vars_decl="", embed=False, dialect="", allows=""
+):
     """Build a playground URL with encoded parameters."""
     params = []
 
@@ -101,6 +109,9 @@ def _build_playground_url(code, scaffold=False, vars_decl="", embed=False, diale
     if dialect:
         params.append("dialect=" + quote(dialect, safe=""))
 
+    if allows:
+        params.append("allows=" + quote(allows, safe=","))
+
     params.append("code=" + quote(b64encode(code.encode()).decode(), safe=""))
 
     if vars_decl:
@@ -109,9 +120,14 @@ def _build_playground_url(code, scaffold=False, vars_decl="", embed=False, diale
     return PLAYGROUND_URL + "?" + "&".join(params)
 
 
-def _build_iframe(code, height, scaffold=False, vars_decl="", dialect=""):
+def _build_iframe(code, height, scaffold=False, vars_decl="", dialect="", allows=""):
     src = _build_playground_url(
-        code, scaffold=scaffold, vars_decl=vars_decl, embed=True, dialect=dialect
+        code,
+        scaffold=scaffold,
+        vars_decl=vars_decl,
+        embed=True,
+        dialect=dialect,
+        allows=allows,
     )
 
     raw_html = (
@@ -131,6 +147,7 @@ class PlaygroundDirective(Directive):
     option_spec = {
         "height": directives.unchanged,
         "dialect": directives.unchanged,
+        "allows": directives.unchanged,
     }
 
     def run(self):
@@ -138,7 +155,8 @@ class PlaygroundDirective(Directive):
         code_lines = len(self.content)
         height = self.options.get("height") or _auto_height(code_lines)
         dialect = self.options.get("dialect", "")
-        return [_build_iframe(code, height, dialect=dialect)]
+        allows = self.options.get("allows", "")
+        return [_build_iframe(code, height, dialect=dialect, allows=allows)]
 
 
 class PlaygroundWithProgramDirective(Directive):
@@ -147,6 +165,7 @@ class PlaygroundWithProgramDirective(Directive):
         "vars": directives.unchanged,
         "height": directives.unchanged,
         "dialect": directives.unchanged,
+        "allows": directives.unchanged,
     }
 
     def run(self):
@@ -154,10 +173,20 @@ class PlaygroundWithProgramDirective(Directive):
         code_lines = len(self.content)
         vars_decl = self.options.get("vars", "")
         dialect = self.options.get("dialect", "")
+        allows = self.options.get("allows", "")
         height = self.options.get("height") or _auto_height(
             code_lines, scaffold=True, vars_decl=vars_decl
         )
-        return [_build_iframe(code, height, scaffold=True, vars_decl=vars_decl, dialect=dialect)]
+        return [
+            _build_iframe(
+                code,
+                height,
+                scaffold=True,
+                vars_decl=vars_decl,
+                dialect=dialect,
+                allows=allows,
+            )
+        ]
 
 
 _DEFAULT_LINK_TEXT = "Try this in the IronPLC Playground"
@@ -170,13 +199,15 @@ class PlaygroundLinkDirective(Directive):
     option_spec = {
         "text": directives.unchanged,
         "dialect": directives.unchanged,
+        "allows": directives.unchanged,
     }
 
     def run(self):
         code = "\n".join(self.content)
         link_text = self.options.get("text", _DEFAULT_LINK_TEXT)
         dialect = self.options.get("dialect", "")
-        href = _build_playground_url(code, dialect=dialect)
+        allows = self.options.get("allows", "")
+        href = _build_playground_url(code, dialect=dialect, allows=allows)
 
         ref_node = nodes.reference("", link_text, refuri=href, internal=False)
         ref_node["classes"].append("playground-link")

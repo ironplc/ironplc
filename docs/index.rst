@@ -1,33 +1,33 @@
 .. meta::
    :description: IronPLC is an open-source IEC 61131-3 toolchain with an extension for your development environment, command-line compiler, and browser-based playground for Structured Text programming.
 
-=======
-IronPLC
-=======
+.. |logo| image:: _static/ironplc-banner.svg
+   :alt: IronPLC
 
-.. image:: _static/ironplc-banner.svg
-   :align: center
+======
+|logo|
+======
 
-IronPLC is an open-source toolchain for checking and compiling IEC 61131-3
-programs. It integrates into your development environment to provide
-auto-completion, syntax highlighting, and real-time error checking as you
-type. It also includes a command-line compiler and an early-stage runtime.
+IronPLC is a compiler, runtime, Visual Studio Code editor extension,
+and MCP server for writing and running IEC 61131-3 programs.
+IronPLC reads Structured Text, PLCopen XML and other vendor files directly,
+so you can use IronPLC alongside your existing PLC development environment.
 
-IronPLC reads Structured Text, PLCopen XML (Beremiz), and TwinCAT 3 source
-files, so you can use it alongside your existing PLC development environment.
-
-.. figure:: /images/screenshots/syntax-highlighting.png
+.. figure:: /images/screenshots/quickstart-animation.png
    :alt: VS Code showing an IEC 61131-3 Structured Text file with syntax highlighting
    :width: 600px
 
-   Structured Text with syntax highlighting in VS Code.
+   Structured Text with syntax highlighting in Visual Studio Code.
 
-The long-term vision is to become a full development environment for
-building IEC 61131-3 based control systems on off-the-shelf embedded
-computers (SoftPLCs). IronPLC is still early in
-that journey — but there is plenty you can do with it today. IronPLC is MIT
-licensed and we'd love for you to give it a try, share feedback, or
-contribute.
+IronPLC supports most of IEC 61131-3 edition 2 and parts of edition 3
+but doesn't yet provide I/O mapping or debugging capabilities. Still,
+there is plenty you can do with IronPLC today including running
+code using the `IronPLC Playground <https://playground.ironplc.com>`_,
+authoring code with an AI agent using IronPLC's Model Context Protocol
+(MCP) server, and running applications locally.
+
+IronPLC is free (subject to MIT license terms) and works on Windows,
+macOS and Linux.
 
 .. grid:: 2
 

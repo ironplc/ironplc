@@ -191,8 +191,27 @@ if (dialectParam === "2013") {
   dialectBadge.classList.add("visible");
 }
 
+// `allows` is a comma-separated list of feature flag short names — the part
+// after `--allow-` in the CLI (e.g. "sizeof,c-style-comments"). When present,
+// override the dialect badge to show "Custom" with a hover listing the flags.
+const allowsParam = (params.get("allows") || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
+if (allowsParam.length > 0) {
+  dialectBadge.textContent = "Custom";
+  const flagList = allowsParam.map((s) => `--allow-${s}`).join(", ");
+  const dialectLabel = dialectParam === "2013" ? "IEC 61131-3:2013" : "default";
+  dialectBadge.title = `${dialectLabel} + ${flagList}`;
+  dialectBadge.classList.add("visible");
+}
+
 function getDialect() {
   return dialectSelect.value;
+}
+
+function getAllows() {
+  return allowsParam.join(",");
 }
 
 // Stop execution when dialect changes (same as source change)
@@ -442,7 +461,8 @@ startBtn.addEventListener("click", async () => {
   status.textContent = "Compiling\u2026";
 
   const dialect = getDialect();
-  const loadMsg = await postCommand("load_program", { source, cycleTimeUs, dialect });
+  const allows = getAllows();
+  const loadMsg = await postCommand("load_program", { source, cycleTimeUs, dialect, allows });
 
   if (loadMsg.type === "error") {
     status.textContent = loadMsg.error;

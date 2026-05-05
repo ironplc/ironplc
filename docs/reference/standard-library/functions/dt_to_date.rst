@@ -17,16 +17,14 @@ Signatures
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 20 20 30
+   :widths: 10 20 20
 
    * - #
      - Input (IN)
      - Return Type
-     - Support
    * - 1
      - ``DATE_AND_TIME``
      - ``DATE``
-     - Supported
 
 Description
 -----------

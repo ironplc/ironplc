@@ -50,7 +50,7 @@ Constant Bounds (Vendor Extension)
 
 Many PLC vendors allow global constants in place of literal values for
 array bounds. IronPLC supports this with the ``--allow-constant-type-params``
-flag (or ``--allow-all``). The constant must be declared in a
+flag. The constant must be declared in a
 ``VAR_GLOBAL CONSTANT`` block.
 
 .. playground::

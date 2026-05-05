@@ -42,12 +42,16 @@ You can also create a named reference type:
 Operators
 ---------
 
+.. _ref-operator-ref:
+
 ``REF()``
    Creates a reference to a variable:
 
    .. code-block::
 
       r := REF(counter);
+
+.. _ref-operator-deref:
 
 ``^`` (dereference)
    Reads or writes the referenced variable:
@@ -56,6 +60,8 @@ Operators
 
       value := r^;    (* read through reference *)
       r^ := 99;       (* write through reference *)
+
+.. _ref-operator-null:
 
 ``NULL``
    A literal representing an empty reference. Can be assigned to any
