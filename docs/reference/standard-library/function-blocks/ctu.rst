@@ -14,42 +14,42 @@ preset value ``PV``.
    * - **Support**
      - Supported
 
-Inputs
-------
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``CU``
      - ``BOOL``
-     - Count-up input (increments on rising edge)
+     - Count-up input. Increments CV on each rising edge.
    * - ``R``
      - ``BOOL``
-     - Reset input (sets CV to 0)
+     - Reset input. Resets CV to zero while TRUE.
    * - ``PV``
      - ``INT``
-     - Preset value
+     - Preset value. The threshold at which Q becomes TRUE.
 
-Outputs
--------
+.. rubric:: Outputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``Q``
      - ``BOOL``
-     - Counter output (TRUE when CV >= PV)
+     - TRUE when the current counter value CV is greater than or equal to PV.
    * - ``CV``
      - ``INT``
-     - Current counter value
+     - Current counter value.
 
 Behavior
 --------

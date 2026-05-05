@@ -24,6 +24,34 @@ Signature
 The return type matches the input type. ``ABS`` accepts ``SINT``,
 ``INT``, ``DINT``, ``LINT``, ``REAL``, ``LREAL``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_NUM``
+     - The numeric value to compute the absolute value of.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_NUM``
+     - The non-negative magnitude of IN. Same type as IN.
+
 Description
 -----------
 

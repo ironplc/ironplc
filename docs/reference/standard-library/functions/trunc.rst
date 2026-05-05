@@ -26,6 +26,34 @@ Signature
 is determined by the variable being assigned to: ``SINT``, ``INT``,
 ``DINT``, or ``LINT``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_REAL``
+     - The real value to truncate.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_INT``
+     - IN with its fractional part removed. The integer type is determined by the assignment target.
+
 Description
 -----------
 

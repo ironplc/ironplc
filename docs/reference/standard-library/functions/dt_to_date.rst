@@ -23,6 +23,34 @@ Signature
 
 The return type is ``DATE``. *IN* is ``DATE_AND_TIME``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``DATE_AND_TIME``
+     - The date-and-time to extract the date from.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``DATE``
+     - The date portion of IN, with the time-of-day stripped.
+
 Description
 -----------
 

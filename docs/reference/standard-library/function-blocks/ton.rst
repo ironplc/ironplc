@@ -13,39 +13,39 @@ On-delay timer. Output ``Q`` becomes ``TRUE`` after input ``IN`` has been
    * - **Support**
      - Supported
 
-Inputs
-------
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``IN``
      - ``BOOL``
-     - Timer enable input
+     - Starts the timer when TRUE. Resets the timer when FALSE.
    * - ``PT``
      - ``TIME``
-     - Preset time
+     - Preset time duration. The timer runs for this duration after IN goes TRUE.
 
-Outputs
--------
+.. rubric:: Outputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``Q``
      - ``BOOL``
-     - Timer output (TRUE when elapsed time >= PT)
+     - TRUE when the elapsed time ET has reached the preset time PT.
    * - ``ET``
      - ``TIME``
-     - Elapsed time
+     - Elapsed time since IN last went TRUE. Resets to zero when IN goes FALSE.
 
 Behavior
 --------

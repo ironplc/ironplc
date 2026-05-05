@@ -26,6 +26,37 @@ Signature
 
 The return type is ``TIME``. *IN2* may be any numeric type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``TIME``
+     - The duration to divide.
+   * - ``IN2``
+     - ``ANY_NUM``
+     - The numeric divisor. Must be non-zero.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``TIME``
+     - IN1 divided by IN2.
+
 Description
 -----------
 

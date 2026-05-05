@@ -23,6 +23,34 @@ Signature
 
 Returns ``INT``. ``LEN`` accepts ``STRING``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_STRING``
+     - The string to measure.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``INT``
+     - The number of characters in IN. Zero for an empty string.
+
 Description
 -----------
 

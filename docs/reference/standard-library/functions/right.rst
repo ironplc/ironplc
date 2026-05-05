@@ -27,6 +27,37 @@ Signature
 The return type matches the type of *IN*. ``RIGHT`` accepts ``STRING``
 for *IN*; *L* is ``INT``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_STRING``
+     - The source string.
+   * - ``L``
+     - ``INT``
+     - Number of rightmost characters to return.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_STRING``
+     - The rightmost L characters of IN. Same type as IN.
+
 Description
 -----------
 

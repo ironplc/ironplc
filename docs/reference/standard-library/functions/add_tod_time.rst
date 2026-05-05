@@ -27,6 +27,37 @@ Signature
 The return type is ``TIME_OF_DAY``. *IN1* is ``TIME_OF_DAY`` and
 *IN2* is ``TIME``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``TIME_OF_DAY``
+     - The time-of-day to offset.
+   * - ``IN2``
+     - ``TIME``
+     - The duration to add.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``TIME_OF_DAY``
+     - IN1 offset by IN2.
+
 Description
 -----------
 

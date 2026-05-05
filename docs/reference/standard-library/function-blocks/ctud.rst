@@ -14,51 +14,51 @@ output ``QU`` and a lower-limit output ``QD``.
    * - **Support**
      - Supported
 
-Inputs
-------
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``CU``
      - ``BOOL``
-     - Count-up input (increments on rising edge)
+     - Count-up input. Increments CV on each rising edge.
    * - ``CD``
      - ``BOOL``
-     - Count-down input (decrements on rising edge)
+     - Count-down input. Decrements CV on each rising edge.
    * - ``R``
      - ``BOOL``
-     - Reset input (sets CV to 0)
+     - Reset input. Resets CV to zero while TRUE.
    * - ``LD``
      - ``BOOL``
-     - Load input (loads PV into CV)
+     - Load input. Loads PV into CV while TRUE.
    * - ``PV``
      - ``INT``
-     - Preset value
+     - Preset value. The upper threshold for QU and the value loaded by LD.
 
-Outputs
--------
+.. rubric:: Outputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``QU``
      - ``BOOL``
-     - Upper-limit output (TRUE when CV >= PV)
+     - TRUE when the current counter value CV is greater than or equal to PV.
    * - ``QD``
      - ``BOOL``
-     - Lower-limit output (TRUE when CV <= 0)
+     - TRUE when the current counter value CV is less than or equal to zero.
    * - ``CV``
      - ``INT``
-     - Current counter value
+     - Current counter value.
 
 Behavior
 --------

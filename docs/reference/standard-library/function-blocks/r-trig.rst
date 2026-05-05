@@ -13,12 +13,12 @@ input ``CLK`` transitions from ``FALSE`` to ``TRUE``.
    * - **Support**
      - Supported
 
-Inputs
-------
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
@@ -27,12 +27,12 @@ Inputs
      - ``BOOL``
      - Signal to monitor for rising edge
 
-Outputs
--------
+.. rubric:: Outputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type

@@ -26,6 +26,37 @@ Signature
 
 Both inputs and the return value are ``TIME``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``TIME``
+     - The minuend duration.
+   * - ``IN2``
+     - ``TIME``
+     - The subtrahend duration.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``TIME``
+     - IN1 minus IN2 as a duration.
+
 Description
 -----------
 

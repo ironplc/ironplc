@@ -24,6 +24,34 @@ Signature
 The return type matches the input type. ``SQRT`` accepts ``REAL``,
 ``LREAL``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_REAL``
+     - The non-negative value to compute the square root of.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_REAL``
+     - The square root of IN. Same type as IN.
+
 Description
 -----------
 

@@ -31,6 +31,37 @@ Signature
 The return type matches the input type. All ``INn`` inputs must share
 the same type. ``MUX`` is polymorphic over any data type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``K``
+     - ``ANY_INT``
+     - Zero-based selector. Selects which input is returned.
+   * - ``IN0``, ``IN1``, ..., ``INn``
+     - ``ANY``
+     - The candidate values. The number of inputs matches the value range of K (2 to 16). All inputs must share the same type.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY``
+     - The input selected by K. Same type as the INn inputs.
+
 Description
 -----------
 

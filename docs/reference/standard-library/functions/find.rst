@@ -27,6 +27,37 @@ Signature
 Returns ``INT``. ``FIND`` accepts ``STRING`` for *IN1* and *IN2*. Both
 inputs must share the same type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``ANY_STRING``
+     - The string to search within.
+   * - ``IN2``
+     - ``ANY_STRING``
+     - The substring to find.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``INT``
+     - 1-based position of the first occurrence of IN2 in IN1, or 0 if not found.
+
 Description
 -----------
 

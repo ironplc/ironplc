@@ -24,6 +24,34 @@ Signature
 The return type matches the input type. ``ATAN`` accepts ``REAL``,
 ``LREAL``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_REAL``
+     - The numeric value to compute the arc tangent of.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_REAL``
+     - The arc tangent of IN in radians, in the range [-pi/2, pi/2]. Same type as IN.
+
 Description
 -----------
 
