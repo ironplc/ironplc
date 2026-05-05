@@ -1,6 +1,6 @@
 # Length-Prefixed String Memory Layout
 
-status: proposed
+status: superseded by ADR-0035
 date: 2026-03-07
 
 ## Context and Problem Statement

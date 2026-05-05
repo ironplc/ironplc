@@ -4,36 +4,28 @@ LEFT
 
 Returns the leftmost characters of a string.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.7
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤         │
+           │  LEFT   ├─ OUT
+        L ─┤         │
+           └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 20 20 20 30
+.. code-block:: text
 
-   * - #
-     - Input (IN)
-     - Input (L)
-     - Return Type
-     - Support
-   * - 1
-     - ``STRING``
-     - ``INT``
-     - ``STRING``
-     - Supported
-   * - 2
-     - ``WSTRING``
-     - ``INT``
-     - ``WSTRING``
-     - Not yet supported
+   FUNCTION LEFT : ANY_STRING
+     VAR_INPUT
+       IN : ANY_STRING;
+       L  : ANY_INT;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the type of *IN*. ``LEFT`` accepts ``STRING``
+for *IN*; *L* is ``INT``.
 
 Description
 -----------
@@ -53,6 +45,14 @@ Example
 See Also
 --------
 
-- :doc:`right` — right substring
-- :doc:`mid` — middle substring
-- :doc:`len` — string length
+* :doc:`right` — right substring
+* :doc:`mid` — middle substring
+* :doc:`len` — string length
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.7
+* `CODESYS: LEFT <https://content.helpme-codesys.com/en/libs/Standard/Current/String-Functions/LEFT.html>`_
+* `Beckhoff TwinCAT 3: LEFT <https://infosys.beckhoff.com/content/1033/tcplclib_tc2_standard/74417163.html>`_
+* `Fernhill SCADA: LEFT <https://www.fernhillsoftware.com/help/iec-61131/common-elements/string-functions/string-left.html>`_

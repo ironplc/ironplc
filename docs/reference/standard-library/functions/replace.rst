@@ -4,42 +4,33 @@ REPLACE
 
 Replaces characters in a string.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.7
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+       IN2 ─┤         │
+            │ REPLACE ├─ OUT
+         L ─┤         │
+         P ─┤         │
+            └─────────┘
 
-.. list-table::
-   :header-rows: 1
-   :widths: 10 12 12 12 12 12 30
+.. code-block:: text
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Input (L)
-     - Input (P)
-     - Return Type
-     - Support
-   * - 1
-     - ``STRING``
-     - ``STRING``
-     - ``INT``
-     - ``INT``
-     - ``STRING``
-     - Supported
-   * - 2
-     - ``WSTRING``
-     - ``WSTRING``
-     - ``INT``
-     - ``INT``
-     - ``WSTRING``
-     - Not yet supported
+   FUNCTION REPLACE : ANY_STRING
+     VAR_INPUT
+       IN1 : ANY_STRING;
+       IN2 : ANY_STRING;
+       L   : ANY_INT;
+       P   : ANY_INT;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``REPLACE`` accepts ``STRING``
+for *IN1* and *IN2*; *L* and *P* are ``INT``. Both string inputs must
+share the same type.
 
 Description
 -----------
@@ -62,6 +53,14 @@ Example
 See Also
 --------
 
-- :doc:`insert` — string insertion
-- :doc:`delete` — string deletion
-- :doc:`find` — string search
+* :doc:`insert` — string insertion
+* :doc:`delete` — string deletion
+* :doc:`find` — string search
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.7
+* `CODESYS: REPLACE <https://content.helpme-codesys.com/en/libs/Standard/Current/String-Functions/REPLACE.html>`_
+* `Beckhoff TwinCAT 3: REPLACE <https://infosys.beckhoff.com/content/1033/tcplclib_tc2_standard/74421771.html>`_
+* `Fernhill SCADA: REPLACE <https://www.fernhillsoftware.com/help/iec-61131/common-elements/string-functions/string-replace.html>`_
