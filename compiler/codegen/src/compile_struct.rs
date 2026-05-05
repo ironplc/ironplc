@@ -533,7 +533,7 @@ pub(crate) fn initialize_struct_fields(
                 let total_elements = array_dims
                     .iter()
                     .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
-                let stride = super::compile::STRING_HEADER_BYTES_U32 + max_length as u32;
+                let stride = super::compile::string_region_size(max_length);
                 let field_byte_offset = struct_data_offset + slot_idx.raw() * 8;
                 for i in 0..total_elements {
                     let elem_byte_offset = field_byte_offset + i * stride;

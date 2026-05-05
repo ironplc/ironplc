@@ -4,8 +4,10 @@
 //! prologue, and type name resolution. Separated from compile.rs to
 //! keep module sizes within the 1000-line guideline.
 
-use ironplc_container::debug_section::{function_id, iec_type_tag, var_section, VarNameEntry};
-use ironplc_container::{ContainerBuilder, VarIndex, STRING_HEADER_BYTES};
+use ironplc_container::debug_section::{
+    function_id, iec_type_tag, var_section, StringLayoutEntry, VarNameEntry,
+};
+use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
     ElementaryTypeName, FunctionDeclaration, GenericTypeName, InitialValueAssignmentKind,
     ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
@@ -18,8 +20,8 @@ use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
-    CompileContext, FbInstanceInfo, OpType, OpWidth, Signedness, StringVarInfo, VarTypeInfo,
-    DEFAULT_OP_TYPE,
+    encode_string_literal, string_region_size, CompileContext, FbInstanceInfo, OpType, OpWidth,
+    Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE, STRING_CHAR_WIDTH,
 };
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
@@ -82,7 +84,7 @@ pub(crate) fn assign_variables(
 
                     // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = STRING_HEADER_BYTES as u32 + max_length as u32;
+                    let total_bytes = string_region_size(max_length);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -102,8 +104,14 @@ pub(crate) fn assign_variables(
                         StringVarInfo {
                             data_offset,
                             max_length,
+                            char_width: STRING_CHAR_WIDTH,
                         },
                     );
+                    ctx.debug_string_layouts.push(StringLayoutEntry {
+                        var_index: index,
+                        data_offset,
+                        max_length,
+                    });
                     (iec_type_tag::STRING, "STRING".into())
                 }
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
@@ -403,8 +411,7 @@ pub(crate) fn emit_initial_values(
 
                         // If there's an initial value, load and store it.
                         if let Some(chars) = &string_init.initial_value {
-                            // Convert chars to Latin-1 bytes (STRING encoding per ADR-0016).
-                            let bytes: Vec<u8> = chars.iter().map(|&ch| ch as u8).collect();
+                            let bytes = encode_string_literal(chars, STRING_CHAR_WIDTH);
                             let pool_index = ctx.add_str_constant(bytes);
                             ctx.num_temp_bufs += 1;
                             emitter.emit_load_const_str(pool_index);
@@ -654,7 +661,7 @@ pub(crate) fn emit_function_local_prologue(
                         emitter.emit_str_init(data_offset, max_length);
 
                         if let Some(chars) = &string_init.initial_value {
-                            let bytes: Vec<u8> = chars.iter().map(|&ch| ch as u8).collect();
+                            let bytes = encode_string_literal(chars, STRING_CHAR_WIDTH);
                             let pool_index = ctx.add_str_constant(bytes);
                             ctx.num_temp_bufs += 1;
                             emitter.emit_load_const_str(pool_index);
