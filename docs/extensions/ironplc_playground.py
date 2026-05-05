@@ -97,7 +97,9 @@ def _auto_height(code_lines, scaffold=False, vars_decl=""):
     # is usable even when the example declares fewer variables, and grows
     # up to _MAX_VISIBLE_VARS so very long var lists scroll instead of
     # ballooning the iframe.
-    output_visible = min(max(var_count, _MIN_VISIBLE_VARS), _MAX_VISIBLE_VARS)
+    # Add 3 extra slots: 2 synthesized time variables (__SYSTEM_UP_TIME and
+    # __SYSTEM_UP_LTIME) that the runtime always injects, plus 1 row of padding.
+    output_visible = min(max(var_count + 3, _MIN_VISIBLE_VARS), _MAX_VISIBLE_VARS)
     # Output pane: tabs ≈ 33 px, table header ≈ 24 px, panel padding ≈
     # 16 px ≈ 73 px of chrome, plus ~30 px per row (the sparkline cell
     # is 18 px tall with padding, which dominates the row pitch).
