@@ -28,6 +28,40 @@ Signature
 The return type matches the type of *IN*. ``MID`` accepts ``STRING``
 for *IN*; *L* and *P* are ``INT``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_STRING``
+     - The source string.
+   * - ``L``
+     - ``INT``
+     - Number of characters to extract.
+   * - ``P``
+     - ``INT``
+     - Starting position (1-based).
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_STRING``
+     - L characters from IN starting at position P. Same type as IN.
+
 Description
 -----------
 

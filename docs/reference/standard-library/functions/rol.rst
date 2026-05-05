@@ -27,6 +27,37 @@ Signature
 The return type matches the type of *IN*. ``ROL`` accepts ``BYTE``,
 ``WORD``, ``DWORD``, ``LWORD`` for *IN*; *N* is ``INT``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_BIT``
+     - The bit string to rotate.
+   * - ``N``
+     - ``ANY_INT``
+     - Number of positions to rotate left.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_BIT``
+     - IN rotated left by N positions, with bits wrapping from the leftmost to the rightmost position. Same type as IN.
+
 Description
 -----------
 

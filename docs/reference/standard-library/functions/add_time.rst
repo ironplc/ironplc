@@ -26,6 +26,37 @@ Signature
 
 Both inputs and the return value are ``TIME``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``TIME``
+     - The first duration.
+   * - ``IN2``
+     - ``TIME``
+     - The second duration.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``TIME``
+     - The sum of IN1 and IN2.
+
 Description
 -----------
 

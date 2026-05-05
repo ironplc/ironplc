@@ -29,6 +29,37 @@ The return type matches the input type. ``ADD`` accepts ``SINT``,
 ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``,
 ``REAL``, ``LREAL``. All inputs must share the same type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``ANY_NUM``
+     - The first addend.
+   * - ``IN2``
+     - ``ANY_NUM``
+     - The second addend.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_NUM``
+     - The sum of IN1 and IN2. Same type as the inputs.
+
 Description
 -----------
 

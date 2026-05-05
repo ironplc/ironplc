@@ -29,6 +29,40 @@ The return type matches the input type. ``INSERT`` accepts ``STRING``
 for *IN1* and *IN2*; *P* is ``INT``. Both string inputs must share the
 same type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``ANY_STRING``
+     - The base string into which IN2 is inserted.
+   * - ``IN2``
+     - ``ANY_STRING``
+     - The string to insert.
+   * - ``P``
+     - ``INT``
+     - Position in IN1 after which IN2 is inserted (1-based; 0 inserts at the start).
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_STRING``
+     - IN1 with IN2 inserted after position P. Same type as the input strings.
+
 Description
 -----------
 
