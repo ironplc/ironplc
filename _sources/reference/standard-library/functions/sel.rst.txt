@@ -28,6 +28,40 @@ Signature
 The return type matches the type of *IN0* and *IN1*, which must be the
 same. ``SEL`` is polymorphic over any data type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``G``
+     - ``BOOL``
+     - Selector. FALSE selects IN0; TRUE selects IN1.
+   * - ``IN0``
+     - ``ANY``
+     - Value returned when G is FALSE.
+   * - ``IN1``
+     - ``ANY``
+     - Value returned when G is TRUE.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY``
+     - IN0 if G is FALSE, IN1 if G is TRUE. Same type as IN0 and IN1.
+
 Description
 -----------
 

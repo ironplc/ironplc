@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.209.0">
+<meta name="ironplc-version" content="0.210.0">
 </head>
   <body>
     
@@ -656,10 +656,9 @@ priority: if both <code class="docutils literal notranslate"><span class="pre">S
 </tbody>
 </table>
 </div>
-<section id="inputs">
-<h2>Inputs<a class="headerlink" href="#inputs" title="Link to this heading">¶</a></h2>
+<p class="rubric">Inputs</p>
 <div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
+<table class="docutils align-left">
 <colgroup>
 <col style="width: 20.0%" />
 <col style="width: 20.0%" />
@@ -674,20 +673,18 @@ priority: if both <code class="docutils literal notranslate"><span class="pre">S
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">S1</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">BOOL</span></code></p></td>
-<td><p>Set input (dominant)</p></td>
+<td><p>Set input. Sets Q1 to TRUE while TRUE; takes priority over R.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">R</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">BOOL</span></code></p></td>
-<td><p>Reset input</p></td>
+<td><p>Reset input. Clears Q1 to FALSE while TRUE, unless S1 is also TRUE.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-</section>
-<section id="outputs">
-<h2>Outputs<a class="headerlink" href="#outputs" title="Link to this heading">¶</a></h2>
+<p class="rubric">Outputs</p>
 <div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
+<table class="docutils align-left">
 <colgroup>
 <col style="width: 20.0%" />
 <col style="width: 20.0%" />
@@ -702,12 +699,11 @@ priority: if both <code class="docutils literal notranslate"><span class="pre">S
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Q1</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">BOOL</span></code></p></td>
-<td><p>Output state</p></td>
+<td><p>Latched output state. Retains its value between scans.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-</section>
 <section id="behavior">
 <h2>Behavior<a class="headerlink" href="#behavior" title="Link to this heading">¶</a></h2>
 <p>The output is computed as <code class="docutils literal notranslate"><span class="pre">Q1</span> <span class="pre">:=</span> <span class="pre">S1</span> <span class="pre">OR</span> <span class="pre">(NOT</span> <span class="pre">R</span> <span class="pre">AND</span> <span class="pre">Q1)</span></code>. When <code class="docutils literal notranslate"><span class="pre">S1</span></code> is
@@ -718,7 +714,7 @@ the output is cleared. The output retains its value between scans (latching).</p
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>This example shows that set dominates: both <code class="docutils literal notranslate"><span class="pre">S1</span></code> and <code class="docutils literal notranslate"><span class="pre">R</span></code> are <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>, yet
 <code class="docutils literal notranslate"><span class="pre">output</span></code> is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>.</p>
-<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBsYXRjaCA6IFNSOwogICAgICBvdXRwdXQgOiBCT09MOwogICBFTkRfVkFSCgogICBsYXRjaChTMSA6PSBUUlVFLCBSIDo9IFRSVUUsIFExID0%2BIG91dHB1dCk7CiAgICgqIG91dHB1dCBpcyBUUlVFIGJlY2F1c2Ugc2V0IGRvbWluYXRlcyAqKQpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:358px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
+<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBsYXRjaCA6IFNSOwogICAgICBvdXRwdXQgOiBCT09MOwogICBFTkRfVkFSCgogICBsYXRjaChTMSA6PSBUUlVFLCBSIDo9IFRSVUUsIFExID0%2BIG91dHB1dCk7CiAgICgqIG91dHB1dCBpcyBUUlVFIGJlY2F1c2Ugc2V0IGRvbWluYXRlcyAqKQpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:413px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -791,8 +787,6 @@ the output is cleared. The output retains its value between scans (latching).</p
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">SR</a><ul>
-<li><a class="reference internal" href="#inputs">Inputs</a></li>
-<li><a class="reference internal" href="#outputs">Outputs</a></li>
 <li><a class="reference internal" href="#behavior">Behavior</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>

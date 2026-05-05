@@ -48,6 +48,62 @@ Signature
 *IN*; the return type is the corresponding bit string (``BYTE``,
 ``WORD``, ``DWORD``, ``LWORD``).
 
+.. rubric:: Inputs (BCD_TO_INT)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_BIT``
+     - The BCD-encoded bit string to decode.
+
+.. rubric:: Outputs (BCD_TO_INT)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_INT``
+     - The decoded integer value. Type is the unsigned integer corresponding to the width of IN.
+
+.. rubric:: Inputs (INT_TO_BCD)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_INT``
+     - The unsigned integer value to encode.
+
+.. rubric:: Outputs (INT_TO_BCD)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_BIT``
+     - The BCD-encoded bit string. Type is the bit string corresponding to the width of IN.
+
 Description
 -----------
 

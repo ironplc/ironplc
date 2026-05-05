@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/standard-library/function-blocks/tp.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Pulse timer. Generates a pulse of duration PT on the rising edge of input IN.,, IEC 61131-3, Section 2.5.2.3.3,, Support, Supported,,,, Inputs:,,, Name, Type, Description,,, IN, BOOL, Trigger input..." />
-<meta name="description" content="Pulse timer. Generates a pulse of duration PT on the rising edge of input IN.,, IEC 61131-3, Section 2.5.2.3.3,, Support, Supported,,,, Inputs:,,, Name, Type, Description,,, IN, BOOL, Trigger input..." />
+<meta property="og:description" content="Pulse timer. Generates a pulse of duration PT on the rising edge of input IN.,, IEC 61131-3, Section 2.5.2.3.3,, Support, Supported,,,, Inputs,,, Name, Type, Description,,, IN, BOOL, Triggers a pul..." />
+<meta name="description" content="Pulse timer. Generates a pulse of duration PT on the rising edge of input IN.,, IEC 61131-3, Section 2.5.2.3.3,, Support, Supported,,,, Inputs,,, Name, Type, Description,,, IN, BOOL, Triggers a pul..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="CTU" href="ctu.html"><link rel="prev" title="TOF" href="tof.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/standard-library/function-blocks/tp.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.209.0">
+<meta name="ironplc-version" content="0.210.0">
 </head>
   <body>
     
@@ -655,10 +655,9 @@ input <code class="docutils literal notranslate"><span class="pre">IN</span></co
 </tbody>
 </table>
 </div>
-<section id="inputs">
-<h2>Inputs<a class="headerlink" href="#inputs" title="Link to this heading">¶</a></h2>
+<p class="rubric">Inputs</p>
 <div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
+<table class="docutils align-left">
 <colgroup>
 <col style="width: 20.0%" />
 <col style="width: 20.0%" />
@@ -673,20 +672,18 @@ input <code class="docutils literal notranslate"><span class="pre">IN</span></co
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">IN</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">BOOL</span></code></p></td>
-<td><p>Trigger input</p></td>
+<td><p>Triggers a pulse on each rising edge. Changes during the pulse have no effect.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PT</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">TIME</span></code></p></td>
-<td><p>Pulse duration</p></td>
+<td><p>Pulse duration. The pulse always runs for this full duration once triggered.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-</section>
-<section id="outputs">
-<h2>Outputs<a class="headerlink" href="#outputs" title="Link to this heading">¶</a></h2>
+<p class="rubric">Outputs</p>
 <div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
+<table class="docutils align-left">
 <colgroup>
 <col style="width: 20.0%" />
 <col style="width: 20.0%" />
@@ -701,16 +698,15 @@ input <code class="docutils literal notranslate"><span class="pre">IN</span></co
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Q</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">BOOL</span></code></p></td>
-<td><p>Pulse output (TRUE during pulse)</p></td>
+<td><p>TRUE while a pulse is active. Becomes FALSE when ET reaches PT.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ET</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">TIME</span></code></p></td>
-<td><p>Elapsed time</p></td>
+<td><p>Elapsed time since the pulse started. Holds at PT after the pulse completes.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-</section>
 <section id="behavior">
 <h2>Behavior<a class="headerlink" href="#behavior" title="Link to this heading">¶</a></h2>
 <p>When <code class="docutils literal notranslate"><span class="pre">IN</span></code> transitions from <code class="docutils literal notranslate"><span class="pre">FALSE</span></code> to <code class="docutils literal notranslate"><span class="pre">TRUE</span></code> (rising edge), the output
@@ -723,7 +719,7 @@ the pulse have no effect; the pulse always runs for the full duration <code clas
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>This example triggers a 1-second pulse. On the first scan <code class="docutils literal notranslate"><span class="pre">IN</span></code> is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>,
 so the pulse starts and <code class="docutils literal notranslate"><span class="pre">active</span></code> becomes <code class="docutils literal notranslate"><span class="pre">TRUE</span></code>.</p>
-<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBwdWxzZSA6IFRQOwogICAgICBhY3RpdmUgOiBCT09MOwogICAgICBlbGFwc2VkIDogVElNRTsKICAgRU5EX1ZBUgoKICAgcHVsc2UoSU4gOj0gVFJVRSwgUFQgOj0gVCMxcywgUSA9PiBhY3RpdmUsIEVUID0%2BIGVsYXBzZWQpOwogICAoKiBBZnRlciBmaXJzdCBzY2FuOiBhY3RpdmUgPSBUUlVFLCBwdWxzZSBpcyBydW5uaW5nICopCkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:386px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
+<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBwdWxzZSA6IFRQOwogICAgICBhY3RpdmUgOiBCT09MOwogICAgICBlbGFwc2VkIDogVElNRTsKICAgRU5EX1ZBUgoKICAgcHVsc2UoSU4gOj0gVFJVRSwgUFQgOj0gVCMxcywgUSA9PiBhY3RpdmUsIEVUID0%2BIGVsYXBzZWQpOwogICAoKiBBZnRlciBmaXJzdCBzY2FuOiBhY3RpdmUgPSBUUlVFLCBwdWxzZSBpcyBydW5uaW5nICopCkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:433px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -797,8 +793,6 @@ so the pulse starts and <code class="docutils literal notranslate"><span class="
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">TP</a><ul>
-<li><a class="reference internal" href="#inputs">Inputs</a></li>
-<li><a class="reference internal" href="#outputs">Outputs</a></li>
 <li><a class="reference internal" href="#behavior">Behavior</a></li>
 <li><a class="reference internal" href="#example">Example</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>

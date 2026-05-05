@@ -27,6 +27,37 @@ Signature
 The return type is ``DATE_AND_TIME``. *IN1* is ``DATE_AND_TIME`` and
 *IN2* is ``TIME``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``DATE_AND_TIME``
+     - The date-and-time to offset.
+   * - ``IN2``
+     - ``TIME``
+     - The duration to add.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``DATE_AND_TIME``
+     - IN1 offset by IN2.
+
 Description
 -----------
 
