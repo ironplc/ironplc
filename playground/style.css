@@ -218,6 +218,9 @@ main {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* Allow the panel inside to shrink and own the scrollbar instead of
+     letting the table push the section past its flex allocation. */
+  min-height: 0;
 }
 
 .output-tabs {
@@ -243,6 +246,7 @@ main {
 .panel {
   display: none;
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 1rem;
   font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
@@ -373,6 +377,11 @@ body.embed .editor-section {
 
 body.embed .output-section {
   flex: 1 1 30%;
+  /* Keep the variables table tall enough to show the header plus at
+     least three rows even when the editor is short. Matches
+     _MIN_VISIBLE_VARS in docs/extensions/ironplc_playground.py
+     (~73 px of chrome + 3 × ~30 px rows). */
+  min-height: 170px;
 }
 
 body.embed .toolbar {
