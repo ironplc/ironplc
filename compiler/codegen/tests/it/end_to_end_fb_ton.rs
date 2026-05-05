@@ -433,3 +433,83 @@ END_PROGRAM
         );
     }
 }
+
+#[test]
+fn end_to_end_when_ton_dot_access_writes_inputs_then_timer_runs() {
+    // Reproduces the issue's original program: writing TON inputs via
+    // dot-access, calling the FB bare, then reading Q via dot-access.
+    let source = "
+PROGRAM main
+  VAR
+    timer : TON;
+    Buzzer : BOOL;
+  END_VAR
+  timer.IN := TRUE;
+  timer.PT := T#500ms;
+  timer();
+  Buzzer := timer.Q;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+
+        // Round at t=0 latches the rising edge but Q is still FALSE.
+        vm.run_round(0).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            0,
+            "Buzzer should be FALSE before PT elapsed"
+        );
+
+        // At t=600ms, past PT (500ms): Q must be TRUE.
+        vm.run_round(600_000).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            1,
+            "Buzzer should be TRUE via dot-access write+read after PT elapsed"
+        );
+    }
+}
+
+#[test]
+fn end_to_end_when_ton_dot_access_writes_pt_then_uses_new_period() {
+    // Set PT via dot-access to a longer period and verify Q stays FALSE
+    // past the previous (shorter) PT but flips after the new threshold.
+    let source = "
+PROGRAM main
+  VAR
+    timer : TON;
+    Buzzer : BOOL;
+  END_VAR
+  timer.IN := TRUE;
+  timer.PT := T#2s;
+  timer();
+  Buzzer := timer.Q;
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs).unwrap();
+
+        vm.run_round(0).unwrap();
+
+        // At t=1s: well before PT=2s, Q must remain FALSE.
+        vm.run_round(1_000_000).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            0,
+            "Buzzer should be FALSE at t=1s with PT=2s"
+        );
+
+        // At t=3s: past PT=2s, Q must be TRUE.
+        vm.run_round(3_000_000).unwrap();
+        assert_eq!(
+            vm.read_variable(VarIndex::new(1)).unwrap(),
+            1,
+            "Buzzer should be TRUE at t=3s with PT=2s"
+        );
+    }
+}
