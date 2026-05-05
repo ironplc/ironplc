@@ -25,6 +25,34 @@ The return type matches the input type. ``MOVE`` accepts any type
 (``ANY``); IronPLC supports ``SINT``, ``INT``, ``DINT``, ``LINT``,
 ``USINT``, ``UINT``, ``UDINT``, ``ULINT``, ``REAL``, ``LREAL``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY``
+     - The value to copy.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY``
+     - A copy of IN. Same type as IN.
+
 Description
 -----------
 

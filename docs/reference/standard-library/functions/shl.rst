@@ -27,6 +27,37 @@ Signature
 The return type matches the type of *IN*. ``SHL`` accepts ``BYTE``,
 ``WORD``, ``DWORD``, ``LWORD`` for *IN*; *N* is ``INT``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_BIT``
+     - The bit string to shift.
+   * - ``N``
+     - ``ANY_INT``
+     - Number of positions to shift left.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_BIT``
+     - IN shifted left by N positions, with zeros filled in on the right. Same type as IN.
+
 Description
 -----------
 

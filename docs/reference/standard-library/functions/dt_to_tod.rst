@@ -23,6 +23,34 @@ Signature
 
 The return type is ``TIME_OF_DAY``. *IN* is ``DATE_AND_TIME``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``DATE_AND_TIME``
+     - The date-and-time to extract the time-of-day from.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``TIME_OF_DAY``
+     - The time-of-day portion of IN.
+
 Description
 -----------
 

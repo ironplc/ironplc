@@ -24,6 +24,34 @@ Signature
 The return type matches the input type. ``ACOS`` accepts ``REAL``,
 ``LREAL``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_REAL``
+     - Value in the range [-1.0, 1.0].
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_REAL``
+     - The arc cosine of IN in radians, in the range [0, pi]. Same type as IN.
+
 Description
 -----------
 
