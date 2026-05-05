@@ -490,6 +490,7 @@ fn enum_spec_req_en_061_enum_def_payload_roundtrips() {
         var_names: vec![],
         func_names: vec![],
         line_map: vec![],
+        string_layouts: vec![],
         enum_defs: vec![EnumDefEntry {
             type_name: "COLOR".into(),
             values: vec!["RED".into(), "GREEN".into(), "BLUE".into()],
@@ -540,6 +541,7 @@ fn enum_spec_req_en_063_unknown_tags_skippable() {
         var_names: vec![],
         func_names: vec![],
         line_map: vec![],
+        string_layouts: vec![],
         enum_defs: vec![EnumDefEntry {
             type_name: "X".into(),
             values: vec!["A".into()],
