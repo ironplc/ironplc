@@ -1,6 +1,6 @@
 # Separate Type Families Over Polymorphic Opcodes
 
-status: proposed
+status: superseded by ADR-0034
 date: 2026-02-18
 
 ## Context and Problem Statement
