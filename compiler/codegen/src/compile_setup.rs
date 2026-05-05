@@ -7,7 +7,7 @@
 use ironplc_container::debug_section::{
     function_id, iec_type_tag, var_section, StringLayoutEntry, VarNameEntry,
 };
-use ironplc_container::{ContainerBuilder, VarIndex, STRING_HEADER_BYTES};
+use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
     ElementaryTypeName, FunctionDeclaration, GenericTypeName, InitialValueAssignmentKind,
     ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
