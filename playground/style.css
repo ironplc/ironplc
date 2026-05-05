@@ -218,8 +218,6 @@ main {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  /* Allow the panel inside to shrink and own the scrollbar instead of
-     letting the table push the section past its flex allocation. */
   min-height: 0;
 }
 
@@ -330,6 +328,11 @@ a.diagnostic-code:hover {
 
 table.var-table tr.changed td {
   background: rgba(107, 255, 155, 0.15);
+}
+
+table.var-table td.value-invalid {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .raw-bytes-note {
