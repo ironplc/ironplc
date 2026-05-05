@@ -10,7 +10,11 @@ use crate::ContainerError;
 const TAG_LINE_MAP: u16 = 1;
 const TAG_VAR_NAME: u16 = 2;
 const TAG_FUNC_NAME: u16 = 3;
+const TAG_STRING_LAYOUT: u16 = 4;
 const TAG_ENUM_DEF: u16 = 9;
+
+/// Size of each StringLayoutEntry on disk: var_index(2) + data_offset(4) + max_length(2) = 8 bytes.
+const STRING_LAYOUT_ENTRY_SIZE: u32 = 8;
 
 /// Size of each LineMapEntry on disk: function_id(2) + bytecode_offset(2)
 /// + source_line(2) + source_column(2) = 8 bytes.
@@ -105,6 +109,19 @@ pub struct FuncNameEntry {
     pub name: String,
 }
 
+/// Layout of a STRING variable in the data region (debug section Tag 4).
+///
+/// STRING values do not live in the variable table — the slot is unused.
+/// The actual bytes live at `data_offset` in the data region with the
+/// layout `[max_len: u16][cur_len: u16][bytes…]`. Tools that render
+/// variable values use this entry to locate and read the string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StringLayoutEntry {
+    pub var_index: VarIndex,
+    pub data_offset: u32,
+    pub max_length: u16,
+}
+
 /// An enumeration type definition entry (debug section Tag 9).
 ///
 /// Maps a named enumeration type to its value names in ordinal order.
@@ -125,6 +142,8 @@ pub struct DebugSection {
     /// Bytecode-offset → source-location mappings (debug section Tag 1).
     /// Empty when no source map is present.
     pub line_map: Vec<LineMapEntry>,
+    /// STRING variable data-region layouts (debug section Tag 4).
+    pub string_layouts: Vec<StringLayoutEntry>,
     /// Enumeration type definitions (debug section Tag 9).
     /// Maps enum type names to their value names in ordinal order.
     pub enum_defs: Vec<EnumDefEntry>,
@@ -140,6 +159,7 @@ impl DebugSection {
             + self.line_map_payload_size()
             + self.var_name_payload_size()
             + self.func_name_payload_size()
+            + self.string_layout_payload_size()
             + self.enum_def_payload_size()
     }
 
@@ -164,6 +184,11 @@ impl DebugSection {
             w.write_all(&0u16.to_le_bytes())?; // reserved
             w.write_all(&self.func_name_payload_size().to_le_bytes())?;
         }
+        if !self.string_layouts.is_empty() {
+            w.write_all(&TAG_STRING_LAYOUT.to_le_bytes())?;
+            w.write_all(&0u16.to_le_bytes())?; // reserved
+            w.write_all(&self.string_layout_payload_size().to_le_bytes())?;
+        }
         if !self.enum_defs.is_empty() {
             w.write_all(&TAG_ENUM_DEF.to_le_bytes())?;
             w.write_all(&0u16.to_le_bytes())?; // reserved
@@ -179,6 +204,9 @@ impl DebugSection {
         }
         if !self.func_names.is_empty() {
             self.write_func_names(w)?;
+        }
+        if !self.string_layouts.is_empty() {
+            self.write_string_layouts(w)?;
         }
         if !self.enum_defs.is_empty() {
             self.write_enum_defs(w)?;
@@ -207,6 +235,7 @@ impl DebugSection {
         let mut var_names = Vec::new();
         let mut func_names = Vec::new();
         let mut line_map = Vec::new();
+        let mut string_layouts = Vec::new();
         let mut enum_defs = Vec::new();
 
         // Read payloads in directory order, skipping unknown tags.
@@ -220,6 +249,9 @@ impl DebugSection {
                 }
                 TAG_FUNC_NAME => {
                     func_names = Self::read_func_names(r, *size)?;
+                }
+                TAG_STRING_LAYOUT => {
+                    string_layouts = Self::read_string_layouts(r, *size)?;
                 }
                 TAG_ENUM_DEF => {
                     enum_defs = Self::read_enum_defs(r)?;
@@ -236,6 +268,7 @@ impl DebugSection {
             var_names,
             func_names,
             line_map,
+            string_layouts,
             enum_defs,
         })
     }
@@ -249,6 +282,9 @@ impl DebugSection {
             count += 1;
         }
         if !self.func_names.is_empty() {
+            count += 1;
+        }
+        if !self.string_layouts.is_empty() {
             count += 1;
         }
         if !self.enum_defs.is_empty() {
@@ -442,6 +478,50 @@ impl DebugSection {
         Ok(entries)
     }
 
+    fn string_layout_payload_size(&self) -> u32 {
+        if self.string_layouts.is_empty() {
+            return 0;
+        }
+        // count(2) + entries
+        2 + self.string_layouts.len() as u32 * STRING_LAYOUT_ENTRY_SIZE
+    }
+
+    fn write_string_layouts(&self, w: &mut impl Write) -> Result<(), ContainerError> {
+        w.write_all(&(self.string_layouts.len() as u16).to_le_bytes())?;
+        for entry in &self.string_layouts {
+            w.write_all(&entry.var_index.to_le_bytes())?;
+            w.write_all(&entry.data_offset.to_le_bytes())?;
+            w.write_all(&entry.max_length.to_le_bytes())?;
+        }
+        Ok(())
+    }
+
+    fn read_string_layouts(
+        r: &mut impl Read,
+        _size: u32,
+    ) -> Result<Vec<StringLayoutEntry>, ContainerError> {
+        let mut buf2 = [0u8; 2];
+        r.read_exact(&mut buf2)?;
+        let count = u16::from_le_bytes(buf2) as usize;
+
+        let mut entries = Vec::with_capacity(count);
+        for _ in 0..count {
+            let mut entry_buf = [0u8; 8];
+            r.read_exact(&mut entry_buf)?;
+            entries.push(StringLayoutEntry {
+                var_index: VarIndex::new(u16::from_le_bytes([entry_buf[0], entry_buf[1]])),
+                data_offset: u32::from_le_bytes([
+                    entry_buf[2],
+                    entry_buf[3],
+                    entry_buf[4],
+                    entry_buf[5],
+                ]),
+                max_length: u16::from_le_bytes([entry_buf[6], entry_buf[7]]),
+            });
+        }
+        Ok(entries)
+    }
+
     fn enum_def_payload_size(&self) -> u32 {
         if self.enum_defs.is_empty() {
             return 0;
@@ -535,6 +615,7 @@ mod tests {
             ],
             func_names: vec![],
             line_map: vec![],
+            string_layouts: vec![],
             enum_defs: vec![],
         };
 
@@ -566,6 +647,7 @@ mod tests {
                 },
             ],
             line_map: vec![],
+            string_layouts: vec![],
             enum_defs: vec![],
         };
 
@@ -597,6 +679,7 @@ mod tests {
                 name: "MAIN".into(),
             }],
             line_map: vec![],
+            string_layouts: vec![],
             enum_defs: vec![],
         };
 
@@ -673,6 +756,7 @@ mod tests {
                     source_column: 0,
                 },
             ],
+            string_layouts: vec![],
             enum_defs: vec![],
         };
 
@@ -711,6 +795,7 @@ mod tests {
                     source_column: 1,
                 },
             ],
+            string_layouts: vec![],
             enum_defs: vec![],
         };
 
@@ -754,6 +839,7 @@ mod tests {
                 name: "MAIN".into(),
             }],
             line_map: vec![],
+            string_layouts: vec![],
             enum_defs: vec![],
         };
 
@@ -794,6 +880,7 @@ mod tests {
                     source_column: 1,
                 },
             ],
+            string_layouts: vec![],
             enum_defs: vec![],
         };
 
@@ -853,6 +940,7 @@ mod tests {
                     source_column: 1,
                 },
             ],
+            string_layouts: vec![],
             enum_defs: vec![],
         };
 
