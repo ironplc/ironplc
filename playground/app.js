@@ -593,7 +593,7 @@ function parseNumericValue(value, typeName) {
     return null;
   }
 
-  if (t === "TIME") {
+  if (t === "TIME" || t === "LTIME") {
     return parseTimeValue(value);
   }
 
