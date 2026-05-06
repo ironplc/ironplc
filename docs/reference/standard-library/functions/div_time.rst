@@ -4,29 +4,58 @@ DIV_TIME
 
 Divides a time duration by a numeric value.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.8
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+            │DIV_TIME ├─ OUT
+       IN2 ─┤         │
+            └─────────┘
+
+.. code-block:: text
+
+   FUNCTION DIV_TIME : TIME
+     VAR_INPUT
+       IN1 : TIME;
+       IN2 : ANY_NUM;
+     END_VAR
+   END_FUNCTION
+
+The return type is ``TIME``. *IN2* may be any numeric type.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 20 20 20
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-   * - 1
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
      - ``TIME``
+     - The duration to divide.
+   * - ``IN2``
      - ``ANY_NUM``
+     - The numeric divisor. Must be non-zero.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
      - ``TIME``
+     - IN1 divided by IN2.
 
 Description
 -----------
@@ -46,6 +75,14 @@ Example
 See Also
 --------
 
-- :doc:`mul_time` — scale duration
-- :doc:`add_time` — add durations
-- :doc:`sub_time` — subtract durations
+* :doc:`mul_time` — scale duration
+* :doc:`add_time` — add durations
+* :doc:`sub_time` — subtract durations
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.8
+* `CODESYS: DIV (covers time arithmetic) <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_div.html>`_
+* `Beckhoff TwinCAT 3: DIV (covers time arithmetic) <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528875403.html>`_
+* `Fernhill SCADA: DIVTIME <https://www.fernhillsoftware.com/help/iec-61131/common-elements/date-time-functions/time-div.html>`_

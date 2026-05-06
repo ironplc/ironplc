@@ -50,7 +50,6 @@ Options (playground-link only):
 """
 
 from base64 import b64encode
-from math import ceil
 from urllib.parse import quote
 
 from docutils import nodes
@@ -58,38 +57,55 @@ from docutils.parsers.rst import Directive, directives
 
 PLAYGROUND_URL = "https://playground.ironplc.com/"
 
-# Maximum number of visible lines before the editor scrolls.
+# Maximum number of visible code lines before the editor scrolls.
 _MAX_VISIBLE_LINES = 15
+# Minimum / maximum number of variable rows the output panel sizes for.
+# The CSS in the playground enforces a matching minimum so at least
+# _MIN_VISIBLE_VARS rows are always visible without scrolling.
+_MIN_VISIBLE_VARS = 3
+_MAX_VISIBLE_VARS = 8
 # Minimum iframe height in pixels.
 _MIN_HEIGHT_PX = 300
 
 
 def _auto_height(code_lines, scaffold=False, vars_decl=""):
-    """Calculate an iframe height that shows the full example (up to a limit).
+    """Calculate an iframe height that shows the example and its variables.
 
-    Accounts for the scaffold wrapper lines that the playground adds when
-    ``scaffold=true`` (PROGRAM, VAR/END_VAR, END_PROGRAM) so the editor is
-    tall enough to display them without scrolling.
+    The iframe contains two stacked panes in embed mode: the editor (top)
+    and the output panel that hosts the variables table (bottom). Each
+    pane is sized independently so adding more variables grows the
+    output pane without squeezing the editor.
     """
-    total_lines = code_lines
+    var_count = 0
+    if scaffold and vars_decl:
+        var_count = len([v for v in vars_decl.split(";") if v.strip()])
 
+    editor_lines = code_lines
     if scaffold:
         # PROGRAM main + END_PROGRAM
-        total_lines += 2
-        if vars_decl:
-            var_count = len([v for v in vars_decl.split(";") if v.strip()])
+        editor_lines += 2
+        if var_count:
             # VAR + each declaration + END_VAR
-            total_lines += 2 + var_count
+            editor_lines += 2 + var_count
 
-    visible = min(total_lines, _MAX_VISIBLE_LINES)
+    editor_visible = min(editor_lines, _MAX_VISIBLE_LINES)
+    # Editor pane: toolbar ≈ 42 px, padding ≈ 24 px, border ≈ 1 px ≈ 70 px
+    # of chrome, plus ~20 px per visible line (0.8rem × 1.5 line-height).
+    editor_px = editor_visible * 20 + 70
 
-    # The editor section gets ~70% of total height (see embed CSS).
-    # Inside that: toolbar ≈ 42 px, padding ≈ 24 px, border ≈ 1 px → 67 px.
-    # Use 70 px to leave a small safety margin for font-rendering variance.
-    # Each line ≈ 20 px (0.8rem font × 1.5 line-height at 16px base).
-    # Solve for total:  0.70 × total − 70 ≥ visible × 20
-    #                   total ≥ (visible × 20 + 70) / 0.70
-    height = ceil((visible * 20 + 70) / 0.70)
+    # Output pane sizes for at least _MIN_VISIBLE_VARS rows so the table
+    # is usable even when the example declares fewer variables, and grows
+    # up to _MAX_VISIBLE_VARS so very long var lists scroll instead of
+    # ballooning the iframe.
+    # Add 3 extra slots: 2 synthesized time variables (__SYSTEM_UP_TIME and
+    # __SYSTEM_UP_LTIME) that the runtime always injects, plus 1 row of padding.
+    output_visible = min(max(var_count + 3, _MIN_VISIBLE_VARS), _MAX_VISIBLE_VARS)
+    # Output pane: tabs ≈ 33 px, table header ≈ 24 px, panel padding ≈
+    # 16 px ≈ 73 px of chrome, plus ~30 px per row (the sparkline cell
+    # is 18 px tall with padding, which dominates the row pitch).
+    output_px = output_visible * 30 + 73
+
+    height = editor_px + output_px
 
     return f"{max(_MIN_HEIGHT_PX, height)}px"
 

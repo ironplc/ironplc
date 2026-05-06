@@ -4,29 +4,59 @@ ADD_TOD_TIME
 
 Adds a duration to a time-of-day value.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.8
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌────────────┐
+       IN1 ─┤            │
+            │ADD_TOD_TIME├─ OUT
+       IN2 ─┤            │
+            └────────────┘
+
+.. code-block:: text
+
+   FUNCTION ADD_TOD_TIME : TIME_OF_DAY
+     VAR_INPUT
+       IN1 : TIME_OF_DAY;
+       IN2 : TIME;
+     END_VAR
+   END_FUNCTION
+
+The return type is ``TIME_OF_DAY``. *IN1* is ``TIME_OF_DAY`` and
+*IN2* is ``TIME``.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 20 20 20
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-   * - 1
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
      - ``TIME_OF_DAY``
+     - The time-of-day to offset.
+   * - ``IN2``
      - ``TIME``
+     - The duration to add.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
      - ``TIME_OF_DAY``
+     - IN1 offset by IN2.
 
 Description
 -----------
@@ -45,5 +75,13 @@ Example
 See Also
 --------
 
-- :doc:`sub_tod_time` — subtract duration from time-of-day
-- :doc:`sub_tod_tod` — difference between two times-of-day
+* :doc:`sub_tod_time` — subtract duration from time-of-day
+* :doc:`sub_tod_tod` — difference between two times-of-day
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.8
+* `CODESYS: ADD (covers time arithmetic) <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_add.html>`_
+* `Beckhoff TwinCAT 3: ADD (covers time arithmetic) <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/18014401038341259.html>`_
+* `Fernhill SCADA: ADD_TOD_TIME <https://www.fernhillsoftware.com/help/iec-61131/common-elements/date-time-functions/time-add-tod.html>`_

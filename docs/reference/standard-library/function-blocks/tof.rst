@@ -13,39 +13,39 @@ input ``IN`` goes ``FALSE``.
    * - **Support**
      - Supported
 
-Inputs
-------
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``IN``
      - ``BOOL``
-     - Timer enable input
+     - Holds the timer reset while TRUE. The off-delay starts when IN goes FALSE.
    * - ``PT``
      - ``TIME``
-     - Preset time
+     - Preset time duration. The timer runs for this duration after IN goes FALSE.
 
-Outputs
--------
+.. rubric:: Outputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``Q``
      - ``BOOL``
-     - Timer output (TRUE during off-delay period)
+     - TRUE while IN is TRUE and remains TRUE during the off-delay until ET reaches PT.
    * - ``ET``
      - ``TIME``
-     - Elapsed time
+     - Elapsed time since IN last went FALSE. Resets to zero when IN goes TRUE.
 
 Behavior
 --------

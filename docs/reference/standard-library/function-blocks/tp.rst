@@ -13,39 +13,39 @@ input ``IN``.
    * - **Support**
      - Supported
 
-Inputs
-------
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``IN``
      - ``BOOL``
-     - Trigger input
+     - Triggers a pulse on each rising edge. Changes during the pulse have no effect.
    * - ``PT``
      - ``TIME``
-     - Pulse duration
+     - Pulse duration. The pulse always runs for this full duration once triggered.
 
-Outputs
--------
+.. rubric:: Outputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``Q``
      - ``BOOL``
-     - Pulse output (TRUE during pulse)
+     - TRUE while a pulse is active. Becomes FALSE when ET reaches PT.
    * - ``ET``
      - ``TIME``
-     - Elapsed time
+     - Elapsed time since the pulse started. Holds at PT after the pulse completes.
 
 Behavior
 --------

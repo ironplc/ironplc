@@ -4,31 +4,63 @@ SEL
 
 Binary selection — selects one of two inputs based on a Boolean selector.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.5
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+         G ─┤         │
+       IN0 ─┤   SEL   ├─ OUT
+       IN1 ─┤         │
+            └─────────┘
+
+.. code-block:: text
+
+   FUNCTION SEL : ANY
+     VAR_INPUT
+       G   : BOOL;
+       IN0 : ANY;
+       IN1 : ANY;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the type of *IN0* and *IN1*, which must be the
+same. ``SEL`` is polymorphic over any data type.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 15 15 15 15
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (G)
-     - Input (IN0)
-     - Input (IN1)
-     - Return Type
-   * - 1
+   * - Name
+     - Type
+     - Description
+   * - ``G``
      - ``BOOL``
-     - *ANY*
-     - *ANY*
-     - *ANY*
+     - Selector. FALSE selects IN0; TRUE selects IN1.
+   * - ``IN0``
+     - ``ANY``
+     - Value returned when G is FALSE.
+   * - ``IN1``
+     - ``ANY``
+     - Value returned when G is TRUE.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY``
+     - IN0 if G is FALSE, IN1 if G is TRUE. Same type as IN0 and IN1.
 
 Description
 -----------
@@ -52,6 +84,14 @@ Example
 See Also
 --------
 
-- :doc:`mux` — multiplexer (selects from multiple inputs)
-- :doc:`max` — maximum of two values
-- :doc:`min` — minimum of two values
+* :doc:`mux` — multiplexer (selects from multiple inputs)
+* :doc:`max` — maximum of two values
+* :doc:`min` — minimum of two values
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.5
+* `CODESYS: SEL <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_sel.html>`_
+* `Beckhoff TwinCAT 3: SEL <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528956043.html>`_
+* `Fernhill SCADA: SEL <https://www.fernhillsoftware.com/help/iec-61131/common-elements/selection-functions/select.html>`_

@@ -4,30 +4,53 @@ ACOS
 
 Returns the arc cosine (inverse cosine) of a numeric input.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.2
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤  ACOS   ├─ OUT
+           └─────────┘
+
+.. code-block:: text
+
+   FUNCTION ACOS : ANY_REAL
+     VAR_INPUT
+       IN : ANY_REAL;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``ACOS`` accepts ``REAL``,
+``LREAL``.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 30 30
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (IN)
-     - Return Type
-   * - 1
-     - ``REAL``
-     - ``REAL``
-   * - 2
-     - ``LREAL``
-     - ``LREAL``
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_REAL``
+     - Value in the range [-1.0, 1.0].
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_REAL``
+     - The arc cosine of IN in radians, in the range [0, pi]. Same type as IN.
 
 Description
 -----------
@@ -47,6 +70,14 @@ Example
 See Also
 --------
 
-- :doc:`cos` — cosine
-- :doc:`asin` — arc sine
-- :doc:`atan` — arc tangent
+* :doc:`cos` — cosine
+* :doc:`asin` — arc sine
+* :doc:`atan` — arc tangent
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.2
+* `CODESYS: ACOS <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_acos.html>`_
+* `Beckhoff TwinCAT 3: ACOS <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529149579.html>`_
+* `Fernhill SCADA: Mathematical Functions <https://www.fernhillsoftware.com/help/iec-61131/common-elements/functions-mathematical.html>`_

@@ -4,27 +4,52 @@ DT_TO_DATE
 
 Extracts the date portion from a date-and-time value.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌──────────┐
+       IN ─┤DT_TO_DATE├─ OUT
+           └──────────┘
+
+.. code-block:: text
+
+   FUNCTION DT_TO_DATE : DATE
+     VAR_INPUT
+       IN : DATE_AND_TIME;
+     END_VAR
+   END_FUNCTION
+
+The return type is ``DATE``. *IN* is ``DATE_AND_TIME``.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 20 20
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (IN)
-     - Return Type
-   * - 1
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
      - ``DATE_AND_TIME``
+     - The date-and-time to extract the date from.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
      - ``DATE``
+     - The date portion of IN, with the time-of-day stripped.
 
 Description
 -----------
@@ -45,5 +70,13 @@ Example
 See Also
 --------
 
-- :doc:`dt_to_tod` --- extract time-of-day from datetime
-- :doc:`concat_date_tod` --- combine date and time-of-day
+* :doc:`dt_to_tod` — extract time-of-day from datetime
+* :doc:`concat_date_tod` — combine date and time-of-day
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5
+* `CODESYS: Operators (overview) <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_struct_reference_operators.html>`_
+* `Beckhoff TwinCAT 3: Type conversion (overview) <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/63050398781277579.html>`_
+* `Fernhill SCADA: Type Casts <https://www.fernhillsoftware.com/help/iec-61131/common-elements/conversion-functions/type-casts.html>`_

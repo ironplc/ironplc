@@ -5,48 +5,54 @@ TRUNC
 Truncates a real (floating-point) value toward zero, removing the
 fractional part and returning an integer.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.2
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤  TRUNC  ├─ OUT
+           └─────────┘
+
+.. code-block:: text
+
+   FUNCTION TRUNC : ANY_INT
+     VAR_INPUT
+       IN : ANY_REAL;
+     END_VAR
+   END_FUNCTION
+
+``TRUNC`` accepts ``REAL`` or ``LREAL`` for *IN*. The return type
+is determined by the variable being assigned to: ``SINT``, ``INT``,
+``DINT``, or ``LINT``.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 30 30
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (IN)
-     - Return Type
-   * - 1
-     - ``REAL``
-     - ``SINT``
-   * - 2
-     - ``REAL``
-     - ``INT``
-   * - 3
-     - ``REAL``
-     - ``DINT``
-   * - 4
-     - ``REAL``
-     - ``LINT``
-   * - 5
-     - ``LREAL``
-     - ``SINT``
-   * - 6
-     - ``LREAL``
-     - ``INT``
-   * - 7
-     - ``LREAL``
-     - ``DINT``
-   * - 8
-     - ``LREAL``
-     - ``LINT``
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_REAL``
+     - The real value to truncate.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_INT``
+     - IN with its fractional part removed. The integer type is determined by the assignment target.
 
 Description
 -----------
@@ -73,5 +79,13 @@ Example
 See Also
 --------
 
-- :doc:`type-conversions` — explicit type conversion functions
-- :doc:`abs` — absolute value
+* :doc:`type-conversions` — explicit type conversion functions
+* :doc:`abs` — absolute value
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.2
+* `CODESYS: TRUNC <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_trunc.html>`_
+* `Beckhoff TwinCAT 3: TRUNC <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529079691.html>`_
+* `Fernhill SCADA: TRUNC <https://www.fernhillsoftware.com/help/iec-61131/common-elements/conversion-functions/truncation.html>`_

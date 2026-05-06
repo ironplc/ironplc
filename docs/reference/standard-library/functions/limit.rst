@@ -4,76 +4,64 @@ LIMIT
 
 Clamps a value to a specified range.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.5
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+        MN ─┤         │
+        IN ─┤  LIMIT  ├─ OUT
+        MX ─┤         │
+            └─────────┘
+
+.. code-block:: text
+
+   FUNCTION LIMIT : ANY
+     VAR_INPUT
+       MN : ANY;
+       IN : ANY;
+       MX : ANY;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``LIMIT`` accepts ``SINT``,
+``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``,
+``REAL``, ``LREAL``. All three inputs must share the same type.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 15 15 15 15
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (MN)
-     - Input (IN)
-     - Input (MX)
-     - Return Type
-   * - 1
-     - ``SINT``
-     - ``SINT``
-     - ``SINT``
-     - ``SINT``
-   * - 2
-     - ``INT``
-     - ``INT``
-     - ``INT``
-     - ``INT``
-   * - 3
-     - ``DINT``
-     - ``DINT``
-     - ``DINT``
-     - ``DINT``
-   * - 4
-     - ``LINT``
-     - ``LINT``
-     - ``LINT``
-     - ``LINT``
-   * - 5
-     - ``USINT``
-     - ``USINT``
-     - ``USINT``
-     - ``USINT``
-   * - 6
-     - ``UINT``
-     - ``UINT``
-     - ``UINT``
-     - ``UINT``
-   * - 7
-     - ``UDINT``
-     - ``UDINT``
-     - ``UDINT``
-     - ``UDINT``
-   * - 8
-     - ``ULINT``
-     - ``ULINT``
-     - ``ULINT``
-     - ``ULINT``
-   * - 9
-     - ``REAL``
-     - ``REAL``
-     - ``REAL``
-     - ``REAL``
-   * - 10
-     - ``LREAL``
-     - ``LREAL``
-     - ``LREAL``
-     - ``LREAL``
+   * - Name
+     - Type
+     - Description
+   * - ``MN``
+     - ``ANY_MAGNITUDE``
+     - Lower bound of the range.
+   * - ``IN``
+     - ``ANY_MAGNITUDE``
+     - Value to clamp.
+   * - ``MX``
+     - ``ANY_MAGNITUDE``
+     - Upper bound of the range.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_MAGNITUDE``
+     - IN clamped to [MN, MX]. Same type as the inputs.
 
 Description
 -----------
@@ -100,6 +88,14 @@ Example
 See Also
 --------
 
-- :doc:`max` — maximum of two values
-- :doc:`min` — minimum of two values
-- :doc:`sel` — binary selection
+* :doc:`max` — maximum of two values
+* :doc:`min` — minimum of two values
+* :doc:`sel` — binary selection
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.5
+* `CODESYS: LIMIT <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_limit.html>`_
+* `Beckhoff TwinCAT 3: LIMIT <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528972171.html>`_
+* `Fernhill SCADA: LIMIT <https://www.fernhillsoftware.com/help/iec-61131/common-elements/selection-functions/limit.html>`_

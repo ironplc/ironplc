@@ -4,31 +4,63 @@ MUX
 
 Multiplexer — selects one of several inputs by index.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.5
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+         K ─┤         │
+       IN0 ─┤         │
+       IN1 ─┤   MUX   ├─ OUT
+       IN2 ─┤         │
+       ... ─┤         │
+            └─────────┘
+
+.. code-block:: text
+
+   FUNCTION MUX : ANY
+     VAR_INPUT
+       K   : INT;
+       IN0 : ANY;
+       IN1 : ANY;
+       (* ... up to IN15 ... *)
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. All ``INn`` inputs must share
+the same type. ``MUX`` is polymorphic over any data type.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 15 15 15 15
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (K)
-     - Input (IN0)
-     - Input (IN1, ...)
-     - Return Type
-   * - 1
-     - ``INT``
-     - *ANY*
-     - *ANY*
-     - *ANY*
+   * - Name
+     - Type
+     - Description
+   * - ``K``
+     - ``ANY_INT``
+     - Zero-based selector. Selects which input is returned.
+   * - ``IN0``, ``IN1``, ..., ``INn``
+     - ``ANY``
+     - The candidate values. The number of inputs matches the value range of K (2 to 16). All inputs must share the same type.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY``
+     - The input selected by K. Same type as the INn inputs.
 
 Description
 -----------
@@ -60,5 +92,13 @@ Example
 See Also
 --------
 
-- :doc:`sel` — binary selection (two inputs)
-- :doc:`limit` — clamp to range
+* :doc:`sel` — binary selection (two inputs)
+* :doc:`limit` — clamp to range
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.5
+* `CODESYS: MUX <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_mux.html>`_
+* `Beckhoff TwinCAT 3: MUX <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528977547.html>`_
+* `Fernhill SCADA: MUX <https://www.fernhillsoftware.com/help/iec-61131/common-elements/selection-functions/mux.html>`_

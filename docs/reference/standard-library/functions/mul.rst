@@ -4,65 +4,61 @@ MUL
 
 Returns the product of two or more inputs.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.3
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌─────────┐
+       IN1 ─┤         │
+       IN2 ─┤   MUL   ├─ OUT
+       IN3 ─┤         │
+            └─────────┘
+
+.. code-block:: text
+
+   FUNCTION MUL : ANY_NUM
+     VAR_INPUT
+       IN1 : ANY_NUM;
+       IN2 : ANY_NUM;
+       (* ... additional inputs ... *)
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``MUL`` accepts ``SINT``,
+``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``,
+``REAL``, ``LREAL``. All inputs must share the same type.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 20 20 20
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-   * - 1
-     - ``SINT``
-     - ``SINT``
-     - ``SINT``
-   * - 2
-     - ``INT``
-     - ``INT``
-     - ``INT``
-   * - 3
-     - ``DINT``
-     - ``DINT``
-     - ``DINT``
-   * - 4
-     - ``LINT``
-     - ``LINT``
-     - ``LINT``
-   * - 5
-     - ``USINT``
-     - ``USINT``
-     - ``USINT``
-   * - 6
-     - ``UINT``
-     - ``UINT``
-     - ``UINT``
-   * - 7
-     - ``UDINT``
-     - ``UDINT``
-     - ``UDINT``
-   * - 8
-     - ``ULINT``
-     - ``ULINT``
-     - ``ULINT``
-   * - 9
-     - ``REAL``
-     - ``REAL``
-     - ``REAL``
-   * - 10
-     - ``LREAL``
-     - ``LREAL``
-     - ``LREAL``
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``ANY_NUM``
+     - The first multiplicand.
+   * - ``IN2``
+     - ``ANY_NUM``
+     - The second multiplicand.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_NUM``
+     - The product of IN1 and IN2. Same type as the inputs.
 
 Description
 -----------
@@ -84,6 +80,14 @@ Example
 See Also
 --------
 
-- :doc:`add` — addition
-- :doc:`div` — division
-- :doc:`mod` — modulo
+* :doc:`add` — addition
+* :doc:`div` — division
+* :doc:`mod` — modulo
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.3
+* `CODESYS: MUL <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_mul.html>`_
+* `Beckhoff TwinCAT 3: MUL <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528864651.html>`_
+* `Fernhill SCADA: Arithmetic Functions <https://www.fernhillsoftware.com/help/iec-61131/common-elements/functions-arithmetic.html>`_

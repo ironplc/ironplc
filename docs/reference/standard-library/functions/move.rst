@@ -4,54 +4,54 @@ MOVE
 
 Copies the input value to the output (assignment).
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.4
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤  MOVE   ├─ OUT
+           └─────────┘
+
+.. code-block:: text
+
+   FUNCTION MOVE : ANY
+     VAR_INPUT
+       IN : ANY;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the input type. ``MOVE`` accepts any type
+(``ANY``); IronPLC supports ``SINT``, ``INT``, ``DINT``, ``LINT``,
+``USINT``, ``UINT``, ``UDINT``, ``ULINT``, ``REAL``, ``LREAL``.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 30 30
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (IN)
-     - Return Type
-   * - 1
-     - ``SINT``
-     - ``SINT``
-   * - 2
-     - ``INT``
-     - ``INT``
-   * - 3
-     - ``DINT``
-     - ``DINT``
-   * - 4
-     - ``LINT``
-     - ``LINT``
-   * - 5
-     - ``USINT``
-     - ``USINT``
-   * - 6
-     - ``UINT``
-     - ``UINT``
-   * - 7
-     - ``UDINT``
-     - ``UDINT``
-   * - 8
-     - ``ULINT``
-     - ``ULINT``
-   * - 9
-     - ``REAL``
-     - ``REAL``
-   * - 10
-     - ``LREAL``
-     - ``LREAL``
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY``
+     - The value to copy.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY``
+     - A copy of IN. Same type as IN.
 
 Description
 -----------
@@ -72,5 +72,15 @@ Example
 See Also
 --------
 
-- :doc:`sel` — binary selection
-- :doc:`limit` — clamp to range
+* :doc:`sel` — binary selection
+* :doc:`limit` — clamp to range
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.4
+* `CODESYS: MOVE <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_operator_move.html>`_
+* `Beckhoff TwinCAT 3: MOVE <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528886155.html>`_
+
+.. Fernhill SCADA does not have a dedicated MOVE page (assignment is
+   covered by the language reference rather than as a function).

@@ -4,29 +4,59 @@ CONCAT_DATE_TOD
 
 Combines a date and a time-of-day into a date-and-time value.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.8
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+            ┌───────────────┐
+       IN1 ─┤               │
+            │CONCAT_DATE_TOD├─ OUT
+       IN2 ─┤               │
+            └───────────────┘
+
+.. code-block:: text
+
+   FUNCTION CONCAT_DATE_TOD : DATE_AND_TIME
+     VAR_INPUT
+       IN1 : DATE;
+       IN2 : TIME_OF_DAY;
+     END_VAR
+   END_FUNCTION
+
+The return type is ``DATE_AND_TIME``. *IN1* is ``DATE`` and *IN2* is
+``TIME_OF_DAY``.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 20 20 20
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (IN1)
-     - Input (IN2)
-     - Return Type
-   * - 1
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
      - ``DATE``
+     - The date component.
+   * - ``IN2``
      - ``TIME_OF_DAY``
+     - The time-of-day component.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
      - ``DATE_AND_TIME``
+     - The combined date and time-of-day.
 
 Description
 -----------
@@ -51,5 +81,14 @@ Example
 See Also
 --------
 
-- :doc:`add_dt_time` — add duration to datetime
-- :doc:`sub_dt_dt` — difference between two datetimes
+* :doc:`add_dt_time` — add duration to datetime
+* :doc:`sub_dt_dt` — difference between two datetimes
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.8
+* `CODESYS: CONCAT (covers date/time concatenation) <https://content.helpme-codesys.com/en/libs/Standard/Current/String-Functions/CONCAT.html>`_
+* `Fernhill SCADA: CONCAT_DATE_TOD <https://www.fernhillsoftware.com/help/iec-61131/common-elements/date-time-functions/time-concat-date-tod.html>`_
+
+.. Beckhoff TwinCAT 3 does not have a dedicated CONCAT_DATE_TOD page.

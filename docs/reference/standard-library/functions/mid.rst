@@ -4,39 +4,63 @@ MID
 
 Returns a substring from the middle of a string.
 
-.. list-table::
-   :widths: 30 70
+Signature
+---------
 
-   * - **IEC 61131-3**
-     - Section 2.5.1.5.7
-   * - **Support**
-     - Supported
+.. code-block:: text
 
-Signatures
-----------
+           ┌─────────┐
+       IN ─┤         │
+        L ─┤   MID   ├─ OUT
+        P ─┤         │
+           └─────────┘
+
+.. code-block:: text
+
+   FUNCTION MID : ANY_STRING
+     VAR_INPUT
+       IN : ANY_STRING;
+       L  : ANY_INT;
+       P  : ANY_INT;
+     END_VAR
+   END_FUNCTION
+
+The return type matches the type of *IN*. ``MID`` accepts ``STRING``
+for *IN*; *L* and *P* are ``INT``.
+
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
-   :widths: 10 15 15 15 15 30
+   :widths: 20 20 60
+   :align: left
 
-   * - #
-     - Input (IN)
-     - Input (L)
-     - Input (P)
-     - Return Type
-     - Support
-   * - 1
-     - ``STRING``
+   * - Name
+     - Type
+     - Description
+   * - ``IN``
+     - ``ANY_STRING``
+     - The source string.
+   * - ``L``
      - ``INT``
+     - Number of characters to extract.
+   * - ``P``
      - ``INT``
-     - ``STRING``
-     - Supported
-   * - 2
-     - ``WSTRING``
-     - ``INT``
-     - ``INT``
-     - ``WSTRING``
-     - Not yet supported
+     - Starting position (1-based).
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_STRING``
+     - L characters from IN starting at position P. Same type as IN.
 
 Description
 -----------
@@ -57,6 +81,14 @@ Example
 See Also
 --------
 
-- :doc:`left` — left substring
-- :doc:`right` — right substring
-- :doc:`len` — string length
+* :doc:`left` — left substring
+* :doc:`right` — right substring
+* :doc:`len` — string length
+
+References
+----------
+
+* IEC 61131-3 §2.5.1.5.7
+* `CODESYS: MID <https://content.helpme-codesys.com/en/libs/Standard/Current/String-Functions/MID.html>`_
+* `Beckhoff TwinCAT 3: MID <https://infosys.beckhoff.com/content/1033/tcplclib_tc2_standard/74420235.html>`_
+* `Fernhill SCADA: MID <https://www.fernhillsoftware.com/help/iec-61131/common-elements/string-functions/string-mid.html>`_
