@@ -29,6 +29,40 @@ The return type matches the input type. ``LIMIT`` accepts ``SINT``,
 ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``,
 ``REAL``, ``LREAL``. All three inputs must share the same type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``MN``
+     - ``ANY_MAGNITUDE``
+     - Lower bound of the range.
+   * - ``IN``
+     - ``ANY_MAGNITUDE``
+     - Value to clamp.
+   * - ``MX``
+     - ``ANY_MAGNITUDE``
+     - Upper bound of the range.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_MAGNITUDE``
+     - IN clamped to [MN, MX]. Same type as the inputs.
+
 Description
 -----------
 

@@ -27,6 +27,37 @@ Signature
 The return type is ``DATE_AND_TIME``. *IN1* is ``DATE`` and *IN2* is
 ``TIME_OF_DAY``.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``DATE``
+     - The date component.
+   * - ``IN2``
+     - ``TIME_OF_DAY``
+     - The time-of-day component.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``DATE_AND_TIME``
+     - The combined date and time-of-day.
+
 Description
 -----------
 

@@ -28,6 +28,37 @@ The return type matches the input type. ``MOD`` accepts ``SINT``,
 ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``.
 Both inputs must share the same type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``ANY_INT``
+     - The dividend.
+   * - ``IN2``
+     - ``ANY_INT``
+     - The divisor. Must be non-zero.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_INT``
+     - The remainder of IN1 divided by IN2. Same type as the inputs; sign matches IN1.
+
 Description
 -----------
 

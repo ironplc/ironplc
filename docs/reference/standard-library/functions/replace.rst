@@ -32,6 +32,43 @@ The return type matches the input type. ``REPLACE`` accepts ``STRING``
 for *IN1* and *IN2*; *L* and *P* are ``INT``. Both string inputs must
 share the same type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``ANY_STRING``
+     - The source string.
+   * - ``IN2``
+     - ``ANY_STRING``
+     - The replacement string.
+   * - ``L``
+     - ``INT``
+     - Number of characters in IN1 to replace.
+   * - ``P``
+     - ``INT``
+     - Starting position (1-based).
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_STRING``
+     - IN1 with L characters from position P replaced by IN2. Same type as the input strings.
+
 Description
 -----------
 

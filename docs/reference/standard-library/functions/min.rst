@@ -28,6 +28,37 @@ The return type matches the input type. ``MIN`` accepts ``SINT``,
 ``INT``, ``DINT``, ``LINT``, ``USINT``, ``UINT``, ``UDINT``, ``ULINT``,
 ``REAL``, ``LREAL``. Both inputs must share the same type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``ANY_MAGNITUDE``
+     - The first value to compare.
+   * - ``IN2``
+     - ``ANY_MAGNITUDE``
+     - The second value to compare.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_MAGNITUDE``
+     - The smaller of IN1 and IN2. If both inputs are equal, returns that value. Same type as the inputs.
+
 Description
 -----------
 
