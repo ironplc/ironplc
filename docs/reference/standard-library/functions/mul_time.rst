@@ -26,6 +26,37 @@ Signature
 
 The return type is ``TIME``. *IN2* may be any numeric type.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``TIME``
+     - The duration to scale.
+   * - ``IN2``
+     - ``ANY_NUM``
+     - The numeric factor to multiply by.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``TIME``
+     - IN1 multiplied by IN2.
+
 Description
 -----------
 

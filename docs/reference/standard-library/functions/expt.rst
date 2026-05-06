@@ -27,6 +27,37 @@ Signature
 The return type matches the type of *IN1*. ``EXPT`` accepts ``REAL``,
 ``LREAL`` for the base and any numeric type for the exponent.
 
+.. rubric:: Inputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - ``IN1``
+     - ``ANY_NUM``
+     - The base.
+   * - ``IN2``
+     - ``ANY_NUM``
+     - The exponent.
+
+.. rubric:: Outputs
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+   :align: left
+
+   * - Name
+     - Type
+     - Description
+   * - Return value
+     - ``ANY_NUM``
+     - IN1 raised to the power IN2. Same type as IN1.
+
 Description
 -----------
 

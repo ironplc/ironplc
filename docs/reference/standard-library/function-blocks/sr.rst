@@ -14,36 +14,36 @@ priority: if both ``S1`` and ``R`` are ``TRUE``, the output ``Q1`` is
    * - **Support**
      - Supported
 
-Inputs
-------
+.. rubric:: Inputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``S1``
      - ``BOOL``
-     - Set input (dominant)
+     - Set input. Sets Q1 to TRUE while TRUE; takes priority over R.
    * - ``R``
      - ``BOOL``
-     - Reset input
+     - Reset input. Clears Q1 to FALSE while TRUE, unless S1 is also TRUE.
 
-Outputs
--------
+.. rubric:: Outputs
 
 .. list-table::
    :header-rows: 1
    :widths: 20 20 60
+   :align: left
 
    * - Name
      - Type
      - Description
    * - ``Q1``
      - ``BOOL``
-     - Output state
+     - Latched output state. Retains its value between scans.
 
 Behavior
 --------
