@@ -210,6 +210,114 @@ def generate_redirects(app, exception):
 
         logger.info(f"Generated redirects: {old_prefix}/ -> {new_prefix}/")
 
+# Minimum length, in characters, of the rendered <article> text on a problem-code
+# page. Pages below this threshold get clustered as near-duplicates by search
+# engines (Google reported P4008 as "Duplicate without user-selected canonical"
+# for this reason). Calibrated against the page that triggered the incident
+# (~600 chars) with a comfortable buffer above it. Pages that use the
+# `.. playground::` directive render the source code into the article body
+# via a "Source" tab, so they typically clear this floor without extra prose.
+THIN_PAGE_MIN_TEXT_LENGTH = 900
+
+ALLOWLIST_FILENAME = 'thin_problem_pages_allowlist.txt'
+
+PROBLEM_PAGE_PATTERN = re.compile(r'^[PEV]\d+\.html$')
+
+PROBLEM_PAGE_DIRS = (
+    'reference/compiler/problems',
+    'reference/editor/problems',
+    'reference/runtime/problems',
+)
+
+
+def _load_thin_page_allowlist():
+    """Load docnames that are exempt from the thin-page check."""
+    path = Path(__file__).parent / ALLOWLIST_FILENAME
+    allowlist = set()
+    with open(path, encoding='utf-8') as fp:
+        for line in fp:
+            line = line.split('#', 1)[0].strip()
+            if line:
+                allowlist.add(line)
+    return allowlist
+
+
+def _measure_article_text(html_path):
+    """Return the length of the rendered <article> text for a built page."""
+    from bs4 import BeautifulSoup
+    with open(html_path, encoding='utf-8') as fp:
+        soup = BeautifulSoup(fp, 'html.parser')
+    article = soup.find('article')
+    if article is None:
+        return 0
+    return len(' '.join(article.get_text().split()))
+
+
+def check_problem_page_lengths(app, exception):
+    """Fail the build when a problem-code page's article text is too thin.
+
+    Search engines cluster near-duplicate pages and pick a canonical themselves,
+    overriding the self-canonical Sphinx emits via html_baseurl. This check
+    enforces a minimum amount of unique prose so each page is indexable on its
+    own. Pre-existing thin pages are listed in thin_problem_pages_allowlist.txt;
+    entries should be removed as the corresponding pages are expanded.
+    """
+    if exception:
+        return
+
+    from sphinx.util import logging
+    logger = logging.getLogger(__name__)
+
+    allowlist = _load_thin_page_allowlist()
+    outdir = Path(app.outdir)
+
+    seen_docnames = set()
+    failures = []
+
+    for subdir in PROBLEM_PAGE_DIRS:
+        dir_path = outdir / subdir
+        if not dir_path.exists():
+            continue
+        for html_path in sorted(dir_path.glob('*.html')):
+            if not PROBLEM_PAGE_PATTERN.match(html_path.name):
+                continue
+            docname = f"{subdir}/{html_path.stem}"
+            seen_docnames.add(docname)
+            length = _measure_article_text(html_path)
+            if length >= THIN_PAGE_MIN_TEXT_LENGTH:
+                if docname in allowlist:
+                    logger.warning(
+                        f"{docname}: article text is now {length} characters "
+                        f"(>= {THIN_PAGE_MIN_TEXT_LENGTH}); remove this entry "
+                        f"from {ALLOWLIST_FILENAME}",
+                        type='ironplc', subtype='thin_page_allowlist_stale',
+                    )
+                continue
+            if docname in allowlist:
+                continue
+            failures.append((docname, length))
+
+    stale_entries = sorted(d for d in allowlist if d not in seen_docnames)
+    for docname in stale_entries:
+        logger.warning(
+            f"{ALLOWLIST_FILENAME} references {docname} but no such page was "
+            f"built; remove the stale entry",
+            type='ironplc', subtype='thin_page_allowlist_stale',
+        )
+
+    for docname, length in failures:
+        logger.warning(
+            f"{docname}: article text is only {length} characters "
+            f"(minimum {THIN_PAGE_MIN_TEXT_LENGTH}). Thin pages cluster as "
+            f"near-duplicates in search engines, which causes the "
+            f"self-canonical to be ignored. Add an explanation of why the "
+            f"rule exists, a second differentiated example, and a "
+            f"'See Also' section linking to related problem codes and "
+            f"language-reference pages.",
+            type='ironplc', subtype='thin_problem_page',
+        )
+
+
 def setup(app):
     app.add_directive("problem-summary", ProblemSummary)
 
@@ -217,9 +325,10 @@ def setup(app):
     app.connect('config-inited', generate_problem_index)
     app.connect('source-read', append_problem_feedback)
     app.connect('build-finished', generate_redirects)
+    app.connect('build-finished', check_problem_page_lengths)
 
     return {
-        'version': '0.2',
+        'version': '0.3',
         'parallel_read_safe': True,
         'parallel_write_safe': True,
     }
