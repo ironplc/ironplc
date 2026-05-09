@@ -11,37 +11,71 @@ Example
 
 The following code will generate error P4013:
 
-.. code-block::
+.. playground::
 
    FUNCTION_BLOCK MyFunction
+       VAR
+           x : INT;
+       END_VAR
    END_FUNCTION_BLOCK
 
    FUNCTION_BLOCK MyFunction  (* Error: Duplicate POU name *)
+       VAR
+           y : INT;
+       END_VAR
    END_FUNCTION_BLOCK
+
+   PROGRAM main
+       VAR
+           dummy : INT;
+       END_VAR
+   END_PROGRAM
 
 The function block ``MyFunction`` is declared twice, which is not allowed.
 
 To fix this error, ensure all POU names are unique within their scope:
 
-.. code-block::
+.. playground::
 
    FUNCTION_BLOCK MyFunction1
+       VAR
+           x : INT;
+       END_VAR
    END_FUNCTION_BLOCK
 
-   FUNCTION_BLOCK MyFunction2  (* Correct: Different name *)
+   FUNCTION_BLOCK MyFunction2
+       VAR
+           y : INT;
+       END_VAR
    END_FUNCTION_BLOCK
+
+   PROGRAM main
+       VAR
+           dummy : INT;
+       END_VAR
+   END_PROGRAM
 
 The conflict is also raised across POU kinds. The following code
 collides a ``FUNCTION`` with a ``FUNCTION_BLOCK`` of the same name and
 still produces P4013:
 
-.. code-block::
+.. playground::
 
    FUNCTION Compute : INT
+       Compute := 0;
    END_FUNCTION
 
    FUNCTION_BLOCK Compute  (* Error: name collides with the FUNCTION above *)
+       VAR
+           x : INT;
+       END_VAR
    END_FUNCTION_BLOCK
+
+   PROGRAM main
+       VAR
+           dummy : INT;
+       END_VAR
+   END_PROGRAM
 
 Rename one of the POUs (for example, ``ComputeResult`` and
 ``ComputeBlock``) to resolve the conflict.

@@ -11,39 +11,63 @@ Example
 
 The following code will generate error P4016:
 
-.. code-block::
+.. playground::
 
    FUNCTION MyFunction : INT
+       MyFunction := 0;
    END_FUNCTION
 
    FUNCTION MyFunction : INT  (* Error: Duplicate function name *)
+       MyFunction := 0;
    END_FUNCTION
+
+   PROGRAM main
+       VAR
+           dummy : INT;
+       END_VAR
+   END_PROGRAM
 
 The function ``MyFunction`` is declared twice, which is not allowed.
 
 To fix this error, ensure all function names are unique within their scope:
 
-.. code-block::
+.. playground::
 
    FUNCTION MyFunction1 : INT
+       MyFunction1 := 0;
    END_FUNCTION
 
-   FUNCTION MyFunction2 : INT  (* Correct: Different name *)
+   FUNCTION MyFunction2 : INT
+       MyFunction2 := 0;
    END_FUNCTION
+
+   PROGRAM main
+       VAR
+           dummy : INT;
+       END_VAR
+   END_PROGRAM
 
 Note that changing the return type or the parameter list of one of the
 duplicates does **not** resolve the error, because IEC 61131-3 does not
 permit overloading. The two declarations below still produce P4016:
 
-.. code-block::
+.. playground::
 
    FUNCTION Scale : INT
-   VAR_INPUT v : INT; END_VAR
+       VAR_INPUT v : INT; END_VAR
+       Scale := v;
    END_FUNCTION
 
    FUNCTION Scale : REAL  (* Error: same name, different signature is still a duplicate *)
-   VAR_INPUT v : REAL; END_VAR
+       VAR_INPUT v : REAL; END_VAR
+       Scale := v;
    END_FUNCTION
+
+   PROGRAM main
+       VAR
+           dummy : INT;
+       END_VAR
+   END_PROGRAM
 
 Give each function a distinct name (for example, ``ScaleInt`` and
 ``ScaleReal``) instead of relying on overloading.
