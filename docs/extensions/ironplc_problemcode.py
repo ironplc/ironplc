@@ -142,21 +142,10 @@ def append_problem_feedback(app, docname, source):
     if code is None:
         return
 
-    base_url = (app.config.html_baseurl or '').rstrip('/')
-    page_url = f"{base_url}/{docname}.html" if base_url else f"{docname}.html"
-
-    body = (
-        f"Problem code: {code}\n"
-        f"Page: {page_url}\n\n"
-        "What did IronPLC report?\n\n"
-        "Why do you think it is wrong?\n\n"
-        "Smallest sample of source code that reproduces it:\n\n"
-        "IronPLC version (output of `iec61131 --version`):\n"
-    )
     params = (
-        f"title={quote(f'{code}: I think this diagnostic is wrong', safe='')}"
+        f"template={quote('compatibility_gap.md', safe='')}"
+        f"&title={quote(f'Diagnostic {code} appears incorrect', safe='')}"
         f"&labels={quote('problem-code-feedback', safe='')}"
-        f"&body={quote(body, safe='')}"
     )
     url = f"https://github.com/ironplc/ironplc/issues/new?{params}"
 
