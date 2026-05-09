@@ -957,12 +957,12 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
                         let (buf_idx, buf_start) = {
-                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
                             (slot.buf_idx as usize, slot.buf_start)
                         };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
-                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len, string_ops::NARROW_CHAR_WIDTH);
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                             .copy_from_slice(&bytes[..cur_len as usize]);
@@ -974,12 +974,12 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
                         let (buf_idx, buf_start) = {
-                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
                             (slot.buf_idx as usize, slot.buf_start)
                         };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
-                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len, string_ops::NARROW_CHAR_WIDTH);
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                             .copy_from_slice(&bytes[..cur_len as usize]);
@@ -991,12 +991,12 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
                         let (buf_idx, buf_start) = {
-                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
                             (slot.buf_idx as usize, slot.buf_start)
                         };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
-                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len, string_ops::NARROW_CHAR_WIDTH);
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                             .copy_from_slice(&bytes[..cur_len as usize]);
@@ -1152,7 +1152,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
-                string_ops::str_write_header(data_region, data_offset, max_length, 0);
+                string_ops::str_write_header(
+                    data_region,
+                    data_offset,
+                    max_length,
+                    0,
+                    string_ops::NARROW_CHAR_WIDTH,
+                );
             }
 
             // LOAD_CONST_STR: Load a string literal from the constant pool
@@ -1175,13 +1181,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
 
                 let (buf_idx, buf_start) = {
-                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
                     (slot.buf_idx as usize, slot.buf_start)
                 };
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (str_bytes.len() as u16).min(max_len);
-                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len, string_ops::NARROW_CHAR_WIDTH);
                 temp_buf[buf_start + STRING_HEADER_BYTES
                     ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                     .copy_from_slice(&str_bytes[..cur_len as usize]);
@@ -1230,7 +1236,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .copy_from_slice(&temp_buf[src_start..src_start + copy_len]);
 
                 // Update destination cur_length.
-                data_region[data_offset + 2..data_offset + STRING_HEADER_BYTES]
+                data_region[data_offset + string_ops::CUR_LEN_OFFSET
+                    ..data_offset + string_ops::CUR_LEN_OFFSET + 2]
                     .copy_from_slice(&(copy_len as u16).to_le_bytes());
             }
 
@@ -1255,13 +1262,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let read_len = src_cur_len.min(src_max_len) as usize;
 
                 let (buf_idx, buf_start) = {
-                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
                     (slot.buf_idx as usize, slot.buf_start)
                 };
 
                 let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(max_len);
-                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len, string_ops::NARROW_CHAR_WIDTH);
                 if data_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
@@ -1339,8 +1346,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
-                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
-                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
+                let (in1_len, in1_start, _) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in2_len, in2_start, _) = string_ops::read_string_header(data_region, in2_offset)?;
 
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
@@ -1353,13 +1360,14 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    string_ops::NARROW_CHAR_WIDTH,
                 );
 
                 // Write result data: prefix + IN2 + suffix.
@@ -1388,8 +1396,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let p_val = stack.pop()?.as_i32();
 
-                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
-                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
+                let (in1_len, in1_start, _) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in2_len, in2_start, _) = string_ops::read_string_header(data_region, in2_offset)?;
 
                 let p = if p_val < 0 { 0usize } else { p_val as usize };
                 let insert_idx = p.min(in1_len);
@@ -1399,13 +1407,14 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let suffix_len = in1_len - insert_idx;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    string_ops::NARROW_CHAR_WIDTH,
                 );
 
                 // Write result data: prefix + IN2 + suffix.
@@ -1433,7 +1442,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
-                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in1_len, in1_start, _) = string_ops::read_string_header(data_region, in1_offset)?;
 
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
@@ -1446,13 +1455,14 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + suffix_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    string_ops::NARROW_CHAR_WIDTH,
                 );
 
                 // Write result data: prefix + suffix.
@@ -1476,18 +1486,19 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let l_val = stack.pop()?.as_i32();
 
-                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
+                let (in_len, in_start, _) = string_ops::read_string_header(data_region, in_offset)?;
 
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
                 let result_len = l.min(in_len);
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    string_ops::NARROW_CHAR_WIDTH,
                 );
 
                 let copy_len = cur_len as usize;
@@ -1502,19 +1513,20 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let in_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let l_val = stack.pop()?.as_i32();
 
-                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
+                let (in_len, in_start, _) = string_ops::read_string_header(data_region, in_offset)?;
 
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
                 let result_len = l.min(in_len);
                 let src_start = in_len - result_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    string_ops::NARROW_CHAR_WIDTH,
                 );
 
                 let copy_len = cur_len as usize;
@@ -1531,20 +1543,21 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let p_val = stack.pop()?.as_i32();
                 let l_val = stack.pop()?.as_i32();
 
-                let (in_len, in_start) = string_ops::read_string_header(data_region, in_offset)?;
+                let (in_len, in_start, _) = string_ops::read_string_header(data_region, in_offset)?;
 
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
                 let start_idx = (p - 1).min(in_len);
                 let result_len = l.min(in_len - start_idx);
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    string_ops::NARROW_CHAR_WIDTH,
                 );
 
                 let copy_len = cur_len as usize;
@@ -1560,18 +1573,19 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let in1_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let in2_offset = read_u32_le(bytecode, &mut pc)? as usize;
 
-                let (in1_len, in1_start) = string_ops::read_string_header(data_region, in1_offset)?;
-                let (in2_len, in2_start) = string_ops::read_string_header(data_region, in2_offset)?;
+                let (in1_len, in1_start, _) = string_ops::read_string_header(data_region, in1_offset)?;
+                let (in2_len, in2_start, _) = string_ops::read_string_header(data_region, in2_offset)?;
 
                 let result_len = in1_len + in2_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    string_ops::NARROW_CHAR_WIDTH,
                 );
 
                 // Write result data: IN1 + IN2.
@@ -1620,7 +1634,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     if elem_offset + STRING_HEADER_BYTES > data_region.len() {
                         return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
                     }
-                    string_ops::str_write_header(data_region, elem_offset, max_str_len, 0);
+                    string_ops::str_write_header(
+                        data_region,
+                        elem_offset,
+                        max_str_len,
+                        0,
+                        string_ops::NARROW_CHAR_WIDTH,
+                    );
                 }
             }
 
@@ -1666,13 +1686,19 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let read_len = src_cur_len.min(max_str_len) as usize;
 
                 let (buf_idx, buf_start) = {
-                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    let slot = temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
                     (slot.buf_idx as usize, slot.buf_start)
                 };
 
                 let buf_max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(buf_max_len);
-                string_ops::str_write_header(temp_buf, buf_start, buf_max_len, cur_len);
+                string_ops::str_write_header(
+                    temp_buf,
+                    buf_start,
+                    buf_max_len,
+                    cur_len,
+                    string_ops::NARROW_CHAR_WIDTH,
+                );
 
                 if elem_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
@@ -1744,7 +1770,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .copy_from_slice(&temp_buf[src_start..src_start + copy_len]);
 
                 // Update destination cur_length.
-                data_region[elem_offset + 2..elem_offset + STRING_HEADER_BYTES]
+                data_region[elem_offset + string_ops::CUR_LEN_OFFSET
+                    ..elem_offset + string_ops::CUR_LEN_OFFSET + 2]
                     .copy_from_slice(&(copy_len as u16).to_le_bytes());
             }
 

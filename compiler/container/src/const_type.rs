@@ -11,6 +11,7 @@ pub enum ConstType {
     F32 = 4,
     F64 = 5,
     Str = 6,
+    WStr = 7,
 }
 
 impl ConstType {
@@ -23,6 +24,7 @@ impl ConstType {
             4 => Ok(ConstType::F32),
             5 => Ok(ConstType::F64),
             6 => Ok(ConstType::Str),
+            7 => Ok(ConstType::WStr),
             _ => Err(ContainerError::InvalidConstantType(v)),
         }
     }
@@ -37,6 +39,18 @@ impl ConstType {
             ConstType::F32 => "F32",
             ConstType::F64 => "F64",
             ConstType::Str => "Str",
+            ConstType::WStr => "WStr",
+        }
+    }
+
+    /// Returns the byte width of each character for string-typed entries:
+    /// 1 for [`ConstType::Str`] (Latin-1), 2 for [`ConstType::WStr`]
+    /// (UTF-16LE). Returns 0 for non-string types.
+    pub fn char_width(&self) -> u8 {
+        match self {
+            ConstType::Str => 1,
+            ConstType::WStr => 2,
+            _ => 0,
         }
     }
 }
@@ -54,6 +68,7 @@ mod tests {
         assert_eq!(ConstType::from_u8(4).unwrap(), ConstType::F32);
         assert_eq!(ConstType::from_u8(5).unwrap(), ConstType::F64);
         assert_eq!(ConstType::from_u8(6).unwrap(), ConstType::Str);
+        assert_eq!(ConstType::from_u8(7).unwrap(), ConstType::WStr);
     }
 
     #[test]
@@ -73,5 +88,14 @@ mod tests {
         assert_eq!(ConstType::F32.as_str(), "F32");
         assert_eq!(ConstType::F64.as_str(), "F64");
         assert_eq!(ConstType::Str.as_str(), "Str");
+        assert_eq!(ConstType::WStr.as_str(), "WStr");
+    }
+
+    #[test]
+    fn const_type_char_width_when_string_types_then_matches_encoding() {
+        assert_eq!(ConstType::Str.char_width(), 1);
+        assert_eq!(ConstType::WStr.char_width(), 2);
+        assert_eq!(ConstType::I32.char_width(), 0);
+        assert_eq!(ConstType::F64.char_width(), 0);
     }
 }

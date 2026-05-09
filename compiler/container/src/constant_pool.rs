@@ -26,7 +26,7 @@ impl ConstEntry {
     /// `bytes` must be at most 8 bytes; the source slice is interpreted as
     /// the native little-endian encoding of the primitive.
     pub fn primitive_le(const_type: ConstType, bytes: &[u8]) -> Self {
-        debug_assert!(!matches!(const_type, ConstType::Str));
+        debug_assert!(!matches!(const_type, ConstType::Str | ConstType::WStr));
         debug_assert!(bytes.len() <= 8);
         let mut primitive = [0u8; 8];
         primitive[..bytes.len()].copy_from_slice(bytes);
@@ -37,10 +37,19 @@ impl ConstEntry {
         }
     }
 
-    /// Constructs a string entry from raw bytes.
+    /// Constructs a narrow string entry (Latin-1, 1 byte per character).
     pub fn string(bytes: impl Into<Box<[u8]>>) -> Self {
         Self {
             const_type: ConstType::Str,
+            primitive: [0u8; 8],
+            str_value: bytes.into(),
+        }
+    }
+
+    /// Constructs a wide string entry (UTF-16LE, 2 bytes per code unit).
+    pub fn wstring(bytes: impl Into<Box<[u8]>>) -> Self {
+        Self {
+            const_type: ConstType::WStr,
             primitive: [0u8; 8],
             str_value: bytes.into(),
         }
@@ -52,8 +61,15 @@ impl ConstEntry {
         match self.const_type {
             ConstType::I32 | ConstType::U32 | ConstType::F32 => &self.primitive[..4],
             ConstType::I64 | ConstType::U64 | ConstType::F64 => &self.primitive[..8],
-            ConstType::Str => &self.str_value,
+            ConstType::Str | ConstType::WStr => &self.str_value,
         }
+    }
+
+    /// Returns the byte width of each character for string entries
+    /// (1 for [`ConstType::Str`], 2 for [`ConstType::WStr`], 0 for non-string
+    /// entries).
+    pub fn char_width(&self) -> u8 {
+        self.const_type.char_width()
     }
 }
 
@@ -90,7 +106,7 @@ impl ConstantPool {
     pub fn section_size(&self) -> u32 {
         let mut size: u32 = 2; // count
         for entry in &self.entries {
-            // type(1) + reserved(1) + size(2) + value
+            // type(1) + char_width(1) + size(2) + value
             size += 4 + entry.bytes().len() as u32;
         }
         size
@@ -139,25 +155,44 @@ impl ConstantPool {
             .map(i64::from_le_bytes)
     }
 
-    /// Gets a string value (raw bytes) from the constant pool at the given index.
+    /// Gets a string value (raw bytes) from the constant pool at the given
+    /// index. Accepts both [`ConstType::Str`] and [`ConstType::WStr`] entries.
     pub fn get_str(&self, index: ConstantIndex) -> Result<&[u8], ContainerError> {
         let entry = self
             .entries
             .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
-        if entry.const_type != ConstType::Str {
-            return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
+        match entry.const_type {
+            ConstType::Str | ConstType::WStr => Ok(&entry.str_value),
+            other => Err(ContainerError::InvalidConstantType(other as u8)),
         }
-        Ok(&entry.str_value)
+    }
+
+    /// Returns the encoding (`char_width`: 1 = STRING, 2 = WSTRING) of the
+    /// string-typed entry at `index`. Returns an error if the entry is not a
+    /// string type.
+    pub fn get_str_char_width(&self, index: ConstantIndex) -> Result<u8, ContainerError> {
+        let entry = self
+            .entries
+            .get(index.raw() as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        match entry.const_type {
+            ConstType::Str | ConstType::WStr => Ok(entry.char_width()),
+            other => Err(ContainerError::InvalidConstantType(other as u8)),
+        }
     }
 
     /// Writes the constant pool to the given writer.
+    ///
+    /// Each entry is written as `type(1) + char_width(1) + size(2) + value`.
+    /// For string entries, `char_width` is 1 (STRING) or 2 (WSTRING); for
+    /// non-string entries it is 0.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         w.write_all(&(self.entries.len() as u16).to_le_bytes())?;
         for entry in &self.entries {
             let bytes = entry.bytes();
             w.write_all(&[entry.const_type as u8])?;
-            w.write_all(&[0u8])?; // reserved
+            w.write_all(&[entry.char_width()])?;
             w.write_all(&(bytes.len() as u16).to_le_bytes())?;
             w.write_all(bytes)?;
         }
@@ -175,22 +210,32 @@ impl ConstantPool {
             let mut hdr = [0u8; 4];
             r.read_exact(&mut hdr)?;
             let const_type = ConstType::from_u8(hdr[0])?;
-            // hdr[1] is reserved
+            let on_disk_char_width = hdr[1];
             let size = u16::from_le_bytes([hdr[2], hdr[3]]) as usize;
-            let entry = if const_type == ConstType::Str {
-                let mut value = vec![0u8; size];
-                r.read_exact(&mut value)?;
-                ConstEntry::string(value)
-            } else {
-                if size > 8 {
-                    return Err(ContainerError::InvalidConstantType(const_type as u8));
+            let entry = match const_type {
+                ConstType::Str | ConstType::WStr => {
+                    if on_disk_char_width != const_type.char_width() {
+                        return Err(ContainerError::InvalidConstantType(const_type as u8));
+                    }
+                    let mut value = vec![0u8; size];
+                    r.read_exact(&mut value)?;
+                    ConstEntry {
+                        const_type,
+                        primitive: [0u8; 8],
+                        str_value: value.into_boxed_slice(),
+                    }
                 }
-                let mut buf = [0u8; 8];
-                r.read_exact(&mut buf[..size])?;
-                ConstEntry {
-                    const_type,
-                    primitive: buf,
-                    str_value: Box::default(),
+                _ => {
+                    if size > 8 {
+                        return Err(ContainerError::InvalidConstantType(const_type as u8));
+                    }
+                    let mut buf = [0u8; 8];
+                    r.read_exact(&mut buf[..size])?;
+                    ConstEntry {
+                        const_type,
+                        primitive: buf,
+                        str_value: Box::default(),
+                    }
                 }
             };
             entries.push(entry);
@@ -374,6 +419,24 @@ mod tests {
         let decoded = ConstantPool::read_from(&mut Cursor::new(&buf)).unwrap();
 
         assert_eq!(decoded.get_str(ConstantIndex::new(0)).unwrap(), b"hello");
+        assert_eq!(decoded.get_str_char_width(ConstantIndex::new(0)).unwrap(), 1);
+    }
+
+    #[test]
+    fn constant_pool_write_read_when_wstr_constant_then_roundtrips() {
+        let mut pool = ConstantPool::default();
+        // UTF-16LE encoding of "hi"
+        pool.push(ConstEntry::wstring(vec![b'h', 0, b'i', 0]));
+
+        let mut buf = Vec::new();
+        pool.write_to(&mut buf).unwrap();
+        let decoded = ConstantPool::read_from(&mut Cursor::new(&buf)).unwrap();
+
+        assert_eq!(
+            decoded.get_str(ConstantIndex::new(0)).unwrap(),
+            &[b'h', 0, b'i', 0]
+        );
+        assert_eq!(decoded.get_str_char_width(ConstantIndex::new(0)).unwrap(), 2);
     }
 
     #[test]
