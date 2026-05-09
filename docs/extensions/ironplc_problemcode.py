@@ -3,7 +3,8 @@ Defines a directive that formats problem codes and automatically generates the p
 '''
 import csv
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 from sphinx.locale import _
 from docutils import nodes
 from docutils.parsers.rst import Directive
@@ -123,6 +124,39 @@ def generate_problem_index(app, config):
 
     _generate_index_for(logger, srcdir, Path('reference') / 'compiler' / 'problems', 'P', 'Problem Codes')
     _generate_index_for(logger, srcdir, Path('reference') / 'runtime' / 'problems', 'V', 'Problem Code Index')
+
+_PROBLEM_PAGE_RE = re.compile(r'^reference/(compiler|editor|runtime)/problems/([PEV]\d+)$')
+
+
+def _problem_code_for_docname(docname):
+    """Return the problem code (e.g. 'P0001') if docname is a problem page, else None."""
+    match = _PROBLEM_PAGE_RE.match(PurePosixPath(docname).as_posix())
+    if not match:
+        return None
+    return match.group(2)
+
+
+def append_problem_feedback(app, docname, source):
+    """Append a 'Think IronPLC is wrong?' admonition to every problem-code page."""
+    code = _problem_code_for_docname(docname)
+    if code is None:
+        return
+
+    params = (
+        f"template={quote('compatibility_gap.md', safe='')}"
+        f"&title={quote(f'Diagnostic {code} appears incorrect', safe='')}"
+        f"&labels={quote('problem-code-feedback', safe='')}"
+    )
+    url = f"https://github.com/ironplc/ironplc/issues/new?{params}"
+
+    feedback_rst = (
+        "\n\n.. admonition:: Think IronPLC is wrong about this?\n"
+        "   :class: tip\n\n"
+        f"   If you believe this diagnostic is incorrect, `open an issue on GitHub <{url}>`__\n"
+        "   with a small sample that demonstrates the problem.\n"
+    )
+    source[0] = source[0] + feedback_rst
+
 
 REDIRECT_TEMPLATE = """\
 <!DOCTYPE html>
@@ -289,6 +323,7 @@ def setup(app):
 
     # Connect to the config-inited event to generate the index before building
     app.connect('config-inited', generate_problem_index)
+    app.connect('source-read', append_problem_feedback)
     app.connect('build-finished', generate_redirects)
     app.connect('build-finished', check_problem_page_lengths)
 

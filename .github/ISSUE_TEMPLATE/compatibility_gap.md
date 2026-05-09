@@ -8,6 +8,9 @@ assignees: ''
 
 <!-- Please ensure ST programs are your own original work. -->
 
+**Problem code (if any)**
+e.g. P0001, E0001, V4001. Leave blank if not applicable.
+
 **ST Program**
 ```st
 (* Paste minimum ST program that reproduces the issue *)
