@@ -20,7 +20,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=638de70a" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=5d031554" />
     
     
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.211.0">
+<meta name="ironplc-version" content="0.212.0">
 </head>
   <body>
     
@@ -664,6 +664,48 @@
 <span class="n">END_VAR</span>
 </pre></div>
 </div>
+<p>The same fix applies when the constant is used as an array bound.
+The declaration below triggers P4032 at the <code class="docutils literal notranslate"><span class="pre">ARRAY</span></code> declaration
+because <code class="docutils literal notranslate"><span class="pre">CAPACITY</span></code> has no value:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VAR_GLOBAL</span> <span class="n">CONSTANT</span>
+    <span class="n">CAPACITY</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">No</span> <span class="n">initializer</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_VAR</span>
+
+<span class="n">FUNCTION_BLOCK</span> <span class="n">Ring</span>
+<span class="n">VAR</span>
+    <span class="n">slots</span> <span class="p">:</span> <span class="n">ARRAY</span><span class="p">[</span><span class="mf">1.</span><span class="o">.</span><span class="n">CAPACITY</span><span class="p">]</span> <span class="n">OF</span> <span class="n">INT</span><span class="p">;</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">bound</span> <span class="n">has</span> <span class="n">no</span> <span class="n">value</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">END_VAR</span>
+<span class="n">END_FUNCTION_BLOCK</span>
+</pre></div>
+</div>
+<p>Adding <code class="docutils literal notranslate"><span class="pre">:=</span> <span class="pre">32</span></code> (or any integer literal) to <code class="docutils literal notranslate"><span class="pre">CAPACITY</span></code> resolves the
+error and lets the compiler determine the array’s size.</p>
+</section>
+<section id="see-also">
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="../../language/variables/initial-values.html"><span class="doc">Initial Values</span></a> — initializer syntax</p></li>
+<li><p><a class="reference internal" href="../../language/data-types/elementary/string.html"><span class="doc">STRING</span></a> — <code class="docutils literal notranslate"><span class="pre">STRING</span></code> length parameter</p></li>
+<li><p><a class="reference internal" href="../../language/data-types/derived/array-types.html"><span class="doc">Array Types</span></a> — array bound expressions</p></li>
+<li><p><a class="reference internal" href="P4008.html"><span class="doc">P4008</span></a> — <code class="docutils literal notranslate"><span class="pre">CONSTANT</span></code> variable missing an initializer</p></li>
+<li><p><a class="reference internal" href="P4030.html"><span class="doc">P4030</span></a> — constant referenced in a type parameter is not defined</p></li>
+<li><p><a class="reference internal" href="P4031.html"><span class="doc">P4031</span></a> — constant referenced in a type parameter is not an integer type</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>IEC 61131-3 §2.4.3</p></li>
+<li><p><a class="reference external" href="https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_vartypes_constant.html">CODESYS: Variable: CONSTANT</a></p></li>
+<li><p><a class="reference external" href="https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_variables_initialization.html">CODESYS: Variable Initialization</a></p></li>
+<li><p><a class="reference external" href="https://infosys.beckhoff.com/content/1033/tc3_plc_intro/11982693643.html">Beckhoff TwinCAT 3: Constant variables - CONSTANT</a></p></li>
+<li><p><a class="reference external" href="https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2526557579.html">Beckhoff TwinCAT 3: Declaring variables</a></p></li>
+</ul>
+<div class="tip admonition">
+<p class="admonition-title">Think IronPLC is wrong about this?</p>
+<p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20P4032%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
+with a small sample that demonstrates the problem.</p>
+</div>
 </section>
 </section>
 
@@ -732,6 +774,8 @@
             <ul>
 <li><a class="reference internal" href="#">P4032</a><ul>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
+<li><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>
 </ul>

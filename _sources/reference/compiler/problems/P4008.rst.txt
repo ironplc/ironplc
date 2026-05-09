@@ -11,19 +11,40 @@ Example
 
 The following code will generate error P4008:
 
-.. code-block::
+.. playground::
 
-   VAR_GLOBAL CONSTANT
-       ResetCounterValue : INT;  (* Error: CONSTANT variable must have initializer *)
-   END_VAR
+   PROGRAM main
+       VAR CONSTANT
+           ResetCounterValue : INT;  (* Error: CONSTANT must have initializer *)
+       END_VAR
+   END_PROGRAM
 
 The variable ``ResetCounterValue`` is declared as ``CONSTANT`` but does not have an initial value assigned.
 
 To fix this error, provide an initial value for the constant variable:
 
-.. code-block::
+.. playground::
 
-   VAR_GLOBAL CONSTANT
-       ResetCounterValue : INT := 17;  (* Correct: CONSTANT variable has initializer *)
-   END_VAR
+   PROGRAM main
+       VAR CONSTANT
+           ResetCounterValue : INT := 17;
+       END_VAR
+   END_PROGRAM
 
+The same rule applies to ``VAR_GLOBAL CONSTANT`` declarations.
+
+See Also
+--------
+
+- :doc:`/reference/language/variables/initial-values` — initializer syntax
+- :doc:`/reference/language/variables/scope` — variable sections that accept ``CONSTANT``
+- :doc:`P4009` — ``CONSTANT`` qualifier on function block instances
+- :doc:`P4031` — constant referenced in a type parameter is not an integer type
+- :doc:`P4032` — constant referenced in a type parameter has no initializer
+
+References
+----------
+
+* IEC 61131-3 §2.4.3
+* `CODESYS: Variable: CONSTANT <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_vartypes_constant.html>`_
+* `Beckhoff TwinCAT 3: Constant variables - CONSTANT <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/11982693643.html>`_

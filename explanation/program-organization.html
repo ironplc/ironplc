@@ -20,7 +20,7 @@
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    <link rel="stylesheet" type="text/css" href="../_static/overrides.css?v=638de70a" />
+    <link rel="stylesheet" type="text/css" href="../_static/overrides.css?v=5d031554" />
     
     
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.211.0">
+<meta name="ironplc-version" content="0.212.0">
 </head>
   <body>
     
@@ -666,7 +666,23 @@ without rewriting the logic.</p>
 <h2>Programs<a class="headerlink" href="#programs" title="Link to this heading">¶</a></h2>
 <p>A <code class="code docutils literal notranslate"><span class="pre">PROGRAM</span></code> is the basic unit of control logic. It declares variables
 and contains statements that execute on every scan:</p>
-<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBDb3VudGVyIDogSU5UIDo9IDA7CiAgIEVORF9WQVIKCiAgIENvdW50ZXIgOj0gQ291bnRlciArIDE7CgpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:393px;border:1px solid #3e3e5e;border-radius:4px;"></iframe><p>Programs are similar to classes in object-oriented languages: they bundle
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBDb3VudGVyIDogSU5UIDo9IDA7CiAgIEVORF9WQVIKCiAgIENvdW50ZXIgOj0gQ291bnRlciArIDE7CgpFTkRfUFJPR1JBTQ%3D%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:393px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+   <span class="n">VAR</span>
+      <span class="n">Counter</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span>
+   <span class="n">END_VAR</span>
+
+   <span class="n">Counter</span> <span class="o">:=</span> <span class="n">Counter</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
+</div>
+<p>Programs are similar to classes in object-oriented languages: they bundle
 data (variables) with behavior (statements). Unlike classes, programs are
 not instantiated with <code class="code docutils literal notranslate"><span class="pre">new</span></code> — they are instantiated by a
 <code class="code docutils literal notranslate"><span class="pre">CONFIGURATION</span></code> (see below).</p>
@@ -736,7 +752,30 @@ resources and represents a complete deployable unit:</p>
 <section id="putting-it-all-together">
 <h2>Putting It All Together<a class="headerlink" href="#putting-it-all-together" title="Link to this heading">¶</a></h2>
 <p>Here is a complete, minimal application showing all the layers:</p>
-<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBDb3VudGVyIDogSU5UIDo9IDA7CiAgIEVORF9WQVIKCiAgIENvdW50ZXIgOj0gQ291bnRlciArIDE7CgpFTkRfUFJPR1JBTQoKQ09ORklHVVJBVElPTiBjb25maWcKICAgUkVTT1VSQ0UgcmVzIE9OIFBMQwogICAgICBUQVNLIHBsY190YXNrKElOVEVSVkFMIDo9IFQjMTAwbXMsIFBSSU9SSVRZIDo9IDEpOwogICAgICBQUk9HUkFNIHBsY190YXNrX2luc3RhbmNlIFdJVEggcGxjX3Rhc2sgOiBtYWluOwogICBFTkRfUkVTT1VSQ0UKRU5EX0NPTkZJR1VSQVRJT04%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe><p>Reading from the bottom up:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&code=UFJPR1JBTSBtYWluCiAgIFZBUgogICAgICBDb3VudGVyIDogSU5UIDo9IDA7CiAgIEVORF9WQVIKCiAgIENvdW50ZXIgOj0gQ291bnRlciArIDE7CgpFTkRfUFJPR1JBTQoKQ09ORklHVVJBVElPTiBjb25maWcKICAgUkVTT1VSQ0UgcmVzIE9OIFBMQwogICAgICBUQVNLIHBsY190YXNrKElOVEVSVkFMIDo9IFQjMTAwbXMsIFBSSU9SSVRZIDo9IDEpOwogICAgICBQUk9HUkFNIHBsY190YXNrX2luc3RhbmNlIFdJVEggcGxjX3Rhc2sgOiBtYWluOwogICBFTkRfUkVTT1VSQ0UKRU5EX0NPTkZJR1VSQVRJT04%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">PROGRAM</span> <span class="n">main</span>
+   <span class="n">VAR</span>
+      <span class="n">Counter</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span>
+   <span class="n">END_VAR</span>
+
+   <span class="n">Counter</span> <span class="o">:=</span> <span class="n">Counter</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+
+<span class="n">END_PROGRAM</span>
+
+<span class="n">CONFIGURATION</span> <span class="n">config</span>
+   <span class="n">RESOURCE</span> <span class="n">res</span> <span class="n">ON</span> <span class="n">PLC</span>
+      <span class="n">TASK</span> <span class="n">plc_task</span><span class="p">(</span><span class="n">INTERVAL</span> <span class="o">:=</span> <span class="n">T</span><span class="c1">#100ms, PRIORITY := 1);</span>
+      <span class="n">PROGRAM</span> <span class="n">plc_task_instance</span> <span class="n">WITH</span> <span class="n">plc_task</span> <span class="p">:</span> <span class="n">main</span><span class="p">;</span>
+   <span class="n">END_RESOURCE</span>
+<span class="n">END_CONFIGURATION</span>
+</pre></div>
+</div>
+</div>
+</div>
+<p>Reading from the bottom up:</p>
 <ol class="arabic simple">
 <li><p>The <strong>configuration</strong> named <code class="docutils literal notranslate"><span class="pre">config</span></code> defines one resource.</p></li>
 <li><p>The <strong>resource</strong> named <code class="docutils literal notranslate"><span class="pre">res</span></code> defines one task and one program instance.</p></li>

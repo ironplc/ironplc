@@ -20,7 +20,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=638de70a" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=5d031554" />
     
     
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.211.0">
+<meta name="ironplc-version" content="0.212.0">
 </head>
   <body>
     
@@ -672,6 +672,11 @@ mismatches such as real to integer or narrowing conversions.</p>
 <p>To fix this error, use an explicit type conversion:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">result</span> <span class="o">:=</span> <span class="n">REAL_TO_INT</span><span class="p">(</span><span class="n">GET_VALUE</span><span class="p">(</span><span class="n">x</span><span class="p">));</span>
 </pre></div>
+</div>
+<div class="tip admonition">
+<p class="admonition-title">Think IronPLC is wrong about this?</p>
+<p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20P4027%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
+with a small sample that demonstrates the problem.</p>
 </div>
 </section>
 </section>

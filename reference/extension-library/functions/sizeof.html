@@ -20,7 +20,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=638de70a" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=5d031554" />
     
     
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.211.0">
+<meta name="ironplc-version" content="0.212.0">
 </head>
   <body>
     
@@ -714,7 +714,17 @@ about dialects and feature flags.</p>
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&allows=sizeof&code=cyA6PSBTSVpFT0YoeCk7ICAgICAoKiBzID0gMiAqKQpzIDo9IFNJWkVPRihhcnIpOyAgICgqIHMgPSAyMCAqKQ%3D%3D&vars=eCA6IElOVDsgYXJyIDogQVJSQVlbMS4uMTBdIE9GIElOVDsgcyA6IERJTlQ7" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:503px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></section>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&allows=sizeof&code=cyA6PSBTSVpFT0YoeCk7ICAgICAoKiBzID0gMiAqKQpzIDo9IFNJWkVPRihhcnIpOyAgICgqIHMgPSAyMCAqKQ%3D%3D&vars=eCA6IElOVDsgYXJyIDogQVJSQVlbMS4uMTBdIE9GIElOVDsgcyA6IERJTlQ7" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:503px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">s</span> <span class="o">:=</span> <span class="n">SIZEOF</span><span class="p">(</span><span class="n">x</span><span class="p">);</span>     <span class="p">(</span><span class="o">*</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">s</span> <span class="o">:=</span> <span class="n">SIZEOF</span><span class="p">(</span><span class="n">arr</span><span class="p">);</span>   <span class="p">(</span><span class="o">*</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">20</span> <span class="o">*</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">

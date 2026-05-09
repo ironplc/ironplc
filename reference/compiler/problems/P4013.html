@@ -20,7 +20,7 @@
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=638de70a" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/overrides.css?v=5d031554" />
     
     
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.211.0">
+<meta name="ironplc-version" content="0.212.0">
 </head>
   <body>
     
@@ -647,21 +647,111 @@
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P4013:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&code=RlVOQ1RJT05fQkxPQ0sgTXlGdW5jdGlvbgogICAgVkFSCiAgICAgICAgeCA6IElOVDsKICAgIEVORF9WQVIKRU5EX0ZVTkNUSU9OX0JMT0NLCgpGVU5DVElPTl9CTE9DSyBNeUZ1bmN0aW9uICAoKiBFcnJvcjogRHVwbGljYXRlIFBPVSBuYW1lICopCiAgICBWQVIKICAgICAgICB5IDogSU5UOwogICAgRU5EX1ZBUgpFTkRfRlVOQ1RJT05fQkxPQ0sKClBST0dSQU0gbWFpbgogICAgVkFSCiAgICAgICAgZHVtbXkgOiBJTlQ7CiAgICBFTkRfVkFSCkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">MyFunction</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
 <span class="n">END_FUNCTION_BLOCK</span>
 
 <span class="n">FUNCTION_BLOCK</span> <span class="n">MyFunction</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">Duplicate</span> <span class="n">POU</span> <span class="n">name</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">VAR</span>
+        <span class="n">y</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
 <span class="n">END_FUNCTION_BLOCK</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">dummy</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
 </pre></div>
+</div>
+</div>
 </div>
 <p>The function block <code class="docutils literal notranslate"><span class="pre">MyFunction</span></code> is declared twice, which is not allowed.</p>
 <p>To fix this error, ensure all POU names are unique within their scope:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&code=RlVOQ1RJT05fQkxPQ0sgTXlGdW5jdGlvbjEKICAgIFZBUgogICAgICAgIHggOiBJTlQ7CiAgICBFTkRfVkFSCkVORF9GVU5DVElPTl9CTE9DSwoKRlVOQ1RJT05fQkxPQ0sgTXlGdW5jdGlvbjIKICAgIFZBUgogICAgICAgIHkgOiBJTlQ7CiAgICBFTkRfVkFSCkVORF9GVU5DVElPTl9CTE9DSwoKUFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICBkdW1teSA6IElOVDsKICAgIEVORF9WQVIKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">MyFunction1</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
 <span class="n">END_FUNCTION_BLOCK</span>
 
-<span class="n">FUNCTION_BLOCK</span> <span class="n">MyFunction2</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Correct</span><span class="p">:</span> <span class="n">Different</span> <span class="n">name</span> <span class="o">*</span><span class="p">)</span>
+<span class="n">FUNCTION_BLOCK</span> <span class="n">MyFunction2</span>
+    <span class="n">VAR</span>
+        <span class="n">y</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
 <span class="n">END_FUNCTION_BLOCK</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">dummy</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
 </pre></div>
+</div>
+</div>
+</div>
+<p>The conflict is also raised across POU kinds. The following code
+collides a <code class="docutils literal notranslate"><span class="pre">FUNCTION</span></code> with a <code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> of the same name and
+still produces P4013:</p>
+<div class="tab-set docutils">
+<input checked="True" class="tab-input" id="tab-set--2-input--1" name="tab-set--2" type="radio" /><label class="tab-label" for="tab-set--2-input--1">Try it</label><div class="tab-content docutils">
+<iframe src="https://playground.ironplc.com/?embed=true&code=RlVOQ1RJT04gQ29tcHV0ZSA6IElOVAogICAgQ29tcHV0ZSA6PSAwOwpFTkRfRlVOQ1RJT04KCkZVTkNUSU9OX0JMT0NLIENvbXB1dGUgICgqIEVycm9yOiBuYW1lIGNvbGxpZGVzIHdpdGggdGhlIEZVTkNUSU9OIGFib3ZlICopCiAgICBWQVIKICAgICAgICB4IDogSU5UOwogICAgRU5EX1ZBUgpFTkRfRlVOQ1RJT05fQkxPQ0sKClBST0dSQU0gbWFpbgogICAgVkFSCiAgICAgICAgZHVtbXkgOiBJTlQ7CiAgICBFTkRfVkFSCkVORF9QUk9HUkFN" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<input class="tab-input" id="tab-set--2-input--2" name="tab-set--2" type="radio" /><label class="tab-label" for="tab-set--2-input--2">Source</label><div class="tab-content docutils">
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION</span> <span class="n">Compute</span> <span class="p">:</span> <span class="n">INT</span>
+    <span class="n">Compute</span> <span class="o">:=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="n">END_FUNCTION</span>
+
+<span class="n">FUNCTION_BLOCK</span> <span class="n">Compute</span>  <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">name</span> <span class="n">collides</span> <span class="k">with</span> <span class="n">the</span> <span class="n">FUNCTION</span> <span class="n">above</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">VAR</span>
+        <span class="n">x</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_FUNCTION_BLOCK</span>
+
+<span class="n">PROGRAM</span> <span class="n">main</span>
+    <span class="n">VAR</span>
+        <span class="n">dummy</span> <span class="p">:</span> <span class="n">INT</span><span class="p">;</span>
+    <span class="n">END_VAR</span>
+<span class="n">END_PROGRAM</span>
+</pre></div>
+</div>
+</div>
+</div>
+<p>Rename one of the POUs (for example, <code class="docutils literal notranslate"><span class="pre">ComputeResult</span></code> and
+<code class="docutils literal notranslate"><span class="pre">ComputeBlock</span></code>) to resolve the conflict.</p>
+</section>
+<section id="see-also">
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="../../language/pous/index.html"><span class="doc">Program Organization Units</span></a> — POU kinds and declaration syntax</p></li>
+<li><p><a class="reference internal" href="../../language/pous/function.html"><span class="doc">FUNCTION</span></a> — <code class="docutils literal notranslate"><span class="pre">FUNCTION</span></code> declarations</p></li>
+<li><p><a class="reference internal" href="../../language/pous/function-block.html"><span class="doc">FUNCTION_BLOCK</span></a> — <code class="docutils literal notranslate"><span class="pre">FUNCTION_BLOCK</span></code> declarations</p></li>
+<li><p><a class="reference internal" href="P4014.html"><span class="doc">P4014</span></a> — symbol (variable) declaration name duplicated</p></li>
+<li><p><a class="reference internal" href="P4015.html"><span class="doc">P4015</span></a> — user-defined type collides with a standard-library type</p></li>
+<li><p><a class="reference internal" href="P4016.html"><span class="doc">P4016</span></a> — function declaration name duplicated</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p>IEC 61131-3 §2.5</p></li>
+<li><p><a class="reference external" href="https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_f_obj_pou.html">CODESYS: Object: POU</a></p></li>
+<li><p><a class="reference external" href="https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_obj_function_block.html">CODESYS: Object: Function Block</a></p></li>
+<li><p><a class="reference external" href="https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2530268811.html">Beckhoff TwinCAT 3: Object POU</a></p></li>
+<li><p><a class="reference external" href="https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2530279563.html">Beckhoff TwinCAT 3: Object Function block</a></p></li>
+</ul>
+<div class="tip admonition">
+<p class="admonition-title">Think IronPLC is wrong about this?</p>
+<p>If you believe this diagnostic is incorrect, <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=compatibility_gap.md&amp;title=Diagnostic%20P4013%20appears%20incorrect&amp;labels=problem-code-feedback">open an issue on GitHub</a>
+with a small sample that demonstrates the problem.</p>
 </div>
 </section>
 </section>
@@ -731,6 +821,8 @@
             <ul>
 <li><a class="reference internal" href="#">P4013</a><ul>
 <li><a class="reference internal" href="#example">Example</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
+<li><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>
 </ul>
