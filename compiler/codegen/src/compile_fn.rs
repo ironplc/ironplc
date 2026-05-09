@@ -18,7 +18,7 @@ use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 use super::compile::{
     finalize_function, string_region_size, CompileContext, CompiledFunction, CurrentFunctionReturn,
     OpType, OpWidth, Signedness, StringParamInfo, StringReturnInfo, StringVarInfo,
-    UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE, STRING_CHAR_WIDTH,
+    UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{emit_function_local_prologue, resolve_type_name};
@@ -109,7 +109,7 @@ pub(crate) fn compile_user_function(
                     let max_length = resolve_string_max_length(string_init)?;
 
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = string_region_size(max_length);
+                    let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -129,7 +129,7 @@ pub(crate) fn compile_user_function(
                         StringVarInfo {
                             data_offset,
                             max_length,
-                            char_width: STRING_CHAR_WIDTH,
+                            char_width: NARROW_CHAR_WIDTH,
                         },
                     );
                 }
@@ -174,7 +174,7 @@ pub(crate) fn compile_user_function(
                     let max_length = resolve_string_max_length(string_init)?;
 
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = string_region_size(max_length);
+                    let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -194,7 +194,7 @@ pub(crate) fn compile_user_function(
                         StringVarInfo {
                             data_offset,
                             max_length,
-                            char_width: STRING_CHAR_WIDTH,
+                            char_width: NARROW_CHAR_WIDTH,
                         },
                     );
                 }
@@ -232,7 +232,7 @@ pub(crate) fn compile_user_function(
             let max_length = resolve_string_spec_max_length(spec)?;
 
             let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length);
+            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
@@ -247,13 +247,13 @@ pub(crate) fn compile_user_function(
                 StringVarInfo {
                     data_offset,
                     max_length,
-                    char_width: STRING_CHAR_WIDTH,
+                    char_width: NARROW_CHAR_WIDTH,
                 },
             );
             Some(StringReturnInfo {
                 data_offset,
                 max_length,
-                char_width: STRING_CHAR_WIDTH,
+                char_width: NARROW_CHAR_WIDTH,
             })
         }
         FunctionReturnType::Named(_) => {
@@ -533,7 +533,7 @@ pub(crate) fn compile_user_function_block(
                     let max_length = resolve_string_max_length(string_init)?;
 
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = string_region_size(max_length);
+                    let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -553,7 +553,7 @@ pub(crate) fn compile_user_function_block(
                         StringVarInfo {
                             data_offset,
                             max_length,
-                            char_width: STRING_CHAR_WIDTH,
+                            char_width: NARROW_CHAR_WIDTH,
                         },
                     );
                 }

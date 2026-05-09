@@ -120,9 +120,17 @@ impl ContainerBuilder {
         self
     }
 
-    /// Adds a string constant (Latin-1 bytes) to the constant pool.
+    /// Adds a STRING constant (Latin-1 bytes) to the constant pool.
     pub fn add_str_constant(mut self, value: &[u8]) -> Self {
         self.constant_pool.push(ConstEntry::string(value.to_vec()));
+        self
+    }
+
+    /// Adds a WSTRING constant (UTF-16LE bytes) to the constant pool. The
+    /// caller is responsible for providing properly encoded UTF-16LE bytes
+    /// (typically from [`encode_string_literal`] in codegen).
+    pub fn add_wstr_constant(mut self, value: &[u8]) -> Self {
+        self.constant_pool.push(ConstEntry::wstring(value.to_vec()));
         self
     }
 

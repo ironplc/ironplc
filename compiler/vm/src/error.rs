@@ -27,6 +27,14 @@ pub enum Trap {
     UnexpectedEndOfBytecode,
     CallStackOverflow,
     InvalidCmpOp(u8),
+    /// A string opcode encountered an operand whose `char_width` did not
+    /// match the expected encoding. Per ADR-0034 the analyzer rejects
+    /// cross-encoding operations statically; this trap is defense-in-depth
+    /// against compiler bugs or tampered bytecode.
+    EncodingMismatch {
+        expected: u8,
+        actual: u8,
+    },
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -68,6 +76,10 @@ impl fmt::Display for Trap {
             Trap::UnexpectedEndOfBytecode => write!(f, "bytecode ended mid-instruction"),
             Trap::CallStackOverflow => write!(f, "call stack overflow"),
             Trap::InvalidCmpOp(code) => write!(f, "invalid comparison operator code: 0x{code:02X}"),
+            Trap::EncodingMismatch { expected, actual } => write!(
+                f,
+                "string encoding mismatch: expected char_width {expected}, got {actual}"
+            ),
         }
     }
 }
@@ -326,6 +338,44 @@ mod tests {
     #[test]
     fn v_code_when_invalid_cmp_op_then_v9013() {
         assert_eq!(Trap::InvalidCmpOp(0xFF).v_code(), "V9013");
+    }
+
+    #[test]
+    fn trap_display_when_encoding_mismatch_then_includes_widths() {
+        assert_eq!(
+            format!(
+                "{}",
+                Trap::EncodingMismatch {
+                    expected: 1,
+                    actual: 2,
+                }
+            ),
+            "string encoding mismatch: expected char_width 1, got 2"
+        );
+    }
+
+    #[test]
+    fn v_code_when_encoding_mismatch_then_v9014() {
+        assert_eq!(
+            Trap::EncodingMismatch {
+                expected: 1,
+                actual: 2,
+            }
+            .v_code(),
+            "V9014"
+        );
+    }
+
+    #[test]
+    fn exit_code_when_encoding_mismatch_then_3() {
+        assert_eq!(
+            Trap::EncodingMismatch {
+                expected: 1,
+                actual: 2,
+            }
+            .exit_code(),
+            3
+        );
     }
 
     #[test]

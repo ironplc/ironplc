@@ -112,7 +112,10 @@ pub(crate) enum PoolConstant {
     I64(i64),
     F32(f32),
     F64(f64),
-    Str(Vec<u8>),
+    /// A string constant. The associated `char_width` selects [`ConstType::Str`]
+    /// (1) for STRING (Latin-1) or [`ConstType::WStr`] (2) for WSTRING
+    /// (UTF-16LE) when the entry is materialized in the constant pool.
+    Str(Vec<u8>, u8),
 }
 
 /// The IEC 61131-3 default maximum length for STRING (254 characters).
@@ -123,30 +126,49 @@ pub(crate) const DEFAULT_STRING_MAX_LENGTH_U16: u16 = 254;
 pub(crate) struct StringVarInfo {
     /// Byte offset into the data region where this string starts.
     pub(crate) data_offset: u32,
-    /// Maximum number of characters this string can hold.
+    /// Maximum number of code units this string can hold.
     pub(crate) max_length: u16,
-    /// Bytes per character: 1 for STRING, 2 for WSTRING (not yet supported).
-    pub(crate) char_width: u16,
+    /// Bytes per code unit: 1 for STRING (Latin-1), 2 for WSTRING (UTF-16LE).
+    pub(crate) char_width: u8,
 }
 
-/// Bytes per character for STRING. WSTRING (when supported) will use 2.
-pub(crate) const STRING_CHAR_WIDTH: u16 = 1;
+/// Bytes per character for STRING (Latin-1, 1 byte per character).
+pub(crate) const NARROW_CHAR_WIDTH: u8 = 1;
+/// Bytes per code unit for WSTRING (UTF-16LE, 2 bytes per code unit).
+#[allow(dead_code)]
+pub(crate) const WIDE_CHAR_WIDTH: u8 = 2;
 
-/// Total bytes needed in the data region for a STRING value with the given
-/// maximum length: header plus per-character storage.
-pub(crate) fn string_region_size(max_length: u16) -> u32 {
-    STRING_HEADER_BYTES as u32 + (max_length as u32) * (STRING_CHAR_WIDTH as u32)
+/// Total bytes needed in the data region for a STRING/WSTRING value with the
+/// given maximum length (in code units) and `char_width` (1 or 2): header
+/// plus `max_length * char_width` payload bytes.
+pub(crate) fn string_region_size(max_length: u16, char_width: u8) -> u32 {
+    STRING_HEADER_BYTES as u32 + (max_length as u32) * (char_width as u32)
 }
 
 /// Encode a character-string literal into bytes for the constant pool.
 ///
-/// `char_width` selects the encoding: 1 for STRING (Latin-1 per ADR-0016).
-/// WSTRING (`char_width = 2`) is not yet supported and will panic; the
-/// parameter exists so call sites already pass the value.
-pub(crate) fn encode_string_literal(chars: &[char], char_width: u16) -> Vec<u8> {
+/// `char_width` selects the encoding: 1 for STRING (Latin-1 per ADR-0016),
+/// 2 for WSTRING (UTF-16LE per ADR-0016, BMP only — characters above U+FFFF
+/// are out of scope).
+pub(crate) fn encode_string_literal(chars: &[char], char_width: u8) -> Vec<u8> {
     match char_width {
-        STRING_CHAR_WIDTH => chars.iter().map(|&ch| ch as u8).collect(),
-        _ => unreachable!("WSTRING literal encoding is not yet supported"),
+        NARROW_CHAR_WIDTH => chars.iter().map(|&ch| ch as u8).collect(),
+        WIDE_CHAR_WIDTH => {
+            let mut out = Vec::with_capacity(chars.len() * 2);
+            for &ch in chars {
+                let code_unit = ch as u32;
+                // ADR-0016: WSTRING is BMP-only; values above U+FFFF would
+                // require surrogate pairs and are explicitly out of scope.
+                let code_unit_u16 = if code_unit > 0xFFFF {
+                    0xFFFD // U+FFFD REPLACEMENT CHARACTER
+                } else {
+                    code_unit as u16
+                };
+                out.extend_from_slice(&code_unit_u16.to_le_bytes());
+            }
+            out
+        }
+        _ => unreachable!("invalid char_width: {}", char_width),
     }
 }
 
@@ -469,9 +491,16 @@ fn compile_program_with_functions(
     if ctx.data_region_offset > 0 {
         builder = builder.data_region_bytes(ctx.data_region_offset);
         if ctx.num_temp_bufs > 0 {
+            // The temp buffer must fit the largest string the program may
+            // produce, regardless of encoding. Sizing by [`WIDE_CHAR_WIDTH`]
+            // makes it safe for both STRING and WSTRING values up to
+            // `max_string_capacity` code units.
             builder = builder
                 .num_temp_bufs(ctx.num_temp_bufs)
-                .max_temp_buf_bytes(string_region_size(ctx.max_string_capacity));
+                .max_temp_buf_bytes(string_region_size(
+                    ctx.max_string_capacity,
+                    WIDE_CHAR_WIDTH,
+                ));
         }
     }
 
@@ -482,7 +511,13 @@ fn compile_program_with_functions(
             PoolConstant::I64(v) => builder = builder.add_i64_constant(*v),
             PoolConstant::F32(v) => builder = builder.add_f32_constant(*v),
             PoolConstant::F64(v) => builder = builder.add_f64_constant(*v),
-            PoolConstant::Str(v) => builder = builder.add_str_constant(v),
+            PoolConstant::Str(v, char_width) => {
+                builder = match *char_width {
+                    NARROW_CHAR_WIDTH => builder.add_str_constant(v),
+                    WIDE_CHAR_WIDTH => builder.add_wstr_constant(v),
+                    _ => unreachable!("invalid char_width in pool constant"),
+                };
+            }
         }
     }
 
@@ -598,11 +633,10 @@ fn compile_program_with_functions(
 pub(crate) struct StringParamInfo {
     /// Byte offset in the data region where this parameter's string is stored.
     pub(crate) data_offset: u32,
-    /// Maximum number of characters this parameter can hold.
+    /// Maximum number of code units this parameter can hold.
     pub(crate) max_length: u16,
-    /// Bytes per character: 1 for STRING, 2 for WSTRING (not yet supported).
-    #[allow(dead_code)]
-    pub(crate) char_width: u16,
+    /// Bytes per code unit: 1 for STRING (Latin-1), 2 for WSTRING (UTF-16LE).
+    pub(crate) char_width: u8,
 }
 
 /// Metadata for a STRING return value in a user-defined function.
@@ -613,11 +647,10 @@ pub(crate) struct StringParamInfo {
 pub(crate) struct StringReturnInfo {
     /// Byte offset in the data region where the return string is stored.
     pub(crate) data_offset: u32,
-    /// Maximum number of characters the return string can hold.
+    /// Maximum number of code units the return string can hold.
     pub(crate) max_length: u16,
-    /// Bytes per character: 1 for STRING, 2 for WSTRING (not yet supported).
-    #[allow(dead_code)]
-    pub(crate) char_width: u16,
+    /// Bytes per code unit: 1 for STRING (Latin-1), 2 for WSTRING (UTF-16LE).
+    pub(crate) char_width: u8,
 }
 
 /// Metadata for a compiled user-defined function.
@@ -843,17 +876,29 @@ impl CompileContext {
         )
     }
 
-    /// Adds a string constant (raw bytes) to the pool and returns its index.
+    /// Adds a STRING (narrow / Latin-1) constant to the pool and returns its
+    /// index. Equivalent to [`Self::add_str_constant_with_width`] with
+    /// `char_width = NARROW_CHAR_WIDTH`.
     pub(crate) fn add_str_constant(&mut self, value: Vec<u8>) -> u16 {
-        if let Some(i) = self
-            .constants
-            .iter()
-            .position(|c| matches!(c, PoolConstant::Str(v) if v == &value))
-        {
+        self.add_str_constant_with_width(value, NARROW_CHAR_WIDTH)
+    }
+
+    /// Adds a string constant with the given encoding to the pool and returns
+    /// its index. Pool entries are deduplicated by `(bytes, char_width)`, so a
+    /// STRING and a WSTRING that happen to share a byte sequence get separate
+    /// entries.
+    pub(crate) fn add_str_constant_with_width(
+        &mut self,
+        value: Vec<u8>,
+        char_width: u8,
+    ) -> u16 {
+        if let Some(i) = self.constants.iter().position(
+            |c| matches!(c, PoolConstant::Str(v, w) if v == &value && *w == char_width),
+        ) {
             return i as u16;
         }
         let index = self.constants.len() as u16;
-        self.constants.push(PoolConstant::Str(value));
+        self.constants.push(PoolConstant::Str(value, char_width));
         index
     }
 }

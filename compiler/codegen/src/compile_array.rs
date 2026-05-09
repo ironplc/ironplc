@@ -15,7 +15,9 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 
-use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile::{
+    CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, NARROW_CHAR_WIDTH,
+};
 use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
 
@@ -558,7 +560,7 @@ pub(crate) fn register_array_variable(
     let data_offset = ctx.data_region_offset;
     let total_bytes = if is_string {
         // STRING elements: each element is [max_len:u16][cur_len:u16][data:max_len bytes]
-        let element_stride = super::compile::string_region_size(string_max_len);
+        let element_stride = super::compile::string_region_size(string_max_len, NARROW_CHAR_WIDTH);
         total_elements.checked_mul(element_stride).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::NotImplemented,

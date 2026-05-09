@@ -15,7 +15,6 @@ pub(crate) const CHAR_WIDTH_OFFSET: usize = 4;
 /// `char_width` value for STRING (Latin-1, 1 byte per character).
 pub(crate) const NARROW_CHAR_WIDTH: u8 = 1;
 /// `char_width` value for WSTRING (UTF-16LE, 2 bytes per code unit).
-#[allow(dead_code)]
 pub(crate) const WIDE_CHAR_WIDTH: u8 = 2;
 
 /// Metadata for an allocated temp buffer slot.
@@ -28,8 +27,13 @@ pub(crate) struct TempBufferSlot {
     /// units of the slot's encoding.
     pub max_len: u16,
     /// Encoding tag for this slot: 1 for STRING, 2 for WSTRING. Defense-in-
-    /// depth — every string operation cross-checks this against the source's
-    /// header `char_width` and traps on mismatch (ADR-0034).
+    /// depth — every string operation cross-checks the source's header
+    /// `char_width` against the consumer's expected encoding and traps on
+    /// mismatch (ADR-0034). The runtime check reads the encoding tag from
+    /// the temp buffer's header bytes (written by [`Self::alloc`] via
+    /// [`write_string_header`]); this field is the per-slot copy of the same
+    /// tag, kept for parity with the three runtime tag sites described in
+    /// ADR-0034.
     #[allow(dead_code)]
     pub char_width: u8,
 }
@@ -145,9 +149,20 @@ pub(crate) fn str_read_cur_len(buf: &[u8], offset: usize) -> u16 {
 }
 
 /// Read char_width from a string header at `offset` in `buf`.
-#[allow(dead_code)]
 pub(crate) fn str_read_char_width(buf: &[u8], offset: usize) -> u8 {
     buf[offset + CHAR_WIDTH_OFFSET]
+}
+
+/// Verify that `actual` matches `expected`; returns `Trap::EncodingMismatch`
+/// otherwise. Used as the runtime safety check in every string opcode that
+/// reads or writes a string operand.
+#[inline]
+pub(crate) fn check_encoding(expected: u8, actual: u8) -> Result<(), Trap> {
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(Trap::EncodingMismatch { expected, actual })
+    }
 }
 
 /// Write a complete string header (max_length, cur_length, char_width) at

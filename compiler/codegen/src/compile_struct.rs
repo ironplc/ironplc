@@ -19,7 +19,9 @@ use ironplc_container::FieldType;
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit, TypeName};
 
-use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo};
+use super::compile::{
+    CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, NARROW_CHAR_WIDTH,
+};
 use super::compile_expr::{compile_constant, emit_truncation};
 use super::compile_setup::emit_zero_const;
 use crate::emit::Emitter;
@@ -520,7 +522,7 @@ pub(crate) fn initialize_struct_fields(
             // STRING field — initialize the header in the data region.
             if let Some(max_length) = field_info.string_max_length {
                 let byte_offset = struct_data_offset + slot_idx.raw() * 8;
-                emitter.emit_str_init(byte_offset, max_length);
+                emitter.emit_str_init(byte_offset, max_length, NARROW_CHAR_WIDTH);
             }
         } else if let IntermediateType::Array {
             element_type,
@@ -533,11 +535,11 @@ pub(crate) fn initialize_struct_fields(
                 let total_elements = array_dims
                     .iter()
                     .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
-                let stride = super::compile::string_region_size(max_length);
+                let stride = super::compile::string_region_size(max_length, NARROW_CHAR_WIDTH);
                 let field_byte_offset = struct_data_offset + slot_idx.raw() * 8;
                 for i in 0..total_elements {
                     let elem_byte_offset = field_byte_offset + i * stride;
-                    emitter.emit_str_init(elem_byte_offset, max_length);
+                    emitter.emit_str_init(elem_byte_offset, max_length, NARROW_CHAR_WIDTH);
                 }
             }
         }
