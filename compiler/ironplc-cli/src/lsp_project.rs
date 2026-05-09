@@ -41,6 +41,35 @@ impl UriKey {
         Self(uri.as_str().to_string())
     }
 
+    /// Build a `UriKey` from a compiler `FileId`.
+    ///
+    /// Returns `None` for `FileId::BuiltIn`, for `FileId::File` with an
+    /// empty path (which the analyzer uses as a placeholder for
+    /// whole-project diagnostics like "no source files"), and when the
+    /// path cannot be turned into a valid URI. Paths from
+    /// `FileId::from_path` use OS-native separators; this normalises
+    /// them and validates the result through `Uri::from_str` before
+    /// returning the key.
+    pub(crate) fn from_file_id(file_id: &FileId) -> Option<Self> {
+        match file_id {
+            FileId::File(path) => {
+                let s = path.as_ref();
+                if s.is_empty() {
+                    return None;
+                }
+                let normalised = s.replace('\\', "/");
+                let uri_str = if normalised.starts_with('/') {
+                    format!("file://{normalised}")
+                } else {
+                    format!("file:///{normalised}")
+                };
+                let parsed = Uri::from_str(&uri_str).ok()?;
+                Some(Self::from_uri(&parsed))
+            }
+            FileId::BuiltIn => None,
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn as_str(&self) -> &str {
         &self.0
@@ -52,37 +81,6 @@ impl UriKey {
     /// succeed.
     pub(crate) fn to_uri(&self) -> Uri {
         Uri::from_str(&self.0).expect("UriKey was constructed from a valid Uri")
-    }
-}
-
-/// Reconstruct a `UriKey` from a `FileId` whose inner path was
-/// produced by `FileId::from_path`. Returns `None` for `FileId::BuiltIn`,
-/// for `FileId::File` with an empty path (which the analyzer uses as
-/// a placeholder for whole-project diagnostics like "no source files"),
-/// or when the path cannot be turned into a valid URI.
-fn file_id_to_uri_key(file_id: &FileId) -> Option<UriKey> {
-    match file_id {
-        FileId::File(path) => {
-            let s = path.as_ref();
-            if s.is_empty() {
-                return None;
-            }
-            // Paths created from `FileId::from_path` use the OS path
-            // separators. On Linux/macOS they begin with `/`; on Windows
-            // they look like `C:/foo`. Normalise so the resulting URI
-            // is `file:///...`.
-            let normalised = s.replace('\\', "/");
-            let uri_str = if normalised.starts_with('/') {
-                format!("file://{normalised}")
-            } else {
-                format!("file:///{normalised}")
-            };
-            // Round-trip through `Uri::from_str` to validate the
-            // string before stashing it in a key.
-            let parsed = Uri::from_str(&uri_str).ok()?;
-            Some(UriKey::from_uri(&parsed))
-        }
-        FileId::BuiltIn => None,
     }
 }
 
@@ -208,7 +206,7 @@ impl LspProject {
             // labels in the same file is published once for that file.
             let mut keys: Vec<UriKey> = Vec::new();
             for file_id in diagnostic.file_ids() {
-                if let Some(key) = file_id_to_uri_key(file_id) {
+                if let Some(key) = UriKey::from_file_id(file_id) {
                     if !keys.contains(&key) {
                         keys.push(key);
                     }
@@ -1559,8 +1557,8 @@ INVALID_SYNTAX"
     }
 
     #[test]
-    fn file_id_to_uri_key_when_round_trip_from_uri_path_then_matches_original() {
-        use super::file_id_to_uri_key;
+    fn uri_key_from_file_id_when_round_trip_from_uri_path_then_matches_original() {
+        use super::UriKey;
         use ironplc_dsl::core::FileId;
 
         let original = Uri::from_str(FAKE_PATH).unwrap();
@@ -1568,7 +1566,7 @@ INVALID_SYNTAX"
         let file_id = FileId::from_path(&path);
 
         let reconstructed =
-            file_id_to_uri_key(&file_id).expect("file id should map back to a URI key");
+            UriKey::from_file_id(&file_id).expect("file id should map back to a URI key");
         assert_eq!(
             reconstructed.as_str(),
             original.as_str(),
@@ -1577,11 +1575,11 @@ INVALID_SYNTAX"
     }
 
     #[test]
-    fn file_id_to_uri_key_when_builtin_then_returns_none() {
-        use super::file_id_to_uri_key;
+    fn uri_key_from_file_id_when_builtin_then_returns_none() {
+        use super::UriKey;
         use ironplc_dsl::core::FileId;
 
-        assert!(file_id_to_uri_key(&FileId::builtin()).is_none());
+        assert!(UriKey::from_file_id(&FileId::builtin()).is_none());
     }
 
     #[test]
