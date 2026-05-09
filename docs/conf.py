@@ -107,7 +107,15 @@ path.append(abspath("./extensions"))
 
 extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/download/v' + version + '/%s',
                       '%s')}
-extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "ironplc_problemcode", "ironplc_playground", "ironplc_flags", "ironplc_redirects"]
+extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "notfound.extension", "ironplc_problemcode", "ironplc_playground", "ironplc_flags", "ironplc_redirects"]
+
+# -- 404 page configuration ----------------------------------------------------
+
+# Use the existing 404.rst as the source for the 404 page and ensure it is
+# emitted at /404.html with absolute URLs to static assets so the page renders
+# correctly when served from any non-existent path.
+notfound_pagename = "404"
+notfound_urls_prefix = "/"
 
 autosectionlabel_prefix_document = True
 
