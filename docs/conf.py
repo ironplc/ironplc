@@ -107,9 +107,76 @@ path.append(abspath("./extensions"))
 
 extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/download/v' + version + '/%s',
                       '%s')}
-extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "ironplc_problemcode", "ironplc_playground", "ironplc_flags"]
+extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "ironplc_problemcode", "ironplc_playground", "ironplc_flags", "ironplc_redirects"]
 
 autosectionlabel_prefix_document = True
+
+# -- Redirects for restructured pages ---------------------------------------
+# Maps previously-indexed URL paths to their current locations so external
+# links (and Google's index) keep working after a restructure. Keys and
+# values are paths relative to the site root. Add an entry whenever a page
+# is moved or renamed.
+_problems_index = "reference/compiler/problems/index.html"
+ironplc_redirects = {
+    # /compiler/* moved under /reference/compiler/*
+    "compiler/index.html": "reference/compiler/index.html",
+    "compiler/basicusage.html": "reference/compiler/overview.html",
+    "compiler/source-formats/plcopen-xml.html": "reference/compiler/source-formats/plcopen-xml.html",
+    "compiler/source-formats/text.html": "reference/compiler/source-formats/text.html",
+    "compiler/source-formats/twincat.html": "reference/compiler/source-formats/twincat.html",
+
+    # P0008 and P0009 still exist under the new path; the rest of the old
+    # P00xx codes were renumbered into the P2xxx/P4xxx scheme with no 1:1
+    # mapping, so they fall back to the problems index.
+    "compiler/problems/P0008.html": "reference/compiler/problems/P0008.html",
+    "compiler/problems/P0009.html": "reference/compiler/problems/P0009.html",
+    "compiler/problems/P0012.html": _problems_index,
+    "compiler/problems/P0013.html": _problems_index,
+    "compiler/problems/P0014.html": _problems_index,
+    "compiler/problems/P0015.html": _problems_index,
+    "compiler/problems/P0017.html": _problems_index,
+    "compiler/problems/P0019.html": _problems_index,
+    "compiler/problems/P0020.html": _problems_index,
+    "compiler/problems/P0021.html": _problems_index,
+    "compiler/problems/P0023.html": _problems_index,
+    "compiler/problems/P0025.html": _problems_index,
+    "compiler/problems/P0027.html": _problems_index,
+    "compiler/problems/P0029.html": _problems_index,
+    "compiler/problems/P0031.html": _problems_index,
+    "compiler/problems/P0032.html": _problems_index,
+    "compiler/problems/P0033.html": _problems_index,
+    "compiler/problems/P0034.html": _problems_index,
+    "compiler/problems/P0035.html": _problems_index,
+    "compiler/problems/P0036.html": _problems_index,
+    "compiler/problems/P0037.html": _problems_index,
+    "compiler/problems/P0040.html": _problems_index,
+    "compiler/problems/P0041.html": _problems_index,
+    "compiler/problems/P0042.html": _problems_index,
+    "compiler/problems/P0043.html": _problems_index,
+    "compiler/problems/P0044.html": _problems_index,
+    "compiler/problems/P0046.html": _problems_index,
+    "compiler/problems/P0048.html": _problems_index,
+
+    # Beremiz and TwinCAT how-to guides moved into per-tool subdirectories.
+    "how-to-guides/check-beremiz-projects.html": "how-to-guides/beremiz/check-beremiz-projects.html",
+    "how-to-guides/check-twincat-projects.html": "how-to-guides/twincat/check-twincat-projects.html",
+
+    # Data types split into elementary/ and derived/ subdirectories.
+    "reference/language/data-types/dint.html": "reference/language/data-types/elementary/dint.html",
+    "reference/language/data-types/int.html": "reference/language/data-types/elementary/int.html",
+    "reference/language/data-types/lreal.html": "reference/language/data-types/elementary/lreal.html",
+    "reference/language/data-types/ltime-of-day.html": "reference/language/data-types/elementary/ltime-of-day.html",
+    "reference/language/data-types/lword.html": "reference/language/data-types/elementary/lword.html",
+    "reference/language/data-types/ulint.html": "reference/language/data-types/elementary/ulint.html",
+    "reference/language/data-types/word.html": "reference/language/data-types/elementary/word.html",
+    "reference/language/data-types/reference-types.html": "reference/language/data-types/derived/reference-types.html",
+    "reference/language/data-types/subrange-types.html": "reference/language/data-types/derived/subrange-types.html",
+
+    # /vscode/* moved under /reference/editor/* (and troubleshooting joined how-to-guides).
+    "vscode/overview.html": "reference/editor/overview.html",
+    "vscode/settings.html": "reference/editor/settings.html",
+    "vscode/troubleshooting.html": "how-to-guides/troubleshoot-editor.html",
+}
 
 # -- Open Graph configuration --------------------------------------------------
 
