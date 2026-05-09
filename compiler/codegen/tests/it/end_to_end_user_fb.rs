@@ -214,3 +214,59 @@ END_PROGRAM
         );
     });
 }
+
+#[test]
+fn end_to_end_when_user_fb_dot_access_write_then_input_set() {
+    // Mirror of the DOUBLER test using dot-access write to set the input
+    // before the bare FB call.
+    let source = "
+FUNCTION_BLOCK DOUBLER
+  VAR_INPUT x : DINT; END_VAR
+  VAR_OUTPUT y : DINT; END_VAR
+  y := x * 2;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    fb : DOUBLER;
+    result : DINT;
+  END_VAR
+  fb.x := 7;
+  fb();
+  result := fb.y;
+END_PROGRAM
+";
+    let (_container, bufs) = parse_and_run(source, &CompilerOptions::default());
+    assert_eq!(
+        bufs.vars[1].as_i32(),
+        14,
+        "result should be 7 * 2 = 14 via dot-access write+call+read"
+    );
+}
+
+#[test]
+fn end_to_end_when_user_fb_dot_access_write_unknown_field_then_diagnostic() {
+    let source = "
+FUNCTION_BLOCK DOUBLER
+  VAR_INPUT x : DINT; END_VAR
+  VAR_OUTPUT y : DINT; END_VAR
+  y := x * 2;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    fb : DOUBLER;
+  END_VAR
+  fb.bogus := 1;
+END_PROGRAM
+";
+    let result = crate::common::try_parse_and_compile(source, &CompilerOptions::default());
+    assert!(result.is_err(), "writing to unknown FB field should fail");
+    let err = result.err().unwrap();
+    let msg = format!("{:?}", err);
+    assert!(
+        msg.contains("Unknown field") && msg.contains("bogus") && msg.contains("fb"),
+        "diagnostic should mention 'Unknown field', 'bogus', and 'fb', got: {}",
+        msg
+    );
+}

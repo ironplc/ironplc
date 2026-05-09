@@ -104,6 +104,40 @@ fn compile_statement(
             if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) =
                 &assignment.target
             {
+                // Function block instance field write (e.g. `timer.IN := TRUE`).
+                // FB instances live in `ctx.fb_instances` rather than
+                // `ctx.struct_vars`, and their fields are stored in the data
+                // region addressed via FB_STORE_PARAM.
+                if let SymbolicVariableKind::Named(named) = structured.record.as_ref() {
+                    if let Some(fb_info) = ctx.fb_instances.get(&named.name) {
+                        let field_name = structured.field.to_string().to_lowercase();
+                        let field_idx = fb_info
+                            .field_indices
+                            .get(&field_name)
+                            .copied()
+                            .ok_or_else(|| {
+                                Diagnostic::problem(
+                                    Problem::NotImplemented,
+                                    Label::span(
+                                        structured.field.span(),
+                                        format!(
+                                            "Unknown field '{}' on function block '{}'",
+                                            structured.field, named.name
+                                        ),
+                                    ),
+                                )
+                            })?;
+                        let var_index = fb_info.var_index;
+                        let type_id = fb_info.type_id;
+                        let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
+                        emitter.emit_fb_load_instance(var_index);
+                        compile_expr(emitter, ctx, &assignment.value, op_type)?;
+                        emitter.emit_fb_store_param(field_idx);
+                        emitter.emit_pop();
+                        return Ok(());
+                    }
+                }
+
                 // STRING fields are composite (multi-slot) and handled via the
                 // data region, so we intercept before resolve_struct_field_access
                 // which only supports single-slot (primitive/enum) fields.
