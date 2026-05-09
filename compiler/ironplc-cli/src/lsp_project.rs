@@ -90,11 +90,17 @@ impl LspProject {
                     .collect());
             }
 
-            return Ok(result
+            // The conversion produces tokens with absolute (line, col) values
+            // stored in `delta_line` / `delta_start`. The LSP protocol requires
+            // these fields to be encoded as deltas relative to the previous
+            // emitted token, so fold over the sequence to convert them.
+            let absolute: Vec<SemanticToken> = result
                 .0
                 .into_iter()
                 .filter_map(|tok| LspTokenType(tok).into())
-                .collect());
+                .collect();
+
+            return Ok(to_deltas(absolute));
         } else {
             error!("URL must be convertible to a file path {}", uri.as_str());
         }
@@ -296,6 +302,35 @@ fn span_to_range(contents: &str, span: &ironplc_dsl::core::SourceSpan) -> lsp_ty
         lsp_types::Position::new(start.line, start.column),
         lsp_types::Position::new(end.line, end.column),
     )
+}
+
+/// Encode an ordered sequence of `SemanticToken`s — whose `delta_line` and
+/// `delta_start` fields hold absolute line/column values — as deltas relative
+/// to the previous emitted token, per the LSP semantic-tokens spec.
+fn to_deltas(absolute: Vec<SemanticToken>) -> Vec<SemanticToken> {
+    let mut prev_line: u32 = 0;
+    let mut prev_col: u32 = 0;
+    let mut out = Vec::with_capacity(absolute.len());
+    for tok in absolute {
+        let line = tok.delta_line;
+        let col = tok.delta_start;
+        let delta_line = line.saturating_sub(prev_line);
+        let delta_start = if delta_line == 0 {
+            col.saturating_sub(prev_col)
+        } else {
+            col
+        };
+        out.push(SemanticToken {
+            delta_line,
+            delta_start,
+            length: tok.length,
+            token_type: tok.token_type,
+            token_modifiers_bitset: tok.token_modifiers_bitset,
+        });
+        prev_line = line;
+        prev_col = col;
+    }
+    out
 }
 
 // Token types that this produces.
@@ -608,6 +643,195 @@ mod test {
 
         let result = proj.tokenize(&url);
         assert!(!result.unwrap().is_empty());
+    }
+
+    #[test]
+    fn tokenize_when_tokens_span_multiple_lines_then_emits_relative_deltas() {
+        // The LSP semantic-tokens protocol requires delta encoding: each
+        // token's `delta_line` / `delta_start` are relative to the previous
+        // emitted token. Reconstructing absolute (line, col) by accumulating
+        // deltas must match the source positions of the keywords.
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        proj.change_text_document(
+            &url,
+            "PROGRAM Main\nVAR\nx : BOOL;\nEND_VAR\nEND_PROGRAM".to_owned(),
+        );
+
+        let tokens = proj.tokenize(&url).expect("expected tokens");
+        assert!(!tokens.is_empty(), "expected tokens, got none");
+
+        // Reconstruct absolute positions from the deltas.
+        let mut line: u32 = 0;
+        let mut col: u32 = 0;
+        let mut absolutes: Vec<(u32, u32)> = Vec::new();
+        for t in &tokens {
+            if t.delta_line == 0 {
+                col += t.delta_start;
+            } else {
+                line += t.delta_line;
+                col = t.delta_start;
+            }
+            absolutes.push((line, col));
+        }
+
+        // PROGRAM is the first token at (0, 0).
+        assert_eq!(absolutes[0], (0, 0), "PROGRAM should be at line 0, col 0");
+        // VAR sits at the start of line 1.
+        assert!(
+            absolutes.contains(&(1, 0)),
+            "expected a token at (1, 0) for VAR, got {absolutes:?}"
+        );
+        // BOOL sits at line 2, col 4.
+        assert!(
+            absolutes.contains(&(2, 4)),
+            "expected a token at (2, 4) for BOOL, got {absolutes:?}"
+        );
+        // END_VAR sits at the start of line 3.
+        assert!(
+            absolutes.contains(&(3, 0)),
+            "expected a token at (3, 0) for END_VAR, got {absolutes:?}"
+        );
+        // END_PROGRAM sits at the start of line 4.
+        assert!(
+            absolutes.contains(&(4, 0)),
+            "expected a token at (4, 0) for END_PROGRAM, got {absolutes:?}"
+        );
+    }
+
+    /// Reconstruct a `(line, col, length, token_type)` table from the
+    /// delta-encoded `SemanticToken` stream and resolve each entry against
+    /// `source` to return the actual substring covered. Used by coverage
+    /// tests below to detect regressions where the LSP overlay would land on
+    /// the wrong characters.
+    fn resolve_lsp_tokens<'a>(
+        source: &'a str,
+        tokens: &[SemanticToken],
+    ) -> Vec<(u32, u32, &'a str, u32)> {
+        let lines: Vec<&str> = source.split('\n').collect();
+        let mut line: u32 = 0;
+        let mut col: u32 = 0;
+        let mut out = Vec::new();
+        for t in tokens {
+            if t.delta_line == 0 {
+                col += t.delta_start;
+            } else {
+                line += t.delta_line;
+                col = t.delta_start;
+            }
+            let row = lines.get(line as usize).copied().unwrap_or("");
+            let start = col as usize;
+            let end = (col + t.length) as usize;
+            // Operate on bytes — the test inputs are ASCII-only.
+            let slice = &row[start.min(row.len())..end.min(row.len())];
+            out.push((line, col, slice, t.token_type));
+        }
+        out
+    }
+
+    #[test]
+    fn tokenize_when_program_with_keywords_types_and_comment_then_each_lsp_token_lands_on_its_source_text(
+    ) {
+        // Coverage: every semantic token emitted to the LSP client must land
+        // exactly on the source characters that the lexer recognised. If the
+        // delta encoding drifts (or column tracking is wrong inside comments),
+        // the substring at the reconstructed position will not match the
+        // expected token text and this assertion will fail.
+        let source = "PROGRAM Demo\nVAR\n  a : BOOL; (* note *) b : INT;\nEND_VAR\nEND_PROGRAM";
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        proj.change_text_document(&url, source.to_owned());
+
+        let tokens = proj.tokenize(&url).expect("expected tokens");
+        let resolved = resolve_lsp_tokens(source, &tokens);
+
+        // Spot-check key tokens that the user reported as broken.
+        let texts: Vec<&str> = resolved.iter().map(|(_, _, s, _)| *s).collect();
+        for expected in [
+            "PROGRAM",
+            "Demo",
+            "VAR",
+            "a",
+            "BOOL",
+            "(* note *)",
+            "b",
+            "INT",
+            "END_VAR",
+            "END_PROGRAM",
+        ] {
+            assert!(
+                texts.contains(&expected),
+                "expected LSP token covering `{expected}`, got tokens: {texts:?}"
+            );
+        }
+
+        // Both BOOL and INT sit on line 2; their reconstructed columns must
+        // match the actual source columns.
+        let bool_pos = resolved
+            .iter()
+            .find(|(_, _, s, _)| *s == "BOOL")
+            .expect("BOOL token");
+        assert_eq!(
+            (bool_pos.0, bool_pos.1),
+            (2, 6),
+            "BOOL should be at line 2 col 6"
+        );
+        let int_pos = resolved
+            .iter()
+            .find(|(_, _, s, _)| *s == "INT")
+            .expect("INT token");
+        // After the inline block comment, the next BOOL/INT must still report
+        // the correct column — this is the regression that produced the
+        // user's "trip"/"ain Mot" mis-coloring.
+        assert_eq!(
+            (int_pos.0, int_pos.1),
+            (2, 27),
+            "INT should be at line 2 col 27"
+        );
+
+        // Both BOOL and INT must be tagged as the KEYWORD token type so that
+        // VS Code applies the same semantic-token color to every primitive
+        // type. (The reported "BOOL in three colors" bug was actually the
+        // semantic overlay landing on different surrounding text — we keep
+        // this assertion to lock in the type-tagging contract.)
+        assert_eq!(bool_pos.3, int_pos.3, "BOOL and INT must share token type");
+    }
+
+    #[test]
+    fn tokenize_when_inline_block_comment_then_following_token_keeps_position() {
+        // Regression: a single-line block comment used to leave the column
+        // counter at the comment's start, which displaced every subsequent
+        // semantic token in the LSP overlay and caused parts of comment text
+        // to lose their `comment.block.st` styling.
+        let mut proj = new_empty_project();
+        let url = Uri::from_str(FAKE_PATH).unwrap();
+        proj.change_text_document(
+            &url,
+            "VAR\n  a : BOOL; (* note *) b : BOOL;\nEND_VAR".to_owned(),
+        );
+
+        let tokens = proj.tokenize(&url).expect("expected tokens");
+        // Reconstruct absolute positions and the keyword index of each token.
+        let mut line: u32 = 0;
+        let mut col: u32 = 0;
+        let mut bool_positions: Vec<(u32, u32)> = Vec::new();
+        for t in &tokens {
+            if t.delta_line == 0 {
+                col += t.delta_start;
+            } else {
+                line += t.delta_line;
+                col = t.delta_start;
+            }
+            // BOOL is length 4. The two BOOLs on line 1 sit at columns 6 and
+            // 27 in the source string.
+            if t.length == 4 && line == 1 {
+                bool_positions.push((line, col));
+            }
+        }
+        assert!(
+            bool_positions.contains(&(1, 6)) && bool_positions.contains(&(1, 27)),
+            "expected BOOLs at (1,6) and (1,27), got {bool_positions:?}"
+        );
     }
 
     #[test]
