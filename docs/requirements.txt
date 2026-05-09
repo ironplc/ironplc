@@ -5,4 +5,5 @@ sphinx-copybutton
 sphinx-design
 sphinx-sitemap
 sphinxext-opengraph
+sphinx-notfound-page
 pytz
