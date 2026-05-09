@@ -2,7 +2,11 @@
 Sphinx extension that provides directives for embedding the IronPLC Playground
 as an iframe on documentation pages and for generating playground links.
 
-``.. playground::`` embeds the code as-is (no scaffolding)::
+``.. playground::`` embeds the code as-is (no scaffolding). The directive
+renders a "Try it" tab (the embedded playground iframe, shown by default)
+and a "Source" tab containing the raw source. Both tabs are emitted into
+the DOM so search engines can index the source — iframes are cross-origin
+and contribute no text to the host page::
 
     .. playground::
 
@@ -13,7 +17,8 @@ as an iframe on documentation pages and for generating playground links.
            x := 42;
        END_PROGRAM
 
-``.. playground-with-program::`` wraps the code in PROGRAM/VAR/END_PROGRAM::
+``.. playground-with-program::`` wraps the code in PROGRAM/VAR/END_PROGRAM
+and renders the same tab pair::
 
     .. playground-with-program::
        :vars: result : DINT;
@@ -21,7 +26,7 @@ as an iframe on documentation pages and for generating playground links.
        result := ABS(-42);
 
 ``.. playground-link::`` generates a hyperlink to open the code in the
-playground (no iframe)::
+playground (no iframe, no tabs)::
 
     .. playground-link::
        :text: Open in Playground
@@ -54,6 +59,12 @@ from urllib.parse import quote
 
 from docutils import nodes
 from docutils.parsers.rst import Directive, directives
+
+try:
+    from sphinx_inline_tabs._impl import TabContainer
+    _HAS_INLINE_TABS = True
+except ImportError:
+    _HAS_INLINE_TABS = False
 
 PLAYGROUND_URL = "https://playground.ironplc.com/"
 
@@ -158,6 +169,37 @@ def _build_iframe(code, height, scaffold=False, vars_decl="", dialect="", allows
     return nodes.raw("", raw_html, format="html")
 
 
+def _wrap_in_tabs(iframe_node, code):
+    """Wrap an iframe in a "Try it" / "Source" tab pair.
+
+    Both tabs render into the DOM (sphinx-inline-tabs hides the inactive one
+    with CSS), so the source code is crawlable text on the page even though
+    the cross-origin iframe contributes nothing. This prevents thin-page
+    near-duplicate clustering by search engines while keeping the embedded
+    playground as the default UX.
+
+    Falls back to just the iframe if sphinx-inline-tabs is unavailable.
+    """
+    if not _HAS_INLINE_TABS:
+        return [iframe_node]
+
+    try_label = nodes.label("", "", nodes.Text("Try it"))
+    try_content = nodes.container("", is_div=True, classes=["tab-content"])
+    try_content += iframe_node
+    try_tab = TabContainer("", type="tab", new_set=True)
+    try_tab += try_label
+    try_tab += try_content
+
+    src_label = nodes.label("", "", nodes.Text("Source"))
+    src_content = nodes.container("", is_div=True, classes=["tab-content"])
+    src_content += nodes.literal_block(code, code)
+    src_tab = TabContainer("", type="tab", new_set=False)
+    src_tab += src_label
+    src_tab += src_content
+
+    return [try_tab, src_tab]
+
+
 class PlaygroundDirective(Directive):
     has_content = True
     option_spec = {
@@ -172,7 +214,8 @@ class PlaygroundDirective(Directive):
         height = self.options.get("height") or _auto_height(code_lines)
         dialect = self.options.get("dialect", "")
         allows = self.options.get("allows", "")
-        return [_build_iframe(code, height, dialect=dialect, allows=allows)]
+        iframe = _build_iframe(code, height, dialect=dialect, allows=allows)
+        return _wrap_in_tabs(iframe, code)
 
 
 class PlaygroundWithProgramDirective(Directive):
@@ -193,16 +236,15 @@ class PlaygroundWithProgramDirective(Directive):
         height = self.options.get("height") or _auto_height(
             code_lines, scaffold=True, vars_decl=vars_decl
         )
-        return [
-            _build_iframe(
-                code,
-                height,
-                scaffold=True,
-                vars_decl=vars_decl,
-                dialect=dialect,
-                allows=allows,
-            )
-        ]
+        iframe = _build_iframe(
+            code,
+            height,
+            scaffold=True,
+            vars_decl=vars_decl,
+            dialect=dialect,
+            allows=allows,
+        )
+        return _wrap_in_tabs(iframe, code)
 
 
 _DEFAULT_LINK_TEXT = "Try this in the IronPLC Playground"

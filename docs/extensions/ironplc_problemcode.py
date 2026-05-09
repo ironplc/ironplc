@@ -180,8 +180,10 @@ def generate_redirects(app, exception):
 # page. Pages below this threshold get clustered as near-duplicates by search
 # engines (Google reported P4008 as "Duplicate without user-selected canonical"
 # for this reason). Calibrated against the page that triggered the incident
-# (~600 chars) and the expanded version that resolved it (~1900 chars).
-THIN_PAGE_MIN_TEXT_LENGTH = 1000
+# (~600 chars) with a comfortable buffer above it. Pages that use the
+# `.. playground::` directive render the source code into the article body
+# via a "Source" tab, so they typically clear this floor without extra prose.
+THIN_PAGE_MIN_TEXT_LENGTH = 900
 
 ALLOWLIST_FILENAME = 'thin_problem_pages_allowlist.txt'
 
