@@ -6,4 +6,5 @@ sphinx-design
 sphinx-sitemap
 sphinxext-opengraph
 sphinx-notfound-page
+sphinx-llm
 pytz

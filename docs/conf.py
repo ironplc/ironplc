@@ -107,7 +107,7 @@ path.append(abspath("./extensions"))
 
 extlinks = {'download_artifact': ('https://github.com/ironplc/ironplc/releases/download/v' + version + '/%s',
                       '%s')}
-extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "notfound.extension", "ironplc_problemcode", "ironplc_playground", "ironplc_flags", "ironplc_redirects"]
+extensions += ["sphinx_inline_tabs", "sphinx.ext.extlinks", "sphinx.ext.autosectionlabel", "sphinx_copybutton", "notfound.extension", "ironplc_problemcode", "ironplc_playground", "ironplc_flags", "ironplc_redirects", "sphinx_llm.txt"]
 
 # -- 404 page configuration ----------------------------------------------------
 
@@ -185,6 +185,18 @@ ironplc_redirects = {
     "vscode/settings.html": "reference/editor/settings.html",
     "vscode/troubleshooting.html": "how-to-guides/troubleshoot-editor.html",
 }
+
+# -- LLM-friendly content configuration ---------------------------------------
+# sphinx-llm builds Markdown copies of every HTML page (foo.html.md) plus
+# llms.txt (sitemap) and llms-full.txt (concatenated corpus) at the build
+# output root. markdown_http_base is read by sphinx-llm to render absolute
+# URLs in the llms.txt sitemap.
+markdown_http_base = html_baseurl.rstrip("/")
+llms_txt_description = (
+    "IronPLC is an open-source IEC 61131-3 toolchain: a compiler, runtime, "
+    "Visual Studio Code extension, MCP server, and browser-based playground "
+    "for writing and running Structured Text programs."
+)
 
 # -- Open Graph configuration --------------------------------------------------
 
