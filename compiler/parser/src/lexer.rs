@@ -64,7 +64,7 @@ pub fn tokenize(
                                     col = 0;
                                 }
                                 _ => {
-                                    col += 0;
+                                    col += 1;
                                 }
                             }
                         }
@@ -179,5 +179,29 @@ mod test {
         let mut lex = TokenType::lexer(source);
         let token = lex.next();
         assert!(token.unwrap().is_err());
+    }
+
+    #[test]
+    fn tokenize_when_token_after_inline_comment_then_col_advances_past_comment() {
+        use dsl::core::FileId;
+        let source = "x := 1; (* hi *) y := 2;";
+        let (tokens, diagnostics) = super::tokenize(source, &FileId::default(), 0, 0);
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+
+        let y = tokens
+            .iter()
+            .find(|t| t.text == "y")
+            .expect("expected `y` identifier in tokens");
+        // `y` sits at byte offset 17 in the source, all on line 0. Without the
+        // fix the column counter would still report the column where the
+        // comment started (8) because the comment branch did not advance col.
+        assert_eq!(y.line, 0, "y should be on line 0");
+        assert_eq!(
+            y.col, 17,
+            "y column should reflect characters consumed by the comment"
+        );
     }
 }
