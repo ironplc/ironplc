@@ -60,6 +60,7 @@ reference/compiler/problems/P4004
 reference/compiler/problems/P4005
 reference/compiler/problems/P4006
 reference/compiler/problems/P4007
+reference/compiler/problems/P4008
 reference/compiler/problems/P4009
 reference/compiler/problems/P4011
 reference/compiler/problems/P4014

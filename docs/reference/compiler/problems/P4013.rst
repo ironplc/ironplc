@@ -6,19 +6,6 @@ P4013
 
 This error occurs when a POU (Program Organization Unit) declaration name is duplicated within the same scope.
 
-IEC 61131-3 places all POU types — ``PROGRAM``, ``FUNCTION``, and
-``FUNCTION_BLOCK`` — in a single shared namespace within a project. Two
-POUs cannot share a name even when they are different kinds of POU,
-because a call site references the name without restating the kind. The
-compiler also has no way to choose between two definitions, so the
-duplicate is rejected at parse time rather than later during call
-resolution.
-
-Note that this rule applies across all source files compiled together,
-not only within a single file. Unlike many languages, IEC 61131-3 does
-not support overloading by signature — only one POU may bind to a given
-name.
-
 Example
 -------
 

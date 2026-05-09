@@ -6,20 +6,6 @@ P4016
 
 This error occurs when a function declaration name is duplicated within the same scope.
 
-In IEC 61131-3, every ``FUNCTION`` lives in a single global function
-namespace shared with the standard library. The standard does not
-provide signature-based overloading, so two ``FUNCTION`` declarations
-with the same name are always ambiguous regardless of their parameter
-lists or return types. The compiler reports P4016 at the second
-declaration rather than waiting for a call site to disambiguate, which
-would be impossible.
-
-P4016 is the function-specific counterpart to :doc:`P4013` (which covers
-duplicates among any POU kind, including programs and function blocks).
-It is raised specifically when both declarations are ``FUNCTION``\ s.
-If a user-defined function shadows a standard-library function, the
-compiler instead reports :doc:`P4015`.
-
 Example
 -------
 

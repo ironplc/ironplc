@@ -6,20 +6,6 @@ P4032
 
 This error occurs when a constant name is used in a type parameter (such as a ``STRING`` length or array bound) but the referenced constant does not have an initializer value.
 
-Type parameters are resolved at compile time, so the compiler must know
-the constant's value at the moment it constructs the type. Without an
-initializer the compiler has no value to substitute, and the type
-``STRING[MAX_LEN]`` or ``ARRAY[1..MAX_LEN] OF T`` cannot be sized. P4032
-is therefore raised at the **use site** in the type parameter even when
-the declaration itself would otherwise be tolerated.
-
-P4032 is closely related to but distinct from :doc:`P4008`: P4008 is
-emitted at the constant's declaration when ``CONSTANT`` is missing an
-initializer, while P4032 is emitted where such a constant is referenced
-inside a type parameter. A program may see both errors for the same
-constant — one at the declaration and one at every use site that
-requires a known value.
-
 Example
 -------
 
@@ -70,6 +56,6 @@ See Also
 - :doc:`/reference/language/variables/initial-values` — initializer syntax
 - :doc:`/reference/language/data-types/elementary/string` — ``STRING`` length parameter
 - :doc:`/reference/language/data-types/derived/array-types` — array bound expressions
-- :doc:`P4008` — ``CONSTANT`` variable missing an initializer (declaration site)
+- :doc:`P4008` — ``CONSTANT`` variable missing an initializer
 - :doc:`P4030` — constant referenced in a type parameter is not defined
 - :doc:`P4031` — constant referenced in a type parameter is not an integer type

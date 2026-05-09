@@ -6,16 +6,6 @@ P4031
 
 This error occurs when a constant name is used in a type parameter (such as a ``STRING`` length or array bound) but the referenced constant is not an integer type.
 
-Type parameters are evaluated by the compiler when it resolves a type —
-``STRING[N]`` reserves ``N`` characters of storage, and
-``ARRAY[lo..hi] OF T`` reserves ``hi - lo + 1`` elements. Both forms
-require a whole-number value because storage and indexing operate on
-discrete slots. ``REAL`` and ``LREAL`` constants are rejected even when
-they happen to hold an integral value (e.g. ``3.0``), because the
-language treats them as approximate floating-point values rather than
-exact counts. ``BOOL``, ``STRING``, ``TIME``, and other non-numeric
-types are rejected for the same reason.
-
 Permitted constant types in this position include ``SINT``, ``INT``,
 ``DINT``, ``LINT``, and the unsigned ``USINT``, ``UINT``, ``UDINT``, and
 ``ULINT``.
