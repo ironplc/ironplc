@@ -59,3 +59,12 @@ See Also
 - :doc:`P4008` — ``CONSTANT`` variable missing an initializer
 - :doc:`P4030` — constant referenced in a type parameter is not defined
 - :doc:`P4031` — constant referenced in a type parameter is not an integer type
+
+References
+----------
+
+* IEC 61131-3 §2.4.3
+* `CODESYS: Variable: CONSTANT <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_vartypes_constant.html>`_
+* `CODESYS: Variable Initialization <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_variables_initialization.html>`_
+* `Beckhoff TwinCAT 3: Constant variables - CONSTANT <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/11982693643.html>`_
+* `Beckhoff TwinCAT 3: Declaring variables <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2526557579.html>`_

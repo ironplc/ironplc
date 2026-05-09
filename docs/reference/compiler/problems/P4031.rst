@@ -61,3 +61,12 @@ See Also
 - :doc:`/reference/language/data-types/derived/array-types` — array bound expressions
 - :doc:`P4030` — constant referenced in a type parameter is not defined
 - :doc:`P4032` — constant referenced in a type parameter has no initializer
+
+References
+----------
+
+* IEC 61131-3 §2.3.3
+* `CODESYS: Data Type: STRING <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_datatype_string.html>`_
+* `CODESYS: Data Type: ARRAY OF <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_datatype_array.html>`_
+* `Beckhoff TwinCAT 3: STRING <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529410443.html>`_
+* `Beckhoff TwinCAT 3: ARRAY <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529464203.html>`_

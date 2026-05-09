@@ -56,3 +56,10 @@ See Also
 - :doc:`P4013` — POU declaration name duplicated (programs, function blocks)
 - :doc:`P4014` — symbol (variable) declaration name duplicated
 - :doc:`P4015` — user-defined type collides with a standard-library type
+
+References
+----------
+
+* IEC 61131-3 §2.5.1
+* `CODESYS: Object: Function <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_obj_function.html>`_
+* `Beckhoff TwinCAT 3: Object Function <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2530284939.html>`_

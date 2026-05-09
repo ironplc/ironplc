@@ -41,3 +41,10 @@ See Also
 - :doc:`P4009` — ``CONSTANT`` qualifier on function block instances
 - :doc:`P4031` — constant referenced in a type parameter is not an integer type
 - :doc:`P4032` — constant referenced in a type parameter has no initializer
+
+References
+----------
+
+* IEC 61131-3 §2.4.3
+* `CODESYS: Variable: CONSTANT <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_vartypes_constant.html>`_
+* `Beckhoff TwinCAT 3: Constant variables - CONSTANT <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/11982693643.html>`_
