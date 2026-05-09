@@ -6,6 +6,19 @@ P4008
 
 This error occurs when a variable is declared as constant but does not define an initial value.
 
+A ``CONSTANT`` declaration tells the compiler that the variable's value
+is fixed and known at compile time. The compiler folds references to the
+constant into the value itself and rejects assignments to it at runtime.
+Because the value can never change after declaration, the only opportunity
+to give the variable a value is at the declaration site — omitting the
+initializer leaves the constant with no defined value, which IEC 61131-3
+does not permit.
+
+This rule applies to every variable section that accepts the ``CONSTANT``
+qualifier, including ``VAR_GLOBAL CONSTANT`` at configuration scope,
+top-level ``VAR_GLOBAL CONSTANT`` (vendor extension), and ``VAR CONSTANT``
+inside a POU.
+
 Example
 -------
 
@@ -27,3 +40,25 @@ To fix this error, provide an initial value for the constant variable:
        ResetCounterValue : INT := 17;  (* Correct: CONSTANT variable has initializer *)
    END_VAR
 
+The same rule applies to constants declared inside a POU. The following
+``VAR CONSTANT`` block also triggers P4008 because ``MaxRetries`` has no
+initializer:
+
+.. code-block::
+
+   FUNCTION_BLOCK Retrier
+   VAR CONSTANT
+       MaxRetries : INT;  (* Error: CONSTANT variable must have initializer *)
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Adding ``:= 3`` to the declaration resolves the error.
+
+See Also
+--------
+
+- :doc:`/reference/language/variables/initial-values` — initializer syntax and semantics
+- :doc:`/reference/language/variables/scope` — variable sections that accept ``CONSTANT``
+- :doc:`P4009` — ``CONSTANT`` qualifier on function block instances
+- :doc:`P4031` — constant referenced in a type parameter is not an integer type
+- :doc:`P4032` — constant referenced in a type parameter has no initializer

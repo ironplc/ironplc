@@ -6,6 +6,20 @@ P4031
 
 This error occurs when a constant name is used in a type parameter (such as a ``STRING`` length or array bound) but the referenced constant is not an integer type.
 
+Type parameters are evaluated by the compiler when it resolves a type —
+``STRING[N]`` reserves ``N`` characters of storage, and
+``ARRAY[lo..hi] OF T`` reserves ``hi - lo + 1`` elements. Both forms
+require a whole-number value because storage and indexing operate on
+discrete slots. ``REAL`` and ``LREAL`` constants are rejected even when
+they happen to hold an integral value (e.g. ``3.0``), because the
+language treats them as approximate floating-point values rather than
+exact counts. ``BOOL``, ``STRING``, ``TIME``, and other non-numeric
+types are rejected for the same reason.
+
+Permitted constant types in this position include ``SINT``, ``INT``,
+``DINT``, ``LINT``, and the unsigned ``USINT``, ``UINT``, ``UDINT``, and
+``ULINT``.
+
 Example
 -------
 
@@ -30,3 +44,30 @@ The constant ``MY_CONST`` is a ``REAL`` type, which cannot be used as a string l
    VAR_GLOBAL CONSTANT
        MY_CONST : INT := 100;
    END_VAR
+
+The same restriction applies to array bounds. The following declaration
+also raises P4031 because the bound is taken from a ``REAL`` constant:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       BUFFER_SIZE : REAL := 16.0;  (* Wrong type for an array bound *)
+   END_VAR
+
+   FUNCTION_BLOCK Buffer
+   VAR
+       data : ARRAY[1..BUFFER_SIZE] OF INT;  (* Error: bound is REAL, not integer *)
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Change ``BUFFER_SIZE`` to an integer type such as ``INT := 16`` to
+resolve the error.
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/index` — elementary integer types accepted here
+- :doc:`/reference/language/data-types/elementary/string` — ``STRING`` length parameter
+- :doc:`/reference/language/data-types/derived/array-types` — array bound expressions
+- :doc:`P4030` — constant referenced in a type parameter is not defined
+- :doc:`P4032` — constant referenced in a type parameter has no initializer

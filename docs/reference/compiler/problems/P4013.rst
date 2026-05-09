@@ -6,6 +6,19 @@ P4013
 
 This error occurs when a POU (Program Organization Unit) declaration name is duplicated within the same scope.
 
+IEC 61131-3 places all POU types — ``PROGRAM``, ``FUNCTION``, and
+``FUNCTION_BLOCK`` — in a single shared namespace within a project. Two
+POUs cannot share a name even when they are different kinds of POU,
+because a call site references the name without restating the kind. The
+compiler also has no way to choose between two definitions, so the
+duplicate is rejected at parse time rather than later during call
+resolution.
+
+Note that this rule applies across all source files compiled together,
+not only within a single file. Unlike many languages, IEC 61131-3 does
+not support overloading by signature — only one POU may bind to a given
+name.
+
 Example
 -------
 
@@ -31,3 +44,27 @@ To fix this error, ensure all POU names are unique within their scope:
    FUNCTION_BLOCK MyFunction2  (* Correct: Different name *)
    END_FUNCTION_BLOCK
 
+The conflict is also raised across POU kinds. The following code
+collides a ``FUNCTION`` with a ``FUNCTION_BLOCK`` of the same name and
+still produces P4013:
+
+.. code-block::
+
+   FUNCTION Compute : INT
+   END_FUNCTION
+
+   FUNCTION_BLOCK Compute  (* Error: name collides with the FUNCTION above *)
+   END_FUNCTION_BLOCK
+
+Rename one of the POUs (for example, ``ComputeResult`` and
+``ComputeBlock``) to resolve the conflict.
+
+See Also
+--------
+
+- :doc:`/reference/language/pous/index` — POU kinds and declaration syntax
+- :doc:`/reference/language/pous/function` — ``FUNCTION`` declarations
+- :doc:`/reference/language/pous/function-block` — ``FUNCTION_BLOCK`` declarations
+- :doc:`P4014` — symbol (variable) declaration name duplicated
+- :doc:`P4015` — user-defined type collides with a standard-library type
+- :doc:`P4016` — function declaration name duplicated

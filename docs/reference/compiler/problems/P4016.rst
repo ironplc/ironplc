@@ -6,6 +6,20 @@ P4016
 
 This error occurs when a function declaration name is duplicated within the same scope.
 
+In IEC 61131-3, every ``FUNCTION`` lives in a single global function
+namespace shared with the standard library. The standard does not
+provide signature-based overloading, so two ``FUNCTION`` declarations
+with the same name are always ambiguous regardless of their parameter
+lists or return types. The compiler reports P4016 at the second
+declaration rather than waiting for a call site to disambiguate, which
+would be impossible.
+
+P4016 is the function-specific counterpart to :doc:`P4013` (which covers
+duplicates among any POU kind, including programs and function blocks).
+It is raised specifically when both declarations are ``FUNCTION``\ s.
+If a user-defined function shadows a standard-library function, the
+compiler instead reports :doc:`P4015`.
+
 Example
 -------
 
@@ -31,3 +45,28 @@ To fix this error, ensure all function names are unique within their scope:
    FUNCTION MyFunction2 : INT  (* Correct: Different name *)
    END_FUNCTION
 
+Note that changing the return type or the parameter list of one of the
+duplicates does **not** resolve the error, because IEC 61131-3 does not
+permit overloading. The two declarations below still produce P4016:
+
+.. code-block::
+
+   FUNCTION Scale : INT
+   VAR_INPUT v : INT; END_VAR
+   END_FUNCTION
+
+   FUNCTION Scale : REAL  (* Error: same name, different signature is still a duplicate *)
+   VAR_INPUT v : REAL; END_VAR
+   END_FUNCTION
+
+Give each function a distinct name (for example, ``ScaleInt`` and
+``ScaleReal``) instead of relying on overloading.
+
+See Also
+--------
+
+- :doc:`/reference/language/pous/function` — ``FUNCTION`` declaration syntax
+- :doc:`/reference/standard-library/functions/index` — names reserved by the standard library
+- :doc:`P4013` — POU declaration name duplicated (programs, function blocks)
+- :doc:`P4014` — symbol (variable) declaration name duplicated
+- :doc:`P4015` — user-defined type collides with a standard-library type
