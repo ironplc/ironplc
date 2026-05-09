@@ -6,6 +6,10 @@ P4031
 
 This error occurs when a constant name is used in a type parameter (such as a ``STRING`` length or array bound) but the referenced constant is not an integer type.
 
+Permitted constant types in this position include ``SINT``, ``INT``,
+``DINT``, ``LINT``, and the unsigned ``USINT``, ``UINT``, ``UDINT``, and
+``ULINT``.
+
 Example
 -------
 
@@ -30,3 +34,39 @@ The constant ``MY_CONST`` is a ``REAL`` type, which cannot be used as a string l
    VAR_GLOBAL CONSTANT
        MY_CONST : INT := 100;
    END_VAR
+
+The same restriction applies to array bounds. The following declaration
+also raises P4031 because the bound is taken from a ``REAL`` constant:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       BUFFER_SIZE : REAL := 16.0;  (* Wrong type for an array bound *)
+   END_VAR
+
+   FUNCTION_BLOCK Buffer
+   VAR
+       data : ARRAY[1..BUFFER_SIZE] OF INT;  (* Error: bound is REAL, not integer *)
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Change ``BUFFER_SIZE`` to an integer type such as ``INT := 16`` to
+resolve the error.
+
+See Also
+--------
+
+- :doc:`/reference/language/data-types/index` — elementary integer types accepted here
+- :doc:`/reference/language/data-types/elementary/string` — ``STRING`` length parameter
+- :doc:`/reference/language/data-types/derived/array-types` — array bound expressions
+- :doc:`P4030` — constant referenced in a type parameter is not defined
+- :doc:`P4032` — constant referenced in a type parameter has no initializer
+
+References
+----------
+
+* IEC 61131-3 §2.3.3
+* `CODESYS: Data Type: STRING <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_datatype_string.html>`_
+* `CODESYS: Data Type: ARRAY OF <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_datatype_array.html>`_
+* `Beckhoff TwinCAT 3: STRING <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529410443.html>`_
+* `Beckhoff TwinCAT 3: ARRAY <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529464203.html>`_

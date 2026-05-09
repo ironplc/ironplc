@@ -1,0 +1,102 @@
+# Allowlist of problem-code pages that currently fall below the minimum article-text
+# length enforced by `check_problem_page_lengths` in ironplc_problemcode.py.
+#
+# Pages with thin content cluster together as near-duplicates in search engines —
+# Google reported P4008 (since fixed) as "Duplicate without user-selected canonical"
+# for exactly this reason. New pages must meet the threshold; entries here are
+# pre-existing documentation debt and should be removed as each page is expanded
+# with a more thorough explanation, additional examples, and "See Also" cross-references.
+#
+# Format: one docname per line (path relative to docs/, no .rst extension).
+# Lines starting with '#' and blank lines are ignored.
+
+reference/compiler/problems/P0001
+reference/compiler/problems/P0002
+reference/compiler/problems/P0003
+reference/compiler/problems/P0004
+reference/compiler/problems/P0005
+reference/compiler/problems/P0010
+reference/compiler/problems/P0011
+reference/compiler/problems/P2001
+reference/compiler/problems/P2002
+reference/compiler/problems/P2003
+reference/compiler/problems/P2004
+reference/compiler/problems/P2006
+reference/compiler/problems/P2007
+reference/compiler/problems/P2008
+reference/compiler/problems/P2009
+reference/compiler/problems/P2010
+reference/compiler/problems/P2011
+reference/compiler/problems/P2012
+reference/compiler/problems/P2013
+reference/compiler/problems/P2014
+reference/compiler/problems/P2015
+reference/compiler/problems/P2016
+reference/compiler/problems/P2017
+reference/compiler/problems/P2019
+reference/compiler/problems/P2020
+reference/compiler/problems/P2021
+reference/compiler/problems/P2022
+reference/compiler/problems/P2023
+reference/compiler/problems/P2024
+reference/compiler/problems/P2025
+reference/compiler/problems/P2026
+reference/compiler/problems/P2027
+reference/compiler/problems/P2028
+reference/compiler/problems/P2029
+reference/compiler/problems/P2030
+reference/compiler/problems/P2031
+reference/compiler/problems/P2032
+reference/compiler/problems/P2033
+reference/compiler/problems/P2034
+reference/compiler/problems/P2035
+reference/compiler/problems/P2036
+reference/compiler/problems/P4002
+reference/compiler/problems/P4005
+reference/compiler/problems/P4006
+reference/compiler/problems/P4007
+reference/compiler/problems/P4009
+reference/compiler/problems/P4014
+reference/compiler/problems/P4018
+reference/compiler/problems/P4019
+reference/compiler/problems/P4020
+reference/compiler/problems/P4021
+reference/compiler/problems/P4022
+reference/compiler/problems/P4024
+reference/compiler/problems/P4026
+reference/compiler/problems/P4027
+reference/compiler/problems/P4029
+reference/compiler/problems/P4030
+reference/compiler/problems/P6003
+reference/compiler/problems/P6007
+reference/compiler/problems/P8001
+reference/compiler/problems/P9001
+reference/compiler/problems/P9002
+reference/compiler/problems/P9998
+reference/compiler/problems/P9999
+reference/editor/problems/E0001
+reference/runtime/problems/V4001
+reference/runtime/problems/V4002
+reference/runtime/problems/V4003
+reference/runtime/problems/V4004
+reference/runtime/problems/V4005
+reference/runtime/problems/V6001
+reference/runtime/problems/V6002
+reference/runtime/problems/V6003
+reference/runtime/problems/V6004
+reference/runtime/problems/V6005
+reference/runtime/problems/V6006
+reference/runtime/problems/V6007
+reference/runtime/problems/V9001
+reference/runtime/problems/V9002
+reference/runtime/problems/V9003
+reference/runtime/problems/V9004
+reference/runtime/problems/V9005
+reference/runtime/problems/V9006
+reference/runtime/problems/V9007
+reference/runtime/problems/V9008
+reference/runtime/problems/V9009
+reference/runtime/problems/V9010
+reference/runtime/problems/V9011
+reference/runtime/problems/V9012
+reference/runtime/problems/V9013

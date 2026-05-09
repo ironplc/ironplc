@@ -30,3 +30,41 @@ The constant ``MAX_LEN`` is declared without a value. To fix this error, provide
    VAR_GLOBAL CONSTANT
        MAX_LEN : INT := 100;
    END_VAR
+
+The same fix applies when the constant is used as an array bound.
+The declaration below triggers P4032 at the ``ARRAY`` declaration
+because ``CAPACITY`` has no value:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       CAPACITY : INT;  (* No initializer *)
+   END_VAR
+
+   FUNCTION_BLOCK Ring
+   VAR
+       slots : ARRAY[1..CAPACITY] OF INT;  (* Error: bound has no value *)
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Adding ``:= 32`` (or any integer literal) to ``CAPACITY`` resolves the
+error and lets the compiler determine the array's size.
+
+See Also
+--------
+
+- :doc:`/reference/language/variables/initial-values` — initializer syntax
+- :doc:`/reference/language/data-types/elementary/string` — ``STRING`` length parameter
+- :doc:`/reference/language/data-types/derived/array-types` — array bound expressions
+- :doc:`P4008` — ``CONSTANT`` variable missing an initializer
+- :doc:`P4030` — constant referenced in a type parameter is not defined
+- :doc:`P4031` — constant referenced in a type parameter is not an integer type
+
+References
+----------
+
+* IEC 61131-3 §2.4.3
+* `CODESYS: Variable: CONSTANT <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_vartypes_constant.html>`_
+* `CODESYS: Variable Initialization <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_variables_initialization.html>`_
+* `Beckhoff TwinCAT 3: Constant variables - CONSTANT <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/11982693643.html>`_
+* `Beckhoff TwinCAT 3: Declaring variables <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2526557579.html>`_

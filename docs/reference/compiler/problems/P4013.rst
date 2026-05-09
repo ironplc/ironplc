@@ -11,23 +11,90 @@ Example
 
 The following code will generate error P4013:
 
-.. code-block::
+.. playground::
 
    FUNCTION_BLOCK MyFunction
+       VAR
+           x : INT;
+       END_VAR
    END_FUNCTION_BLOCK
 
    FUNCTION_BLOCK MyFunction  (* Error: Duplicate POU name *)
+       VAR
+           y : INT;
+       END_VAR
    END_FUNCTION_BLOCK
+
+   PROGRAM main
+       VAR
+           dummy : INT;
+       END_VAR
+   END_PROGRAM
 
 The function block ``MyFunction`` is declared twice, which is not allowed.
 
 To fix this error, ensure all POU names are unique within their scope:
 
-.. code-block::
+.. playground::
 
    FUNCTION_BLOCK MyFunction1
+       VAR
+           x : INT;
+       END_VAR
    END_FUNCTION_BLOCK
 
-   FUNCTION_BLOCK MyFunction2  (* Correct: Different name *)
+   FUNCTION_BLOCK MyFunction2
+       VAR
+           y : INT;
+       END_VAR
    END_FUNCTION_BLOCK
 
+   PROGRAM main
+       VAR
+           dummy : INT;
+       END_VAR
+   END_PROGRAM
+
+The conflict is also raised across POU kinds. The following code
+collides a ``FUNCTION`` with a ``FUNCTION_BLOCK`` of the same name and
+still produces P4013:
+
+.. playground::
+
+   FUNCTION Compute : INT
+       Compute := 0;
+   END_FUNCTION
+
+   FUNCTION_BLOCK Compute  (* Error: name collides with the FUNCTION above *)
+       VAR
+           x : INT;
+       END_VAR
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+       VAR
+           dummy : INT;
+       END_VAR
+   END_PROGRAM
+
+Rename one of the POUs (for example, ``ComputeResult`` and
+``ComputeBlock``) to resolve the conflict.
+
+See Also
+--------
+
+- :doc:`/reference/language/pous/index` — POU kinds and declaration syntax
+- :doc:`/reference/language/pous/function` — ``FUNCTION`` declarations
+- :doc:`/reference/language/pous/function-block` — ``FUNCTION_BLOCK`` declarations
+- :doc:`P4014` — symbol (variable) declaration name duplicated
+- :doc:`P4015` — user-defined type collides with a standard-library type
+- :doc:`P4016` — function declaration name duplicated
+
+References
+----------
+
+* IEC 61131-3 §2.5
+* `CODESYS: Object: POU <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_f_obj_pou.html>`_
+* `CODESYS: Object: Function Block <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_obj_function_block.html>`_
+* `Beckhoff TwinCAT 3: Object POU <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2530268811.html>`_
+* `Beckhoff TwinCAT 3: Object Function block <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2530279563.html>`_
