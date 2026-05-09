@@ -18,7 +18,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::collections::HashSet;
 use std::str::FromStr;
 
-use crate::lsp_project::{LspProject, TOKEN_TYPE_LEGEND};
+use crate::lsp_project::{LspProject, UriKey, TOKEN_TYPE_LEGEND};
 use ironplc_project::disassemble;
 use ironplc_project::FileBackedProject;
 
@@ -137,9 +137,6 @@ fn start_with_connection(
     }
 }
 
-// `lsp_types::Uri` is safe to use as a key — see the comment on
-// `publish_workspace_diagnostics`.
-#[allow(clippy::mutable_key_type)]
 struct LspServer<'a> {
     sender: &'a Sender<Message>,
     project: LspProject,
@@ -147,8 +144,10 @@ struct LspServer<'a> {
     /// `publishDiagnostics`. Tracking these lets the server send an
     /// empty-diagnostics notification when previously-failing files
     /// no longer have errors, so stale squiggles get cleared instead
-    /// of lingering forever.
-    published_uris: HashSet<Uri>,
+    /// of lingering forever. Stored as `UriKey` (a `String` newtype)
+    /// rather than `Uri` so the set is independent of `lsp_types::Uri`'s
+    /// interior `Cell`s.
+    published_uris: HashSet<UriKey>,
 }
 
 impl<'a> LspServer<'a> {
@@ -202,25 +201,22 @@ impl<'a> LspServer<'a> {
     /// this round of analysis); other URIs receive `version: None`,
     /// which the LSP spec permits and signals "out of band" to the
     /// client.
-    // `lsp_types::Uri` wraps `fluent_uri::Uri`, which uses interior
-    // `Cell`s purely for parse-result caching — neither equality nor
-    // hashing reads them, so using `Uri` as a HashMap/HashSet key is
-    // safe even though Clippy can't see that.
-    #[allow(clippy::mutable_key_type)]
     fn publish_workspace_diagnostics(&mut self, edited_uri: &Uri, edited_version: Option<i32>) {
-        let by_uri = self.project.semantic_all();
-        let mut new_published: HashSet<Uri> = HashSet::new();
+        let edited_key = UriKey::from_uri(edited_uri);
+        let by_key = self.project.semantic_all();
+        let mut new_published: HashSet<UriKey> = HashSet::new();
 
-        for (uri, diagnostics) in by_uri {
+        for (key, diagnostics) in by_key {
             if diagnostics.is_empty() {
                 continue;
             }
-            let version = if &uri == edited_uri {
+            let version = if key == edited_key {
                 edited_version
             } else {
                 None
             };
-            new_published.insert(uri.clone());
+            let uri = key.to_uri();
+            new_published.insert(key);
             self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
                 uri,
                 diagnostics,
@@ -230,20 +226,20 @@ impl<'a> LspServer<'a> {
 
         // Clear stale diagnostics: every URI we previously published
         // that did not appear in this round.
-        let stale: Vec<Uri> = self
+        let stale: Vec<UriKey> = self
             .published_uris
             .iter()
-            .filter(|uri| !new_published.contains(*uri))
+            .filter(|key| !new_published.contains(*key))
             .cloned()
             .collect();
-        for uri in stale {
-            let version = if &uri == edited_uri {
+        for key in stale {
+            let version = if key == edited_key {
                 edited_version
             } else {
                 None
             };
             self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
-                uri,
+                uri: key.to_uri(),
                 diagnostics: vec![],
                 version,
             });
@@ -255,7 +251,7 @@ impl<'a> LspServer<'a> {
         // initial "no problems" state for a freshly-opened file and
         // the LSP test harness — which expects one notification per
         // edit — would block.
-        if !new_published.contains(edited_uri) && !self.published_uris.contains(edited_uri) {
+        if !new_published.contains(&edited_key) && !self.published_uris.contains(&edited_key) {
             self.send_notification::<PublishDiagnostics>(PublishDiagnosticsParams {
                 uri: edited_uri.clone(),
                 diagnostics: vec![],
@@ -525,7 +521,7 @@ mod test {
     use std::collections::HashMap;
     use std::str::FromStr;
 
-    use crate::lsp_project::LspProject;
+    use crate::lsp_project::{LspProject, UriKey};
     use ironplc_project::{FileBackedProject, Project};
 
     use super::start_with_connection;
@@ -682,12 +678,11 @@ mod test {
         /// is clearing, so callers know exactly how many to expect.
         /// HashMap iteration order in `semantic_all` is non-deterministic,
         /// so tests must look notifications up by URI rather than position.
-        #[allow(clippy::mutable_key_type)]
-        fn receive_publishes(&mut self, n: usize) -> HashMap<Uri, PublishDiagnosticsParams> {
+        fn receive_publishes(&mut self, n: usize) -> HashMap<UriKey, PublishDiagnosticsParams> {
             let mut out = HashMap::new();
             for _ in 0..n {
                 let p = self.receive_notification::<PublishDiagnosticsParams>();
-                out.insert(p.uri.clone(), p);
+                out.insert(UriKey::from_uri(&p.uri), p);
             }
             out
         }
@@ -1086,7 +1081,6 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::mutable_key_type)]
     fn multi_file_when_two_broken_files_opened_then_publishes_for_each_uri() {
         // Reproduces the user-reported bug: with two files in the
         // workspace, both broken, the LSP must publish diagnostics for
@@ -1096,6 +1090,8 @@ mod test {
 
         let uri_a = Uri::from_str("file:///workspace/a.st").unwrap();
         let uri_b = Uri::from_str("file:///workspace/b.st").unwrap();
+        let key_a = UriKey::from_uri(&uri_a);
+        let key_b = UriKey::from_uri(&uri_b);
 
         // Open file A — broken.
         server.send_notification::<notification::DidChangeTextDocument>(change_doc(
@@ -1105,8 +1101,8 @@ mod test {
         ));
         // After this, only A is in the project so we expect one publish for A.
         let n = server.receive_publishes(1);
-        assert!(n.contains_key(&uri_a));
-        assert!(!n[&uri_a].diagnostics.is_empty());
+        assert!(n.contains_key(&key_a));
+        assert!(!n[&key_a].diagnostics.is_empty());
 
         // Open file B — also broken. Server now re-analyses the
         // workspace and publishes per-file: one for A, one for B.
@@ -1117,28 +1113,27 @@ mod test {
         ));
         let n = server.receive_publishes(2);
         assert!(
-            n.contains_key(&uri_a),
+            n.contains_key(&key_a),
             "expected publish for url_a, got {:?}",
             n.keys().collect::<Vec<_>>()
         );
         assert!(
-            n.contains_key(&uri_b),
+            n.contains_key(&key_b),
             "expected publish for url_b, got {:?}",
             n.keys().collect::<Vec<_>>()
         );
         assert!(
-            !n[&uri_a].diagnostics.is_empty(),
+            !n[&key_a].diagnostics.is_empty(),
             "url_a should still report its errors after url_b is opened"
         );
-        assert!(!n[&uri_b].diagnostics.is_empty());
+        assert!(!n[&key_b].diagnostics.is_empty());
 
         // Version is attached only to the URI we actually edited.
-        assert_eq!(n[&uri_b].version, Some(1));
-        assert!(n[&uri_a].version.is_none());
+        assert_eq!(n[&key_b].version, Some(1));
+        assert!(n[&key_a].version.is_none());
     }
 
     #[test]
-    #[allow(clippy::mutable_key_type)]
     fn multi_file_when_error_fixed_in_second_file_then_clearing_diagnostics_published() {
         // Open A (broken) and B (broken), then fix B. The server must
         // emit a clearing publish (empty diagnostics) for B so the IDE
@@ -1149,6 +1144,8 @@ mod test {
 
         let uri_a = Uri::from_str("file:///workspace/a.st").unwrap();
         let uri_b = Uri::from_str("file:///workspace/b.st").unwrap();
+        let key_a = UriKey::from_uri(&uri_a);
+        let key_b = UriKey::from_uri(&uri_b);
 
         server.send_notification::<notification::DidChangeTextDocument>(change_doc(
             &uri_a,
@@ -1174,18 +1171,17 @@ mod test {
         // Expect one publish for A (still broken) plus one clearing
         // publish for B.
         let n = server.receive_publishes(2);
-        assert!(n.contains_key(&uri_a), "expected publish for url_a");
-        assert!(n.contains_key(&uri_b), "expected clear for url_b");
-        assert!(!n[&uri_a].diagnostics.is_empty());
+        assert!(n.contains_key(&key_a), "expected publish for url_a");
+        assert!(n.contains_key(&key_b), "expected clear for url_b");
+        assert!(!n[&key_a].diagnostics.is_empty());
         assert!(
-            n[&uri_b].diagnostics.is_empty(),
+            n[&key_b].diagnostics.is_empty(),
             "url_b's clear notification must carry an empty diagnostics list, got {:?}",
-            n[&uri_b].diagnostics
+            n[&key_b].diagnostics
         );
     }
 
     #[test]
-    #[allow(clippy::mutable_key_type)]
     fn single_file_when_error_introduced_then_cleared_then_clearing_notification_emitted() {
         // Regression guard for the same-file case: introducing then
         // fixing an error in one file should still produce a clearing
@@ -1194,6 +1190,7 @@ mod test {
         let mut server = TestServer::new(proj);
 
         let uri = Uri::from_str("file:///workspace/only.st").unwrap();
+        let key = UriKey::from_uri(&uri);
 
         // Broken first.
         server.send_notification::<notification::DidChangeTextDocument>(change_doc(
@@ -1202,7 +1199,7 @@ mod test {
             "this is not valid IEC 61131-3 source",
         ));
         let n = server.receive_publishes(1);
-        assert!(!n[&uri].diagnostics.is_empty());
+        assert!(!n[&key].diagnostics.is_empty());
 
         // Fix it.
         server.send_notification::<notification::DidChangeTextDocument>(change_doc(
@@ -1212,17 +1209,16 @@ mod test {
         ));
         let n = server.receive_publishes(1);
         assert!(
-            n[&uri].diagnostics.is_empty(),
+            n[&key].diagnostics.is_empty(),
             "fixing the only file should emit a clear publish, got {:?}",
-            n[&uri].diagnostics
+            n[&key].diagnostics
         );
         // The clear is in response to the edit, so the version should
         // match the edit that produced it.
-        assert_eq!(n[&uri].version, Some(2));
+        assert_eq!(n[&key].version, Some(2));
     }
 
     #[test]
-    #[allow(clippy::mutable_key_type)]
     fn multi_file_when_clean_file_opened_after_broken_file_then_each_publish_targets_its_uri() {
         // After a broken file is open, opening a *clean* second file
         // must not silently inherit or hide the broken one. The clean
@@ -1233,6 +1229,8 @@ mod test {
 
         let broken = Uri::from_str("file:///workspace/broken.st").unwrap();
         let clean = Uri::from_str("file:///workspace/clean.st").unwrap();
+        let broken_key = UriKey::from_uri(&broken);
+        let clean_key = UriKey::from_uri(&clean);
 
         server.send_notification::<notification::DidChangeTextDocument>(change_doc(
             &broken,
@@ -1251,9 +1249,9 @@ mod test {
         // one empty publish for the clean file (so the editor knows
         // the clean file has no problems).
         let n = server.receive_publishes(2);
-        assert!(n.contains_key(&broken));
-        assert!(n.contains_key(&clean));
-        assert!(!n[&broken].diagnostics.is_empty());
-        assert!(n[&clean].diagnostics.is_empty());
+        assert!(n.contains_key(&broken_key));
+        assert!(n.contains_key(&clean_key));
+        assert!(!n[&broken_key].diagnostics.is_empty());
+        assert!(n[&clean_key].diagnostics.is_empty());
     }
 }

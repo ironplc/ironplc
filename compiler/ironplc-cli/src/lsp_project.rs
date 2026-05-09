@@ -24,12 +24,43 @@ fn to_path_buf(uri: &Uri) -> Result<PathBuf, ()> {
     Ok(PathBuf::from(uri.path().as_str()))
 }
 
-/// Reconstruct an LSP `file:` URI from a `FileId` whose inner path was
+/// A hashable, equality-comparable key derived from an LSP `Uri`.
+///
+/// `lsp_types::Uri` wraps `fluent_uri::Uri`, which contains interior
+/// `Cell`s for caching parse results. Although the `Hash` and `Eq`
+/// impls today only read the immutable string content, using such a
+/// type as a `HashMap`/`HashSet` key is brittle: a future change in
+/// the upstream crate could silently break lookups. Convert to this
+/// newtype at the boundary so the collections store nothing more
+/// than the canonical URI string.
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub(crate) struct UriKey(String);
+
+impl UriKey {
+    pub(crate) fn from_uri(uri: &Uri) -> Self {
+        Self(uri.as_str().to_string())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Reconstruct an LSP `Uri` from this key for outbound LSP
+    /// notifications. The key only ever holds a string that was
+    /// previously produced by a valid `Uri`, so parsing must
+    /// succeed.
+    pub(crate) fn to_uri(&self) -> Uri {
+        Uri::from_str(&self.0).expect("UriKey was constructed from a valid Uri")
+    }
+}
+
+/// Reconstruct a `UriKey` from a `FileId` whose inner path was
 /// produced by `FileId::from_path`. Returns `None` for `FileId::BuiltIn`,
 /// for `FileId::File` with an empty path (which the analyzer uses as
 /// a placeholder for whole-project diagnostics like "no source files"),
 /// or when the path cannot be turned into a valid URI.
-fn file_id_to_uri(file_id: &FileId) -> Option<Uri> {
+fn file_id_to_uri_key(file_id: &FileId) -> Option<UriKey> {
     match file_id {
         FileId::File(path) => {
             let s = path.as_ref();
@@ -46,7 +77,10 @@ fn file_id_to_uri(file_id: &FileId) -> Option<Uri> {
             } else {
                 format!("file:///{normalised}")
             };
-            Uri::from_str(&uri_str).ok()
+            // Round-trip through `Uri::from_str` to validate the
+            // string before stashing it in a key.
+            let parsed = Uri::from_str(&uri_str).ok()?;
+            Some(UriKey::from_uri(&parsed))
         }
         FileId::BuiltIn => None,
     }
@@ -60,11 +94,11 @@ pub struct LspProject {
     runner: Option<VmRunner>,
     /// Compiler options used for compilation (cached for runner).
     compiler_options: ironplc_parser::options::CompilerOptions,
-    /// URI of the most recently changed text document. Used as a
+    /// Key for the most recently changed text document. Used as a
     /// fallback so that diagnostics whose `FileId` cannot be mapped
     /// back to a URI (e.g. `BuiltIn`) still surface in the editor
     /// instead of being silently dropped.
-    last_changed_uri: Option<Uri>,
+    last_changed_uri_key: Option<UriKey>,
 }
 
 impl LspProject {
@@ -73,7 +107,7 @@ impl LspProject {
             wrapped: project,
             runner: None,
             compiler_options: ironplc_parser::options::CompilerOptions::default(),
-            last_changed_uri: None,
+            last_changed_uri_key: None,
         }
     }
 
@@ -85,7 +119,7 @@ impl LspProject {
             wrapped: project,
             runner: None,
             compiler_options: options,
-            last_changed_uri: None,
+            last_changed_uri_key: None,
         }
     }
 
@@ -106,7 +140,7 @@ impl LspProject {
         if let Ok(path) = path {
             let file_id = FileId::from_path(&path);
             self.wrapped.change_text_document(&file_id, content);
-            self.last_changed_uri = Some(uri.clone());
+            self.last_changed_uri_key = Some(UriKey::from_uri(uri));
         } else {
             error!("URL must be convertible to a file path {}", uri.as_str());
         }
@@ -146,8 +180,8 @@ impl LspProject {
     }
 
     /// Run semantic analysis on the whole workspace and return all
-    /// resulting diagnostics grouped by the URI that should display
-    /// each one.
+    /// resulting diagnostics grouped by the URI key that should
+    /// display each one.
     ///
     /// Every diagnostic appears under each URI that its primary or
     /// secondary labels reference, so a cross-file diagnostic shows
@@ -159,12 +193,7 @@ impl LspProject {
     /// notifications for every URI in the returned map and for
     /// emitting empty notifications to clear URIs that previously
     /// had diagnostics but no longer do.
-    // `lsp_types::Uri` wraps `fluent_uri::Uri`, which uses interior
-    // `Cell`s purely for parse-result caching — neither equality nor
-    // hashing reads them, so using `Uri` as a HashMap key is safe
-    // even though Clippy can't see that.
-    #[allow(clippy::mutable_key_type)]
-    pub(crate) fn semantic_all(&mut self) -> HashMap<Uri, Vec<lsp_types::Diagnostic>> {
+    pub(crate) fn semantic_all(&mut self) -> HashMap<UriKey, Vec<lsp_types::Diagnostic>> {
         let semantic_result = self.wrapped.semantic();
 
         let diagnostics = match semantic_result {
@@ -172,46 +201,46 @@ impl LspProject {
             Err(diagnostics) => diagnostics,
         };
 
-        let mut by_uri: HashMap<Uri, Vec<lsp_types::Diagnostic>> = HashMap::new();
+        let mut by_key: HashMap<UriKey, Vec<lsp_types::Diagnostic>> = HashMap::new();
         for diagnostic in diagnostics {
-            // Resolve every file id this diagnostic touches into a URI.
+            // Resolve every file id this diagnostic touches into a key.
             // De-duplicate so a diagnostic with primary and secondary
             // labels in the same file is published once for that file.
-            let mut uris: Vec<Uri> = Vec::new();
+            let mut keys: Vec<UriKey> = Vec::new();
             for file_id in diagnostic.file_ids() {
-                if let Some(uri) = file_id_to_uri(file_id) {
-                    if !uris.contains(&uri) {
-                        uris.push(uri);
+                if let Some(key) = file_id_to_uri_key(file_id) {
+                    if !keys.contains(&key) {
+                        keys.push(key);
                     }
                 }
             }
-            if uris.is_empty() {
+            if keys.is_empty() {
                 // No usable URI on the diagnostic itself — fall back to
                 // the last edited document so we never silently drop it.
-                if let Some(fallback) = self.last_changed_uri.clone() {
-                    uris.push(fallback);
+                if let Some(fallback) = self.last_changed_uri_key.clone() {
+                    keys.push(fallback);
                 } else {
                     continue;
                 }
             }
 
             let mapped = map_diagnostic(diagnostic, self.wrapped.as_ref());
-            for uri in uris {
-                by_uri.entry(uri).or_default().push(mapped.clone());
+            for key in keys {
+                by_key.entry(key).or_default().push(mapped.clone());
             }
         }
 
-        by_uri
+        by_key
     }
 
     /// Run semantic analysis and return only the diagnostics that
     /// should be shown for `uri`. Retained as a thin wrapper over
     /// `semantic_all` for tests and callers that only need a single
     /// file's diagnostics.
-    #[allow(dead_code, clippy::mutable_key_type)]
+    #[allow(dead_code)]
     pub(crate) fn semantic(&mut self, uri: &Uri) -> Vec<lsp_types::Diagnostic> {
-        let mut by_uri = self.semantic_all();
-        by_uri.remove(uri).unwrap_or_default()
+        let mut by_key = self.semantic_all();
+        by_key.remove(&UriKey::from_uri(uri)).unwrap_or_default()
     }
 
     /// Returns the semantic context from the last successful analysis.
@@ -1451,7 +1480,6 @@ INVALID_SYNTAX"
     static FAKE_PATH_2: &str = "file:///localhost/second_steps.st";
 
     #[test]
-    #[allow(clippy::mutable_key_type)]
     fn semantic_all_when_no_errors_then_returns_empty_map() {
         let mut proj = new_empty_project();
         let url = Uri::from_str(FAKE_PATH).unwrap();
@@ -1474,11 +1502,14 @@ INVALID_SYNTAX"
     }
 
     #[test]
-    #[allow(clippy::mutable_key_type)]
     fn semantic_all_when_two_files_each_have_errors_then_returns_diagnostics_for_each_uri() {
+        use super::UriKey;
+
         let mut proj = new_empty_project();
         let url_a = Uri::from_str(FAKE_PATH).unwrap();
         let url_b = Uri::from_str(FAKE_PATH_2).unwrap();
+        let key_a = UriKey::from_uri(&url_a);
+        let key_b = UriKey::from_uri(&url_b);
 
         // Both files contain unparseable garbage so each produces its
         // own parse-time diagnostics and the analyzer should attribute
@@ -1486,20 +1517,20 @@ INVALID_SYNTAX"
         proj.change_text_document(&url_a, "this is not valid IEC 61131-3".to_owned());
         proj.change_text_document(&url_b, "neither is this".to_owned());
 
-        let by_uri = proj.semantic_all();
+        let by_key = proj.semantic_all();
 
         assert!(
-            by_uri.contains_key(&url_a),
+            by_key.contains_key(&key_a),
             "expected diagnostics for {url_a:?}, got keys {:?}",
-            by_uri.keys().collect::<Vec<_>>()
+            by_key.keys().collect::<Vec<_>>()
         );
         assert!(
-            by_uri.contains_key(&url_b),
+            by_key.contains_key(&key_b),
             "expected diagnostics for {url_b:?}, got keys {:?}",
-            by_uri.keys().collect::<Vec<_>>()
+            by_key.keys().collect::<Vec<_>>()
         );
-        assert!(!by_uri[&url_a].is_empty());
-        assert!(!by_uri[&url_b].is_empty());
+        assert!(!by_key[&key_a].is_empty());
+        assert!(!by_key[&key_b].is_empty());
     }
 
     #[test]
@@ -1528,27 +1559,38 @@ INVALID_SYNTAX"
     }
 
     #[test]
-    fn file_id_to_uri_when_round_trip_from_uri_path_then_matches_original() {
-        use super::file_id_to_uri;
+    fn file_id_to_uri_key_when_round_trip_from_uri_path_then_matches_original() {
+        use super::file_id_to_uri_key;
         use ironplc_dsl::core::FileId;
 
         let original = Uri::from_str(FAKE_PATH).unwrap();
         let path = std::path::PathBuf::from(original.path().as_str());
         let file_id = FileId::from_path(&path);
 
-        let reconstructed = file_id_to_uri(&file_id).expect("file id should map back to a URI");
+        let reconstructed =
+            file_id_to_uri_key(&file_id).expect("file id should map back to a URI key");
         assert_eq!(
             reconstructed.as_str(),
             original.as_str(),
-            "expected URI round-trip via FileId to be lossless"
+            "expected URI key round-trip via FileId to match the original URI string"
         );
     }
 
     #[test]
-    fn file_id_to_uri_when_builtin_then_returns_none() {
-        use super::file_id_to_uri;
+    fn file_id_to_uri_key_when_builtin_then_returns_none() {
+        use super::file_id_to_uri_key;
         use ironplc_dsl::core::FileId;
 
-        assert!(file_id_to_uri(&FileId::builtin()).is_none());
+        assert!(file_id_to_uri_key(&FileId::builtin()).is_none());
+    }
+
+    #[test]
+    fn uri_key_when_to_uri_then_round_trips_back_to_original() {
+        use super::UriKey;
+
+        let original = Uri::from_str(FAKE_PATH).unwrap();
+        let key = UriKey::from_uri(&original);
+        let back = key.to_uri();
+        assert_eq!(back.as_str(), original.as_str());
     }
 }
