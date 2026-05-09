@@ -20,3 +20,11 @@
 .ironplc-playground {
     margin: 1rem 0;
 }
+
+/* The homepage uses an image substitution as its H1 title. Sphinx still
+   appends a headerlink (¶) to that heading, which Furo shows persistently
+   on touch devices (no hover) and which wraps under the image, producing
+   stray whitespace. Hide the anchor when the H1 is image-only. */
+h1:has(> img) > a.headerlink {
+    display: none;
+}
