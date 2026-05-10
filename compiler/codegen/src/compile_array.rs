@@ -31,9 +31,13 @@ pub(crate) struct ArraySpec {
     pub element_type_name: Id,
     /// Whether each element is a REF_TO the named type.
     pub ref_to: bool,
-    /// For STRING arrays, the maximum string length per element.
-    /// `None` for non-string element types.
+    /// For STRING/WSTRING arrays, the maximum string length per element (in
+    /// code units). `None` for non-string element types.
     pub string_max_len: Option<u16>,
+    /// For STRING/WSTRING arrays, the per-code-unit byte width of each
+    /// element: 1 for STRING, 2 for WSTRING. `None` for non-string element
+    /// types.
+    pub string_char_width: Option<u8>,
 }
 
 /// Metadata for a single dimension of an array, used for index computation.
@@ -352,23 +356,31 @@ pub(crate) fn array_spec_from_inline(
             Ok((lower, upper))
         })
         .collect::<Result<Vec<_>, Diagnostic>>()?;
-    let string_max_len = match &subranges.type_name {
-        ironplc_dsl::common::ArrayElementType::String(spec)
-        | ironplc_dsl::common::ArrayElementType::WString(spec) => {
+    let (string_max_len, string_char_width) = match &subranges.type_name {
+        ironplc_dsl::common::ArrayElementType::String(spec) => {
             let len = spec
                 .length
                 .as_ref()
                 .and_then(|l| l.as_integer().map(|i| i.value as u16))
                 .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
-            Some(len)
+            (Some(len), Some(NARROW_CHAR_WIDTH))
         }
-        _ => None,
+        ironplc_dsl::common::ArrayElementType::WString(spec) => {
+            let len = spec
+                .length
+                .as_ref()
+                .and_then(|l| l.as_integer().map(|i| i.value as u16))
+                .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
+            (Some(len), Some(super::compile::WIDE_CHAR_WIDTH))
+        }
+        _ => (None, None),
     };
     Ok(ArraySpec {
         dimensions,
         element_type_name: Id::from(&subranges.type_name.to_type_name().to_string()),
         ref_to: subranges.ref_to,
         string_max_len,
+        string_char_width,
     })
 }
 
@@ -385,20 +397,24 @@ pub(crate) fn array_spec_from_named(
         element_type
     };
     let element_type_name = intermediate_type_to_name(inner_type)?;
-    let string_max_len = match inner_type {
-        IntermediateType::String { max_len } => {
+    let (string_max_len, string_char_width) = match inner_type {
+        IntermediateType::String {
+            max_len,
+            char_width,
+        } => {
             let len = max_len
                 .map(|v| v as u16)
                 .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
-            Some(len)
+            (Some(len), Some(*char_width))
         }
-        _ => None,
+        _ => (None, None),
     };
     Ok(ArraySpec {
         dimensions: dims,
         element_type_name,
         ref_to,
         string_max_len,
+        string_char_width,
     })
 }
 
@@ -496,6 +512,7 @@ pub(crate) fn register_array_variable(
 ) -> Result<(u8, String), Diagnostic> {
     let is_string = spec.string_max_len.is_some();
     let string_max_len = spec.string_max_len.unwrap_or(0);
+    let string_char_width = spec.string_char_width.unwrap_or(NARROW_CHAR_WIDTH);
 
     // 1. Resolve element type
     let element_vti = if spec.ref_to {
@@ -559,8 +576,10 @@ pub(crate) fn register_array_variable(
     // 5. Allocate data region space
     let data_offset = ctx.data_region_offset;
     let total_bytes = if is_string {
-        // STRING elements: each element is [max_len:u16][cur_len:u16][data:max_len bytes]
-        let element_stride = super::compile::string_region_size(string_max_len, NARROW_CHAR_WIDTH);
+        // STRING/WSTRING elements: each element is the per-string header plus
+        // `max_len * char_width` bytes of payload (ADR-0035).
+        let element_stride =
+            super::compile::string_region_size(string_max_len, string_char_width);
         total_elements.checked_mul(element_stride).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::NotImplemented,
@@ -588,9 +607,17 @@ pub(crate) fn register_array_variable(
         ));
     }
 
-    // 7. Register descriptor in the container and get its index
+    // 7. Register descriptor in the container and get its index. The element
+    // type byte distinguishes STRING (FieldType::String) from WSTRING
+    // (FieldType::WString); the VM derives `char_width` from this byte at
+    // STR_INIT_ARRAY / STR_LOAD_ARRAY_ELEM / STR_STORE_ARRAY_ELEM.
     let (element_type_byte, element_extra) = if is_string {
-        (ironplc_container::FieldType::String as u8, string_max_len)
+        let field_type = if string_char_width == super::compile::WIDE_CHAR_WIDTH {
+            ironplc_container::FieldType::WString
+        } else {
+            ironplc_container::FieldType::String
+        };
+        (field_type as u8, string_max_len)
     } else {
         (var_type_info_to_type_byte(&element_vti), 0)
     };

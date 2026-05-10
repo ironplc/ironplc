@@ -16,9 +16,10 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
-    finalize_function, string_region_size, CompileContext, CompiledFunction, CurrentFunctionReturn,
-    OpType, OpWidth, Signedness, StringParamInfo, StringReturnInfo, StringVarInfo,
-    UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
+    char_width_for_string_type, finalize_function, string_region_size, CompileContext,
+    CompiledFunction, CurrentFunctionReturn, OpType, OpWidth, Signedness, StringParamInfo,
+    StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{emit_function_local_prologue, resolve_type_name};
@@ -107,9 +108,10 @@ pub(crate) fn compile_user_function(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
+                    let char_width = char_width_for_string_type(&string_init.width);
 
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
+                    let total_bytes = string_region_size(max_length, char_width);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -129,7 +131,7 @@ pub(crate) fn compile_user_function(
                         StringVarInfo {
                             data_offset,
                             max_length,
-                            char_width: NARROW_CHAR_WIDTH,
+                            char_width,
                         },
                     );
                 }
@@ -172,9 +174,10 @@ pub(crate) fn compile_user_function(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
+                    let char_width = char_width_for_string_type(&string_init.width);
 
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
+                    let total_bytes = string_region_size(max_length, char_width);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -194,7 +197,7 @@ pub(crate) fn compile_user_function(
                         StringVarInfo {
                             data_offset,
                             max_length,
-                            char_width: NARROW_CHAR_WIDTH,
+                            char_width,
                         },
                     );
                 }
@@ -230,9 +233,13 @@ pub(crate) fn compile_user_function(
     let return_string_info = match &func_decl.return_type {
         FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
             let max_length = resolve_string_spec_max_length(spec)?;
+            let char_width = match &func_decl.return_type {
+                FunctionReturnType::WString(_) => WIDE_CHAR_WIDTH,
+                _ => NARROW_CHAR_WIDTH,
+            };
 
             let data_offset = ctx.data_region_offset;
-            let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
+            let total_bytes = string_region_size(max_length, char_width);
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
@@ -247,13 +254,13 @@ pub(crate) fn compile_user_function(
                 StringVarInfo {
                     data_offset,
                     max_length,
-                    char_width: NARROW_CHAR_WIDTH,
+                    char_width,
                 },
             );
             Some(StringReturnInfo {
                 data_offset,
                 max_length,
-                char_width: NARROW_CHAR_WIDTH,
+                char_width,
             })
         }
         FunctionReturnType::Named(_) => {
@@ -531,9 +538,10 @@ pub(crate) fn compile_user_function_block(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
+                    let char_width = char_width_for_string_type(&string_init.width);
 
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = string_region_size(max_length, NARROW_CHAR_WIDTH);
+                    let total_bytes = string_region_size(max_length, char_width);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -553,7 +561,7 @@ pub(crate) fn compile_user_function_block(
                         StringVarInfo {
                             data_offset,
                             max_length,
-                            char_width: NARROW_CHAR_WIDTH,
+                            char_width,
                         },
                     );
                 }

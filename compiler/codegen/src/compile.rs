@@ -135,8 +135,16 @@ pub(crate) struct StringVarInfo {
 /// Bytes per character for STRING (Latin-1, 1 byte per character).
 pub(crate) const NARROW_CHAR_WIDTH: u8 = 1;
 /// Bytes per code unit for WSTRING (UTF-16LE, 2 bytes per code unit).
-#[allow(dead_code)]
 pub(crate) const WIDE_CHAR_WIDTH: u8 = 2;
+
+/// Returns the per-code-unit byte width for an IEC string type:
+/// 1 for STRING (Latin-1), 2 for WSTRING (UTF-16LE) — per ADR-0016 / ADR-0035.
+pub(crate) fn char_width_for_string_type(width: &ironplc_dsl::common::StringType) -> u8 {
+    match width {
+        ironplc_dsl::common::StringType::String => NARROW_CHAR_WIDTH,
+        ironplc_dsl::common::StringType::WString => WIDE_CHAR_WIDTH,
+    }
+}
 
 /// Total bytes needed in the data region for a STRING/WSTRING value with the
 /// given maximum length (in code units) and `char_width` (1 or 2): header
