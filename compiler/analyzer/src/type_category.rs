@@ -63,7 +63,10 @@ mod tests {
             TypeCategory::Elementary
         );
         assert_eq!(
-            TypeCategory::for_type(&IntermediateType::String { max_len: None, char_width: 1 }),
+            TypeCategory::for_type(&IntermediateType::String {
+                max_len: None,
+                char_width: 1
+            }),
             TypeCategory::Elementary
         );
 

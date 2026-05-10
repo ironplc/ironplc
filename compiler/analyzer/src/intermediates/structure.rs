@@ -807,7 +807,10 @@ END_TYPE
         assert_eq!(fields[0].name, Id::from("name"));
         assert!(matches!(
             fields[0].field_type,
-            IntermediateType::String { max_len: None, char_width: 1 }
+            IntermediateType::String {
+                max_len: None,
+                char_width: 1
+            }
         ));
         assert_eq!(fields[1].name, Id::from("value"));
         assert!(matches!(fields[1].field_type, IntermediateType::Int { .. }));
@@ -835,7 +838,10 @@ END_TYPE
         assert_eq!(fields[0].name, Id::from("name"));
         assert!(matches!(
             fields[0].field_type,
-            IntermediateType::String { max_len: Some(30), char_width: 1 }
+            IntermediateType::String {
+                max_len: Some(30),
+                char_width: 1
+            }
         ));
     }
 
@@ -861,12 +867,18 @@ END_TYPE
         assert_eq!(fields.len(), 3);
         assert!(matches!(
             fields[0].field_type,
-            IntermediateType::String { max_len: None, char_width: 1 }
+            IntermediateType::String {
+                max_len: None,
+                char_width: 1
+            }
         ));
         assert!(matches!(fields[1].field_type, IntermediateType::Int { .. }));
         assert!(matches!(
             fields[2].field_type,
-            IntermediateType::String { max_len: Some(50), char_width: 1 }
+            IntermediateType::String {
+                max_len: Some(50),
+                char_width: 1
+            }
         ));
     }
 

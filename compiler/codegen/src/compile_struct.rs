@@ -19,9 +19,7 @@ use ironplc_container::FieldType;
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 use ironplc_dsl::common::{StructInitialValueAssignmentKind, StructureElementInit, TypeName};
 
-use super::compile::{
-    CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, NARROW_CHAR_WIDTH,
-};
+use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, NARROW_CHAR_WIDTH};
 use super::compile_expr::{compile_constant, emit_truncation};
 use super::compile_setup::emit_zero_const;
 use crate::emit::Emitter;
@@ -774,7 +772,10 @@ mod tests {
         // STRING[255] needs ceil((4 + 255) / 8) = 33 slots
         let fields = vec![make_field(
             "s",
-            IntermediateType::String { max_len: Some(255), char_width: 1 },
+            IntermediateType::String {
+                max_len: Some(255),
+                char_width: 1,
+            },
         )];
         let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
         assert_eq!(field_list.len(), 1);
@@ -788,7 +789,13 @@ mod tests {
     fn build_struct_fields_when_string_and_int_then_correct_offsets() {
         // STRING[30] needs ceil((4 + 30) / 8) = 5 slots, then INT at offset 5
         let fields = vec![
-            make_field("s", IntermediateType::String { max_len: Some(30), char_width: 1 }),
+            make_field(
+                "s",
+                IntermediateType::String {
+                    max_len: Some(30),
+                    char_width: 1,
+                },
+            ),
             make_field(
                 "n",
                 IntermediateType::Int {

@@ -605,7 +605,11 @@ mod tests {
             size: ByteSized::B64
         }
         .is_primitive());
-        assert!(IntermediateType::String { max_len: Some(10), char_width: 1 }.is_primitive());
+        assert!(IntermediateType::String {
+            max_len: Some(10),
+            char_width: 1
+        }
+        .is_primitive());
         assert!(IntermediateType::Time {
             size: ByteSized::B32
         }
@@ -648,7 +652,11 @@ mod tests {
         }
         .is_numeric());
         assert!(!IntermediateType::Bool.is_numeric());
-        assert!(!IntermediateType::String { max_len: Some(10), char_width: 1 }.is_numeric());
+        assert!(!IntermediateType::String {
+            max_len: Some(10),
+            char_width: 1
+        }
+        .is_numeric());
 
         // Test integer types
         assert!(IntermediateType::Int {

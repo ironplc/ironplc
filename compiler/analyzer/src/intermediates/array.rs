@@ -537,7 +537,10 @@ mod tests {
         {
             assert_eq!(
                 *element_type,
-                IntermediateType::String { max_len: Some(10), char_width: 1 }
+                IntermediateType::String {
+                    max_len: Some(10),
+                    char_width: 1
+                }
             );
             assert_eq!(dimensions.len(), 1);
             assert_eq!(dimensions[0].lower, 1);
@@ -581,7 +584,13 @@ mod tests {
             dimensions,
         } = attrs.representation
         {
-            assert_eq!(*element_type, IntermediateType::String { max_len: None, char_width: 1 });
+            assert_eq!(
+                *element_type,
+                IntermediateType::String {
+                    max_len: None,
+                    char_width: 1
+                }
+            );
             assert_eq!(dimensions.len(), 1);
         } else {
             unreachable!("Expected Array type");

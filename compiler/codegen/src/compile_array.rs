@@ -15,9 +15,7 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
 use ironplc_container::{ContainerBuilder, SlotIndex, VarIndex};
 
-use super::compile::{
-    CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, NARROW_CHAR_WIDTH,
-};
+use super::compile::{CompileContext, OpType, OpWidth, Signedness, VarTypeInfo, NARROW_CHAR_WIDTH};
 use super::compile_expr::compile_expr;
 use crate::emit::Emitter;
 
@@ -578,8 +576,7 @@ pub(crate) fn register_array_variable(
     let total_bytes = if is_string {
         // STRING/WSTRING elements: each element is the per-string header plus
         // `max_len * char_width` bytes of payload (ADR-0035).
-        let element_stride =
-            super::compile::string_region_size(string_max_len, string_char_width);
+        let element_stride = super::compile::string_region_size(string_max_len, string_char_width);
         total_elements.checked_mul(element_stride).ok_or_else(|| {
             Diagnostic::problem(
                 Problem::NotImplemented,

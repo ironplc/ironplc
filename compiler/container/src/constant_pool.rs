@@ -419,7 +419,10 @@ mod tests {
         let decoded = ConstantPool::read_from(&mut Cursor::new(&buf)).unwrap();
 
         assert_eq!(decoded.get_str(ConstantIndex::new(0)).unwrap(), b"hello");
-        assert_eq!(decoded.get_str_char_width(ConstantIndex::new(0)).unwrap(), 1);
+        assert_eq!(
+            decoded.get_str_char_width(ConstantIndex::new(0)).unwrap(),
+            1
+        );
     }
 
     #[test]
@@ -436,7 +439,10 @@ mod tests {
             decoded.get_str(ConstantIndex::new(0)).unwrap(),
             &[b'h', 0, b'i', 0]
         );
-        assert_eq!(decoded.get_str_char_width(ConstantIndex::new(0)).unwrap(), 2);
+        assert_eq!(
+            decoded.get_str_char_width(ConstantIndex::new(0)).unwrap(),
+            2
+        );
     }
 
     #[test]

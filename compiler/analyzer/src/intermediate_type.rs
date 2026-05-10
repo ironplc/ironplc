@@ -787,11 +787,19 @@ mod tests {
 
         // Test string types
         assert_eq!(
-            IntermediateType::String { max_len: Some(10), char_width: 1 }.size_in_bytes(),
+            IntermediateType::String {
+                max_len: Some(10),
+                char_width: 1
+            }
+            .size_in_bytes(),
             Some(10)
         );
         assert_eq!(
-            IntermediateType::String { max_len: None, char_width: 1 }.size_in_bytes(),
+            IntermediateType::String {
+                max_len: None,
+                char_width: 1
+            }
+            .size_in_bytes(),
             None
         );
 
@@ -898,7 +906,11 @@ mod tests {
 
         // Test string types (byte-aligned)
         assert_eq!(
-            IntermediateType::String { max_len: Some(10), char_width: 1 }.alignment_bytes(),
+            IntermediateType::String {
+                max_len: Some(10),
+                char_width: 1
+            }
+            .alignment_bytes(),
             1
         );
 
@@ -946,8 +958,16 @@ mod tests {
         .has_explicit_size());
 
         // Test string types
-        assert!(IntermediateType::String { max_len: Some(10), char_width: 1 }.has_explicit_size());
-        assert!(!IntermediateType::String { max_len: None, char_width: 1 }.has_explicit_size());
+        assert!(IntermediateType::String {
+            max_len: Some(10),
+            char_width: 1
+        }
+        .has_explicit_size());
+        assert!(!IntermediateType::String {
+            max_len: None,
+            char_width: 1
+        }
+        .has_explicit_size());
 
         // Test derived types
         let subrange = IntermediateType::Subrange {
@@ -1182,7 +1202,10 @@ mod tests {
         use ironplc_dsl::common::TypeName;
         use ironplc_problems::Problem;
 
-        let string_type = IntermediateType::String { max_len: Some(10), char_width: 1 };
+        let string_type = IntermediateType::String {
+            max_len: Some(10),
+            char_width: 1,
+        };
         let result = string_type.validate_bounds(0, 10, &TypeName::from("TEST"));
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -2046,21 +2069,30 @@ mod tests {
     #[test]
     fn slot_count_when_string_with_explicit_len_then_returns_ceil_slots() {
         // STRING[255]: ceil((6 + 255) / 8) = ceil(261/8) = 33 slots
-        let s = IntermediateType::String { max_len: Some(255), char_width: 1 };
+        let s = IntermediateType::String {
+            max_len: Some(255),
+            char_width: 1,
+        };
         assert_eq!(s.slot_count(), Ok(33));
     }
 
     #[test]
     fn slot_count_when_string_with_default_len_then_returns_ceil_slots() {
         // STRING (default 254): ceil((6 + 254) / 8) = ceil(260/8) = 33 slots
-        let s = IntermediateType::String { max_len: None, char_width: 1 };
+        let s = IntermediateType::String {
+            max_len: None,
+            char_width: 1,
+        };
         assert_eq!(s.slot_count(), Ok(33));
     }
 
     #[test]
     fn slot_count_when_string_small_then_returns_2() {
         // STRING[4]: ceil((6 + 4 * 1) / 8) = ceil(10/8) = 2 slots
-        let s = IntermediateType::String { max_len: Some(4), char_width: 1 };
+        let s = IntermediateType::String {
+            max_len: Some(4),
+            char_width: 1,
+        };
         assert_eq!(s.slot_count(), Ok(2));
     }
 

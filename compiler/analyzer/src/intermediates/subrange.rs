@@ -245,7 +245,10 @@ mod tests {
 
     #[test]
     fn validate_subrange_bounds_with_non_numeric_type_then_error() {
-        let string_type = IntermediateType::String { max_len: Some(10), char_width: 1 };
+        let string_type = IntermediateType::String {
+            max_len: Some(10),
+            char_width: 1,
+        };
         let result = string_type.validate_bounds(0, 10, &TypeName::from("TEST"));
         assert!(result.is_err());
     }
@@ -469,7 +472,10 @@ mod tests {
             &TypeName::from("string"),
             TypeAttributes::new(
                 SourceSpan::default(),
-                IntermediateType::String { max_len: None, char_width: 1 },
+                IntermediateType::String {
+                    max_len: None,
+                    char_width: 1,
+                },
             ),
         )
         .unwrap();

@@ -505,10 +505,7 @@ fn compile_program_with_functions(
             // `max_string_capacity` code units.
             builder = builder
                 .num_temp_bufs(ctx.num_temp_bufs)
-                .max_temp_buf_bytes(string_region_size(
-                    ctx.max_string_capacity,
-                    WIDE_CHAR_WIDTH,
-                ));
+                .max_temp_buf_bytes(string_region_size(ctx.max_string_capacity, WIDE_CHAR_WIDTH));
         }
     }
 
@@ -895,14 +892,12 @@ impl CompileContext {
     /// its index. Pool entries are deduplicated by `(bytes, char_width)`, so a
     /// STRING and a WSTRING that happen to share a byte sequence get separate
     /// entries.
-    pub(crate) fn add_str_constant_with_width(
-        &mut self,
-        value: Vec<u8>,
-        char_width: u8,
-    ) -> u16 {
-        if let Some(i) = self.constants.iter().position(
-            |c| matches!(c, PoolConstant::Str(v, w) if v == &value && *w == char_width),
-        ) {
+    pub(crate) fn add_str_constant_with_width(&mut self, value: Vec<u8>, char_width: u8) -> u16 {
+        if let Some(i) = self
+            .constants
+            .iter()
+            .position(|c| matches!(c, PoolConstant::Str(v, w) if v == &value && *w == char_width))
+        {
             return i as u16;
         }
         let index = self.constants.len() as u16;

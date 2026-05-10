@@ -62,11 +62,7 @@ impl TempBufAllocator {
     /// The slot capacity (in code units) is computed by dividing the available
     /// payload bytes by `char_width`, so wide strings get half the code-unit
     /// capacity of a narrow string in the same byte budget.
-    pub fn alloc(
-        &mut self,
-        temp_buf_len: usize,
-        char_width: u8,
-    ) -> Result<TempBufferSlot, Trap> {
+    pub fn alloc(&mut self, temp_buf_len: usize, char_width: u8) -> Result<TempBufferSlot, Trap> {
         if self.max_temp_buf_bytes == 0 {
             return Err(Trap::TempBufferExhausted);
         }
