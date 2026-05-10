@@ -22,7 +22,6 @@ use ironplc_analyzer::TypeEnvironment;
 use super::compile::{
     char_width_for_string_type, encode_string_literal, string_region_size, CompileContext,
     FbInstanceInfo, OpType, OpWidth, Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH,
 };
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
