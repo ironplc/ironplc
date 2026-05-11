@@ -225,7 +225,8 @@ This tool lets an agent discover what flags exist without memorizing them and wi
   "dialects": [
     { "id": "iec61131-3-ed2", "display_name": "IEC 61131-3 Ed. 2", "description": "..." },
     { "id": "iec61131-3-ed3", "display_name": "IEC 61131-3 Ed. 3", "description": "..." },
-    { "id": "rusty",          "display_name": "RuSTy-compatible",   "description": "..." }
+    { "id": "rusty",          "display_name": "RuSTy-compatible",   "description": "..." },
+    { "id": "codesys",        "display_name": "CODESYS-compatible", "description": "..." }
   ],
   "flags": [
     { "id": "allow_c_style_comments", "type": "bool", "default": false, "description": "..." }

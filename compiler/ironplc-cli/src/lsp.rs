@@ -39,21 +39,20 @@ pub fn start() -> Result<(), String> {
 /// Extract parse options from LSP initialization options.
 ///
 /// Reads `"dialect"` to select the base preset, then overlays individual
-/// `--allow-*` flags.  Supported dialect values: `"iec61131-3-ed2"` (default),
-/// `"iec61131-3-ed3"`, `"rusty"`.
+/// `--allow-*` flags.  Recognised dialect values come from
+/// [`Dialect::ALL`] via `FromStr`; unknown or missing values fall back to
+/// the default ([`Dialect::Iec61131_3Ed2`]).
 fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOptions {
     if let Some(ref opts) = initialize_params.initialization_options {
-        let dialect = match opts.get("dialect").and_then(|v| v.as_str()) {
-            Some("iec61131-3-ed3") => {
-                debug!("Using IEC 61131-3 Edition 3 dialect from initializationOptions");
-                Dialect::Iec61131_3Ed3
-            }
-            Some("rusty") => {
-                debug!("Using RuSTy dialect from initializationOptions");
-                Dialect::Rusty
-            }
-            _ => Dialect::Iec61131_3Ed2,
-        };
+        let dialect = opts
+            .get("dialect")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<Dialect>().ok())
+            .unwrap_or_default();
+        debug!(
+            "Using {} dialect from initializationOptions",
+            dialect.display_name()
+        );
 
         let mut options = CompilerOptions::from_dialect(dialect);
 
@@ -817,6 +816,33 @@ mod test {
         assert!(options.allow_ref_to);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_missing_semicolon);
+    }
+
+    #[test]
+    fn extract_compiler_options_when_codesys_dialect_then_enables_ref_to_without_uptime_global() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"dialect": "codesys"})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_ref_to);
+        assert!(options.allow_c_style_comments);
+        assert!(options.allow_sizeof);
+        // CODESYS dialect does not pre-bind the IronPLC uptime globals.
+        assert!(!options.allow_system_uptime_global);
     }
 
     #[test]
