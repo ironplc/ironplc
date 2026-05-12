@@ -1,16 +1,7 @@
 use crate::{intermediate_type::IntermediateType, type_environment::TypeAttributes};
 
-use ironplc_dsl::common::{StringDeclaration, StringInitializer, StringType};
+use ironplc_dsl::common::{StringDeclaration, StringInitializer};
 use ironplc_dsl::core::Located;
-
-/// Returns the per-code-unit byte width for a [`StringType`]:
-/// 1 for STRING (Latin-1), 2 for WSTRING (UTF-16LE) — per ADR-0016.
-fn char_width_for(width: &StringType) -> u8 {
-    match width {
-        StringType::String => 1,
-        StringType::WString => 2,
-    }
-}
 
 pub fn from(initializer: &StringInitializer) -> TypeAttributes {
     // String type with specific length: MY_STRING : STRING(10);
@@ -21,7 +12,7 @@ pub fn from(initializer: &StringInitializer) -> TypeAttributes {
                 .length
                 .as_ref()
                 .and_then(|len| len.as_integer().map(|i| i.value)),
-            char_width: char_width_for(&initializer.width),
+            char_width: initializer.width.char_width(),
         },
     )
 }
@@ -31,7 +22,7 @@ pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
         decl.type_name.span(),
         IntermediateType::String {
             max_len: decl.length.as_integer().map(|i| i.value),
-            char_width: char_width_for(&decl.width),
+            char_width: decl.width.char_width(),
         },
     )
 }

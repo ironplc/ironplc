@@ -1623,6 +1623,18 @@ pub enum StringType {
     WString,
 }
 
+impl StringType {
+    /// Returns the per-code-unit byte width:
+    /// 1 for [`StringType::String`] (Latin-1), 2 for [`StringType::WString`]
+    /// (UTF-16LE) — per ADR-0016.
+    pub fn char_width(&self) -> u8 {
+        match self {
+            StringType::String => 1,
+            StringType::WString => 2,
+        }
+    }
+}
+
 /// Declares a string type with restricted length.
 ///
 /// See section 2.3.3.1.

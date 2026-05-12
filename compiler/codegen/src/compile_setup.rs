@@ -20,8 +20,8 @@ use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
-    char_width_for_string_type, encode_string_literal, string_region_size, CompileContext,
-    FbInstanceInfo, OpType, OpWidth, Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    encode_string_literal, string_region_size, CompileContext, FbInstanceInfo, OpType, OpWidth,
+    Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE,
 };
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
@@ -81,7 +81,7 @@ pub(crate) fn assign_variables(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
+                    let char_width = string_init.width.char_width();
 
                     // Allocate the data region: [max_length: u16][cur_length: u16]
                     // [char_width: u16][data: max_length * char_width bytes]

@@ -16,10 +16,9 @@ use ironplc_problems::Problem;
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
-    char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, OpType, OpWidth, Signedness, StringParamInfo,
-    StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    finalize_function, string_region_size, CompileContext, CompiledFunction, CurrentFunctionReturn,
+    OpType, OpWidth, Signedness, StringParamInfo, StringReturnInfo, StringVarInfo,
+    UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{emit_function_local_prologue, resolve_type_name};
@@ -108,7 +107,7 @@ pub(crate) fn compile_user_function(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
+                    let char_width = string_init.width.char_width();
 
                     let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
@@ -174,7 +173,7 @@ pub(crate) fn compile_user_function(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
+                    let char_width = string_init.width.char_width();
 
                     let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
@@ -229,14 +228,15 @@ pub(crate) fn compile_user_function(
     let return_id = func_decl.name.clone();
     ctx.variables.insert(return_id.clone(), return_var_index);
 
-    // Check if this function returns a STRING/WSTRING.
+    // Check if this function returns a STRING/WSTRING. The outer match is
+    // exhaustive (Named is the third arm), so a future FunctionReturnType
+    // variant breaks the build here rather than silently falling through.
+    // `spec.width` carries the STRING vs WSTRING distinction, so no nested
+    // wildcard match is needed.
     let return_string_info = match &func_decl.return_type {
         FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
             let max_length = resolve_string_spec_max_length(spec)?;
-            let char_width = match &func_decl.return_type {
-                FunctionReturnType::WString(_) => WIDE_CHAR_WIDTH,
-                _ => NARROW_CHAR_WIDTH,
-            };
+            let char_width = spec.width.char_width();
 
             let data_offset = ctx.data_region_offset;
             let total_bytes = string_region_size(max_length, char_width);
@@ -538,7 +538,7 @@ pub(crate) fn compile_user_function_block(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = char_width_for_string_type(&string_init.width);
+                    let char_width = string_init.width.char_width();
 
                     let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
