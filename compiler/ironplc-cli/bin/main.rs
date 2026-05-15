@@ -29,12 +29,8 @@ struct Args {
 ///
 /// We cannot implement `ValueEnum` directly on `Dialect` because of Rust's
 /// orphan rule: both `clap::ValueEnum` and `Dialect` live in foreign crates.
-/// Adding clap as a dep to the parser crate is undesirable.  This newtype
-/// lives in the CLI crate and reuses [`Dialect::ALL`], `fmt::Display`, and
-/// `description()` as the source of truth — so adding a new dialect requires
-/// no edits here.
+/// Adding clap as a dep to the parser crate is undesirable.
 #[derive(Clone, Copy, Debug, Default)]
-#[repr(transparent)]
 struct ClapDialect(Dialect);
 
 impl From<ClapDialect> for Dialect {
@@ -45,11 +41,13 @@ impl From<ClapDialect> for Dialect {
 
 impl clap::ValueEnum for ClapDialect {
     fn value_variants<'a>() -> &'a [Self] {
-        // SAFETY: `ClapDialect` is `#[repr(transparent)]` over `Dialect`, so
-        // it has identical layout and validity.  A `&[Dialect]` therefore
-        // satisfies the layout requirements of `&[ClapDialect]`.
-        let dialects: &'static [Dialect] = Dialect::ALL;
-        unsafe { &*(dialects as *const [Dialect] as *const [ClapDialect]) }
+        // Mirrors `Dialect::ALL`. A test below guards the two against drift.
+        &[
+            ClapDialect(Dialect::Iec61131_3Ed2),
+            ClapDialect(Dialect::Iec61131_3Ed3),
+            ClapDialect(Dialect::Rusty),
+            ClapDialect(Dialect::Codesys),
+        ]
     }
 
     fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
@@ -247,5 +245,18 @@ pub fn main() -> Result<(), String> {
             println!("ironplcc version {VERSION}");
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::ValueEnum;
+
+    #[test]
+    fn clap_dialect_value_variants_when_compared_then_matches_dialect_all() {
+        let clap_variants: Vec<Dialect> =
+            ClapDialect::value_variants().iter().map(|c| c.0).collect();
+        assert_eq!(clap_variants.as_slice(), Dialect::ALL);
     }
 }
