@@ -35,6 +35,10 @@ pub enum Trap {
         expected: u8,
         actual: u8,
     },
+    /// A `char_width` byte read from a data-region header, temp buffer slot,
+    /// constant-pool entry, or bytecode operand was neither `1` (STRING) nor
+    /// `2` (WSTRING). The bytecode is malformed or has been tampered with.
+    InvalidCharWidth(u8),
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -80,6 +84,9 @@ impl fmt::Display for Trap {
                 f,
                 "string encoding mismatch: expected char_width {expected}, got {actual}"
             ),
+            Trap::InvalidCharWidth(value) => {
+                write!(f, "invalid char_width byte: {value} (expected 1 or 2)")
+            }
         }
     }
 }
@@ -376,6 +383,24 @@ mod tests {
             .exit_code(),
             3
         );
+    }
+
+    #[test]
+    fn trap_display_when_invalid_char_width_then_includes_value() {
+        assert_eq!(
+            format!("{}", Trap::InvalidCharWidth(7)),
+            "invalid char_width byte: 7 (expected 1 or 2)"
+        );
+    }
+
+    #[test]
+    fn v_code_when_invalid_char_width_then_v9015() {
+        assert_eq!(Trap::InvalidCharWidth(7).v_code(), "V9015");
+    }
+
+    #[test]
+    fn exit_code_when_invalid_char_width_then_3() {
+        assert_eq!(Trap::InvalidCharWidth(7).exit_code(), 3);
     }
 
     #[test]

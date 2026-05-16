@@ -1,4 +1,4 @@
-use crate::ContainerError;
+use crate::{CharWidth, ContainerError};
 
 /// Type tags for constant pool entries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,14 +43,13 @@ impl ConstType {
         }
     }
 
-    /// Returns the byte width of each character for string-typed entries:
-    /// 1 for [`ConstType::Str`] (Latin-1), 2 for [`ConstType::WStr`]
-    /// (UTF-16LE). Returns 0 for non-string types.
-    pub fn char_width(&self) -> u8 {
+    /// Returns the per-code-unit byte width for string-typed entries, or
+    /// `None` for non-string types.
+    pub fn char_width(&self) -> Option<CharWidth> {
         match self {
-            ConstType::Str => 1,
-            ConstType::WStr => 2,
-            _ => 0,
+            ConstType::Str => Some(CharWidth::Narrow),
+            ConstType::WStr => Some(CharWidth::Wide),
+            _ => None,
         }
     }
 }
@@ -93,9 +92,9 @@ mod tests {
 
     #[test]
     fn const_type_char_width_when_string_types_then_matches_encoding() {
-        assert_eq!(ConstType::Str.char_width(), 1);
-        assert_eq!(ConstType::WStr.char_width(), 2);
-        assert_eq!(ConstType::I32.char_width(), 0);
-        assert_eq!(ConstType::F64.char_width(), 0);
+        assert_eq!(ConstType::Str.char_width(), Some(CharWidth::Narrow));
+        assert_eq!(ConstType::WStr.char_width(), Some(CharWidth::Wide));
+        assert_eq!(ConstType::I32.char_width(), None);
+        assert_eq!(ConstType::F64.char_width(), None);
     }
 }

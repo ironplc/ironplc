@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::vec;
 use std::vec::Vec;
 
+use crate::char_width::CharWidth;
 use crate::const_type::ConstType;
 use crate::id_types::ConstantIndex;
 use crate::ContainerError;
@@ -65,10 +66,9 @@ impl ConstEntry {
         }
     }
 
-    /// Returns the byte width of each character for string entries
-    /// (1 for [`ConstType::Str`], 2 for [`ConstType::WStr`], 0 for non-string
-    /// entries).
-    pub fn char_width(&self) -> u8 {
+    /// Returns the per-code-unit byte width for string entries, or `None`
+    /// for non-string entries.
+    pub fn char_width(&self) -> Option<CharWidth> {
         self.const_type.char_width()
     }
 }
@@ -168,18 +168,16 @@ impl ConstantPool {
         }
     }
 
-    /// Returns the encoding (`char_width`: 1 = STRING, 2 = WSTRING) of the
-    /// string-typed entry at `index`. Returns an error if the entry is not a
-    /// string type.
-    pub fn get_str_char_width(&self, index: ConstantIndex) -> Result<u8, ContainerError> {
+    /// Returns the encoding of the string-typed entry at `index`. Returns an
+    /// error if the entry is not a string type.
+    pub fn get_str_char_width(&self, index: ConstantIndex) -> Result<CharWidth, ContainerError> {
         let entry = self
             .entries
             .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
-        match entry.const_type {
-            ConstType::Str | ConstType::WStr => Ok(entry.char_width()),
-            other => Err(ContainerError::InvalidConstantType(other as u8)),
-        }
+        entry
+            .char_width()
+            .ok_or(ContainerError::InvalidConstantType(entry.const_type as u8))
     }
 
     /// Writes the constant pool to the given writer.
@@ -192,7 +190,7 @@ impl ConstantPool {
         for entry in &self.entries {
             let bytes = entry.bytes();
             w.write_all(&[entry.const_type as u8])?;
-            w.write_all(&[entry.char_width()])?;
+            w.write_all(&[entry.char_width().map(CharWidth::byte_width).unwrap_or(0)])?;
             w.write_all(&(bytes.len() as u16).to_le_bytes())?;
             w.write_all(bytes)?;
         }
@@ -214,7 +212,12 @@ impl ConstantPool {
             let size = u16::from_le_bytes([hdr[2], hdr[3]]) as usize;
             let entry = match const_type {
                 ConstType::Str | ConstType::WStr => {
-                    if on_disk_char_width != const_type.char_width() {
+                    // Validate the per-entry encoding tag matches the type
+                    // tag. The tag is parsed (not just compared) so a stray
+                    // value yields InvalidCharWidth rather than silent
+                    // misinterpretation of payload bytes.
+                    let parsed = CharWidth::from_u8(on_disk_char_width)?;
+                    if Some(parsed) != const_type.char_width() {
                         return Err(ContainerError::InvalidConstantType(const_type as u8));
                     }
                     let mut value = vec![0u8; size];
@@ -421,7 +424,7 @@ mod tests {
         assert_eq!(decoded.get_str(ConstantIndex::new(0)).unwrap(), b"hello");
         assert_eq!(
             decoded.get_str_char_width(ConstantIndex::new(0)).unwrap(),
-            1
+            CharWidth::Narrow
         );
     }
 
@@ -441,7 +444,7 @@ mod tests {
         );
         assert_eq!(
             decoded.get_str_char_width(ConstantIndex::new(0)).unwrap(),
-            2
+            CharWidth::Wide
         );
     }
 

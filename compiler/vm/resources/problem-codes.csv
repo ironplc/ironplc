@@ -18,3 +18,4 @@ V9011,UnexpectedEndOfBytecode,Bytecode ended mid-instruction,false
 V9012,CallStackOverflow,VM call frame stack exceeded maximum depth,false
 V9013,InvalidCmpOp,Unknown comparison operator code in CMP_BR instruction,true
 V9014,EncodingMismatch,String operation operand encoding does not match expected encoding,struct
+V9015,InvalidCharWidth,String header or constant pool entry has an invalid char_width byte,true

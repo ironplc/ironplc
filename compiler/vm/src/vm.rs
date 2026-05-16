@@ -1,6 +1,6 @@
 use ironplc_container::{
-    ConstantIndex, Container, FbTypeId, FieldType, FunctionId, InstanceId, TaskId, TaskType,
-    VarIndex, STRING_HEADER_BYTES,
+    CharWidth, ConstantIndex, Container, FbTypeId, FieldType, FunctionId, InstanceId, TaskId,
+    TaskType, VarIndex, STRING_HEADER_BYTES,
 };
 
 use crate::buffers::VmBuffers;
@@ -957,8 +957,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
                         let (buf_idx, buf_start) = {
-                            let slot =
-                                temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
+                            let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
                             (slot.buf_idx as usize, slot.buf_start)
                         };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
@@ -968,7 +967,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             buf_start,
                             max_len,
                             cur_len,
-                            string_ops::NARROW_CHAR_WIDTH,
+                            CharWidth::Narrow,
                         );
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
@@ -981,8 +980,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
                         let (buf_idx, buf_start) = {
-                            let slot =
-                                temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
+                            let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
                             (slot.buf_idx as usize, slot.buf_start)
                         };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
@@ -992,7 +990,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             buf_start,
                             max_len,
                             cur_len,
-                            string_ops::NARROW_CHAR_WIDTH,
+                            CharWidth::Narrow,
                         );
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
@@ -1005,8 +1003,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
                         let (buf_idx, buf_start) = {
-                            let slot =
-                                temp_alloc.alloc(temp_buf.len(), string_ops::NARROW_CHAR_WIDTH)?;
+                            let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
                             (slot.buf_idx as usize, slot.buf_start)
                         };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
@@ -1016,7 +1013,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             buf_start,
                             max_len,
                             cur_len,
-                            string_ops::NARROW_CHAR_WIDTH,
+                            CharWidth::Narrow,
                         );
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
@@ -1173,7 +1170,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             opcode::STR_INIT => {
                 let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let max_length = read_u16_le(bytecode, &mut pc)?;
-                let char_width = read_u8(bytecode, &mut pc)?;
+                let char_width = string_ops::parse_char_width(read_u8(bytecode, &mut pc)?)?;
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
@@ -1213,7 +1210,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 };
 
                 let payload_bytes = str_bytes.len();
-                let cur_len_code_units = (payload_bytes / char_width as usize) as u16;
+                let cur_len_code_units = (payload_bytes / char_width.as_usize()) as u16;
                 let cur_len = cur_len_code_units.min(slot_max_len);
                 string_ops::str_write_header(
                     temp_buf,
@@ -1222,7 +1219,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     cur_len,
                     char_width,
                 );
-                let copy_bytes = cur_len as usize * char_width as usize;
+                let copy_bytes = cur_len as usize * char_width.as_usize();
                 temp_buf
                     [buf_start + STRING_HEADER_BYTES..buf_start + STRING_HEADER_BYTES + copy_bytes]
                     .copy_from_slice(&str_bytes[..copy_bytes]);
@@ -1254,13 +1251,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     return Err(Trap::TempBufferExhausted);
                 }
                 let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
-                let src_char_width = string_ops::str_read_char_width(temp_buf, buf_start);
+                let src_char_width = string_ops::str_read_char_width(temp_buf, buf_start)?;
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
                 let dest_max_len = string_ops::str_read_max_len(data_region, data_offset);
-                let dest_char_width = string_ops::str_read_char_width(data_region, data_offset);
+                let dest_char_width = string_ops::str_read_char_width(data_region, data_offset)?;
 
                 // Defense-in-depth: verify the source temp buffer's encoding
                 // matches the destination's declared encoding. Per ADR-0034
@@ -1271,7 +1268,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 // Copy character data, truncating if source exceeds destination capacity.
                 let copy_code_units = src_cur_len.min(dest_max_len) as usize;
-                let copy_bytes = copy_code_units * dest_char_width as usize;
+                let copy_bytes = copy_code_units * dest_char_width.as_usize();
                 if data_offset + STRING_HEADER_BYTES + copy_bytes > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
@@ -1303,7 +1300,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 }
                 let src_max_len = string_ops::str_read_max_len(data_region, data_offset);
                 let src_cur_len = string_ops::str_read_cur_len(data_region, data_offset);
-                let src_char_width = string_ops::str_read_char_width(data_region, data_offset);
+                let src_char_width = string_ops::str_read_char_width(data_region, data_offset)?;
                 // Defensive: never read more than max_length code units.
                 let read_code_units = src_cur_len.min(src_max_len) as usize;
 
@@ -1320,7 +1317,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     cur_len,
                     src_char_width,
                 );
-                let copy_bytes = cur_len as usize * src_char_width as usize;
+                let copy_bytes = cur_len as usize * src_char_width.as_usize();
                 if data_offset + STRING_HEADER_BYTES + copy_bytes > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
@@ -1361,7 +1358,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let (in2_len, in2_start, in2_cw) =
                     string_ops::read_string_header(data_region, in2_offset)?;
                 string_ops::check_encoding(in1_cw, in2_cw)?;
-                let char_width = in1_cw as usize;
+                let char_width = in1_cw.as_usize();
 
                 let result = if in2_len == 0 || in2_len > in1_len {
                     // Empty search string or search string longer than haystack: not found.
@@ -1399,7 +1396,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let (in2_len, in2_start, in2_cw) =
                     string_ops::read_string_header(data_region, in2_offset)?;
                 string_ops::check_encoding(in1_cw, in2_cw)?;
-                let char_width = in1_cw as usize;
+                let char_width = in1_cw.as_usize();
 
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
@@ -1457,7 +1454,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let (in2_len, in2_start, in2_cw) =
                     string_ops::read_string_header(data_region, in2_offset)?;
                 string_ops::check_encoding(in1_cw, in2_cw)?;
-                let char_width = in1_cw as usize;
+                let char_width = in1_cw.as_usize();
 
                 let p = if p_val < 0 { 0usize } else { p_val as usize };
                 let insert_idx = p.min(in1_len);
@@ -1508,7 +1505,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 let (in1_len, in1_start, in1_cw) =
                     string_ops::read_string_header(data_region, in1_offset)?;
-                let char_width = in1_cw as usize;
+                let char_width = in1_cw.as_usize();
 
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
@@ -1554,7 +1551,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 let (in_len, in_start, in_cw) =
                     string_ops::read_string_header(data_region, in_offset)?;
-                let char_width = in_cw as usize;
+                let char_width = in_cw.as_usize();
 
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
                 let result_len = l.min(in_len);
@@ -1583,7 +1580,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 let (in_len, in_start, in_cw) =
                     string_ops::read_string_header(data_region, in_offset)?;
-                let char_width = in_cw as usize;
+                let char_width = in_cw.as_usize();
 
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
                 let result_len = l.min(in_len);
@@ -1615,7 +1612,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 let (in_len, in_start, in_cw) =
                     string_ops::read_string_header(data_region, in_offset)?;
-                let char_width = in_cw as usize;
+                let char_width = in_cw.as_usize();
 
                 let p = if p_val < 1 { 1usize } else { p_val as usize };
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
@@ -1650,7 +1647,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let (in2_len, in2_start, in2_cw) =
                     string_ops::read_string_header(data_region, in2_offset)?;
                 string_ops::check_encoding(in1_cw, in2_cw)?;
-                let char_width = in1_cw as usize;
+                let char_width = in1_cw.as_usize();
 
                 let result_len = in1_len + in2_len;
 
@@ -1701,7 +1698,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
                 let char_width = string_array_element_char_width(desc.element_type);
-                let stride = STRING_HEADER_BYTES + max_str_len as usize * char_width as usize;
+                let stride = STRING_HEADER_BYTES + max_str_len as usize * char_width.as_usize();
 
                 scope.check_access(var_index)?;
                 let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
@@ -1742,7 +1739,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
                 let char_width = string_array_element_char_width(desc.element_type);
-                let stride = STRING_HEADER_BYTES + max_str_len as usize * char_width as usize;
+                let stride = STRING_HEADER_BYTES + max_str_len as usize * char_width.as_usize();
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
@@ -1762,7 +1759,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 }
                 // Defense-in-depth: the descriptor and the per-element header
                 // must agree on encoding.
-                let elem_char_width = string_ops::str_read_char_width(data_region, elem_offset);
+                let elem_char_width = string_ops::str_read_char_width(data_region, elem_offset)?;
                 string_ops::check_encoding(char_width, elem_char_width)?;
                 let src_cur_len = string_ops::str_read_cur_len(data_region, elem_offset);
                 let read_len = src_cur_len.min(max_str_len) as usize;
@@ -1781,7 +1778,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     char_width,
                 );
 
-                let copy_bytes = cur_len as usize * char_width as usize;
+                let copy_bytes = cur_len as usize * char_width.as_usize();
                 if elem_offset + STRING_HEADER_BYTES + copy_bytes > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
                 }
@@ -1816,7 +1813,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
                 let char_width = string_array_element_char_width(desc.element_type);
-                let stride = STRING_HEADER_BYTES + max_str_len as usize * char_width as usize;
+                let stride = STRING_HEADER_BYTES + max_str_len as usize * char_width.as_usize();
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
@@ -1836,7 +1833,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
                     return Err(Trap::TempBufferExhausted);
                 }
-                let src_char_width = string_ops::str_read_char_width(temp_buf, buf_start);
+                let src_char_width = string_ops::str_read_char_width(temp_buf, buf_start)?;
                 let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
 
                 if elem_offset + STRING_HEADER_BYTES > data_region.len() {
@@ -1848,7 +1845,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 // Copy, truncating to max_str_len per IEC 61131-3 semantics.
                 let copy_code_units = src_cur_len.min(max_str_len) as usize;
-                let copy_bytes = copy_code_units * char_width as usize;
+                let copy_bytes = copy_code_units * char_width.as_usize();
                 if elem_offset + STRING_HEADER_BYTES + copy_bytes > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
                 }
@@ -2239,15 +2236,15 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     Ok(())
 }
 
-/// Returns the character byte-width for an array whose `element_type` byte
-/// matches the encoding of [`FieldType`] (`String` = 1, `WString` = 2). Any
-/// other element type defaults to [`string_ops::NARROW_CHAR_WIDTH`]; for
-/// non-string arrays the value is unused, so this is safe.
-fn string_array_element_char_width(element_type: u8) -> u8 {
+/// Returns the per-code-unit encoding for an array whose `element_type`
+/// byte matches the encoding of [`FieldType`] (`String` = 1, `WString` = 2).
+/// Any other element type defaults to [`CharWidth::Narrow`]; for non-string
+/// arrays the value is unused, so this is safe.
+fn string_array_element_char_width(element_type: u8) -> CharWidth {
     if element_type == FieldType::WString as u8 {
-        string_ops::WIDE_CHAR_WIDTH
+        CharWidth::Wide
     } else {
-        string_ops::NARROW_CHAR_WIDTH
+        CharWidth::Narrow
     }
 }
 
