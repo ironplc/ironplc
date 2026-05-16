@@ -187,9 +187,16 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
                 high: Some(*max_value),
                 ..empty_entry(name)
             },
-            IntermediateType::String { max_len } => TypeEntry {
+            IntermediateType::String {
+                max_len,
+                char_width,
+            } => TypeEntry {
                 name: name.to_string(),
-                kind: "string".into(),
+                kind: if *char_width == 2 {
+                    "wstring".into()
+                } else {
+                    "string".into()
+                },
                 length: *max_len,
                 ..empty_entry(name)
             },

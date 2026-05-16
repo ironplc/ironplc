@@ -108,7 +108,7 @@ The full op-class table (61 of 64 slots used; 0x3D-0x3F reserved):
 
 ### Migration status
 
-The encoding migration is **complete** as of `FORMAT_VERSION = 2`. Every opcode in `opcode.rs` is derived via `encode_opcode(OP_CLASS_*, type_tag)` and matches the byte values in this document. Tests assert specific hex bytes to guard against accidental renumbering — any change to a hex value in `opcode.rs` requires updating the corresponding test bytes and bumping `FORMAT_VERSION`.
+The encoding migration is **complete** as of `FORMAT_VERSION = 3`. Every opcode in `opcode.rs` is derived via `encode_opcode(OP_CLASS_*, type_tag)` and matches the byte values in this document. Tests assert specific hex bytes to guard against accidental renumbering — any change to a hex value in `opcode.rs` requires updating the corresponding test bytes and bumping `FORMAT_VERSION`.
 
 ## Type System
 
@@ -744,7 +744,7 @@ String functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, 
 
 ## Opcode Summary
 
-The current encoding (post-Wave-8 migration, `FORMAT_VERSION = 2`)
+The current encoding (post-Wave-8 migration, `FORMAT_VERSION = 3`)
 allocates 61 of 64 op-class slots. Within each op-class, the type tag
 (low 2 bits of the opcode byte) selects either the data-type variant
 or a family-member operation (for the consolidated `BOOL_OP` and

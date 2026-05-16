@@ -37,7 +37,7 @@ fn all_spec_requirements_have_tests() {
 #[ignore]
 fn generate_golden_files() {
     let path = path_to_golden_resource("steel_thread.iplc");
-    write_steel_thread_container(&path);
+    write_steel_thread_container_with_debug_names(&path);
     eprintln!("Generated golden file: {}", path.display());
 }
 
@@ -68,6 +68,49 @@ fn write_steel_thread_container(path: &Path) {
         .add_i32_constant(10)
         .add_i32_constant(32)
         .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 2, 0)
+        .build();
+
+    let mut buf = Vec::new();
+    container.write_to(&mut buf).unwrap();
+    std::fs::write(path, &buf).unwrap();
+}
+
+/// Builds the same steel thread container as `write_steel_thread_container`
+/// but with debug var names so dumps render `x` and `y` instead of `var[0]`
+/// and `var[1]`. Used for the checked-in golden file.
+fn write_steel_thread_container_with_debug_names(path: &Path) {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
+        0x20,                   // ADD_I32                  (10 + 32)
+        0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
+        0x8C,                   // RET_VOID
+    ];
+
+    let container = ContainerBuilder::new()
+        .num_variables(2)
+        .add_i32_constant(10)
+        .add_i32_constant(32)
+        .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 2, 0)
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(0),
+            function_id: ironplc_container::FunctionId::GLOBAL_SCOPE,
+            var_section: 0,
+            iec_type_tag: iec_type_tag::DINT,
+            name: "x".into(),
+            type_name: "DINT".into(),
+        })
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(1),
+            function_id: ironplc_container::FunctionId::GLOBAL_SCOPE,
+            var_section: 0,
+            iec_type_tag: iec_type_tag::DINT,
+            name: "y".into(),
+            type_name: "DINT".into(),
+        })
         .build();
 
     let mut buf = Vec::new();

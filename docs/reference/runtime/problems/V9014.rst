@@ -1,0 +1,26 @@
+=====
+V9014
+=====
+
+.. problem-summary:: V9014
+
+The VM detected a string operation whose operand encoding (1 for ``STRING``,
+2 for ``WSTRING``) does not match the destination's declared encoding.
+
+The analyzer rejects cross-encoding assignments and operations statically
+(per ADR-0034), so this trap is reached only via three paths:
+
+1. **A compiler bug** that emits a string opcode whose source and destination
+   disagree on encoding.
+2. **A tampered or hand-crafted ``.iplc`` file** whose constant pool, data
+   region headers, or temp buffer slots disagree on encoding.
+3. **The bytecode verifier (ADR-0034 Layer 1) is missing or has a gap.**
+
+The runtime check is the defense-in-depth layer: even if a static check
+slips, the trap fires before silently corrupting data.
+
+This error should not occur during normal operation. It indicates a bug in
+the IronPLC compiler or VM, or a corrupted ``.iplc`` file.
+
+Report this as a bug at https://github.com/ironplc/ironplc/issues with the
+``.iplc`` file and the source program that produced it.

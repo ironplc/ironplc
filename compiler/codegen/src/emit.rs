@@ -534,12 +534,15 @@ impl Emitter {
         // Stack effect: 0 (no pushes, no pops).
     }
 
-    /// Emits STR_INIT with data_offset and max_length operands.
-    /// Initializes a STRING variable's header in the data region.
-    pub fn emit_str_init(&mut self, data_offset: u32, max_length: u16) {
+    /// Emits STR_INIT with data_offset, max_length, and char_width operands.
+    /// Initializes a STRING/WSTRING variable's header in the data region. Per
+    /// ADR-0035 the `char_width` is set once at allocation and then read by
+    /// every subsequent string operation on this slot.
+    pub fn emit_str_init(&mut self, data_offset: u32, max_length: u16, char_width: u8) {
         self.emit_opcode(opcode::STR_INIT);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.bytecode.extend_from_slice(&max_length.to_le_bytes());
+        self.bytecode.push(char_width);
         // No stack effect.
     }
 

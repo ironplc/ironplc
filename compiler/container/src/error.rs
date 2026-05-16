@@ -25,6 +25,9 @@ pub enum ContainerError {
     InvalidDebugSection,
     /// A field entry has an unrecognized field type tag.
     InvalidFieldType(u8),
+    /// A `char_width` byte read from a header, operand, or constant pool
+    /// entry was neither `1` (STRING / Latin-1) nor `2` (WSTRING / UTF-16LE).
+    InvalidCharWidth(u8),
 }
 
 impl fmt::Display for ContainerError {
@@ -48,6 +51,9 @@ impl fmt::Display for ContainerError {
             ContainerError::InvalidDebugSection => write!(f, "invalid debug section"),
             ContainerError::InvalidFieldType(t) => {
                 write!(f, "invalid field type: {t}")
+            }
+            ContainerError::InvalidCharWidth(t) => {
+                write!(f, "invalid char_width: {t} (expected 1 or 2)")
             }
         }
     }
@@ -116,6 +122,13 @@ mod tests {
     fn container_error_display_when_invalid_field_type_then_contains_tag() {
         let msg = ContainerError::InvalidFieldType(5).to_string();
         assert!(msg.contains('5'), "got: {msg}");
+    }
+
+    #[test]
+    fn container_error_display_when_invalid_char_width_then_contains_value() {
+        let msg = ContainerError::InvalidCharWidth(3).to_string();
+        assert!(msg.contains('3'), "got: {msg}");
+        assert!(msg.contains("char_width"), "got: {msg}");
     }
 
     #[test]

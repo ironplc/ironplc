@@ -5,6 +5,7 @@
 extern crate std;
 
 // Always available (no_std)
+mod char_width;
 mod const_type;
 mod container_ref;
 mod error;
@@ -32,6 +33,7 @@ pub mod task_table;
 mod type_section;
 
 // Always-available re-exports
+pub use char_width::CharWidth;
 pub use const_type::ConstType;
 pub use container_ref::{ContainerRef, ProgramEntryRef, TaskEntryRef};
 pub use error::ContainerError;
