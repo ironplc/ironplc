@@ -42,3 +42,6 @@ assert_cmd = { version = "2.2" }
 predicates = { version = "3.1" }
 rstest = "0.26"
 spec_test_macro = { path = "../spec_test_macro" }
+
+[lints]
+workspace = true

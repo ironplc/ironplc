@@ -47,3 +47,6 @@ ctor = "0.11"
 [[bin]]
 name = "ironplcc"
 path = "bin/main.rs"
+
+[lints]
+workspace = true
