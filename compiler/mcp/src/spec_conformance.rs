@@ -734,8 +734,9 @@ fn mcp_spec_req_tol_060_list_options_takes_no_inputs() {
 /// each contain `id`, `display_name`, and `description`.
 #[spec_test(REQ_TOL_061)]
 fn mcp_spec_req_tol_061_list_options_returns_dialects() {
+    use ironplc_parser::options::Dialect;
     let response = tools::list_options::build_response();
-    assert_eq!(response.dialects.len(), 3);
+    assert_eq!(response.dialects.len(), Dialect::ALL.len());
     for dialect in &response.dialects {
         assert!(!dialect.id.is_empty(), "dialect id must be non-empty");
         assert!(

@@ -31,6 +31,16 @@ Supported Dialects
    names like :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` remain available as identifiers) and enables
    :doc:`REF_TO </reference/language/data-types/derived/reference-types>` support plus all vendor extensions.
 
+**codesys**
+   CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
+   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
+   preserved) and enables
+   :doc:`REF_TO </reference/language/data-types/derived/reference-types>`
+   together with the vendor extensions that the CODESYS IDE accepts. The
+   implicit :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
+   globals are not pre-bound under this dialect, since they are an IronPLC
+   runtime convention rather than a CODESYS feature.
+
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
 

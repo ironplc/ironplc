@@ -69,7 +69,7 @@ mod tests {
     #[test]
     fn build_response_when_called_then_returns_all_dialects() {
         let resp = build_response();
-        assert_eq!(resp.dialects.len(), 3);
+        assert_eq!(resp.dialects.len(), Dialect::ALL.len());
     }
 
     #[test]
@@ -79,6 +79,7 @@ mod tests {
         assert!(ids.contains(&"iec61131-3-ed2"));
         assert!(ids.contains(&"iec61131-3-ed3"));
         assert!(ids.contains(&"rusty"));
+        assert!(ids.contains(&"codesys"));
     }
 
     #[test]

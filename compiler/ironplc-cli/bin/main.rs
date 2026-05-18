@@ -25,32 +25,33 @@ struct Args {
     action: Action,
 }
 
-/// Language dialect preset.
+/// Newtype around [`Dialect`] used only as a `clap::ValueEnum` adapter.
 ///
-/// A dialect selects the IEC 61131-3 edition and a default set of vendor
-/// extensions.  Individual `--allow-*` flags can still override on top.
-#[derive(clap::ValueEnum, Clone, Debug, Default)]
-enum CliDialect {
-    /// Strict IEC 61131-3:2003 (Edition 2).  No vendor extensions.
-    #[default]
-    #[value(name = "iec61131-3-ed2")]
-    Iec61131_3Ed2,
-    /// Strict IEC 61131-3:2013 (Edition 3).  No vendor extensions.
-    #[value(name = "iec61131-3-ed3")]
-    Iec61131_3Ed3,
-    /// RuSTy-compatible: Edition 2 base with REF_TO support and all
-    /// vendor extensions enabled.
-    #[value(name = "rusty")]
-    Rusty,
+/// We cannot implement `ValueEnum` directly on `Dialect` because of Rust's
+/// orphan rule: both `clap::ValueEnum` and `Dialect` live in foreign crates.
+/// Adding clap as a dep to the parser crate is undesirable.
+#[derive(Clone, Copy, Debug, Default)]
+struct ClapDialect(Dialect);
+
+impl From<ClapDialect> for Dialect {
+    fn from(c: ClapDialect) -> Self {
+        c.0
+    }
 }
 
-impl CliDialect {
-    fn to_dialect(&self) -> Dialect {
-        match self {
-            CliDialect::Iec61131_3Ed2 => Dialect::Iec61131_3Ed2,
-            CliDialect::Iec61131_3Ed3 => Dialect::Iec61131_3Ed3,
-            CliDialect::Rusty => Dialect::Rusty,
-        }
+impl clap::ValueEnum for ClapDialect {
+    fn value_variants<'a>() -> &'a [Self] {
+        // Mirrors `Dialect::ALL`. A test below guards the two against drift.
+        &[
+            ClapDialect(Dialect::Iec61131_3Ed2),
+            ClapDialect(Dialect::Iec61131_3Ed3),
+            ClapDialect(Dialect::Rusty),
+            ClapDialect(Dialect::Codesys),
+        ]
+    }
+
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        Some(clap::builder::PossibleValue::new(self.0.cli_name()).help(self.0.description()))
     }
 }
 
@@ -65,7 +66,7 @@ struct FileArgs {
     /// Defaults to strict IEC 61131-3:2003 (Edition 2).
     /// Individual --allow-* flags can override the dialect's defaults.
     #[arg(long, default_value = "iec61131-3-ed2")]
-    dialect: CliDialect,
+    dialect: ClapDialect,
 
     /// Allow missing semicolons after keyword statements like END_IF and END_STRUCT.
     #[arg(long)]
@@ -142,7 +143,7 @@ struct FileArgs {
 
 impl FileArgs {
     fn compiler_options(&self) -> CompilerOptions {
-        let mut options = CompilerOptions::from_dialect(self.dialect.to_dialect());
+        let mut options = CompilerOptions::from_dialect(self.dialect.into());
         // Individual flags override (can only enable, never disable).
         options.allow_missing_semicolon |= self.allow_missing_semicolon;
         options.allow_top_level_var_global |= self.allow_top_level_var_global;
@@ -244,5 +245,18 @@ pub fn main() -> Result<(), String> {
             println!("ironplcc version {VERSION}");
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::ValueEnum;
+
+    #[test]
+    fn clap_dialect_value_variants_when_compared_then_matches_dialect_all() {
+        let clap_variants: Vec<Dialect> =
+            ClapDialect::value_variants().iter().map(|c| c.0).collect();
+        assert_eq!(clap_variants.as_slice(), Dialect::ALL);
     }
 }
