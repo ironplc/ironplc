@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.213.0">
+<meta name="ironplc-version" content="0.214.0">
 </head>
   <body>
     
@@ -660,6 +660,15 @@ including <a class="reference internal" href="../reference/language/data-types/e
 <dt><strong>rusty</strong></dt><dd><p>RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
 names like <a class="reference internal" href="../reference/language/data-types/elementary/ldate-and-time.html"><span class="doc">LDT</span></a> remain available as identifiers) and enables
 <a class="reference internal" href="../reference/language/data-types/derived/reference-types.html"><span class="doc">REF_TO</span></a> support plus all vendor extensions.</p>
+</dd>
+<dt><strong>codesys</strong></dt><dd><p>CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
+<a class="reference internal" href="../reference/language/data-types/elementary/ldate-and-time.html"><span class="doc">LDT</span></a> are
+preserved) and enables
+<a class="reference internal" href="../reference/language/data-types/derived/reference-types.html"><span class="doc">REF_TO</span></a>
+together with the vendor extensions that the CODESYS IDE accepts. The
+implicit <a class="reference internal" href="../reference/extension-library/variables/system-uptime.html"><span class="doc">__SYSTEM_UP_TIME</span></a>
+globals are not pre-bound under this dialect, since they are an IronPLC
+runtime convention rather than a CODESYS feature.</p>
 </dd>
 </dl>
 <p>Editions are additive — enabling a later edition includes all features from

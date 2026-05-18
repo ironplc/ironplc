@@ -96,7 +96,7 @@ Options
    Select the language dialect. A dialect sets the IEC 61131-3 edition and a
    default set of vendor extensions. Individual ``--allow-*`` flags can
    override the dialect's defaults. Available values: ``iec61131-3-ed2``
-   (default), ``iec61131-3-ed3``, ``rusty``. See
+   (default), ``iec61131-3-ed3``, ``rusty``, ``codesys``. See
    :doc:`/explanation/enabling-dialects-and-features` for details.
 
 ``--allow-c-style-comments``

@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.213.0">
+<meta name="ironplc-version" content="0.214.0">
 </head>
   <body>
     
@@ -736,7 +736,7 @@ file logging or delete the log file when troubleshooting is complete.</p>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code></p>
 </dd>
 <dt class="field-odd">Values<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code>, <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">rusty</span></code></p>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">iec61131-3-ed2</span></code>, <code class="docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code>, <code class="docutils literal notranslate"><span class="pre">rusty</span></code>, <code class="docutils literal notranslate"><span class="pre">codesys</span></code></p>
 </dd>
 </dl>
 <p>Selects the language dialect preset. A dialect controls the IEC 61131-3 edition
@@ -746,6 +746,8 @@ and a default set of vendor extensions.</p>
 <li><p><code class="docutils literal notranslate"><span class="pre">iec61131-3-ed3</span></code>: IEC 61131-3:2013 (Edition 3) with <code class="docutils literal notranslate"><span class="pre">LTIME</span></code>, <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code>, etc.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">rusty</span></code>: RuSTy-compatible — designed for compatibility with code from
 RuSTy-based PLC environments.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">codesys</span></code>: CODESYS-compatible — Edition 2 base with <code class="docutils literal notranslate"><span class="pre">REF_TO</span></code> and the
+vendor extensions that the CODESYS IDE accepts.</p></li>
 </ul>
 <p>This setting corresponds to the <code class="docutils literal notranslate"><span class="pre">--dialect</span></code> command-line option documented in
 <a class="reference internal" href="../compiler/ironplcc.html"><span class="doc">ironplcc</span></a>.</p>
