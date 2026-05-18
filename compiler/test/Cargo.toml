@@ -9,3 +9,6 @@ repository.workspace = true
 
 [badges]
 maintenance = { status = "experimental" }
+
+[lints]
+workspace = true

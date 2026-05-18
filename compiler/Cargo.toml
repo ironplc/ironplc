@@ -28,6 +28,15 @@ authors = [ "Garret Fick" ]
 license = "MIT"
 repository = "https://github.com/ironplc/ironplc"
 
+# IronPLC must remain free of `unsafe` Rust. `deny` makes the compiler
+# reject any `unsafe` block, fn, trait, or impl in our code. `deny`
+# (rather than `forbid`) is required so that proc-macros which wrap
+# unsafe internally — e.g. `ctor::ctor`, whose expansion includes
+# `#[allow(unsafe_code)]` — continue to work. Per development standards,
+# IronPLC code must not add `#[allow(unsafe_code)]` to bypass this.
+[workspace.lints.rust]
+unsafe_code = "deny"
+
 # Reduce per-binary debug-info size. `line-tables-only` retains the file/line
 # tables that `cargo llvm-cov` needs to map coverage hits to source, but drops
 # the type-, variable-, and inline-scope DWARF sections that dominate target/

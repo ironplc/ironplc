@@ -22,3 +22,6 @@ ironplc-test = { path = "../test", version = "0.213.0" }
 tempfile = "3.27"
 ctor = "0.11"
 env_logger = "0.11"
+
+[lints]
+workspace = true

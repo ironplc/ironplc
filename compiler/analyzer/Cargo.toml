@@ -25,3 +25,6 @@ ironplc-parser = { path = "../parser", version = "0.213.0" }
 ctor = "0.11"
 env_logger = "0.11"
 rstest = "0.26"
+
+[lints]
+workspace = true

@@ -31,3 +31,6 @@ rstest = "0.26"
 [[test]]
 name = "it"
 path = "tests/it/main.rs"
+
+[lints]
+workspace = true

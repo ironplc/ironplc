@@ -468,7 +468,8 @@ The build system enforces synchronization between components:
 
 ### Safety
 - Leverage Rust's safety guarantees
-- Avoid `unsafe` code unless absolutely necessary
+- **`unsafe` code is rejected at compile time.** The workspace sets `unsafe_code = "deny"` in `[workspace.lints.rust]` (root `compiler/Cargo.toml`), and every member crate inherits it via `[lints] workspace = true`. Any `unsafe` block, function, trait, or impl in IronPLC code fails the build
+- **Do not bypass the check with `#[allow(unsafe_code)]`.** The standards already forbid `#[allow(...)]` suppressions (see [Code Quality](#code-quality)); `unsafe_code` is no exception. `deny` (rather than `forbid`) is the chosen level only so that proc-macros which wrap unsafe internally — e.g. `ctor::ctor`, whose expansion includes `#[allow(unsafe_code)]` — keep working. If a feature appears to require `unsafe`, raise it for discussion
 - Use strong typing to prevent logic errors (e.g., `TypeName` vs `String`)
 
 ### Dependencies

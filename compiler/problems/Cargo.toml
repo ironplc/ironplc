@@ -12,3 +12,6 @@ maintenance = { status = "experimental" }
 
 [build-dependencies]
 csv = "1.4"
+
+[lints]
+workspace = true

@@ -25,3 +25,6 @@ peg = "0.8.5"
 
 [dev-dependencies]
 rstest = "0.26"
+
+[lints]
+workspace = true

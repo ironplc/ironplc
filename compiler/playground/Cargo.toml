@@ -26,3 +26,6 @@ base64 = "0.22"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+[lints]
+workspace = true
