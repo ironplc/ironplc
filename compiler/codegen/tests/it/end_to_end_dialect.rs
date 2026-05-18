@@ -85,6 +85,61 @@ END_PROGRAM
 }
 
 #[test]
+fn end_to_end_when_codesys_dialect_then_ldt_usable_as_variable_name() {
+    // The CODESYS dialect uses an Edition 2 base, so LDT remains usable as
+    // an identifier.
+    let source = "
+PROGRAM main
+VAR
+    LDT : DINT := 42;
+    result : DINT;
+END_VAR
+    result := LDT;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
+    // CODESYS does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
+    // user variables start at index 0: LDT=0, result=1.
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_codesys_dialect_then_ref_to_works() {
+    // The CODESYS dialect enables REF_TO.
+    let source = "
+PROGRAM main
+VAR
+    counter : DINT := 99;
+    r : REF_TO DINT := REF(counter);
+    result : DINT;
+END_VAR
+    result := r^;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
+    // var layout: counter=0, r=1, result=2
+    assert_eq!(bufs.vars[2].as_i32(), 99);
+}
+
+#[test]
+fn end_to_end_when_codesys_dialect_then_sizeof_and_c_style_comments_work() {
+    // CODESYS supports SIZEOF() and C-style comments.
+    let source = "
+PROGRAM main
+VAR
+    x : DINT;        // C-style line comment
+    result : DINT;
+END_VAR
+    /* block comment */
+    result := SIZEOF(x);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
+    // var layout: x=0, result=1
+    assert_eq!(bufs.vars[1].as_i32(), 4);
+}
+
+#[test]
 fn end_to_end_when_rusty_dialect_then_oscat_style_struct_with_ldt_member_access() {
     // Full OSCAT scenario: struct with LDT as member name, function that reads
     // the member, and a program that writes and reads through the struct.

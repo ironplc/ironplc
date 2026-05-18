@@ -173,6 +173,7 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 | IEC 61131-3 Ed 2 (default) | `iec61131-3-ed2` | OFF | OFF | all OFF |
 | IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
 | RuSTy | `rusty` | OFF | ON | all ON |
+| CODESYS | `codesys` | OFF | ON | all ON except `allow_system_uptime_global` |
 
 ### Grouping Guidance
 

@@ -6,6 +6,7 @@
 //! is the single place that maps dialects to flags.
 
 use std::fmt;
+use std::str::FromStr;
 
 /// A named configuration preset that sets the IEC edition and
 /// vendor-extension flags in one shot.
@@ -22,6 +23,11 @@ pub enum Dialect {
     /// like `LDT` stay as identifiers) plus `REF_TO` support and all
     /// vendor extensions enabled.
     Rusty,
+    /// CODESYS-compatible dialect: Edition 2 base plus `REF_TO` support
+    /// and the vendor extensions that CODESYS accepts.  Does not bind the
+    /// implicit `__SYSTEM_UP_TIME` globals, which are an IronPLC runtime
+    /// convention rather than a CODESYS feature.
+    Codesys,
 }
 
 impl Dialect {
@@ -30,6 +36,7 @@ impl Dialect {
         Dialect::Iec61131_3Ed2,
         Dialect::Iec61131_3Ed3,
         Dialect::Rusty,
+        Dialect::Codesys,
     ];
 
     /// A short human-readable name suitable for display in UIs and tool output.
@@ -38,6 +45,7 @@ impl Dialect {
             Dialect::Iec61131_3Ed2 => "IEC 61131-3 Ed. 2",
             Dialect::Iec61131_3Ed3 => "IEC 61131-3 Ed. 3",
             Dialect::Rusty => "RuSTy-compatible",
+            Dialect::Codesys => "CODESYS-compatible",
         }
     }
 
@@ -51,19 +59,58 @@ impl Dialect {
             Dialect::Rusty => {
                 "RuSTy-compatible: Edition 2 base with REF_TO and all vendor extensions."
             }
+            Dialect::Codesys => {
+                "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS vendor extensions."
+            }
+        }
+    }
+
+    /// The CLI / LSP string form of this dialect (also produced by `Display`).
+    pub fn cli_name(&self) -> &'static str {
+        match self {
+            Dialect::Iec61131_3Ed2 => "iec61131-3-ed2",
+            Dialect::Iec61131_3Ed3 => "iec61131-3-ed3",
+            Dialect::Rusty => "rusty",
+            Dialect::Codesys => "codesys",
         }
     }
 }
 
 impl fmt::Display for Dialect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Dialect::Iec61131_3Ed2 => write!(f, "iec61131-3-ed2"),
-            Dialect::Iec61131_3Ed3 => write!(f, "iec61131-3-ed3"),
-            Dialect::Rusty => write!(f, "rusty"),
-        }
+        f.write_str(self.cli_name())
     }
 }
+
+/// Parse a [`Dialect`] from its CLI / LSP string form (see [`fmt::Display`]).
+impl FromStr for Dialect {
+    type Err = ParseDialectError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        for dialect in Self::ALL {
+            if dialect.to_string() == s {
+                return Ok(*dialect);
+            }
+        }
+        Err(ParseDialectError {
+            input: s.to_string(),
+        })
+    }
+}
+
+/// Error returned by [`Dialect::from_str`] when no dialect matches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseDialectError {
+    pub input: String,
+}
+
+impl fmt::Display for ParseDialectError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unknown dialect: {}", self.input)
+    }
+}
+
+impl std::error::Error for ParseDialectError {}
 
 /// Metadata for a single vendor-extension feature flag.
 pub struct FeatureDescriptor {
@@ -152,62 +199,62 @@ macro_rules! define_compiler_options {
 define_compiler_options! {
     "Allow C-style comments (// and /* */)",
     "--allow-c-style-comments",
-    [Rusty],
+    [Rusty, Codesys],
     allow_c_style_comments,
 
     "Allow missing semicolons after keyword statements like END_IF and END_STRUCT",
     "--allow-missing-semicolon",
-    [Rusty],
+    [Rusty, Codesys],
     allow_missing_semicolon,
 
     "Allow VAR_GLOBAL declarations at the top level outside CONFIGURATION",
     "--allow-top-level-var-global",
-    [Rusty],
+    [Rusty, Codesys],
     allow_top_level_var_global,
 
     "Allow constant references in type parameters (e.g. STRING[MY_CONST])",
     "--allow-constant-type-params",
-    [Rusty],
+    [Rusty, Codesys],
     allow_constant_type_params,
 
     "Allow empty variable blocks (VAR END_VAR)",
     "--allow-empty-var-blocks",
-    [Rusty],
+    [Rusty, Codesys],
     allow_empty_var_blocks,
 
     "Allow TIME as a function name (OSCAT compatibility)",
     "--allow-time-as-function-name",
-    [Rusty],
+    [Rusty, Codesys],
     allow_time_as_function_name,
 
     "Allow REF_TO, REF(), and NULL without full Edition 3",
     "--allow-ref-to",
-    [Rusty],
+    [Rusty, Codesys],
     allow_ref_to,
 
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
     "--allow-ref-arithmetic",
-    [Rusty],
+    [Rusty, Codesys],
     allow_ref_arithmetic,
 
     "Allow REF() on stack-allocated variables (VAR_TEMP, FUNCTION VAR_INPUT/VAR_OUTPUT)",
     "--allow-ref-stack-variables",
-    [Rusty],
+    [Rusty, Codesys],
     allow_ref_stack_variables,
 
     "Allow assigning between REF_TO types of different base types (type punning)",
     "--allow-ref-type-punning",
-    [Rusty],
+    [Rusty, Codesys],
     allow_ref_type_punning,
 
     "Allow integer literals (0/1) as BOOL variable initializers",
     "--allow-int-to-bool-initializer",
-    [Rusty],
+    [Rusty, Codesys],
     allow_int_to_bool_initializer,
 
     "Allow SIZEOF() operator (returns size in bytes of a variable or type)",
     "--allow-sizeof",
-    [Rusty],
+    [Rusty, Codesys],
     allow_sizeof,
 
     "Expose __SYSTEM_UP_TIME and __SYSTEM_UP_LTIME as implicit VAR_GLOBALs (runtime monotonic uptime)",
@@ -217,12 +264,12 @@ define_compiler_options! {
 
     "Allow implicit widening between bit-string and integer type families (BYTE->INT, literal->BYTE)",
     "--allow-cross-family-widening",
-    [Rusty],
+    [Rusty, Codesys],
     allow_cross_family_widening,
 
     "Allow IEC 61131-3:2013 partial-access bit syntax (.%Xn) as an alias for .n",
     "--allow-partial-access-syntax",
-    [Rusty, Iec61131_3Ed3],
+    [Rusty, Iec61131_3Ed3, Codesys],
     allow_partial_access_syntax,
 }
 
@@ -327,6 +374,30 @@ mod tests {
         assert!(options.allow_partial_access_syntax);
     }
 
+    #[test]
+    fn from_dialect_when_codesys_then_all_vendor_flags_except_system_uptime_enabled() {
+        let options = CompilerOptions::from_dialect(Dialect::Codesys);
+
+        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_c_style_comments);
+        assert!(options.allow_missing_semicolon);
+        assert!(options.allow_top_level_var_global);
+        assert!(options.allow_constant_type_params);
+        assert!(options.allow_empty_var_blocks);
+        assert!(options.allow_time_as_function_name);
+        assert!(options.allow_ref_to);
+        assert!(options.allow_ref_arithmetic);
+        assert!(options.allow_ref_stack_variables);
+        assert!(options.allow_ref_type_punning);
+        assert!(options.allow_int_to_bool_initializer);
+        assert!(options.allow_sizeof);
+        // __SYSTEM_UP_TIME globals are an IronPLC/RuSTy runtime convention,
+        // not a CODESYS feature.
+        assert!(!options.allow_system_uptime_global);
+        assert!(options.allow_cross_family_widening);
+        assert!(options.allow_partial_access_syntax);
+    }
+
     /// REQ-PAB-051: The `rusty` dialect preset enables partial-access syntax.
     #[test]
     fn options_spec_req_pab_051_rusty_dialect_enables_partial_access_syntax() {
@@ -369,11 +440,23 @@ mod tests {
     }
 
     #[test]
+    fn feature_descriptors_when_codesys_then_omits_only_system_uptime_global() {
+        let codesys_features: Vec<&str> = CompilerOptions::FEATURE_DESCRIPTORS
+            .iter()
+            .filter(|f| f.dialects.contains(&Dialect::Codesys))
+            .map(|f| f.cli_flag)
+            .collect();
+        assert_eq!(codesys_features.len(), 14);
+        assert!(!codesys_features.contains(&"--allow-system-uptime-global"));
+    }
+
+    #[test]
     fn describe_dialects_when_called_then_contains_all_dialects() {
         let output = describe_dialects();
         assert!(output.contains("iec61131-3-ed2"));
         assert!(output.contains("iec61131-3-ed3"));
         assert!(output.contains("rusty"));
+        assert!(output.contains("codesys"));
     }
 
     #[test]
@@ -391,6 +474,32 @@ mod tests {
     #[test]
     fn dialect_display_when_rusty_then_cli_name() {
         assert_eq!(format!("{}", Dialect::Rusty), "rusty");
+    }
+
+    #[test]
+    fn dialect_display_when_codesys_then_cli_name() {
+        assert_eq!(format!("{}", Dialect::Codesys), "codesys");
+    }
+
+    #[test]
+    fn dialect_from_str_when_known_name_then_returns_variant() {
+        assert_eq!("iec61131-3-ed2".parse(), Ok(Dialect::Iec61131_3Ed2));
+        assert_eq!("iec61131-3-ed3".parse(), Ok(Dialect::Iec61131_3Ed3));
+        assert_eq!("rusty".parse(), Ok(Dialect::Rusty));
+        assert_eq!("codesys".parse(), Ok(Dialect::Codesys));
+    }
+
+    #[test]
+    fn dialect_from_str_when_unknown_name_then_returns_err() {
+        let result: Result<Dialect, _> = "nonsense".parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn dialect_from_str_when_round_trip_then_equal() {
+        for dialect in Dialect::ALL {
+            assert_eq!(dialect.to_string().parse::<Dialect>(), Ok(*dialect));
+        }
     }
 
     #[test]

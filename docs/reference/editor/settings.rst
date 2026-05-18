@@ -85,7 +85,7 @@ ironplc.dialect
 
 :Type: Enum
 :Default: ``iec61131-3-ed2``
-:Values: ``iec61131-3-ed2``, ``iec61131-3-ed3``, ``rusty``
+:Values: ``iec61131-3-ed2``, ``iec61131-3-ed3``, ``rusty``, ``codesys``
 
 Selects the language dialect preset. A dialect controls the IEC 61131-3 edition
 and a default set of vendor extensions.
@@ -94,6 +94,8 @@ and a default set of vendor extensions.
 * ``iec61131-3-ed3``: IEC 61131-3:2013 (Edition 3) with ``LTIME``, ``REF_TO``, etc.
 * ``rusty``: RuSTy-compatible — designed for compatibility with code from
   RuSTy-based PLC environments.
+* ``codesys``: CODESYS-compatible — Edition 2 base with ``REF_TO`` and the
+  vendor extensions that the CODESYS IDE accepts.
 
 This setting corresponds to the ``--dialect`` command-line option documented in
 :doc:`/reference/compiler/ironplcc`.

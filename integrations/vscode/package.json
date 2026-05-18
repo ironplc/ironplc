@@ -95,23 +95,26 @@
           "editPresentation": "singlelineText"
         },
         "ironplc.dialect": {
-          "markdownDescription": "Language dialect preset. Controls IEC edition and vendor extensions.\n\n- `iec61131-3-ed2`: Strict IEC 61131-3:2003 (Edition 2)\n- `iec61131-3-ed3`: IEC 61131-3:2013 (Edition 3) with `LTIME`, `REF_TO`, etc.\n- `rusty`: RuSTy-compatible — Edition 2 base with `REF_TO` and all vendor extensions",
+          "markdownDescription": "Language dialect preset. Controls IEC edition and vendor extensions.\n\n- `iec61131-3-ed2`: Strict IEC 61131-3:2003 (Edition 2)\n- `iec61131-3-ed3`: IEC 61131-3:2013 (Edition 3) with `LTIME`, `REF_TO`, etc.\n- `rusty`: RuSTy-compatible — Edition 2 base with `REF_TO` and all vendor extensions\n- `codesys`: CODESYS-compatible — Edition 2 base with `REF_TO` and CODESYS vendor extensions",
           "type": "string",
           "default": "iec61131-3-ed2",
           "enum": [
             "iec61131-3-ed2",
             "iec61131-3-ed3",
-            "rusty"
+            "rusty",
+            "codesys"
           ],
           "enumItemLabels": [
             "IEC 61131-3:2003 (Edition 2)",
             "IEC 61131-3:2013 (Edition 3)",
-            "RuSTy-compatible"
+            "RuSTy-compatible",
+            "CODESYS-compatible"
           ],
           "enumDescriptions": [
             "IEC 61131-3:2003 (Edition 2)",
             "IEC 61131-3:2013 (Edition 3)",
-            "RuSTy-compatible"
+            "RuSTy-compatible",
+            "CODESYS-compatible"
           ]
         }
       }
