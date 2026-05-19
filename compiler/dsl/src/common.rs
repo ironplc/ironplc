@@ -8,6 +8,7 @@ use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 
 use dsl_macro_derive::Recurse;
+use ironplc_container::CharWidth;
 
 use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
@@ -1624,13 +1625,14 @@ pub enum StringType {
 }
 
 impl StringType {
-    /// Returns the per-code-unit byte width:
-    /// 1 for [`StringType::String`] (Latin-1), 2 for [`StringType::WString`]
-    /// (UTF-16LE) — per ADR-0016.
-    pub fn char_width(&self) -> u8 {
+    /// Returns the per-code-unit encoding:
+    /// [`CharWidth::Narrow`] for [`StringType::String`] (Latin-1),
+    /// [`CharWidth::Wide`] for [`StringType::WString`] (UTF-16LE) — per
+    /// ADR-0016.
+    pub fn char_width(&self) -> CharWidth {
         match self {
-            StringType::String => 1,
-            StringType::WString => 2,
+            StringType::String => CharWidth::Narrow,
+            StringType::WString => CharWidth::Wide,
         }
     }
 }

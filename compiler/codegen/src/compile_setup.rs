@@ -81,7 +81,7 @@ pub(crate) fn assign_variables(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = string_init.width.char_width();
+                    let char_width = string_init.width.char_width().byte_width();
 
                     // Allocate the data region: [max_length: u16][cur_length: u16]
                     // [char_width: u16][data: max_length * char_width bytes]

@@ -107,7 +107,7 @@ pub(crate) fn compile_user_function(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = string_init.width.char_width();
+                    let char_width = string_init.width.char_width().byte_width();
 
                     let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
@@ -173,7 +173,7 @@ pub(crate) fn compile_user_function(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = string_init.width.char_width();
+                    let char_width = string_init.width.char_width().byte_width();
 
                     let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
@@ -236,7 +236,7 @@ pub(crate) fn compile_user_function(
     let return_string_info = match &func_decl.return_type {
         FunctionReturnType::String(spec) | FunctionReturnType::WString(spec) => {
             let max_length = resolve_string_spec_max_length(spec)?;
-            let char_width = spec.width.char_width();
+            let char_width = spec.width.char_width().byte_width();
 
             let data_offset = ctx.data_region_offset;
             let total_bytes = string_region_size(max_length, char_width);
@@ -538,7 +538,7 @@ pub(crate) fn compile_user_function_block(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
-                    let char_width = string_init.width.char_width();
+                    let char_width = string_init.width.char_width().byte_width();
 
                     let data_offset = ctx.data_region_offset;
                     let total_bytes = string_region_size(max_length, char_width);
