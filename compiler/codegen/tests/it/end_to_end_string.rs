@@ -7,8 +7,8 @@ use ironplc_container::STRING_HEADER_BYTES;
 
 /// Reads a STRING value from the data region at the given byte offset.
 ///
-/// Data region layout per ADR-0015:
-///   [max_length: u16 LE][cur_length: u16 LE][data: cur_length bytes]
+/// Data region layout per ADR-0035:
+///   [max_length: u16 LE][cur_length: u16 LE][char_width: u16 LE][data: cur_length * char_width bytes]
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
     let cur_len =
         u16::from_le_bytes([data_region[data_offset + 2], data_region[data_offset + 3]]) as usize;
@@ -84,12 +84,12 @@ END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
-    // First string at offset 0: [max:254][cur:3][data]
+    // First string at offset 0: [max:254][cur:3][char_width:1][data]
     let s1 = read_string(&bufs.data_region, 0);
     assert_eq!(s1, "foo");
 
-    // Second string at offset 4 + 254 = 258
-    let s2 = read_string(&bufs.data_region, 258);
+    // Second string immediately after the first: STRING_HEADER_BYTES + 254
+    let s2 = read_string(&bufs.data_region, STRING_HEADER_BYTES + 254);
     assert_eq!(s2, "bar");
 }
 

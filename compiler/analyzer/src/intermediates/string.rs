@@ -12,6 +12,7 @@ pub fn from(initializer: &StringInitializer) -> TypeAttributes {
                 .length
                 .as_ref()
                 .and_then(|len| len.as_integer().map(|i| i.value)),
+            char_width: initializer.width.char_width(),
         },
     )
 }
@@ -21,6 +22,7 @@ pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
         decl.type_name.span(),
         IntermediateType::String {
             max_len: decl.length.as_integer().map(|i| i.value),
+            char_width: decl.width.char_width(),
         },
     )
 }
@@ -54,7 +56,10 @@ END_TYPE
         let my_str_type = env.get(&TypeName::from("MY_STR")).unwrap();
         assert!(matches!(
             &my_str_type.representation,
-            IntermediateType::String { max_len: None }
+            IntermediateType::String {
+                max_len: None,
+                char_width: 1,
+            }
         ));
     }
 
@@ -77,7 +82,10 @@ END_TYPE
         let my_wstr_type = env.get(&TypeName::from("MY_WSTR")).unwrap();
         assert!(matches!(
             &my_wstr_type.representation,
-            IntermediateType::String { max_len: Some(100) }
+            IntermediateType::String {
+                max_len: Some(100),
+                char_width: 2,
+            }
         ));
     }
 
@@ -101,7 +109,10 @@ END_TYPE
         let my_string_type = env.get(&TypeName::from("MY_STRING")).unwrap();
         assert!(matches!(
             &my_string_type.representation,
-            IntermediateType::String { max_len: Some(50) }
+            IntermediateType::String {
+                max_len: Some(50),
+                char_width: 1,
+            }
         ));
     }
 }

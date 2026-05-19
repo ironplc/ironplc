@@ -21,7 +21,7 @@ use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
     encode_string_literal, string_region_size, CompileContext, FbInstanceInfo, OpType, OpWidth,
-    Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE, STRING_CHAR_WIDTH,
+    Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE,
 };
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
@@ -81,10 +81,13 @@ pub(crate) fn assign_variables(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
+                    let char_width = string_init.width.char_width();
 
-                    // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
+                    // Allocate the data region: [max_length: u16][cur_length: u16]
+                    // [char_width: u16][data: max_length * char_width bytes]
+                    // (ADR-0035).
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = string_region_size(max_length);
+                    let total_bytes = string_region_size(max_length, char_width);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -104,7 +107,7 @@ pub(crate) fn assign_variables(
                         StringVarInfo {
                             data_offset,
                             max_length,
-                            char_width: STRING_CHAR_WIDTH,
+                            char_width,
                         },
                     );
                     ctx.debug_string_layouts.push(StringLayoutEntry {
@@ -112,7 +115,15 @@ pub(crate) fn assign_variables(
                         data_offset,
                         max_length,
                     });
-                    (iec_type_tag::STRING, "STRING".into())
+                    let (tag, name) = match string_init.width {
+                        ironplc_dsl::common::StringType::String => {
+                            (iec_type_tag::STRING, "STRING".into())
+                        }
+                        ironplc_dsl::common::StringType::WString => {
+                            (iec_type_tag::WSTRING, "WSTRING".into())
+                        }
+                    };
+                    (tag, name)
                 }
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
@@ -405,14 +416,17 @@ pub(crate) fn emit_initial_values(
                     if let Some(info) = ctx.string_vars.get(id) {
                         let data_offset = info.data_offset;
                         let max_length = info.max_length;
+                        let char_width = info.char_width;
 
-                        // Initialize the string header in the data region.
-                        emitter.emit_str_init(data_offset, max_length);
+                        // Initialize the string header (max, cur=0, char_width)
+                        // in the data region. Per ADR-0035, char_width is set
+                        // here at allocation and never modified.
+                        emitter.emit_str_init(data_offset, max_length, char_width);
 
                         // If there's an initial value, load and store it.
                         if let Some(chars) = &string_init.initial_value {
-                            let bytes = encode_string_literal(chars, STRING_CHAR_WIDTH);
-                            let pool_index = ctx.add_str_constant(bytes);
+                            let bytes = encode_string_literal(chars, char_width);
+                            let pool_index = ctx.add_str_constant_with_width(bytes, char_width);
                             ctx.num_temp_bufs += 1;
                             emitter.emit_load_const_str(pool_index);
                             emitter.emit_str_store_var(data_offset);
@@ -658,11 +672,12 @@ pub(crate) fn emit_function_local_prologue(
                     if let Some(info) = ctx.string_vars.get(id) {
                         let data_offset = info.data_offset;
                         let max_length = info.max_length;
-                        emitter.emit_str_init(data_offset, max_length);
+                        let char_width = info.char_width;
+                        emitter.emit_str_init(data_offset, max_length, char_width);
 
                         if let Some(chars) = &string_init.initial_value {
-                            let bytes = encode_string_literal(chars, STRING_CHAR_WIDTH);
-                            let pool_index = ctx.add_str_constant(bytes);
+                            let bytes = encode_string_literal(chars, char_width);
+                            let pool_index = ctx.add_str_constant_with_width(bytes, char_width);
                             ctx.num_temp_bufs += 1;
                             emitter.emit_load_const_str(pool_index);
                             emitter.emit_str_store_var(data_offset);
@@ -740,8 +755,8 @@ pub(crate) fn emit_function_local_prologue(
             &[],
         )?;
     } else if let Some(info) = ctx.string_vars.get(&func_decl.name) {
-        // STRING return: initialize the string header in the data region.
-        emitter.emit_str_init(info.data_offset, info.max_length);
+        // STRING/WSTRING return: initialize the string header in the data region.
+        emitter.emit_str_init(info.data_offset, info.max_length, info.char_width);
     } else {
         emit_zero_const(emitter, ctx, return_op_type);
         emit_store_var(emitter, return_var_index, return_op_type);

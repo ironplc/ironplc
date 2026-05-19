@@ -7,13 +7,14 @@ use crate::ContainerError;
 pub const MAGIC: u32 = 0x49504C43;
 
 /// Current container format version.
-pub const FORMAT_VERSION: u16 = 2;
+pub const FORMAT_VERSION: u16 = 3;
 
-/// Size in bytes of the string header (max_length: u16 + cur_length: u16).
+/// Size in bytes of the string header
+/// (max_length: u16 + cur_length: u16 + char_width: u16).
 ///
-/// See ADR-0015: every string in the data region is laid out as
-/// `[max_length: u16][cur_length: u16][data: max_length bytes]`.
-pub const STRING_HEADER_BYTES: usize = 4;
+/// See ADR-0035: every string in the data region is laid out as
+/// `[max_length: u16][cur_length: u16][char_width: u16][data: max_length * char_width bytes]`.
+pub const STRING_HEADER_BYTES: usize = 6;
 
 /// Flag bit: container expects __SYSTEM_UP_TIME at VarIndex(0) and
 /// __SYSTEM_UP_LTIME at VarIndex(1), written by the VM before each scan.
