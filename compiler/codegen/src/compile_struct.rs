@@ -700,6 +700,7 @@ pub(crate) fn allocate_struct_variable(
 mod tests {
     use super::*;
     use ironplc_analyzer::intermediate_type::IntermediateStructField;
+    use ironplc_container::CharWidth;
     use ironplc_dsl::core::Id;
 
     fn make_field(name: &str, field_type: IntermediateType) -> IntermediateStructField {
@@ -774,7 +775,7 @@ mod tests {
             "s",
             IntermediateType::String {
                 max_len: Some(255),
-                char_width: 1,
+                char_width: CharWidth::Narrow,
             },
         )];
         let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
@@ -793,7 +794,7 @@ mod tests {
                 "s",
                 IntermediateType::String {
                     max_len: Some(30),
-                    char_width: 1,
+                    char_width: CharWidth::Narrow,
                 },
             ),
             make_field(

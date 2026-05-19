@@ -3,6 +3,7 @@
 //! by the language and user-defined types.
 use std::collections::HashMap;
 
+use ironplc_container::CharWidth;
 use ironplc_dsl::{
     common::TypeName,
     core::Located,
@@ -206,14 +207,14 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
         "string",
         IntermediateType::String {
             max_len: None,
-            char_width: 1,
+            char_width: CharWidth::Narrow,
         },
     ),
     (
         "wstring",
         IntermediateType::String {
             max_len: None,
-            char_width: 2,
+            char_width: CharWidth::Wide,
         },
     ),
 ];
@@ -607,7 +608,7 @@ mod tests {
         .is_primitive());
         assert!(IntermediateType::String {
             max_len: Some(10),
-            char_width: 1
+            char_width: CharWidth::Narrow
         }
         .is_primitive());
         assert!(IntermediateType::Time {
@@ -654,7 +655,7 @@ mod tests {
         assert!(!IntermediateType::Bool.is_numeric());
         assert!(!IntermediateType::String {
             max_len: Some(10),
-            char_width: 1
+            char_width: CharWidth::Narrow
         }
         .is_numeric());
 

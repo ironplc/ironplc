@@ -48,6 +48,7 @@ impl TypeCategory {
 mod tests {
     use super::*;
     use crate::intermediate_type::{ArrayDimension, ByteSized, IntermediateType};
+    use ironplc_container::CharWidth;
 
     #[test]
     fn type_category_classification() {
@@ -65,7 +66,7 @@ mod tests {
         assert_eq!(
             TypeCategory::for_type(&IntermediateType::String {
                 max_len: None,
-                char_width: 1
+                char_width: CharWidth::Narrow
             }),
             TypeCategory::Elementary
         );

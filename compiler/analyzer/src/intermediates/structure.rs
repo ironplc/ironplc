@@ -288,6 +288,7 @@ mod tests {
     use crate::intermediate_type::IntermediateType;
     use crate::type_environment::{TypeEnvironment, TypeEnvironmentBuilder};
     use crate::xform_resolve_type_decl_environment::apply;
+    use ironplc_container::CharWidth;
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::{FileId, Id};
     use ironplc_parser::options::CompilerOptions;
@@ -809,7 +810,7 @@ END_TYPE
             fields[0].field_type,
             IntermediateType::String {
                 max_len: None,
-                char_width: 1
+                char_width: CharWidth::Narrow
             }
         ));
         assert_eq!(fields[1].name, Id::from("value"));
@@ -840,7 +841,7 @@ END_TYPE
             fields[0].field_type,
             IntermediateType::String {
                 max_len: Some(30),
-                char_width: 1
+                char_width: CharWidth::Narrow
             }
         ));
     }
@@ -869,7 +870,7 @@ END_TYPE
             fields[0].field_type,
             IntermediateType::String {
                 max_len: None,
-                char_width: 1
+                char_width: CharWidth::Narrow
             }
         ));
         assert!(matches!(fields[1].field_type, IntermediateType::Int { .. }));
@@ -877,7 +878,7 @@ END_TYPE
             fields[2].field_type,
             IntermediateType::String {
                 max_len: Some(50),
-                char_width: 1
+                char_width: CharWidth::Narrow
             }
         ));
     }

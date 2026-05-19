@@ -128,6 +128,7 @@ mod tests {
     use crate::intermediate_type::{ByteSized, IntermediateType};
     use crate::type_environment::TypeEnvironmentBuilder;
     use crate::xform_resolve_type_decl_environment::apply;
+    use ironplc_container::CharWidth;
     use ironplc_dsl::common::TypeName;
     use ironplc_dsl::core::{FileId, SourceSpan};
     use ironplc_parser::options::CompilerOptions;
@@ -247,7 +248,7 @@ mod tests {
     fn validate_subrange_bounds_with_non_numeric_type_then_error() {
         let string_type = IntermediateType::String {
             max_len: Some(10),
-            char_width: 1,
+            char_width: CharWidth::Narrow,
         };
         let result = string_type.validate_bounds(0, 10, &TypeName::from("TEST"));
         assert!(result.is_err());
@@ -474,7 +475,7 @@ mod tests {
                 SourceSpan::default(),
                 IntermediateType::String {
                     max_len: None,
-                    char_width: 1,
+                    char_width: CharWidth::Narrow,
                 },
             ),
         )

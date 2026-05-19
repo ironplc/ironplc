@@ -192,7 +192,7 @@ fn collect_types(context: &SemanticContext) -> Vec<TypeEntry> {
                 char_width,
             } => TypeEntry {
                 name: name.to_string(),
-                kind: if *char_width == 2 {
+                kind: if char_width.is_wide() {
                     "wstring".into()
                 } else {
                     "string".into()

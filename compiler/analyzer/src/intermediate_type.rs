@@ -8,6 +8,7 @@
 //! booleans) and complex types (like structures, arrays, and function blocks) found in
 //! IEC 61131-3 standard and similar PLC programming languages.
 
+use ironplc_container::CharWidth;
 use ironplc_dsl::core::Id;
 
 /// Bounds for a single dimension of an array type.
@@ -88,13 +89,13 @@ pub enum IntermediateType {
     DateAndTime { size: ByteSized },
 
     /// Variable-length string with optional maximum length and a per-code-unit
-    /// `char_width`: 1 for STRING (Latin-1 per ADR-0016), 2 for WSTRING
-    /// (UTF-16LE per ADR-0016). The two encodings are not implicitly
-    /// convertible — `STRING := WSTRING` and `WSTRING := STRING` are rejected
-    /// by the type checker (ADR-0034).
+    /// encoding: [`CharWidth::Narrow`] for STRING (Latin-1 per ADR-0016),
+    /// [`CharWidth::Wide`] for WSTRING (UTF-16LE per ADR-0016). The two
+    /// encodings are not implicitly convertible — `STRING := WSTRING` and
+    /// `WSTRING := STRING` are rejected by the type checker (ADR-0034).
     String {
         max_len: Option<u128>,
-        char_width: u8,
+        char_width: CharWidth,
     },
 
     /// User-defined enumeration type
@@ -268,7 +269,7 @@ impl IntermediateType {
             IntermediateType::String {
                 max_len,
                 char_width,
-            } => max_len.map(|len| (len as u32) * (*char_width as u32)),
+            } => max_len.map(|len| (len as u32) * (char_width.byte_width() as u32)),
             IntermediateType::Subrange { base_type, .. } => base_type.size_in_bytes(),
             IntermediateType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
             IntermediateType::Structure { fields } => {
@@ -648,7 +649,7 @@ impl IntermediateType {
                 const DEFAULT_STRING_MAX_LEN: u128 = 254;
                 const HEADER_BYTES: u128 = 6; // [max_len][cur_len][char_width]
                 let len = max_len.unwrap_or(DEFAULT_STRING_MAX_LEN);
-                let total_bytes = HEADER_BYTES + len * (*char_width as u128);
+                let total_bytes = HEADER_BYTES + len * (char_width.byte_width() as u128);
                 let slots = total_bytes.div_ceil(8);
                 u32::try_from(slots).map_err(|_| SlotCountError::Overflow)
             }
@@ -713,6 +714,7 @@ mod tests {
     use crate::intermediate_type::{
         ArrayDimension, ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
     };
+    use ironplc_container::CharWidth;
     use ironplc_dsl::core::Id;
 
     #[test]
@@ -789,7 +791,7 @@ mod tests {
         assert_eq!(
             IntermediateType::String {
                 max_len: Some(10),
-                char_width: 1
+                char_width: CharWidth::Narrow
             }
             .size_in_bytes(),
             Some(10)
@@ -797,7 +799,7 @@ mod tests {
         assert_eq!(
             IntermediateType::String {
                 max_len: None,
-                char_width: 1
+                char_width: CharWidth::Narrow
             }
             .size_in_bytes(),
             None
@@ -908,7 +910,7 @@ mod tests {
         assert_eq!(
             IntermediateType::String {
                 max_len: Some(10),
-                char_width: 1
+                char_width: CharWidth::Narrow
             }
             .alignment_bytes(),
             1
@@ -960,12 +962,12 @@ mod tests {
         // Test string types
         assert!(IntermediateType::String {
             max_len: Some(10),
-            char_width: 1
+            char_width: CharWidth::Narrow
         }
         .has_explicit_size());
         assert!(!IntermediateType::String {
             max_len: None,
-            char_width: 1
+            char_width: CharWidth::Narrow
         }
         .has_explicit_size());
 
@@ -1204,7 +1206,7 @@ mod tests {
 
         let string_type = IntermediateType::String {
             max_len: Some(10),
-            char_width: 1,
+            char_width: CharWidth::Narrow,
         };
         let result = string_type.validate_bounds(0, 10, &TypeName::from("TEST"));
         assert!(result.is_err());
@@ -2071,7 +2073,7 @@ mod tests {
         // STRING[255]: ceil((6 + 255) / 8) = ceil(261/8) = 33 slots
         let s = IntermediateType::String {
             max_len: Some(255),
-            char_width: 1,
+            char_width: CharWidth::Narrow,
         };
         assert_eq!(s.slot_count(), Ok(33));
     }
@@ -2081,7 +2083,7 @@ mod tests {
         // STRING (default 254): ceil((6 + 254) / 8) = ceil(260/8) = 33 slots
         let s = IntermediateType::String {
             max_len: None,
-            char_width: 1,
+            char_width: CharWidth::Narrow,
         };
         assert_eq!(s.slot_count(), Ok(33));
     }
@@ -2091,7 +2093,7 @@ mod tests {
         // STRING[4]: ceil((6 + 4 * 1) / 8) = ceil(10/8) = 2 slots
         let s = IntermediateType::String {
             max_len: Some(4),
-            char_width: 1,
+            char_width: CharWidth::Narrow,
         };
         assert_eq!(s.slot_count(), Ok(2));
     }
@@ -2101,7 +2103,7 @@ mod tests {
         // WSTRING[4]: ceil((6 + 4 * 2) / 8) = ceil(14/8) = 2 slots
         let s = IntermediateType::String {
             max_len: Some(4),
-            char_width: 2,
+            char_width: CharWidth::Wide,
         };
         assert_eq!(s.slot_count(), Ok(2));
     }

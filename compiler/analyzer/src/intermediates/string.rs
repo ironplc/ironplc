@@ -1,7 +1,17 @@
 use crate::{intermediate_type::IntermediateType, type_environment::TypeAttributes};
 
-use ironplc_dsl::common::{StringDeclaration, StringInitializer};
+use ironplc_container::CharWidth;
+use ironplc_dsl::common::{StringDeclaration, StringInitializer, StringType};
 use ironplc_dsl::core::Located;
+
+/// Map the source-language [`StringType`] (`STRING` / `WSTRING`) to the
+/// per-code-unit encoding carried by the analyzer's type IR.
+fn char_width_for(width: &StringType) -> CharWidth {
+    match width {
+        StringType::String => CharWidth::Narrow,
+        StringType::WString => CharWidth::Wide,
+    }
+}
 
 pub fn from(initializer: &StringInitializer) -> TypeAttributes {
     // String type with specific length: MY_STRING : STRING(10);
@@ -12,7 +22,7 @@ pub fn from(initializer: &StringInitializer) -> TypeAttributes {
                 .length
                 .as_ref()
                 .and_then(|len| len.as_integer().map(|i| i.value)),
-            char_width: initializer.width.char_width(),
+            char_width: char_width_for(&initializer.width),
         },
     )
 }
@@ -22,13 +32,14 @@ pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
         decl.type_name.span(),
         IntermediateType::String {
             max_len: decl.length.as_integer().map(|i| i.value),
-            char_width: decl.width.char_width(),
+            char_width: char_width_for(&decl.width),
         },
     )
 }
 
 #[cfg(test)]
 mod tests {
+    use ironplc_container::CharWidth;
     use ironplc_dsl::{common::TypeName, core::FileId};
     use ironplc_parser::options::CompilerOptions;
 
@@ -58,7 +69,7 @@ END_TYPE
             &my_str_type.representation,
             IntermediateType::String {
                 max_len: None,
-                char_width: 1,
+                char_width: CharWidth::Narrow,
             }
         ));
     }
@@ -84,7 +95,7 @@ END_TYPE
             &my_wstr_type.representation,
             IntermediateType::String {
                 max_len: Some(100),
-                char_width: 2,
+                char_width: CharWidth::Wide,
             }
         ));
     }
@@ -111,7 +122,7 @@ END_TYPE
             &my_string_type.representation,
             IntermediateType::String {
                 max_len: Some(50),
-                char_width: 1,
+                char_width: CharWidth::Narrow,
             }
         ));
     }

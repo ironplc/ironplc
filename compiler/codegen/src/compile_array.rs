@@ -403,7 +403,7 @@ pub(crate) fn array_spec_from_named(
             let len = max_len
                 .map(|v| v as u16)
                 .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
-            (Some(len), Some(*char_width))
+            (Some(len), Some(char_width.byte_width()))
         }
         _ => (None, None),
     };

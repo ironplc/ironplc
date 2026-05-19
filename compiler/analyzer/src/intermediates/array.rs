@@ -5,6 +5,7 @@
 
 use crate::intermediate_type::{ArrayDimension, IntermediateType};
 use crate::type_environment::{TypeAttributes, TypeEnvironment};
+use ironplc_container::CharWidth;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::*;
@@ -37,14 +38,14 @@ pub fn try_from(
                         .length
                         .as_ref()
                         .and_then(|len| len.as_integer().map(|i| i.value)),
-                    char_width: 1,
+                    char_width: CharWidth::Narrow,
                 },
                 ArrayElementType::WString(spec) => IntermediateType::String {
                     max_len: spec
                         .length
                         .as_ref()
                         .and_then(|len| len.as_integer().map(|i| i.value)),
-                    char_width: 2,
+                    char_width: CharWidth::Wide,
                 },
                 ArrayElementType::Named(_) => {
                     let element_type =
@@ -539,7 +540,7 @@ mod tests {
                 *element_type,
                 IntermediateType::String {
                     max_len: Some(10),
-                    char_width: 1
+                    char_width: CharWidth::Narrow
                 }
             );
             assert_eq!(dimensions.len(), 1);
@@ -588,7 +589,7 @@ mod tests {
                 *element_type,
                 IntermediateType::String {
                     max_len: None,
-                    char_width: 1
+                    char_width: CharWidth::Narrow
                 }
             );
             assert_eq!(dimensions.len(), 1);
