@@ -144,9 +144,9 @@ pub struct DebugSection {
     ///
     /// Invariant: entries are sorted by `(function_id, bytecode_offset)` so
     /// that [`lookup_source_location`](Self::lookup_source_location) can use
-    /// a binary search. [`Self::read_from`] and
-    /// [`crate::builder::ContainerBuilder::build`] both restore this order;
-    /// callers constructing a `DebugSection` directly must do so themselves.
+    /// a binary search. [`crate::builder::ContainerBuilder::build`] restores
+    /// this order; callers constructing a `DebugSection` directly (or
+    /// hand-crafting on-disk bytes) must do so themselves.
     pub line_map: Vec<LineMapEntry>,
     /// STRING variable data-region layouts (debug section Tag 4).
     pub string_layouts: Vec<StringLayoutEntry>,
@@ -275,10 +275,6 @@ impl DebugSection {
                 }
             }
         }
-
-        // Restore the sort invariant in case the source bytes were written
-        // by an older or non-conforming producer.
-        sort_line_map(&mut line_map);
 
         Ok(DebugSection {
             var_names,
@@ -925,39 +921,6 @@ mod tests {
 
         // Offset 100: beyond the last entry, should still return the third.
         let hit = section
-            .lookup_source_location(FunctionId::INIT, 100)
-            .unwrap();
-        assert_eq!(hit.source_line, 30);
-    }
-
-    #[test]
-    fn debug_section_read_from_when_entries_unsorted_then_restores_sort_invariant() {
-        // Hand-roll a debug section payload with line_map entries in an
-        // intentionally non-sorted order, then verify that read_from
-        // restores the (function_id, bytecode_offset) invariant so that
-        // lookup_source_location's binary search is correct.
-        let mut buf = Vec::new();
-        buf.extend_from_slice(&1u16.to_le_bytes()); // sub_table_count = 1
-                                                    // Directory entry: LINE_MAP, payload = 2 + 3*8 = 26
-        buf.extend_from_slice(&TAG_LINE_MAP.to_le_bytes());
-        buf.extend_from_slice(&0u16.to_le_bytes()); // reserved
-        buf.extend_from_slice(&26u32.to_le_bytes());
-        // Payload: count=3, then three entries deliberately out of order.
-        buf.extend_from_slice(&3u16.to_le_bytes());
-        for (fid, off, line) in [(0u16, 12u16, 30u16), (0, 0, 10), (0, 8, 20)] {
-            buf.extend_from_slice(&fid.to_le_bytes());
-            buf.extend_from_slice(&off.to_le_bytes());
-            buf.extend_from_slice(&line.to_le_bytes());
-            buf.extend_from_slice(&1u16.to_le_bytes()); // column
-        }
-
-        let decoded = DebugSection::read_from(&mut Cursor::new(&buf)).unwrap();
-        let offsets: Vec<u16> = decoded.line_map.iter().map(|e| e.bytecode_offset).collect();
-        assert_eq!(offsets, vec![0, 8, 12]);
-
-        // And binary-search lookup still returns the greatest entry <= the
-        // requested offset.
-        let hit = decoded
             .lookup_source_location(FunctionId::INIT, 100)
             .unwrap();
         assert_eq!(hit.source_line, 30);
