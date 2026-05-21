@@ -141,12 +141,24 @@ pub struct DebugSection {
     pub func_names: Vec<FuncNameEntry>,
     /// Bytecode-offset → source-location mappings (debug section Tag 1).
     /// Empty when no source map is present.
+    ///
+    /// Invariant: entries are sorted by `(function_id, bytecode_offset)` so
+    /// that [`lookup_source_location`](Self::lookup_source_location) can use
+    /// a binary search. [`crate::builder::ContainerBuilder::build`] restores
+    /// this order; callers constructing a `DebugSection` directly (or
+    /// hand-crafting on-disk bytes) must do so themselves.
     pub line_map: Vec<LineMapEntry>,
     /// STRING variable data-region layouts (debug section Tag 4).
     pub string_layouts: Vec<StringLayoutEntry>,
     /// Enumeration type definitions (debug section Tag 9).
     /// Maps enum type names to their value names in ordinal order.
     pub enum_defs: Vec<EnumDefEntry>,
+}
+
+/// Sorts a line map by `(function_id, bytecode_offset)` to satisfy the
+/// invariant required by [`DebugSection::lookup_source_location`].
+pub(crate) fn sort_line_map(entries: &mut [LineMapEntry]) {
+    entries.sort_by_key(|e| (e.function_id.raw(), e.bytecode_offset));
 }
 
 impl DebugSection {
@@ -338,26 +350,27 @@ impl DebugSection {
     /// standard "find enclosing source line" lookup used by debuggers when
     /// the PC does not exactly match an entry. Returns `None` if no entry
     /// for that function precedes the requested offset.
+    ///
+    /// Runs in O(log N) by binary-searching the slice; relies on the
+    /// `(function_id, bytecode_offset)` sort invariant documented on
+    /// [`Self::line_map`].
     pub fn lookup_source_location(
         &self,
         function_id: FunctionId,
         bytecode_offset: u16,
     ) -> Option<LineMapEntry> {
-        let mut best: Option<LineMapEntry> = None;
-        for entry in &self.line_map {
-            if entry.function_id != function_id {
-                continue;
-            }
-            if entry.bytecode_offset > bytecode_offset {
-                continue;
-            }
-            match best {
-                None => best = Some(*entry),
-                Some(b) if entry.bytecode_offset >= b.bytecode_offset => best = Some(*entry),
-                _ => {}
-            }
+        // Find the position one past the last entry that is <= the requested
+        // key. The predecessor (if any) within the same function is the hit.
+        let key = (function_id.raw(), bytecode_offset);
+        let upper = self
+            .line_map
+            .partition_point(|e| (e.function_id.raw(), e.bytecode_offset) <= key);
+        let candidate = self.line_map.get(upper.checked_sub(1)?)?;
+        if candidate.function_id == function_id {
+            Some(*candidate)
+        } else {
+            None
         }
-        best
     }
 
     fn var_name_payload_size(&self) -> u32 {
@@ -775,7 +788,15 @@ mod tests {
         let section = DebugSection {
             var_names: vec![],
             func_names: vec![],
+            // Sorted by (function_id, bytecode_offset) per the line_map
+            // invariant.
             line_map: vec![
+                LineMapEntry {
+                    function_id: FunctionId::INIT,
+                    bytecode_offset: 0,
+                    source_line: 99,
+                    source_column: 1,
+                },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 0,
@@ -786,12 +807,6 @@ mod tests {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 8,
                     source_line: 11,
-                    source_column: 1,
-                },
-                LineMapEntry {
-                    function_id: FunctionId::INIT,
-                    bytecode_offset: 0,
-                    source_line: 99,
                     source_column: 1,
                 },
             ],
@@ -905,45 +920,6 @@ mod tests {
         assert_eq!(hit.source_line, 30);
 
         // Offset 100: beyond the last entry, should still return the third.
-        let hit = section
-            .lookup_source_location(FunctionId::INIT, 100)
-            .unwrap();
-        assert_eq!(hit.source_line, 30);
-    }
-
-    #[test]
-    fn debug_section_lookup_source_location_when_entries_out_of_order_then_returns_greatest_leq() {
-        // Stored in descending bytecode_offset order so the later iterations
-        // see entries with smaller offsets than the running best; this
-        // exercises the `_ => {}` fall-through arm that leaves `best`
-        // unchanged.
-        let section = DebugSection {
-            var_names: vec![],
-            func_names: vec![],
-            line_map: vec![
-                LineMapEntry {
-                    function_id: FunctionId::INIT,
-                    bytecode_offset: 12,
-                    source_line: 30,
-                    source_column: 1,
-                },
-                LineMapEntry {
-                    function_id: FunctionId::INIT,
-                    bytecode_offset: 0,
-                    source_line: 10,
-                    source_column: 1,
-                },
-                LineMapEntry {
-                    function_id: FunctionId::INIT,
-                    bytecode_offset: 8,
-                    source_line: 20,
-                    source_column: 1,
-                },
-            ],
-            string_layouts: vec![],
-            enum_defs: vec![],
-        };
-
         let hit = section
             .lookup_source_location(FunctionId::INIT, 100)
             .unwrap();

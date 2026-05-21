@@ -328,10 +328,12 @@ impl ContainerBuilder {
         {
             None
         } else {
+            let mut line_map = self.debug_line_map;
+            crate::debug_section::sort_line_map(&mut line_map);
             Some(DebugSection {
                 var_names: self.debug_var_names,
                 func_names: self.debug_func_names,
-                line_map: self.debug_line_map,
+                line_map,
                 string_layouts: self.debug_string_layouts,
                 enum_defs: self.debug_enum_defs,
             })
@@ -505,6 +507,48 @@ mod tests {
         let debug = container.debug_section.expect("debug section present");
         assert_eq!(debug.line_map.len(), 1);
         assert_eq!(debug.line_map[0], entry);
+    }
+
+    #[test]
+    fn builder_when_line_map_entries_unsorted_then_build_sorts_them() {
+        use crate::debug_section::LineMapEntry;
+
+        let entries = [
+            LineMapEntry {
+                function_id: FunctionId::SCAN,
+                bytecode_offset: 4,
+                source_line: 30,
+                source_column: 1,
+            },
+            LineMapEntry {
+                function_id: FunctionId::INIT,
+                bytecode_offset: 8,
+                source_line: 20,
+                source_column: 1,
+            },
+            LineMapEntry {
+                function_id: FunctionId::INIT,
+                bytecode_offset: 0,
+                source_line: 10,
+                source_column: 1,
+            },
+        ];
+
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .add_function(FunctionId::INIT, &[0x8C], 0, 0, 0)
+            .add_line_map_entry(entries[0])
+            .add_line_map_entry(entries[1])
+            .add_line_map_entry(entries[2])
+            .build();
+
+        let debug = container.debug_section.expect("debug section present");
+        let keys: Vec<_> = debug
+            .line_map
+            .iter()
+            .map(|e| (e.function_id.raw(), e.bytecode_offset))
+            .collect();
+        assert_eq!(keys, vec![(0, 0), (0, 8), (1, 4)]);
     }
 
     #[test]
