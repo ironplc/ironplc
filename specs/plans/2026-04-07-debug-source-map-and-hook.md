@@ -1,5 +1,23 @@
 # Source Map in Debug Section + DebugHook Trait
 
+## Status
+
+- [x] `DebugSection.line_map` + `LineMapEntry` encode/decode (Tag 1) —
+  `compiler/container/src/debug_section.rs`
+- [x] `Builder::add_line_map_entry` — `compiler/container/src/builder.rs`
+- [x] `DebugHook` trait + `NoopDebugHook` + generic
+  `execute_with_hook<H>` — `compiler/vm/src/{debug_hook.rs,vm.rs}`
+- [x] **`line_map` sorted by `(function_id, bytecode_offset)` on build /
+  read; `lookup_source_location` uses binary search.** Sort invariant
+  documented on the struct field; `Builder::build` and
+  `DebugSection::read_from` both restore it. (2026-05-21)
+- [ ] Span tracking + source-map emission from codegen (`Emitter`,
+  `compile_stmt`, `compile_expr`).
+- [ ] `optimize_with_source_map`: remap source-map offsets through the
+  optimizer's old→new offset table.
+- [ ] End-to-end tests under `compiler/codegen/tests/` and
+  `compiler/vm/tests/`.
+
 ## Context
 
 Currently the bytecode debug section (`compiler/container/src/debug_section.rs`) carries variable and function name metadata (sub-tables 2 and 3) but no mapping from bytecode offsets back to source line/column positions. This blocks line-level breakpoints, runtime error reporting tied to source, and any future stepping debugger.
