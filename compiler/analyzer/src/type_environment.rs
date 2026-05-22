@@ -3,6 +3,7 @@
 //! by the language and user-defined types.
 use std::collections::HashMap;
 
+use ironplc_container::CharWidth;
 use ironplc_dsl::{
     common::TypeName,
     core::Located,
@@ -202,8 +203,20 @@ static ELEMENTARY_TYPES_LOWER_CASE: [(&str, IntermediateType); 29] = [
         },
     ),
     // remaining elementary_type_name
-    ("string", IntermediateType::String { max_len: None }),
-    ("wstring", IntermediateType::String { max_len: None }),
+    (
+        "string",
+        IntermediateType::String {
+            max_len: None,
+            char_width: CharWidth::Narrow,
+        },
+    ),
+    (
+        "wstring",
+        IntermediateType::String {
+            max_len: None,
+            char_width: CharWidth::Wide,
+        },
+    ),
 ];
 
 #[derive(Debug)]
@@ -593,7 +606,11 @@ mod tests {
             size: ByteSized::B64
         }
         .is_primitive());
-        assert!(IntermediateType::String { max_len: Some(10) }.is_primitive());
+        assert!(IntermediateType::String {
+            max_len: Some(10),
+            char_width: CharWidth::Narrow,
+        }
+        .is_primitive());
         assert!(IntermediateType::Time {
             size: ByteSized::B32
         }
@@ -636,7 +653,11 @@ mod tests {
         }
         .is_numeric());
         assert!(!IntermediateType::Bool.is_numeric());
-        assert!(!IntermediateType::String { max_len: Some(10) }.is_numeric());
+        assert!(!IntermediateType::String {
+            max_len: Some(10),
+            char_width: CharWidth::Narrow,
+        }
+        .is_numeric());
 
         // Test integer types
         assert!(IntermediateType::Int {

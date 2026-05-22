@@ -5,6 +5,7 @@
 
 use crate::intermediate_type::{ArrayDimension, IntermediateType};
 use crate::type_environment::{TypeAttributes, TypeEnvironment};
+use ironplc_container::CharWidth;
 use ironplc_dsl::common::*;
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::*;
@@ -32,15 +33,20 @@ pub fn try_from(
 
             // Resolve the element type representation based on the element type kind
             let element_repr = match &array_subranges.type_name {
-                ArrayElementType::String(spec) | ArrayElementType::WString(spec) => {
-                    // Sized string: resolve directly from the specification
-                    IntermediateType::String {
-                        max_len: spec
-                            .length
-                            .as_ref()
-                            .and_then(|len| len.as_integer().map(|i| i.value)),
-                    }
-                }
+                ArrayElementType::String(spec) => IntermediateType::String {
+                    max_len: spec
+                        .length
+                        .as_ref()
+                        .and_then(|len| len.as_integer().map(|i| i.value)),
+                    char_width: CharWidth::Narrow,
+                },
+                ArrayElementType::WString(spec) => IntermediateType::String {
+                    max_len: spec
+                        .length
+                        .as_ref()
+                        .and_then(|len| len.as_integer().map(|i| i.value)),
+                    char_width: CharWidth::Wide,
+                },
                 ArrayElementType::Named(_) => {
                     let element_type =
                         type_environment.get(&element_type_name).ok_or_else(|| {
@@ -532,7 +538,10 @@ mod tests {
         {
             assert_eq!(
                 *element_type,
-                IntermediateType::String { max_len: Some(10) }
+                IntermediateType::String {
+                    max_len: Some(10),
+                    char_width: CharWidth::Narrow,
+                }
             );
             assert_eq!(dimensions.len(), 1);
             assert_eq!(dimensions[0].lower, 1);
@@ -576,7 +585,13 @@ mod tests {
             dimensions,
         } = attrs.representation
         {
-            assert_eq!(*element_type, IntermediateType::String { max_len: None });
+            assert_eq!(
+                *element_type,
+                IntermediateType::String {
+                    max_len: None,
+                    char_width: CharWidth::Narrow,
+                }
+            );
             assert_eq!(dimensions.len(), 1);
         } else {
             unreachable!("Expected Array type");
