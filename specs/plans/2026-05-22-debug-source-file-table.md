@@ -47,31 +47,62 @@ offset N in function F come from?" This plan supplies the answer in two
 steps: extend `LineMapEntry` with `file_id`, and define tag 6 as the
 table that resolves it.
 
-### Hash algorithm choice — BLAKE3
+### Hash algorithm — BLAKE3 everywhere
 
-ADR-0007 selected SHA-256 for the four header-level integrity hashes
-(`content_hash`, `source_hash`, `debug_hash`, `layout_hash`). Those four
-stay on SHA-256 in this plan; we do not amend ADR-0007.
+ADR-0007 originally selected SHA-256 for `content_hash`, `source_hash`,
+`debug_hash`, and `layout_hash`. This plan switches **all** integrity
+hashes in the container — header hashes and the new per-file hashes
+alike — to **BLAKE3**. Both algorithms produce 32-byte digests at
+default settings, so the header layout shape is unchanged; only the
+algorithm is.
 
-The new per-file hash in tag 6 uses **BLAKE3** because:
+Rationale for BLAKE3:
 
-1. BLAKE3 is several × faster than SHA-256 on commodity hardware, and the
-   compiler hashes every input source file on every build. SHA-256 only
-   hashed the concatenated source once.
-2. The header hashes are 32-byte fixed-format fields embedded in a
-   wire-stable header; changing those is an ADR-level decision with
-   migration cost. The tag-6 entries are brand new, so we get to pick
-   freely.
-3. BLAKE3 output is 32 bytes (configurable XOF, but we use the default
-   length), matching the storage shape we already use for the header
-   hashes. No layout differences.
-4. BLAKE3 has no length-extension weakness, removing a class of footgun
-   if a caller ever hashes structured data into the same digest.
+1. **Performance.** BLAKE3 is several × faster than SHA-256 on
+   commodity hardware. The compiler hashes every input source file on
+   every build, plus four header-level digests per container — the
+   savings compound.
+2. **Same security posture, no length-extension.** BLAKE3 has 128-bit
+   collision/preimage security at 32-byte output, matching SHA-256, and
+   removes SHA-256's length-extension footgun if a caller ever hashes
+   structured data.
+3. **Consistency.** Mixing algorithms within one container format is a
+   small but real maintenance tax (two dependencies, two test
+   strategies, two places to get wrong). Picking one and using it
+   everywhere is cheaper to reason about.
+4. **Pre-1.0.** No installed base depends on the current algorithm
+   choice, so the switch costs nothing today and costs more if deferred.
 
-We will record this departure as a note in ADR-0007 ("per-file source
-hashes in the debug section use BLAKE3; the four header-level hashes
-remain SHA-256") rather than a new ADR — the choice is local to one
-sub-table and the rationale fits in a paragraph.
+ADR-0007 will be amended (not just annotated) to record BLAKE3 as the
+chosen algorithm. The "Decision" and "Consequences" sections both need
+updates; the structure of the dual-signature integrity model is
+unaffected.
+
+### `header.source_hash` is removed, not repurposed
+
+The single `header.source_hash` field captured "did any source change?"
+in a single-file world. With per-file `content_hash` entries in tag 6
+this is strictly less informative — you get "something changed" but
+not "which file." Since we're already touching the format and there is
+no installed base, **`header.source_hash` is removed from the header**
+rather than kept as a deprecated zero-filled slot.
+
+Cascading offset shifts in `HEADER_SIZE`:
+
+| Field | Old offset | New offset |
+|-------|------------|------------|
+| `content_hash` | 8 | 8 |
+| `source_hash` | 40 | *(removed)* |
+| `debug_hash` | 72 | 40 |
+| `layout_hash` | 104 | 72 |
+
+`HEADER_SIZE` shrinks by 32 bytes. `header.rs` write/read logic, the
+header-size constant, and every test fixture that depends on offsets
+beyond byte 40 need to be updated together.
+
+The per-file `content_hash` entries in tag 6 are the sole source of
+truth for source integrity. The `debug_hash` (BLAKE3 over the entire
+debug section) transitively protects them.
 
 ## Architecture
 
@@ -120,11 +151,15 @@ release builds don't carry it, and the format is pre-1.0.
 
 ### Codegen plumbing
 
-1. `Emitter::set_source_position` grows a `file_id: u16` parameter (or
-   we add a sibling `set_current_file(file_id)` and keep position
-   per-token). I recommend folding both into one call —
-   `set_source_position(file_id, line, column)` — so the dedup check in
-   `record_line_map_entry` keys on the full triple.
+1. `Emitter::set_source_position` is widened to
+   `set_source_position(file_id: u16, line: u16, column: u16)` — the
+   AST node's `Located::span()` carries all three together, so passing
+   them at the same call site keeps the data flow simple and avoids a
+   "forgot to update the current file" state-management bug. The dedup
+   check in `record_line_map_entry` keys on the full
+   `(file_id, line, column)` triple. The Emitter API landed in the
+   previous PR but is not yet consumed by anything outside codegen, so
+   widening the signature has zero external cost.
 2. `EmittedLineMapEntry` (in `emit.rs`) gains a matching `file_id`
    field.
 3. `compile.rs` accumulates a `SourceFileTable` during compilation:
@@ -165,7 +200,13 @@ Modified:
 
 - `compiler/container/Cargo.toml` — add `blake3 = "1"` (std-only;
   enable `default-features = false` if no_std builds touch this code,
-  but `debug_section.rs` is std-only today).
+  but `debug_section.rs` is std-only today). Drop any unused
+  `sha2`/`sha-256` dependency once header hashing is migrated.
+- `compiler/container/src/header.rs` — remove `source_hash` field;
+  shift `debug_hash` and `layout_hash` offsets; update `HEADER_SIZE`;
+  update `write_to`/`read_from`; update all header tests.
+- Any callers that compute or set `source_hash` (currently the
+  builder/cli) — remove those code paths.
 - `compiler/container/src/debug_section.rs` —
   - add `TAG_SOURCE_FILE: u16 = 6`;
   - add `SourceFileEntry { path: String, content_hash: [u8; 32] }`;
@@ -200,66 +241,90 @@ Modified:
 - `specs/design/debugger-support.md` — close gap #7 (line ~113) and
   remove "v1 assumes single file per container"; update the tag table
   near line 251 to mark tag 6 implemented.
-- `specs/adrs/0007-dual-signature-integrity-model.md` — append a short
-  note that per-file source hashes in the debug section use BLAKE3
-  while the four header-level hashes remain SHA-256.
+- `specs/adrs/0007-dual-signature-integrity-model.md` — substantive
+  amendment: switch all hash algorithms from SHA-256 to BLAKE3 in the
+  Decision and Consequences sections; remove the `source_hash` entry
+  and replace it with a reference to the per-file BLAKE3 hashes in the
+  debug section's SOURCE_FILE_TABLE.
+- Any other ADRs that mention SHA-256 in passing (audit
+  `specs/adrs/` for "SHA-256" references and update).
 
-## Open Questions
+## Resolved Decisions
 
-1. **`header.source_hash` for multi-file containers.** Three options:
-   (a) keep it as SHA-256 over the concatenation of all source files
-   (legacy behavior); (b) redefine it as BLAKE3 over the canonical
-   concatenation of `(path || 0x00 || content) || ...`; (c) deprecate
-   it for multi-file containers (zero it out) and rely on the per-file
-   tag-6 hashes plus `debug_hash`. Recommendation: **(a) for now** — no
-   header layout change, no ADR-0007 amendment beyond the BLAKE3 note,
-   and the per-file hashes cover the granular case. Revisit if (a) ever
-   blocks something.
-2. **Per-function file mapping.** A function may span only one file in
-   IEC 61131-3 (POUs aren't split across files), so a debugger's
-   `stackTrace` can derive a frame's file from its first
-   `LineMapEntry`. We don't need a separate `(function_id → file_id)`
-   sub-table. Confirming this matches reviewer intuition before
-   shipping.
-3. **`set_source_position` signature.** Threading a `file_id` through
-   every span-emitting call site is mechanical but touches many
-   statement-emit functions. An alternative is a `set_current_file`
-   helper called once per POU (POUs are one-file-only per #2), with
-   `set_source_position(line, column)` continuing to take only the
-   pair. Lower diff cost, slightly more state on `Emitter`. Leaning
-   toward the per-POU helper.
+The three questions raised during plan review are resolved as follows:
+
+1. **`header.source_hash`** → **removed**. Per-file BLAKE3 hashes in
+   tag 6 are strictly more informative ("which file changed") than the
+   single combined hash. Pre-1.0, no installed base, so the field is
+   dropped from the header outright rather than left as a vestigial
+   zero-filled slot. See "`header.source_hash` is removed, not
+   repurposed" above.
+2. **Per-function file mapping** → **not added**. The line map is
+   sorted by `(function_id, bytecode_offset)`, so one binary search on
+   a `function_id` returns its first entry and the `file_id` falls out
+   for free. A separate `(function_id → file_id)` sub-table would only
+   accelerate the "give me the file but never the line/column"
+   scenario, which doesn't arise in `stackTrace` or any other
+   identified consumer.
+3. **`set_source_position` signature** → **takes the full triple**.
+   The Emitter API has no external consumers yet (only codegen calls
+   it, in this same workspace), so we are not paying a backwards-compat
+   cost to choose the better shape. `set_source_position(file_id,
+   line, column)` lines up with `Located::span()` returning all three
+   at once, and removes a class of "forgot to update the current file"
+   state bug.
 
 ## Tasks
 
-- [ ] Add `blake3` dependency to `compiler/container/Cargo.toml`.
-- [ ] Define `SourceFileEntry`, `TAG_SOURCE_FILE`, and the
-      encode/decode pair in `debug_section.rs` with unit tests
-      (round-trip, malformed-size rejection, forward compat — older
-      reader without the tag still loads the section).
-- [ ] Extend `LineMapEntry` with `file_id`, bump
-      `LINE_MAP_ENTRY_SIZE`, update every constructor in tests and
-      production code (codegen + builder + xml).
+Land in two commits on this branch so review can separate the
+algorithm migration from the new sub-table:
+
+**Commit A — BLAKE3 migration and header cleanup.**
+
+- [ ] Add `blake3` dependency to `compiler/container/Cargo.toml`;
+      remove the existing SHA-256 dependency once nothing else uses it.
+- [ ] Replace SHA-256 with BLAKE3 in every header-hash computation
+      (`content_hash`, `debug_hash`, `layout_hash`); update fixtures.
+- [ ] Remove `source_hash` from `Header`; shift `debug_hash` and
+      `layout_hash` offsets; update `HEADER_SIZE`,
+      `Header::write_to`/`read_from`, all header tests, and any
+      builder/cli code that previously computed or set `source_hash`.
+- [ ] Amend ADR-0007: switch to BLAKE3 throughout; remove the
+      `source_hash` row and reference the SOURCE_FILE_TABLE for source
+      integrity. Audit `specs/adrs/` for other SHA-256 mentions and
+      update.
+- [ ] Run `cd compiler && just`; commit.
+
+**Commit B — SOURCE_FILE_TABLE + LineMapEntry file_id + Emitter API.**
+
+- [ ] Define `SourceFileEntry { path: String, content_hash: [u8; 32] }`
+      and `TAG_SOURCE_FILE: u16 = 6` in `debug_section.rs`. Implement
+      encode/decode with unit tests covering round-trip, malformed-size
+      rejection, and forward compat (an older reader that doesn't
+      recognize tag 6 still loads the section by skipping the tag).
+- [ ] Extend `LineMapEntry` with `file_id: u16`, bump
+      `LINE_MAP_ENTRY_SIZE` 8 → 10, update every constructor across
+      production code and tests (codegen, builder, xml).
 - [ ] Add `ContainerBuilder::add_source_file` /
-      `add_source_files` and a builder-level test.
-- [ ] Extend `EmittedLineMapEntry` and `Emitter` with `file_id`
-      tracking — pick between `set_current_file` (preferred per OQ #3)
-      or a longer `set_source_position` signature.
+      `add_source_files` with a builder-level test.
+- [ ] Widen `Emitter::set_source_position` to take
+      `(file_id, line, column)`; add `file_id` to
+      `EmittedLineMapEntry`; update the dedup check.
 - [ ] Thread a source-bytes lookup into `codegen::compile()`; update
       `ironplc-cli` and any other caller to provide it.
-- [ ] In `compile.rs`, build the `SourceFileTable` from the set of
-      `FileId`s seen during codegen, compute BLAKE3 per file, register
-      with the builder.
-- [ ] Update `specs/design/bytecode-container-format.md`,
-      `specs/design/debugger-support.md`, and ADR-0007 per the File
-      Map.
+- [ ] In `compile.rs`, accumulate the `SourceFileTable` from the
+      `FileId`s seen during codegen, compute BLAKE3 per file from the
+      provided source bytes, and register the entries with the
+      `ContainerBuilder`.
+- [ ] Update `specs/design/bytecode-container-format.md` (tag 6 row)
+      and `specs/design/debugger-support.md` (close gap #7, mark tag 6
+      implemented).
 - [ ] End-to-end test: compile a two-file project, write the container
-      to disk, read it back, verify the SOURCE_FILE_TABLE has the
-      expected `(path, hash)` rows in the expected order, and verify
-      every `LineMapEntry.file_id` resolves to one of those rows.
-- [ ] Drift-detection test: compile a file, mutate the source on disk,
-      recompute BLAKE3 in the test, confirm it differs from the stored
-      hash (the actual drift-handling policy in the DAP server is out
-      of scope here — this test only verifies the hash is correct and
-      stable).
-- [ ] Run `cd compiler && just` — compile, coverage, lint must all
-      pass before opening the PR.
+      to disk, read it back, verify SOURCE_FILE_TABLE rows in the
+      expected order and that every `LineMapEntry.file_id` resolves to
+      one of them.
+- [ ] Drift-detection test: hash a known source string with BLAKE3 in
+      the test, compile that same string, and confirm the stored entry
+      hash matches. (DAP-server drift policy is out of scope; this
+      only verifies the hash is correct and stable.)
+- [ ] Run `cd compiler && just`; commit.
