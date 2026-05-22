@@ -11,8 +11,16 @@
   read; `lookup_source_location` uses binary search.** Sort invariant
   documented on the struct field; `Builder::build` and
   `DebugSection::read_from` both restore it. (2026-05-21)
-- [ ] Span tracking + source-map emission from codegen (`Emitter`,
+- [~] Span tracking + source-map emission from codegen (`Emitter`,
   `compile_stmt`, `compile_expr`).
+  - [x] `Emitter` API: `set_source_position` / `clear_source_position` /
+    `take_line_map`, dedup on consecutive matching positions, three
+    emission paths wired (`emit_opcode`, default-load,
+    `emit_store_with_tracking`). Store-load peephole elision skips
+    recording for the elided LOAD by design. (2026-05-21)
+  - [ ] Wire `set_source_position` into `compile_statement` /
+    `compile_expr`, plumb `take_line_map` through `compile_fn` /
+    `compile_program` into the builder.
 - [ ] `optimize_with_source_map`: remap source-map offsets through the
   optimizer's old→new offset table.
 - [ ] End-to-end tests under `compiler/codegen/tests/` and
