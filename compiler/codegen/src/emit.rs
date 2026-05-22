@@ -5,6 +5,24 @@
 use ironplc_container::opcode;
 use ironplc_container::VarIndex;
 
+/// A bytecode-offset → source-location entry recorded by the [`Emitter`].
+///
+/// The Emitter does not know its own `FunctionId`; the codegen driver pairs
+/// each entry with the appropriate `FunctionId` when handing them to the
+/// container builder to produce
+/// [`ironplc_container::LineMapEntry`](ironplc_container::LineMapEntry)
+/// values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EmittedLineMapEntry {
+    /// Offset within the emitted bytecode of the instruction this entry
+    /// describes.
+    pub bytecode_offset: u16,
+    /// Source line number.
+    pub source_line: u16,
+    /// Source column number.
+    pub source_column: u16,
+}
+
 /// An opaque forward reference to a bytecode position, used for jump targets.
 #[derive(Clone, Copy)]
 pub struct Label(usize);
@@ -30,6 +48,14 @@ pub struct Emitter {
     last_load: Option<LastLoad>,
     /// Tracks the last emitted store for the store-load DUP optimization.
     last_store: Option<LastStore>,
+    /// Source position to associate with subsequently emitted opcodes. When
+    /// `Some`, the next opcode that adds bytes to `bytecode` records a
+    /// line_map entry at its offset (subject to dedup against the last
+    /// recorded position).
+    current_position: Option<(u16, u16)>,
+    /// Recorded `(bytecode_offset, source_line, source_column)` entries in
+    /// emission order — therefore monotonically non-decreasing in offset.
+    line_map: Vec<EmittedLineMapEntry>,
 }
 
 /// Records the last emitted load instruction for DUP optimization.
@@ -126,7 +152,63 @@ impl Emitter {
             patches: Vec::new(),
             last_load: None,
             last_store: None,
+            current_position: None,
+            line_map: Vec::new(),
         }
+    }
+
+    // The three line_map APIs below are scaffolding for the source-map
+    // work tracked in specs/plans/2026-04-07-debug-source-map-and-hook.md.
+    // They are exercised by unit tests; the consumer in compile_stmt /
+    // compile_fn lands in a follow-up.
+
+    /// Sets the source position to associate with subsequently emitted
+    /// opcodes. Each new opcode that actually pushes bytes records an
+    /// entry at its offset, deduplicated against the previous entry so
+    /// runs of instructions sharing a position produce a single entry.
+    ///
+    /// Lines and columns follow the [`ironplc_container::LineMapEntry`]
+    /// convention: 1-based, with `0` reserved for "unknown" column.
+    #[allow(dead_code)]
+    pub fn set_source_position(&mut self, line: u16, column: u16) {
+        self.current_position = Some((line, column));
+    }
+
+    /// Clears the current source position. Subsequent opcodes will not
+    /// produce line_map entries until [`Self::set_source_position`] is
+    /// called again.
+    #[allow(dead_code)]
+    pub fn clear_source_position(&mut self) {
+        self.current_position = None;
+    }
+
+    /// Takes ownership of the recorded line_map entries, leaving the
+    /// Emitter's internal vec empty. Entries are returned in emission
+    /// order (which is sorted by `bytecode_offset`).
+    #[allow(dead_code)]
+    pub fn take_line_map(&mut self) -> Vec<EmittedLineMapEntry> {
+        core::mem::take(&mut self.line_map)
+    }
+
+    /// Records a line_map entry for the next opcode about to be appended
+    /// to `bytecode`, when a current source position is set and differs
+    /// from the previously recorded entry's `(line, column)`. Call this
+    /// immediately before pushing the opcode byte; the recorded offset is
+    /// the current `bytecode.len()`.
+    fn record_position_for_next_opcode(&mut self) {
+        let Some((line, column)) = self.current_position else {
+            return;
+        };
+        if let Some(last) = self.line_map.last() {
+            if last.source_line == line && last.source_column == column {
+                return;
+            }
+        }
+        self.line_map.push(EmittedLineMapEntry {
+            bytecode_offset: self.bytecode.len() as u16,
+            source_line: line,
+            source_column: column,
+        });
     }
 
     /// Pushes an opcode byte and invalidates both DUP trackers.
@@ -137,6 +219,7 @@ impl Emitter {
     /// the store path (`emit_store_with_tracking`) bypass this to manage
     /// the trackers themselves.
     fn emit_opcode(&mut self, op: u8) {
+        self.record_position_for_next_opcode();
         self.bytecode.push(op);
         self.last_load = None;
         self.last_store = None;
@@ -192,6 +275,7 @@ impl Emitter {
         }
 
         // Default: emit the load normally.
+        self.record_position_for_next_opcode();
         self.bytecode.push(op);
         self.bytecode.extend_from_slice(&operand);
         self.push_stack(1);
@@ -203,6 +287,7 @@ impl Emitter {
     /// optimization. Bypasses `emit_opcode` so `last_store` is set rather
     /// than cleared.
     fn emit_store_with_tracking(&mut self, op: u8, operand: [u8; 2]) {
+        self.record_position_for_next_opcode();
         let position = self.bytecode.len();
         self.bytecode.push(op);
         self.bytecode.extend_from_slice(&operand);
@@ -1662,5 +1747,106 @@ mod tests {
 
         assert_eq!(default_em.bytecode(), new_em.bytecode());
         assert_eq!(default_em.max_stack_depth(), new_em.max_stack_depth());
+    }
+
+    #[test]
+    fn emitter_line_map_when_no_position_set_then_no_entries_recorded() {
+        let mut em = Emitter::new();
+        em.emit_load_const_i32(0);
+        em.emit_ret_void();
+        assert!(em.take_line_map().is_empty());
+    }
+
+    #[test]
+    fn emitter_line_map_when_position_set_then_records_entry_at_next_opcode_offset() {
+        let mut em = Emitter::new();
+        em.set_source_position(10, 5);
+        em.emit_ret_void();
+        let entries = em.take_line_map();
+        assert_eq!(
+            entries,
+            vec![EmittedLineMapEntry {
+                bytecode_offset: 0,
+                source_line: 10,
+                source_column: 5,
+            }],
+        );
+    }
+
+    #[test]
+    fn emitter_line_map_when_consecutive_opcodes_share_position_then_dedupes_to_one_entry() {
+        let mut em = Emitter::new();
+        em.set_source_position(7, 1);
+        em.emit_load_const_i32(0);
+        em.emit_load_const_i32(1);
+        em.emit_add_i32();
+        em.emit_ret_void();
+        let entries = em.take_line_map();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source_line, 7);
+        assert_eq!(entries[0].bytecode_offset, 0);
+    }
+
+    #[test]
+    fn emitter_line_map_when_position_changes_then_records_new_entry_at_boundary() {
+        let mut em = Emitter::new();
+        em.set_source_position(1, 1);
+        em.emit_load_const_i32(0); // 3 bytes at offset 0
+        em.set_source_position(2, 1);
+        em.emit_load_const_i32(1); // 3 bytes at offset 3
+        let entries = em.take_line_map();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].bytecode_offset, 0);
+        assert_eq!(entries[0].source_line, 1);
+        assert_eq!(entries[1].bytecode_offset, 3);
+        assert_eq!(entries[1].source_line, 2);
+    }
+
+    #[test]
+    fn emitter_line_map_when_clear_position_then_subsequent_opcodes_omit_entries() {
+        let mut em = Emitter::new();
+        em.set_source_position(1, 1);
+        em.emit_load_const_i32(0);
+        em.clear_source_position();
+        em.emit_load_const_i32(1);
+        em.emit_ret_void();
+        let entries = em.take_line_map();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source_line, 1);
+    }
+
+    #[test]
+    fn emitter_line_map_when_store_then_load_dup_optimized_then_no_entry_for_elided_load() {
+        // The store-load peephole inserts DUP before the STORE and elides
+        // the LOAD entirely. A line_map entry would have nowhere to point,
+        // so we expect the LOAD's source position not to produce a new
+        // entry. The STORE, recorded under its own position, must remain.
+        let mut em = Emitter::new();
+        em.set_source_position(1, 1);
+        em.emit_load_const_i32(0);
+        em.emit_store_var_i32(VarIndex::new(0));
+        // Same source position for the LOAD that should be elided.
+        em.set_source_position(2, 1);
+        em.emit_load_var_i32(VarIndex::new(0));
+        let entries = em.take_line_map();
+        // Only the LOAD_CONST entry at line 1 is present; the LOAD_VAR at
+        // line 2 was elided by the peephole so no entry exists for it.
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source_line, 1);
+    }
+
+    #[test]
+    fn emitter_line_map_when_take_called_then_subsequent_emissions_start_fresh() {
+        let mut em = Emitter::new();
+        em.set_source_position(1, 1);
+        em.emit_ret_void();
+        let first = em.take_line_map();
+        assert_eq!(first.len(), 1);
+
+        em.set_source_position(2, 2);
+        em.emit_ret_void();
+        let second = em.take_line_map();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].source_line, 2);
     }
 }
