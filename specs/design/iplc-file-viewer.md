@@ -105,13 +105,12 @@ Follows the existing `cast_request`/`send_response` pattern used by
     "outputImageBytes": 0,
     "memoryImageBytes": 0,
     "contentHash": "0000...0000",
-    "sourceHash": "0000...0000",
     "sections": {
       "signature": { "offset": 0, "size": 0 },
       "debugSignature": { "offset": 0, "size": 0 },
       "type": { "offset": 0, "size": 0 },
-      "constantPool": { "offset": 256, "size": 20 },
-      "code": { "offset": 276, "size": 33 },
+      "constantPool": { "offset": 224, "size": 20 },
+      "code": { "offset": 244, "size": 33 },
       "debug": { "offset": 0, "size": 0 }
     }
   },

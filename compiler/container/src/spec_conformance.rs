@@ -38,11 +38,11 @@ fn all_spec_requirements_have_tests() {
 // Container Format — File Header (REQ-CF-001 through REQ-CF-007)
 // ---------------------------------------------------------------------------
 
-/// REQ-CF-001: The file header is exactly 256 bytes.
+/// REQ-CF-001: The file header is exactly 224 bytes.
 #[spec_test(REQ_CF_001)]
-fn container_spec_req_cf_001_header_size_is_256_bytes() {
+fn container_spec_req_cf_001_header_size_is_224_bytes() {
     assert_eq!(core::mem::size_of::<FileHeader>(), HEADER_SIZE);
-    assert_eq!(HEADER_SIZE, 256);
+    assert_eq!(HEADER_SIZE, 224);
 }
 
 /// REQ-CF-002: Magic number is 0x49504C43 ("IPLC" in ASCII).
@@ -76,7 +76,7 @@ fn container_spec_req_cf_004_header_uses_little_endian() {
 }
 
 /// REQ-CF-005: Header field offsets match the spec table layout, totaling
-/// 256 bytes with reserved at 218-255.
+/// 224 bytes with reserved at 186-223.
 #[spec_test(REQ_CF_005)]
 fn container_spec_req_cf_005_header_field_offsets() {
     // Write a header with distinctive values and verify byte offsets
@@ -88,31 +88,31 @@ fn container_spec_req_cf_005_header_field_offsets() {
 
     let mut buf = Vec::new();
     header.write_to(&mut buf).unwrap();
-    assert_eq!(buf.len(), 256);
+    assert_eq!(buf.len(), 224);
 
-    // num_variables at offset 196 (u16 LE)
-    assert_eq!(u16::from_le_bytes([buf[196], buf[197]]), 0x1234);
+    // num_variables at offset 164 (u16 LE)
+    assert_eq!(u16::from_le_bytes([buf[164], buf[165]]), 0x1234);
 
-    // code_section_offset at offset 176 (u32 LE)
+    // code_section_offset at offset 144 (u32 LE)
     assert_eq!(
-        u32::from_le_bytes([buf[176], buf[177], buf[178], buf[179]]),
+        u32::from_le_bytes([buf[144], buf[145], buf[146], buf[147]]),
         0xAABBCCDD
     );
 }
 
-/// REQ-CF-006: Reserved bytes are 38 bytes at offsets 218-255.
+/// REQ-CF-006: Reserved bytes are 38 bytes at offsets 186-223.
 #[spec_test(REQ_CF_006)]
-fn container_spec_req_cf_006_reserved_is_38_bytes_at_offset_218() {
+fn container_spec_req_cf_006_reserved_is_38_bytes_at_offset_186() {
     let header = FileHeader::default();
     assert_eq!(header.reserved.len(), 38);
 
     let mut buf = Vec::new();
     header.write_to(&mut buf).unwrap();
 
-    // Bytes 218..256 should all be zero (reserved)
-    assert_eq!(&buf[218..256], &[0u8; 38]);
+    // Bytes 186..224 should all be zero (reserved)
+    assert_eq!(&buf[186..224], &[0u8; 38]);
     // And that's exactly the end of the header
-    assert_eq!(buf.len(), 256);
+    assert_eq!(buf.len(), 224);
 }
 
 /// REQ-CF-007: Flags bit 0 is FLAG_HAS_SYSTEM_UPTIME (0x01).

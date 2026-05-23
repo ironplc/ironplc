@@ -66,7 +66,6 @@ fn disassemble_header(container: &Container) -> Value {
             "hasTypeSection": (flags & 0x04) != 0,
         },
         "contentHash": hex_string(&h.content_hash),
-        "sourceHash": hex_string(&h.source_hash),
         "debugHash": hex_string(&h.debug_hash),
         "layoutHash": hex_string(&h.layout_hash),
         "maxStackDepth": h.max_stack_depth,
@@ -766,7 +765,7 @@ mod tests {
     fn disassemble_when_steel_thread_then_header_has_task_section() {
         let container = steel_thread_container();
         let result = disassemble(&container);
-        assert_eq!(result["header"]["taskSection"]["offset"], 256);
+        assert_eq!(result["header"]["taskSection"]["offset"], 224);
         assert!(result["header"]["taskSection"]["size"].as_u64().unwrap() > 0);
     }
 

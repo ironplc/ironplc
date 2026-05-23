@@ -63,11 +63,30 @@ fn write_steel_thread_container(path: &Path) {
         0x8C,                   // RET_VOID
     ];
 
+    use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
+    use ironplc_container::id_types::{FunctionId, VarIndex};
+
     let container = ContainerBuilder::new()
         .num_variables(2)
         .add_i32_constant(10)
         .add_i32_constant(32)
         .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 2, 0)
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(0),
+            function_id: FunctionId::GLOBAL_SCOPE,
+            var_section: var_section::VAR,
+            iec_type_tag: iec_type_tag::DINT,
+            name: "x".to_string(),
+            type_name: "DINT".to_string(),
+        })
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(1),
+            function_id: FunctionId::GLOBAL_SCOPE,
+            var_section: var_section::VAR,
+            iec_type_tag: iec_type_tag::DINT,
+            name: "y".to_string(),
+            type_name: "DINT".to_string(),
+        })
         .build();
 
     let mut buf = Vec::new();
@@ -108,7 +127,7 @@ fn run_when_valid_container_file_and_dump_vars_then_writes_variables(
     cmd.assert().success();
 
     let contents = std::fs::read_to_string(&dump_path)?;
-    assert_eq!(contents, "var[0]: 10\nvar[1]: 42\n");
+    assert_eq!(contents, "x: 10\ny: 42\n");
 
     Ok(())
 }
@@ -329,8 +348,8 @@ fn run_when_dump_vars_without_path_then_prints_to_stdout() -> Result<(), Box<dyn
         .arg("--dump-vars");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("var[0]: 10"))
-        .stdout(predicate::str::contains("var[1]: 42"));
+        .stdout(predicate::str::contains("x: 10"))
+        .stdout(predicate::str::contains("y: 42"));
 
     Ok(())
 }

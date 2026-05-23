@@ -26,8 +26,8 @@ Sections appear in this fixed order.
 
 ```
 ┌─────────────────────────────────────────┐  offset 0
-│ File Header (256 bytes, fixed size)     │
-├─────────────────────────────────────────┤  offset 256
+│ File Header (224 bytes, fixed size)     │
+├─────────────────────────────────────────┤  offset 224
 │ Content Signature Section               │
 ├─────────────────────────────────────────┤
 │ Debug Signature Section (optional)      │
@@ -46,18 +46,20 @@ Sections appear in this fixed order.
 
 ## File Header
 
-**REQ-CF-001** The header is exactly 256 bytes.
+**REQ-CF-001** The header is exactly 224 bytes.
 
 The VM reads this in a single read and decides whether to proceed.
 
 The header is organized into four logical regions:
 
 1. **Identification** (bytes 0-7): magic, version, profile, flags
-2. **Hashes** (bytes 8-135): content, source, debug, layout hashes
-3. **Section directory** (bytes 136-191): offset/size pairs for each section, in file-layout order
-4. **Runtime parameters** (bytes 192-231): stack/memory budgets, counts, I/O image sizes
+2. **Hashes** (bytes 8-103): content, debug, layout hashes
+3. **Section directory** (bytes 104-159): offset/size pairs for each section, in file-layout order
+4. **Runtime parameters** (bytes 160-185): stack/memory budgets, counts, I/O image sizes
 
-**REQ-CF-005** The header field layout is as follows, totaling 256 bytes.
+Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 6), not in this header. The header retains only the four protocol-level hashes the verifier checks directly.
+
+**REQ-CF-005** The header field layout is as follows, totaling 224 bytes.
 
 | Requirement | Offset | Field | Type | Description |
 |-------------|--------|-------|------|-------------|
@@ -65,36 +67,35 @@ The header is organized into four logical regions:
 | **REQ-CF-003** | 4 | format_version | u16 | Container format version (currently 2; bumped from 1 by ADR-0033 opcode-encoding migration) |
 | | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
 | **REQ-CF-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section; Bit 2: has type section |
-| | 8 | content_hash | [u8; 32] | SHA-256 over `source_hash \|\| type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
-| | 40 | source_hash | [u8; 32] | SHA-256 of the source text that produced this bytecode (all zeros if unavailable) |
-| | 72 | debug_hash | [u8; 32] | SHA-256 over debug section (all zeros if no debug section) |
-| | 104 | layout_hash | [u8; 32] | SHA-256 over the memory layout signature (see Layout Hash and Online Change) |
-| | 136 | sig_section_offset | u32 | Offset of content signature section (0 if absent) |
-| | 140 | sig_section_size | u32 | Size of content signature section |
-| | 144 | debug_sig_offset | u32 | Offset of debug signature section (0 if absent) |
-| | 148 | debug_sig_size | u32 | Size of debug signature section |
-| | 152 | type_section_offset | u32 | Offset of type section (0 if stripped) |
-| | 156 | type_section_size | u32 | Size of type section |
-| | 160 | task_section_offset | u32 | Offset of task table section (0 if absent; see [Task Support Design](61131-task-support.md)) |
-| | 164 | task_section_size | u32 | Size of task table section |
-| | 168 | const_section_offset | u32 | Offset of constant pool section |
-| | 172 | const_section_size | u32 | Size of constant pool section |
-| | 176 | code_section_offset | u32 | Offset of code section |
-| | 180 | code_section_size | u32 | Size of code section |
-| | 184 | debug_section_offset | u32 | Offset of debug section (0 if absent) |
-| | 188 | debug_section_size | u32 | Size of debug section |
-| | 192 | max_stack_depth | u16 | Maximum operand stack depth across all functions |
-| | 194 | max_call_depth | u16 | Maximum call nesting depth |
-| | 196 | num_variables | u16 | Total variable table entries (including compiler-generated hidden variables) |
-| | 198 | data_region_bytes | u32 | Total size of the mutable data region in bytes (compiler-summed across all variable-length variables: strings, arrays, FB instances) — see [ADR-0017](../adrs/0017-unified-data-region.md) |
-| | 202 | num_temp_bufs | u16 | Number of temporary buffers for string operations |
-| | 204 | max_temp_buf_bytes | u32 | Size of the largest temporary buffer in bytes |
-| | 208 | num_functions | u16 | Number of function entries in the code section |
-| | 210 | num_fb_types | u16 | Number of FB type descriptors in the type section |
-| | 212 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
-| | 214 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
-| | 216 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
-| **REQ-CF-006** | 218 | reserved | [u8; 38] | Reserved for future use; must be zero |
+| | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
+| | 40 | debug_hash | [u8; 32] | BLAKE3 over debug section (all zeros if no debug section) |
+| | 72 | layout_hash | [u8; 32] | BLAKE3 over the memory layout signature (see Layout Hash and Online Change) |
+| | 104 | sig_section_offset | u32 | Offset of content signature section (0 if absent) |
+| | 108 | sig_section_size | u32 | Size of content signature section |
+| | 112 | debug_sig_offset | u32 | Offset of debug signature section (0 if absent) |
+| | 116 | debug_sig_size | u32 | Size of debug signature section |
+| | 120 | type_section_offset | u32 | Offset of type section (0 if stripped) |
+| | 124 | type_section_size | u32 | Size of type section |
+| | 128 | task_section_offset | u32 | Offset of task table section (0 if absent; see [Task Support Design](61131-task-support.md)) |
+| | 132 | task_section_size | u32 | Size of task table section |
+| | 136 | const_section_offset | u32 | Offset of constant pool section |
+| | 140 | const_section_size | u32 | Size of constant pool section |
+| | 144 | code_section_offset | u32 | Offset of code section |
+| | 148 | code_section_size | u32 | Size of code section |
+| | 152 | debug_section_offset | u32 | Offset of debug section (0 if absent) |
+| | 156 | debug_section_size | u32 | Size of debug section |
+| | 160 | max_stack_depth | u16 | Maximum operand stack depth across all functions |
+| | 162 | max_call_depth | u16 | Maximum call nesting depth |
+| | 164 | num_variables | u16 | Total variable table entries (including compiler-generated hidden variables) |
+| | 166 | data_region_bytes | u32 | Total size of the mutable data region in bytes (compiler-summed across all variable-length variables: strings, arrays, FB instances) — see [ADR-0017](../adrs/0017-unified-data-region.md) |
+| | 170 | num_temp_bufs | u16 | Number of temporary buffers for string operations |
+| | 172 | max_temp_buf_bytes | u32 | Size of the largest temporary buffer in bytes |
+| | 176 | num_functions | u16 | Number of function entries in the code section |
+| | 178 | num_fb_types | u16 | Number of FB type descriptors in the type section |
+| | 180 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
+| | 182 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
+| | 184 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
+| **REQ-CF-006** | 186 | reserved | [u8; 38] | Reserved for future use; must be zero |
 
 ### Resource Budget Calculation
 
@@ -444,7 +445,7 @@ See [Debugger Support](debugger-support.md) for the full debugger architecture i
 The VM loads a bytecode container in this order:
 
 ```
-1. Read file header (256 bytes)
+1. Read file header (224 bytes)
 2. Validate magic number ("IPLC")
 3. Check format_version is supported
 4. Compute RAM requirement from resource summary
@@ -455,7 +456,7 @@ The VM loads a bytecode container in this order:
    c. Verify signature over content_hash
    d. If invalid → reject with "signature verification failed" error
 7. Read type + constant + code sections
-8. Compute SHA-256 over source_hash || type + constant + code sections
+8. Compute BLAKE3 over type + constant + code sections
 9. Compare computed hash to content_hash in header
     If mismatch → reject with "content hash mismatch" error
 10. If on-device verification is enabled:
@@ -465,7 +466,7 @@ The VM loads a bytecode container in this order:
 12. Allocate runtime resources (stack, variable table, buffers)
 13. If debug section present and debug signature present:
     a. Verify debug signature over debug_hash
-    b. Compute SHA-256 over debug section
+    b. Compute BLAKE3 over debug section
     c. Compare to debug_hash in header
     d. If valid → load debug info; if invalid → discard debug info (non-fatal)
 14. Begin execution
@@ -481,9 +482,9 @@ The content hash covers the type section, constant pool, and code section in fil
 - The signature sections (signatures are over the hash, not the other way around)
 - The debug section (independently hashed and signed)
 
-The source hash is embedded in the file header. Since the content hash covers the hash value (via the signed content_hash → header binding at the signature level), the source hash is transitively integrity-protected: modifying the source hash requires re-signing the content.
+Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 6): each entry carries a BLAKE3 hash over the exact source bytes the parser saw, so a debugger can detect drift between an `.iplc` and the user's working copy on a per-file basis. The header has no top-level `source_hash` field — the debug section's `debug_hash` (BLAKE3 over the whole debug section) transitively protects every per-file hash.
 
-Note: The content hash does not directly cover the header bytes. Instead, the content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the type+constant+code sections (step 10 in the loading sequence). The source_hash is protected because it is part of the signed-over content_hash only if the signer includes the source_hash in the hash computation. To make this binding explicit: the content_hash is computed as `SHA-256(source_hash || type_section_bytes || const_section_bytes || code_section_bytes)`. This ensures the source_hash is covered by the content signature.
+Note: The content hash does not directly cover the header bytes. Instead, the content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the type+constant+code sections (step 10 in the loading sequence). To make the binding explicit: the content_hash is computed as `BLAKE3(type_section_bytes || const_section_bytes || code_section_bytes)`.
 
 ## Deterministic Ordering
 
@@ -520,7 +521,7 @@ The `layout_hash` in the file header enables safe online change (hot reloading) 
 The layout hash is computed as:
 
 ```
-layout_hash = SHA-256(
+layout_hash = BLAKE3(
     num_variables (u16, LE) ||
     for each variable in index order:
         var_type (u8) || flags (u8) || extra (u16, LE) ||

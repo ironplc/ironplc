@@ -9,7 +9,10 @@ repository.workspace = true
 
 [features]
 default = ["std"]
-std = []
+std = ["dep:blake3"]
+
+[dependencies]
+blake3 = { version = "1", optional = true }
 
 [build-dependencies]
 ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
