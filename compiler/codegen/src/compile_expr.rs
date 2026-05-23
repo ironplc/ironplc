@@ -18,7 +18,7 @@ use ironplc_problems::Problem;
 
 use super::compile::{
     encode_string_literal, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo,
-    DEFAULT_OP_TYPE, STRING_CHAR_WIDTH,
+    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH,
 };
 use super::compile_call::compile_function_call;
 use super::compile_setup::resolve_type_name;
@@ -377,7 +377,7 @@ pub(crate) fn compile_constant(
             // Load the string literal into a temp buffer, leaving buf_idx on the stack.
             // The caller (e.g., string assignment path) will consume the buf_idx via
             // emit_str_store_var to copy the value into the target data region.
-            let bytes = encode_string_literal(&lit.value, STRING_CHAR_WIDTH);
+            let bytes = encode_string_literal(&lit.value, NARROW_CHAR_WIDTH);
             let pool_index = ctx.add_str_constant(bytes);
             ctx.num_temp_bufs += 1;
             emitter.emit_load_const_str(pool_index);

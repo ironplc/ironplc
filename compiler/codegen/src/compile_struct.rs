@@ -527,13 +527,17 @@ pub(crate) fn initialize_struct_fields(
             dimensions: array_dims,
         } = &field_info.field_type
         {
-            if let IntermediateType::String { max_len, .. } = element_type.as_ref() {
-                // STRING array field — initialize headers for each string element.
+            if let IntermediateType::String {
+                max_len,
+                char_width,
+            } = element_type.as_ref()
+            {
+                // STRING/WSTRING array field — initialize headers for each string element.
                 let max_length = max_len.unwrap_or(254) as u16;
                 let total_elements = array_dims
                     .iter()
                     .fold(1u32, |acc, d| acc * (d.upper - d.lower + 1) as u32);
-                let stride = super::compile::string_region_size(max_length);
+                let stride = super::compile::string_region_size(max_length, *char_width);
                 let field_byte_offset = struct_data_offset + slot_idx.raw() * 8;
                 for i in 0..total_elements {
                     let elem_byte_offset = field_byte_offset + i * stride;

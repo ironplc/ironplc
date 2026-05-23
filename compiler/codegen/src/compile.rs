@@ -45,12 +45,12 @@ use ironplc_container::debug_section::{
     EnumDefEntry, FuncNameEntry, StringLayoutEntry, VarNameEntry,
 };
 use ironplc_container::{
-    Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
+    CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
     STRING_HEADER_BYTES,
 };
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
-    LibraryElementKind, ProgramDeclaration, VarDecl, VariableType,
+    LibraryElementKind, ProgramDeclaration, StringType, VarDecl, VariableType,
 };
 use ironplc_dsl::configuration::ConfigurationDeclaration;
 use ironplc_dsl::core::{FileId, Id, Located};
@@ -118,35 +118,47 @@ pub(crate) enum PoolConstant {
 /// The IEC 61131-3 default maximum length for STRING (254 characters).
 pub(crate) const DEFAULT_STRING_MAX_LENGTH_U16: u16 = 254;
 
-/// Metadata for a STRING variable allocated in the data region.
+/// Metadata for a STRING/WSTRING variable allocated in the data region.
 #[derive(Clone)]
 pub(crate) struct StringVarInfo {
     /// Byte offset into the data region where this string starts.
     pub(crate) data_offset: u32,
-    /// Maximum number of characters this string can hold.
+    /// Maximum number of code units this string can hold.
     pub(crate) max_length: u16,
-    /// Bytes per character: 1 for STRING, 2 for WSTRING (not yet supported).
-    pub(crate) char_width: u16,
+    /// Per-code-unit byte width: `Narrow` for STRING, `Wide` for WSTRING.
+    pub(crate) char_width: CharWidth,
 }
 
-/// Bytes per character for STRING. WSTRING (when supported) will use 2.
-pub(crate) const STRING_CHAR_WIDTH: u16 = 1;
+/// Per-code-unit byte width for STRING (Latin-1 per ADR-0016).
+pub(crate) const NARROW_CHAR_WIDTH: CharWidth = CharWidth::Narrow;
+/// Per-code-unit byte width for WSTRING (UTF-16LE per ADR-0016).
+pub(crate) const WIDE_CHAR_WIDTH: CharWidth = CharWidth::Wide;
 
-/// Total bytes needed in the data region for a STRING value with the given
-/// maximum length: header plus per-character storage.
-pub(crate) fn string_region_size(max_length: u16) -> u32 {
-    STRING_HEADER_BYTES as u32 + (max_length as u32) * (STRING_CHAR_WIDTH as u32)
+/// Returns the per-code-unit byte width for an IEC string type:
+/// `Narrow` for STRING, `Wide` for WSTRING (ADR-0016).
+pub(crate) fn char_width_for_string_type(width: &StringType) -> CharWidth {
+    match width {
+        StringType::String => NARROW_CHAR_WIDTH,
+        StringType::WString => WIDE_CHAR_WIDTH,
+    }
+}
+
+/// Total bytes needed in the data region for a STRING/WSTRING value with the
+/// given maximum length (in code units) and `char_width`: header plus
+/// `max_length * char_width` payload bytes.
+pub(crate) fn string_region_size(max_length: u16, char_width: CharWidth) -> u32 {
+    STRING_HEADER_BYTES as u32 + (max_length as u32) * (char_width.byte_width() as u32)
 }
 
 /// Encode a character-string literal into bytes for the constant pool.
 ///
-/// `char_width` selects the encoding: 1 for STRING (Latin-1 per ADR-0016).
-/// WSTRING (`char_width = 2`) is not yet supported and will panic; the
+/// `char_width` selects the encoding: `Narrow` for STRING (Latin-1 per
+/// ADR-0016). `Wide` (UTF-16LE) is not yet supported and will panic; the
 /// parameter exists so call sites already pass the value.
-pub(crate) fn encode_string_literal(chars: &[char], char_width: u16) -> Vec<u8> {
+pub(crate) fn encode_string_literal(chars: &[char], char_width: CharWidth) -> Vec<u8> {
     match char_width {
-        STRING_CHAR_WIDTH => chars.iter().map(|&ch| ch as u8).collect(),
-        _ => unreachable!("WSTRING literal encoding is not yet supported"),
+        CharWidth::Narrow => chars.iter().map(|&ch| ch as u8).collect(),
+        CharWidth::Wide => unreachable!("WSTRING literal encoding is not yet supported"),
     }
 }
 
@@ -469,9 +481,13 @@ fn compile_program_with_functions(
     if ctx.data_region_offset > 0 {
         builder = builder.data_region_bytes(ctx.data_region_offset);
         if ctx.num_temp_bufs > 0 {
-            builder = builder
-                .num_temp_bufs(ctx.num_temp_bufs)
-                .max_temp_buf_bytes(string_region_size(ctx.max_string_capacity));
+            builder =
+                builder
+                    .num_temp_bufs(ctx.num_temp_bufs)
+                    .max_temp_buf_bytes(string_region_size(
+                        ctx.max_string_capacity,
+                        NARROW_CHAR_WIDTH,
+                    ));
         }
     }
 
@@ -598,14 +614,14 @@ fn compile_program_with_functions(
 pub(crate) struct StringParamInfo {
     /// Byte offset in the data region where this parameter's string is stored.
     pub(crate) data_offset: u32,
-    /// Maximum number of characters this parameter can hold.
+    /// Maximum number of code units this parameter can hold.
     pub(crate) max_length: u16,
-    /// Bytes per character: 1 for STRING, 2 for WSTRING (not yet supported).
+    /// Per-code-unit byte width: `Narrow` for STRING, `Wide` for WSTRING.
     #[allow(dead_code)]
-    pub(crate) char_width: u16,
+    pub(crate) char_width: CharWidth,
 }
 
-/// Metadata for a STRING return value in a user-defined function.
+/// Metadata for a STRING/WSTRING return value in a user-defined function.
 ///
 /// When a function returns STRING/WSTRING, the return value lives in the
 /// data region rather than on the operand stack.
@@ -613,11 +629,11 @@ pub(crate) struct StringParamInfo {
 pub(crate) struct StringReturnInfo {
     /// Byte offset in the data region where the return string is stored.
     pub(crate) data_offset: u32,
-    /// Maximum number of characters the return string can hold.
+    /// Maximum number of code units the return string can hold.
     pub(crate) max_length: u16,
-    /// Bytes per character: 1 for STRING, 2 for WSTRING (not yet supported).
+    /// Per-code-unit byte width: `Narrow` for STRING, `Wide` for WSTRING.
     #[allow(dead_code)]
-    pub(crate) char_width: u16,
+    pub(crate) char_width: CharWidth,
 }
 
 /// Metadata for a compiled user-defined function.

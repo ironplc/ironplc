@@ -20,8 +20,9 @@ use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
-    encode_string_literal, string_region_size, CompileContext, FbInstanceInfo, OpType, OpWidth,
-    Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE, STRING_CHAR_WIDTH,
+    char_width_for_string_type, encode_string_literal, string_region_size, CompileContext,
+    FbInstanceInfo, OpType, OpWidth, Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE,
+    NARROW_CHAR_WIDTH,
 };
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
@@ -81,10 +82,11 @@ pub(crate) fn assign_variables(
                 }
                 InitialValueAssignmentKind::String(string_init) => {
                     let max_length = resolve_string_max_length(string_init)?;
+                    let char_width = char_width_for_string_type(&string_init.width);
 
                     // Allocate space in the data region: [max_length: u16][cur_length: u16][data]
                     let data_offset = ctx.data_region_offset;
-                    let total_bytes = string_region_size(max_length);
+                    let total_bytes = string_region_size(max_length, char_width);
                     ctx.data_region_offset = ctx
                         .data_region_offset
                         .checked_add(total_bytes)
@@ -104,7 +106,7 @@ pub(crate) fn assign_variables(
                         StringVarInfo {
                             data_offset,
                             max_length,
-                            char_width: STRING_CHAR_WIDTH,
+                            char_width,
                         },
                     );
                     ctx.debug_string_layouts.push(StringLayoutEntry {
@@ -411,7 +413,7 @@ pub(crate) fn emit_initial_values(
 
                         // If there's an initial value, load and store it.
                         if let Some(chars) = &string_init.initial_value {
-                            let bytes = encode_string_literal(chars, STRING_CHAR_WIDTH);
+                            let bytes = encode_string_literal(chars, NARROW_CHAR_WIDTH);
                             let pool_index = ctx.add_str_constant(bytes);
                             ctx.num_temp_bufs += 1;
                             emitter.emit_load_const_str(pool_index);
@@ -661,7 +663,7 @@ pub(crate) fn emit_function_local_prologue(
                         emitter.emit_str_init(data_offset, max_length);
 
                         if let Some(chars) = &string_init.initial_value {
-                            let bytes = encode_string_literal(chars, STRING_CHAR_WIDTH);
+                            let bytes = encode_string_literal(chars, NARROW_CHAR_WIDTH);
                             let pool_index = ctx.add_str_constant(bytes);
                             ctx.num_temp_bufs += 1;
                             emitter.emit_load_const_str(pool_index);
