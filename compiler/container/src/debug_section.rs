@@ -3,7 +3,7 @@ use std::string::String;
 use std::vec;
 use std::vec::Vec;
 
-use crate::id_types::{FunctionId, VarIndex};
+use crate::id_types::{FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex};
 use crate::ContainerError;
 
 // Sub-table tag constants.
@@ -102,12 +102,13 @@ pub struct LineMapEntry {
     pub bytecode_offset: u16,
     /// Index into the SOURCE_FILE_TABLE (debug section Tag 6). Identifies
     /// which source file `source_line`/`source_column` refer to. Entries
-    /// from a container without a source file table all carry `file_id = 0`.
-    pub file_id: u16,
+    /// from a container without a source file table all carry the default
+    /// `SourceFileId(0)`.
+    pub file_id: SourceFileId,
     /// Source line number (1-based).
-    pub source_line: u16,
+    pub source_line: SourceLine,
     /// Source column number (1-based; 0 = unknown).
-    pub source_column: u16,
+    pub source_column: SourceColumn,
 }
 
 /// A source file table entry (debug section Tag 6).
@@ -383,9 +384,9 @@ impl DebugSection {
             entries.push(LineMapEntry {
                 function_id: FunctionId::new(u16::from_le_bytes([entry_buf[0], entry_buf[1]])),
                 bytecode_offset: u16::from_le_bytes([entry_buf[2], entry_buf[3]]),
-                file_id: u16::from_le_bytes([entry_buf[4], entry_buf[5]]),
-                source_line: u16::from_le_bytes([entry_buf[6], entry_buf[7]]),
-                source_column: u16::from_le_bytes([entry_buf[8], entry_buf[9]]),
+                file_id: SourceFileId::new(u16::from_le_bytes([entry_buf[4], entry_buf[5]])),
+                source_line: SourceLine::new(u16::from_le_bytes([entry_buf[6], entry_buf[7]])),
+                source_column: SourceColumn::new(u16::from_le_bytes([entry_buf[8], entry_buf[9]])),
             });
         }
         Ok(entries)
@@ -851,23 +852,23 @@ mod tests {
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 0,
-                    file_id: 0,
-                    source_line: 10,
-                    source_column: 1,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(10),
+                    source_column: SourceColumn::new(1),
                 },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 5,
-                    file_id: 0,
-                    source_line: 11,
-                    source_column: 3,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(11),
+                    source_column: SourceColumn::new(3),
                 },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 12,
-                    file_id: 0,
-                    source_line: 12,
-                    source_column: 0,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(12),
+                    source_column: SourceColumn::new(0),
                 },
             ],
             string_layouts: vec![],
@@ -922,16 +923,16 @@ mod tests {
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 0,
-                    file_id: 0,
-                    source_line: 1,
-                    source_column: 1,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(1),
+                    source_column: SourceColumn::new(1),
                 },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 6,
-                    file_id: 1,
-                    source_line: 7,
-                    source_column: 1,
+                    file_id: SourceFileId::new(1),
+                    source_line: SourceLine::new(7),
+                    source_column: SourceColumn::new(1),
                 },
             ],
             string_layouts: vec![],
@@ -945,8 +946,8 @@ mod tests {
 
         let decoded = DebugSection::read_from(&mut Cursor::new(&buf)).unwrap();
         assert_eq!(decoded.line_map, section.line_map);
-        assert_eq!(decoded.line_map[0].file_id, 0);
-        assert_eq!(decoded.line_map[1].file_id, 1);
+        assert_eq!(decoded.line_map[0].file_id.raw(), 0);
+        assert_eq!(decoded.line_map[1].file_id.raw(), 1);
     }
 
     #[test]
@@ -1008,23 +1009,23 @@ mod tests {
                 LineMapEntry {
                     function_id: FunctionId::INIT,
                     bytecode_offset: 0,
-                    file_id: 0,
-                    source_line: 99,
-                    source_column: 1,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(99),
+                    source_column: SourceColumn::new(1),
                 },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 0,
-                    file_id: 0,
-                    source_line: 10,
-                    source_column: 1,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(10),
+                    source_column: SourceColumn::new(1),
                 },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 8,
-                    file_id: 0,
-                    source_line: 11,
-                    source_column: 1,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(11),
+                    source_column: SourceColumn::new(1),
                 },
             ],
             string_layouts: vec![],
@@ -1034,21 +1035,21 @@ mod tests {
 
         // Exact match
         let hit = section.lookup_source_location(FunctionId::SCAN, 0).unwrap();
-        assert_eq!(hit.source_line, 10);
+        assert_eq!(hit.source_line.raw(), 10);
 
         // Between entries: should pick the largest bytecode_offset <= 5 (which is 0)
         let hit = section.lookup_source_location(FunctionId::SCAN, 5).unwrap();
-        assert_eq!(hit.source_line, 10);
+        assert_eq!(hit.source_line.raw(), 10);
 
         // At/after the second entry
         let hit = section
             .lookup_source_location(FunctionId::SCAN, 20)
             .unwrap();
-        assert_eq!(hit.source_line, 11);
+        assert_eq!(hit.source_line.raw(), 11);
 
         // Different function uses its own entries
         let hit = section.lookup_source_location(FunctionId::INIT, 0).unwrap();
-        assert_eq!(hit.source_line, 99);
+        assert_eq!(hit.source_line.raw(), 99);
 
         // Function with no entries returns None
         assert!(section
@@ -1091,31 +1092,31 @@ mod tests {
                 LineMapEntry {
                     function_id: FunctionId::INIT,
                     bytecode_offset: 0,
-                    file_id: 0,
-                    source_line: 10,
-                    source_column: 1,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(10),
+                    source_column: SourceColumn::new(1),
                 },
                 LineMapEntry {
                     function_id: FunctionId::INIT,
                     bytecode_offset: 8,
-                    file_id: 0,
-                    source_line: 20,
-                    source_column: 1,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(20),
+                    source_column: SourceColumn::new(1),
                 },
                 LineMapEntry {
                     function_id: FunctionId::INIT,
                     bytecode_offset: 12,
-                    file_id: 0,
-                    source_line: 30,
-                    source_column: 1,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(30),
+                    source_column: SourceColumn::new(1),
                 },
                 // Entry for a different function that must never be returned.
                 LineMapEntry {
                     function_id: FunctionId::GLOBAL_SCOPE,
                     bytecode_offset: 4,
-                    file_id: 0,
-                    source_line: 99,
-                    source_column: 1,
+                    file_id: SourceFileId::new(0),
+                    source_line: SourceLine::new(99),
+                    source_column: SourceColumn::new(1),
                 },
             ],
             string_layouts: vec![],
@@ -1125,28 +1126,28 @@ mod tests {
 
         // Offset 0: matches the first entry exactly.
         let hit = section.lookup_source_location(FunctionId::INIT, 0).unwrap();
-        assert_eq!(hit.source_line, 10);
+        assert_eq!(hit.source_line.raw(), 10);
 
         // Offset 5: before the second entry, should return the first.
         let hit = section.lookup_source_location(FunctionId::INIT, 5).unwrap();
-        assert_eq!(hit.source_line, 10);
+        assert_eq!(hit.source_line.raw(), 10);
 
         // Offset 10: between second and third entry, should return the second.
         let hit = section
             .lookup_source_location(FunctionId::INIT, 10)
             .unwrap();
-        assert_eq!(hit.source_line, 20);
+        assert_eq!(hit.source_line.raw(), 20);
 
         // Offset 12: matches the third entry exactly.
         let hit = section
             .lookup_source_location(FunctionId::INIT, 12)
             .unwrap();
-        assert_eq!(hit.source_line, 30);
+        assert_eq!(hit.source_line.raw(), 30);
 
         // Offset 100: beyond the last entry, should still return the third.
         let hit = section
             .lookup_source_location(FunctionId::INIT, 100)
             .unwrap();
-        assert_eq!(hit.source_line, 30);
+        assert_eq!(hit.source_line.raw(), 30);
     }
 }

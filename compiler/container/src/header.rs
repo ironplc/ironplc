@@ -20,15 +20,17 @@ pub const STRING_HEADER_BYTES: usize = 4;
 pub const FLAG_HAS_SYSTEM_UPTIME: u8 = 0x01;
 
 /// Fixed size of the file header in bytes.
-pub const HEADER_SIZE: usize = 224;
+pub const HEADER_SIZE: usize = 256;
 
-/// File header for a bytecode container (224 bytes, fixed layout).
+/// File header for a bytecode container (256 bytes, fixed layout).
 ///
 /// All multi-byte values are little-endian.
 ///
 /// Per-file source integrity lives in the debug section's
-/// SOURCE_FILE_TABLE (tag 6), not in this header. The header retains
-/// only the four protocol-level hashes that the verifier checks
+/// SOURCE_FILE_TABLE (tag 6), not in this header. Bytes 40-71 were
+/// formerly a single combined `source_hash`; they are now reserved
+/// (always zero, captured in [`Self::reserved_hash_slot`]). The header
+/// retains only the three protocol-level hashes the verifier checks
 /// directly. See `specs/design/bytecode-container-format.md`.
 #[derive(Clone, Debug)]
 pub struct FileHeader {
@@ -37,11 +39,15 @@ pub struct FileHeader {
     pub format_version: u16,
     pub profile: u8,
     pub flags: u8,
-    // Region 2: Hashes (bytes 8-103)
+    // Region 2: Hashes (bytes 8-135)
     pub content_hash: [u8; 32],
+    /// Bytes 40-71. Reserved (formerly `source_hash`). Must be zero.
+    /// Per-file source integrity now lives in the debug section's
+    /// SOURCE_FILE_TABLE (tag 6).
+    pub reserved_hash_slot: [u8; 32],
     pub debug_hash: [u8; 32],
     pub layout_hash: [u8; 32],
-    // Region 3: Section directory (bytes 104-159)
+    // Region 3: Section directory (bytes 136-191)
     pub sig_section_offset: u32,
     pub sig_section_size: u32,
     pub debug_sig_offset: u32,
@@ -56,7 +62,7 @@ pub struct FileHeader {
     pub code_section_size: u32,
     pub debug_section_offset: u32,
     pub debug_section_size: u32,
-    // Region 4: Runtime parameters (bytes 160-185)
+    // Region 4: Runtime parameters (bytes 192-217)
     pub max_stack_depth: u16,
     pub max_call_depth: u16,
     pub num_variables: u16,
@@ -68,7 +74,7 @@ pub struct FileHeader {
     pub input_image_bytes: u16,
     pub output_image_bytes: u16,
     pub memory_image_bytes: u16,
-    // Reserved (bytes 186-223)
+    // Reserved (bytes 218-255)
     pub reserved: [u8; 38],
 }
 
@@ -80,6 +86,7 @@ impl Default for FileHeader {
             profile: 0,
             flags: 0,
             content_hash: [0; 32],
+            reserved_hash_slot: [0; 32],
             debug_hash: [0; 32],
             layout_hash: [0; 32],
             sig_section_offset: 0,
@@ -113,7 +120,7 @@ impl Default for FileHeader {
 }
 
 impl FileHeader {
-    /// Writes the header to the given writer as exactly 224 bytes.
+    /// Writes the header to the given writer as exactly 256 bytes.
     #[cfg(feature = "std")]
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         // Region 1: Identification (bytes 0-7)
@@ -121,11 +128,12 @@ impl FileHeader {
         w.write_all(&self.format_version.to_le_bytes())?;
         w.write_all(&[self.profile])?;
         w.write_all(&[self.flags])?;
-        // Region 2: Hashes (bytes 8-103)
+        // Region 2: Hashes (bytes 8-135)
         w.write_all(&self.content_hash)?;
+        w.write_all(&self.reserved_hash_slot)?; // formerly source_hash
         w.write_all(&self.debug_hash)?;
         w.write_all(&self.layout_hash)?;
-        // Region 3: Section directory (bytes 104-159)
+        // Region 3: Section directory (bytes 136-191)
         w.write_all(&self.sig_section_offset.to_le_bytes())?;
         w.write_all(&self.sig_section_size.to_le_bytes())?;
         w.write_all(&self.debug_sig_offset.to_le_bytes())?;
@@ -140,7 +148,7 @@ impl FileHeader {
         w.write_all(&self.code_section_size.to_le_bytes())?;
         w.write_all(&self.debug_section_offset.to_le_bytes())?;
         w.write_all(&self.debug_section_size.to_le_bytes())?;
-        // Region 4: Runtime parameters (bytes 160-185)
+        // Region 4: Runtime parameters (bytes 192-217)
         w.write_all(&self.max_stack_depth.to_le_bytes())?;
         w.write_all(&self.max_call_depth.to_le_bytes())?;
         w.write_all(&self.num_variables.to_le_bytes())?;
@@ -152,12 +160,12 @@ impl FileHeader {
         w.write_all(&self.input_image_bytes.to_le_bytes())?;
         w.write_all(&self.output_image_bytes.to_le_bytes())?;
         w.write_all(&self.memory_image_bytes.to_le_bytes())?;
-        // Reserved (bytes 186-223)
+        // Reserved (bytes 218-255)
         w.write_all(&self.reserved)?;
         Ok(())
     }
 
-    /// Parses a header from a fixed-size 224-byte array.
+    /// Parses a header from a fixed-size 256-byte array.
     pub fn from_bytes(buf: &[u8; HEADER_SIZE]) -> Result<Self, ContainerError> {
         // Region 1: Identification (bytes 0-7)
         let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
@@ -173,48 +181,53 @@ impl FileHeader {
         let profile = buf[6];
         let flags = buf[7];
 
-        // Region 2: Hashes (bytes 8-103)
+        // Region 2: Hashes (bytes 8-135)
         let mut content_hash = [0u8; 32];
         content_hash.copy_from_slice(&buf[8..40]);
 
+        // Bytes 40-71: reserved (formerly source_hash). Captured but
+        // not interpreted; per the spec these must be zero.
+        let mut reserved_hash_slot = [0u8; 32];
+        reserved_hash_slot.copy_from_slice(&buf[40..72]);
+
         let mut debug_hash = [0u8; 32];
-        debug_hash.copy_from_slice(&buf[40..72]);
+        debug_hash.copy_from_slice(&buf[72..104]);
 
         let mut layout_hash = [0u8; 32];
-        layout_hash.copy_from_slice(&buf[72..104]);
+        layout_hash.copy_from_slice(&buf[104..136]);
 
-        // Region 3: Section directory (bytes 104-159)
-        let sig_section_offset = u32::from_le_bytes([buf[104], buf[105], buf[106], buf[107]]);
-        let sig_section_size = u32::from_le_bytes([buf[108], buf[109], buf[110], buf[111]]);
-        let debug_sig_offset = u32::from_le_bytes([buf[112], buf[113], buf[114], buf[115]]);
-        let debug_sig_size = u32::from_le_bytes([buf[116], buf[117], buf[118], buf[119]]);
-        let type_section_offset = u32::from_le_bytes([buf[120], buf[121], buf[122], buf[123]]);
-        let type_section_size = u32::from_le_bytes([buf[124], buf[125], buf[126], buf[127]]);
-        let task_section_offset = u32::from_le_bytes([buf[128], buf[129], buf[130], buf[131]]);
-        let task_section_size = u32::from_le_bytes([buf[132], buf[133], buf[134], buf[135]]);
-        let const_section_offset = u32::from_le_bytes([buf[136], buf[137], buf[138], buf[139]]);
-        let const_section_size = u32::from_le_bytes([buf[140], buf[141], buf[142], buf[143]]);
-        let code_section_offset = u32::from_le_bytes([buf[144], buf[145], buf[146], buf[147]]);
-        let code_section_size = u32::from_le_bytes([buf[148], buf[149], buf[150], buf[151]]);
-        let debug_section_offset = u32::from_le_bytes([buf[152], buf[153], buf[154], buf[155]]);
-        let debug_section_size = u32::from_le_bytes([buf[156], buf[157], buf[158], buf[159]]);
+        // Region 3: Section directory (bytes 136-191)
+        let sig_section_offset = u32::from_le_bytes([buf[136], buf[137], buf[138], buf[139]]);
+        let sig_section_size = u32::from_le_bytes([buf[140], buf[141], buf[142], buf[143]]);
+        let debug_sig_offset = u32::from_le_bytes([buf[144], buf[145], buf[146], buf[147]]);
+        let debug_sig_size = u32::from_le_bytes([buf[148], buf[149], buf[150], buf[151]]);
+        let type_section_offset = u32::from_le_bytes([buf[152], buf[153], buf[154], buf[155]]);
+        let type_section_size = u32::from_le_bytes([buf[156], buf[157], buf[158], buf[159]]);
+        let task_section_offset = u32::from_le_bytes([buf[160], buf[161], buf[162], buf[163]]);
+        let task_section_size = u32::from_le_bytes([buf[164], buf[165], buf[166], buf[167]]);
+        let const_section_offset = u32::from_le_bytes([buf[168], buf[169], buf[170], buf[171]]);
+        let const_section_size = u32::from_le_bytes([buf[172], buf[173], buf[174], buf[175]]);
+        let code_section_offset = u32::from_le_bytes([buf[176], buf[177], buf[178], buf[179]]);
+        let code_section_size = u32::from_le_bytes([buf[180], buf[181], buf[182], buf[183]]);
+        let debug_section_offset = u32::from_le_bytes([buf[184], buf[185], buf[186], buf[187]]);
+        let debug_section_size = u32::from_le_bytes([buf[188], buf[189], buf[190], buf[191]]);
 
-        // Region 4: Runtime parameters (bytes 160-185)
-        let max_stack_depth = u16::from_le_bytes([buf[160], buf[161]]);
-        let max_call_depth = u16::from_le_bytes([buf[162], buf[163]]);
-        let num_variables = u16::from_le_bytes([buf[164], buf[165]]);
-        let data_region_bytes = u32::from_le_bytes([buf[166], buf[167], buf[168], buf[169]]);
-        let num_temp_bufs = u16::from_le_bytes([buf[170], buf[171]]);
-        let max_temp_buf_bytes = u32::from_le_bytes([buf[172], buf[173], buf[174], buf[175]]);
-        let num_functions = u16::from_le_bytes([buf[176], buf[177]]);
-        let num_fb_types = u16::from_le_bytes([buf[178], buf[179]]);
-        let input_image_bytes = u16::from_le_bytes([buf[180], buf[181]]);
-        let output_image_bytes = u16::from_le_bytes([buf[182], buf[183]]);
-        let memory_image_bytes = u16::from_le_bytes([buf[184], buf[185]]);
+        // Region 4: Runtime parameters (bytes 192-217)
+        let max_stack_depth = u16::from_le_bytes([buf[192], buf[193]]);
+        let max_call_depth = u16::from_le_bytes([buf[194], buf[195]]);
+        let num_variables = u16::from_le_bytes([buf[196], buf[197]]);
+        let data_region_bytes = u32::from_le_bytes([buf[198], buf[199], buf[200], buf[201]]);
+        let num_temp_bufs = u16::from_le_bytes([buf[202], buf[203]]);
+        let max_temp_buf_bytes = u32::from_le_bytes([buf[204], buf[205], buf[206], buf[207]]);
+        let num_functions = u16::from_le_bytes([buf[208], buf[209]]);
+        let num_fb_types = u16::from_le_bytes([buf[210], buf[211]]);
+        let input_image_bytes = u16::from_le_bytes([buf[212], buf[213]]);
+        let output_image_bytes = u16::from_le_bytes([buf[214], buf[215]]);
+        let memory_image_bytes = u16::from_le_bytes([buf[216], buf[217]]);
 
-        // Reserved (bytes 186-223)
+        // Reserved (bytes 218-255)
         let mut reserved = [0u8; 38];
-        reserved.copy_from_slice(&buf[186..224]);
+        reserved.copy_from_slice(&buf[218..256]);
 
         Ok(FileHeader {
             magic,
@@ -222,6 +235,7 @@ impl FileHeader {
             profile,
             flags,
             content_hash,
+            reserved_hash_slot,
             debug_hash,
             layout_hash,
             sig_section_offset,
@@ -253,7 +267,7 @@ impl FileHeader {
         })
     }
 
-    /// Reads a header from the given reader, consuming exactly 224 bytes.
+    /// Reads a header from the given reader, consuming exactly 256 bytes.
     #[cfg(feature = "std")]
     pub fn read_from(r: &mut impl Read) -> Result<Self, ContainerError> {
         let mut buf = [0u8; HEADER_SIZE];

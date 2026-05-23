@@ -13,7 +13,7 @@ use syn::{parse_macro_input, Ident, ItemFn};
 /// ```ignore
 /// #[spec_test(REQ_CF_001)]
 /// fn container_spec_req_cf_001_header_size() {
-///     assert_eq!(std::mem::size_of::<FileHeader>(), 224);
+///     assert_eq!(std::mem::size_of::<FileHeader>(), 256);
 /// }
 /// ```
 #[proc_macro_attribute]

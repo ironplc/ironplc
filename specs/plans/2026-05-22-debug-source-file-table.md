@@ -78,27 +78,32 @@ chosen algorithm. The "Decision" and "Consequences" sections both need
 updates; the structure of the dual-signature integrity model is
 unaffected.
 
-### `header.source_hash` is removed, not repurposed
+### `header.source_hash` is removed from the API; on-disk slot stays reserved
 
 The single `header.source_hash` field captured "did any source change?"
 in a single-file world. With per-file `content_hash` entries in tag 6
 this is strictly less informative — you get "something changed" but
-not "which file." Since we're already touching the format and there is
-no installed base, **`header.source_hash` is removed from the header**
-rather than kept as a deprecated zero-filled slot.
+not "which file."
 
-Cascading offset shifts in `HEADER_SIZE`:
+The field is removed from `FileHeader`'s public API. The 32-byte slot
+at bytes 40-71 is **kept as reserved padding** (must be zero) rather
+than excised from the wire format. This keeps `HEADER_SIZE = 256` and
+every other field at its original offset, matching the "256 bytes with
+padding as necessary" intent of the header design — we deliberately
+set aside space to grow into, and removing source integrity from this
+slot does not change that calculus. The struct carries
+`reserved_hash_slot: [u8; 32]` so `size_of::<FileHeader>() ==
+HEADER_SIZE` still holds.
 
-| Field | Old offset | New offset |
-|-------|------------|------------|
-| `content_hash` | 8 | 8 |
-| `source_hash` | 40 | *(removed)* |
-| `debug_hash` | 72 | 40 |
-| `layout_hash` | 104 | 72 |
-
-`HEADER_SIZE` shrinks by 32 bytes. `header.rs` write/read logic, the
-header-size constant, and every test fixture that depends on offsets
-beyond byte 40 need to be updated together.
+| Field | Offset | Note |
+|-------|--------|------|
+| `content_hash` | 8 | unchanged |
+| `reserved_hash_slot` | 40 | formerly `source_hash`; reserved, must be zero |
+| `debug_hash` | 72 | unchanged |
+| `layout_hash` | 104 | unchanged |
+| section directory | 136 | unchanged |
+| runtime parameters | 192 | unchanged |
+| trailing `reserved` | 218 | unchanged |
 
 The per-file `content_hash` entries in tag 6 are the sole source of
 truth for source integrity. The `debug_hash` (BLAKE3 over the entire

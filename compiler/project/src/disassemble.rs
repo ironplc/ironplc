@@ -765,7 +765,7 @@ mod tests {
     fn disassemble_when_steel_thread_then_header_has_task_section() {
         let container = steel_thread_container();
         let result = disassemble(&container);
-        assert_eq!(result["header"]["taskSection"]["offset"], 224);
+        assert_eq!(result["header"]["taskSection"]["offset"], 256);
         assert!(result["header"]["taskSection"]["size"].as_u64().unwrap() > 0);
     }
 

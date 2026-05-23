@@ -1112,6 +1112,7 @@ name = "ironplc-vm-cli"
 version = "0.214.0"
 dependencies = [
  "assert_cmd",
+ "blake3",
  "clap",
  "csv",
  "ctor",

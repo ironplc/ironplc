@@ -393,6 +393,7 @@ impl Default for ContainerBuilder {
 mod tests {
     use super::*;
     use crate::id_types::ConstantIndex;
+    use crate::id_types::{SourceColumn, SourceFileId, SourceLine};
     use std::vec;
     use std::vec::Vec;
 
@@ -517,9 +518,9 @@ mod tests {
         let entry = LineMapEntry {
             function_id: FunctionId::INIT,
             bytecode_offset: 4,
-            file_id: 0,
-            source_line: 12,
-            source_column: 3,
+            file_id: SourceFileId::new(0),
+            source_line: SourceLine::new(12),
+            source_column: SourceColumn::new(3),
         };
 
         let container = ContainerBuilder::new()
@@ -541,23 +542,23 @@ mod tests {
             LineMapEntry {
                 function_id: FunctionId::SCAN,
                 bytecode_offset: 4,
-                file_id: 0,
-                source_line: 30,
-                source_column: 1,
+                file_id: SourceFileId::new(0),
+                source_line: SourceLine::new(30),
+                source_column: SourceColumn::new(1),
             },
             LineMapEntry {
                 function_id: FunctionId::INIT,
                 bytecode_offset: 8,
-                file_id: 0,
-                source_line: 20,
-                source_column: 1,
+                file_id: SourceFileId::new(0),
+                source_line: SourceLine::new(20),
+                source_column: SourceColumn::new(1),
             },
             LineMapEntry {
                 function_id: FunctionId::INIT,
                 bytecode_offset: 0,
-                file_id: 0,
-                source_line: 10,
-                source_column: 1,
+                file_id: SourceFileId::new(0),
+                source_line: SourceLine::new(10),
+                source_column: SourceColumn::new(1),
             },
         ];
 
