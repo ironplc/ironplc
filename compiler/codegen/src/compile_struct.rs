@@ -142,7 +142,7 @@ pub(crate) fn build_struct_fields(
         let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
         let string_max_length = match &field.field_type {
-            IntermediateType::String { max_len } => Some(max_len.unwrap_or(254) as u16),
+            IntermediateType::String { max_len, .. } => Some(max_len.unwrap_or(254) as u16),
             _ => None,
         };
 
@@ -527,7 +527,7 @@ pub(crate) fn initialize_struct_fields(
             dimensions: array_dims,
         } = &field_info.field_type
         {
-            if let IntermediateType::String { max_len } = element_type.as_ref() {
+            if let IntermediateType::String { max_len, .. } = element_type.as_ref() {
                 // STRING array field — initialize headers for each string element.
                 let max_length = max_len.unwrap_or(254) as u16;
                 let total_elements = array_dims
@@ -643,7 +643,7 @@ pub(crate) fn allocate_struct_variable(
             dimensions: array_dims,
         } = &f.field_type
         {
-            if let IntermediateType::String { max_len } = element_type.as_ref() {
+            if let IntermediateType::String { max_len, .. } = element_type.as_ref() {
                 let max_str_len = max_len.unwrap_or(254) as u16;
                 let total_elements = array_dims
                     .iter()
@@ -700,6 +700,7 @@ pub(crate) fn allocate_struct_variable(
 mod tests {
     use super::*;
     use ironplc_analyzer::intermediate_type::IntermediateStructField;
+    use ironplc_container::CharWidth;
     use ironplc_dsl::core::Id;
 
     fn make_field(name: &str, field_type: IntermediateType) -> IntermediateStructField {
@@ -772,7 +773,10 @@ mod tests {
         // STRING[255] needs ceil((4 + 255) / 8) = 33 slots
         let fields = vec![make_field(
             "s",
-            IntermediateType::String { max_len: Some(255) },
+            IntermediateType::String {
+                max_len: Some(255),
+                char_width: CharWidth::Narrow,
+            },
         )];
         let (field_list, _) = build_struct_fields(&fields, &SourceSpan::default()).unwrap();
         assert_eq!(field_list.len(), 1);
@@ -786,7 +790,13 @@ mod tests {
     fn build_struct_fields_when_string_and_int_then_correct_offsets() {
         // STRING[30] needs ceil((4 + 30) / 8) = 5 slots, then INT at offset 5
         let fields = vec![
-            make_field("s", IntermediateType::String { max_len: Some(30) }),
+            make_field(
+                "s",
+                IntermediateType::String {
+                    max_len: Some(30),
+                    char_width: CharWidth::Narrow,
+                },
+            ),
             make_field(
                 "n",
                 IntermediateType::Int {

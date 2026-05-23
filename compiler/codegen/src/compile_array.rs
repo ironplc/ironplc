@@ -384,7 +384,7 @@ pub(crate) fn array_spec_from_named(
     };
     let element_type_name = intermediate_type_to_name(inner_type)?;
     let string_max_len = match inner_type {
-        IntermediateType::String { max_len } => {
+        IntermediateType::String { max_len, .. } => {
             let len = max_len
                 .map(|v| v as u16)
                 .unwrap_or(super::compile::DEFAULT_STRING_MAX_LENGTH_U16);
