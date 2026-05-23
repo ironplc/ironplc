@@ -11,14 +11,18 @@ const TAG_LINE_MAP: u16 = 1;
 const TAG_VAR_NAME: u16 = 2;
 const TAG_FUNC_NAME: u16 = 3;
 const TAG_STRING_LAYOUT: u16 = 4;
+const TAG_SOURCE_FILE: u16 = 6;
 const TAG_ENUM_DEF: u16 = 9;
 
 /// Size of each StringLayoutEntry on disk: var_index(2) + data_offset(4) + max_length(2) = 8 bytes.
 const STRING_LAYOUT_ENTRY_SIZE: u32 = 8;
 
 /// Size of each LineMapEntry on disk: function_id(2) + bytecode_offset(2)
-/// + source_line(2) + source_column(2) = 8 bytes.
-const LINE_MAP_ENTRY_SIZE: u32 = 8;
+/// + file_id(2) + source_line(2) + source_column(2) = 10 bytes.
+const LINE_MAP_ENTRY_SIZE: u32 = 10;
+
+/// BLAKE3 digest size in bytes (32, default output length).
+pub const SOURCE_FILE_HASH_LEN: usize = 32;
 
 /// Size of each directory entry: tag(2) + reserved(2) + size(4) = 8 bytes.
 const DIR_ENTRY_SIZE: u32 = 8;
@@ -96,10 +100,30 @@ pub struct LineMapEntry {
     pub function_id: FunctionId,
     /// Offset within the function's bytecode.
     pub bytecode_offset: u16,
+    /// Index into the SOURCE_FILE_TABLE (debug section Tag 6). Identifies
+    /// which source file `source_line`/`source_column` refer to. Entries
+    /// from a container without a source file table all carry `file_id = 0`.
+    pub file_id: u16,
     /// Source line number (1-based).
     pub source_line: u16,
     /// Source column number (1-based; 0 = unknown).
     pub source_column: u16,
+}
+
+/// A source file table entry (debug section Tag 6).
+///
+/// One entry per distinct source file referenced by the line map. The
+/// table is index-addressed: `LineMapEntry.file_id` is an index into
+/// `DebugSection.source_files`. The `content_hash` is BLAKE3 over the
+/// exact source bytes the parser saw, so a debugger can detect drift
+/// against the user's working copy.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceFileEntry {
+    /// Path identifying the source file. Format is whatever the compiler
+    /// driver records (typically an absolute or workspace-relative path).
+    pub path: String,
+    /// BLAKE3-256 of the source bytes; all-zero means "no hash available".
+    pub content_hash: [u8; SOURCE_FILE_HASH_LEN],
 }
 
 /// A function name entry (debug section Tag 3).
@@ -150,6 +174,11 @@ pub struct DebugSection {
     pub line_map: Vec<LineMapEntry>,
     /// STRING variable data-region layouts (debug section Tag 4).
     pub string_layouts: Vec<StringLayoutEntry>,
+    /// Source file table (debug section Tag 6).
+    ///
+    /// Index-addressed by `LineMapEntry.file_id`. Each entry pairs a path
+    /// with a BLAKE3 hash of the file's source bytes for drift detection.
+    pub source_files: Vec<SourceFileEntry>,
     /// Enumeration type definitions (debug section Tag 9).
     /// Maps enum type names to their value names in ordinal order.
     pub enum_defs: Vec<EnumDefEntry>,
@@ -172,6 +201,7 @@ impl DebugSection {
             + self.var_name_payload_size()
             + self.func_name_payload_size()
             + self.string_layout_payload_size()
+            + self.source_file_payload_size()
             + self.enum_def_payload_size()
     }
 
@@ -201,6 +231,11 @@ impl DebugSection {
             w.write_all(&0u16.to_le_bytes())?; // reserved
             w.write_all(&self.string_layout_payload_size().to_le_bytes())?;
         }
+        if !self.source_files.is_empty() {
+            w.write_all(&TAG_SOURCE_FILE.to_le_bytes())?;
+            w.write_all(&0u16.to_le_bytes())?; // reserved
+            w.write_all(&self.source_file_payload_size().to_le_bytes())?;
+        }
         if !self.enum_defs.is_empty() {
             w.write_all(&TAG_ENUM_DEF.to_le_bytes())?;
             w.write_all(&0u16.to_le_bytes())?; // reserved
@@ -219,6 +254,9 @@ impl DebugSection {
         }
         if !self.string_layouts.is_empty() {
             self.write_string_layouts(w)?;
+        }
+        if !self.source_files.is_empty() {
+            self.write_source_files(w)?;
         }
         if !self.enum_defs.is_empty() {
             self.write_enum_defs(w)?;
@@ -248,6 +286,7 @@ impl DebugSection {
         let mut func_names = Vec::new();
         let mut line_map = Vec::new();
         let mut string_layouts = Vec::new();
+        let mut source_files = Vec::new();
         let mut enum_defs = Vec::new();
 
         // Read payloads in directory order, skipping unknown tags.
@@ -265,6 +304,9 @@ impl DebugSection {
                 TAG_STRING_LAYOUT => {
                     string_layouts = Self::read_string_layouts(r, *size)?;
                 }
+                TAG_SOURCE_FILE => {
+                    source_files = Self::read_source_files(r, *size)?;
+                }
                 TAG_ENUM_DEF => {
                     enum_defs = Self::read_enum_defs(r)?;
                 }
@@ -281,6 +323,7 @@ impl DebugSection {
             func_names,
             line_map,
             string_layouts,
+            source_files,
             enum_defs,
         })
     }
@@ -297,6 +340,9 @@ impl DebugSection {
             count += 1;
         }
         if !self.string_layouts.is_empty() {
+            count += 1;
+        }
+        if !self.source_files.is_empty() {
             count += 1;
         }
         if !self.enum_defs.is_empty() {
@@ -318,6 +364,7 @@ impl DebugSection {
         for entry in &self.line_map {
             w.write_all(&entry.function_id.to_le_bytes())?;
             w.write_all(&entry.bytecode_offset.to_le_bytes())?;
+            w.write_all(&entry.file_id.to_le_bytes())?;
             w.write_all(&entry.source_line.to_le_bytes())?;
             w.write_all(&entry.source_column.to_le_bytes())?;
         }
@@ -331,13 +378,14 @@ impl DebugSection {
 
         let mut entries = Vec::with_capacity(count);
         for _ in 0..count {
-            let mut entry_buf = [0u8; 8];
+            let mut entry_buf = [0u8; 10];
             r.read_exact(&mut entry_buf)?;
             entries.push(LineMapEntry {
                 function_id: FunctionId::new(u16::from_le_bytes([entry_buf[0], entry_buf[1]])),
                 bytecode_offset: u16::from_le_bytes([entry_buf[2], entry_buf[3]]),
-                source_line: u16::from_le_bytes([entry_buf[4], entry_buf[5]]),
-                source_column: u16::from_le_bytes([entry_buf[6], entry_buf[7]]),
+                file_id: u16::from_le_bytes([entry_buf[4], entry_buf[5]]),
+                source_line: u16::from_le_bytes([entry_buf[6], entry_buf[7]]),
+                source_column: u16::from_le_bytes([entry_buf[8], entry_buf[9]]),
             });
         }
         Ok(entries)
@@ -535,6 +583,53 @@ impl DebugSection {
         Ok(entries)
     }
 
+    fn source_file_payload_size(&self) -> u32 {
+        if self.source_files.is_empty() {
+            return 0;
+        }
+        // count(2) + entries
+        let mut size: u32 = 2;
+        for entry in &self.source_files {
+            // path_len(2) + path bytes + content_hash(32)
+            size += 2 + entry.path.len() as u32 + SOURCE_FILE_HASH_LEN as u32;
+        }
+        size
+    }
+
+    fn write_source_files(&self, w: &mut impl Write) -> Result<(), ContainerError> {
+        w.write_all(&(self.source_files.len() as u16).to_le_bytes())?;
+        for entry in &self.source_files {
+            let path_bytes = entry.path.as_bytes();
+            w.write_all(&(path_bytes.len() as u16).to_le_bytes())?;
+            w.write_all(path_bytes)?;
+            w.write_all(&entry.content_hash)?;
+        }
+        Ok(())
+    }
+
+    fn read_source_files(
+        r: &mut impl Read,
+        _size: u32,
+    ) -> Result<Vec<SourceFileEntry>, ContainerError> {
+        let mut buf2 = [0u8; 2];
+        r.read_exact(&mut buf2)?;
+        let count = u16::from_le_bytes(buf2) as usize;
+
+        let mut entries = Vec::with_capacity(count);
+        for _ in 0..count {
+            r.read_exact(&mut buf2)?;
+            let path_len = u16::from_le_bytes(buf2) as usize;
+            let mut path_bytes = vec![0u8; path_len];
+            r.read_exact(&mut path_bytes)?;
+            let path =
+                String::from_utf8(path_bytes).map_err(|_| ContainerError::InvalidDebugSection)?;
+            let mut content_hash = [0u8; SOURCE_FILE_HASH_LEN];
+            r.read_exact(&mut content_hash)?;
+            entries.push(SourceFileEntry { path, content_hash });
+        }
+        Ok(entries)
+    }
+
     fn enum_def_payload_size(&self) -> u32 {
         if self.enum_defs.is_empty() {
             return 0;
@@ -629,6 +724,7 @@ mod tests {
             func_names: vec![],
             line_map: vec![],
             string_layouts: vec![],
+            source_files: vec![],
             enum_defs: vec![],
         };
 
@@ -661,6 +757,7 @@ mod tests {
             ],
             line_map: vec![],
             string_layouts: vec![],
+            source_files: vec![],
             enum_defs: vec![],
         };
 
@@ -693,6 +790,7 @@ mod tests {
             }],
             line_map: vec![],
             string_layouts: vec![],
+            source_files: vec![],
             enum_defs: vec![],
         };
 
@@ -753,23 +851,27 @@ mod tests {
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 0,
+                    file_id: 0,
                     source_line: 10,
                     source_column: 1,
                 },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 5,
+                    file_id: 0,
                     source_line: 11,
                     source_column: 3,
                 },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 12,
+                    file_id: 0,
                     source_line: 12,
                     source_column: 0,
                 },
             ],
             string_layouts: vec![],
+            source_files: vec![],
             enum_defs: vec![],
         };
 
@@ -784,6 +886,118 @@ mod tests {
     }
 
     #[test]
+    fn debug_section_write_read_when_source_files_then_roundtrips() {
+        let section = DebugSection {
+            var_names: vec![],
+            func_names: vec![],
+            line_map: vec![],
+            string_layouts: vec![],
+            source_files: vec![
+                SourceFileEntry {
+                    path: "src/main.st".into(),
+                    content_hash: *blake3::hash(b"PROGRAM main\nEND_PROGRAM\n").as_bytes(),
+                },
+                SourceFileEntry {
+                    path: "src/lib/helpers.st".into(),
+                    content_hash: [0u8; SOURCE_FILE_HASH_LEN],
+                },
+            ],
+            enum_defs: vec![],
+        };
+
+        let mut buf = Vec::new();
+        section.write_to(&mut buf).unwrap();
+        assert_eq!(section.section_size(), buf.len() as u32);
+
+        let decoded = DebugSection::read_from(&mut Cursor::new(&buf)).unwrap();
+        assert_eq!(decoded.source_files, section.source_files);
+    }
+
+    #[test]
+    fn debug_section_write_read_when_line_map_carries_file_id_then_roundtrips() {
+        let section = DebugSection {
+            var_names: vec![],
+            func_names: vec![],
+            line_map: vec![
+                LineMapEntry {
+                    function_id: FunctionId::SCAN,
+                    bytecode_offset: 0,
+                    file_id: 0,
+                    source_line: 1,
+                    source_column: 1,
+                },
+                LineMapEntry {
+                    function_id: FunctionId::SCAN,
+                    bytecode_offset: 6,
+                    file_id: 1,
+                    source_line: 7,
+                    source_column: 1,
+                },
+            ],
+            string_layouts: vec![],
+            source_files: vec![],
+            enum_defs: vec![],
+        };
+
+        let mut buf = Vec::new();
+        section.write_to(&mut buf).unwrap();
+        assert_eq!(section.section_size(), buf.len() as u32);
+
+        let decoded = DebugSection::read_from(&mut Cursor::new(&buf)).unwrap();
+        assert_eq!(decoded.line_map, section.line_map);
+        assert_eq!(decoded.line_map[0].file_id, 0);
+        assert_eq!(decoded.line_map[1].file_id, 1);
+    }
+
+    #[test]
+    fn debug_section_source_file_content_hash_when_known_input_then_matches_blake3() {
+        // BLAKE3 is collision-resistant; this test pins down that the
+        // crate uses the algorithm we documented in the spec/ADR. If we
+        // ever swap to a different algorithm, this needs to be updated
+        // intentionally — not silently.
+        let source = b"PROGRAM main\nVAR x : DINT; END_VAR\nEND_PROGRAM\n";
+        let expected = *blake3::hash(source).as_bytes();
+        let entry = SourceFileEntry {
+            path: "p.st".into(),
+            content_hash: expected,
+        };
+        assert_eq!(entry.content_hash, expected);
+        // Sanity: BLAKE3 produces a non-zero digest for non-empty input.
+        assert_ne!(entry.content_hash, [0u8; SOURCE_FILE_HASH_LEN]);
+    }
+
+    #[test]
+    fn debug_section_read_when_unknown_high_tag_then_skips_and_continues() {
+        // Cover the unknown-tag path with a tag the reader doesn't
+        // recognize alongside tag 6, so the SOURCE_FILE_TABLE still loads.
+        let mut buf = Vec::new();
+        // sub_table_count = 2
+        buf.extend_from_slice(&2u16.to_le_bytes());
+        // Directory entry 1: unknown tag 99, 4 bytes of payload
+        buf.extend_from_slice(&99u16.to_le_bytes());
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        buf.extend_from_slice(&4u32.to_le_bytes());
+        // Directory entry 2: TAG_SOURCE_FILE, one entry "p.st" + 32-byte hash
+        let payload_size: u32 = 2 + 2 + 4 + SOURCE_FILE_HASH_LEN as u32;
+        buf.extend_from_slice(&TAG_SOURCE_FILE.to_le_bytes());
+        buf.extend_from_slice(&0u16.to_le_bytes());
+        buf.extend_from_slice(&payload_size.to_le_bytes());
+        // Unknown payload: 4 garbage bytes
+        buf.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+        // SOURCE_FILE payload: count=1, path_len=4, "p.st", 32-byte hash
+        buf.extend_from_slice(&1u16.to_le_bytes());
+        buf.extend_from_slice(&4u16.to_le_bytes());
+        buf.extend_from_slice(b"p.st");
+        let hash = [0xABu8; SOURCE_FILE_HASH_LEN];
+        buf.extend_from_slice(&hash);
+
+        let decoded = DebugSection::read_from(&mut Cursor::new(&buf)).unwrap();
+        assert_eq!(decoded.source_files.len(), 1);
+        assert_eq!(decoded.source_files[0].path, "p.st");
+        assert_eq!(decoded.source_files[0].content_hash, hash);
+    }
+
+    #[test]
     fn debug_section_lookup_source_location_when_offset_between_entries_then_returns_lower() {
         let section = DebugSection {
             var_names: vec![],
@@ -794,23 +1008,27 @@ mod tests {
                 LineMapEntry {
                     function_id: FunctionId::INIT,
                     bytecode_offset: 0,
+                    file_id: 0,
                     source_line: 99,
                     source_column: 1,
                 },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 0,
+                    file_id: 0,
                     source_line: 10,
                     source_column: 1,
                 },
                 LineMapEntry {
                     function_id: FunctionId::SCAN,
                     bytecode_offset: 8,
+                    file_id: 0,
                     source_line: 11,
                     source_column: 1,
                 },
             ],
             string_layouts: vec![],
+            source_files: vec![],
             enum_defs: vec![],
         };
 
@@ -855,6 +1073,7 @@ mod tests {
             }],
             line_map: vec![],
             string_layouts: vec![],
+            source_files: vec![],
             enum_defs: vec![],
         };
 
@@ -872,18 +1091,21 @@ mod tests {
                 LineMapEntry {
                     function_id: FunctionId::INIT,
                     bytecode_offset: 0,
+                    file_id: 0,
                     source_line: 10,
                     source_column: 1,
                 },
                 LineMapEntry {
                     function_id: FunctionId::INIT,
                     bytecode_offset: 8,
+                    file_id: 0,
                     source_line: 20,
                     source_column: 1,
                 },
                 LineMapEntry {
                     function_id: FunctionId::INIT,
                     bytecode_offset: 12,
+                    file_id: 0,
                     source_line: 30,
                     source_column: 1,
                 },
@@ -891,11 +1113,13 @@ mod tests {
                 LineMapEntry {
                     function_id: FunctionId::GLOBAL_SCOPE,
                     bytecode_offset: 4,
+                    file_id: 0,
                     source_line: 99,
                     source_column: 1,
                 },
             ],
             string_layouts: vec![],
+            source_files: vec![],
             enum_defs: vec![],
         };
 

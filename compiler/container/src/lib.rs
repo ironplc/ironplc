@@ -57,7 +57,8 @@ pub use container::Container;
 pub use debug_format::{build_var_debug_map, format_variable_value, VarDebugInfo};
 #[cfg(feature = "std")]
 pub use debug_section::{
-    DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, StringLayoutEntry, VarNameEntry,
+    DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, SourceFileEntry, StringLayoutEntry,
+    VarNameEntry, SOURCE_FILE_HASH_LEN,
 };
 #[cfg(feature = "std")]
 pub use task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};

@@ -295,7 +295,7 @@ payload_offset = 2 + (8 × sub_table_count) + sum(directory[0..i].size)
 | 3 | FUNC_NAME | v1 | Function/POU name mappings |
 | 4 | FB_TYPE_NAME | reserved | FB type ID → type name mappings |
 | 5 | FB_FIELD_NAME | reserved | FB field index → field name mappings |
-| 6 | SOURCE_FILE | reserved | Source file table for multi-file projects |
+| 6 | SOURCE_FILE | v1 | Source file table: `(path, BLAKE3 content hash)` per file. `LineMapEntry.file_id` indexes into this table. |
 | 7 | LD_RUNG_MAP | reserved | Ladder Diagram rung ID → bytecode mappings |
 | 8 | FBD_NETWORK_MAP | reserved | Function Block Diagram network/element mappings |
 | 9–65535 | — | reserved | Future use |
@@ -321,16 +321,17 @@ Each sub-table payload starts with its own item count, followed by the items. Th
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | count | u16 | Number of entries |
-| 2 | entries | [LineMapEntry; count] | 8 bytes each |
+| 2 | entries | [LineMapEntry; count] | 10 bytes each |
 
-Each LineMapEntry (8 bytes):
+Each LineMapEntry (10 bytes):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | function_id | u16 | Function containing this mapping |
 | 2 | bytecode_offset | u16 | Offset within the function's bytecode |
-| 4 | source_line | u16 | Source line number (1-based) |
-| 6 | source_column | u16 | Source column number (1-based, 0 = unknown) |
+| 4 | file_id | u16 | Index into the SOURCE_FILE_TABLE (tag 6); identifies which source file the line/column refer to. `0` in containers without a source file table. |
+| 6 | source_line | u16 | Source line number (1-based) |
+| 8 | source_column | u16 | Source column number (1-based, 0 = unknown) |
 
 **Tag 2 — VAR_NAME:**
 
@@ -433,6 +434,23 @@ Each FieldNameEntry (variable size):
 | 2 | field_index | u8 | Field index within the FB type descriptor |
 | 3 | name_length | u8 | Length of field name in bytes |
 | 4 | name | [u8; name_length] | UTF-8 field name (e.g., "IN", "PT", "Q", "ET") |
+
+**Tag 6 — SOURCE_FILE:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [SourceFileEntry; count] | Variable size each |
+
+Each SourceFileEntry (variable size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | path_length | u16 | Length of path in bytes (u16, not u8 — absolute paths can exceed 255 bytes) |
+| 2 | path | [u8; path_length] | UTF-8 path identifying the source file (typically absolute or workspace-relative; format is whatever the compiler driver records) |
+| 2+N | content_hash | [u8; 32] | BLAKE3-256 of the file's source bytes as the parser saw them (no normalization). All-zero means "no hash available" — debuggers should treat this as drift-check disabled, not drift detected. |
+
+Position in the table is the entry's `file_id`: the first entry is `file_id = 0`, the second is `file_id = 1`, etc. `LineMapEntry.file_id` is an index into this table.
 
 ### Malformed Debug Section Handling
 
