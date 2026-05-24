@@ -2,7 +2,8 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::{parse_and_compile, parse_and_run};
+use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::STRING_HEADER_BYTES;
 
 /// Reads a STRING value from the data region at the given byte offset.
@@ -177,4 +178,36 @@ END_PROGRAM
 
     let s = read_string(&bufs.data_region, 0);
     assert_eq!(s, "Hello");
+}
+
+#[test]
+fn end_to_end_when_string_declared_then_debug_tag_is_string() {
+    let source = "
+PROGRAM main
+  VAR
+    x : STRING;
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let debug = container.debug_section.as_ref().unwrap();
+    let var = debug.var_names.iter().find(|v| v.name == "x").unwrap();
+    assert_eq!(var.type_name, "STRING");
+    assert_eq!(var.iec_type_tag, iec_type_tag::STRING);
+}
+
+#[test]
+fn end_to_end_when_wstring_declared_then_debug_tag_is_wstring() {
+    let source = "
+PROGRAM main
+  VAR
+    x : WSTRING;
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let debug = container.debug_section.as_ref().unwrap();
+    let var = debug.var_names.iter().find(|v| v.name == "x").unwrap();
+    assert_eq!(var.type_name, "WSTRING");
+    assert_eq!(var.iec_type_tag, iec_type_tag::WSTRING);
 }
