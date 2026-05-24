@@ -122,9 +122,20 @@ def _auto_height(code_lines, scaffold=False, vars_decl=""):
 
 
 def _build_playground_url(
-    code, scaffold=False, vars_decl="", embed=False, dialect="", allows=""
+    code,
+    scaffold=False,
+    vars_decl="",
+    embed=False,
+    dialect="",
+    allows="",
+    host="",
 ):
-    """Build a playground URL with encoded parameters."""
+    """Build a playground URL with encoded parameters.
+
+    When ``host`` is set, ``source=ironplc-docs`` and ``host=<docname>``
+    are appended so the playground can attribute the load to the docs
+    page that embedded or linked to it.
+    """
     params = []
 
     if embed:
@@ -139,6 +150,10 @@ def _build_playground_url(
     if allows:
         params.append("allows=" + quote(allows, safe=","))
 
+    if host:
+        params.append("source=ironplc-docs")
+        params.append("host=" + quote(host, safe=""))
+
     params.append("code=" + quote(b64encode(code.encode()).decode(), safe=""))
 
     if vars_decl:
@@ -147,7 +162,9 @@ def _build_playground_url(
     return PLAYGROUND_URL + "?" + "&".join(params)
 
 
-def _build_iframe(code, height, scaffold=False, vars_decl="", dialect="", allows=""):
+def _build_iframe(
+    code, height, scaffold=False, vars_decl="", dialect="", allows="", host=""
+):
     src = _build_playground_url(
         code,
         scaffold=scaffold,
@@ -155,6 +172,7 @@ def _build_iframe(code, height, scaffold=False, vars_decl="", dialect="", allows
         embed=True,
         dialect=dialect,
         allows=allows,
+        host=host,
     )
 
     raw_html = (
@@ -214,7 +232,10 @@ class PlaygroundDirective(Directive):
         height = self.options.get("height") or _auto_height(code_lines)
         dialect = self.options.get("dialect", "")
         allows = self.options.get("allows", "")
-        iframe = _build_iframe(code, height, dialect=dialect, allows=allows)
+        host = self.state.document.settings.env.docname
+        iframe = _build_iframe(
+            code, height, dialect=dialect, allows=allows, host=host
+        )
         return _wrap_in_tabs(iframe, code)
 
 
@@ -236,6 +257,7 @@ class PlaygroundWithProgramDirective(Directive):
         height = self.options.get("height") or _auto_height(
             code_lines, scaffold=True, vars_decl=vars_decl
         )
+        host = self.state.document.settings.env.docname
         iframe = _build_iframe(
             code,
             height,
@@ -243,6 +265,7 @@ class PlaygroundWithProgramDirective(Directive):
             vars_decl=vars_decl,
             dialect=dialect,
             allows=allows,
+            host=host,
         )
         return _wrap_in_tabs(iframe, code)
 
@@ -265,7 +288,10 @@ class PlaygroundLinkDirective(Directive):
         link_text = self.options.get("text", _DEFAULT_LINK_TEXT)
         dialect = self.options.get("dialect", "")
         allows = self.options.get("allows", "")
-        href = _build_playground_url(code, dialect=dialect, allows=allows)
+        host = self.state.document.settings.env.docname
+        href = _build_playground_url(
+            code, dialect=dialect, allows=allows, host=host
+        )
 
         ref_node = nodes.reference("", link_text, refuri=href, internal=False)
         ref_node["classes"].append("playground-link")
@@ -277,4 +303,4 @@ def setup(app):
     app.add_directive("playground", PlaygroundDirective)
     app.add_directive("playground-with-program", PlaygroundWithProgramDirective)
     app.add_directive("playground-link", PlaygroundLinkDirective)
-    return {"version": "0.3", "parallel_read_safe": True}
+    return {"version": "0.4", "parallel_read_safe": True}
