@@ -270,7 +270,13 @@ fn render_type(ty: &IntermediateType) -> String {
             ByteSized::B64 => "LDT".into(),
             _ => "DATE_AND_TIME".into(),
         },
-        IntermediateType::String { .. } => "STRING".into(),
+        IntermediateType::String { char_width, .. } => {
+            if char_width.is_wide() {
+                "WSTRING".into()
+            } else {
+                "STRING".into()
+            }
+        }
         IntermediateType::Enumeration { .. } => "ENUM".into(),
         IntermediateType::Structure { .. } => "STRUCT".into(),
         IntermediateType::Array { element_type, .. } => {
@@ -372,6 +378,25 @@ mod tests {
         assert_eq!(entry.low, Some(0));
         assert_eq!(entry.high, Some(100));
         assert_eq!(entry.base_type.as_deref(), Some("INT"));
+    }
+
+    #[test]
+    fn build_response_when_struct_has_string_and_wstring_fields_then_each_field_type_distinguishes_encoding(
+    ) {
+        let resp = build(
+            "TYPE MyRec : STRUCT s : STRING; w : WSTRING; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM",
+        );
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let entry = resp
+            .types
+            .iter()
+            .find(|t| t.name == "MyRec")
+            .expect("MyRec not found");
+        let fields = entry.fields.clone().expect("struct fields missing");
+        let s = fields.iter().find(|f| f.name == "s").unwrap();
+        assert_eq!(s.type_name, "STRING");
+        let w = fields.iter().find(|f| f.name == "w").unwrap();
+        assert_eq!(w.type_name, "WSTRING");
     }
 
     #[test]
