@@ -25,6 +25,13 @@ pub const HEADER_SIZE: usize = 256;
 /// File header for a bytecode container (256 bytes, fixed layout).
 ///
 /// All multi-byte values are little-endian.
+///
+/// Per-file source integrity lives in the debug section's
+/// SOURCE_FILE_TABLE (tag 6), not in this header. Bytes 40-71 were
+/// formerly a single combined `source_hash`; they are now reserved
+/// (always zero, captured in [`Self::reserved_hash_slot`]). The header
+/// retains only the three protocol-level hashes the verifier checks
+/// directly. See `specs/design/bytecode-container-format.md`.
 #[derive(Clone, Debug)]
 pub struct FileHeader {
     // Region 1: Identification (bytes 0-7)
@@ -34,7 +41,10 @@ pub struct FileHeader {
     pub flags: u8,
     // Region 2: Hashes (bytes 8-135)
     pub content_hash: [u8; 32],
-    pub source_hash: [u8; 32],
+    /// Bytes 40-71. Reserved (formerly `source_hash`). Must be zero.
+    /// Per-file source integrity now lives in the debug section's
+    /// SOURCE_FILE_TABLE (tag 6).
+    pub reserved_hash_slot: [u8; 32],
     pub debug_hash: [u8; 32],
     pub layout_hash: [u8; 32],
     // Region 3: Section directory (bytes 136-191)
@@ -76,7 +86,7 @@ impl Default for FileHeader {
             profile: 0,
             flags: 0,
             content_hash: [0; 32],
-            source_hash: [0; 32],
+            reserved_hash_slot: [0; 32],
             debug_hash: [0; 32],
             layout_hash: [0; 32],
             sig_section_offset: 0,
@@ -120,7 +130,7 @@ impl FileHeader {
         w.write_all(&[self.flags])?;
         // Region 2: Hashes (bytes 8-135)
         w.write_all(&self.content_hash)?;
-        w.write_all(&self.source_hash)?;
+        w.write_all(&self.reserved_hash_slot)?; // formerly source_hash
         w.write_all(&self.debug_hash)?;
         w.write_all(&self.layout_hash)?;
         // Region 3: Section directory (bytes 136-191)
@@ -175,8 +185,10 @@ impl FileHeader {
         let mut content_hash = [0u8; 32];
         content_hash.copy_from_slice(&buf[8..40]);
 
-        let mut source_hash = [0u8; 32];
-        source_hash.copy_from_slice(&buf[40..72]);
+        // Bytes 40-71: reserved (formerly source_hash). Captured but
+        // not interpreted; per the spec these must be zero.
+        let mut reserved_hash_slot = [0u8; 32];
+        reserved_hash_slot.copy_from_slice(&buf[40..72]);
 
         let mut debug_hash = [0u8; 32];
         debug_hash.copy_from_slice(&buf[72..104]);
@@ -223,7 +235,7 @@ impl FileHeader {
             profile,
             flags,
             content_hash,
-            source_hash,
+            reserved_hash_slot,
             debug_hash,
             layout_hash,
             sig_section_offset,

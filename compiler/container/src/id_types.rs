@@ -201,6 +201,96 @@ impl core::fmt::Display for ConstantIndex {
     }
 }
 
+/// An index into the debug section's `SOURCE_FILE_TABLE` (tag 6).
+///
+/// `LineMapEntry.file_id` is a `SourceFileId`; the entry at that index
+/// in `DebugSection.source_files` carries the path and BLAKE3 content
+/// hash. Containers without a source file table use the default
+/// (`SourceFileId(0)`), which is also the first valid index — readers
+/// distinguish "no table" from "table with one entry" by checking
+/// `DebugSection.source_files.is_empty()`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SourceFileId(u16);
+
+impl SourceFileId {
+    /// Creates a new `SourceFileId` from a raw `u16`.
+    pub const fn new(raw: u16) -> Self {
+        Self(raw)
+    }
+    /// Returns the raw `u16` value.
+    pub const fn raw(self) -> u16 {
+        self.0
+    }
+    /// Returns the little-endian byte representation.
+    pub const fn to_le_bytes(self) -> [u8; 2] {
+        self.0.to_le_bytes()
+    }
+}
+
+impl core::fmt::Display for SourceFileId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// A 1-based source line number.
+///
+/// `0` is reserved and indicates "unknown line" — a debugger should
+/// not jump to a `SourceLine(0)` entry. The newtype prevents
+/// accidentally swapping line and column arguments at call sites like
+/// `Emitter::set_source_position`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SourceLine(u16);
+
+impl SourceLine {
+    /// Creates a new `SourceLine` from a raw `u16`. `0` means "unknown".
+    pub const fn new(raw: u16) -> Self {
+        Self(raw)
+    }
+    /// Returns the raw `u16` value.
+    pub const fn raw(self) -> u16 {
+        self.0
+    }
+    /// Returns the little-endian byte representation.
+    pub const fn to_le_bytes(self) -> [u8; 2] {
+        self.0.to_le_bytes()
+    }
+}
+
+impl core::fmt::Display for SourceLine {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// A 1-based source column number.
+///
+/// `0` is reserved and indicates "unknown column" — column-level
+/// precision is optional, line-level precision is not.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct SourceColumn(u16);
+
+impl SourceColumn {
+    /// Creates a new `SourceColumn` from a raw `u16`. `0` means "unknown".
+    pub const fn new(raw: u16) -> Self {
+        Self(raw)
+    }
+    /// Returns the raw `u16` value.
+    pub const fn raw(self) -> u16 {
+        self.0
+    }
+    /// Returns the little-endian byte representation.
+    pub const fn to_le_bytes(self) -> [u8; 2] {
+        self.0.to_le_bytes()
+    }
+}
+
+impl core::fmt::Display for SourceColumn {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// A slot offset within a structure in the bytecode container.
 ///
 /// Slot offsets identify positions within flattened structure layouts,
