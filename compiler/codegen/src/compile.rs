@@ -183,7 +183,16 @@ pub fn compile(
     library: &Library,
     context: &SemanticContext,
     options: &CodegenOptions,
+    sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
+    // The `sources` parameter is scaffolding for source-map plumbing
+    // tracked in `specs/plans/2026-05-23-codegen-emit-line-map.md`. Commit A
+    // widens the signature so every call site declares its source-lookup
+    // intent; Commit B actually consumes the bytes (BLAKE3-hash them
+    // into the SOURCE_FILE_TABLE and pair each `LineMapEntry` with the
+    // file_id of the AST node that produced it). Until Commit B lands
+    // this parameter is unused.
+    let _ = sources;
     let program = find_program(library)?;
     let config = find_configuration(library);
     let user_globals: &[VarDecl] = config.map(|c| c.global_var.as_slice()).unwrap_or(&[]);
@@ -907,7 +916,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 2);
@@ -944,7 +959,12 @@ FUNCTION_BLOCK MyBlock
 END_FUNCTION_BLOCK
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context, &CodegenOptions::default());
+        let result = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        );
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -961,7 +981,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         // Should have two functions (init + scan), both just RET_VOID
         assert_eq!(container.header.num_functions, 2);
@@ -990,7 +1016,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         // Should only have one constant (10 is deduplicated)
         assert_eq!(container.constant_pool.len(), 1);
@@ -1009,7 +1041,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 2);
@@ -1046,7 +1084,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(
             container
@@ -1077,7 +1121,12 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context, &CodegenOptions::default());
+        let result = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        );
 
         assert!(result.is_ok());
     }
@@ -1094,7 +1143,12 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context, &CodegenOptions::default());
+        let result = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        );
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -1115,7 +1169,12 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context, &CodegenOptions::default());
+        let result = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        );
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -1133,7 +1192,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -1156,7 +1221,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -1185,7 +1256,13 @@ END_VAR
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         // Should have 3 functions: init, scan, SIGN_R
         assert_eq!(container.header.num_functions, 3);

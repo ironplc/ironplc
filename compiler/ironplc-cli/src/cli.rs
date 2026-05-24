@@ -152,11 +152,16 @@ pub fn compile(
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: compiler_options.allow_system_uptime_global,
     };
-    let container =
-        ironplc_codegen::compile(&analyzed, &context, &codegen_options).map_err(|err| {
-            handle_diagnostics(&[err], Some(&project), suppress_output);
-            String::from("Error during code generation")
-        })?;
+    let container = ironplc_codegen::compile(
+        &analyzed,
+        &context,
+        &codegen_options,
+        &ironplc_codegen::EmptyLookup,
+    )
+    .map_err(|err| {
+        handle_diagnostics(&[err], Some(&project), suppress_output);
+        String::from("Error during code generation")
+    })?;
 
     // Write the container to the output file
     let mut out_file =
