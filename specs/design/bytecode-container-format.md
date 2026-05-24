@@ -53,9 +53,11 @@ The VM reads this in a single read and decides whether to proceed.
 The header is organized into four logical regions:
 
 1. **Identification** (bytes 0-7): magic, version, profile, flags
-2. **Hashes** (bytes 8-135): content, source, debug, layout hashes
+2. **Hashes** (bytes 8-135): content, reserved (formerly source_hash), debug, layout hashes
 3. **Section directory** (bytes 136-191): offset/size pairs for each section, in file-layout order
-4. **Runtime parameters** (bytes 192-231): stack/memory budgets, counts, I/O image sizes
+4. **Runtime parameters** (bytes 192-217): stack/memory budgets, counts, I/O image sizes
+
+Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 6), not in this header. The 32-byte slot at bytes 40-71 was formerly a single combined `source_hash` (SHA-256); it is now reserved and must be zero. The slot is preserved to keep the header layout stable; future revisions may reuse those bytes if a new top-level hash is ever needed.
 
 **REQ-CF-005** The header field layout is as follows, totaling 256 bytes.
 
@@ -65,10 +67,10 @@ The header is organized into four logical regions:
 | **REQ-CF-003** | 4 | format_version | u16 | Container format version (currently 2; bumped from 1 by ADR-0033 opcode-encoding migration) |
 | | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
 | **REQ-CF-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section; Bit 2: has type section |
-| | 8 | content_hash | [u8; 32] | SHA-256 over `source_hash \|\| type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
-| | 40 | source_hash | [u8; 32] | SHA-256 of the source text that produced this bytecode (all zeros if unavailable) |
-| | 72 | debug_hash | [u8; 32] | SHA-256 over debug section (all zeros if no debug section) |
-| | 104 | layout_hash | [u8; 32] | SHA-256 over the memory layout signature (see Layout Hash and Online Change) |
+| | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
+| | 40 | reserved_hash_slot | [u8; 32] | Reserved (formerly `source_hash`); must be zero. Per-file source integrity is now in the debug section's `SOURCE_FILE_TABLE` (tag 6). |
+| | 72 | debug_hash | [u8; 32] | BLAKE3 over debug section (all zeros if no debug section) |
+| | 104 | layout_hash | [u8; 32] | BLAKE3 over the memory layout signature (see Layout Hash and Online Change) |
 | | 136 | sig_section_offset | u32 | Offset of content signature section (0 if absent) |
 | | 140 | sig_section_size | u32 | Size of content signature section |
 | | 144 | debug_sig_offset | u32 | Offset of debug signature section (0 if absent) |
@@ -294,7 +296,7 @@ payload_offset = 2 + (8 × sub_table_count) + sum(directory[0..i].size)
 | 3 | FUNC_NAME | v1 | Function/POU name mappings |
 | 4 | FB_TYPE_NAME | reserved | FB type ID → type name mappings |
 | 5 | FB_FIELD_NAME | reserved | FB field index → field name mappings |
-| 6 | SOURCE_FILE | reserved | Source file table for multi-file projects |
+| 6 | SOURCE_FILE | v1 | Source file table: `(path, BLAKE3 content hash)` per file. `LineMapEntry.file_id` indexes into this table. |
 | 7 | LD_RUNG_MAP | reserved | Ladder Diagram rung ID → bytecode mappings |
 | 8 | FBD_NETWORK_MAP | reserved | Function Block Diagram network/element mappings |
 | 9–65535 | — | reserved | Future use |
@@ -320,16 +322,17 @@ Each sub-table payload starts with its own item count, followed by the items. Th
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | count | u16 | Number of entries |
-| 2 | entries | [LineMapEntry; count] | 8 bytes each |
+| 2 | entries | [LineMapEntry; count] | 10 bytes each |
 
-Each LineMapEntry (8 bytes):
+Each LineMapEntry (10 bytes):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | function_id | u16 | Function containing this mapping |
 | 2 | bytecode_offset | u16 | Offset within the function's bytecode |
-| 4 | source_line | u16 | Source line number (1-based) |
-| 6 | source_column | u16 | Source column number (1-based, 0 = unknown) |
+| 4 | file_id | u16 | Index into the SOURCE_FILE_TABLE (tag 6); identifies which source file the line/column refer to. `0` in containers without a source file table. |
+| 6 | source_line | u16 | Source line number (1-based) |
+| 8 | source_column | u16 | Source column number (1-based, 0 = unknown) |
 
 **Tag 2 — VAR_NAME:**
 
@@ -433,6 +436,23 @@ Each FieldNameEntry (variable size):
 | 3 | name_length | u8 | Length of field name in bytes |
 | 4 | name | [u8; name_length] | UTF-8 field name (e.g., "IN", "PT", "Q", "ET") |
 
+**Tag 6 — SOURCE_FILE:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [SourceFileEntry; count] | Variable size each |
+
+Each SourceFileEntry (variable size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | path_length | u16 | Length of path in bytes (u16, not u8 — absolute paths can exceed 255 bytes) |
+| 2 | path | [u8; path_length] | UTF-8 path identifying the source file (typically absolute or workspace-relative; format is whatever the compiler driver records) |
+| 2+N | content_hash | [u8; 32] | BLAKE3-256 of the file's source bytes as the parser saw them (no normalization). All-zero means "no hash available" — debuggers should treat this as drift-check disabled, not drift detected. |
+
+Position in the table is the entry's `file_id`: the first entry is `file_id = 0`, the second is `file_id = 1`, etc. `LineMapEntry.file_id` is an index into this table.
+
 ### Malformed Debug Section Handling
 
 If the directory is malformed (e.g., a sub-table's size extends past the section boundary, or a duplicate tag appears), the entire debug section is silently discarded (non-fatal). A reader that does not find a particular tag treats that sub-table as empty (count = 0). This provides forward compatibility: older containers (with fewer tags) work with newer debuggers, and newer containers (with extra tags) work with older debuggers.
@@ -455,7 +475,7 @@ The VM loads a bytecode container in this order:
    c. Verify signature over content_hash
    d. If invalid → reject with "signature verification failed" error
 7. Read type + constant + code sections
-8. Compute SHA-256 over source_hash || type + constant + code sections
+8. Compute BLAKE3 over type + constant + code sections
 9. Compare computed hash to content_hash in header
     If mismatch → reject with "content hash mismatch" error
 10. If on-device verification is enabled:
@@ -465,7 +485,7 @@ The VM loads a bytecode container in this order:
 12. Allocate runtime resources (stack, variable table, buffers)
 13. If debug section present and debug signature present:
     a. Verify debug signature over debug_hash
-    b. Compute SHA-256 over debug section
+    b. Compute BLAKE3 over debug section
     c. Compare to debug_hash in header
     d. If valid → load debug info; if invalid → discard debug info (non-fatal)
 14. Begin execution
@@ -481,9 +501,9 @@ The content hash covers the type section, constant pool, and code section in fil
 - The signature sections (signatures are over the hash, not the other way around)
 - The debug section (independently hashed and signed)
 
-The source hash is embedded in the file header. Since the content hash covers the hash value (via the signed content_hash → header binding at the signature level), the source hash is transitively integrity-protected: modifying the source hash requires re-signing the content.
+Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 6): each entry carries a BLAKE3 hash over the exact source bytes the parser saw, so a debugger can detect drift between an `.iplc` and the user's working copy on a per-file basis. The header has no top-level `source_hash` field — the debug section's `debug_hash` (BLAKE3 over the whole debug section) transitively protects every per-file hash.
 
-Note: The content hash does not directly cover the header bytes. Instead, the content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the type+constant+code sections (step 10 in the loading sequence). The source_hash is protected because it is part of the signed-over content_hash only if the signer includes the source_hash in the hash computation. To make this binding explicit: the content_hash is computed as `SHA-256(source_hash || type_section_bytes || const_section_bytes || code_section_bytes)`. This ensures the source_hash is covered by the content signature.
+Note: The content hash does not directly cover the header bytes. Instead, the content signature signs the content_hash value, and the VM verifies that the content_hash in the header matches the actual hash of the type+constant+code sections (step 10 in the loading sequence). To make the binding explicit: the content_hash is computed as `BLAKE3(type_section_bytes || const_section_bytes || code_section_bytes)`.
 
 ## Deterministic Ordering
 
@@ -520,7 +540,7 @@ The `layout_hash` in the file header enables safe online change (hot reloading) 
 The layout hash is computed as:
 
 ```
-layout_hash = SHA-256(
+layout_hash = BLAKE3(
     num_variables (u16, LE) ||
     for each variable in index order:
         var_type (u8) || flags (u8) || extra (u16, LE) ||

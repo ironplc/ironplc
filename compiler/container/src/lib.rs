@@ -40,7 +40,10 @@ pub use error::ContainerError;
 pub use header::{
     FileHeader, FLAG_HAS_SYSTEM_UPTIME, FORMAT_VERSION, HEADER_SIZE, MAGIC, STRING_HEADER_BYTES,
 };
-pub use id_types::{ConstantIndex, FbTypeId, FunctionId, InstanceId, SlotIndex, TaskId, VarIndex};
+pub use id_types::{
+    ConstantIndex, FbTypeId, FunctionId, InstanceId, SlotIndex, SourceColumn, SourceFileId,
+    SourceLine, TaskId, VarIndex,
+};
 pub use opcode::Opcode;
 pub use task_type::TaskType;
 
@@ -57,7 +60,8 @@ pub use container::Container;
 pub use debug_format::{build_var_debug_map, format_variable_value, VarDebugInfo};
 #[cfg(feature = "std")]
 pub use debug_section::{
-    DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, StringLayoutEntry, VarNameEntry,
+    DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, SourceFileEntry, StringLayoutEntry,
+    VarNameEntry, SOURCE_FILE_HASH_LEN,
 };
 #[cfg(feature = "std")]
 pub use task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
