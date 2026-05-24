@@ -123,18 +123,18 @@ def _auto_height(code_lines, scaffold=False, vars_decl=""):
 
 def _build_playground_url(
     code,
+    host,
     scaffold=False,
     vars_decl="",
     embed=False,
     dialect="",
     allows="",
-    host="",
 ):
     """Build a playground URL with encoded parameters.
 
-    When ``host`` is set, ``source=ironplc-docs`` and ``host=<docname>``
-    are appended so the playground can attribute the load to the docs
-    page that embedded or linked to it.
+    ``host`` is the Sphinx docname of the page that owns the directive.
+    It is required so the playground can attribute the load (via
+    ``source=ironplc-docs&host=<docname>``) to a specific docs page.
     """
     params = []
 
@@ -150,9 +150,8 @@ def _build_playground_url(
     if allows:
         params.append("allows=" + quote(allows, safe=","))
 
-    if host:
-        params.append("source=ironplc-docs")
-        params.append("host=" + quote(host, safe=""))
+    params.append("source=ironplc-docs")
+    params.append("host=" + quote(host, safe=""))
 
     params.append("code=" + quote(b64encode(code.encode()).decode(), safe=""))
 
@@ -163,16 +162,16 @@ def _build_playground_url(
 
 
 def _build_iframe(
-    code, height, scaffold=False, vars_decl="", dialect="", allows="", host=""
+    code, height, host, scaffold=False, vars_decl="", dialect="", allows=""
 ):
     src = _build_playground_url(
         code,
+        host,
         scaffold=scaffold,
         vars_decl=vars_decl,
         embed=True,
         dialect=dialect,
         allows=allows,
-        host=host,
     )
 
     raw_html = (
