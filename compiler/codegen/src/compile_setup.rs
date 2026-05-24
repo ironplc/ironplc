@@ -114,7 +114,11 @@ pub(crate) fn assign_variables(
                         data_offset,
                         max_length,
                     });
-                    (iec_type_tag::STRING, "STRING".into())
+                    if char_width.is_wide() {
+                        (iec_type_tag::WSTRING, "WSTRING".into())
+                    } else {
+                        (iec_type_tag::STRING, "STRING".into())
+                    }
                 }
                 InitialValueAssignmentKind::FunctionBlock(fb_init) => {
                     let fb_name = fb_init.type_name.to_string().to_uppercase();
