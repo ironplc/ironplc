@@ -110,9 +110,9 @@ The container format spec defines a debug section with three sub-tables: source 
 | 4 | No source column | Breakpoint highlight covers entire line; can't pinpoint within a line containing multiple statements | No — line-level is sufficient for ST (one statement per line is idiomatic) |
 | 5 | No FB type name table | Expanding an FB instance variable shows "fb_type_3" instead of "TON" | No — FB debugging deferred to Phase 5 |
 | 6 | No FB field name table | FB instance fields show as "field[0]" instead of "IN", "PT", "Q", "ET" | No — FB debugging deferred to Phase 5 |
-| 7 | No source file table | Line maps can't reference files in multi-file projects | No — v1 assumes single file per container |
+| 7 | ~~No source file table~~ Closed (2026-05-22) | Line maps now carry a `file_id` indexing into the SOURCE_FILE_TABLE (tag 6); per-file BLAKE3 hashes enable drift detection between an `.iplc` and the user's working copy. | — |
 
-Gaps 1–3 must be addressed in the debug section format before ST debugging can work. Gaps 4–7 are deferred.
+Gaps 1–3 must be addressed in the debug section format before ST debugging can work. Gaps 4–6 are deferred. Gap 7 is closed by the SOURCE_FILE_TABLE introduced in `specs/plans/2026-05-22-debug-source-file-table.md`.
 
 ### Revised Debug Section Format
 
@@ -195,7 +195,7 @@ Each sub-table payload starts with its own item count, followed by the items. Th
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | count | u16 | Number of entries |
-| 2 | entries | [LineMapEntry; count] | 8 bytes each |
+| 2 | entries | [LineMapEntry; count] | 10 bytes each |
 
 **Tag 2 — VAR_NAME:**
 
@@ -215,16 +215,17 @@ Each sub-table payload starts with its own item count, followed by the items. Th
 
 Same pattern (count + entries). Payloads are 0 bytes (count = 0) in v1.
 
-#### LineMapEntry (8 bytes, changed from 6)
+#### LineMapEntry (10 bytes)
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | function_id | u16 | Function containing this mapping |
 | 2 | bytecode_offset | u16 | Offset within the function's bytecode |
-| 4 | source_line | u16 | Source line number (1-based) |
-| 6 | source_column | u16 | Source column number (1-based, 0 = unknown) |
+| 4 | file_id | u16 | Index into SOURCE_FILE_TABLE (tag 6); `0` in containers without a source file table |
+| 6 | source_line | u16 | Source line number (1-based) |
+| 8 | source_column | u16 | Source column number (1-based, 0 = unknown) |
 
-The column field is populated when available but may be zero. Stepping and breakpoint resolution use the line number; the column is for editor highlight precision.
+The column field is populated when available but may be zero. Stepping and breakpoint resolution use the (file_id, line) pair; the column is for editor highlight precision.
 
 #### VarNameEntry (variable size, extended)
 
@@ -1372,10 +1373,10 @@ This spec **replaces** the debug section format defined in the container format 
 
 1. **New directory header** — `sub_table_count: u16` + array of `(tag: u16, _reserved: u16, size: u32)` entries
 2. **Tagged sub-tables** — each sub-table has a type tag; readers skip unknown tags by size
-3. **LineMapEntry grows from 6 to 8 bytes** — adds `source_column: u16`
+3. **LineMapEntry is 10 bytes** — grew from 6 → 8 (adding `source_column: u16`) and then 8 → 10 (adding `file_id: u16` for multi-file source maps)
 4. **VarNameEntry gains scope and type fields** — adds `function_id`, `var_section`, `type_name`
 5. **Three new sub-table types** — function names (tag 3), FB type names (tag 4), FB field names (tag 5)
-6. **Reserved tags** — source file table (tag 6), LD rung map (tag 7), FBD network map (tag 8)
+6. **Reserved tags** — LD rung map (tag 7), FBD network map (tag 8). Tag 6 (source file table) is now implemented; see `specs/plans/2026-05-22-debug-source-file-table.md`.
 
 These changes affect only the debug section, which is independently hashed and signed (via `debug_hash` and the debug signature section). Adding or modifying debug info does not affect the content signature or the content hash, so existing containers remain valid.
 

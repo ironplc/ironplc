@@ -105,7 +105,6 @@ Follows the existing `cast_request`/`send_response` pattern used by
     "outputImageBytes": 0,
     "memoryImageBytes": 0,
     "contentHash": "0000...0000",
-    "sourceHash": "0000...0000",
     "sections": {
       "signature": { "offset": 0, "size": 0 },
       "debugSignature": { "offset": 0, "size": 0 },

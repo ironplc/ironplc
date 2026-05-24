@@ -33,11 +33,17 @@ fn all_spec_requirements_have_tests() {
 
 /// One-time generator for golden test files. Run with:
 /// cargo test -p ironplc-vm-cli --test cli generate_golden -- --ignored --nocapture
+///
+/// `steel_thread.iplc` is intentionally **not** regenerated here — it
+/// is a frozen artifact used to verify backwards compatibility of the
+/// container reader. Adding a new entry to this generator is fine; if
+/// you ever need to refresh the steel-thread golden, do it from a
+/// throwaway script with full awareness of what the format change is.
 #[test]
 #[ignore]
 fn generate_golden_files() {
-    let path = path_to_golden_resource("steel_thread.iplc");
-    write_steel_thread_container(&path);
+    let path = path_to_golden_resource("debug_source_file_table.iplc");
+    write_debug_source_file_table_container(&path);
     eprintln!("Generated golden file: {}", path.display());
 }
 
@@ -63,11 +69,131 @@ fn write_steel_thread_container(path: &Path) {
         0x8C,                   // RET_VOID
     ];
 
+    use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
+    use ironplc_container::id_types::{FunctionId, VarIndex};
+
     let container = ContainerBuilder::new()
         .num_variables(2)
         .add_i32_constant(10)
         .add_i32_constant(32)
         .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 2, 0)
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(0),
+            function_id: FunctionId::GLOBAL_SCOPE,
+            var_section: var_section::VAR,
+            iec_type_tag: iec_type_tag::DINT,
+            name: "x".to_string(),
+            type_name: "DINT".to_string(),
+        })
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(1),
+            function_id: FunctionId::GLOBAL_SCOPE,
+            var_section: var_section::VAR,
+            iec_type_tag: iec_type_tag::DINT,
+            name: "y".to_string(),
+            type_name: "DINT".to_string(),
+        })
+        .build();
+
+    let mut buf = Vec::new();
+    container.write_to(&mut buf).unwrap();
+    std::fs::write(path, &buf).unwrap();
+}
+
+/// Builds a container exercising the new debug section features added in
+/// `specs/plans/2026-05-22-debug-source-file-table.md`:
+///
+/// - `SOURCE_FILE_TABLE` (tag 6) with two entries (`main.st`, `lib.st`)
+///   whose `content_hash` fields are real BLAKE3 digests of synthetic
+///   source bytes.
+/// - A `LINE_MAP` (tag 1) whose entries reference both files via
+///   `file_id`, including one entry at the same `(line, column)` as
+///   another but with a different `file_id` to exercise the post-PR
+///   wire layout.
+///
+/// The bytecode itself is the same `x := 10; y := x + 32` steel thread,
+/// so the example runs end-to-end under `ironplcvm`. Loading the file
+/// also exercises the BLAKE3-vs-SHA-256 spec change (`header.source_hash`
+/// is gone; bytes 40-71 must be zero), and the backwards-compat read
+/// of the original `steel_thread.iplc` is verified by the other vm-cli
+/// tests.
+fn write_debug_source_file_table_container(path: &Path) {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
+        0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
+        0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
+        0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
+        0x20,                   // ADD_I32
+        0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
+        0x8C,                   // RET_VOID
+    ];
+
+    use ironplc_container::debug_section::{
+        iec_type_tag, var_section, LineMapEntry, SourceFileEntry, VarNameEntry,
+    };
+    use ironplc_container::id_types::{
+        FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex,
+    };
+
+    let main_source =
+        b"PROGRAM main\nVAR x, y : DINT; END_VAR\nx := 10;\ny := lib_add(x, 32);\nEND_PROGRAM\n";
+    let lib_source = b"FUNCTION lib_add : DINT\nVAR_INPUT a, b : DINT; END_VAR\nlib_add := a + b;\nEND_FUNCTION\n";
+
+    let container = ContainerBuilder::new()
+        .num_variables(2)
+        .add_i32_constant(10)
+        .add_i32_constant(32)
+        .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 2, 0)
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(0),
+            function_id: FunctionId::GLOBAL_SCOPE,
+            var_section: var_section::VAR,
+            iec_type_tag: iec_type_tag::DINT,
+            name: "x".to_string(),
+            type_name: "DINT".to_string(),
+        })
+        .add_var_name(VarNameEntry {
+            var_index: VarIndex::new(1),
+            function_id: FunctionId::GLOBAL_SCOPE,
+            var_section: var_section::VAR,
+            iec_type_tag: iec_type_tag::DINT,
+            name: "y".to_string(),
+            type_name: "DINT".to_string(),
+        })
+        // file_id = 0 is the program file, file_id = 1 the library.
+        .add_source_file(SourceFileEntry {
+            path: "src/main.st".into(),
+            content_hash: *blake3::hash(main_source).as_bytes(),
+        })
+        .add_source_file(SourceFileEntry {
+            path: "src/lib.st".into(),
+            content_hash: *blake3::hash(lib_source).as_bytes(),
+        })
+        // LineMap mixing file_ids: the assignment lines are in main.st,
+        // the addition is "inlined" from lib.st. The exact line/column
+        // numbers are illustrative.
+        .add_line_map_entry(LineMapEntry {
+            function_id: FunctionId::SCAN,
+            bytecode_offset: 0,
+            file_id: SourceFileId::new(0),
+            source_line: SourceLine::new(3),
+            source_column: SourceColumn::new(1),
+        })
+        .add_line_map_entry(LineMapEntry {
+            function_id: FunctionId::SCAN,
+            bytecode_offset: 9,
+            file_id: SourceFileId::new(1),
+            source_line: SourceLine::new(3),
+            source_column: SourceColumn::new(1),
+        })
+        .add_line_map_entry(LineMapEntry {
+            function_id: FunctionId::SCAN,
+            bytecode_offset: 13,
+            file_id: SourceFileId::new(0),
+            source_line: SourceLine::new(4),
+            source_column: SourceColumn::new(1),
+        })
         .build();
 
     let mut buf = Vec::new();
@@ -108,7 +234,7 @@ fn run_when_valid_container_file_and_dump_vars_then_writes_variables(
     cmd.assert().success();
 
     let contents = std::fs::read_to_string(&dump_path)?;
-    assert_eq!(contents, "var[0]: 10\nvar[1]: 42\n");
+    assert_eq!(contents, "x: 10\ny: 42\n");
 
     Ok(())
 }
@@ -157,11 +283,57 @@ fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Er
     cmd.assert().success();
 
     let contents = std::fs::read_to_string(&dump_path)?;
-    // Golden file regenerated with current compiler, which now includes
-    // debug variable names — the dump uses x/y instead of var[0]/var[1].
+    // Golden file pre-dates this PR's header revisions; the fact that it
+    // still loads and runs is itself the backwards-compatibility check —
+    // bytes 40-71 (formerly `source_hash`) are silently accepted by the
+    // new reader as `reserved_hash_slot`, and every other field offset is
+    // unchanged. See `specs/plans/2026-05-22-debug-source-file-table.md`.
     assert_eq!(contents, "x: 10\ny: 42\n");
 
     Ok(())
+}
+
+/// Loads the debug-source-file-table example container (generated by the
+/// `generate_golden_files` ignored test) and asserts the new debug
+/// section features round-trip through the reader.
+#[test]
+fn read_when_debug_source_file_table_golden_then_decodes_new_debug_fields() {
+    use ironplc_container::id_types::FunctionId;
+    use ironplc_container::Container;
+    use std::io::Cursor;
+
+    let bytes = std::fs::read(path_to_golden_resource("debug_source_file_table.iplc"))
+        .expect("debug_source_file_table.iplc must exist; regenerate via generate_golden_files");
+    let container = Container::read_from(&mut Cursor::new(&bytes)).unwrap();
+
+    let debug = container
+        .debug_section
+        .as_ref()
+        .expect("debug section present");
+
+    // SOURCE_FILE_TABLE round-trip
+    assert_eq!(debug.source_files.len(), 2);
+    assert_eq!(debug.source_files[0].path, "src/main.st");
+    assert_eq!(debug.source_files[1].path, "src/lib.st");
+    let expected_main = *blake3::hash(
+        b"PROGRAM main\nVAR x, y : DINT; END_VAR\nx := 10;\ny := lib_add(x, 32);\nEND_PROGRAM\n",
+    )
+    .as_bytes();
+    let expected_lib =
+        *blake3::hash(b"FUNCTION lib_add : DINT\nVAR_INPUT a, b : DINT; END_VAR\nlib_add := a + b;\nEND_FUNCTION\n")
+            .as_bytes();
+    assert_eq!(debug.source_files[0].content_hash, expected_main);
+    assert_eq!(debug.source_files[1].content_hash, expected_lib);
+
+    // LineMap mixes file_ids
+    let lm = &debug.line_map;
+    assert_eq!(lm.len(), 3);
+    assert!(lm.iter().all(|e| e.function_id == FunctionId::SCAN));
+    assert!(lm.iter().any(|e| e.file_id.raw() == 0));
+    assert!(lm.iter().any(|e| e.file_id.raw() == 1));
+
+    // The new `header.source_hash` is gone; the wire slot must be zero.
+    assert_eq!(container.header.reserved_hash_slot, [0u8; 32]);
 }
 
 /// REQ-VC-013: `benchmark` prints a JSON object with `scan_us` stats and tasks.
@@ -329,8 +501,8 @@ fn run_when_dump_vars_without_path_then_prints_to_stdout() -> Result<(), Box<dyn
         .arg("--dump-vars");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("var[0]: 10"))
-        .stdout(predicate::str::contains("var[1]: 42"));
+        .stdout(predicate::str::contains("x: 10"))
+        .stdout(predicate::str::contains("y: 42"));
 
     Ok(())
 }

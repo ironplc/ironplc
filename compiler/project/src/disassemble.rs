@@ -66,7 +66,6 @@ fn disassemble_header(container: &Container) -> Value {
             "hasTypeSection": (flags & 0x04) != 0,
         },
         "contentHash": hex_string(&h.content_hash),
-        "sourceHash": hex_string(&h.source_hash),
         "debugHash": hex_string(&h.debug_hash),
         "layoutHash": hex_string(&h.layout_hash),
         "maxStackDepth": h.max_stack_depth,

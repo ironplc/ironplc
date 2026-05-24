@@ -7,7 +7,8 @@ use crate::const_type::ConstType;
 use crate::constant_pool::{ConstEntry, ConstantPool};
 use crate::container::Container;
 use crate::debug_section::{
-    DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, StringLayoutEntry, VarNameEntry,
+    DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, SourceFileEntry, StringLayoutEntry,
+    VarNameEntry,
 };
 use crate::header::FileHeader;
 use crate::id_types::{FunctionId, InstanceId, TaskId, VarIndex};
@@ -38,6 +39,7 @@ pub struct ContainerBuilder {
     debug_func_names: Vec<FuncNameEntry>,
     debug_line_map: Vec<LineMapEntry>,
     debug_string_layouts: Vec<StringLayoutEntry>,
+    debug_source_files: Vec<SourceFileEntry>,
     debug_enum_defs: Vec<EnumDefEntry>,
 }
 
@@ -65,6 +67,7 @@ impl ContainerBuilder {
             debug_func_names: Vec::new(),
             debug_line_map: Vec::new(),
             debug_string_layouts: Vec::new(),
+            debug_source_files: Vec::new(),
             debug_enum_defs: Vec::new(),
         }
     }
@@ -209,6 +212,24 @@ impl ContainerBuilder {
         self
     }
 
+    /// Adds a source file entry to the debug section's SOURCE_FILE_TABLE
+    /// (tag 6). The position in insertion order is the entry's `file_id`,
+    /// referenced by [`LineMapEntry::file_id`].
+    pub fn add_source_file(mut self, entry: SourceFileEntry) -> Self {
+        self.debug_source_files.push(entry);
+        self
+    }
+
+    /// Adds multiple source file entries in order. The first entry has
+    /// `file_id = 0`, the second `file_id = 1`, and so on.
+    pub fn add_source_files<I>(mut self, entries: I) -> Self
+    where
+        I: IntoIterator<Item = SourceFileEntry>,
+    {
+        self.debug_source_files.extend(entries);
+        self
+    }
+
     /// Adds an enumeration definition entry to the debug section.
     pub fn add_enum_def(mut self, entry: EnumDefEntry) -> Self {
         self.debug_enum_defs.push(entry);
@@ -324,6 +345,7 @@ impl ContainerBuilder {
             && self.debug_func_names.is_empty()
             && self.debug_line_map.is_empty()
             && self.debug_string_layouts.is_empty()
+            && self.debug_source_files.is_empty()
             && self.debug_enum_defs.is_empty()
         {
             None
@@ -335,6 +357,7 @@ impl ContainerBuilder {
                 func_names: self.debug_func_names,
                 line_map,
                 string_layouts: self.debug_string_layouts,
+                source_files: self.debug_source_files,
                 enum_defs: self.debug_enum_defs,
             })
         };
@@ -370,6 +393,7 @@ impl Default for ContainerBuilder {
 mod tests {
     use super::*;
     use crate::id_types::ConstantIndex;
+    use crate::id_types::{SourceColumn, SourceFileId, SourceLine};
     use std::vec;
     use std::vec::Vec;
 
@@ -494,8 +518,9 @@ mod tests {
         let entry = LineMapEntry {
             function_id: FunctionId::INIT,
             bytecode_offset: 4,
-            source_line: 12,
-            source_column: 3,
+            file_id: SourceFileId::new(0),
+            source_line: SourceLine::new(12),
+            source_column: SourceColumn::new(3),
         };
 
         let container = ContainerBuilder::new()
@@ -517,20 +542,23 @@ mod tests {
             LineMapEntry {
                 function_id: FunctionId::SCAN,
                 bytecode_offset: 4,
-                source_line: 30,
-                source_column: 1,
+                file_id: SourceFileId::new(0),
+                source_line: SourceLine::new(30),
+                source_column: SourceColumn::new(1),
             },
             LineMapEntry {
                 function_id: FunctionId::INIT,
                 bytecode_offset: 8,
-                source_line: 20,
-                source_column: 1,
+                file_id: SourceFileId::new(0),
+                source_line: SourceLine::new(20),
+                source_column: SourceColumn::new(1),
             },
             LineMapEntry {
                 function_id: FunctionId::INIT,
                 bytecode_offset: 0,
-                source_line: 10,
-                source_column: 1,
+                file_id: SourceFileId::new(0),
+                source_line: SourceLine::new(10),
+                source_column: SourceColumn::new(1),
             },
         ];
 
@@ -549,6 +577,63 @@ mod tests {
             .map(|e| (e.function_id.raw(), e.bytecode_offset))
             .collect();
         assert_eq!(keys, vec![(0, 0), (0, 8), (1, 4)]);
+    }
+
+    #[test]
+    fn builder_when_add_source_file_then_included_in_debug_section() {
+        use crate::debug_section::{SourceFileEntry, SOURCE_FILE_HASH_LEN};
+
+        let hash_a = *blake3::hash(b"PROGRAM a; END_PROGRAM").as_bytes();
+        let hash_b = [0u8; SOURCE_FILE_HASH_LEN];
+
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .add_function(FunctionId::INIT, &[0x8C], 0, 0, 0)
+            .add_source_file(SourceFileEntry {
+                path: "a.st".into(),
+                content_hash: hash_a,
+            })
+            .add_source_file(SourceFileEntry {
+                path: "b.st".into(),
+                content_hash: hash_b,
+            })
+            .build();
+
+        let debug = container.debug_section.expect("debug section present");
+        assert_eq!(debug.source_files.len(), 2);
+        // Insertion order = file_id order (a → 0, b → 1).
+        assert_eq!(debug.source_files[0].path, "a.st");
+        assert_eq!(debug.source_files[0].content_hash, hash_a);
+        assert_eq!(debug.source_files[1].path, "b.st");
+    }
+
+    #[test]
+    fn builder_when_add_source_files_iter_then_preserves_order() {
+        use crate::debug_section::{SourceFileEntry, SOURCE_FILE_HASH_LEN};
+
+        let entries = vec![
+            SourceFileEntry {
+                path: "one.st".into(),
+                content_hash: [1u8; SOURCE_FILE_HASH_LEN],
+            },
+            SourceFileEntry {
+                path: "two.st".into(),
+                content_hash: [2u8; SOURCE_FILE_HASH_LEN],
+            },
+            SourceFileEntry {
+                path: "three.st".into(),
+                content_hash: [3u8; SOURCE_FILE_HASH_LEN],
+            },
+        ];
+
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .add_function(FunctionId::INIT, &[0x8C], 0, 0, 0)
+            .add_source_files(entries.clone())
+            .build();
+
+        let debug = container.debug_section.expect("debug section present");
+        assert_eq!(debug.source_files, entries);
     }
 
     #[test]

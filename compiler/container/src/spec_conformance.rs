@@ -98,6 +98,10 @@ fn container_spec_req_cf_005_header_field_offsets() {
         u32::from_le_bytes([buf[176], buf[177], buf[178], buf[179]]),
         0xAABBCCDD
     );
+
+    // Bytes 40..72 are the reserved hash slot (formerly source_hash);
+    // a default header must zero them.
+    assert_eq!(&buf[40..72], &[0u8; 32]);
 }
 
 /// REQ-CF-006: Reserved bytes are 38 bytes at offsets 218-255.
