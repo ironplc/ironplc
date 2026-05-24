@@ -152,16 +152,23 @@ pub fn compile(
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: compiler_options.allow_system_uptime_global,
     };
-    let container = ironplc_codegen::compile(
-        &analyzed,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    )
-    .map_err(|err| {
-        handle_diagnostics(&[err], Some(&project), suppress_output);
-        String::from("Error during code generation")
-    })?;
+    // Build a SourceLookup that hands codegen the exact bytes the
+    // parser saw for each FileId. The container's debug section
+    // SOURCE_FILE_TABLE (tag 6) records a BLAKE3 hash over these so a
+    // debugger can detect drift between the .iplc and the user's
+    // working copy.
+    let mut source_bytes: std::collections::HashMap<ironplc_dsl::core::FileId, Vec<u8>> =
+        std::collections::HashMap::new();
+    for src in project.sources() {
+        source_bytes.insert(src.file_id().clone(), src.as_string().as_bytes().to_vec());
+    }
+    let source_lookup = HashMapSourceLookup(source_bytes);
+
+    let container = ironplc_codegen::compile(&analyzed, &context, &codegen_options, &source_lookup)
+        .map_err(|err| {
+            handle_diagnostics(&[err], Some(&project), suppress_output);
+            String::from("Error during code generation")
+        })?;
 
     // Write the container to the output file
     let mut out_file =
@@ -171,6 +178,17 @@ pub fn compile(
         .map_err(|e| format!("Failed to write output file: {e}"))?;
 
     Ok(())
+}
+
+/// Codegen [`SourceLookup`](ironplc_codegen::SourceLookup) backed by an
+/// in-memory map populated from the project's loaded sources. The map
+/// owns the bytes so the lookup can outlive any borrow on the project.
+struct HashMapSourceLookup(std::collections::HashMap<ironplc_dsl::core::FileId, Vec<u8>>);
+
+impl ironplc_codegen::SourceLookup for HashMapSourceLookup {
+    fn source_bytes(&self, file_id: &ironplc_dsl::core::FileId) -> Option<&[u8]> {
+        self.0.get(file_id).map(Vec::as_slice)
+    }
 }
 
 fn create_project(
