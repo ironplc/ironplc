@@ -128,18 +128,100 @@ let currentIntervalMs = 500;
 const params = new URLSearchParams(window.location.search);
 const isEmbed = params.get("embed") === "true";
 
-// --- Analytics (Clicky) ---
-
-function trackGoal(name) {
-  if (typeof clicky !== "undefined" && clicky.goal) {
-    clicky.goal(name);
-  }
-}
+// --- Analytics (Clicky pageviews + PostHog events) ---
 
 function trackPageview(path, title) {
   if (typeof clicky !== "undefined" && clicky.log) {
     clicky.log(path, title);
   }
+}
+
+function ph() {
+  return typeof posthog !== "undefined" ? posthog : null;
+}
+
+function capture(event, props) {
+  const p = ph();
+  if (p && typeof p.capture === "function") {
+    p.capture(event, props || {});
+  }
+}
+
+function registerSuper(props) {
+  const p = ph();
+  if (p && typeof p.register === "function") {
+    p.register(props);
+  }
+}
+
+let programModifiedRegistered = false;
+
+function setProgramOrigin({ program_origin, example_name = null, host_page = null }) {
+  programModifiedRegistered = false;
+  registerSuper({
+    program_origin,
+    example_name,
+    host_page,
+    program_modified: false,
+  });
+}
+
+function markModified() {
+  if (programModifiedRegistered) return;
+  programModifiedRegistered = true;
+  registerSuper({ program_modified: true });
+}
+
+function extractErrorCodes(diagnostics) {
+  if (!diagnostics) return [];
+  const seen = new Set();
+  const codes = [];
+  for (const d of diagnostics) {
+    if (d.code && !seen.has(d.code)) {
+      seen.add(d.code);
+      codes.push(d.code);
+    }
+  }
+  return codes;
+}
+
+function captureRunStopped(reason, errorCodes) {
+  const durationMs = startTime > 0 ? (performance.now() - startTime + pausedElapsed) : 0;
+  const props = {
+    reason,
+    duration_ms: durationMs,
+    cycle_count: cycleCount,
+  };
+  if (reason === "error") {
+    props.error_codes = errorCodes || [];
+  }
+  capture("run_stopped", props);
+}
+
+function initAnalytics() {
+  const sourceParam = params.get("source");
+  const hostParam = params.get("host");
+  let program_origin;
+  let host_page = null;
+  if (sourceParam === "ironplc-docs" && hostParam) {
+    program_origin = "docs";
+    host_page = hostParam;
+  } else if (params.has("code")) {
+    program_origin = "url_shared";
+  } else {
+    program_origin = "user_defined";
+  }
+  const allowsSorted = [...allowsParam].sort().join(",");
+  registerSuper({
+    embed: isEmbed,
+    dialect: getDialect(),
+    allows: allowsSorted,
+    program_origin,
+    example_name: null,
+    host_page,
+    program_modified: false,
+  });
+  capture("playground_loaded");
 }
 
 // --- Sparkline history ---
@@ -216,7 +298,9 @@ function getAllows() {
 
 // Stop execution when dialect changes (same as source change)
 dialectSelect.addEventListener("change", () => {
+  registerSuper({ dialect: getDialect() });
   if (isRunning) {
+    captureRunStopped("user");
     stopExecution();
     postCommand("reset");
     status.textContent = "Dialect changed \u2014 stopped. Click Start to recompile.";
@@ -237,6 +321,7 @@ examplesSelect.addEventListener("change", () => {
   if (!selected) return;
 
   if (isRunning) {
+    captureRunStopped("user");
     stopExecution();
     postCommand("reset");
     status.textContent = "Ready";
@@ -245,6 +330,8 @@ examplesSelect.addEventListener("change", () => {
   editor.value = selected.code;
   renderLineNumbers();
   trackPageview("/playground/example/" + selected.name, selected.name);
+  setProgramOrigin({ program_origin: "example", example_name: selected.name });
+  capture("example_loaded");
 
   // Reset the dropdown to show "Examples" label
   examplesSelect.selectedIndex = 0;
@@ -300,6 +387,7 @@ if (params.has("code")) {
 }
 
 renderLineNumbers();
+initAnalytics();
 
 // --- Web Worker communication ---
 
@@ -370,6 +458,7 @@ function startStepLoop() {
     if (!isRunning || isPaused) return;
 
     if (msg.type === "error") {
+      captureRunStopped("error", []);
       stopExecution();
       status.textContent = msg.error;
       return;
@@ -377,11 +466,13 @@ function startStepLoop() {
 
     const result = JSON.parse(msg.json);
     if (!result.ok) {
+      const diagnostics = result.diagnostics || [];
+      captureRunStopped("error", extractErrorCodes(diagnostics));
       stopExecution();
-      if (result.diagnostics && result.diagnostics.length > 0) {
-        renderDiagnostics(result.diagnostics);
+      if (diagnostics.length > 0) {
+        renderDiagnostics(diagnostics);
         activateTab("diagnostics");
-        status.textContent = `${result.diagnostics.length} error(s)`;
+        status.textContent = `${diagnostics.length} error(s)`;
       } else if (result.error) {
         renderVariables(result.variables || []);
         diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
@@ -393,6 +484,7 @@ function startStepLoop() {
 
     // Check for cycle overrun against the configured step interval
     if (elapsed > intervalMs) {
+      captureRunStopped("error", ["CYCLE_OVERRUN"]);
       stopExecution();
       status.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but step interval is ${intervalMs}ms`;
       diagnosticsPanel.innerHTML = `<p class="error-message">Cycle overrun: program execution took ${elapsed.toFixed(0)}ms but the step interval is ${intervalMs}ms. Reduce program complexity or increase the interval.</p>`;
@@ -452,6 +544,7 @@ startBtn.addEventListener("click", async () => {
   const source = editor.value;
   const intervalMs = getIntervalMs();
   const cycleTimeUs = intervalMs * 1000;
+  const programLines = source.split("\n").length;
 
   startBtn.disabled = true;
   stopBtn.disabled = true;
@@ -462,9 +555,19 @@ startBtn.addEventListener("click", async () => {
 
   const dialect = getDialect();
   const allows = getAllows();
+  const compileStart = performance.now();
+  capture("compile_attempted", { trigger: "manual" });
   const loadMsg = await postCommand("load_program", { source, cycleTimeUs, dialect, allows });
+  const compileDurationMs = performance.now() - compileStart;
 
   if (loadMsg.type === "error") {
+    capture("compile_finished", {
+      success: false,
+      error_codes: [],
+      error_count: 0,
+      program_lines: programLines,
+      duration_ms: compileDurationMs,
+    });
     status.textContent = loadMsg.error;
     resetTransportButtons();
     return;
@@ -472,17 +575,32 @@ startBtn.addEventListener("click", async () => {
 
   const loadResult = JSON.parse(loadMsg.json);
   if (!loadResult.ok) {
-    if (loadResult.diagnostics && loadResult.diagnostics.length > 0) {
-      renderDiagnostics(loadResult.diagnostics);
+    const diagnostics = loadResult.diagnostics || [];
+    if (diagnostics.length > 0) {
+      renderDiagnostics(diagnostics);
       activateTab("diagnostics");
-      status.textContent = `${loadResult.diagnostics.length} error(s)`;
+      status.textContent = `${diagnostics.length} error(s)`;
     } else if (loadResult.error) {
       status.textContent = loadResult.error;
     }
-    trackGoal(isEmbed ? "embed_compile_error" : "playground_compile_error");
+    capture("compile_finished", {
+      success: false,
+      error_codes: extractErrorCodes(diagnostics),
+      error_count: diagnostics.length,
+      program_lines: programLines,
+      duration_ms: compileDurationMs,
+    });
     resetTransportButtons();
     return;
   }
+
+  capture("compile_finished", {
+    success: true,
+    error_codes: [],
+    error_count: 0,
+    program_lines: programLines,
+    duration_ms: compileDurationMs,
+  });
 
   // Reset counters and start
   cycleCount = 0;
@@ -502,7 +620,7 @@ startBtn.addEventListener("click", async () => {
   intervalInput.disabled = true;
 
   status.textContent = "Running";
-  trackGoal(isEmbed ? "embed_run" : "playground_run");
+  capture("run_started", { cycle_interval_ms: intervalMs });
 
   startStepLoop();
   startRenderLoop();
@@ -512,6 +630,7 @@ startBtn.addEventListener("click", async () => {
 
 stopBtn.addEventListener("click", async () => {
   const finalVars = lastVariables;
+  captureRunStopped("user");
   stopExecution();
 
   if (finalVars) {
@@ -559,10 +678,18 @@ pauseBtn.addEventListener("click", () => {
 
 editor.addEventListener("input", () => {
   renderLineNumbers();
+  markModified();
   if (isRunning) {
+    captureRunStopped("user");
     stopExecution();
     postCommand("reset");
     status.textContent = "Source changed \u2014 stopped. Click Start to recompile.";
+  }
+});
+
+window.addEventListener("pagehide", () => {
+  if (isRunning) {
+    captureRunStopped("reload");
   }
 });
 
