@@ -2,6 +2,7 @@
 
 status: proposed
 date: 2026-02-18
+amended: 2026-05-22 (BLAKE3 throughout; per-file source hashes moved to debug section)
 
 ## Context and Problem Statement
 
@@ -34,9 +35,9 @@ Chosen option: "Dual signatures", because it provides tamper-evident integrity f
 
 The model has three cryptographic elements:
 
-1. **Content hash** (SHA-256) — covers the type section, constant pool, and code section. This is the hash that determines execution behavior.
-2. **Source hash** (SHA-256) — a hash of the source text that produced this bytecode. Stored inside the content hash scope (in the file header), so it cannot be modified without invalidating the content signature. An engineer can independently hash their source and compare.
-3. **Debug hash** (SHA-256) — covers the debug section (source line mappings, variable names, optionally the full source text). This is independent of the content hash.
+1. **Content hash** (BLAKE3) — covers the type section, constant pool, and code section. This is the hash that determines execution behavior.
+2. **Per-file source hashes** (BLAKE3) — one hash per source file, stored in the debug section's `SOURCE_FILE_TABLE` (tag 6). An engineer can independently hash any file in their working copy and compare to the entry, identifying *which* file drifted rather than just *that* something drifted. The per-file hashes are transitively covered by the debug signature via `debug_hash`.
+3. **Debug hash** (BLAKE3) — covers the debug section (source line mappings, variable names, source file table, optionally the full source text). This is independent of the content hash.
 
 Two signatures:
 
@@ -46,14 +47,15 @@ Two signatures:
 ### Consequences
 
 * Good, because stripping debug info does not invalidate the content signature — production deployments can remove debug info without re-signing
-* Good, because the source hash inside the content hash prevents Stuxnet/Rogue7-style attacks — the PLC can attest that its bytecode was compiled from a specific source
-* Good, because debug info is tamper-evident when present — an investigator can verify that line mappings and variable names haven't been manipulated
+* Good, because per-file source hashes prevent Stuxnet/Rogue7-style attacks at the granularity of "which file" rather than just "did anything change" — the PLC can attest that its bytecode was compiled from a specific set of source files
+* Good, because debug info is tamper-evident when present — an investigator can verify that line mappings, variable names, and source file hashes haven't been manipulated
 * Good, because independent signatures allow different trust chains — the build system signs the content, the developer signs the debug info, or a third-party tool generates and signs debug info separately
 * Good, because the content signature is small and cheap to verify — a single Ed25519 or ECDSA-P256 signature check, feasible on micro PLCs
+* Good, because BLAKE3 is several × faster than SHA-256 on commodity hardware, has the same 32-byte digest size, and removes SHA-256's length-extension footgun
 * Bad, because key management is required — the PLC must have a trusted public key (or certificate) to verify signatures against
 * Bad, because two signatures means two verification checks at load time — though the debug signature is optional and only verified when debug info is used
-* Bad, because the source hash is only useful if the engineer has access to the original source and computes the hash independently — it's a verification mechanism, not a display mechanism
-* Bad, because the source hash does not protect against a Stuxnet-style attacker who controls the communication channel between the PLC and the engineer — if the attacker can intercept reads from the PLC, they can present a fake source_hash. The source_hash is effective against offline tampering (someone modifies the bytecode file on disk) but not against an attacker with MITM access to the PLC communication protocol. An out-of-band verification channel (e.g., physical access to read flash contents) is needed for the strongest assurance.
+* Bad, because the per-file source hashes only help if the engineer has access to the original source and computes the hashes independently — it's a verification mechanism, not a display mechanism
+* Bad, because the per-file source hashes do not protect against a Stuxnet-style attacker who controls the communication channel between the PLC and the engineer — if the attacker can intercept reads from the PLC, they can present a fake debug section. The hashes are effective against offline tampering (someone modifies the bytecode file on disk) but not against an attacker with MITM access to the PLC communication protocol. An out-of-band verification channel (e.g., physical access to read flash contents) is needed for the strongest assurance.
 
 ### Confirmation
 
@@ -61,8 +63,8 @@ Verify by:
 1. Signing a bytecode container, stripping the debug section, and confirming the content signature still verifies
 2. Modifying one byte of the code section and confirming the content signature rejects it
 3. Modifying one byte of the debug section and confirming the debug signature rejects it while the content signature still verifies
-4. Confirming the source hash in the header matches a SHA-256 computed over the original source text
-5. Attempting to replace the source hash in the header and confirming the content signature rejects it
+4. Confirming each `SOURCE_FILE_TABLE` entry's hash matches a BLAKE3 computed over the corresponding source file
+5. Attempting to replace any per-file hash in the `SOURCE_FILE_TABLE` and confirming the debug signature rejects it
 
 ## Pros and Cons of the Options
 
@@ -110,24 +112,24 @@ Independent content signature and debug signature.
 │ File Header                                   │
 │  content_hash ───────────────────────────┐    │
 │  debug_hash ──────────────────────┐      │    │
-│  source_hash ──────────────┐      │      │    │
-│                            │      │      │    │
-│  Content Signature ════════│══════│══╗   │    │
-│   signs: content_hash      │      │  ║   │    │
-│                            │      │  ║   │    │
-│  Debug Signature ══════════│══╗   │  ║   │    │
-│   signs: debug_hash        │  ║   │  ║   │    │
-├────────────────────────────┼──╬───┼──╬───┘    │
-│ Type Section ──────────────┼──╫───┼──╠══ covered by
-│ Constant Pool ─────────────┼──╫───┼──╠══ content_hash
-│ Code Section ──────────────┼──╫───┼──╝        │
-├────────────────────────────┼──╬───┘           │
-│ Debug Section ─────────────┼──╝               │
-│  (source lines, var names) │  covered by      │
-│                            │  debug_hash      │
-│  source_hash ──────────────┘                  │
-│   embedded in header,                         │
-│   covered by content_hash                     │
+│                                   │      │    │
+│  Content Signature ═══════════════│══╗   │    │
+│   signs: content_hash             │  ║   │    │
+│                                   │  ║   │    │
+│  Debug Signature ═════════════╗   │  ║   │    │
+│   signs: debug_hash           ║   │  ║   │    │
+├───────────────────────────────╬───┼──╬───┘    │
+│ Type Section ─────────────────╫───┼──╠══ covered by
+│ Constant Pool ────────────────╫───┼──╠══ content_hash
+│ Code Section ─────────────────╫───┼──╝        │
+├───────────────────────────────╬───┘           │
+│ Debug Section ────────────────╝               │
+│  (line maps, var names,       covered by      │
+│   SOURCE_FILE_TABLE)          debug_hash      │
+│                                               │
+│  Each SOURCE_FILE_TABLE entry has a BLAKE3    │
+│  hash of one source file, transitively        │
+│  covered by debug_hash.                       │
 └───────────────────────────────────────────────┘
 ```
 

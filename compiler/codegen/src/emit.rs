@@ -3,7 +3,7 @@
 //! Provides a builder that appends opcodes and operands to a byte buffer.
 
 use ironplc_container::opcode;
-use ironplc_container::VarIndex;
+use ironplc_container::{SourceColumn, SourceFileId, SourceLine, VarIndex};
 
 /// A bytecode-offset → source-location entry recorded by the [`Emitter`].
 ///
@@ -17,10 +17,14 @@ pub struct EmittedLineMapEntry {
     /// Offset within the emitted bytecode of the instruction this entry
     /// describes.
     pub bytecode_offset: u16,
+    /// Index into the SOURCE_FILE_TABLE that the codegen driver passes
+    /// to the container builder. The driver is responsible for assigning
+    /// stable indices; the emitter just records what it's told.
+    pub file_id: SourceFileId,
     /// Source line number.
-    pub source_line: u16,
+    pub source_line: SourceLine,
     /// Source column number.
-    pub source_column: u16,
+    pub source_column: SourceColumn,
 }
 
 /// An opaque forward reference to a bytecode position, used for jump targets.
@@ -52,9 +56,10 @@ pub struct Emitter {
     /// `Some`, the next opcode that adds bytes to `bytecode` records a
     /// line_map entry at its offset (subject to dedup against the last
     /// recorded position).
-    current_position: Option<(u16, u16)>,
-    /// Recorded `(bytecode_offset, source_line, source_column)` entries in
-    /// emission order — therefore monotonically non-decreasing in offset.
+    current_position: Option<(SourceFileId, SourceLine, SourceColumn)>,
+    /// Recorded `(bytecode_offset, file_id, source_line, source_column)`
+    /// entries in emission order — therefore monotonically non-decreasing
+    /// in offset.
     line_map: Vec<EmittedLineMapEntry>,
 }
 
@@ -167,11 +172,18 @@ impl Emitter {
     /// entry at its offset, deduplicated against the previous entry so
     /// runs of instructions sharing a position produce a single entry.
     ///
-    /// Lines and columns follow the [`ironplc_container::LineMapEntry`]
-    /// convention: 1-based, with `0` reserved for "unknown" column.
+    /// `file_id` indexes the SOURCE_FILE_TABLE that the codegen driver
+    /// supplies to the container builder. Lines and columns follow the
+    /// [`ironplc_container::LineMapEntry`] convention: 1-based, with
+    /// `0` reserved for "unknown" column.
     #[allow(dead_code)]
-    pub fn set_source_position(&mut self, line: u16, column: u16) {
-        self.current_position = Some((line, column));
+    pub fn set_source_position(
+        &mut self,
+        file_id: SourceFileId,
+        line: SourceLine,
+        column: SourceColumn,
+    ) {
+        self.current_position = Some((file_id, line, column));
     }
 
     /// Clears the current source position. Subsequent opcodes will not
@@ -196,16 +208,17 @@ impl Emitter {
     /// immediately before pushing the opcode byte; the recorded offset is
     /// the current `bytecode.len()`.
     fn record_position_for_next_opcode(&mut self) {
-        let Some((line, column)) = self.current_position else {
+        let Some((file_id, line, column)) = self.current_position else {
             return;
         };
         if let Some(last) = self.line_map.last() {
-            if last.source_line == line && last.source_column == column {
+            if last.file_id == file_id && last.source_line == line && last.source_column == column {
                 return;
             }
         }
         self.line_map.push(EmittedLineMapEntry {
             bytecode_offset: self.bytecode.len() as u16,
+            file_id,
             source_line: line,
             source_column: column,
         });
@@ -1760,15 +1773,20 @@ mod tests {
     #[test]
     fn emitter_line_map_when_position_set_then_records_entry_at_next_opcode_offset() {
         let mut em = Emitter::new();
-        em.set_source_position(10, 5);
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(10),
+            SourceColumn::new(5),
+        );
         em.emit_ret_void();
         let entries = em.take_line_map();
         assert_eq!(
             entries,
             vec![EmittedLineMapEntry {
                 bytecode_offset: 0,
-                source_line: 10,
-                source_column: 5,
+                file_id: SourceFileId::new(0),
+                source_line: SourceLine::new(10),
+                source_column: SourceColumn::new(5),
             }],
         );
     }
@@ -1776,43 +1794,82 @@ mod tests {
     #[test]
     fn emitter_line_map_when_consecutive_opcodes_share_position_then_dedupes_to_one_entry() {
         let mut em = Emitter::new();
-        em.set_source_position(7, 1);
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(7),
+            SourceColumn::new(1),
+        );
         em.emit_load_const_i32(0);
         em.emit_load_const_i32(1);
         em.emit_add_i32();
         em.emit_ret_void();
         let entries = em.take_line_map();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].source_line, 7);
+        assert_eq!(entries[0].source_line.raw(), 7);
         assert_eq!(entries[0].bytecode_offset, 0);
     }
 
     #[test]
     fn emitter_line_map_when_position_changes_then_records_new_entry_at_boundary() {
         let mut em = Emitter::new();
-        em.set_source_position(1, 1);
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(1),
+            SourceColumn::new(1),
+        );
         em.emit_load_const_i32(0); // 3 bytes at offset 0
-        em.set_source_position(2, 1);
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(2),
+            SourceColumn::new(1),
+        );
         em.emit_load_const_i32(1); // 3 bytes at offset 3
         let entries = em.take_line_map();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].bytecode_offset, 0);
-        assert_eq!(entries[0].source_line, 1);
+        assert_eq!(entries[0].source_line.raw(), 1);
         assert_eq!(entries[1].bytecode_offset, 3);
-        assert_eq!(entries[1].source_line, 2);
+        assert_eq!(entries[1].source_line.raw(), 2);
+    }
+
+    #[test]
+    fn emitter_line_map_when_file_changes_then_records_new_entry_even_at_same_line_column() {
+        let mut em = Emitter::new();
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(1),
+            SourceColumn::new(1),
+        );
+        em.emit_load_const_i32(0);
+        // Same line/column, different file — must record a new entry.
+        em.set_source_position(
+            SourceFileId::new(1),
+            SourceLine::new(1),
+            SourceColumn::new(1),
+        );
+        em.emit_load_const_i32(1);
+        let entries = em.take_line_map();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].file_id.raw(), 0);
+        assert_eq!(entries[1].file_id.raw(), 1);
+        assert_eq!(entries[1].bytecode_offset, 3);
     }
 
     #[test]
     fn emitter_line_map_when_clear_position_then_subsequent_opcodes_omit_entries() {
         let mut em = Emitter::new();
-        em.set_source_position(1, 1);
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(1),
+            SourceColumn::new(1),
+        );
         em.emit_load_const_i32(0);
         em.clear_source_position();
         em.emit_load_const_i32(1);
         em.emit_ret_void();
         let entries = em.take_line_map();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].source_line, 1);
+        assert_eq!(entries[0].source_line.raw(), 1);
     }
 
     #[test]
@@ -1822,31 +1879,47 @@ mod tests {
         // so we expect the LOAD's source position not to produce a new
         // entry. The STORE, recorded under its own position, must remain.
         let mut em = Emitter::new();
-        em.set_source_position(1, 1);
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(1),
+            SourceColumn::new(1),
+        );
         em.emit_load_const_i32(0);
         em.emit_store_var_i32(VarIndex::new(0));
         // Same source position for the LOAD that should be elided.
-        em.set_source_position(2, 1);
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(2),
+            SourceColumn::new(1),
+        );
         em.emit_load_var_i32(VarIndex::new(0));
         let entries = em.take_line_map();
         // Only the LOAD_CONST entry at line 1 is present; the LOAD_VAR at
         // line 2 was elided by the peephole so no entry exists for it.
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].source_line, 1);
+        assert_eq!(entries[0].source_line.raw(), 1);
     }
 
     #[test]
     fn emitter_line_map_when_take_called_then_subsequent_emissions_start_fresh() {
         let mut em = Emitter::new();
-        em.set_source_position(1, 1);
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(1),
+            SourceColumn::new(1),
+        );
         em.emit_ret_void();
         let first = em.take_line_map();
         assert_eq!(first.len(), 1);
 
-        em.set_source_position(2, 2);
+        em.set_source_position(
+            SourceFileId::new(0),
+            SourceLine::new(2),
+            SourceColumn::new(2),
+        );
         em.emit_ret_void();
         let second = em.take_line_map();
         assert_eq!(second.len(), 1);
-        assert_eq!(second[0].source_line, 2);
+        assert_eq!(second[0].source_line.raw(), 2);
     }
 }
