@@ -1,19 +1,21 @@
-Code,Name,Message,HasData
-V4001,DivideByZero,Divide by zero during program execution,false
-V4002,NegativeExponent,Negative exponent in arithmetic operation,false
-V4003,WatchdogTimeout,Task exceeded its watchdog time limit,true
-V4004,NullDereference,Null reference dereference during program execution,false
+Code,Name,Message,VariantShape
+V4001,DivideByZero,Divide by zero during program execution,none
+V4002,NegativeExponent,Negative exponent in arithmetic operation,none
+V4003,WatchdogTimeout,Task exceeded its watchdog time limit,tuple
+V4004,NullDereference,Null reference dereference during program execution,none
 V4005,ArrayIndexOutOfBounds,Array index out of bounds,struct
-V9001,StackOverflow,VM operand stack overflow,false
-V9002,StackUnderflow,VM operand stack underflow,false
-V9003,InvalidInstruction,Unknown bytecode instruction,true
-V9004,InvalidConstantIndex,Constant pool index out of bounds,true
-V9005,InvalidVariableIndex,Variable table index out of bounds,true
-V9006,InvalidFunctionId,Function ID not found in container,true
-V9007,InvalidBuiltinFunction,Built-in function ID not recognized,true
-V9008,DataRegionOutOfBounds,Data region access out of bounds,true
-V9009,TempBufferExhausted,Temporary buffer pool exhausted,false
-V9010,InvalidFbTypeId,Function block type ID not recognized as intrinsic,true
-V9011,UnexpectedEndOfBytecode,Bytecode ended mid-instruction,false
-V9012,CallStackOverflow,VM call frame stack exceeded maximum depth,false
-V9013,InvalidCmpOp,Unknown comparison operator code in CMP_BR instruction,true
+V9001,StackOverflow,VM operand stack overflow,none
+V9002,StackUnderflow,VM operand stack underflow,none
+V9003,InvalidInstruction,Unknown bytecode instruction,tuple
+V9004,InvalidConstantIndex,Constant pool index out of bounds,tuple
+V9005,InvalidVariableIndex,Variable table index out of bounds,tuple
+V9006,InvalidFunctionId,Function ID not found in container,tuple
+V9007,InvalidBuiltinFunction,Built-in function ID not recognized,tuple
+V9008,DataRegionOutOfBounds,Data region access out of bounds,tuple
+V9009,TempBufferExhausted,Temporary buffer pool exhausted,none
+V9010,InvalidFbTypeId,Function block type ID not recognized as intrinsic,tuple
+V9011,UnexpectedEndOfBytecode,Bytecode ended mid-instruction,none
+V9012,CallStackOverflow,VM call frame stack exceeded maximum depth,none
+V9013,InvalidCmpOp,Unknown comparison operator code in CMP_BR instruction,tuple
+V9014,EncodingMismatch,String operation operand encoding does not match expected encoding,struct
+V9015,InvalidCharWidth,String header or constant pool entry has an invalid char_width byte,tuple
