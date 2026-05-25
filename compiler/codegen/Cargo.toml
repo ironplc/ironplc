@@ -12,6 +12,7 @@ ironplc-dsl = { path = "../dsl", version = "0.214.0" }
 ironplc-container = { path = "../container", version = "0.214.0" }
 ironplc-problems = { path = "../problems", version = "0.214.0" }
 ironplc-analyzer = { path = "../analyzer", version = "0.214.0" }
+blake3 = "1"
 
 [build-dependencies]
 ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }

@@ -49,7 +49,7 @@ fn compile_and_run(source: &str) -> (ironplc_container::Container, VmBuffers) {
     let (analyzed, ctx) =
         ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
     let codegen_options = crate::CodegenOptions::default();
-    let container = crate::compile(&analyzed, &ctx, &codegen_options).unwrap();
+    let container = crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs).unwrap();
@@ -64,7 +64,7 @@ fn compile_only(source: &str) -> ironplc_container::Container {
     let (analyzed, ctx) =
         ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default()).unwrap();
     let codegen_options = crate::CodegenOptions::default();
-    crate::compile(&analyzed, &ctx, &codegen_options).unwrap()
+    crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap()
 }
 
 // ---------------------------------------------------------------------------
