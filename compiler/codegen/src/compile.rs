@@ -183,6 +183,7 @@ pub fn compile(
     library: &Library,
     context: &SemanticContext,
     options: &CodegenOptions,
+    sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
     let program = find_program(library)?;
     let config = find_configuration(library);
@@ -241,13 +242,16 @@ pub fn compile(
     let enum_map = crate::compile_enum::build_enum_ordinal_map(library);
 
     let mut container = compile_program_with_functions(
-        program,
-        &func_decls,
-        &fb_decls,
-        global_vars,
+        ProgramInputs {
+            program,
+            func_decls: &func_decls,
+            fb_decls: &fb_decls,
+            global_vars,
+        },
         context.functions(),
         context.types(),
         enum_map,
+        sources,
     )?;
 
     if options.system_uptime_global {
@@ -284,6 +288,41 @@ fn find_configuration(library: &Library) -> Option<&ConfigurationDeclaration> {
     })
 }
 
+/// Idempotently registers a POU's source file with the debug section's
+/// SOURCE_FILE_TABLE. Called from `compile_program_with_functions` for
+/// each top-level program / function / function-block declaration.
+fn register_pou_source_file(
+    ctx: &mut CompileContext,
+    file_id: &ironplc_dsl::core::FileId,
+    sources: &dyn crate::source_lookup::SourceLookup,
+) {
+    if ctx.debug_source_files.get(file_id).is_some() {
+        return;
+    }
+    let bytes = sources.source_bytes(file_id);
+    ctx.debug_source_files.register(file_id, bytes);
+}
+
+/// Pushes a function's line-map entries (already remapped through the
+/// optimizer) into the container builder, paired with the function's
+/// `FunctionId`.
+fn add_line_map_entries(
+    mut builder: ContainerBuilder,
+    function_id: FunctionId,
+    entries: &[crate::emit::EmittedLineMapEntry],
+) -> ContainerBuilder {
+    for entry in entries {
+        builder = builder.add_line_map_entry(ironplc_container::LineMapEntry {
+            function_id,
+            bytecode_offset: entry.bytecode_offset,
+            file_id: entry.file_id,
+            source_line: entry.source_line,
+            source_column: entry.source_column,
+        });
+    }
+    builder
+}
+
 /// Holds the compiled bytecode and metadata for a user-defined function.
 pub(crate) struct CompiledFunction {
     pub(crate) function_id: u16,
@@ -292,6 +331,11 @@ pub(crate) struct CompiledFunction {
     pub(crate) num_locals: u16,
     pub(crate) num_params: u16,
     pub(crate) name: String,
+    /// Per-statement line-map entries with `bytecode_offset` already
+    /// remapped through the optimizer. The codegen driver pairs each
+    /// entry with this function's `FunctionId` before pushing to the
+    /// container builder.
+    pub(crate) line_map: Vec<crate::emit::EmittedLineMapEntry>,
 }
 
 /// Holds the finalized bytecode and stack depth for a single emitted function.
@@ -304,6 +348,12 @@ pub(crate) struct CompiledFunction {
 pub(crate) struct FinalizedFunction {
     pub(crate) bytecode: Vec<u8>,
     pub(crate) max_stack_depth: u16,
+    /// Per-statement line-map entries with `bytecode_offset` already
+    /// remapped through the optimizer's old→new offset table. Entries
+    /// whose pre-optimization offset fell on an instruction that was
+    /// elided snap forward to the next surviving instruction; entries
+    /// past the new end-of-function are dropped.
+    pub(crate) line_map: Vec<crate::emit::EmittedLineMapEntry>,
 }
 
 /// Finalizes an emitter into ready-to-store bytecode plus stack depth.
@@ -311,12 +361,26 @@ pub(crate) struct FinalizedFunction {
 /// `emitter.bytecode()` must be called before `max_stack_depth()` because the
 /// peephole optimizer (run inside `bytecode()`) may increase max_stack_depth.
 pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> FinalizedFunction {
-    let (bytecode, _offset_map) = crate::optimize::optimize(emitter.bytecode(), &ctx.constants);
+    let raw_line_map = emitter.take_line_map();
+    let (bytecode, offset_map) = crate::optimize::optimize(emitter.bytecode(), &ctx.constants);
     let max_stack_depth = emitter.max_stack_depth();
+    let line_map =
+        crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16);
     FinalizedFunction {
         bytecode,
         max_stack_depth,
+        line_map,
     }
+}
+
+/// The AST inputs that [`compile_program_with_functions`] operates on,
+/// all extracted from the same `Library` at the start of `compile()`.
+/// Grouped to keep the helper's argument count manageable.
+struct ProgramInputs<'a> {
+    program: &'a ProgramDeclaration,
+    func_decls: &'a [&'a FunctionDeclaration],
+    fb_decls: &'a [&'a FunctionBlockDeclaration],
+    global_vars: &'a [VarDecl],
 }
 
 /// Compiles a PROGRAM and its user-defined functions into a container.
@@ -327,18 +391,40 @@ pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> 
 /// - Functions 2+: user-defined functions
 ///
 /// When no initial values exist, the init function is a single RET_VOID.
+// Internal codegen helper split out from `compile()` purely for
+// readability of the public function; called from exactly one site.
 fn compile_program_with_functions(
-    program: &ProgramDeclaration,
-    func_decls: &[&FunctionDeclaration],
-    fb_decls: &[&FunctionBlockDeclaration],
-    global_vars: &[VarDecl],
+    inputs: ProgramInputs<'_>,
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
     enum_map: crate::compile_enum::EnumOrdinalMap,
+    sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
+    let ProgramInputs {
+        program,
+        func_decls,
+        fb_decls,
+        global_vars,
+    } = inputs;
     let mut ctx = CompileContext::new();
     ctx.enum_map = enum_map;
     let mut builder = ContainerBuilder::new();
+
+    // Register every top-level POU's source file with the debug
+    // section's SOURCE_FILE_TABLE. Each statement's `compile_statement`
+    // call later looks up the resulting `SourceFileId` via
+    // `ctx.debug_source_files.get(&span.file_id)` and pairs it with the
+    // statement's (line, column) for the LineMapEntry. The
+    // registration order (program first, then functions, then FB
+    // bodies) determines the `file_id` numbering, which appears in
+    // the on-disk container.
+    register_pou_source_file(&mut ctx, &program.name.span.file_id, sources);
+    for f in func_decls {
+        register_pou_source_file(&mut ctx, &f.name.span.file_id, sources);
+    }
+    for fb in fb_decls {
+        register_pou_source_file(&mut ctx, &fb.name.name.span.file_id, sources);
+    }
 
     // Assign global variable indices first (indices 0..G).
     assign_variables(&mut ctx, &mut builder, global_vars, types)?;
@@ -520,6 +606,7 @@ fn compile_program_with_functions(
         program_var_count,
         0,
     );
+    builder = add_line_map_entries(builder, FunctionId::INIT, &init.line_map);
 
     let scan = finalize_function(&mut scan_emitter, &ctx);
     builder = builder.add_function(
@@ -532,6 +619,7 @@ fn compile_program_with_functions(
         program_var_count,
         0,
     );
+    builder = add_line_map_entries(builder, FunctionId::SCAN, &scan.line_map);
 
     // Add user-defined function block bodies.
     for compiled in &compiled_fb_bodies {
@@ -541,6 +629,11 @@ fn compile_program_with_functions(
             compiled.max_stack_depth,
             compiled.num_locals,
             compiled.num_params,
+        );
+        builder = add_line_map_entries(
+            builder,
+            FunctionId::new(compiled.function_id),
+            &compiled.line_map,
         );
     }
 
@@ -563,6 +656,20 @@ fn compile_program_with_functions(
             compiled.num_locals,
             compiled.num_params,
         );
+        builder = add_line_map_entries(
+            builder,
+            FunctionId::new(compiled.function_id),
+            &compiled.line_map,
+        );
+    }
+
+    // Add the SOURCE_FILE_TABLE (tag 6). `ctx.debug_source_files`
+    // accumulated one entry per POU source file; insertion order is
+    // the file's SourceFileId, which the line-map entries above
+    // already reference.
+    let source_file_entries = std::mem::take(&mut ctx.debug_source_files).into_entries();
+    if !source_file_entries.is_empty() {
+        builder = builder.add_source_files(source_file_entries);
     }
 
     builder = builder
@@ -717,6 +824,10 @@ pub(crate) struct CompileContext {
     pub(crate) debug_var_names: Vec<VarNameEntry>,
     /// Debug info: STRING variable data-region layouts collected during assign_variables.
     pub(crate) debug_string_layouts: Vec<StringLayoutEntry>,
+    /// Debug info: registry mapping each referenced source `FileId` to its
+    /// `SourceFileId` (debug section SOURCE_FILE_TABLE index) plus cached
+    /// source bytes for (line, column) conversion in `compile_statement`.
+    pub(crate) debug_source_files: crate::source_lookup::SourceFileRegistry,
     /// Maps user-defined function name (lowercase) to compilation metadata.
     pub(crate) user_functions: HashMap<String, UserFunctionInfo>,
     /// Maps user-defined FB type name (uppercase) to compilation metadata.
@@ -758,6 +869,7 @@ impl CompileContext {
             num_temp_bufs: 0,
             debug_var_names: Vec::new(),
             debug_string_layouts: Vec::new(),
+            debug_source_files: crate::source_lookup::SourceFileRegistry::new(),
             user_functions: HashMap::new(),
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
@@ -907,7 +1019,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(container.header.num_functions, 2);
@@ -944,7 +1062,12 @@ FUNCTION_BLOCK MyBlock
 END_FUNCTION_BLOCK
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context, &CodegenOptions::default());
+        let result = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        );
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -961,7 +1084,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         // Should have two functions (init + scan), both just RET_VOID
         assert_eq!(container.header.num_functions, 2);
@@ -990,7 +1119,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         // Should only have one constant (10 is deduplicated)
         assert_eq!(container.constant_pool.len(), 1);
@@ -1009,7 +1144,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 2);
         assert_eq!(container.header.num_functions, 2);
@@ -1046,7 +1187,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(
             container
@@ -1077,7 +1224,12 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context, &CodegenOptions::default());
+        let result = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        );
 
         assert!(result.is_ok());
     }
@@ -1094,7 +1246,12 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context, &CodegenOptions::default());
+        let result = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        );
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -1115,7 +1272,12 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let result = compile(&library, &context, &CodegenOptions::default());
+        let result = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        );
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
@@ -1133,7 +1295,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -1156,7 +1324,13 @@ PROGRAM main
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         assert_eq!(container.header.num_variables, 1);
         assert_eq!(
@@ -1185,7 +1359,13 @@ END_VAR
 END_PROGRAM
 ";
         let (library, context) = parse(source);
-        let container = compile(&library, &context, &CodegenOptions::default()).unwrap();
+        let container = compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+        .unwrap();
 
         // Should have 3 functions: init, scan, SIGN_R
         assert_eq!(container.header.num_functions, 3);

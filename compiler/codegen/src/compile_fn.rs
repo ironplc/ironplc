@@ -428,6 +428,7 @@ pub(crate) fn compile_user_function(
         num_locals,
         num_params,
         name: func_name.to_string(),
+        line_map: finalized.line_map,
     })
 }
 
@@ -595,5 +596,6 @@ pub(crate) fn compile_user_function_block(
         num_locals,
         num_params: 0,
         name: fb_name,
+        line_map: finalized.line_map,
     })
 }

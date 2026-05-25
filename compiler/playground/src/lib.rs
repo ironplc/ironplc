@@ -484,7 +484,12 @@ fn compile_inner(source: &str, dialect: &str, allows: &str) -> CompileResult {
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: options.allow_system_uptime_global,
     };
-    let container = match codegen_compile(&library, &context, &codegen_options) {
+    let container = match codegen_compile(
+        &library,
+        &context,
+        &codegen_options,
+        &ironplc_codegen::EmptyLookup,
+    ) {
         Ok(c) => c,
         Err(diag) => {
             return CompileResult {

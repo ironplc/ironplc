@@ -33,6 +33,47 @@ use crate::compile::PoolConstant;
 /// of the function can still be remapped.
 pub(crate) type OffsetMap = HashMap<usize, usize>;
 
+/// Remaps an emitter line map through the optimizer's old→new offset table.
+///
+/// For each entry the old `bytecode_offset` is looked up in `offset_map`,
+/// which by construction maps every instruction boundary — including
+/// removed instructions — to the position the next surviving instruction
+/// occupies in the optimized stream ("snap forward"). Entries whose
+/// remapped offset lands past the new end-of-function (`new_bytecode_len`)
+/// are dropped, and entries that map to the same remapped offset as the
+/// previous kept entry are deduplicated (the optimizer can collapse two
+/// pre-optimization positions onto one post-optimization position).
+///
+/// Entries whose old offset is not in the map are dropped silently; the
+/// emitter only records entries immediately before pushing an opcode,
+/// so this should never happen in practice. If it does, the resulting
+/// debug info would be wrong anyway, so silently dropping is safer than
+/// keeping a bad offset.
+pub(crate) fn remap_line_map(
+    raw: Vec<crate::emit::EmittedLineMapEntry>,
+    offset_map: &OffsetMap,
+    new_bytecode_len: u16,
+) -> Vec<crate::emit::EmittedLineMapEntry> {
+    let mut out: Vec<crate::emit::EmittedLineMapEntry> = Vec::with_capacity(raw.len());
+    for entry in raw {
+        let Some(&new_offset) = offset_map.get(&(entry.bytecode_offset as usize)) else {
+            continue;
+        };
+        if new_offset >= new_bytecode_len as usize {
+            continue;
+        }
+        let new_offset = new_offset as u16;
+        if out.last().is_some_and(|e| e.bytecode_offset == new_offset) {
+            continue;
+        }
+        out.push(crate::emit::EmittedLineMapEntry {
+            bytecode_offset: new_offset,
+            ..entry
+        });
+    }
+    out
+}
+
 /// A decoded instruction: its original byte offset and raw bytes.
 struct Instruction {
     offset: usize,

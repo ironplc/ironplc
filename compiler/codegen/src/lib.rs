@@ -19,13 +19,13 @@
 //! # Example
 //!
 //! ```ignore
-//! use ironplc_codegen::compile;
+//! use ironplc_codegen::{compile, CodegenOptions, EmptyLookup};
 //! use ironplc_parser::parse_program;
 //!
 //! let source = "PROGRAM main VAR x : INT; END_VAR x := 42; END_PROGRAM";
 //! let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
 //! let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library]).unwrap();
-//! let container = compile(&analyzed, &ctx).unwrap();
+//! let container = compile(&analyzed, &ctx, &CodegenOptions::default(), &EmptyLookup).unwrap();
 //! ```
 
 mod compile;
@@ -40,8 +40,10 @@ mod compile_string;
 mod compile_struct;
 mod emit;
 mod optimize;
+mod source_lookup;
 
 pub use compile::{compile, CodegenOptions};
+pub use source_lookup::{EmptyLookup, SourceLookup};
 
 // Spec conformance testing infrastructure (test-only)
 #[cfg(test)]

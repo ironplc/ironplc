@@ -20,5 +20,11 @@ pub fn compile_st(source: &str) -> Container {
         "Source has semantic diagnostics"
     );
     let codegen_options = ironplc_codegen::CodegenOptions::default();
-    compile(&analyzed, &context, &codegen_options).unwrap()
+    compile(
+        &analyzed,
+        &context,
+        &codegen_options,
+        &ironplc_codegen::EmptyLookup,
+    )
+    .unwrap()
 }
