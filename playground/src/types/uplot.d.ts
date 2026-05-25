@@ -2,7 +2,7 @@
 // `node_modules/uplot/dist/uPlot.esm.js` into `_build/`. Covers only the
 // surface used by `app.ts` — extend when adding new uPlot APIs.
 
-declare module "./uPlot.esm.js" {
+declare module "*/uPlot.esm.js" {
   export interface UplotScale {
     time?: boolean;
     range?: [number, number];

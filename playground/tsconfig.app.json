@@ -1,8 +1,0 @@
-{
-  "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo.app"
-  },
-  "include": ["src/app.ts", "src/types/messages.ts", "src/types/globals.d.ts", "src/types/uplot.d.ts", "src/types/wasm.d.ts"]
-}

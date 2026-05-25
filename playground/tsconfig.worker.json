@@ -1,8 +1,7 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022", "WebWorker"],
-    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo.worker"
+    "lib": ["ES2022", "WebWorker"]
   },
-  "include": ["src/worker.ts", "src/types/messages.ts", "src/types/wasm.d.ts"]
+  "include": ["src/worker.ts", "src/types/**/*.d.ts"]
 }

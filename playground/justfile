@@ -11,7 +11,10 @@ compile:
   wasm-pack build ../compiler/playground --target web --out-dir ../../playground/_build/pkg --no-typescript
   cp node_modules/uplot/dist/uPlot.esm.js _build/
   cp node_modules/uplot/dist/uPlot.min.css _build/
-  cp *.html *.js *.css *.txt *.xml _build/
+  npx tsc -p tsconfig.json
+  npx tsc -p tsconfig.worker.json
+  cp posthog-init.js _build/
+  cp *.html *.css *.txt *.xml _build/
 
 # Run end-to-end tests (requires a compiled _build/)
 test: compile

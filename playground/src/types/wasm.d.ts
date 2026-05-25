@@ -3,7 +3,7 @@
 // `--no-typescript` so no `.d.ts` is emitted upstream; this file mirrors the
 // exported surface that `worker.ts` consumes.
 
-declare module "./pkg/ironplc_playground.js" {
+declare module "*/pkg/ironplc_playground.js" {
   /** Initializes the WASM module. Returns a promise resolved after load. */
   export default function init(): Promise<unknown>;
 

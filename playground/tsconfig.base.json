@@ -15,9 +15,7 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "composite": true,
-    "declaration": true,
-    "declarationMap": false,
+    "declaration": false,
     "sourceMap": false
   }
 }
