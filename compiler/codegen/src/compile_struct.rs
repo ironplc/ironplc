@@ -647,7 +647,11 @@ pub(crate) fn allocate_struct_variable(
             dimensions: array_dims,
         } = &f.field_type
         {
-            if let IntermediateType::String { max_len, .. } = element_type.as_ref() {
+            if let IntermediateType::String {
+                max_len,
+                char_width,
+            } = element_type.as_ref()
+            {
                 let max_str_len = max_len.unwrap_or(254) as u16;
                 let total_elements = array_dims
                     .iter()
@@ -661,13 +665,18 @@ pub(crate) fn allocate_struct_variable(
                             Label::span(span.clone(), "Array too large"),
                         )
                     })?;
-                // Allocate scratch variable once for all STRING array fields.
+                // Allocate scratch variable once for all STRING/WSTRING array fields.
                 if scratch_var_index.is_none() {
                     let scratch_idx = ctx.allocate_scratch_variable(&id.to_string());
                     scratch_var_index = Some(scratch_idx);
                 }
+                let element_field_type = if char_width.is_wide() {
+                    FieldType::WString
+                } else {
+                    FieldType::String
+                };
                 let str_desc_index = builder.add_array_descriptor(
-                    FieldType::String as u8,
+                    element_field_type as u8,
                     total_elements,
                     max_str_len,
                 );

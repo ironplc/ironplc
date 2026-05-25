@@ -310,3 +310,67 @@ END_PROGRAM
     // Should compile without error — reading the first field (slot offset 0)
     let _container = parse_and_compile(source, &CompilerOptions::default());
 }
+
+#[test]
+fn compile_when_struct_has_array_of_string_field_then_descriptor_uses_string_field_type() {
+    // FieldType::String = 6 per container/src/type_section.rs.
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    names : ARRAY[1..3] OF STRING[10];
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct;
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let type_section = container.type_section.as_ref().unwrap();
+    let str_desc = type_section
+        .array_descriptors
+        .iter()
+        .find(|d| d.element_type == 6);
+    assert!(
+        str_desc.is_some(),
+        "Expected ARRAY OF STRING descriptor with element_type=6 (String), got: {:?}",
+        type_section.array_descriptors
+    );
+    let desc = str_desc.unwrap();
+    assert_eq!(desc.total_elements, 3);
+    assert_eq!(desc.element_extra, 10);
+}
+
+#[test]
+fn compile_when_struct_has_array_of_wstring_field_then_descriptor_uses_wstring_field_type() {
+    // FieldType::WString = 7 per container/src/type_section.rs.
+    let source = "
+TYPE MyStruct :
+  STRUCT
+    names : ARRAY[1..3] OF WSTRING[10];
+  END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MyStruct;
+  END_VAR
+END_PROGRAM
+";
+    let container = parse_and_compile(source, &CompilerOptions::default());
+    let type_section = container.type_section.as_ref().unwrap();
+    let wstr_desc = type_section
+        .array_descriptors
+        .iter()
+        .find(|d| d.element_type == 7);
+    assert!(
+        wstr_desc.is_some(),
+        "Expected ARRAY OF WSTRING descriptor with element_type=7 (WString), got: {:?}",
+        type_section.array_descriptors
+    );
+    let desc = wstr_desc.unwrap();
+    assert_eq!(desc.total_elements, 3);
+    assert_eq!(desc.element_extra, 10);
+}
