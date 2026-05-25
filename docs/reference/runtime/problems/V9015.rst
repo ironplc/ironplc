@@ -8,8 +8,7 @@ The VM read a ``char_width`` byte (the per-code-unit encoding tag of a
 string value) whose value was neither ``1`` (``STRING`` / Latin-1) nor
 ``2`` (``WSTRING`` / UTF-16LE).
 
-``char_width`` is carried in three places at runtime (per ADR-0034 and
-ADR-0035):
+``char_width`` is carried in three places at runtime:
 
 1. each string variable's data-region header
 2. each constant-pool string entry
@@ -28,8 +27,4 @@ statically, so this trap is reached only via:
 2. **A tampered or hand-crafted ``.iplc`` file** that holds an
    unrecognized encoding tag.
 
-This error should not occur during normal operation. It indicates a bug
-in the IronPLC compiler or VM, or a corrupted ``.iplc`` file.
-
-Report this as a bug at https://github.com/ironplc/ironplc/issues with
-the ``.iplc`` file and the source program that produced it.
+.. include:: ../../../includes/report-internal-vm-error.rst
