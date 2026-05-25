@@ -242,10 +242,12 @@ pub fn compile(
     let enum_map = crate::compile_enum::build_enum_ordinal_map(library);
 
     let mut container = compile_program_with_functions(
-        program,
-        &func_decls,
-        &fb_decls,
-        global_vars,
+        ProgramInputs {
+            program,
+            func_decls: &func_decls,
+            fb_decls: &fb_decls,
+            global_vars,
+        },
         context.functions(),
         context.types(),
         enum_map,
@@ -371,6 +373,16 @@ pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> 
     }
 }
 
+/// The AST inputs that [`compile_program_with_functions`] operates on,
+/// all extracted from the same `Library` at the start of `compile()`.
+/// Grouped to keep the helper's argument count manageable.
+struct ProgramInputs<'a> {
+    program: &'a ProgramDeclaration,
+    func_decls: &'a [&'a FunctionDeclaration],
+    fb_decls: &'a [&'a FunctionBlockDeclaration],
+    global_vars: &'a [VarDecl],
+}
+
 /// Compiles a PROGRAM and its user-defined functions into a container.
 ///
 /// Always emits at least two functions:
@@ -380,19 +392,20 @@ pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> 
 ///
 /// When no initial values exist, the init function is a single RET_VOID.
 // Internal codegen helper split out from `compile()` purely for
-// readability of the public function; called from exactly one site, so
-// the argument count is the trade-off we accept to keep that boundary.
-#[allow(clippy::too_many_arguments)]
+// readability of the public function; called from exactly one site.
 fn compile_program_with_functions(
-    program: &ProgramDeclaration,
-    func_decls: &[&FunctionDeclaration],
-    fb_decls: &[&FunctionBlockDeclaration],
-    global_vars: &[VarDecl],
+    inputs: ProgramInputs<'_>,
     functions: &FunctionEnvironment,
     types: &TypeEnvironment,
     enum_map: crate::compile_enum::EnumOrdinalMap,
     sources: &dyn crate::source_lookup::SourceLookup,
 ) -> Result<Container, Diagnostic> {
+    let ProgramInputs {
+        program,
+        func_decls,
+        fb_decls,
+        global_vars,
+    } = inputs;
     let mut ctx = CompileContext::new();
     ctx.enum_map = enum_map;
     let mut builder = ContainerBuilder::new();
