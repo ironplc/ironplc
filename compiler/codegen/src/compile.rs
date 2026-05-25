@@ -379,6 +379,10 @@ pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> 
 /// - Functions 2+: user-defined functions
 ///
 /// When no initial values exist, the init function is a single RET_VOID.
+// Internal codegen helper split out from `compile()` purely for
+// readability of the public function; called from exactly one site, so
+// the argument count is the trade-off we accept to keep that boundary.
+#[allow(clippy::too_many_arguments)]
 fn compile_program_with_functions(
     program: &ProgramDeclaration,
     func_decls: &[&FunctionDeclaration],
