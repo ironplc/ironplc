@@ -943,6 +943,7 @@ dependencies = [
 name = "ironplc-codegen"
 version = "0.214.0"
 dependencies = [
+ "blake3",
  "ironplc-analyzer",
  "ironplc-container",
  "ironplc-dsl",

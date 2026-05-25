@@ -137,7 +137,12 @@ pub fn build_response(
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: compiler_options.allow_system_uptime_global,
     };
-    let container = match ironplc_codegen::compile(library, context, &codegen_options) {
+    let container = match ironplc_codegen::compile(
+        library,
+        context,
+        &codegen_options,
+        &ironplc_codegen::EmptyLookup,
+    ) {
         Ok(c) => c,
         Err(err) => {
             diagnostics.push(serialize_diagnostic(&err));

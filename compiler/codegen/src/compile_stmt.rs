@@ -57,12 +57,51 @@ pub(crate) fn compile_statements(
     Ok(())
 }
 
+/// Records the statement's source position on the emitter so the
+/// subsequent opcode(s) get a line-map entry pointing at this
+/// statement.
+///
+/// Looks up the statement's `FileId` in the SOURCE_FILE_TABLE
+/// registry built at the start of compilation. If the file isn't
+/// registered (synthetic ASTs, unknown spans) or the registry has no
+/// source bytes for it (the [`crate::EmptyLookup`] case), no entry is
+/// recorded — there's no useful (line, column) to surface, and a
+/// `file_id` without a position would only confuse a debugger.
+fn record_statement_position(
+    emitter: &mut crate::emit::Emitter,
+    ctx: &CompileContext,
+    stmt: &StmtKind,
+) {
+    let span = stmt.span();
+    let Some(file_id) = ctx.debug_source_files.get(&span.file_id) else {
+        return;
+    };
+    let Some(bytes) = ctx.debug_source_files.source_bytes(&span.file_id) else {
+        return;
+    };
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return;
+    };
+    let lc = ironplc_dsl::diagnostic::LineColumn::from_offset(text, span.start);
+    // 0-based → 1-based; clamp to u16 range (source files larger than
+    // ~64k lines are theoretical, but the saturating add keeps us out
+    // of UB territory either way).
+    let line = u16::try_from(lc.line.saturating_add(1)).unwrap_or(u16::MAX);
+    let column = u16::try_from(lc.column.saturating_add(1)).unwrap_or(u16::MAX);
+    emitter.set_source_position(
+        file_id,
+        ironplc_container::SourceLine::new(line),
+        ironplc_container::SourceColumn::new(column),
+    );
+}
+
 /// Compiles a single statement.
 fn compile_statement(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
     stmt: &StmtKind,
 ) -> Result<(), Diagnostic> {
+    record_statement_position(emitter, ctx, stmt);
     match stmt {
         StmtKind::Assignment(assignment) => {
             // Dereference assignment: myRef^ := expr
