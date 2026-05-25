@@ -7,6 +7,7 @@ use crate::buffers::VmBuffers;
 use crate::builtin;
 use crate::debug_hook::{DebugHook, NoopDebugHook};
 use crate::error::Trap;
+use crate::frame_stack::{FbCallReturn, Frame, FrameStack};
 #[cfg(feature = "profiling")]
 use crate::profile::InstructionProfile;
 use crate::scheduler::{ProgramInstanceState, TaskScheduler, TaskState};
@@ -22,13 +23,13 @@ use std::time::Instant;
 /// Maximum depth of nested CALL / user-FB_CALL frames before the VM
 /// traps with [`Trap::CallStackOverflow`].
 ///
-/// The VM currently runs callee bytecode by recursively invoking
-/// `execute_with_hook`, so the Rust thread stack is consumed per frame.
-/// This bound keeps the VM well clear of the thread-stack limit
-/// (including under test harnesses with smaller stacks) while leaving
-/// plenty of headroom for realistic IEC-61131 programs, which typically
-/// nest only a handful of levels.
-const MAX_CALL_DEPTH: u32 = 32;
+/// Sized at the embedder side via [`VmBuffers::frames`]. The dispatch
+/// loop pushes one [`Frame`] per CALL / user-FB_CALL onto an explicit
+/// frame stack and the Rust call stack is no longer consumed
+/// proportionally to PLC call depth. The bound here matches what the
+/// previous recursion-based check enforced, so no program that runs
+/// today will trap that did not before.
+pub(crate) const MAX_CALL_DEPTH: u32 = 32;
 
 /// Context for a fault that occurred during task execution.
 #[derive(Debug)]
@@ -102,6 +103,7 @@ impl Vm {
             task_states: &mut bufs.tasks,
             program_instances: &mut bufs.programs,
             ready_buf: &mut bufs.ready,
+            frames: &mut bufs.frames,
             #[cfg(feature = "profiling")]
             profile: InstructionProfile::new(),
         }
@@ -127,6 +129,7 @@ pub struct VmReady<'a> {
     task_states: &'a mut [TaskState],
     program_instances: &'a mut [ProgramInstanceState],
     ready_buf: &'a mut [usize],
+    frames: &'a mut [Frame],
     #[cfg(feature = "profiling")]
     profile: InstructionProfile,
 }
@@ -152,16 +155,6 @@ impl<'a> VmReady<'a> {
             let var_table_offset = self.program_instances[pi].var_table_offset;
             let var_table_count = self.program_instances[pi].var_table_count;
 
-            let bytecode =
-                self.container
-                    .code
-                    .get_function_bytecode(init_fn)
-                    .ok_or(FaultContext {
-                        trap: Trap::InvalidFunctionId(init_fn),
-                        task_id,
-                        instance_id,
-                    })?;
-
             let scope = VariableScope {
                 shared_globals_size,
                 instance_offset: var_table_offset,
@@ -169,16 +162,15 @@ impl<'a> VmReady<'a> {
             };
 
             execute(
-                bytecode,
                 self.container,
                 &mut self.stack,
                 &mut self.variables,
                 self.data_region,
                 self.temp_buf,
                 self.max_temp_buf_bytes,
+                self.frames,
                 &scope,
                 0, // init functions don't need real time
-                0, // top-of-chain call: depth starts at zero
                 init_fn,
                 #[cfg(feature = "profiling")]
                 &mut self.profile,
@@ -200,6 +192,7 @@ impl<'a> VmReady<'a> {
             task_states: self.task_states,
             program_instances: self.program_instances,
             ready_buf: self.ready_buf,
+            frames: self.frames,
             shared_globals_size,
             scan_count: 0,
             stop_requested: false,
@@ -226,6 +219,7 @@ impl<'a> VmReady<'a> {
             task_states: self.task_states,
             program_instances: self.program_instances,
             ready_buf: self.ready_buf,
+            frames: self.frames,
             shared_globals_size,
             scan_count: initial_scan_count,
             stop_requested: false,
@@ -261,6 +255,7 @@ pub struct VmRunning<'a> {
     task_states: &'a mut [TaskState],
     program_instances: &'a mut [ProgramInstanceState],
     ready_buf: &'a mut [usize],
+    frames: &'a mut [Frame],
     shared_globals_size: u16,
     scan_count: u64,
     stop_requested: bool,
@@ -328,16 +323,6 @@ impl<'a> VmRunning<'a> {
                 let var_table_offset = self.program_instances[pi].var_table_offset;
                 let var_table_count = self.program_instances[pi].var_table_count;
 
-                let bytecode = self
-                    .container
-                    .code
-                    .get_function_bytecode(entry_function_id)
-                    .ok_or(FaultContext {
-                        trap: Trap::InvalidFunctionId(entry_function_id),
-                        task_id,
-                        instance_id,
-                    })?;
-
                 let scope = VariableScope {
                     shared_globals_size: self.shared_globals_size,
                     instance_offset: var_table_offset,
@@ -345,16 +330,15 @@ impl<'a> VmRunning<'a> {
                 };
 
                 execute(
-                    bytecode,
                     self.container,
                     &mut self.stack,
                     &mut self.variables,
                     self.data_region,
                     self.temp_buf,
                     self.max_temp_buf_bytes,
+                    self.frames,
                     &scope,
                     current_time_us,
-                    0, // top-of-chain call: depth starts at zero
                     entry_function_id,
                     #[cfg(feature = "profiling")]
                     &mut self.profile,
@@ -617,80 +601,109 @@ macro_rules! load_const {
     }};
 }
 
-/// Executes bytecode until RET_VOID or a trap, using a no-op debug hook.
+/// Executes the given entry function until it returns (the frame stack
+/// drains) or a trap, using a no-op debug hook.
 ///
 /// This is a thin wrapper around [`execute_with_hook`] that supplies a
-/// [`NoopDebugHook`]. Existing call sites use this entry point so that the
-/// debug-hook plumbing imposes no overhead on VMs that do not need
+/// [`NoopDebugHook`]. Existing call sites use this entry point so that
+/// the debug-hook plumbing imposes no overhead on VMs that do not need
 /// instruction-level callbacks (the noop hook is a ZST and inlines away).
 #[allow(clippy::too_many_arguments)]
 fn execute(
-    bytecode: &[u8],
     container: &Container,
     stack: &mut OperandStack,
     variables: &mut VariableTable,
     data_region: &mut [u8],
     temp_buf: &mut [u8],
     max_temp_buf_bytes: usize,
-    scope: &VariableScope,
+    frames: &mut [Frame],
+    entry_scope: &VariableScope,
     current_time_us: u64,
-    depth: u32,
-    current_function_id: FunctionId,
+    entry_function_id: FunctionId,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
     let mut hook = NoopDebugHook;
     execute_with_hook(
-        bytecode,
         container,
         stack,
         variables,
         data_region,
         temp_buf,
         max_temp_buf_bytes,
-        scope,
+        frames,
+        entry_scope,
         current_time_us,
-        depth,
-        current_function_id,
+        entry_function_id,
         #[cfg(feature = "profiling")]
         profile,
         &mut hook,
     )
 }
 
-/// Executes bytecode until RET_VOID or a trap, invoking `hook.before_instruction`
-/// before each opcode.
+/// Executes the entry function until its frame stack drains (program
+/// returns) or a trap, invoking `hook.before_instruction` before each
+/// opcode.
 ///
-/// `current_function_id` identifies the function whose bytecode is being
-/// executed in this frame; it is forwarded to the debug hook so consumers
-/// can resolve `(function_id, pc)` pairs (e.g. via
-/// `DebugSection::lookup_source_location`) even across nested CALL /
-/// FB_CALL frames.
+/// The dispatch loop is iterative: a single [`FrameStack`] tracks every
+/// in-flight PLC `CALL` / user-`FB_CALL`, so the Rust call stack is not
+/// consumed proportionally to PLC call depth and an instruction-level
+/// debugger can be added without restructuring the loop again.
 ///
-/// This is a free function so that the borrow checker can see
-/// independent borrows of container (immutable) vs stack/variables
-/// (mutable). It is generic over the hook type so that the noop hook
-/// monomorphization compiles to identical code as before; only callers
-/// that supply a real hook pay any runtime cost.
+/// `entry_function_id` identifies the topmost function pushed onto the
+/// frame stack; subsequent CALLs push deeper frames and each frame
+/// carries its own function id so `hook.before_instruction` can resolve
+/// `(function_id, pc)` pairs across nested frames.
+///
+/// It is generic over the hook type so that the noop hook monomorphizes
+/// to identical code as before; only callers that supply a real hook
+/// pay any runtime cost.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn execute_with_hook<H: DebugHook>(
-    bytecode: &[u8],
     container: &Container,
     stack: &mut OperandStack,
     variables: &mut VariableTable,
     data_region: &mut [u8],
     temp_buf: &mut [u8],
     max_temp_buf_bytes: usize,
-    scope: &VariableScope,
+    frames: &mut [Frame],
+    entry_scope: &VariableScope,
     current_time_us: u64,
-    depth: u32,
-    current_function_id: FunctionId,
+    entry_function_id: FunctionId,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
     hook: &mut H,
 ) -> Result<(), Trap> {
-    let mut pc: usize = 0;
     let mut temp_alloc = string_ops::TempBufAllocator::new(max_temp_buf_bytes);
+    let mut frame_stack = FrameStack::new(frames);
+    frame_stack.push(Frame {
+        function_id: entry_function_id,
+        pc: 0,
+        scope: *entry_scope,
+        temp_alloc_mark: 0,
+        fb_return: None,
+    })?;
 
-    while pc < bytecode.len() {
+    while !frame_stack.is_empty() {
+        // Snapshot the top frame's mutable state for this iteration.
+        // `pc` is the local working copy; we write it back to the frame
+        // at the end of the iteration unless dispatch pushed or popped
+        // a frame (in which case the frame stack top changed mid-arm
+        // and `pc` is not relevant to the new top).
+        let (current_function_id, scope, mut pc) = {
+            let top = frame_stack.top().expect("non-empty by loop condition");
+            (top.function_id, top.scope, top.pc)
+        };
+        let bytecode = container
+            .code
+            .get_function_bytecode(current_function_id)
+            .ok_or(Trap::InvalidFunctionId(current_function_id))?;
+
+        if pc >= bytecode.len() {
+            // Fell off the end of a function body without an explicit
+            // RET — treat as RET_VOID.
+            handle_frame_return(&mut temp_alloc, &mut frame_stack, data_region, variables)?;
+            continue;
+        }
+
         let op = bytecode[pc];
         // Notify the debug hook before advancing pc so the hook sees the
         // offset of the opcode itself, not its operand bytes. With
@@ -700,6 +713,12 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
         #[cfg(feature = "profiling")]
         profile.record(op);
+
+        // Set to false in arms that push or pop a frame; the post-match
+        // pc write-back is skipped in those cases so we never clobber a
+        // newly-pushed callee's `pc: 0` or a freshly-popped caller's
+        // already-correct `pc`.
+        let mut advance_pc = true;
 
         match op {
             // --- Load constants ---
@@ -1063,16 +1082,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 }
             }
             opcode::CALL => {
-                let func_id = read_u16_le(bytecode, &mut pc)?;
+                let func_id_raw = read_u16_le(bytecode, &mut pc)?;
                 let var_offset = read_u16_le(bytecode, &mut pc)?;
+                let func_id = FunctionId::new(func_id_raw);
                 let func = container
                     .code
-                    .get_function(FunctionId::new(func_id))
-                    .ok_or(Trap::InvalidFunctionId(FunctionId::new(func_id)))?;
-                let func_bytecode = container
-                    .code
-                    .get_function_bytecode(FunctionId::new(func_id))
-                    .ok_or(Trap::InvalidFunctionId(FunctionId::new(func_id)))?;
+                    .get_function(func_id)
+                    .ok_or(Trap::InvalidFunctionId(func_id))?;
 
                 let func_scope = VariableScope {
                     shared_globals_size: scope.shared_globals_size,
@@ -1080,39 +1096,38 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     instance_count: func.num_locals,
                 };
 
-                // Pop arguments from stack into function's parameter slots (reverse order).
+                // Pop arguments from stack into function's parameter slots
+                // (reverse order so the leftmost argument lands in the lowest
+                // slot).
                 for i in (0..func.num_params).rev() {
                     let val = stack.pop()?;
                     variables.store(VarIndex::new(var_offset + i), val)?;
                 }
 
-                // Recursively execute the function body, threading the debug hook
-                // through so callees are observable too. A future iterative
-                // dispatch rewrite could replace this recursion with an explicit
-                // return-address stack; until then the depth counter bounds it.
-                if depth >= MAX_CALL_DEPTH {
-                    return Err(Trap::CallStackOverflow);
-                }
-                execute_with_hook(
-                    func_bytecode,
-                    container,
-                    stack,
-                    variables,
-                    data_region,
-                    temp_buf,
-                    max_temp_buf_bytes,
-                    &func_scope,
-                    current_time_us,
-                    depth + 1,
-                    FunctionId::new(func_id),
-                    #[cfg(feature = "profiling")]
-                    profile,
-                    hook,
-                )?;
+                // Save the caller's pc (already advanced past the CALL's
+                // operand bytes) on its frame, then push the callee's frame.
+                // `FrameStack::push` returns Trap::CallStackOverflow on
+                // capacity overflow — same trap as the old depth-counter
+                // check.
+                frame_stack
+                    .top_mut()
+                    .expect("non-empty: caller frame is still on stack")
+                    .pc = pc;
+                frame_stack.push(Frame {
+                    function_id: func_id,
+                    pc: 0,
+                    scope: func_scope,
+                    temp_alloc_mark: temp_alloc.next(),
+                    fb_return: None,
+                })?;
+                advance_pc = false;
             }
             opcode::RET => {
-                // Return value is already on the stack; just return from execute().
-                return Ok(());
+                // Return value is already on the operand stack; just unwind
+                // this frame and let the caller frame (or outer-loop exit)
+                // resume.
+                handle_frame_return(&mut temp_alloc, &mut frame_stack, data_region, variables)?;
+                advance_pc = false;
             }
             // --- String opcodes ---
             //
@@ -1881,19 +1896,15 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                         let func_id = user_fb.function_id;
                         let var_off = user_fb.var_offset;
-                        let num_fields = user_fb.num_fields as usize;
+                        let num_fields = user_fb.num_fields;
 
                         let func = container
                             .code
                             .get_function(func_id)
                             .ok_or(Trap::InvalidFunctionId(func_id))?;
-                        let func_bytecode = container
-                            .code
-                            .get_function_bytecode(func_id)
-                            .ok_or(Trap::InvalidFunctionId(func_id))?;
 
                         // Copy-in: data region fields -> variable table slots.
-                        for i in 0..num_fields {
+                        for i in 0..num_fields as usize {
                             let offset = instance_start + i * 8;
                             if offset + 8 > data_region.len() {
                                 return Err(Trap::DataRegionOutOfBounds(offset as u32));
@@ -1906,39 +1917,32 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             )?;
                         }
 
-                        // Execute the FB body.
                         let func_scope = VariableScope {
                             shared_globals_size: scope.shared_globals_size,
                             instance_offset: var_off,
                             instance_count: func.num_locals,
                         };
-                        if depth >= MAX_CALL_DEPTH {
-                            return Err(Trap::CallStackOverflow);
-                        }
-                        execute_with_hook(
-                            func_bytecode,
-                            container,
-                            stack,
-                            variables,
-                            data_region,
-                            temp_buf,
-                            max_temp_buf_bytes,
-                            &func_scope,
-                            current_time_us,
-                            depth + 1,
-                            func_id,
-                            #[cfg(feature = "profiling")]
-                            profile,
-                            hook,
-                        )?;
 
-                        // Copy-out: variable table slots -> data region fields.
-                        for i in 0..num_fields {
-                            let offset = instance_start + i * 8;
-                            let val = variables.load(VarIndex::new(var_off + i as u16))?;
-                            data_region[offset..offset + 8]
-                                .copy_from_slice(&val.as_i64().to_le_bytes());
-                        }
+                        // Save the caller's pc, then push the FB frame.
+                        // `fb_return` records what `handle_frame_return`
+                        // needs to copy variable slots back to the data
+                        // region after the FB body returns.
+                        frame_stack
+                            .top_mut()
+                            .expect("non-empty: caller frame is still on stack")
+                            .pc = pc;
+                        frame_stack.push(Frame {
+                            function_id: func_id,
+                            pc: 0,
+                            scope: func_scope,
+                            temp_alloc_mark: temp_alloc.next(),
+                            fb_return: Some(FbCallReturn {
+                                instance_start,
+                                var_offset: var_off,
+                                num_fields,
+                            }),
+                        })?;
+                        advance_pc = false;
                     }
                 }
             }
@@ -2113,11 +2117,55 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .copy_from_slice(&value_slot.as_i64().to_le_bytes());
             }
             opcode::RET_VOID => {
-                return Ok(());
+                handle_frame_return(&mut temp_alloc, &mut frame_stack, data_region, variables)?;
+                advance_pc = false;
             }
             _ => {
                 return Err(Trap::InvalidInstruction(op));
             }
+        }
+
+        if advance_pc {
+            // Write the working `pc` back to the frame we entered this
+            // iteration with. CALL / RET / FB_CALL-user-branch arms set
+            // `advance_pc = false` because they have already updated
+            // the stack and the top frame is no longer the one we
+            // started with.
+            frame_stack
+                .top_mut()
+                .expect("non-empty: advance_pc=true means no push/pop happened")
+                .pc = pc;
+        }
+    }
+
+    Ok(())
+}
+
+/// Pops the topmost frame, rewinds the temp-buffer allocator to the
+/// frame's mark, and (for `FB_CALL` frames) copies variable slots back
+/// into the FB instance's data-region fields.
+///
+/// Used by `RET`, `RET_VOID`, and the implicit-return path (running off
+/// the end of a function body) inside the iterative dispatch loop.
+fn handle_frame_return(
+    temp_alloc: &mut string_ops::TempBufAllocator,
+    frame_stack: &mut FrameStack,
+    data_region: &mut [u8],
+    variables: &mut VariableTable,
+) -> Result<(), Trap> {
+    let popped = frame_stack
+        .pop()
+        .expect("caller must hold the loop invariant: non-empty before return");
+    temp_alloc.rewind_to(popped.temp_alloc_mark);
+
+    if let Some(fbr) = popped.fb_return {
+        for i in 0..fbr.num_fields as usize {
+            let offset = fbr.instance_start + i * 8;
+            if offset + 8 > data_region.len() {
+                return Err(Trap::DataRegionOutOfBounds(offset as u32));
+            }
+            let val = variables.load(VarIndex::new(fbr.var_offset + i as u16))?;
+            data_region[offset..offset + 8].copy_from_slice(&val.as_i64().to_le_bytes());
         }
     }
 
