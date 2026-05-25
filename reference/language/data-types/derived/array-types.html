@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.214.0">
+<meta name="ironplc-version" content="0.215.0">
 </head>
   <body>
     
@@ -568,6 +568,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V9011.html">V9011</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V9012.html">V9012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V9013.html">V9013</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V9014.html">V9014</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../../runtime/problems/V9015.html">V9015</a></li>
 </ul>
 </li>
 </ul>
@@ -665,7 +667,7 @@
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <div class="tab-set docutils">
 <input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
-<iframe src="https://playground.ironplc.com/?embed=true&code=VFlQRQogICAgVGVuSW50cyA6IEFSUkFZIFsxLi4xMF0gT0YgSU5UOwpFTkRfVFlQRQoKUFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICB2YWx1ZXMgOiBBUlJBWSBbMC4uOV0gT0YgRElOVDsKICAgICAgICBtYXRyaXggOiBBUlJBWSBbMS4uMywgMS4uM10gT0YgUkVBTDsKICAgIEVORF9WQVIKCiAgICB2YWx1ZXNbMF0gOj0gNDI7CiAgICB2YWx1ZXNbNV0gOj0gdmFsdWVzWzBdICsgMTsKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:493px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Flanguage%2Fdata-types%2Fderived%2Farray-types&code=VFlQRQogICAgVGVuSW50cyA6IEFSUkFZIFsxLi4xMF0gT0YgSU5UOwpFTkRfVFlQRQoKUFJPR1JBTSBtYWluCiAgICBWQVIKICAgICAgICB2YWx1ZXMgOiBBUlJBWSBbMC4uOV0gT0YgRElOVDsKICAgICAgICBtYXRyaXggOiBBUlJBWSBbMS4uMywgMS4uM10gT0YgUkVBTDsKICAgIEVORF9WQVIKCiAgICB2YWx1ZXNbMF0gOj0gNDI7CiAgICB2YWx1ZXNbNV0gOj0gdmFsdWVzWzBdICsgMTsKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:493px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
 <input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
     <span class="n">TenInts</span> <span class="p">:</span> <span class="n">ARRAY</span> <span class="p">[</span><span class="mf">1..10</span><span class="p">]</span> <span class="n">OF</span> <span class="n">INT</span><span class="p">;</span>
@@ -700,7 +702,7 @@ flag. The constant must be declared in a
 <code class="docutils literal notranslate"><span class="pre">VAR_GLOBAL</span> <span class="pre">CONSTANT</span></code> block.</p>
 <div class="tab-set docutils">
 <input checked="True" class="tab-input" id="tab-set--1-input--1" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--1">Try it</label><div class="tab-content docutils">
-<iframe src="https://playground.ironplc.com/?embed=true&code=VkFSX0dMT0JBTCBDT05TVEFOVAogIEFSUkFZX1NJWkUgOiBJTlQgOj0gMTA7CkVORF9WQVIKCkZVTkNUSU9OX0JMT0NLIGZiMQogIFZBUl9FWFRFUk5BTCBDT05TVEFOVAogICAgQVJSQVlfU0laRSA6IElOVDsKICBFTkRfVkFSCiAgVkFSCiAgICBkYXRhIDogQVJSQVlbMS4uQVJSQVlfU0laRV0gT0YgSU5UOwogIEVORF9WQVIKRU5EX0ZVTkNUSU9OX0JMT0NLCgpQUk9HUkFNIG1haW4KICBWQVIKICAgIGluc3RhbmNlIDogZmIxOwogIEVORF9WQVIKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<iframe src="https://playground.ironplc.com/?embed=true&source=ironplc-docs&host=reference%2Flanguage%2Fdata-types%2Fderived%2Farray-types&code=VkFSX0dMT0JBTCBDT05TVEFOVAogIEFSUkFZX1NJWkUgOiBJTlQgOj0gMTA7CkVORF9WQVIKCkZVTkNUSU9OX0JMT0NLIGZiMQogIFZBUl9FWFRFUk5BTCBDT05TVEFOVAogICAgQVJSQVlfU0laRSA6IElOVDsKICBFTkRfVkFSCiAgVkFSCiAgICBkYXRhIDogQVJSQVlbMS4uQVJSQVlfU0laRV0gT0YgSU5UOwogIEVORF9WQVIKRU5EX0ZVTkNUSU9OX0JMT0NLCgpQUk9HUkFNIG1haW4KICBWQVIKICAgIGluc3RhbmNlIDogZmIxOwogIEVORF9WQVIKRU5EX1BST0dSQU0%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:533px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
 <input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio" /><label class="tab-label" for="tab-set--1-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">VAR_GLOBAL</span> <span class="n">CONSTANT</span>
   <span class="n">ARRAY_SIZE</span> <span class="p">:</span> <span class="n">INT</span> <span class="o">:=</span> <span class="mi">10</span><span class="p">;</span>

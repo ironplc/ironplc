@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.214.0">
+<meta name="ironplc-version" content="0.215.0">
 </head>
   <body>
     
@@ -568,6 +568,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9011.html">V9011</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9012.html">V9012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9013.html">V9013</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9014.html">V9014</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9015.html">V9015</a></li>
 </ul>
 </li>
 </ul>
@@ -1282,7 +1284,7 @@ target type may be truncated or cause a runtime error.</p>
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <div class="tab-set docutils">
 <input checked="True" class="tab-input" id="tab-set--0-input--1" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--1">Try it</label><div class="tab-content docutils">
-<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&code=aW50X3ZhbCA6PSBSRUFMX1RPX0lOVChSRUFMIzMuMTQpOyAgICAgKCogaW50X3ZhbCA9IDMgKikKcmVhbF92YWwgOj0gSU5UX1RPX1JFQUwoNDIpOyAgICAgICAgICAgICgqIHJlYWxfdmFsID0gNDIuMCAqKQpiaWdfdmFsIDo9IElOVF9UT19ESU5UKDEwMDApOyAgICAgICAgICAgKCogYmlnX3ZhbCA9IDEwMDAsIHdpZGVuaW5nICop&vars=aW50X3ZhbCA6IElOVDsgcmVhbF92YWwgOiBSRUFMOyBiaWdfdmFsIDogRElOVDs%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:523px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
+<iframe src="https://playground.ironplc.com/?embed=true&scaffold=true&source=ironplc-docs&host=reference%2Fstandard-library%2Ffunctions%2Ftype-conversions&code=aW50X3ZhbCA6PSBSRUFMX1RPX0lOVChSRUFMIzMuMTQpOyAgICAgKCogaW50X3ZhbCA9IDMgKikKcmVhbF92YWwgOj0gSU5UX1RPX1JFQUwoNDIpOyAgICAgICAgICAgICgqIHJlYWxfdmFsID0gNDIuMCAqKQpiaWdfdmFsIDo9IElOVF9UT19ESU5UKDEwMDApOyAgICAgICAgICAgKCogYmlnX3ZhbCA9IDEwMDAsIHdpZGVuaW5nICop&vars=aW50X3ZhbCA6IElOVDsgcmVhbF92YWwgOiBSRUFMOyBiaWdfdmFsIDogRElOVDs%3D" class="ironplc-playground" loading="lazy" title="IronPLC Playground" style="width:100%;height:523px;border:1px solid #3e3e5e;border-radius:4px;"></iframe></div>
 <input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">Source</label><div class="tab-content docutils">
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">int_val</span> <span class="o">:=</span> <span class="n">REAL_TO_INT</span><span class="p">(</span><span class="n">REAL</span><span class="c1">#3.14);     (* int_val = 3 *)</span>
 <span class="n">real_val</span> <span class="o">:=</span> <span class="n">INT_TO_REAL</span><span class="p">(</span><span class="mi">42</span><span class="p">);</span>            <span class="p">(</span><span class="o">*</span> <span class="n">real_val</span> <span class="o">=</span> <span class="mf">42.0</span> <span class="o">*</span><span class="p">)</span>
