@@ -1,0 +1,21 @@
+=====
+V9014
+=====
+
+.. problem-summary:: V9014
+
+The VM detected a string operation whose operand encoding (1 for ``STRING``,
+2 for ``WSTRING``) does not match the destination's declared encoding.
+
+The analyzer rejects cross-encoding assignments and operations statically,
+so this trap is reached only via:
+
+1. **A compiler bug** that emits a string opcode whose source and destination
+   disagree on encoding.
+2. **A tampered or hand-crafted ``.iplc`` file** whose constant pool, data
+   region headers, or temp buffer slots disagree on encoding.
+
+The runtime check is the defense-in-depth layer: even if a static check
+slips, the trap fires before silently corrupting data.
+
+.. include:: ../../../includes/report-internal-vm-error.rst

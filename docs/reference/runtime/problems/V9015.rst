@@ -1,0 +1,30 @@
+=====
+V9015
+=====
+
+.. problem-summary:: V9015
+
+The VM read a ``char_width`` byte (the per-code-unit encoding tag of a
+string value) whose value was neither ``1`` (``STRING`` / Latin-1) nor
+``2`` (``WSTRING`` / UTF-16LE).
+
+``char_width`` is carried in three places at runtime:
+
+1. each string variable's data-region header
+2. each constant-pool string entry
+3. each temp-buffer slot
+
+A valid ``.iplc`` file always carries a recognized encoding at every one
+of these sites. This trap fires when a byte read from any of them — or
+from the ``char_width`` operand of ``STR_INIT`` in the bytecode stream —
+holds an unrecognized value.
+
+The analyzer and the constant-pool deserializer reject unknown encodings
+statically, so this trap is reached only via:
+
+1. **A compiler bug** that writes a malformed ``char_width`` byte into
+   a string header, constant-pool entry, or bytecode operand.
+2. **A tampered or hand-crafted ``.iplc`` file** that holds an
+   unrecognized encoding tag.
+
+.. include:: ../../../includes/report-internal-vm-error.rst
