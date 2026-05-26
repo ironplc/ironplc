@@ -4,6 +4,19 @@
 Installation
 ============
 
+.. note::
+
+   The IronPLC VS Code extension is currently unavailable on the Visual
+   Studio Marketplace. Install via:
+
+   - `Open VSX <https://open-vsx.org/extension/ironplc/ironplc>`_ (Cursor,
+     Windsurf, VSCodium)
+   - Direct VSIX from `IronPLC GitHub releases`_
+
+   Existing installs continue to work; automatic updates from the
+   Marketplace are paused. We are working with Microsoft to restore the
+   listing.
+
 IronPLC supports the following platforms:
 
 - Windows (x64, arm64)
