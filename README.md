@@ -70,3 +70,15 @@ Contributions are very welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for detai
 * [msr](https://github.com/slowtec/msr) - A Rust library for industrial automation.
 * [ethercat-rs](https://github.com/birkenfeld/ethercat-rs) - An experimental Rust automation toolbox using the IgH (Etherlab) EtherCAT master.
 * [rustmatic](https://github.com/NOP0/rustmatic) - Rustmatic is a thought experiment on creating a PLC-like environment in Rust.
+
+## Trademarks
+
+IronPLC is an independent open-source project. It is not affiliated with,
+endorsed by, or sponsored by any third party. TwinCAT is a trademark of
+Beckhoff Automation GmbH & Co. KG. CODESYS is a trademark of CODESYS GmbH.
+Beremiz is a trademark of its respective owner. PLCopen is a trademark of
+PLCopen. EtherCAT is a registered trademark of Beckhoff Automation. All
+other trademarks are the property of their respective owners. References
+to these names in IronPLC and its documentation are descriptive
+(nominative) only — they identify file formats, compatibility modes, and
+related projects, and do not imply endorsement.
