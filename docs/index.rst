@@ -78,3 +78,4 @@ macOS and Linux.
    How-to guides <how-to-guides/index>
    Explanation <explanation/index>
    Reference <reference/index>
+   Trademarks <trademarks>

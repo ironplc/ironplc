@@ -19,9 +19,13 @@
   "homepage": "https://www.ironplc.com",
   "repository": {
     "type": "git",
-    "url": "http://github.com/ironplc/ironplc.git",
+    "url": "https://github.com/ironplc/ironplc.git",
     "directory": "integrations/vscode"
   },
+  "bugs": {
+    "url": "https://github.com/ironplc/ironplc/issues"
+  },
+  "qna": "https://github.com/ironplc/ironplc/issues",
   "activationEvents": [
     "onCustomEditor:ironplc.iplcViewer",
     "onLanguage:61131-3-st",
@@ -135,6 +139,7 @@
       {
         "id": "twincat-pou",
         "aliases": [
+          "PLCopen POU (.TcPOU)",
           "TwinCAT POU"
         ],
         "extensions": [
@@ -145,6 +150,7 @@
       {
         "id": "twincat-gvl",
         "aliases": [
+          "PLCopen GVL (.TcGVL)",
           "TwinCAT GVL"
         ],
         "extensions": [
@@ -155,6 +161,7 @@
       {
         "id": "twincat-dut",
         "aliases": [
+          "PLCopen DUT (.TcDUT)",
           "TwinCAT DUT"
         ],
         "extensions": [
