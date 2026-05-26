@@ -154,11 +154,17 @@ jobs:
       # Execute build recipes
       - name: Install dependencies
         run: just setup
-      - name: Publish VS Code Extension to Marketplace
-        if: ${{ !inputs.dryrun }}
-        run: just publish ironplc-vscode-extension.vsix
-        env:
-          VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+      # TODO: Restore once the ironplc publisher and ironplc.ironplc
+      # extension are reinstated on the Visual Studio Marketplace.
+      # The publisher was blocked and the extension removed by Microsoft;
+      # publish attempts return RequestBlockedException (VSID/Concurrency)
+      # until the listing is restored. Users install via the GitHub
+      # release VSIX in the meantime (see docs/quickstart/installation.rst).
+      # - name: Publish VS Code Extension to Marketplace
+      #   if: ${{ !inputs.dryrun }}
+      #   run: just publish ironplc-vscode-extension.vsix
+      #   env:
+      #     VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
       - name: Publish VS Code Extension to Open VSX
         if: ${{ !inputs.dryrun }}
         run: just publish-openvsx ironplc-vscode-extension.vsix
