@@ -61,12 +61,14 @@ _package-windows version filename target:
 
 _package-macos version filename target:
   cargo build --release --target {{target}}
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp
+  cp bom.cdx.json target/{{target}}/release/bom.cdx.json
+  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json
   shasum -a 256 {{filename}} > {{filename}}.sha256
 
 _package-linux version filename target:
   cargo build --release --target {{target}}
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp
+  cp bom.cdx.json target/{{target}}/release/bom.cdx.json
+  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json
   sha256sum {{filename}} > {{filename}}.sha256
 
 # Builds the Homebrew repository to release for Mac and Linux
@@ -80,6 +82,32 @@ publish $VERSION $MACFILENAME $LINUXFILENAME:
   mkdir -p target
   cp -r homebrew target
   export MACSHA256=`cat {{MACFILENAME}}.sha256 | cut -f 1 -d " "` && export LINUXSHA256=`cat {{LINUXFILENAME}}.sha256 | cut -f 1 -d " "` && envsubst < homebrew/Formula/ironplc.rb > target/homebrew/Formula/ironplc.rb
+
+# Generate a CycloneDX JSON SBOM (bom.cdx.json) for the workspace. Requires cargo-cyclonedx and cyclonedx CLI on PATH.
+sbom version:
+  just _sbom-{{os()}} {{version}}
+
+_sbom-linux version:
+  cargo cyclonedx --format json --spec-version 1.5 --all --override-filename _ironplc_bom
+  cyclonedx merge --hierarchical --name ironplc-compiler --version {{version}} \
+    --input-files $(find . -name "_ironplc_bom.json" -not -path "./target/*" | sort) \
+    --output-file bom.cdx.json --output-format json
+  find . -name "_ironplc_bom.json" -not -path "./target/*" -delete
+  sha256sum bom.cdx.json > bom.cdx.json.sha256
+
+_sbom-macos version:
+  cargo cyclonedx --format json --spec-version 1.5 --all --override-filename _ironplc_bom
+  cyclonedx merge --hierarchical --name ironplc-compiler --version {{version}} \
+    --input-files $(find . -name "_ironplc_bom.json" -not -path "./target/*" | sort) \
+    --output-file bom.cdx.json --output-format json
+  find . -name "_ironplc_bom.json" -not -path "./target/*" -delete
+  shasum -a 256 bom.cdx.json > bom.cdx.json.sha256
+
+_sbom-windows version:
+  cargo cyclonedx --format json --spec-version 1.5 --all --override-filename _ironplc_bom
+  $files = Get-ChildItem -Recurse -Filter "_ironplc_bom.json" | Where-Object { $_.FullName -notlike "*\target\*" } | ForEach-Object { $_.FullName }; cyclonedx merge --hierarchical --name ironplc-compiler --version {{version}} --input-files $files --output-file bom.cdx.json --output-format json
+  Get-ChildItem -Recurse -Filter "_ironplc_bom.json" | Where-Object { $_.FullName -notlike "*\target\*" } | Remove-Item
+  pwsh -noprofile -command 'Get-FileHash -Path "bom.cdx.json" -Algorithm SHA256 | Select-Object -ExpandProperty Hash | Out-File bom.cdx.json.sha256'
 
 # Run performance benchmarks
 bench:

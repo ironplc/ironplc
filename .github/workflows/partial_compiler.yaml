@@ -18,8 +18,65 @@ on:
         description: "The version number, such as 1.2.3"
 
 jobs:
+  compiler-sbom:
+    name: Compiler SBOM
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./compiler
+    steps:
+      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: ${{ inputs.commit-ref }}
+        with:
+          ref: ${{ inputs.commit-ref }}
+      - name: Checkout HEAD
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: ${{ !inputs.commit-ref }}
+
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
+      - name: Install cyclonedx-cli
+        run: |
+          curl -L -o /usr/local/bin/cyclonedx \
+            https://github.com/CycloneDX/cyclonedx-cli/releases/download/v0.27.2/cyclonedx-linux-x64
+          chmod +x /usr/local/bin/cyclonedx
+
+      - name: Generate SBOM
+        run: just sbom ${{ inputs.version }}
+
+      - name: Upload SBOM as build artifact (for matrix consumption)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ironplc-compiler-sbom
+          path: |
+            compiler/bom.cdx.json
+            compiler/bom.cdx.json.sha256
+          if-no-files-found: error
+
+      - name: Upload SBOM to GitHub Release
+        if: ${{ inputs.gh-release-tag }}
+        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ inputs.gh-release-tag }}
+          asset_name: ironplc-compiler-${{ inputs.version }}.cdx.json
+          file: compiler/bom.cdx.json
+      - name: Upload SBOM SHA256 to GitHub Release
+        if: ${{ inputs.gh-release-tag }}
+        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ inputs.gh-release-tag }}
+          asset_name: ironplc-compiler-${{ inputs.version }}.cdx.json.sha256
+          file: compiler/bom.cdx.json.sha256
+
   compiler:
     name: Build Compiler and Associated Installers
+    needs: [compiler-sbom]
     runs-on:  ${{ matrix.os }}
     defaults:
       run:
@@ -87,6 +144,14 @@ jobs:
             Write-Host "NSIS restored from cache"
           }
         
+      # Fetch the workspace SBOM produced by compiler-sbom so the
+      # package step can embed it inside the tarball / NSIS installer.
+      - name: Download SBOM for embedding
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ironplc-compiler-sbom
+          path: compiler/
+
       # Execute build recipe
       - name: Build the Compiler
         run: just ci

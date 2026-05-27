@@ -50,6 +50,7 @@ jobs:
       commit-ref: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       artifact-name: ironplc-vscode-extension.vsix
+      version: ${{ needs.release.outputs.version }}
     
   build-platform-package:
     name: Build Compiler and Associated Installers
