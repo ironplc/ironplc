@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.215.0">
+<meta name="ironplc-version" content="0.216.0">
 </head>
   <body>
     
@@ -595,6 +595,7 @@
 </li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="../trademarks.html">Trademarks</a></li>
 </ul>
 
 </div>
@@ -639,6 +640,19 @@
         <article role="main" id="furo-main-content">
           <section id="installation">
 <span id="installation-steps-target"></span><h1>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h1>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The IronPLC VS Code extension is currently unavailable on the Visual
+Studio Marketplace. Install via:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://open-vsx.org/extension/ironplc/ironplc">Open VSX</a> (Cursor,
+Windsurf, VSCodium)</p></li>
+<li><p>Direct VSIX from <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a></p></li>
+</ul>
+<p>Existing installs continue to work; automatic updates from the
+Marketplace are paused. We are working with Microsoft to restore the
+listing.</p>
+</div>
 <p>IronPLC supports the following platforms:</p>
 <ul class="simple">
 <li><p>Windows (x64, arm64)</p></li>
@@ -666,21 +680,26 @@ environments.</p>
 <ol class="arabic simple">
 <li><p>Download the latest IronPLC installer from <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>:</p>
 <ul class="simple">
-<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.215.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
-<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.215.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
+<li><p>x64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.216.0/ironplcc-x86_64-windows.exe">ironplcc-x86_64-windows.exe</a></p></li>
+<li><p>Arm64 <a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.216.0/ironplcc-aarch64-windows.exe">ironplcc-aarch64-windows.exe</a></p></li>
 </ul>
 </li>
 <li><p>Run the installer and follow the prompts to complete
 installation of the CLI.</p></li>
 </ol>
 <p class="rubric">Install IronPLC Extension</p>
+<ol class="arabic simple">
+<li><p>Download the latest IronPLC extension
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.216.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
+<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
+</ol>
 <p>Run your development environment, then:</p>
 <ol class="arabic simple">
 <li><p>Go to the Extensions view by clicking on the Extensions icon in
 <span class="guilabel">Activity Bar</span> on the side of the window or using the
 View: Extensions command (<kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd>).</p></li>
-<li><p>In the Extensions view, enter <code class="samp docutils literal notranslate"><span class="pre">IronPLC</span></code> in the search box.</p></li>
-<li><p>In the Extensions view for the IronPLC item, choose <span class="guilabel">Install</span>.</p></li>
+<li><p>In the Extensions view, select <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span> button.</p></li>
+<li><p>In the <span class="guilabel">Install from VSIX</span> dialog, select the VSIX file you downloaded earlier.</p></li>
 </ol>
 </div>
 <input class="tab-input" id="tab-set--0-input--2" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--2">macOS</label><div class="tab-content docutils">
@@ -705,13 +724,18 @@ brew<span class="w"> </span>install<span class="w"> </span>ironplc
 <code class="docutils literal notranslate"><span class="pre">$HOME/.ironplc/bin</span></code> and adds that directory to your <code class="docutils literal notranslate"><span class="pre">PATH</span></code> via
 your shell profile.</p>
 <p class="rubric">Install IronPLC Extension</p>
+<ol class="arabic simple">
+<li><p>Download the latest IronPLC extension
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.216.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
+<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
+</ol>
 <p>Run your development environment, then:</p>
 <ol class="arabic simple">
 <li><p>Go to the Extensions view by clicking on the Extensions icon in
 <span class="guilabel">Activity Bar</span> on the side of the window or using the
 View: Extensions command (<kbd class="kbd docutils literal notranslate">⌘</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd>).</p></li>
-<li><p>In the Extensions view, enter <code class="samp docutils literal notranslate"><span class="pre">IronPLC</span></code> in the search box.</p></li>
-<li><p>In the Extensions view for the IronPLC item, choose <span class="guilabel">Install</span>.</p></li>
+<li><p>In the Extensions view, select <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span> button.</p></li>
+<li><p>In the <span class="guilabel">Install from VSIX</span> dialog, select the VSIX file you downloaded earlier.</p></li>
 </ol>
 </div>
 <input class="tab-input" id="tab-set--0-input--3" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--3">Linux</label><div class="tab-content docutils">
@@ -729,13 +753,18 @@ your shell profile.</p>
 </div>
 <p>Prebuilt binaries are currently provided for x86_64 Linux only.</p>
 <p class="rubric">Install IronPLC Extension</p>
+<ol class="arabic simple">
+<li><p>Download the latest IronPLC extension
+<a class="extlink-download_artifact reference external" href="https://github.com/ironplc/ironplc/releases/download/v0.216.0/ironplc-vscode-extension.vsix">ironplc-vscode-extension.vsix</a> from
+<a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>.</p></li>
+</ol>
 <p>Run your development environment, then:</p>
 <ol class="arabic simple">
 <li><p>Go to the Extensions view by clicking on the Extensions icon in
 <span class="guilabel">Activity Bar</span> on the side of the window or using the
 View: Extensions command (<kbd class="kbd docutils literal notranslate">Ctrl</kbd>+<kbd class="kbd docutils literal notranslate">Shift</kbd>+<kbd class="kbd docutils literal notranslate">X</kbd>).</p></li>
-<li><p>In the Extensions view, enter <code class="samp docutils literal notranslate"><span class="pre">IronPLC</span></code> in the search box.</p></li>
-<li><p>In the Extensions view for the IronPLC item, choose <span class="guilabel">Install</span>.</p></li>
+<li><p>In the Extensions view, select <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span> button.</p></li>
+<li><p>In the <span class="guilabel">Install from VSIX</span> dialog, select the VSIX file you downloaded earlier.</p></li>
 </ol>
 </div>
 </div>
