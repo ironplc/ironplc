@@ -87,6 +87,30 @@ publish $VERSION $MACFILENAME $LINUXFILENAME:
 sbom version:
   just _sbom-{{os()}} {{version}}
 
+# Install SBOM generation tools (cargo-cyclonedx and cyclonedx-cli) so `just sbom` runs locally.
+setup-sbom:
+  cargo install --locked cargo-cyclonedx
+  just _install-cyclonedx-cli-{{os()}}
+
+_install-cyclonedx-cli-linux:
+  curl -L --fail -o /tmp/cyclonedx https://github.com/CycloneDX/cyclonedx-cli/releases/download/v0.27.2/cyclonedx-linux-x64
+  chmod +x /tmp/cyclonedx
+  sudo mv /tmp/cyclonedx /usr/local/bin/cyclonedx
+
+_install-cyclonedx-cli-macos:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  case "$(uname -m)" in
+    arm64|aarch64) suffix=osx-arm64 ;;
+    *)             suffix=osx-x64   ;;
+  esac
+  curl -L --fail -o /tmp/cyclonedx "https://github.com/CycloneDX/cyclonedx-cli/releases/download/v0.27.2/cyclonedx-${suffix}"
+  chmod +x /tmp/cyclonedx
+  sudo mv /tmp/cyclonedx /usr/local/bin/cyclonedx
+
+_install-cyclonedx-cli-windows:
+  Invoke-WebRequest -Uri "https://github.com/CycloneDX/cyclonedx-cli/releases/download/v0.27.2/cyclonedx-win-x64.exe" -OutFile "$env:USERPROFILE\.cargo\bin\cyclonedx.exe"
+
 _sbom-linux version:
   cargo cyclonedx --format json --spec-version 1.5 --all --override-filename _ironplc_bom
   cyclonedx merge --hierarchical --name ironplc-compiler --version {{version}} \
