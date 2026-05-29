@@ -26,7 +26,7 @@ impl ConstEntry {
     /// `bytes` must be at most 8 bytes; the source slice is interpreted as
     /// the native little-endian encoding of the primitive.
     pub fn primitive_le(const_type: ConstType, bytes: &[u8]) -> Self {
-        debug_assert!(!matches!(const_type, ConstType::Str));
+        debug_assert!(!matches!(const_type, ConstType::Str | ConstType::WStr));
         debug_assert!(bytes.len() <= 8);
         let mut primitive = [0u8; 8];
         primitive[..bytes.len()].copy_from_slice(bytes);
@@ -37,10 +37,19 @@ impl ConstEntry {
         }
     }
 
-    /// Constructs a string entry from raw bytes.
+    /// Constructs a narrow string entry (Latin-1, 1 byte per character).
     pub fn string(bytes: impl Into<Box<[u8]>>) -> Self {
         Self {
             const_type: ConstType::Str,
+            primitive: [0u8; 8],
+            str_value: bytes.into(),
+        }
+    }
+
+    /// Constructs a wide string entry (UTF-16LE, 2 bytes per code unit).
+    pub fn wstring(bytes: impl Into<Box<[u8]>>) -> Self {
+        Self {
+            const_type: ConstType::WStr,
             primitive: [0u8; 8],
             str_value: bytes.into(),
         }
@@ -52,7 +61,7 @@ impl ConstEntry {
         match self.const_type {
             ConstType::I32 | ConstType::U32 | ConstType::F32 => &self.primitive[..4],
             ConstType::I64 | ConstType::U64 | ConstType::F64 => &self.primitive[..8],
-            ConstType::Str => &self.str_value,
+            ConstType::Str | ConstType::WStr => &self.str_value,
         }
     }
 }
@@ -139,13 +148,15 @@ impl ConstantPool {
             .map(i64::from_le_bytes)
     }
 
-    /// Gets a string value (raw bytes) from the constant pool at the given index.
+    /// Gets a string value (raw bytes) from the constant pool at the given
+    /// index. Accepts both [`ConstType::Str`] (Latin-1) and
+    /// [`ConstType::WStr`] (UTF-16LE) entries.
     pub fn get_str(&self, index: ConstantIndex) -> Result<&[u8], ContainerError> {
         let entry = self
             .entries
             .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
-        if entry.const_type != ConstType::Str {
+        if !matches!(entry.const_type, ConstType::Str | ConstType::WStr) {
             return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
         }
         Ok(&entry.str_value)
@@ -177,10 +188,14 @@ impl ConstantPool {
             let const_type = ConstType::from_u8(hdr[0])?;
             // hdr[1] is reserved
             let size = u16::from_le_bytes([hdr[2], hdr[3]]) as usize;
-            let entry = if const_type == ConstType::Str {
+            let entry = if matches!(const_type, ConstType::Str | ConstType::WStr) {
                 let mut value = vec![0u8; size];
                 r.read_exact(&mut value)?;
-                ConstEntry::string(value)
+                ConstEntry {
+                    const_type,
+                    primitive: [0u8; 8],
+                    str_value: value.into_boxed_slice(),
+                }
             } else {
                 if size > 8 {
                     return Err(ContainerError::InvalidConstantType(const_type as u8));
@@ -382,5 +397,37 @@ mod tests {
         assert_eq!(i32_entry.bytes(), &7i32.to_le_bytes());
         let f64_entry = ConstEntry::primitive_le(ConstType::F64, &1.5f64.to_le_bytes());
         assert_eq!(f64_entry.bytes(), &1.5f64.to_le_bytes());
+    }
+
+    #[test]
+    fn constant_pool_wstring_when_constructed_then_has_wstr_tag() {
+        let entry = ConstEntry::wstring(b"abcd".to_vec());
+        assert_eq!(entry.const_type, ConstType::WStr);
+        assert_eq!(entry.bytes(), b"abcd");
+    }
+
+    #[test]
+    fn constant_pool_write_read_when_wstr_constant_then_roundtrips() {
+        let mut pool = ConstantPool::default();
+        // 'a' and 'b' as UTF-16LE code units
+        let bytes: Vec<u8> = vec![0x61, 0x00, 0x62, 0x00];
+        pool.push(ConstEntry::wstring(bytes.clone()));
+
+        let mut buf = Vec::new();
+        pool.write_to(&mut buf).unwrap();
+        let decoded = ConstantPool::read_from(&mut Cursor::new(&buf)).unwrap();
+
+        assert_eq!(decoded.get_str(ConstantIndex::new(0)).unwrap(), &bytes[..]);
+        let entry = decoded.iter().next().unwrap();
+        assert_eq!(entry.const_type, ConstType::WStr);
+    }
+
+    #[test]
+    fn constant_pool_get_str_when_wstr_entry_then_returns_bytes() {
+        let mut pool = ConstantPool::default();
+        let bytes: Vec<u8> = vec![0x68, 0x00, 0x69, 0x00];
+        pool.push(ConstEntry::wstring(bytes.clone()));
+
+        assert_eq!(pool.get_str(ConstantIndex::new(0)).unwrap(), &bytes[..]);
     }
 }

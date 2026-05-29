@@ -1,17 +1,7 @@
 use crate::{intermediate_type::IntermediateType, type_environment::TypeAttributes};
 
-use ironplc_container::CharWidth;
-use ironplc_dsl::common::{StringDeclaration, StringInitializer, StringType};
+use ironplc_dsl::common::{StringDeclaration, StringInitializer};
 use ironplc_dsl::core::Located;
-
-/// Maps an IEC 61131-3 `StringType` to its per-code-unit byte width per
-/// ADR-0016: STRING is Latin-1 (1 byte), WSTRING is UTF-16LE (2 bytes).
-fn char_width_for(width: &StringType) -> CharWidth {
-    match width {
-        StringType::String => CharWidth::Narrow,
-        StringType::WString => CharWidth::Wide,
-    }
-}
 
 pub fn from(initializer: &StringInitializer) -> TypeAttributes {
     // String type with specific length: MY_STRING : STRING(10);
@@ -22,7 +12,7 @@ pub fn from(initializer: &StringInitializer) -> TypeAttributes {
                 .length
                 .as_ref()
                 .and_then(|len| len.as_integer().map(|i| i.value)),
-            char_width: char_width_for(&initializer.width),
+            char_width: initializer.width.char_width(),
         },
     )
 }
@@ -32,7 +22,7 @@ pub fn from_decl(decl: &StringDeclaration) -> TypeAttributes {
         decl.type_name.span(),
         IntermediateType::String {
             max_len: decl.length.as_integer().map(|i| i.value),
-            char_width: char_width_for(&decl.width),
+            char_width: decl.width.char_width(),
         },
     )
 }

@@ -1623,6 +1623,18 @@ pub enum StringType {
     WString,
 }
 
+impl StringType {
+    /// Per-code-unit byte width per ADR-0016: `Narrow` for STRING (Latin-1,
+    /// one byte per character), `Wide` for WSTRING (UTF-16LE, two bytes per
+    /// code unit).
+    pub fn char_width(&self) -> ironplc_container::CharWidth {
+        match self {
+            StringType::String => ironplc_container::CharWidth::Narrow,
+            StringType::WString => ironplc_container::CharWidth::Wide,
+        }
+    }
+}
+
 /// Declares a string type with restricted length.
 ///
 /// See section 2.3.3.1.

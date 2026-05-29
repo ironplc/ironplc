@@ -12,6 +12,7 @@ maintenance = { status = "experimental" }
 
 [dependencies]
 time = "0.3.47"
+ironplc-container = { path = "../container", version = "0.217.0" }
 ironplc-problems = { path = "../problems", version = "0.217.0" }
 dsl_macro_derive = { path = "../dsl_macro_derive", version = "0.217.0" }
 paste = "1.0"
