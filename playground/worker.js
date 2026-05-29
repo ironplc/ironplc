@@ -25,6 +25,16 @@ init()
   });
 
 self.onmessage = (e) => {
+  if (e.source && e.source !== self) {
+    self.postMessage({ type: "error", error: "Untrusted message source" });
+    return;
+  }
+
+  if (!e.data || typeof e.data !== "object" || typeof e.data.command !== "string") {
+    self.postMessage({ type: "error", error: "Invalid message payload" });
+    return;
+  }
+
   const { id, command, source, bytecodeBase64, scans, cycleTimeUs, dialect, allows } = e.data;
 
   if (!ready) {
