@@ -7,7 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = path.join(__dirname, 'generate-problems.js');
@@ -25,7 +25,7 @@ function assert(condition, message) {
 
 // --- Test 1: Generator produces valid output from real CSV ---
 console.log('Test: generator produces valid output from real CSV');
-execSync(`node ${SCRIPT}`, { cwd: ROOT });
+execFileSync('node', [SCRIPT], { cwd: ROOT });
 
 const output = fs.readFileSync(OUT_PATH, 'utf-8');
 
@@ -57,7 +57,7 @@ fs.copyFileSync(CSV_PATH, tmpCsv);
 try {
   fs.writeFileSync(CSV_PATH, malformedCsv, 'utf-8');
   try {
-    execSync(`node ${SCRIPT}`, { cwd: ROOT, stdio: 'pipe' });
+    execFileSync('node', [SCRIPT], { cwd: ROOT, stdio: 'pipe' });
     assert(false, 'Generator should have failed on malformed CSV');
   }
   catch {
@@ -71,7 +71,7 @@ finally {
 }
 
 // Re-generate the correct file after restoring CSV
-execSync(`node ${SCRIPT}`, { cwd: ROOT });
+execFileSync('node', [SCRIPT], { cwd: ROOT });
 
 // --- Summary ---
 if (failures > 0) {
