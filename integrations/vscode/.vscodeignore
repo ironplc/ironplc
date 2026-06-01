@@ -8,3 +8,5 @@ justfile
 **/*.map
 **/*.ts
 node_modules/
+bom.cdx.json
+bom.cdx.json.sha256
