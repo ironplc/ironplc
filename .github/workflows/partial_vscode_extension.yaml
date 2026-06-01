@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: false
+      version:
+        required: false
+        type: string
+        default: "0.0.0"
+        description: "The version number, such as 1.2.3"
 
 jobs:
   vscode-extension:
@@ -57,7 +62,26 @@ jobs:
       - name: Create VSIX package
         run: just package ironplc-vscode-extension.vsix
 
+      - name: Generate SBOM
+        run: just sbom ${{ inputs.version }}
+
       # Save output artifacts
+      - name: Upload SBOM to GitHub Release
+        if: ${{ inputs.gh-release-tag }}
+        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ inputs.gh-release-tag }}
+          asset_name: ironplc-vscode-extension-${{ inputs.version }}.cdx.json
+          file: integrations/vscode/bom.cdx.json
+      - name: Upload SBOM SHA256 to GitHub Release
+        if: ${{ inputs.gh-release-tag }}
+        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ inputs.gh-release-tag }}
+          asset_name: ironplc-vscode-extension-${{ inputs.version }}.cdx.json.sha256
+          file: integrations/vscode/bom.cdx.json.sha256
       - name: Upload VSIX to build artifact
         if: ${{ inputs.artifact-name }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -86,7 +86,8 @@ Section "Program files"
     SectionIn RO
 
     SetOutPath "$INSTDIR"
-    File "..\LICENSE" 
+    File "..\LICENSE"
+    File "bom.cdx.json"
 
     SetOutPath "$INSTDIR\bin"
     File "${ARTIFACTSDIR}\${APPFILE}"
