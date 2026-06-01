@@ -58,6 +58,22 @@ update-grammar-snapshots:
 package filename:
   npx vsce package --out {{filename}}
 
+# Generate a CycloneDX JSON SBOM (bom.cdx.json) for the VS Code extension.
+sbom version:
+  just _sbom-{{os()}} {{version}}
+
+_sbom-linux version:
+  npx --yes @cyclonedx/cyclonedx-npm@^4.0.0 --output-format JSON --output-file bom.cdx.json --spec-version 1.5 --package-lock-only
+  sha256sum bom.cdx.json > bom.cdx.json.sha256
+
+_sbom-macos version:
+  npx --yes @cyclonedx/cyclonedx-npm@^4.0.0 --output-format JSON --output-file bom.cdx.json --spec-version 1.5 --package-lock-only
+  shasum -a 256 bom.cdx.json > bom.cdx.json.sha256
+
+_sbom-windows version:
+  npx --yes @cyclonedx/cyclonedx-npm@^4.0.0 --output-format JSON --output-file bom.cdx.json --spec-version 1.5 --package-lock-only
+  pwsh -noprofile -command 'Get-FileHash -Path "bom.cdx.json" -Algorithm SHA256 | Select-Object -ExpandProperty Hash | Out-File bom.cdx.json.sha256'
+
 # Sets the version number for this component.
 version version:
   npm version {{version}}
