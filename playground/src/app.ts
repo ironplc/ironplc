@@ -1,23 +1,35 @@
-import uPlot from './uPlot.esm.js';
+import uPlot from "./uPlot.esm.js";
+import type {
+  Diagnostic,
+  RunResult,
+  Variable,
+  WorkerRequest,
+  WorkerResponse,
+} from "./types/messages.js";
 
-const editor = document.getElementById("editor");
-const gutter = document.getElementById("editor-gutter");
-const startBtn = document.getElementById("start-btn");
-const stopBtn = document.getElementById("stop-btn");
-const pauseBtn = document.getElementById("pause-btn");
-const intervalInput = document.getElementById("interval-input");
-const durationDisplay = document.getElementById("duration-display");
-const cyclesDisplay = document.getElementById("cycles-display");
-const status = document.getElementById("status");
-const variablesPanel = document.getElementById("variables-panel");
-const diagnosticsPanel = document.getElementById("diagnostics-panel");
-const examplesSelect = document.getElementById("examples-select");
-const dialectSelect = document.getElementById("dialect-select");
-const dialectBadge = document.getElementById("dialect-badge");
+const editor = document.getElementById("editor") as HTMLTextAreaElement;
+const gutter = document.getElementById("editor-gutter") as HTMLElement;
+const startBtn = document.getElementById("start-btn") as HTMLButtonElement;
+const stopBtn = document.getElementById("stop-btn") as HTMLButtonElement;
+const pauseBtn = document.getElementById("pause-btn") as HTMLButtonElement;
+const intervalInput = document.getElementById("interval-input") as HTMLInputElement;
+const durationDisplay = document.getElementById("duration-display") as HTMLElement;
+const cyclesDisplay = document.getElementById("cycles-display") as HTMLElement;
+const statusEl = document.getElementById("status") as HTMLElement;
+const variablesPanel = document.getElementById("variables-panel") as HTMLElement;
+const diagnosticsPanel = document.getElementById("diagnostics-panel") as HTMLElement;
+const examplesSelect = document.getElementById("examples-select") as HTMLSelectElement;
+const dialectSelect = document.getElementById("dialect-select") as HTMLSelectElement;
+const dialectBadge = document.getElementById("dialect-badge") as HTMLElement;
 
 // --- Example programs ---
 
-const EXAMPLES = [
+interface Example {
+  name: string;
+  code: string;
+}
+
+const EXAMPLES: Example[] = [
   {
     name: "Counter",
     code: `PROGRAM main
@@ -110,16 +122,16 @@ END_PROGRAM`,
 
 // --- State ---
 
-let stepIntervalId = null;
-let renderIntervalId = null;
+let stepIntervalId: number | null = null;
+let renderIntervalId: number | null = null;
 let isRunning = false;
 let isPaused = false;
 let cycleCount = 0;
 let startTime = 0;
 let pausedElapsed = 0;
-let lastVariables = null;
+let lastVariables: Variable[] | null = null;
 let stepInFlight = false;
-let previousValues = new Map();
+let previousValues: Map<number, string> = new Map();
 let compilerVersion = "";
 let currentIntervalMs = 500;
 
@@ -130,24 +142,24 @@ const isEmbed = params.get("embed") === "true";
 
 // --- Analytics (Clicky pageviews + PostHog events) ---
 
-function trackPageview(path, title) {
-  if (typeof clicky !== "undefined" && clicky.log) {
+function trackPageview(path: string, title: string): void {
+  if (typeof clicky !== "undefined" && clicky && clicky.log) {
     clicky.log(path, title);
   }
 }
 
-function ph() {
-  return typeof posthog !== "undefined" ? posthog : null;
+function ph(): PostHog | null {
+  return typeof posthog !== "undefined" && posthog ? posthog : null;
 }
 
-function capture(event, props) {
+function capture(event: string, props?: Record<string, unknown>): void {
   const p = ph();
   if (p && typeof p.capture === "function") {
     p.capture(event, props || {});
   }
 }
 
-function registerSuper(props) {
+function registerSuper(props: Record<string, unknown>): void {
   const p = ph();
   if (p && typeof p.register === "function") {
     p.register(props);
@@ -156,7 +168,13 @@ function registerSuper(props) {
 
 let programModifiedRegistered = false;
 
-function setProgramOrigin({ program_origin, example_name = null, host_page = null }) {
+interface ProgramOrigin {
+  program_origin: string;
+  example_name?: string | null;
+  host_page?: string | null;
+}
+
+function setProgramOrigin({ program_origin, example_name = null, host_page = null }: ProgramOrigin): void {
   programModifiedRegistered = false;
   registerSuper({
     program_origin,
@@ -166,16 +184,16 @@ function setProgramOrigin({ program_origin, example_name = null, host_page = nul
   });
 }
 
-function markModified() {
+function markModified(): void {
   if (programModifiedRegistered) return;
   programModifiedRegistered = true;
   registerSuper({ program_modified: true });
 }
 
-function extractErrorCodes(diagnostics) {
+function extractErrorCodes(diagnostics: Diagnostic[] | undefined): string[] {
   if (!diagnostics) return [];
-  const seen = new Set();
-  const codes = [];
+  const seen = new Set<string>();
+  const codes: string[] = [];
   for (const d of diagnostics) {
     if (d.code && !seen.has(d.code)) {
       seen.add(d.code);
@@ -185,9 +203,11 @@ function extractErrorCodes(diagnostics) {
   return codes;
 }
 
-function captureRunStopped(reason, errorCodes) {
+type StopReason = "user" | "error" | "reload";
+
+function captureRunStopped(reason: StopReason, errorCodes?: string[]): void {
   const durationMs = startTime > 0 ? (performance.now() - startTime + pausedElapsed) : 0;
-  const props = {
+  const props: Record<string, unknown> = {
     reason,
     duration_ms: durationMs,
     cycle_count: cycleCount,
@@ -198,11 +218,11 @@ function captureRunStopped(reason, errorCodes) {
   capture("run_stopped", props);
 }
 
-function initAnalytics() {
+function initAnalytics(): void {
   const sourceParam = params.get("source");
   const hostParam = params.get("host");
-  let program_origin;
-  let host_page = null;
+  let program_origin: string;
+  let host_page: string | null = null;
   if (sourceParam === "ironplc-docs" && hostParam) {
     program_origin = "docs";
     host_page = hostParam;
@@ -228,14 +248,20 @@ function initAnalytics() {
 
 const RENDER_INTERVAL_MS = 500;
 const HISTORY_WINDOW_MS = 5000;
-let valueHistory = new Map();
+
+interface HistoryEntry {
+  t: number;
+  v: number;
+}
+
+let valueHistory: Map<number, HistoryEntry[]> = new Map();
 
 // --- uPlot sparkline options ---
 
 const sparkWidth = isEmbed ? 70 : 120;
 const sparkHeight = isEmbed ? 18 : 24;
 
-function makeSparkOpts(stepped) {
+function makeSparkOpts(stepped: boolean) {
   return {
     width: sparkWidth,
     height: sparkHeight,
@@ -243,7 +269,7 @@ function makeSparkOpts(stepped) {
     cursor: { show: false },
     select: { show: false },
     legend: { show: false },
-    scales: { x: { time: false, range: [0, HISTORY_WINDOW_MS / 1000] } },
+    scales: { x: { time: false, range: [0, HISTORY_WINDOW_MS / 1000] as [number, number] } },
     axes: [{ show: false }, { show: false }],
     series: [
       {},
@@ -288,11 +314,11 @@ if (allowsParam.length > 0) {
   dialectBadge.classList.add("visible");
 }
 
-function getDialect() {
+function getDialect(): string {
   return dialectSelect.value;
 }
 
-function getAllows() {
+function getAllows(): string {
   return allowsParam.join(",");
 }
 
@@ -302,8 +328,8 @@ dialectSelect.addEventListener("change", () => {
   if (isRunning) {
     captureRunStopped("user");
     stopExecution();
-    postCommand("reset");
-    status.textContent = "Dialect changed \u2014 stopped. Click Start to recompile.";
+    postCommand({ command: "reset" });
+    statusEl.textContent = "Dialect changed — stopped. Click Start to recompile.";
   }
 });
 
@@ -317,14 +343,14 @@ for (const example of EXAMPLES) {
 }
 
 examplesSelect.addEventListener("change", () => {
-  const selected = EXAMPLES.find(e => e.name === examplesSelect.value);
+  const selected = EXAMPLES.find((e) => e.name === examplesSelect.value);
   if (!selected) return;
 
   if (isRunning) {
     captureRunStopped("user");
     stopExecution();
-    postCommand("reset");
-    status.textContent = "Ready";
+    postCommand({ command: "reset" });
+    statusEl.textContent = "Ready";
   }
 
   editor.value = selected.code;
@@ -339,7 +365,7 @@ examplesSelect.addEventListener("change", () => {
 
 // --- Line number gutter ---
 
-function renderLineNumbers() {
+function renderLineNumbers(): void {
   const lineCount = Math.max(1, editor.value.split("\n").length);
   let text = "1";
   for (let i = 2; i <= lineCount; i++) {
@@ -356,7 +382,8 @@ editor.addEventListener("scroll", () => {
 // Pre-load code from URL parameters
 if (params.has("code")) {
   try {
-    const decoded = atob(params.get("code"));
+    const codeParam = params.get("code") || "";
+    const decoded = atob(codeParam);
     let code = decoded;
 
     // Scaffold mode: wrap snippet in PROGRAM block
@@ -367,7 +394,7 @@ if (params.has("code")) {
       if (!startsWithPOU) {
         let varBlock = "";
         if (params.has("vars")) {
-          const vars = atob(params.get("vars"));
+          const vars = atob(params.get("vars") || "");
           varBlock = vars
             .split(";")
             .filter((v) => v.trim())
@@ -381,7 +408,7 @@ if (params.has("code")) {
     }
 
     editor.value = code;
-  } catch (e) {
+  } catch {
     // Ignore invalid base64
   }
 }
@@ -393,35 +420,40 @@ initAnalytics();
 
 const worker = new Worker("worker.js", { type: "module" });
 let nextId = 1;
-const pending = new Map();
+const pending = new Map<number, (msg: WorkerResponse) => void>();
 
-worker.onmessage = (e) => {
+worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
   const msg = e.data;
 
   if (msg.type === "ready") {
     compilerVersion = msg.version || "";
     startBtn.disabled = false;
-    status.textContent = "Ready";
+    statusEl.textContent = "Ready";
     return;
   }
 
   if (msg.type === "error" && !msg.id) {
-    status.textContent = msg.error;
+    statusEl.textContent = msg.error;
     return;
   }
 
-  const resolve = pending.get(msg.id);
-  if (resolve) {
-    pending.delete(msg.id);
-    resolve(msg);
+  if (msg.id !== undefined) {
+    const resolve = pending.get(msg.id);
+    if (resolve) {
+      pending.delete(msg.id);
+      resolve(msg);
+    }
   }
 };
 
-function postCommand(command, params) {
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
+type RequestPayload = DistributiveOmit<WorkerRequest, "id">;
+
+function postCommand(payload: RequestPayload): Promise<WorkerResponse> {
   return new Promise((resolve) => {
     const id = nextId++;
     pending.set(id, resolve);
-    worker.postMessage({ id, command, ...params });
+    worker.postMessage({ id, ...payload } as WorkerRequest);
   });
 }
 
@@ -432,26 +464,27 @@ document.querySelectorAll(".tab").forEach((tab) => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
     tab.classList.add("active");
-    const panel = document.getElementById(`${tab.dataset.tab}-panel`);
-    panel.classList.add("active");
+    const tabName = (tab as HTMLElement).dataset.tab;
+    const panel = document.getElementById(`${tabName}-panel`);
+    if (panel) panel.classList.add("active");
   });
 });
 
 // --- Transport controls ---
 
-function getIntervalMs() {
+function getIntervalMs(): number {
   const val = parseInt(intervalInput.value, 10);
   return val > 0 ? val : 500;
 }
 
-function startStepLoop() {
+function startStepLoop(): void {
   const intervalMs = currentIntervalMs;
-  stepIntervalId = setInterval(async () => {
+  stepIntervalId = window.setInterval(async () => {
     if (stepInFlight) return;
     stepInFlight = true;
 
     const before = performance.now();
-    const msg = await postCommand("step", { scans: 1 });
+    const msg = await postCommand({ command: "step", scans: 1 });
     const elapsed = performance.now() - before;
     stepInFlight = false;
 
@@ -460,11 +493,13 @@ function startStepLoop() {
     if (msg.type === "error") {
       captureRunStopped("error", []);
       stopExecution();
-      status.textContent = msg.error;
+      statusEl.textContent = msg.error;
       return;
     }
 
-    const result = JSON.parse(msg.json);
+    if (msg.type !== "result") return;
+
+    const result = JSON.parse(msg.json) as RunResult;
     if (!result.ok) {
       const diagnostics = result.diagnostics || [];
       captureRunStopped("error", extractErrorCodes(diagnostics));
@@ -472,11 +507,11 @@ function startStepLoop() {
       if (diagnostics.length > 0) {
         renderDiagnostics(diagnostics);
         activateTab("diagnostics");
-        status.textContent = `${diagnostics.length} error(s)`;
+        statusEl.textContent = `${diagnostics.length} error(s)`;
       } else if (result.error) {
         renderVariables(result.variables || []);
         diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
-        status.textContent = "Runtime error";
+        statusEl.textContent = "Runtime error";
         activateTab("diagnostics");
       }
       return;
@@ -486,7 +521,7 @@ function startStepLoop() {
     if (elapsed > intervalMs) {
       captureRunStopped("error", ["CYCLE_OVERRUN"]);
       stopExecution();
-      status.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but step interval is ${intervalMs}ms`;
+      statusEl.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but step interval is ${intervalMs}ms`;
       diagnosticsPanel.innerHTML = `<p class="error-message">Cycle overrun: program execution took ${elapsed.toFixed(0)}ms but the step interval is ${intervalMs}ms. Reduce program complexity or increase the interval.</p>`;
       activateTab("diagnostics");
       return;
@@ -498,14 +533,14 @@ function startStepLoop() {
   }, intervalMs);
 }
 
-function startRenderLoop() {
+function startRenderLoop(): void {
   updateDisplays();
-  renderIntervalId = setInterval(() => {
+  renderIntervalId = window.setInterval(() => {
     updateDisplays();
   }, RENDER_INTERVAL_MS);
 }
 
-function updateDisplays() {
+function updateDisplays(): void {
   const elapsed = performance.now() - startTime + pausedElapsed;
   durationDisplay.textContent = (elapsed / 1000).toFixed(1) + "s";
   cyclesDisplay.textContent = `${cycleCount} cycles`;
@@ -516,9 +551,9 @@ function updateDisplays() {
   }
 }
 
-function stopExecution() {
-  clearInterval(stepIntervalId);
-  clearInterval(renderIntervalId);
+function stopExecution(): void {
+  if (stepIntervalId !== null) clearInterval(stepIntervalId);
+  if (renderIntervalId !== null) clearInterval(renderIntervalId);
   stepIntervalId = null;
   renderIntervalId = null;
   isRunning = false;
@@ -527,7 +562,7 @@ function stopExecution() {
   resetTransportButtons();
 }
 
-function resetTransportButtons() {
+function resetTransportButtons(): void {
   startBtn.disabled = false;
   startBtn.classList.remove("active");
   stopBtn.disabled = true;
@@ -551,13 +586,13 @@ startBtn.addEventListener("click", async () => {
   pauseBtn.disabled = true;
   intervalInput.disabled = true;
 
-  status.textContent = "Compiling\u2026";
+  statusEl.textContent = "Compiling…";
 
   const dialect = getDialect();
   const allows = getAllows();
   const compileStart = performance.now();
   capture("compile_attempted", { trigger: "manual" });
-  const loadMsg = await postCommand("load_program", { source, cycleTimeUs, dialect, allows });
+  const loadMsg = await postCommand({ command: "load_program", source, cycleTimeUs, dialect: dialect as "" | "2003" | "2013", allows });
   const compileDurationMs = performance.now() - compileStart;
 
   if (loadMsg.type === "error") {
@@ -568,20 +603,25 @@ startBtn.addEventListener("click", async () => {
       program_lines: programLines,
       duration_ms: compileDurationMs,
     });
-    status.textContent = loadMsg.error;
+    statusEl.textContent = loadMsg.error;
     resetTransportButtons();
     return;
   }
 
-  const loadResult = JSON.parse(loadMsg.json);
+  if (loadMsg.type !== "result") {
+    resetTransportButtons();
+    return;
+  }
+
+  const loadResult = JSON.parse(loadMsg.json) as RunResult;
   if (!loadResult.ok) {
     const diagnostics = loadResult.diagnostics || [];
     if (diagnostics.length > 0) {
       renderDiagnostics(diagnostics);
       activateTab("diagnostics");
-      status.textContent = `${diagnostics.length} error(s)`;
+      statusEl.textContent = `${diagnostics.length} error(s)`;
     } else if (loadResult.error) {
-      status.textContent = loadResult.error;
+      statusEl.textContent = loadResult.error;
     }
     capture("compile_finished", {
       success: false,
@@ -619,7 +659,7 @@ startBtn.addEventListener("click", async () => {
   pauseBtn.disabled = false;
   intervalInput.disabled = true;
 
-  status.textContent = "Running";
+  statusEl.textContent = "Running";
   capture("run_started", { cycle_interval_ms: intervalMs });
 
   startStepLoop();
@@ -637,10 +677,10 @@ stopBtn.addEventListener("click", async () => {
     renderVariables(finalVars);
   }
 
-  await postCommand("reset");
+  await postCommand({ command: "reset" });
   previousValues = new Map();
   valueHistory = new Map();
-  status.textContent = `Stopped after ${cycleCount} cycles`;
+  statusEl.textContent = `Stopped after ${cycleCount} cycles`;
 });
 
 // --- Pause / Resume ---
@@ -655,22 +695,22 @@ pauseBtn.addEventListener("click", () => {
     startStepLoop();
     startRenderLoop();
 
-    status.textContent = "Running";
+    statusEl.textContent = "Running";
   } else {
     // Pause
     isPaused = true;
     pausedElapsed += performance.now() - startTime;
     pauseBtn.classList.add("active");
 
-    clearInterval(stepIntervalId);
-    clearInterval(renderIntervalId);
+    if (stepIntervalId !== null) clearInterval(stepIntervalId);
+    if (renderIntervalId !== null) clearInterval(renderIntervalId);
     stepIntervalId = null;
     renderIntervalId = null;
 
     // Final render with current state
     updateDisplays();
 
-    status.textContent = `Paused at ${cycleCount} cycles`;
+    statusEl.textContent = `Paused at ${cycleCount} cycles`;
   }
 });
 
@@ -682,8 +722,8 @@ editor.addEventListener("input", () => {
   if (isRunning) {
     captureRunStopped("user");
     stopExecution();
-    postCommand("reset");
-    status.textContent = "Source changed \u2014 stopped. Click Start to recompile.";
+    postCommand({ command: "reset" });
+    statusEl.textContent = "Source changed — stopped. Click Start to recompile.";
   }
 });
 
@@ -695,7 +735,7 @@ window.addEventListener("pagehide", () => {
 
 // --- Value parsing for sparklines ---
 
-function parseNumericValue(value, typeName) {
+function parseNumericValue(value: string, typeName: string): number | null {
   const t = typeName.toUpperCase();
 
   if (t === "BOOL") {
@@ -727,7 +767,7 @@ function parseNumericValue(value, typeName) {
   return null;
 }
 
-function parseTimeValue(value) {
+function parseTimeValue(value: string): number | null {
   const match = value.match(/^(-?)T#([\d.]+)(ms|s)$/);
   if (!match) return null;
   const sign = match[1] === "-" ? -1 : 1;
@@ -737,7 +777,7 @@ function parseTimeValue(value) {
   return Number.isFinite(ms) ? sign * ms : null;
 }
 
-function accumulateHistory(variables) {
+function accumulateHistory(variables: Variable[]): void {
   const now = performance.now();
   const cutoff = now - HISTORY_WINDOW_MS;
   for (const v of variables) {
@@ -759,7 +799,7 @@ function accumulateHistory(variables) {
 
 // --- Display helpers ---
 
-function renderVariables(variables) {
+function renderVariables(variables: Variable[]): void {
   if (!variables || variables.length === 0) {
     variablesPanel.innerHTML = '<p class="placeholder">No variables.</p>';
     return;
@@ -785,20 +825,20 @@ function renderVariables(variables) {
   for (const v of variables) {
     const hist = valueHistory.get(v.index);
     if (hist && hist.length >= 2) {
-      const cell = variablesPanel.querySelector(`[data-var-idx="${v.index}"]`);
+      const cell = variablesPanel.querySelector(`[data-var-idx="${v.index}"]`) as HTMLElement | null;
       if (cell) {
-        const xs = hist.map(e => (e.t - windowStart) / 1000);
-        const ys = hist.map(e => e.v);
+        const xs = hist.map((e) => (e.t - windowStart) / 1000);
+        const ys = hist.map((e) => e.v);
         const opts = v.type_name.toUpperCase() === "BOOL" ? boolSparkOpts : sparkOpts;
         new uPlot(opts, [xs, ys], cell);
       }
     }
   }
 
-  previousValues = new Map(variables.map(v => [v.index, v.value]));
+  previousValues = new Map(variables.map((v) => [v.index, v.value]));
 }
 
-function renderDiagnostics(diagnostics) {
+function renderDiagnostics(diagnostics: Diagnostic[]): void {
   let html = "";
   for (const d of diagnostics) {
     html += '<div class="diagnostic-item">';
@@ -822,7 +862,7 @@ function renderDiagnostics(diagnostics) {
   diagnosticsPanel.innerHTML = html;
 }
 
-function activateTab(tabName) {
+function activateTab(tabName: string): void {
   document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
   document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
   const tab = document.querySelector(`.tab[data-tab="${tabName}"]`);
@@ -831,7 +871,7 @@ function activateTab(tabName) {
   if (panel) panel.classList.add("active");
 }
 
-function escapeHtml(str) {
+function escapeHtml(str: string): string {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
