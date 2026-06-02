@@ -73,7 +73,6 @@ async function main(): Promise<void> {
 
   const opts = { vscodePath, extensionPath, userDataDir };
   const ironplccAvailable = hasIronplcc();
-  const ironplcmcpAvailable = hasIronplcmcp();
 
   try {
     console.log('\n--- Syntax Highlighting ---');
