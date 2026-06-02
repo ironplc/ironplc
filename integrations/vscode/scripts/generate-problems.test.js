@@ -39,9 +39,10 @@ for (const line of csvLines) {
   const code = line.slice(0, first).trim();
   const name = line.slice(first + 1, second).trim();
   const message = line.slice(second + 1).trim();
+  const escapedMessageLiteral = JSON.stringify(message);
 
   assert(output.includes(`${name}: "${code}"`), `ProblemCode should contain ${name}: "${code}"`);
-  assert(output.includes(`"${message}"`), `PROBLEM_MESSAGES should contain message "${message}"`);
+  assert(output.includes(escapedMessageLiteral), `PROBLEM_MESSAGES should contain message literal ${escapedMessageLiteral}`);
 }
 
 assert(output.includes('export function formatProblem'), 'Output should contain formatProblem function');
