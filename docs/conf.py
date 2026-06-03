@@ -49,7 +49,7 @@ html_title = "IronPLC - Open-Source IEC 61131-3 Toolchain"
 html_static_path = ['_static']
 html_extra_path = ['robots.txt']
 html_css_files = ["overrides.css"]
-html_js_files = ["version-check.js"]
+html_js_files = ["version-check.js", "posthog-init.js"]
 
 html_theme_options = {
     "light_css_variables": {
