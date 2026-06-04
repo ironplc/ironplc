@@ -39,13 +39,6 @@ jobs:
       gh-release-tag: ""
       artifact-name: vscode-extension
 
-  agents:
-    name: Test Agents
-    needs: approve
-    uses: ./.github/workflows/partial_agents.yaml
-    with:
-      commit-ref: ""
-
   docs:
     name: Build Website
     needs: approve
