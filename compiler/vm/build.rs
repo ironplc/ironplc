@@ -10,8 +10,11 @@ use std::{
 struct VCodeDef {
     code: String,
     name: String,
-    has_data: bool,
-    is_struct: bool,
+    /// Pattern fragment used after the variant name in generated match arms:
+    /// `""` for unit variants, `"(..)"` for tuple variants, `" { .. }"` for
+    /// struct variants. Source: the `VariantShape` column of
+    /// `resources/problem-codes.csv` (`none` / `tuple` / `struct`).
+    pattern: &'static str,
 }
 
 fn generate_trap_codes() -> Result<(), Box<dyn Error>> {
@@ -36,16 +39,25 @@ fn generate_trap_codes() -> Result<(), Box<dyn Error>> {
             .get(1)
             .ok_or_else(|| format!("Record {record:?} is not valid at column 1"))?
             .to_string();
-        let has_data_str = record
+        let variant_shape = record
             .get(3)
             .ok_or_else(|| format!("Record {record:?} is not valid at column 3"))?;
-        let is_struct = has_data_str == "struct";
-        let has_data = has_data_str == "true" || is_struct;
+        let pattern = match variant_shape {
+            "none" => "",
+            "tuple" => "(..)",
+            "struct" => " { .. }",
+            other => {
+                return Err(format!(
+                    "Record {record:?} has unrecognized VariantShape {other:?} \
+                     (expected 'none', 'tuple', or 'struct')",
+                )
+                .into());
+            }
+        };
         defs.push(VCodeDef {
             code,
             name,
-            has_data,
-            is_struct,
+            pattern,
         });
     }
 
@@ -66,17 +78,10 @@ fn generate_trap_codes() -> Result<(), Box<dyn Error>> {
     out.write_all(b"    pub fn v_code(&self) -> &'static str {\n")?;
     out.write_all(b"        match self {\n")?;
     for def in &defs {
-        let pattern = if def.is_struct {
-            " { .. }"
-        } else if def.has_data {
-            "(..)"
-        } else {
-            ""
-        };
         out.write_all(
             format!(
                 "            Trap::{}{} => \"{}\",\n",
-                def.name, pattern, def.code,
+                def.name, def.pattern, def.code,
             )
             .as_bytes(),
         )?;
@@ -99,17 +104,10 @@ fn generate_trap_codes() -> Result<(), Box<dyn Error>> {
         } else {
             panic!("Unexpected V-code prefix for trap: {}", def.code);
         };
-        let pattern = if def.is_struct {
-            " { .. }"
-        } else if def.has_data {
-            "(..)"
-        } else {
-            ""
-        };
         out.write_all(
             format!(
                 "            Trap::{}{} => {exit_code},\n",
-                def.name, pattern,
+                def.name, def.pattern,
             )
             .as_bytes(),
         )?;

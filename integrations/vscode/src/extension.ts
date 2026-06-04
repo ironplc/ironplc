@@ -113,14 +113,9 @@ export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration('ironplc');
   client = createClient(result.path, config);
 
-  if (client) {
-    client.start();
-    context.subscriptions.push(IplcEditorProvider.register(context, client));
-    console.debug('Extension "ironplc" is active!');
-  }
-  else {
-    console.error('Extension "ironplc" is NOT active!');
-  }
+  client.start();
+  context.subscriptions.push(IplcEditorProvider.register(context, client));
+  console.debug('Extension "ironplc" is active!');
 }
 
 function registerRunSupport(context: vscode.ExtensionContext) {

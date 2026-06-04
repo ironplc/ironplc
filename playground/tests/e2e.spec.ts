@@ -1,5 +1,4 @@
-// @ts-check
-const { test, expect } = require("@playwright/test");
+import { test, expect } from "@playwright/test";
 
 test.describe("IronPLC Playground", () => {
   test.beforeEach(async ({ page }) => {
@@ -156,7 +155,7 @@ END_PROGRAM
     });
 
     // Record cycle count after pause
-    const pausedText = await cyclesDisplay.textContent();
+    const pausedText = (await cyclesDisplay.textContent()) ?? "";
 
     // Wait a moment and verify count hasn't changed
     await page.waitForTimeout(600);
@@ -419,7 +418,7 @@ END_PROGRAM
     const source = await editor.inputValue();
     const expectedLines = Math.max(1, source.split("\n").length);
 
-    const gutterText = await gutter.textContent();
+    const gutterText = (await gutter.textContent()) ?? "";
     const gutterLines = gutterText.split("\n");
     expect(gutterLines.length).toBe(expectedLines);
     expect(gutterLines[0]).toBe("1");
