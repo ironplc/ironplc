@@ -1,14 +1,10 @@
 # infrastructure
 
-Terraform that provisions the GitHub-side pieces the agent
-orchestrator depends on:
+Terraform that provisions the GitHub-side workflow labels:
 
 - 14 workflow labels (`status/*`, `review/*`, `flag/*`).
-- A repository webhook pointing at the orchestrator, with HMAC
-  secret + JSON payload + `issues`/`issue_comment` events.
 
-The orchestrator itself runs from `agents/issue-resolver/` — this
-directory does **not** deploy app code.
+This directory does **not** deploy app code.
 
 ## State
 
@@ -28,13 +24,7 @@ used.
   export TF_CLOUD_ORGANIZATION=your-hcp-org
   ```
 
-- A fine-grained GitHub PAT with `admin:webhooks` on the repo plus
-  `issues: write`.
-- A stable public HTTPS URL for the orchestrator (ngrok reserved
-  domain for local dev, or a real host for production).
-- A random high-entropy string to use as the webhook HMAC secret.
-  The **same** value must also go in
-  `agents/issue-resolver/.env` as `GITHUB_WEBHOOK_SECRET`.
+- A fine-grained GitHub PAT with `issues: write` on the repo.
 
 ## First apply
 
@@ -44,7 +34,7 @@ terraform login           # browser flow; one-time per machine
 terraform init            # creates the workspace in your HCP org
 ```
 
-Then set the five input variables on the workspace. Two options:
+Then set the three input variables on the workspace. Two options:
 
 ### Option 1 — Remote execution (recommended)
 
@@ -57,14 +47,12 @@ and add each one as a **Terraform variable**:
 | `github_token` | ✅ yes | `github_pat_…` |
 | `github_owner` | no | `ironplc` |
 | `github_repo` | no | `ironplc` |
-| `webhook_url` | no | `https://you.ngrok-free.app/webhook` |
-| `webhook_secret` | ✅ yes | random high-entropy string |
 
 Then run the plan + apply from your laptop — it executes remotely in
 HCP, output streams back to your terminal:
 
 ```bash
-terraform plan      # 14 labels + 1 webhook the first time
+terraform plan      # 14 labels the first time
 terraform apply
 ```
 
@@ -92,22 +80,14 @@ locally.
 | Review | `review/requested`, `review/approved`, `review/changes-requested` |
 | Flags | `flag/agent-error`, `flag/revision-limit`, `flag/blocked` |
 
-## Rotating the ngrok URL
-
-Update `webhook_url` (in HCP variables for remote execution, or in
-`terraform.tfvars` for local) and run `terraform apply`. Terraform
-updates the webhook in place — no destroy/recreate.
-
 ## What is NOT managed here
 
-- `.env` secrets for the orchestrator.
 - Application code, deployment, or process supervision.
 - The issue template (checked in at
   `.github/ISSUE_TEMPLATE/compatibility_gap.md`).
 
-## Who can trigger the agent?
+## Who can apply these labels?
 
-The agent runs on `labeled` events with `status/triage`. Adding
-labels requires write or triage permission on the repo, so random
-issue reporters cannot self-trigger. A maintainer adds the label
-after a quick sanity check of the filed issue.
+Adding labels requires write or triage permission on the repo, so
+random issue reporters cannot apply them. A maintainer adds the
+relevant label after a quick sanity check of the filed issue.

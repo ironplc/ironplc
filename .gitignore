@@ -27,5 +27,3 @@ terraform.tfvars
 
 # Local env
 .env
-# Ledger (SQLite event log produced at runtime)
-ledger.db
