@@ -2159,14 +2159,7 @@ fn handle_frame_return(
     temp_alloc.rewind_to(popped.temp_alloc_mark);
 
     if let Some(fbr) = popped.fb_return {
-        for i in 0..fbr.num_fields as usize {
-            let offset = fbr.instance_start + i * 8;
-            if offset + 8 > data_region.len() {
-                return Err(Trap::DataRegionOutOfBounds(offset as u32));
-            }
-            let val = variables.load(VarIndex::new(fbr.var_offset + i as u16))?;
-            data_region[offset..offset + 8].copy_from_slice(&val.as_i64().to_le_bytes());
-        }
+        fbr.copy_out(variables, data_region)?;
     }
 
     Ok(())

@@ -11,10 +11,11 @@
 //!
 //! [`VmBuffers`]: crate::VmBuffers
 
-use ironplc_container::FunctionId;
+use ironplc_container::{FunctionId, VarIndex};
 
 use crate::error::Trap;
-use crate::variable_table::VariableScope;
+use crate::value::Slot;
+use crate::variable_table::{VariableScope, VariableTable};
 
 /// Saved state captured on each `FB_CALL` to a user-defined function
 /// block, so the dispatch loop can run the field copy-out
@@ -28,6 +29,29 @@ pub struct FbCallReturn {
     pub var_offset: u16,
     /// Number of fields (each one 8-byte slot).
     pub num_fields: u8,
+}
+
+impl FbCallReturn {
+    /// Copies each FB field's variable slot back into its location in
+    /// the data region, in field order.
+    ///
+    /// This runs on `RET` / `RET_VOID` (and implicit fall-off-the-end)
+    /// for user-FB frames so that the caller sees the post-execution
+    /// values of the FB instance. The byte stride (`size_of::<Slot>()`)
+    /// and little-endian encoding stay encapsulated here so the
+    /// dispatch loop never has to spell out the slot layout.
+    pub fn copy_out(&self, variables: &VariableTable, data_region: &mut [u8]) -> Result<(), Trap> {
+        const STRIDE: usize = core::mem::size_of::<Slot>();
+        for i in 0..self.num_fields as usize {
+            let offset = self.instance_start + i * STRIDE;
+            if offset + STRIDE > data_region.len() {
+                return Err(Trap::DataRegionOutOfBounds(offset as u32));
+            }
+            let val = variables.load(VarIndex::new(self.var_offset + i as u16))?;
+            data_region[offset..offset + STRIDE].copy_from_slice(&val.as_i64().to_le_bytes());
+        }
+        Ok(())
+    }
 }
 
 /// One PLC call frame.
