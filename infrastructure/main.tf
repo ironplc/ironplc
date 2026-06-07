@@ -125,20 +125,3 @@ resource "github_issue_label" "flag_blocked" {
   color       = "b60205"
   description = "Blocked on an external dependency."
 }
-
-# ---------------------------------------------------------------------------
-# Webhook pointing at the long-running orchestrator.
-# ---------------------------------------------------------------------------
-
-resource "github_repository_webhook" "agent" {
-  repository = var.github_repo
-  active     = true
-  events     = ["issues", "issue_comment"]
-
-  configuration {
-    url          = var.webhook_url
-    content_type = "json"
-    insecure_ssl = false
-    secret       = var.webhook_secret
-  }
-}

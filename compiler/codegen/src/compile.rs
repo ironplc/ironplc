@@ -152,13 +152,17 @@ pub(crate) fn string_region_size(max_length: u16, char_width: CharWidth) -> u32 
 
 /// Encode a character-string literal into bytes for the constant pool.
 ///
-/// `char_width` selects the encoding: `Narrow` for STRING (Latin-1 per
-/// ADR-0016). `Wide` (UTF-16LE) is not yet supported and will panic; the
-/// parameter exists so call sites already pass the value.
+/// `char_width` selects the encoding per ADR-0016: `Narrow` for STRING
+/// (Latin-1, one byte per character), `Wide` for WSTRING (UTF-16LE, two
+/// bytes per code unit). Characters above U+FFFF are out of scope (BMP
+/// only); higher code points are truncated to their low 16 bits.
 pub(crate) fn encode_string_literal(chars: &[char], char_width: CharWidth) -> Vec<u8> {
     match char_width {
         CharWidth::Narrow => chars.iter().map(|&ch| ch as u8).collect(),
-        CharWidth::Wide => unreachable!("WSTRING literal encoding is not yet supported"),
+        CharWidth::Wide => chars
+            .iter()
+            .flat_map(|&ch| (ch as u16).to_le_bytes())
+            .collect(),
     }
 }
 
@@ -1006,6 +1010,31 @@ mod tests {
             ironplc_analyzer::stages::resolve_types(&[&library], &CompilerOptions::default())
                 .unwrap();
         (analyzed, ctx)
+    }
+
+    #[test]
+    fn encode_string_literal_when_narrow_then_one_byte_per_char() {
+        let bytes = encode_string_literal(&['h', 'i'], NARROW_CHAR_WIDTH);
+        assert_eq!(bytes, vec![b'h', b'i']);
+    }
+
+    #[test]
+    fn encode_string_literal_when_wide_then_utf16le_two_bytes_per_char() {
+        let bytes = encode_string_literal(&['h', 'i'], WIDE_CHAR_WIDTH);
+        assert_eq!(bytes, vec![0x68, 0x00, 0x69, 0x00]);
+    }
+
+    #[test]
+    fn encode_string_literal_when_wide_and_bmp_above_ascii_then_utf16le() {
+        // U+00E9 LATIN SMALL LETTER E WITH ACUTE
+        let bytes = encode_string_literal(&['é'], WIDE_CHAR_WIDTH);
+        assert_eq!(bytes, vec![0xE9, 0x00]);
+    }
+
+    #[test]
+    fn encode_string_literal_when_empty_then_returns_empty() {
+        assert!(encode_string_literal(&[], NARROW_CHAR_WIDTH).is_empty());
+        assert!(encode_string_literal(&[], WIDE_CHAR_WIDTH).is_empty());
     }
 
     #[test]
