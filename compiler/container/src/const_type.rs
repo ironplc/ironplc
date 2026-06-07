@@ -52,6 +52,13 @@ impl ConstType {
             _ => None,
         }
     }
+
+    /// Returns `true` for string-typed entries ([`ConstType::Str`] and
+    /// [`ConstType::WStr`]), whose value lives in `str_value` rather than
+    /// inline `primitive` bytes.
+    pub fn is_string_like(&self) -> bool {
+        matches!(self, ConstType::Str | ConstType::WStr)
+    }
 }
 
 #[cfg(test)]
@@ -96,5 +103,17 @@ mod tests {
         assert_eq!(ConstType::WStr.char_width(), Some(CharWidth::Wide));
         assert_eq!(ConstType::I32.char_width(), None);
         assert_eq!(ConstType::F64.char_width(), None);
+    }
+
+    #[test]
+    fn const_type_is_string_like_when_string_types_then_true_else_false() {
+        assert!(ConstType::Str.is_string_like());
+        assert!(ConstType::WStr.is_string_like());
+        assert!(!ConstType::I32.is_string_like());
+        assert!(!ConstType::U32.is_string_like());
+        assert!(!ConstType::I64.is_string_like());
+        assert!(!ConstType::U64.is_string_like());
+        assert!(!ConstType::F32.is_string_like());
+        assert!(!ConstType::F64.is_string_like());
     }
 }

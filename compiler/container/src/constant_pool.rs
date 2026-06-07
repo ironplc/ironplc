@@ -26,7 +26,7 @@ impl ConstEntry {
     /// `bytes` must be at most 8 bytes; the source slice is interpreted as
     /// the native little-endian encoding of the primitive.
     pub fn primitive_le(const_type: ConstType, bytes: &[u8]) -> Self {
-        debug_assert!(!matches!(const_type, ConstType::Str | ConstType::WStr));
+        debug_assert!(!const_type.is_string_like());
         debug_assert!(bytes.len() <= 8);
         let mut primitive = [0u8; 8];
         primitive[..bytes.len()].copy_from_slice(bytes);
@@ -156,7 +156,7 @@ impl ConstantPool {
             .entries
             .get(index.raw() as usize)
             .ok_or(ContainerError::InvalidConstantIndex(index))?;
-        if !matches!(entry.const_type, ConstType::Str | ConstType::WStr) {
+        if !entry.const_type.is_string_like() {
             return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
         }
         Ok(&entry.str_value)
@@ -188,7 +188,7 @@ impl ConstantPool {
             let const_type = ConstType::from_u8(hdr[0])?;
             // hdr[1] is reserved
             let size = u16::from_le_bytes([hdr[2], hdr[3]]) as usize;
-            let entry = if matches!(const_type, ConstType::Str | ConstType::WStr) {
+            let entry = if const_type.is_string_like() {
                 let mut value = vec![0u8; size];
                 r.read_exact(&mut value)?;
                 ConstEntry {
