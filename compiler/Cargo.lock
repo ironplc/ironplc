@@ -970,7 +970,6 @@ name = "ironplc-dsl"
 version = "0.217.0"
 dependencies = [
  "dsl_macro_derive",
- "ironplc-container",
  "ironplc-problems",
  "lazy_static",
  "logos",
