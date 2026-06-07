@@ -1,4 +1,4 @@
-use crate::ContainerError;
+use crate::{CharWidth, ContainerError};
 
 /// Type tags for constant pool entries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,6 +11,7 @@ pub enum ConstType {
     F32 = 4,
     F64 = 5,
     Str = 6,
+    WStr = 7,
 }
 
 impl ConstType {
@@ -23,6 +24,7 @@ impl ConstType {
             4 => Ok(ConstType::F32),
             5 => Ok(ConstType::F64),
             6 => Ok(ConstType::Str),
+            7 => Ok(ConstType::WStr),
             _ => Err(ContainerError::InvalidConstantType(v)),
         }
     }
@@ -37,7 +39,25 @@ impl ConstType {
             ConstType::F32 => "F32",
             ConstType::F64 => "F64",
             ConstType::Str => "Str",
+            ConstType::WStr => "WStr",
         }
+    }
+
+    /// Returns the per-code-unit byte width for string-typed entries, or
+    /// `None` for non-string types.
+    pub fn char_width(&self) -> Option<CharWidth> {
+        match self {
+            ConstType::Str => Some(CharWidth::Narrow),
+            ConstType::WStr => Some(CharWidth::Wide),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` for string-typed entries ([`ConstType::Str`] and
+    /// [`ConstType::WStr`]), whose value lives in `str_value` rather than
+    /// inline `primitive` bytes.
+    pub fn is_string_like(&self) -> bool {
+        matches!(self, ConstType::Str | ConstType::WStr)
     }
 }
 
@@ -54,6 +74,7 @@ mod tests {
         assert_eq!(ConstType::from_u8(4).unwrap(), ConstType::F32);
         assert_eq!(ConstType::from_u8(5).unwrap(), ConstType::F64);
         assert_eq!(ConstType::from_u8(6).unwrap(), ConstType::Str);
+        assert_eq!(ConstType::from_u8(7).unwrap(), ConstType::WStr);
     }
 
     #[test]
@@ -73,5 +94,26 @@ mod tests {
         assert_eq!(ConstType::F32.as_str(), "F32");
         assert_eq!(ConstType::F64.as_str(), "F64");
         assert_eq!(ConstType::Str.as_str(), "Str");
+        assert_eq!(ConstType::WStr.as_str(), "WStr");
+    }
+
+    #[test]
+    fn const_type_char_width_when_string_types_then_matches_encoding() {
+        assert_eq!(ConstType::Str.char_width(), Some(CharWidth::Narrow));
+        assert_eq!(ConstType::WStr.char_width(), Some(CharWidth::Wide));
+        assert_eq!(ConstType::I32.char_width(), None);
+        assert_eq!(ConstType::F64.char_width(), None);
+    }
+
+    #[test]
+    fn const_type_is_string_like_when_string_types_then_true_else_false() {
+        assert!(ConstType::Str.is_string_like());
+        assert!(ConstType::WStr.is_string_like());
+        assert!(!ConstType::I32.is_string_like());
+        assert!(!ConstType::U32.is_string_like());
+        assert!(!ConstType::I64.is_string_like());
+        assert!(!ConstType::U64.is_string_like());
+        assert!(!ConstType::F32.is_string_like());
+        assert!(!ConstType::F64.is_string_like());
     }
 }
