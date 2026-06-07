@@ -6,6 +6,12 @@ use crate::error::Trap;
 pub(crate) const MAX_LEN_OFFSET: usize = 0;
 /// Byte offset of the `cur_length` field within a string header.
 pub(crate) const CUR_LEN_OFFSET: usize = 2;
+//
+// Bytes 4-5 of the header are the `char_width` field (ADR-0035). It is
+// part of the 6-byte layout (`STRING_HEADER_BYTES`) but is not yet
+// populated or read here — every string is narrow today, and the header
+// writers below leave those two bytes at their zero-initialized value.
+// The VM string-opcode work populates and verifies the field.
 
 /// Metadata for an allocated temp buffer slot.
 pub(crate) struct TempBufferSlot {
@@ -89,7 +95,7 @@ pub(crate) fn write_string_header(
     let cur_len = (result_len as u16).min(max_len);
     temp_buf[buf_start + MAX_LEN_OFFSET..buf_start + MAX_LEN_OFFSET + 2]
         .copy_from_slice(&max_len.to_le_bytes());
-    temp_buf[buf_start + CUR_LEN_OFFSET..buf_start + STRING_HEADER_BYTES]
+    temp_buf[buf_start + CUR_LEN_OFFSET..buf_start + CUR_LEN_OFFSET + 2]
         .copy_from_slice(&cur_len.to_le_bytes());
     let data_start = buf_start + STRING_HEADER_BYTES;
     (cur_len, data_start)
@@ -111,11 +117,18 @@ pub(crate) fn str_read_cur_len(buf: &[u8], offset: usize) -> u16 {
     ])
 }
 
+/// Write cur_length into a string header at `offset` in `buf`, leaving the
+/// `max_length` and `char_width` fields untouched.
+pub(crate) fn str_write_cur_len(buf: &mut [u8], offset: usize, cur_len: u16) {
+    buf[offset + CUR_LEN_OFFSET..offset + CUR_LEN_OFFSET + 2]
+        .copy_from_slice(&cur_len.to_le_bytes());
+}
+
 /// Write a string header (max_length, cur_length) at `offset` in `buf`.
 pub(crate) fn str_write_header(buf: &mut [u8], offset: usize, max_len: u16, cur_len: u16) {
     buf[offset + MAX_LEN_OFFSET..offset + MAX_LEN_OFFSET + 2]
         .copy_from_slice(&max_len.to_le_bytes());
-    buf[offset + CUR_LEN_OFFSET..offset + STRING_HEADER_BYTES]
+    buf[offset + CUR_LEN_OFFSET..offset + CUR_LEN_OFFSET + 2]
         .copy_from_slice(&cur_len.to_le_bytes());
 }
 
@@ -140,7 +153,7 @@ mod tests {
         data[6] = 3; // cur_len low byte
         let (cur_len, data_start) = read_string_header(&data, 4).unwrap();
         assert_eq!(cur_len, 3);
-        assert_eq!(data_start, 8);
+        assert_eq!(data_start, 4 + STRING_HEADER_BYTES);
     }
 
     #[test]

@@ -64,7 +64,7 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 | Requirement | Offset | Field | Type | Description |
 |-------------|--------|-------|------|-------------|
 | **REQ-CF-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
-| **REQ-CF-003** | 4 | format_version | u16 | Container format version (currently 2; bumped from 1 by ADR-0033 opcode-encoding migration) |
+| **REQ-CF-003** | 4 | format_version | u16 | Container format version (currently 3; bumped to 2 from 1 by ADR-0033 opcode-encoding migration, then to 3 by ADR-0035 WSTRING string-header/constant-pool encoding tags) |
 | | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
 | **REQ-CF-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section; Bit 2: has type section |
 | | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
@@ -223,7 +223,7 @@ Each ConstEntry:
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | const_type | u8 | 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=STRING_LITERAL, 7=WSTRING_LITERAL |
-| 1 | reserved | u8 | Reserved; must be zero |
+| 1 | char_width | u8 | Per-code-unit byte width for string entries: 1=STRING (Latin-1), 2=WSTRING (UTF-16LE); 0 for non-string entries. `const_type` remains authoritative for the encoding (ADR-0035). |
 | 2 | size | u16 | Size of value in bytes (4, 8, or variable for strings; u16 to accommodate string literals exceeding 255 bytes) |
 | 4 | value | [u8; size] | Little-endian value bytes. For strings: u16 length prefix followed by character bytes. |
 

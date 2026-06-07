@@ -1230,8 +1230,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .copy_from_slice(&temp_buf[src_start..src_start + copy_len]);
 
                 // Update destination cur_length.
-                data_region[data_offset + 2..data_offset + STRING_HEADER_BYTES]
-                    .copy_from_slice(&(copy_len as u16).to_le_bytes());
+                string_ops::str_write_cur_len(data_region, data_offset, copy_len as u16);
             }
 
             // STR_LOAD_VAR: Copy a string from the data region into a temp
@@ -1744,8 +1743,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .copy_from_slice(&temp_buf[src_start..src_start + copy_len]);
 
                 // Update destination cur_length.
-                data_region[elem_offset + 2..elem_offset + STRING_HEADER_BYTES]
-                    .copy_from_slice(&(copy_len as u16).to_le_bytes());
+                string_ops::str_write_cur_len(data_region, elem_offset, copy_len as u16);
             }
 
             opcode::POP => {
