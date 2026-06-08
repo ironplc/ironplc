@@ -90,22 +90,34 @@ impl TempBufAllocator {
     }
 }
 
-/// Read a string's current length and data-start offset from the data region.
+/// Read a string's current length (code units), data-start byte offset, and
+/// encoding from a data region. Returns `(cur_len, data_start, char_width)`.
 ///
-/// Returns `(cur_len, data_start)`.
+/// The `char_width` field is validated (trapping [`Trap::InvalidCharWidth`]
+/// on a malformed value) and the read is bounds-checked.
 pub(crate) fn read_string_header(
     data_region: &[u8],
     offset: usize,
-) -> Result<(usize, usize), Trap> {
-    if offset + STRING_HEADER_BYTES > data_region.len() {
-        return Err(Trap::DataRegionOutOfBounds(offset as u32));
-    }
-    let cur_len = u16::from_le_bytes([
-        data_region[offset + CUR_LEN_OFFSET],
-        data_region[offset + CUR_LEN_OFFSET + 1],
-    ]) as usize;
+) -> Result<(usize, usize, CharWidth), Trap> {
+    // str_read_char_width bounds-checks the whole header.
+    let char_width = str_read_char_width(data_region, offset)?;
+    let cur_len = str_read_cur_len(data_region, offset) as usize;
     let data_start = offset + STRING_HEADER_BYTES;
-    Ok((cur_len, data_start))
+    Ok((cur_len, data_start, char_width))
+}
+
+/// Copy `units` code units (`units * char_width` bytes) from `src` starting at
+/// byte offset `src_byte` into `dst` starting at byte offset `dst_byte`.
+pub(crate) fn copy_code_units(
+    dst: &mut [u8],
+    dst_byte: usize,
+    src: &[u8],
+    src_byte: usize,
+    units: usize,
+    char_width: CharWidth,
+) {
+    let n = units * char_width.as_usize();
+    dst[dst_byte..dst_byte + n].copy_from_slice(&src[src_byte..src_byte + n]);
 }
 
 /// Read the per-code-unit [`CharWidth`] from a string header at `offset`.
@@ -195,23 +207,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn read_string_header_when_valid_then_returns_len_and_start() {
-        // Header: max_len=10 (bytes 0-1), cur_len=5 (bytes 2-3)
-        let data = [10, 0, 5, 0, b'H', b'e', b'l', b'l', b'o'];
-        let (cur_len, data_start) = read_string_header(&data, 0).unwrap();
+    fn read_string_header_when_valid_then_returns_len_start_and_width() {
+        // Header: max_len=10, cur_len=5, char_width=1, then data.
+        let data = [10, 0, 5, 0, 1, 0, b'H', b'e', b'l', b'l', b'o'];
+        let (cur_len, data_start, width) = read_string_header(&data, 0).unwrap();
         assert_eq!(cur_len, 5);
         assert_eq!(data_start, STRING_HEADER_BYTES);
+        assert_eq!(width, CharWidth::Narrow);
     }
 
     #[test]
     fn read_string_header_when_offset_nonzero_then_reads_from_offset() {
-        let mut data = [0u8; 12];
-        // Place header at offset 4
+        let mut data = [0u8; 14];
+        // Place header at offset 4.
         data[4] = 20; // max_len low byte
         data[6] = 3; // cur_len low byte
-        let (cur_len, data_start) = read_string_header(&data, 4).unwrap();
+        data[8] = 2; // char_width low byte (wide)
+        let (cur_len, data_start, width) = read_string_header(&data, 4).unwrap();
         assert_eq!(cur_len, 3);
         assert_eq!(data_start, 4 + STRING_HEADER_BYTES);
+        assert_eq!(width, CharWidth::Wide);
     }
 
     #[test]
@@ -219,6 +234,15 @@ mod tests {
         let data = [0u8; 3]; // Too small for header
         let result = read_string_header(&data, 0);
         assert!(matches!(result, Err(Trap::DataRegionOutOfBounds(0))));
+    }
+
+    #[test]
+    fn copy_code_units_when_wide_then_copies_scaled_bytes() {
+        let src = [0u8, 0, 0, 0, 0, 0, 0x41, 0x00, 0x42, 0x00];
+        let mut dst = [0u8; 4];
+        // Copy 2 wide code units (4 bytes) from src byte 6 to dst byte 0.
+        copy_code_units(&mut dst, 0, &src, 6, 2, CharWidth::Wide);
+        assert_eq!(dst, [0x41, 0x00, 0x42, 0x00]);
     }
 
     #[test]
