@@ -86,13 +86,19 @@ header / slot it produces.
    verify all sources share `w`, interpret P/L as code units, scale byte
    spans by `w`, write `w` into the result. Width-parameterized `do_*`
    helpers. Synthetic wide tests.
-5. **Arrays + conversions** — `STR_INIT_ARRAY` / `STR_LOAD_ARRAY_ELEM` /
-   `STR_STORE_ARRAY_ELEM` width-aware stride (`STRING_HEADER_BYTES +
-   max_str_len * w`) and verification; `CMP_STR` (verify equal `w`, compare
-   by code unit); `CONV_*_TO_STR` write narrow width (ASCII output is
-   narrow by definition); `CONV_STR_TO_*` read width and step by `w`.
-   Synthetic tests.
+5. **Arrays + conversions** — `STR_LOAD_ARRAY_ELEM` /
+   `STR_STORE_ARRAY_ELEM` read the element header's `char_width`, scale the
+   data copy by it, and `STORE` verifies the temp-buffer encoding against
+   the element. `STR_INIT_ARRAY` stays narrow with a narrow stride: the
+   array descriptor carries no `char_width` yet, so a per-array width and
+   wide stride (`STRING_HEADER_BYTES + max_str_len * w`) land with the
+   codegen work in **PR D**. `CMP_STR` (verify equal `w`, compare by code
+   unit); `CONV_*_TO_STR` write narrow width (ASCII output is narrow by
+   definition); `CONV_STR_TO_*` reject wide input. Synthetic tests.
 6. **CI** — `cd compiler && just` green (compile, coverage ≥ 85%, lint).
+
+> Implemented as three sequential commits on this branch: C1 (foundation +
+> scalar/const/convert/compare), C2 (string functions), C3 (arrays).
 
 ## Verification
 
