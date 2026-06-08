@@ -147,6 +147,25 @@ impl<'a> VmReady<'a> {
     pub fn start(mut self) -> Result<VmRunning<'a>, FaultContext> {
         let shared_globals_size = self.container.task_table.shared_globals_size;
 
+        // Reject containers whose declared call depth would not fit in
+        // the embedder's frame buffer. Codegen populates
+        // `max_call_depth` from the static call graph; a value of 0
+        // means "not computed" (legacy or hand-built test containers)
+        // and disables the check, preserving the prior behavior where
+        // the runtime `Trap::CallStackOverflow` is the only signal.
+        let declared = self.container.header.max_call_depth;
+        let capacity = self.frames.len();
+        if declared != 0 && declared as usize > capacity {
+            return Err(FaultContext {
+                trap: Trap::ProgramExceedsCallDepth {
+                    required: declared,
+                    capacity: capacity.min(u16::MAX as usize) as u16,
+                },
+                task_id: TaskId::DEFAULT,
+                instance_id: InstanceId::DEFAULT,
+            });
+        }
+
         // Execute init functions once before entering scan mode.
         for pi in 0..self.program_instances.len() {
             let init_fn = self.program_instances[pi].init_function_id;

@@ -28,6 +28,7 @@
 //! let container = compile(&analyzed, &ctx, &CodegenOptions::default(), &EmptyLookup).unwrap();
 //! ```
 
+mod call_graph;
 mod compile;
 mod compile_array;
 mod compile_call;
