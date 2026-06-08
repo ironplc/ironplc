@@ -3,6 +3,7 @@
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
+use ironplc_vm::error::Trap;
 
 /// Helper: builds a container configured for string operations.
 /// Provides a data region, temp buffers, and the given i32 constants.
@@ -31,6 +32,44 @@ fn string_container(
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
         .build()
+}
+
+/// Helper: container with i32 and WSTRING (raw UTF-16LE) constants, for the
+/// wide (`char_width = 2`) synthetic tests below.
+fn wstring_container(
+    bytecode: &[u8],
+    num_vars: u16,
+    i32_constants: &[i32],
+    wstr_constants: &[&[u8]],
+    data_region_bytes: u32,
+) -> ironplc_container::Container {
+    let init_bytecode: Vec<u8> = vec![opcode::RET_VOID];
+    let mut builder = ContainerBuilder::new()
+        .num_variables(num_vars)
+        .data_region_bytes(data_region_bytes)
+        .num_temp_bufs(4)
+        .max_temp_buf_bytes(64);
+    for &c in i32_constants {
+        builder = builder.add_i32_constant(c);
+    }
+    for w in wstr_constants {
+        builder = builder.add_wstr_constant(w);
+    }
+    builder
+        .add_function(FunctionId::INIT, &init_bytecode, 0, num_vars, 0)
+        .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
+        .init_function_id(FunctionId::INIT)
+        .entry_function_id(FunctionId::SCAN)
+        .build()
+}
+
+/// Hand-writes a 6-byte string header (max_len, cur_len, char_width — all
+/// counts of code units / a width byte) at `off` in a data region, for
+/// fixtures that need a wide variable the codegen cannot yet emit.
+fn write_str_header(dr: &mut [u8], off: usize, max_len: u16, cur_len: u16, char_width: u16) {
+    dr[off..off + 2].copy_from_slice(&max_len.to_le_bytes());
+    dr[off + 2..off + 4].copy_from_slice(&cur_len.to_le_bytes());
+    dr[off + 4..off + 6].copy_from_slice(&char_width.to_le_bytes());
 }
 
 // String opcodes use u32 (4-byte LE) for data offsets.
@@ -188,4 +227,161 @@ fn execute_when_left_str_then_correct_length() {
     vm.run_round(0).unwrap();
 
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 3);
+}
+
+// --- Wide (WSTRING / char_width = 2) synthetic tests ---
+//
+// Codegen cannot emit wide strings yet (PR D), so these hand-assemble
+// bytecode and, where a wide variable is needed, hand-write its v3 header
+// into the data region. They prove the VM's data-driven width handling and
+// the ADR-0034 encoding-mismatch verification added in PR C1.
+
+#[test]
+fn execute_when_wide_const_stored_into_wide_var_then_len_in_code_units() {
+    // dest wide var at offset 0 (max_len=10 units, char_width=2).
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::LOAD_CONST_STR, 0x00, 0x00,             // wide "Hi" -> wide temp
+        opcode::STR_STORE_VAR, 0x00, 0x00, 0x00, 0x00,  // store into wide var at 0
+        opcode::LEN_STR, 0x00, 0x00, 0x00, 0x00,
+        opcode::STORE_VAR_I32, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+    // "Hi" as UTF-16LE: H=0x48, i=0x69.
+    let hi: &[u8] = &[0x48, 0x00, 0x69, 0x00];
+    let c = wstring_container(&bytecode, 1, &[], &[hi], 64);
+    let mut b = VmBuffers::from_container(&c);
+    write_str_header(&mut b.data_region, 0, 10, 0, 2);
+    let len = {
+        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        vm.run_round(0).unwrap();
+        vm.read_variable(VarIndex::new(0)).unwrap()
+    };
+    // LEN reports code units, not bytes.
+    assert_eq!(len, 2);
+    // The stored data is the two UTF-16LE code units of "Hi".
+    assert_eq!(&b.data_region[6..10], &[0x48, 0x00, 0x69, 0x00]);
+    // The destination header kept char_width = 2.
+    assert_eq!(u16::from_le_bytes([b.data_region[4], b.data_region[5]]), 2);
+}
+
+#[test]
+fn execute_when_wide_const_stored_into_narrow_var_then_encoding_mismatch() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, // narrow var at 0, max=20
+        opcode::LOAD_CONST_STR, 0x00, 0x00,                   // wide "Hi"
+        opcode::STR_STORE_VAR, 0x00, 0x00, 0x00, 0x00,        // wide src -> narrow dest
+        opcode::RET_VOID,
+    ];
+    let hi: &[u8] = &[0x48, 0x00, 0x69, 0x00];
+    let c = wstring_container(&bytecode, 1, &[], &[hi], 64);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let err = vm.run_round(0).unwrap_err().trap;
+
+    assert_eq!(
+        err,
+        Trap::EncodingMismatch {
+            expected: 1,
+            actual: 2,
+        }
+    );
+}
+
+#[test]
+fn execute_when_load_var_with_invalid_char_width_then_trap() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::STR_LOAD_VAR, 0x00, 0x00, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+    let c = wstring_container(&bytecode, 1, &[], &[], 64);
+    let mut b = VmBuffers::from_container(&c);
+    write_str_header(&mut b.data_region, 0, 10, 2, 0); // char_width = 0 is invalid
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let err = vm.run_round(0).unwrap_err().trap;
+
+    assert_eq!(err, Trap::InvalidCharWidth(0));
+}
+
+#[test]
+fn execute_when_wide_var_roundtrip_then_preserves_utf16le_bytes() {
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::STR_LOAD_VAR, 0x00, 0x00, 0x00, 0x00,  // load wide var at 0 -> wide temp
+        opcode::STR_STORE_VAR, 0x20, 0x00, 0x00, 0x00, // store into wide var at 32
+        opcode::LEN_STR, 0x20, 0x00, 0x00, 0x00,       // len of var at 32
+        opcode::STORE_VAR_I32, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+    let c = wstring_container(&bytecode, 1, &[], &[], 64);
+    let mut b = VmBuffers::from_container(&c);
+    // Source wide var "ABC" at offset 0.
+    write_str_header(&mut b.data_region, 0, 10, 3, 2);
+    b.data_region[6..12].copy_from_slice(&[0x41, 0x00, 0x42, 0x00, 0x43, 0x00]);
+    // Dest wide var at offset 32.
+    write_str_header(&mut b.data_region, 32, 10, 0, 2);
+    let len = {
+        let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+        vm.run_round(0).unwrap();
+        vm.read_variable(VarIndex::new(0)).unwrap()
+    };
+    assert_eq!(len, 3);
+    // Bytes survive the wide load -> temp -> wide store round trip.
+    assert_eq!(
+        &b.data_region[38..44],
+        &[0x41, 0x00, 0x42, 0x00, 0x43, 0x00]
+    );
+}
+
+#[test]
+fn execute_when_cmp_wide_equal_then_zero() {
+    let cmp = opcode::builtin::CMP_STR.to_le_bytes();
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::LOAD_CONST_I32, 0x00, 0x00,  // left_offset = i32 pool[0] = 0
+        opcode::LOAD_CONST_I32, 0x01, 0x00,  // right_offset = i32 pool[1] = 32
+        opcode::BUILTIN, cmp[0], cmp[1],
+        opcode::STORE_VAR_I32, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+    let c = wstring_container(&bytecode, 1, &[0, 32], &[], 64);
+    let mut b = VmBuffers::from_container(&c);
+    // Two equal wide "AB" strings.
+    write_str_header(&mut b.data_region, 0, 10, 2, 2);
+    b.data_region[6..10].copy_from_slice(&[0x41, 0x00, 0x42, 0x00]);
+    write_str_header(&mut b.data_region, 32, 10, 2, 2);
+    b.data_region[38..42].copy_from_slice(&[0x41, 0x00, 0x42, 0x00]);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    vm.run_round(0).unwrap();
+
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 0);
+}
+
+#[test]
+fn execute_when_cmp_mixed_encoding_then_trap() {
+    let cmp = opcode::builtin::CMP_STR.to_le_bytes();
+    #[rustfmt::skip]
+    let bytecode: Vec<u8> = vec![
+        opcode::LOAD_CONST_I32, 0x00, 0x00,
+        opcode::LOAD_CONST_I32, 0x01, 0x00,
+        opcode::BUILTIN, cmp[0], cmp[1],
+        opcode::STORE_VAR_I32, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+    let c = wstring_container(&bytecode, 1, &[0, 32], &[], 64);
+    let mut b = VmBuffers::from_container(&c);
+    write_str_header(&mut b.data_region, 0, 10, 2, 2); // left wide
+    write_str_header(&mut b.data_region, 32, 10, 2, 1); // right narrow
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    let err = vm.run_round(0).unwrap_err().trap;
+
+    assert_eq!(
+        err,
+        Trap::EncodingMismatch {
+            expected: 2,
+            actual: 1,
+        }
+    );
 }

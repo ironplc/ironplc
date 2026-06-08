@@ -1,4 +1,4 @@
-use ironplc_container::STRING_HEADER_BYTES;
+use ironplc_container::{CharWidth, STRING_HEADER_BYTES};
 
 use crate::error::Trap;
 
@@ -6,20 +6,38 @@ use crate::error::Trap;
 pub(crate) const MAX_LEN_OFFSET: usize = 0;
 /// Byte offset of the `cur_length` field within a string header.
 pub(crate) const CUR_LEN_OFFSET: usize = 2;
-//
-// Bytes 4-5 of the header are the `char_width` field (ADR-0035). It is
-// part of the 6-byte layout (`STRING_HEADER_BYTES`) but is not yet
-// populated or read here — every string is narrow today, and the header
-// writers below leave those two bytes at their zero-initialized value.
-// The VM string-opcode work populates and verifies the field.
+/// Byte offset of the `char_width` field within a string header (ADR-0035).
+///
+/// The field is a `u16` (bytes 4-5 of the 6-byte header) carrying the
+/// per-code-unit byte width: 1 for STRING (Latin-1), 2 for WSTRING
+/// (UTF-16LE). `max_length` and `cur_length` are counts of code units; a
+/// span of `n` code units occupies `n * char_width` bytes.
+pub(crate) const CHAR_WIDTH_OFFSET: usize = 4;
+
+/// Verifies that an operand's actual encoding matches the expected one,
+/// trapping with [`Trap::EncodingMismatch`] otherwise (ADR-0034).
+pub(crate) fn verify_encoding(expected: CharWidth, actual: CharWidth) -> Result<(), Trap> {
+    if expected != actual {
+        return Err(Trap::EncodingMismatch {
+            expected: expected.byte_width(),
+            actual: actual.byte_width(),
+        });
+    }
+    Ok(())
+}
 
 /// Metadata for an allocated temp buffer slot.
+///
+/// The slot's encoding is not stored here: it is written into the buffer's
+/// string header (read back via [`str_read_char_width`]) by the allocating
+/// opcode, which already knows the width it requested.
 pub(crate) struct TempBufferSlot {
     /// Index of this buffer slot (the value pushed onto the stack).
     pub buf_idx: u16,
     /// Byte offset where this slot starts in the temp buffer.
     pub buf_start: usize,
-    /// Maximum string data length (capacity minus header).
+    /// Maximum string data length in code units (capacity minus header,
+    /// divided by the requested encoding's byte width).
     pub max_len: u16,
 }
 
@@ -41,11 +59,17 @@ impl TempBufAllocator {
         }
     }
 
-    /// Allocate the next temp buffer slot.
+    /// Allocate the next temp buffer slot for a string of the given
+    /// `encoding`.
     ///
-    /// Returns a [`TempBufferSlot`] with the slot index, byte offset,
-    /// and max data length. The internal counter is advanced automatically.
-    pub fn alloc(&mut self, temp_buf_len: usize) -> Result<TempBufferSlot, Trap> {
+    /// Returns a [`TempBufferSlot`] with the slot index, byte offset, max
+    /// data length (in code units, so `capacity / char_width`), and the
+    /// recorded encoding. The internal counter is advanced automatically.
+    pub fn alloc(
+        &mut self,
+        temp_buf_len: usize,
+        encoding: CharWidth,
+    ) -> Result<TempBufferSlot, Trap> {
         if self.max_temp_buf_bytes == 0 {
             return Err(Trap::TempBufferExhausted);
         }
@@ -55,7 +79,8 @@ impl TempBufAllocator {
         if buf_end > temp_buf_len {
             return Err(Trap::TempBufferExhausted);
         }
-        let max_len = (self.max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
+        let max_len =
+            ((self.max_temp_buf_bytes - STRING_HEADER_BYTES) / encoding.as_usize()) as u16;
         self.next = self.next.wrapping_add(1);
         Ok(TempBufferSlot {
             buf_idx,
@@ -83,20 +108,45 @@ pub(crate) fn read_string_header(
     Ok((cur_len, data_start))
 }
 
+/// Read the per-code-unit [`CharWidth`] from a string header at `offset`.
+///
+/// Validates the stored byte, trapping with [`Trap::InvalidCharWidth`] for
+/// any value other than 1 or 2 (malformed or tampered bytecode).
+pub(crate) fn str_read_char_width(buf: &[u8], offset: usize) -> Result<CharWidth, Trap> {
+    if offset + STRING_HEADER_BYTES > buf.len() {
+        return Err(Trap::DataRegionOutOfBounds(offset as u32));
+    }
+    let value = u16::from_le_bytes([
+        buf[offset + CHAR_WIDTH_OFFSET],
+        buf[offset + CHAR_WIDTH_OFFSET + 1],
+    ]);
+    CharWidth::from_u8(value as u8).map_err(|_| Trap::InvalidCharWidth(value as u8))
+}
+
+/// Write the `char_width` field of a string header at `offset` in `buf`.
+pub(crate) fn str_write_char_width(buf: &mut [u8], offset: usize, char_width: CharWidth) {
+    buf[offset + CHAR_WIDTH_OFFSET..offset + CHAR_WIDTH_OFFSET + 2]
+        .copy_from_slice(&(char_width.byte_width() as u16).to_le_bytes());
+}
+
 /// Write a string header into a temp buffer and return `(cur_len, data_start)`.
 ///
-/// `cur_len` is clamped to `max_len`.
+/// `max_len`, `result_len`, and the returned `cur_len` are counts of code
+/// units; `cur_len` is clamped to `max_len`. The data span is
+/// `cur_len * char_width` bytes, starting at the returned `data_start`.
 pub(crate) fn write_string_header(
     temp_buf: &mut [u8],
     buf_start: usize,
     max_len: u16,
     result_len: usize,
+    char_width: CharWidth,
 ) -> (u16, usize) {
     let cur_len = (result_len as u16).min(max_len);
     temp_buf[buf_start + MAX_LEN_OFFSET..buf_start + MAX_LEN_OFFSET + 2]
         .copy_from_slice(&max_len.to_le_bytes());
     temp_buf[buf_start + CUR_LEN_OFFSET..buf_start + CUR_LEN_OFFSET + 2]
         .copy_from_slice(&cur_len.to_le_bytes());
+    str_write_char_width(temp_buf, buf_start, char_width);
     let data_start = buf_start + STRING_HEADER_BYTES;
     (cur_len, data_start)
 }
@@ -124,12 +174,20 @@ pub(crate) fn str_write_cur_len(buf: &mut [u8], offset: usize, cur_len: u16) {
         .copy_from_slice(&cur_len.to_le_bytes());
 }
 
-/// Write a string header (max_length, cur_length) at `offset` in `buf`.
-pub(crate) fn str_write_header(buf: &mut [u8], offset: usize, max_len: u16, cur_len: u16) {
+/// Write a full string header (max_length, cur_length, char_width) at
+/// `offset` in `buf`. `max_len` and `cur_len` are counts of code units.
+pub(crate) fn str_write_header(
+    buf: &mut [u8],
+    offset: usize,
+    max_len: u16,
+    cur_len: u16,
+    char_width: CharWidth,
+) {
     buf[offset + MAX_LEN_OFFSET..offset + MAX_LEN_OFFSET + 2]
         .copy_from_slice(&max_len.to_le_bytes());
     buf[offset + CUR_LEN_OFFSET..offset + CUR_LEN_OFFSET + 2]
         .copy_from_slice(&cur_len.to_le_bytes());
+    str_write_char_width(buf, offset, char_width);
 }
 
 #[cfg(test)]
@@ -164,19 +222,27 @@ mod tests {
     }
 
     #[test]
-    fn alloc_when_valid_then_returns_slot() {
+    fn alloc_when_narrow_then_max_len_is_capacity_minus_header() {
         let mut alloc = TempBufAllocator::new(32);
-        let slot = alloc.alloc(64).unwrap();
+        let slot = alloc.alloc(64, CharWidth::Narrow).unwrap();
         assert_eq!(slot.buf_idx, 0);
         assert_eq!(slot.buf_start, 0);
         assert_eq!(slot.max_len, (32 - STRING_HEADER_BYTES) as u16);
     }
 
     #[test]
+    fn alloc_when_wide_then_max_len_is_half_capacity_in_code_units() {
+        let mut alloc = TempBufAllocator::new(32);
+        let slot = alloc.alloc(64, CharWidth::Wide).unwrap();
+        // 32 - 6 header = 26 data bytes / 2 bytes per code unit = 13 units.
+        assert_eq!(slot.max_len, ((32 - STRING_HEADER_BYTES) / 2) as u16);
+    }
+
+    #[test]
     fn alloc_when_called_twice_then_second_slot_offset_correct() {
         let mut alloc = TempBufAllocator::new(32);
-        let _first = alloc.alloc(64).unwrap();
-        let second = alloc.alloc(64).unwrap();
+        let _first = alloc.alloc(64, CharWidth::Narrow).unwrap();
+        let second = alloc.alloc(64, CharWidth::Narrow).unwrap();
         assert_eq!(second.buf_idx, 1);
         assert_eq!(second.buf_start, 32);
     }
@@ -184,32 +250,81 @@ mod tests {
     #[test]
     fn alloc_when_zero_max_then_trap() {
         let mut alloc = TempBufAllocator::new(0);
-        let result = alloc.alloc(64);
+        let result = alloc.alloc(64, CharWidth::Narrow);
         assert!(matches!(result, Err(Trap::TempBufferExhausted)));
     }
 
     #[test]
     fn alloc_when_exceeds_len_then_trap() {
         let mut alloc = TempBufAllocator::new(32);
-        let result = alloc.alloc(16);
+        let result = alloc.alloc(16, CharWidth::Narrow);
         assert!(matches!(result, Err(Trap::TempBufferExhausted)));
     }
 
     #[test]
     fn write_string_header_when_fits_then_writes_exact() {
         let mut buf = [0u8; 32];
-        let (cur_len, data_start) = write_string_header(&mut buf, 0, 28, 10);
+        let (cur_len, data_start) = write_string_header(&mut buf, 0, 28, 10, CharWidth::Narrow);
         assert_eq!(cur_len, 10);
         assert_eq!(data_start, STRING_HEADER_BYTES);
         assert_eq!(u16::from_le_bytes([buf[0], buf[1]]), 28); // max_len
         assert_eq!(u16::from_le_bytes([buf[2], buf[3]]), 10); // cur_len
+        assert_eq!(u16::from_le_bytes([buf[4], buf[5]]), 1); // char_width
     }
 
     #[test]
     fn write_string_header_when_exceeds_max_then_clamps() {
         let mut buf = [0u8; 32];
-        let (cur_len, _) = write_string_header(&mut buf, 0, 5, 100);
+        let (cur_len, _) = write_string_header(&mut buf, 0, 5, 100, CharWidth::Narrow);
         assert_eq!(cur_len, 5);
         assert_eq!(u16::from_le_bytes([buf[2], buf[3]]), 5);
+    }
+
+    #[test]
+    fn write_string_header_when_wide_then_writes_char_width_two() {
+        let mut buf = [0u8; 32];
+        write_string_header(&mut buf, 0, 10, 4, CharWidth::Wide);
+        assert_eq!(u16::from_le_bytes([buf[4], buf[5]]), 2);
+    }
+
+    #[test]
+    fn str_read_char_width_when_valid_then_returns_encoding() {
+        let mut buf = [0u8; STRING_HEADER_BYTES];
+        str_write_char_width(&mut buf, 0, CharWidth::Wide);
+        assert_eq!(str_read_char_width(&buf, 0).unwrap(), CharWidth::Wide);
+        str_write_char_width(&mut buf, 0, CharWidth::Narrow);
+        assert_eq!(str_read_char_width(&buf, 0).unwrap(), CharWidth::Narrow);
+    }
+
+    #[test]
+    fn str_read_char_width_when_invalid_byte_then_trap() {
+        let mut buf = [0u8; STRING_HEADER_BYTES];
+        buf[CHAR_WIDTH_OFFSET] = 7;
+        assert!(matches!(
+            str_read_char_width(&buf, 0),
+            Err(Trap::InvalidCharWidth(7))
+        ));
+    }
+
+    #[test]
+    fn str_read_char_width_when_out_of_bounds_then_trap() {
+        let buf = [0u8; 3];
+        assert!(matches!(
+            str_read_char_width(&buf, 0),
+            Err(Trap::DataRegionOutOfBounds(0))
+        ));
+    }
+
+    #[test]
+    fn verify_encoding_when_match_then_ok_else_trap() {
+        assert!(verify_encoding(CharWidth::Narrow, CharWidth::Narrow).is_ok());
+        assert!(verify_encoding(CharWidth::Wide, CharWidth::Wide).is_ok());
+        assert_eq!(
+            verify_encoding(CharWidth::Narrow, CharWidth::Wide),
+            Err(Trap::EncodingMismatch {
+                expected: 1,
+                actual: 2,
+            })
+        );
     }
 }

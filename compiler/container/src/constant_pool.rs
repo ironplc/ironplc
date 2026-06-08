@@ -5,7 +5,7 @@ use std::vec::Vec;
 
 use crate::const_type::ConstType;
 use crate::id_types::ConstantIndex;
-use crate::ContainerError;
+use crate::{CharWidth, ContainerError};
 
 /// A single entry in the constant pool.
 ///
@@ -160,6 +160,24 @@ impl ConstantPool {
             return Err(ContainerError::InvalidConstantType(entry.const_type as u8));
         }
         Ok(&entry.str_value)
+    }
+
+    /// Returns the per-code-unit [`CharWidth`] of the string entry at `index`
+    /// ([`CharWidth::Narrow`] for [`ConstType::Str`], [`CharWidth::Wide`] for
+    /// [`ConstType::WStr`]).
+    ///
+    /// The VM uses this to tag the temp-buffer slot and data-region header
+    /// when loading a string constant (ADR-0034 operand typing). Errors if
+    /// the index is out of range or the entry is not string-typed.
+    pub fn char_width(&self, index: ConstantIndex) -> Result<CharWidth, ContainerError> {
+        let entry = self
+            .entries
+            .get(index.raw() as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        entry
+            .const_type
+            .char_width()
+            .ok_or(ContainerError::InvalidConstantType(entry.const_type as u8))
     }
 
     /// Writes the constant pool to the given writer.
@@ -454,6 +472,44 @@ mod tests {
         assert_eq!(decoded.get_str(ConstantIndex::new(0)).unwrap(), &bytes[..]);
         let entry = decoded.iter().next().unwrap();
         assert_eq!(entry.const_type, ConstType::WStr);
+    }
+
+    #[test]
+    fn constant_pool_char_width_when_str_and_wstr_then_narrow_and_wide() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry::string(b"hi".to_vec()));
+        pool.push(ConstEntry::wstring(vec![0x68, 0x00, 0x69, 0x00]));
+
+        assert_eq!(
+            pool.char_width(ConstantIndex::new(0)).unwrap(),
+            CharWidth::Narrow
+        );
+        assert_eq!(
+            pool.char_width(ConstantIndex::new(1)).unwrap(),
+            CharWidth::Wide
+        );
+    }
+
+    #[test]
+    fn constant_pool_char_width_when_non_string_then_error() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry::primitive_le(
+            ConstType::I32,
+            &7i32.to_le_bytes(),
+        ));
+        assert!(matches!(
+            pool.char_width(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantType(0))
+        ));
+    }
+
+    #[test]
+    fn constant_pool_char_width_when_out_of_range_then_error() {
+        let pool = ConstantPool::default();
+        assert!(matches!(
+            pool.char_width(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantIndex(_))
+        ));
     }
 
     #[test]

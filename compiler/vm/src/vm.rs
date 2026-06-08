@@ -1,6 +1,6 @@
 use ironplc_container::{
-    ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, TaskType, VarIndex,
-    STRING_HEADER_BYTES,
+    CharWidth, ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, TaskType,
+    VarIndex, STRING_HEADER_BYTES,
 };
 
 use crate::buffers::VmBuffers;
@@ -956,13 +956,20 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
+                        // Numeric formatting always produces ASCII (narrow).
                         let (buf_idx, buf_start) = {
-                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
                             (slot.buf_idx as usize, slot.buf_start)
                         };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
-                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        string_ops::str_write_header(
+                            temp_buf,
+                            buf_start,
+                            max_len,
+                            cur_len,
+                            CharWidth::Narrow,
+                        );
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                             .copy_from_slice(&bytes[..cur_len as usize]);
@@ -973,13 +980,20 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
+                        // Numeric formatting always produces ASCII (narrow).
                         let (buf_idx, buf_start) = {
-                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
                             (slot.buf_idx as usize, slot.buf_start)
                         };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
-                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        string_ops::str_write_header(
+                            temp_buf,
+                            buf_start,
+                            max_len,
+                            cur_len,
+                            CharWidth::Narrow,
+                        );
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                             .copy_from_slice(&bytes[..cur_len as usize]);
@@ -990,13 +1004,20 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         let mut fmt_buf = StackFmtBuf::new();
                         let _ = write!(fmt_buf, "{}", val);
                         let bytes = fmt_buf.as_bytes();
+                        // Numeric formatting always produces ASCII (narrow).
                         let (buf_idx, buf_start) = {
-                            let slot = temp_alloc.alloc(temp_buf.len())?;
+                            let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
                             (slot.buf_idx as usize, slot.buf_start)
                         };
                         let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                         let cur_len = (bytes.len() as u16).min(max_len);
-                        string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
+                        string_ops::str_write_header(
+                            temp_buf,
+                            buf_start,
+                            max_len,
+                            cur_len,
+                            CharWidth::Narrow,
+                        );
                         temp_buf[buf_start + STRING_HEADER_BYTES
                             ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
                             .copy_from_slice(&bytes[..cur_len as usize]);
@@ -1007,6 +1028,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         if data_offset + STRING_HEADER_BYTES > data_region.len() {
                             return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                         }
+                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
+                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
+                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
                         let cur_len =
                             string_ops::str_read_cur_len(data_region, data_offset) as usize;
                         let start = data_offset + STRING_HEADER_BYTES;
@@ -1022,6 +1046,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         if data_offset + STRING_HEADER_BYTES > data_region.len() {
                             return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                         }
+                        // STRING_TO_* parses Latin-1 digits; reject WSTRING input.
+                        let width = string_ops::str_read_char_width(data_region, data_offset)?;
+                        string_ops::verify_encoding(CharWidth::Narrow, width)?;
                         let cur_len =
                             string_ops::str_read_cur_len(data_region, data_offset) as usize;
                         let start = data_offset + STRING_HEADER_BYTES;
@@ -1039,16 +1066,23 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         if left_offset + STRING_HEADER_BYTES > data_region.len() {
                             return Err(Trap::DataRegionOutOfBounds(left_offset as u32));
                         }
-                        let left_len =
-                            string_ops::str_read_cur_len(data_region, left_offset) as usize;
-                        let left_start = left_offset + STRING_HEADER_BYTES;
-                        let left_data = &data_region[left_start..left_start + left_len];
-
+                        let left_width = string_ops::str_read_char_width(data_region, left_offset)?;
                         if right_offset + STRING_HEADER_BYTES > data_region.len() {
                             return Err(Trap::DataRegionOutOfBounds(right_offset as u32));
                         }
+                        let right_width =
+                            string_ops::str_read_char_width(data_region, right_offset)?;
+                        string_ops::verify_encoding(left_width, right_width)?;
+                        let w = left_width.as_usize();
+
+                        // Lengths are code units; compare the full byte spans.
+                        let left_len =
+                            string_ops::str_read_cur_len(data_region, left_offset) as usize * w;
+                        let left_start = left_offset + STRING_HEADER_BYTES;
+                        let left_data = &data_region[left_start..left_start + left_len];
+
                         let right_len =
-                            string_ops::str_read_cur_len(data_region, right_offset) as usize;
+                            string_ops::str_read_cur_len(data_region, right_offset) as usize * w;
                         let right_start = right_offset + STRING_HEADER_BYTES;
                         let right_data = &data_region[right_start..right_start + right_len];
 
@@ -1152,7 +1186,16 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
-                string_ops::str_write_header(data_region, data_offset, max_length, 0);
+                // STR_INIT carries no char_width operand yet (PR D), so every
+                // declared string is narrow. The field is still written so the
+                // header is a valid v3 record the load path can verify.
+                string_ops::str_write_header(
+                    data_region,
+                    data_offset,
+                    max_length,
+                    0,
+                    CharWidth::Narrow,
+                );
             }
 
             // LOAD_CONST_STR: Load a string literal from the constant pool
@@ -1169,22 +1212,31 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             //      (e.g. STR_STORE_VAR) can find the data
             opcode::LOAD_CONST_STR => {
                 let index = read_u16_le(bytecode, &mut pc)?;
+                let cindex = ConstantIndex::new(index);
+                // The entry's const_type determines the encoding (ADR-0034).
+                let char_width = container
+                    .constant_pool
+                    .char_width(cindex)
+                    .map_err(|_| Trap::InvalidConstantIndex(cindex))?;
                 let str_bytes = container
                     .constant_pool
-                    .get_str(ConstantIndex::new(index))
-                    .map_err(|_| Trap::InvalidConstantIndex(ConstantIndex::new(index)))?;
+                    .get_str(cindex)
+                    .map_err(|_| Trap::InvalidConstantIndex(cindex))?;
 
-                let (buf_idx, buf_start) = {
-                    let slot = temp_alloc.alloc(temp_buf.len())?;
-                    (slot.buf_idx as usize, slot.buf_start)
+                let (buf_idx, buf_start, max_len) = {
+                    let slot = temp_alloc.alloc(temp_buf.len(), char_width)?;
+                    (slot.buf_idx as usize, slot.buf_start, slot.max_len)
                 };
 
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (str_bytes.len() as u16).min(max_len);
-                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
-                temp_buf[buf_start + STRING_HEADER_BYTES
-                    ..buf_start + STRING_HEADER_BYTES + cur_len as usize]
-                    .copy_from_slice(&str_bytes[..cur_len as usize]);
+                // The pool stores raw bytes; its code-unit length is
+                // bytes / char_width. Clamp to the slot capacity (units).
+                let src_units = (str_bytes.len() / char_width.as_usize()) as u16;
+                let cur_len = src_units.min(max_len);
+                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len, char_width);
+                let copy_bytes = cur_len as usize * char_width.as_usize();
+                temp_buf
+                    [buf_start + STRING_HEADER_BYTES..buf_start + STRING_HEADER_BYTES + copy_bytes]
+                    .copy_from_slice(&str_bytes[..copy_bytes]);
 
                 stack.push(Slot::from_i32(buf_idx as i32))?;
             }
@@ -1212,25 +1264,31 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 if buf_start + STRING_HEADER_BYTES > temp_buf.len() {
                     return Err(Trap::TempBufferExhausted);
                 }
+                let src_width = string_ops::str_read_char_width(temp_buf, buf_start)?;
                 let src_cur_len = string_ops::str_read_cur_len(temp_buf, buf_start);
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
+                // The source's encoding must match the destination variable's
+                // (ADR-0034); a mismatch is a compiler bug or tampered bytecode.
+                let dest_width = string_ops::str_read_char_width(data_region, data_offset)?;
+                string_ops::verify_encoding(dest_width, src_width)?;
                 let dest_max_len = string_ops::str_read_max_len(data_region, data_offset);
 
-                // Copy character data, truncating if source exceeds destination capacity.
-                let copy_len = src_cur_len.min(dest_max_len) as usize;
-                if data_offset + STRING_HEADER_BYTES + copy_len > data_region.len() {
+                // Lengths are code units; truncate to the destination capacity.
+                let copy_units = src_cur_len.min(dest_max_len) as usize;
+                let copy_bytes = copy_units * dest_width.as_usize();
+                if data_offset + STRING_HEADER_BYTES + copy_bytes > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
                 let dst_start = data_offset + STRING_HEADER_BYTES;
                 let src_start = buf_start + STRING_HEADER_BYTES;
-                data_region[dst_start..dst_start + copy_len]
-                    .copy_from_slice(&temp_buf[src_start..src_start + copy_len]);
+                data_region[dst_start..dst_start + copy_bytes]
+                    .copy_from_slice(&temp_buf[src_start..src_start + copy_bytes]);
 
-                // Update destination cur_length.
-                string_ops::str_write_cur_len(data_region, data_offset, copy_len as u16);
+                // Update destination cur_length (code units).
+                string_ops::str_write_cur_len(data_region, data_offset, copy_units as u16);
             }
 
             // STR_LOAD_VAR: Copy a string from the data region into a temp
@@ -1248,26 +1306,27 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
+                let src_width = string_ops::str_read_char_width(data_region, data_offset)?;
                 let src_max_len = string_ops::str_read_max_len(data_region, data_offset);
                 let src_cur_len = string_ops::str_read_cur_len(data_region, data_offset);
-                // Defensive: never read more than max_length bytes.
-                let read_len = src_cur_len.min(src_max_len) as usize;
+                // Defensive: never read more than max_length code units.
+                let read_units = src_cur_len.min(src_max_len) as usize;
 
-                let (buf_idx, buf_start) = {
-                    let slot = temp_alloc.alloc(temp_buf.len())?;
-                    (slot.buf_idx as usize, slot.buf_start)
+                let (buf_idx, buf_start, max_len) = {
+                    let slot = temp_alloc.alloc(temp_buf.len(), src_width)?;
+                    (slot.buf_idx as usize, slot.buf_start, slot.max_len)
                 };
 
-                let max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
-                let cur_len = (read_len as u16).min(max_len);
-                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len);
-                if data_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
+                let cur_len = (read_units as u16).min(max_len);
+                string_ops::str_write_header(temp_buf, buf_start, max_len, cur_len, src_width);
+                let copy_bytes = cur_len as usize * src_width.as_usize();
+                if data_offset + STRING_HEADER_BYTES + copy_bytes > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
                 let dst_start = buf_start + STRING_HEADER_BYTES;
                 let src_start = data_offset + STRING_HEADER_BYTES;
-                temp_buf[dst_start..dst_start + cur_len as usize]
-                    .copy_from_slice(&data_region[src_start..src_start + cur_len as usize]);
+                temp_buf[dst_start..dst_start + copy_bytes]
+                    .copy_from_slice(&data_region[src_start..src_start + copy_bytes]);
 
                 stack.push(Slot::from_i32(buf_idx as i32))?;
             }
@@ -1352,13 +1411,17 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                // PR C1: these string functions are not yet width-aware, so
+                // they operate narrow (their inputs are always narrow until
+                // PR C2 wires width through). Behavior is unchanged.
+                let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    CharWidth::Narrow,
                 );
 
                 // Write result data: prefix + IN2 + suffix.
@@ -1398,13 +1461,17 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let suffix_len = in1_len - insert_idx;
                 let result_len = prefix_len + in2_len + suffix_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                // PR C1: these string functions are not yet width-aware, so
+                // they operate narrow (their inputs are always narrow until
+                // PR C2 wires width through). Behavior is unchanged.
+                let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    CharWidth::Narrow,
                 );
 
                 // Write result data: prefix + IN2 + suffix.
@@ -1445,13 +1512,17 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let suffix_len = in1_len - suffix_start;
                 let result_len = prefix_len + suffix_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                // PR C1: these string functions are not yet width-aware, so
+                // they operate narrow (their inputs are always narrow until
+                // PR C2 wires width through). Behavior is unchanged.
+                let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    CharWidth::Narrow,
                 );
 
                 // Write result data: prefix + suffix.
@@ -1480,13 +1551,17 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let l = if l_val < 0 { 0usize } else { l_val as usize };
                 let result_len = l.min(in_len);
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                // PR C1: these string functions are not yet width-aware, so
+                // they operate narrow (their inputs are always narrow until
+                // PR C2 wires width through). Behavior is unchanged.
+                let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    CharWidth::Narrow,
                 );
 
                 let copy_len = cur_len as usize;
@@ -1507,13 +1582,17 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let result_len = l.min(in_len);
                 let src_start = in_len - result_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                // PR C1: these string functions are not yet width-aware, so
+                // they operate narrow (their inputs are always narrow until
+                // PR C2 wires width through). Behavior is unchanged.
+                let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    CharWidth::Narrow,
                 );
 
                 let copy_len = cur_len as usize;
@@ -1537,13 +1616,17 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let start_idx = (p - 1).min(in_len);
                 let result_len = l.min(in_len - start_idx);
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                // PR C1: these string functions are not yet width-aware, so
+                // they operate narrow (their inputs are always narrow until
+                // PR C2 wires width through). Behavior is unchanged.
+                let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    CharWidth::Narrow,
                 );
 
                 let copy_len = cur_len as usize;
@@ -1564,13 +1647,17 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 
                 let result_len = in1_len + in2_len;
 
-                let slot = temp_alloc.alloc(temp_buf.len())?;
+                // PR C1: these string functions are not yet width-aware, so
+                // they operate narrow (their inputs are always narrow until
+                // PR C2 wires width through). Behavior is unchanged.
+                let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
 
                 let (cur_len, data_start) = string_ops::write_string_header(
                     temp_buf,
                     slot.buf_start,
                     slot.max_len,
                     result_len,
+                    CharWidth::Narrow,
                 );
 
                 // Write result data: IN1 + IN2.
@@ -1619,7 +1706,14 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     if elem_offset + STRING_HEADER_BYTES > data_region.len() {
                         return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
                     }
-                    string_ops::str_write_header(data_region, elem_offset, max_str_len, 0);
+                    // PR C1: array elements are narrow until PR C3 wires width.
+                    string_ops::str_write_header(
+                        data_region,
+                        elem_offset,
+                        max_str_len,
+                        0,
+                        CharWidth::Narrow,
+                    );
                 }
             }
 
@@ -1664,14 +1758,21 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 let src_cur_len = string_ops::str_read_cur_len(data_region, elem_offset);
                 let read_len = src_cur_len.min(max_str_len) as usize;
 
+                // PR C1: array elements are narrow until PR C3 wires width.
                 let (buf_idx, buf_start) = {
-                    let slot = temp_alloc.alloc(temp_buf.len())?;
+                    let slot = temp_alloc.alloc(temp_buf.len(), CharWidth::Narrow)?;
                     (slot.buf_idx as usize, slot.buf_start)
                 };
 
                 let buf_max_len = (max_temp_buf_bytes - STRING_HEADER_BYTES) as u16;
                 let cur_len = (read_len as u16).min(buf_max_len);
-                string_ops::str_write_header(temp_buf, buf_start, buf_max_len, cur_len);
+                string_ops::str_write_header(
+                    temp_buf,
+                    buf_start,
+                    buf_max_len,
+                    cur_len,
+                    CharWidth::Narrow,
+                );
 
                 if elem_offset + STRING_HEADER_BYTES + cur_len as usize > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(elem_offset as u32));
