@@ -1,0 +1,26 @@
+=====
+V9016
+=====
+
+.. problem-summary:: V9016
+
+The container's declared worst-case call depth
+(``FileHeader.max_call_depth``) is larger than the call-frame buffer
+the embedder provided to the VM. ``VmReady::start`` rejects the
+container before any init code runs, so no PLC instructions execute.
+
+Codegen computes ``max_call_depth`` from the program's static call
+graph (longest path through ``CALL`` and user-``FB_CALL`` edges,
+counting the entry frame). The VM compares that number against
+``VmBuffers.frames.len()``.
+
+To resolve:
+
+* Grow the embedder's frame buffer if the program legitimately needs
+  the declared depth, then reload.
+* Recompile with a shallower call chain.
+
+The trap message reports both numbers (``required`` and ``capacity``).
+A ``required`` of ``0`` means the container was built without
+populating the field (legacy or hand-built containers); in that case
+no comparison runs and this trap is not raised.

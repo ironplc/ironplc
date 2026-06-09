@@ -39,6 +39,18 @@ pub enum Trap {
     /// constant-pool entry, or bytecode operand was neither `1` (STRING) nor
     /// `2` (WSTRING). The bytecode is malformed or has been tampered with.
     InvalidCharWidth(u8),
+    /// The container's `header.max_call_depth` exceeds the frame-stack
+    /// buffer provided by the embedder. The container was rejected at
+    /// `VmReady::start` before any init code executed.
+    ///
+    /// `required` is the depth codegen declared the program needs;
+    /// `capacity` is the size of the embedder's frame buffer. The
+    /// embedder either grows the buffer or the program is recompiled
+    /// with a shallower call chain.
+    ProgramExceedsCallDepth {
+        required: u16,
+        capacity: u16,
+    },
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -86,6 +98,12 @@ impl fmt::Display for Trap {
             ),
             Trap::InvalidCharWidth(value) => {
                 write!(f, "invalid char_width byte: {value} (expected 1 or 2)")
+            }
+            Trap::ProgramExceedsCallDepth { required, capacity } => {
+                write!(
+                    f,
+                    "program declares call depth {required} but VM frame buffer holds at most {capacity}"
+                )
             }
         }
     }
@@ -387,6 +405,32 @@ mod tests {
     }
 
     #[test]
+    fn trap_display_when_program_exceeds_call_depth_then_includes_required_and_capacity() {
+        assert_eq!(
+            format!(
+                "{}",
+                Trap::ProgramExceedsCallDepth {
+                    required: 64,
+                    capacity: 32,
+                }
+            ),
+            "program declares call depth 64 but VM frame buffer holds at most 32"
+        );
+    }
+
+    #[test]
+    fn v_code_when_program_exceeds_call_depth_then_v9016() {
+        assert_eq!(
+            Trap::ProgramExceedsCallDepth {
+                required: 64,
+                capacity: 32,
+            }
+            .v_code(),
+            "V9016"
+        );
+    }
+
+    #[test]
     fn exit_code_when_internal_error_then_3() {
         assert_eq!(Trap::StackOverflow.exit_code(), 3);
         assert_eq!(Trap::StackUnderflow.exit_code(), 3);
@@ -413,5 +457,13 @@ mod tests {
             3
         );
         assert_eq!(Trap::InvalidCharWidth(7).exit_code(), 3);
+        assert_eq!(
+            Trap::ProgramExceedsCallDepth {
+                required: 64,
+                capacity: 32,
+            }
+            .exit_code(),
+            3
+        );
     }
 }

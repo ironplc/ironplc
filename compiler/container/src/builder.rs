@@ -20,6 +20,7 @@ use crate::type_section::{ArrayDescriptor, FbTypeDescriptor, TypeSection, UserFb
 pub struct ContainerBuilder {
     num_variables: u16,
     max_stack_depth: u16,
+    max_call_depth: u16,
     data_region_bytes: u32,
     num_temp_bufs: u16,
     max_temp_buf_bytes: u32,
@@ -48,6 +49,7 @@ impl ContainerBuilder {
         ContainerBuilder {
             num_variables: 0,
             max_stack_depth: 0,
+            max_call_depth: 0,
             data_region_bytes: 0,
             num_temp_bufs: 0,
             max_temp_buf_bytes: 0,
@@ -179,6 +181,22 @@ impl ContainerBuilder {
     /// Sets the shared globals size in the task table.
     pub fn shared_globals_size(mut self, size: u16) -> Self {
         self.shared_globals_size = size;
+        self
+    }
+
+    /// Sets the worst-case call depth (longest path through the static
+    /// call graph, counting the entry frame).
+    ///
+    /// Codegen computes this from the program's CALL / user-FB_CALL
+    /// edges and passes the result here so `VmReady::start` can
+    /// reject containers that exceed the embedder's frame buffer
+    /// before any init code runs.
+    ///
+    /// Default `0` means "not computed" — `VmReady::start` skips the
+    /// check, preserving backward compatibility with hand-built test
+    /// containers.
+    pub fn max_call_depth(mut self, depth: u16) -> Self {
+        self.max_call_depth = depth;
         self
     }
 
@@ -365,6 +383,7 @@ impl ContainerBuilder {
         let header = FileHeader {
             num_variables: self.num_variables,
             max_stack_depth: self.max_stack_depth,
+            max_call_depth: self.max_call_depth,
             data_region_bytes: self.data_region_bytes,
             num_temp_bufs: self.num_temp_bufs,
             max_temp_buf_bytes: self.max_temp_buf_bytes,
@@ -477,6 +496,21 @@ mod tests {
 
         // No type section when no FB types or array descriptors added
         assert!(container.type_section.is_none());
+    }
+
+    #[test]
+    fn builder_when_max_call_depth_set_then_propagates_to_header() {
+        let container = ContainerBuilder::new()
+            .num_variables(0)
+            .max_call_depth(17)
+            .build();
+        assert_eq!(container.header.max_call_depth, 17);
+    }
+
+    #[test]
+    fn builder_when_max_call_depth_unset_then_header_default_is_zero() {
+        let container = ContainerBuilder::new().num_variables(0).build();
+        assert_eq!(container.header.max_call_depth, 0);
     }
 
     #[test]

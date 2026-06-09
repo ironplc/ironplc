@@ -39,7 +39,7 @@
 //! After arithmetic at native width, narrow types (SINT, INT, USINT, UINT)
 //! are truncated back to their declared range before storing.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ironplc_container::debug_section::{
     EnumDefEntry, FuncNameEntry, StringLayoutEntry, VarNameEntry,
@@ -516,7 +516,13 @@ fn compile_program_with_functions(
     // register themselves at the end of `compile_user_function`). Per
     // IEC 61131-3 functions cannot instantiate FBs, so they don't require FB
     // bodies to have been compiled first.
-    for (next_function_id, func_decl) in (2_u16..).zip(func_decls.iter()) {
+    //
+    // Function IDs are POSITIONAL in the container (`get_function`
+    // indexes the `functions` Vec). FB bodies are inserted at positions
+    // 2..(2 + N_fb), so user functions must start at the next free
+    // position so each callable POU has a unique runtime id.
+    let user_fn_id_base = 2u16 + fb_decls.len() as u16;
+    for (next_function_id, func_decl) in (user_fn_id_base..).zip(func_decls.iter()) {
         let compiled = compile_user_function(
             func_decl,
             next_function_id,
@@ -559,9 +565,13 @@ fn compile_program_with_functions(
     emit_initial_values(&mut init_emitter, &mut ctx, &local_vars, types)?;
     init_emitter.emit_ret_void();
 
-    // Compile the program body into the scan emitter.
+    // Compile the program body into the scan emitter. Mark
+    // FunctionId::SCAN as the current caller so any CALL / user FB_CALL
+    // emitted from inside the body records a call-graph edge.
     let mut scan_emitter = Emitter::new();
+    ctx.current_function_id = Some(FunctionId::SCAN);
     compile_body(&mut scan_emitter, &mut ctx, &program.body)?;
+    ctx.current_function_id = None;
     scan_emitter.emit_ret_void();
 
     // Build the container.
@@ -676,10 +686,20 @@ fn compile_program_with_functions(
         builder = builder.add_source_files(source_file_entries);
     }
 
+    // Compute the worst-case PLC call depth from the static call graph
+    // and stamp it on the header so `VmReady::start` can reject
+    // containers that wouldn't fit in the embedder's frame buffer
+    // (Trap::ProgramExceedsCallDepth). Cycles should already be
+    // rejected by semantic analysis (Problem::RecursiveCycle); the DFS
+    // is a defensive backstop that surfaces an internal error.
+    let max_call_depth =
+        crate::call_graph::compute_max_call_depth(&ctx.call_graph, FunctionId::SCAN)?;
+
     builder = builder
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
-        .shared_globals_size(program_var_count);
+        .shared_globals_size(program_var_count)
+        .max_call_depth(max_call_depth);
 
     // Add debug info.
     let program_name = program.name.to_string();
@@ -842,6 +862,22 @@ pub(crate) struct CompileContext {
     /// early `RETURN` statement should produce the return value before the
     /// `RET` opcode. `None` for programs and FBs (RETURN emits `RET_VOID`).
     pub(crate) current_function_return: Option<CurrentFunctionReturn>,
+    /// Function whose body is currently being emitted; `None` outside any
+    /// body. Set by the body-compilation entry points (SCAN, user
+    /// functions, user-FB bodies) so [`record_call_edge`] knows who the
+    /// caller is. Edges are aggregated into [`call_graph`] for the
+    /// post-emission `max_call_depth` computation.
+    ///
+    /// [`record_call_edge`]: CompileContext::record_call_edge
+    /// [`call_graph`]: CompileContext::call_graph
+    pub(crate) current_function_id: Option<FunctionId>,
+    /// Adjacency map: caller `FunctionId` → set of callees. Populated by
+    /// [`record_call_edge`] from inside `compile_call.rs` (user CALL)
+    /// and `compile_stmt.rs` (user `FB_CALL`). Empty for intrinsic
+    /// FBs, which have no PLC body.
+    ///
+    /// [`record_call_edge`]: CompileContext::record_call_edge
+    pub(crate) call_graph: HashMap<FunctionId, HashSet<FunctionId>>,
 }
 
 /// Describes how a `RETURN` statement should yield the function's value.
@@ -879,12 +915,26 @@ impl CompileContext {
             next_user_fb_type_id: 0x1000,
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
             current_function_return: None,
+            current_function_id: None,
+            call_graph: HashMap::new(),
         }
     }
 
     /// Returns the exit label for the innermost enclosing loop, if any.
     pub(crate) fn current_loop_exit(&self) -> Option<crate::emit::Label> {
         self.loop_exit_labels.last().copied()
+    }
+
+    /// Records a static call-graph edge from the function whose body is
+    /// currently being emitted to `callee`.
+    ///
+    /// No-op when no body is being emitted (e.g. during INIT, which
+    /// only stores constants and never CALLs) — `current_function_id`
+    /// is `None` outside body-compilation entry points.
+    pub(crate) fn record_call_edge(&mut self, callee: FunctionId) {
+        if let Some(caller) = self.current_function_id {
+            self.call_graph.entry(caller).or_default().insert(callee);
+        }
     }
 
     /// Looks up a variable index by identifier, using the provided span for error reporting.
