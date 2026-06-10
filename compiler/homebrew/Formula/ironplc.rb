@@ -17,7 +17,7 @@ class Ironplc < Formula
     version "${VERSION}"
     desc "IronPLC Compiler"
     homepage "https://www.ironplc.com"
-    license = "MIT"
+    license "MIT"
   
     if OS.mac?
         url "https://github.com/ironplc/ironplc/releases/download/v${VERSION}/${MACFILENAME}"
