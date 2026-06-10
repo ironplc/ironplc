@@ -19,3 +19,4 @@ V9012,CallStackOverflow,VM call frame stack exceeded maximum depth,none
 V9013,InvalidCmpOp,Unknown comparison operator code in CMP_BR instruction,tuple
 V9014,EncodingMismatch,String operation operand encoding does not match expected encoding,struct
 V9015,InvalidCharWidth,String header or constant pool entry has an invalid char_width byte,tuple
+V9016,ProgramExceedsCallDepth,Container declares a call depth that exceeds the VM frame-stack buffer,struct

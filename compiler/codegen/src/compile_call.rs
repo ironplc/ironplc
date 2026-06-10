@@ -319,6 +319,7 @@ fn compile_user_function_call(
         func_info.var_offset,
         func_info.max_stack_depth,
     );
+    ctx.record_call_edge(ironplc_container::FunctionId::new(func_info.function_id));
     // For STRING-returning functions, the CALL leaves a buf_idx on the stack
     // (from emit_str_load_var in the function epilogue). The caller's
     // assignment path will consume it via emit_str_store_var.

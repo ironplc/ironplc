@@ -12,6 +12,7 @@
 #[macro_use]
 mod common;
 
+mod codegen_max_call_depth;
 mod compile_abs;
 mod compile_abs_float;
 mod compile_add;

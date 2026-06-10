@@ -35,6 +35,22 @@ impl TempBufAllocator {
         }
     }
 
+    /// Current value of the `next` counter — i.e. the index that
+    /// would be returned by the next successful [`alloc`](Self::alloc).
+    ///
+    /// Used by the iterative dispatch loop to record a per-frame
+    /// allocation mark, then [`rewind_to`](Self::rewind_to) the
+    /// allocator when that frame returns.
+    pub fn next(&self) -> u16 {
+        self.next
+    }
+
+    /// Reset the counter to `mark`, releasing any slots allocated
+    /// since `mark` was captured.
+    pub fn rewind_to(&mut self, mark: u16) {
+        self.next = mark;
+    }
+
     /// Allocate the next temp buffer slot.
     ///
     /// Returns a [`TempBufferSlot`] with the slot index, byte offset,
