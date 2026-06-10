@@ -53,7 +53,21 @@ impl VmBuffers {
             tasks: vec![TaskState::default(); task_count],
             programs: vec![ProgramInstanceState::default(); program_count],
             ready: vec![0usize; task_count.max(1)],
-            frames: vec![zero_frame; MAX_CALL_DEPTH as usize],
+            // Size the call-frame stack from the container's declared
+            // worst-case depth. Codegen writes that depth from the
+            // static call graph; hand-built containers leave it at 0
+            // ("not computed"), in which case we fall back to
+            // `MAX_CALL_DEPTH` to preserve back-compat (the same
+            // sentinel `VmReady::start` uses to skip its
+            // `Trap::ProgramExceedsCallDepth` check).
+            frames: vec![
+                zero_frame;
+                if h.max_call_depth == 0 {
+                    MAX_CALL_DEPTH as usize
+                } else {
+                    h.max_call_depth as usize
+                }
+            ],
         }
     }
 }
