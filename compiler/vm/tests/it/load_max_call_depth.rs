@@ -27,11 +27,16 @@ fn empty_init_container_with_depth(max_call_depth: u16) -> ironplc_container::Co
 #[test]
 fn start_when_container_declares_call_depth_exceeding_buffer_then_returns_program_exceeds_call_depth(
 ) {
-    // `VmBuffers::from_container` allocates `MAX_CALL_DEPTH = 32` frames
-    // (the embedder default). Declaring 64 must be rejected up-front.
-    let c = empty_init_container_with_depth(64);
-    let mut b = VmBuffers::from_container(&c);
-    let fault = match Vm::new().load(&c, &mut b).start() {
+    // Construct the frame buffer from a small container, then load a
+    // deeper container into it. This mirrors the embedded scenario the
+    // check is for: a fixed-size buffer allocated up front (or shared
+    // across loads) that can't grow to fit a freshly loaded program.
+    let small = empty_init_container_with_depth(8);
+    let mut b = VmBuffers::from_container(&small);
+    assert_eq!(b.frames.len(), 8, "buffer sized from the small container");
+
+    let deep = empty_init_container_with_depth(64);
+    let fault = match Vm::new().load(&deep, &mut b).start() {
         Ok(_) => panic!("start should reject over-deep container"),
         Err(f) => f,
     };
@@ -39,9 +44,26 @@ fn start_when_container_declares_call_depth_exceeding_buffer_then_returns_progra
         fault.trap,
         Trap::ProgramExceedsCallDepth {
             required: 64,
-            capacity: 32,
+            capacity: 8,
         }
     );
+}
+
+#[test]
+fn from_container_when_max_call_depth_set_then_buffer_sized_to_declared_depth() {
+    let c = empty_init_container_with_depth(7);
+    let b = VmBuffers::from_container(&c);
+    assert_eq!(b.frames.len(), 7);
+}
+
+#[test]
+fn from_container_when_max_call_depth_zero_then_buffer_falls_back_to_max_call_depth() {
+    // Hand-built / legacy containers leave the field unset. The buffer
+    // must still allocate the default `MAX_CALL_DEPTH = 32` so those
+    // tests keep working with their existing assumptions.
+    let c = empty_init_container_with_depth(0);
+    let b = VmBuffers::from_container(&c);
+    assert_eq!(b.frames.len(), 32);
 }
 
 #[test]
