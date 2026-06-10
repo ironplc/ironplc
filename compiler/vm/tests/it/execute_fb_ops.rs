@@ -248,3 +248,93 @@ fn execute_when_user_fb_call_then_internal_state_persists_across_rounds() {
     vm.run_round(0).unwrap();
     assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 20);
 }
+
+#[test]
+fn execute_when_nested_user_fb_calls_then_both_copy_outs_run() {
+    // Outer FB (type 0x1000) calls Inner FB (type 0x1001). Both write to
+    // their own data-region fields. Verify both copy-outs run on the
+    // unwind so each FB's field reflects the body's write — i.e. the
+    // iterative dispatch loop pops both fb_return frames in order.
+    //
+    // Layout:
+    //   shared globals: var[0]=outer_ref(=0), var[1]=inner_ref(=8)
+    //   scan locals:    var[2]=outer field read-back, var[3]=inner field read-back
+    //   outer FB body locals: var[4] (mapped to outer field 0)
+    //   inner FB body locals: var[5] (mapped to inner field 0)
+    //   data region: 16 bytes, outer instance at 0..8, inner at 8..16
+    #[rustfmt::skip]
+    let init_bytecode: Vec<u8> = vec![
+        opcode::LOAD_CONST_I32, 0x02, 0x00, // push 8 (constants[2])
+        opcode::STORE_VAR_I32, 0x01, 0x00,  // var[1] := 8 (inner_ref)
+        opcode::RET_VOID,
+    ];
+
+    #[rustfmt::skip]
+    let inner_body: Vec<u8> = vec![
+        opcode::LOAD_CONST_I32, 0x01, 0x00, // push 88 (constants[1])
+        opcode::STORE_VAR_I32, 0x05, 0x00,  // var[5] := 88
+        opcode::RET_VOID,
+    ];
+
+    #[rustfmt::skip]
+    let outer_body: Vec<u8> = vec![
+        opcode::LOAD_CONST_I32, 0x00, 0x00,   // push 77 (constants[0])
+        opcode::STORE_VAR_I32, 0x04, 0x00,    // var[4] := 77
+        opcode::FB_LOAD_INSTANCE, 0x01, 0x00, // push inner_ref (var[1] is in shared globals)
+        opcode::FB_CALL, 0x01, 0x10,          // call inner FB (type 0x1001)
+        opcode::POP,                          // discard inner_ref
+        opcode::RET_VOID,
+    ];
+
+    #[rustfmt::skip]
+    let scan_bytecode: Vec<u8> = vec![
+        opcode::FB_LOAD_INSTANCE, 0x00, 0x00, // push outer_ref (var[0])
+        opcode::FB_CALL, 0x00, 0x10,          // call outer FB (type 0x1000)
+        opcode::FB_LOAD_PARAM, 0x00,          // peek outer_ref, load its field 0
+        opcode::STORE_VAR_I32, 0x02, 0x00,    // var[2] := outer field
+        opcode::POP,                          // discard outer_ref
+        opcode::FB_LOAD_INSTANCE, 0x01, 0x00, // push inner_ref (var[1])
+        opcode::FB_LOAD_PARAM, 0x00,          // peek inner_ref, load its field 0
+        opcode::STORE_VAR_I32, 0x03, 0x00,    // var[3] := inner field
+        opcode::POP,                          // discard inner_ref
+        opcode::RET_VOID,
+    ];
+
+    let c = ContainerBuilder::new()
+        .num_variables(6)
+        .shared_globals_size(2)
+        .data_region_bytes(16)
+        .add_i32_constant(77)
+        .add_i32_constant(88)
+        .add_i32_constant(8)
+        .add_function(FunctionId::INIT, &init_bytecode, 4, 6, 0)
+        .add_function(FunctionId::SCAN, &scan_bytecode, 16, 6, 0)
+        .add_function(FunctionId::new(2), &outer_body, 16, 1, 0)
+        .add_function(FunctionId::new(3), &inner_body, 4, 1, 0)
+        .add_user_fb_type(UserFbDescriptor {
+            type_id: FbTypeId::new(0x1000),
+            function_id: FunctionId::new(2),
+            var_offset: 4,
+            num_fields: 1,
+        })
+        .add_user_fb_type(UserFbDescriptor {
+            type_id: FbTypeId::new(0x1001),
+            function_id: FunctionId::new(3),
+            var_offset: 5,
+            num_fields: 1,
+        })
+        .init_function_id(FunctionId::INIT)
+        .entry_function_id(FunctionId::SCAN)
+        .build();
+
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+    vm.run_round(0).unwrap();
+
+    // Outer's RET_VOID popped its frame and ran the copy-out, so its
+    // field in the data region holds 77; FB_LOAD_PARAM 0 then loads it.
+    assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 77);
+    // Inner's RET_VOID likewise wrote 88 back to its field, which the
+    // scan reads after the outer returns.
+    assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 88);
+}

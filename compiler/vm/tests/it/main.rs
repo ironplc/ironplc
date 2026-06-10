@@ -39,6 +39,7 @@ mod execute_neg_i32;
 mod execute_stack_overflow;
 mod execute_string_ops;
 mod execute_sub_i32;
+mod load_max_call_depth;
 mod profiling;
 mod proptest_robustness;
 mod scenarios;

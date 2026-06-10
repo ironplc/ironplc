@@ -4,7 +4,7 @@
 //! including variable setup, body compilation, and metadata registration.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
-use ironplc_container::{ContainerBuilder, VarIndex};
+use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind,
     VarDecl, VariableType,
@@ -329,8 +329,14 @@ pub(crate) fn compile_user_function(
         }
     });
 
+    // Mark this function as the current caller so nested CALL / FB_CALL
+    // emissions record edges into ctx.call_graph.
+    let saved_current_fn = ctx.current_function_id.take();
+    ctx.current_function_id = Some(FunctionId::new(function_id));
+
     compile_statements(&mut func_emitter, ctx, &body)?;
 
+    ctx.current_function_id = saved_current_fn;
     ctx.current_function_return = saved_return_ctx;
 
     // Load the return value and emit RET.
@@ -575,9 +581,17 @@ pub(crate) fn compile_user_function_block(
     let num_locals = current_index.raw() - var_offset;
 
     // Compile the FB body.
+    // Mark this FB's body as the current caller so nested CALL / FB_CALL
+    // emissions record edges into ctx.call_graph (mirrors the same setup
+    // in compile_user_function and the SCAN-body site).
+    let saved_current_fn = ctx.current_function_id.take();
+    ctx.current_function_id = Some(FunctionId::new(function_id));
+
     let mut fb_emitter = Emitter::new();
     compile_body(&mut fb_emitter, ctx, &fb_decl.body)?;
     fb_emitter.emit_ret_void();
+
+    ctx.current_function_id = saved_current_fn;
 
     let finalized = finalize_function(&mut fb_emitter, ctx);
 
