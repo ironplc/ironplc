@@ -497,8 +497,17 @@ fn compile_fb_call(
         }
     }
 
-    // Call the function block.
+    // Call the function block. Record a call-graph edge for user-defined
+    // FBs (intrinsic FBs have no PLC body and never recurse into the
+    // dispatch loop, so they contribute no frames).
     emitter.emit_fb_call(type_id);
+    if let Some(user_fb) = ctx
+        .user_fb_types
+        .values()
+        .find(|info| info.type_id == type_id)
+    {
+        ctx.record_call_edge(ironplc_container::FunctionId::new(user_fb.function_id));
+    }
 
     // Read output parameters.
     for param in &fb_call.params {

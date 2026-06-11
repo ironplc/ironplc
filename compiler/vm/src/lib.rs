@@ -2,6 +2,7 @@ mod buffers;
 pub(crate) mod builtin;
 pub mod debug_hook;
 pub mod error;
+pub(crate) mod frame_stack;
 pub(crate) mod intrinsic;
 #[cfg(feature = "profiling")]
 mod profile;
@@ -16,6 +17,7 @@ mod vm;
 
 pub use buffers::VmBuffers;
 pub use debug_hook::{DebugHook, NoopDebugHook};
+pub use frame_stack::{FbCallReturn, Frame, FrameStack};
 #[cfg(feature = "profiling")]
 pub use profile::InstructionProfile;
 pub use scheduler::{ProgramInstanceState, TaskState};
