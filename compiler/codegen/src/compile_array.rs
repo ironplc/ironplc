@@ -59,6 +59,8 @@ pub(crate) struct ArrayVarInfo {
     pub is_string_element: bool,
     /// For STRING arrays, the max string length per element.
     pub string_max_len: u16,
+    /// For STRING/WSTRING arrays, the per-code-unit byte width of each element.
+    pub string_char_width: CharWidth,
 }
 
 /// The resolved target of a variable access.
@@ -620,6 +622,9 @@ pub(crate) fn register_array_variable(
     if is_string && string_max_len > ctx.max_string_capacity {
         ctx.max_string_capacity = string_max_len;
     }
+    if is_string && string_char_width.is_wide() {
+        ctx.has_wide_string = true;
+    }
 
     // 9. Store in context
     ctx.array_vars.insert(
@@ -633,6 +638,7 @@ pub(crate) fn register_array_variable(
             dimensions,
             is_string_element: is_string,
             string_max_len,
+            string_char_width,
         },
     );
 
@@ -712,6 +718,7 @@ pub(crate) fn register_ref_to_array_metadata(
                 dimensions,
                 is_string_element: false,
                 string_max_len: 0,
+                string_char_width: CharWidth::Narrow,
             },
         );
     }

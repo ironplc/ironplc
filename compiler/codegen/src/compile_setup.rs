@@ -9,8 +9,8 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
-    ElementaryTypeName, FunctionDeclaration, GenericTypeName, InitialValueAssignmentKind,
-    ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
+    ConstantKind, ElementaryTypeName, FunctionDeclaration, GenericTypeName,
+    InitialValueAssignmentKind, ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -20,9 +20,8 @@ use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::TypeEnvironment;
 
 use super::compile::{
-    char_width_for_string_type, encode_string_literal, string_region_size, CompileContext,
+    char_width_for_string_type, emit_string_literal_load, string_region_size, CompileContext,
     FbInstanceInfo, OpType, OpWidth, Signedness, StringVarInfo, VarTypeInfo, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH,
 };
 use super::compile_call::resolve_fb_type;
 use super::compile_expr::{compile_constant, emit_store_var, emit_truncation, resolve_variable};
@@ -115,6 +114,7 @@ pub(crate) fn assign_variables(
                         max_length,
                     });
                     if char_width.is_wide() {
+                        ctx.has_wide_string = true;
                         (iec_type_tag::WSTRING, "WSTRING".into())
                     } else {
                         (iec_type_tag::STRING, "STRING".into())
@@ -411,16 +411,16 @@ pub(crate) fn emit_initial_values(
                     if let Some(info) = ctx.string_vars.get(id) {
                         let data_offset = info.data_offset;
                         let max_length = info.max_length;
+                        let char_width = info.char_width;
 
                         // Initialize the string header in the data region.
-                        emitter.emit_str_init(data_offset, max_length);
+                        emitter.emit_str_init(data_offset, max_length, char_width);
 
-                        // If there's an initial value, load and store it.
+                        // If there's an initial value, load and store it. The
+                        // literal is encoded at the variable's width so the
+                        // store's encoding check passes (ADR-0034).
                         if let Some(chars) = &string_init.initial_value {
-                            let bytes = encode_string_literal(chars, NARROW_CHAR_WIDTH);
-                            let pool_index = ctx.add_str_constant(bytes);
-                            ctx.num_temp_bufs += 1;
-                            emitter.emit_load_const_str(pool_index);
+                            emit_string_literal_load(emitter, ctx, chars, char_width);
                             emitter.emit_str_store_var(data_offset);
                         }
                     }
@@ -442,6 +442,7 @@ pub(crate) fn emit_initial_values(
                         let desc_index = array_info.desc_index;
                         let element_vti = array_info.element_var_type_info;
                         let is_string = array_info.is_string_element;
+                        let element_char_width = array_info.string_char_width;
 
                         // Store data_offset into the variable slot (like FB instances).
                         let offset_const = ctx.add_i32_constant(data_offset as i32);
@@ -453,12 +454,23 @@ pub(crate) fn emit_initial_values(
                             emitter.emit_str_init_array(var_index, desc_index);
 
                             // Emit STR_STORE_ARRAY_ELEM for each initial string value.
+                            // String literals are encoded at the element width so
+                            // the array element's encoding check passes.
                             if !array_init.initial_values.is_empty() {
                                 let values = crate::compile_array::flatten_array_initial_values(
                                     &array_init.initial_values,
                                 )?;
                                 for (i, value) in values.iter().enumerate() {
-                                    compile_constant(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+                                    if let ConstantKind::CharacterString(lit) = value {
+                                        emit_string_literal_load(
+                                            emitter,
+                                            ctx,
+                                            &lit.value,
+                                            element_char_width,
+                                        );
+                                    } else {
+                                        compile_constant(emitter, ctx, value, DEFAULT_OP_TYPE)?;
+                                    }
                                     let idx_const = ctx.add_i32_constant(i as i32);
                                     emitter.emit_load_const_i32(idx_const);
                                     emitter.emit_str_store_array_elem(var_index, desc_index);
@@ -664,13 +676,11 @@ pub(crate) fn emit_function_local_prologue(
                     if let Some(info) = ctx.string_vars.get(id) {
                         let data_offset = info.data_offset;
                         let max_length = info.max_length;
-                        emitter.emit_str_init(data_offset, max_length);
+                        let char_width = info.char_width;
+                        emitter.emit_str_init(data_offset, max_length, char_width);
 
                         if let Some(chars) = &string_init.initial_value {
-                            let bytes = encode_string_literal(chars, NARROW_CHAR_WIDTH);
-                            let pool_index = ctx.add_str_constant(bytes);
-                            ctx.num_temp_bufs += 1;
-                            emitter.emit_load_const_str(pool_index);
+                            emit_string_literal_load(emitter, ctx, chars, char_width);
                             emitter.emit_str_store_var(data_offset);
                         }
                     }
@@ -746,8 +756,8 @@ pub(crate) fn emit_function_local_prologue(
             &[],
         )?;
     } else if let Some(info) = ctx.string_vars.get(&func_decl.name) {
-        // STRING return: initialize the string header in the data region.
-        emitter.emit_str_init(info.data_offset, info.max_length);
+        // STRING/WSTRING return: initialize the string header in the data region.
+        emitter.emit_str_init(info.data_offset, info.max_length, info.char_width);
     } else {
         emit_zero_const(emitter, ctx, return_op_type);
         emit_store_var(emitter, return_var_index, return_op_type);
