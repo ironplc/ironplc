@@ -360,6 +360,7 @@ mod tests {
         let mut v = vec![opcode::STR_INIT];
         v.extend_from_slice(&data_offset.to_le_bytes());
         v.extend_from_slice(&max_length.to_le_bytes());
+        v.push(1); // char_width (narrow)
         v
     }
 
@@ -670,7 +671,7 @@ mod tests {
 
     #[test]
     fn optimize_when_str_init_before_jump_then_no_panic() {
-        // STR_INIT uses u32 + u16 operands (7 bytes total). A wrong
+        // STR_INIT uses u32 + u16 + u8 operands (8 bytes total). A wrong
         // instruction size would desynchronize the decoder.
         let mut bytecode = Vec::new();
         bytecode.extend_from_slice(&str_init(100, 80));

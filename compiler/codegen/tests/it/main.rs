@@ -156,4 +156,5 @@ mod end_to_end_types;
 mod end_to_end_user_fb;
 mod end_to_end_user_function;
 mod end_to_end_var_temp;
+mod end_to_end_wstring;
 mod wire_format;

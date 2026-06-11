@@ -17,8 +17,8 @@ use ironplc_dsl::textual::{
 use ironplc_problems::Problem;
 
 use super::compile::{
-    CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness, VarTypeInfo,
-    DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH_U16,
+    emit_string_literal_load, CompileContext, CurrentFunctionReturn, OpType, OpWidth, Signedness,
+    VarTypeInfo, DEFAULT_OP_TYPE, DEFAULT_STRING_MAX_LENGTH_U16,
 };
 use super::compile_expr::{
     compile_bit_access_assignment, compile_expr, compile_partial_access_assignment,
@@ -254,13 +254,21 @@ fn compile_statement(
             let target_name = resolve_variable_name(&assignment.target);
 
             // Check if the target is a STRING variable (stored in data region).
-            let string_info =
-                target_name.and_then(|name| ctx.string_vars.get(name).map(|info| info.data_offset));
+            let string_info = target_name
+                .and_then(|name| ctx.string_vars.get(name))
+                .map(|info| (info.data_offset, info.char_width));
 
-            if let Some(data_offset) = string_info {
-                // String target: compile RHS (produces buf_idx), then STR_STORE_VAR.
-                let op_type = DEFAULT_OP_TYPE;
-                compile_expr(emitter, ctx, &assignment.value, op_type)?;
+            if let Some((data_offset, char_width)) = string_info {
+                // String target: produce the RHS as a temp buffer, then
+                // STR_STORE_VAR. A string literal is encoded at the target's
+                // width so the store's encoding check passes; variables and
+                // function results already carry their own width (ADR-0034).
+                if let ExprKind::Const(ConstantKind::CharacterString(lit)) = &assignment.value.kind
+                {
+                    emit_string_literal_load(emitter, ctx, &lit.value, char_width);
+                } else {
+                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                }
                 emitter.emit_str_store_var(data_offset);
             } else {
                 match crate::compile_array::resolve_access(ctx, &assignment.target)? {
@@ -281,6 +289,7 @@ fn compile_statement(
                         let arr_var_index = info.var_index;
                         let arr_desc_index = info.desc_index;
                         let is_string_elem = info.is_string_element;
+                        let element_char_width = info.string_char_width;
                         let dim_info: Vec<_> = info
                             .dimensions
                             .iter()
@@ -294,9 +303,22 @@ fn compile_statement(
                         let target_span = variable_span(&assignment.target);
 
                         if is_string_elem {
-                            // String array: compile RHS (produces buf_idx), then flat index,
-                            // then STR_STORE_ARRAY_ELEM.
-                            compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                            // String array: produce the RHS as a temp buffer, then
+                            // flat index, then STR_STORE_ARRAY_ELEM. A string
+                            // literal is encoded at the element width so the
+                            // store's encoding check passes.
+                            if let ExprKind::Const(ConstantKind::CharacterString(lit)) =
+                                &assignment.value.kind
+                            {
+                                emit_string_literal_load(
+                                    emitter,
+                                    ctx,
+                                    &lit.value,
+                                    element_char_width,
+                                );
+                            } else {
+                                compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
+                            }
                             crate::compile_array::emit_flat_index(
                                 emitter,
                                 ctx,
