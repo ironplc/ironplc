@@ -35,10 +35,12 @@ fn all_spec_requirements_have_tests() {
 /// cargo test -p ironplc-vm-cli --test cli generate_golden -- --ignored --nocapture
 ///
 /// `steel_thread.iplc` is intentionally **not** regenerated here — it
-/// is a frozen artifact used to verify backwards compatibility of the
-/// container reader. Adding a new entry to this generator is fine; if
-/// you ever need to refresh the steel-thread golden, do it from a
-/// throwaway script with full awareness of what the format change is.
+/// is a frozen artifact that exercises the container reader end-to-end.
+/// Adding a new entry to this generator is fine; if you ever need to
+/// refresh the steel-thread golden, do it from a throwaway script with
+/// full awareness of what the format change is. It was last refreshed for
+/// the format_version 2 -> 3 string-header/constant-pool encoding bump
+/// (ADR-0035); the reader only accepts the current `FORMAT_VERSION`.
 #[test]
 #[ignore]
 fn generate_golden_files() {

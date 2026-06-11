@@ -55,10 +55,10 @@ fn container_spec_req_cf_002_magic_is_iplc() {
     assert_eq!(bytes, [0x43, 0x4C, 0x50, 0x49]);
 }
 
-/// REQ-CF-003: Format version is 2.
+/// REQ-CF-003: Format version is 3.
 #[spec_test(REQ_CF_003)]
-fn container_spec_req_cf_003_format_version_is_2() {
-    assert_eq!(FORMAT_VERSION, 2);
+fn container_spec_req_cf_003_format_version_is_3() {
+    assert_eq!(FORMAT_VERSION, 3);
 }
 
 /// REQ-CF-004: All multi-byte values in the header are little-endian.
@@ -71,8 +71,8 @@ fn container_spec_req_cf_004_header_uses_little_endian() {
     // Magic at offset 0: 0x49504C43 in LE is [0x43, 0x4C, 0x50, 0x49]
     assert_eq!(&buf[0..4], &0x49504C43u32.to_le_bytes());
 
-    // Format version at offset 4: 2u16 in LE is [0x02, 0x00]
-    assert_eq!(&buf[4..6], &2u16.to_le_bytes());
+    // Format version at offset 4: 3u16 in LE is [0x03, 0x00]
+    assert_eq!(&buf[4..6], &3u16.to_le_bytes());
 }
 
 /// REQ-CF-005: Header field offsets match the spec table layout, totaling

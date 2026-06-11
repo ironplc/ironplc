@@ -131,6 +131,13 @@ impl ContainerBuilder {
         self
     }
 
+    /// Adds a wide-string (WSTRING) constant to the constant pool. `value`
+    /// is the raw UTF-16LE byte payload (two bytes per code unit).
+    pub fn add_wstr_constant(mut self, value: &[u8]) -> Self {
+        self.constant_pool.push(ConstEntry::wstring(value.to_vec()));
+        self
+    }
+
     /// Adds an i64 constant to the constant pool.
     pub fn add_i64_constant(mut self, value: i64) -> Self {
         self.constant_pool.push(ConstEntry::primitive_le(

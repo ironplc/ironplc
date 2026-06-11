@@ -266,7 +266,10 @@ impl IntermediateType {
             IntermediateType::Date { size } => Some(size.as_bytes() as u32),
             IntermediateType::TimeOfDay { size } => Some(size.as_bytes() as u32),
             IntermediateType::DateAndTime { size } => Some(size.as_bytes() as u32),
-            IntermediateType::String { max_len, .. } => max_len.map(|len| len as u32),
+            IntermediateType::String {
+                max_len,
+                char_width,
+            } => max_len.map(|len| len as u32 * char_width.byte_width() as u32),
             IntermediateType::Subrange { base_type, .. } => base_type.size_in_bytes(),
             IntermediateType::Enumeration { underlying_type } => underlying_type.size_in_bytes(),
             IntermediateType::Structure { fields } => {
@@ -796,6 +799,15 @@ mod tests {
             }
             .size_in_bytes(),
             None
+        );
+        // WSTRING payload is two bytes per code unit.
+        assert_eq!(
+            IntermediateType::String {
+                max_len: Some(10),
+                char_width: CharWidth::Wide,
+            }
+            .size_in_bytes(),
+            Some(20)
         );
 
         // Test subrange inherits base type size
