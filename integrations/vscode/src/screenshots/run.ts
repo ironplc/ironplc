@@ -57,6 +57,10 @@ function hasIronplcmcp(): boolean {
 
 async function main(): Promise<void> {
   const outputDir = path.resolve(__dirname, '../screenshots/output');
+
+  if (!hasIronplcmcp()) {
+    console.warn('Skipping MCP screenshot capture: `ironplcmcp` was not found on PATH.');
+  }
   fs.mkdirSync(outputDir, { recursive: true });
 
   const extensionPath = path.resolve(__dirname, '../../');
