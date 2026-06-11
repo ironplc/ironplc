@@ -145,6 +145,7 @@ mod end_to_end_sqrt;
 mod end_to_end_string;
 mod end_to_end_string_compare;
 mod end_to_end_struct;
+mod end_to_end_wstring;
 mod end_to_end_sub;
 mod end_to_end_subrange;
 mod end_to_end_system_uptime;

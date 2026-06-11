@@ -74,7 +74,12 @@ pub(crate) fn expr_is_string(expr: &Expr) -> bool {
     expr.resolved_type
         .as_ref()
         .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())
-        .is_some_and(|e| matches!(e, ElementaryTypeName::STRING))
+        .is_some_and(|e| {
+            matches!(
+                e,
+                ElementaryTypeName::STRING | ElementaryTypeName::WSTRING
+            )
+        })
 }
 
 /// Returns the storage bit width from an expression's resolved type annotation.
