@@ -259,7 +259,11 @@ fn compile_user_function_call(
         if let Some(Some(str_info)) = func_info.param_string_info.get(i) {
             // Copy the string argument into the function's parameter space.
             // Initialize the destination header, then copy the string data.
-            emitter.emit_str_init(str_info.data_offset, str_info.max_length, str_info.char_width);
+            emitter.emit_str_init(
+                str_info.data_offset,
+                str_info.max_length,
+                str_info.char_width,
+            );
             let src_offset = resolve_string_arg(emitter, ctx, arg, &func.name.span())?;
             ctx.num_temp_bufs += 1;
             emitter.emit_str_load_var(src_offset);

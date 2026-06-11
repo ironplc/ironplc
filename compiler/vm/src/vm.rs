@@ -1822,8 +1822,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .ok_or(Trap::InvalidVariableIndex(var_index))?;
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
-                let stride =
-                    STRING_HEADER_BYTES + max_str_len as usize * desc.element_char_width().as_usize();
+                let stride = STRING_HEADER_BYTES
+                    + max_str_len as usize * desc.element_char_width().as_usize();
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
@@ -1891,8 +1891,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .ok_or(Trap::InvalidVariableIndex(var_index))?;
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
-                let stride =
-                    STRING_HEADER_BYTES + max_str_len as usize * desc.element_char_width().as_usize();
+                let stride = STRING_HEADER_BYTES
+                    + max_str_len as usize * desc.element_char_width().as_usize();
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {

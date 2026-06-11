@@ -312,7 +312,7 @@ END_PROGRAM
     assert_eq!(read_cur_length(&bufs.data_region, 0), 3);
     assert_eq!(
         &bufs.data_region[STRING_HEADER_BYTES..STRING_HEADER_BYTES + 3],
-        &[b'a', b'b', b'c']
+        b"abc"
     );
 
     // wide follows narrow's region (6 + 10*1 = 16): char_width 2, UTF-16LE.
@@ -358,8 +358,7 @@ PROGRAM main
   s := w;
 END_PROGRAM
 ";
-    let library =
-        parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let (_lib, context) =
         ironplc_analyzer::stages::analyze(&[&library], &CompilerOptions::default()).unwrap();
     assert!(
@@ -370,4 +369,3 @@ END_PROGRAM
         "expected P4034 for STRING := WSTRING"
     );
 }
-

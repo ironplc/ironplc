@@ -143,7 +143,8 @@ impl Visitor<Diagnostic> for RuleStringEncodingCompat {
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if let VariableIdentifier::Symbol(ref id) = node.identifier {
             if let InitialValueAssignmentKind::String(ref string_init) = node.initializer {
-                self.string_vars.insert(id.clone(), string_init.width.clone());
+                self.string_vars
+                    .insert(id.clone(), string_init.width.clone());
             }
         }
         node.recurse_visit(self)
