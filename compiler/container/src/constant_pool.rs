@@ -5,7 +5,7 @@ use std::vec::Vec;
 
 use crate::const_type::ConstType;
 use crate::id_types::ConstantIndex;
-use crate::ContainerError;
+use crate::{CharWidth, ContainerError};
 
 /// A single entry in the constant pool.
 ///
@@ -99,7 +99,7 @@ impl ConstantPool {
     pub fn section_size(&self) -> u32 {
         let mut size: u32 = 2; // count
         for entry in &self.entries {
-            // type(1) + reserved(1) + size(2) + value
+            // type(1) + char_width(1) + size(2) + value
             size += 4 + entry.bytes().len() as u32;
         }
         size
@@ -162,13 +162,35 @@ impl ConstantPool {
         Ok(&entry.str_value)
     }
 
+    /// Returns the per-code-unit [`CharWidth`] of the string entry at `index`
+    /// ([`CharWidth::Narrow`] for [`ConstType::Str`], [`CharWidth::Wide`] for
+    /// [`ConstType::WStr`]).
+    ///
+    /// The VM uses this to tag the temp-buffer slot and data-region header
+    /// when loading a string constant (ADR-0034 operand typing). Errors if
+    /// the index is out of range or the entry is not string-typed.
+    pub fn char_width(&self, index: ConstantIndex) -> Result<CharWidth, ContainerError> {
+        let entry = self
+            .entries
+            .get(index.raw() as usize)
+            .ok_or(ContainerError::InvalidConstantIndex(index))?;
+        entry
+            .const_type
+            .char_width()
+            .ok_or(ContainerError::InvalidConstantType(entry.const_type as u8))
+    }
+
     /// Writes the constant pool to the given writer.
     pub fn write_to(&self, w: &mut impl Write) -> Result<(), ContainerError> {
         w.write_all(&(self.entries.len() as u16).to_le_bytes())?;
         for entry in &self.entries {
             let bytes = entry.bytes();
             w.write_all(&[entry.const_type as u8])?;
-            w.write_all(&[0u8])?; // reserved
+            // Per-entry char_width tag: 1 for STRING (Latin-1), 2 for
+            // WSTRING (UTF-16LE), 0 for non-string entries. Derived from
+            // the const_type, which remains authoritative on read.
+            let char_width = entry.const_type.char_width().map_or(0, |w| w.byte_width());
+            w.write_all(&[char_width])?;
             w.write_all(&(bytes.len() as u16).to_le_bytes())?;
             w.write_all(bytes)?;
         }
@@ -186,7 +208,9 @@ impl ConstantPool {
             let mut hdr = [0u8; 4];
             r.read_exact(&mut hdr)?;
             let const_type = ConstType::from_u8(hdr[0])?;
-            // hdr[1] is reserved
+            // hdr[1] is the char_width tag (see write_to). The const_type
+            // is authoritative for the encoding, so the tag is not
+            // re-derived here; the VM verifies it where it matters.
             let size = u16::from_le_bytes([hdr[2], hdr[3]]) as usize;
             let entry = if const_type.is_string_like() {
                 let mut value = vec![0u8; size];
@@ -392,6 +416,34 @@ mod tests {
     }
 
     #[test]
+    fn constant_pool_write_when_mixed_entries_then_char_width_byte_tags_each() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry::primitive_le(
+            ConstType::I32,
+            &7i32.to_le_bytes(),
+        ));
+        pool.push(ConstEntry::string(b"hi".to_vec()));
+        pool.push(ConstEntry::wstring(vec![0x68, 0x00, 0x69, 0x00]));
+
+        let mut buf = Vec::new();
+        pool.write_to(&mut buf).unwrap();
+
+        // Wire layout: [count: u16][ (const_type: u8)(char_width: u8)
+        // (size: u16)(bytes) ]*. The char_width byte sits at index 1 of
+        // each entry: 0 for non-string, 1 for STRING, 2 for WSTRING.
+        let mut cursor = 2; // skip the count
+        let widths: Vec<u8> = (0..3)
+            .map(|_| {
+                let char_width = buf[cursor + 1];
+                let size = u16::from_le_bytes([buf[cursor + 2], buf[cursor + 3]]) as usize;
+                cursor += 4 + size;
+                char_width
+            })
+            .collect();
+        assert_eq!(widths, vec![0, 1, 2]);
+    }
+
+    #[test]
     fn constant_pool_bytes_when_primitive_then_returns_typed_length() {
         let i32_entry = ConstEntry::primitive_le(ConstType::I32, &7i32.to_le_bytes());
         assert_eq!(i32_entry.bytes(), &7i32.to_le_bytes());
@@ -420,6 +472,44 @@ mod tests {
         assert_eq!(decoded.get_str(ConstantIndex::new(0)).unwrap(), &bytes[..]);
         let entry = decoded.iter().next().unwrap();
         assert_eq!(entry.const_type, ConstType::WStr);
+    }
+
+    #[test]
+    fn constant_pool_char_width_when_str_and_wstr_then_narrow_and_wide() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry::string(b"hi".to_vec()));
+        pool.push(ConstEntry::wstring(vec![0x68, 0x00, 0x69, 0x00]));
+
+        assert_eq!(
+            pool.char_width(ConstantIndex::new(0)).unwrap(),
+            CharWidth::Narrow
+        );
+        assert_eq!(
+            pool.char_width(ConstantIndex::new(1)).unwrap(),
+            CharWidth::Wide
+        );
+    }
+
+    #[test]
+    fn constant_pool_char_width_when_non_string_then_error() {
+        let mut pool = ConstantPool::default();
+        pool.push(ConstEntry::primitive_le(
+            ConstType::I32,
+            &7i32.to_le_bytes(),
+        ));
+        assert!(matches!(
+            pool.char_width(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantType(0))
+        ));
+    }
+
+    #[test]
+    fn constant_pool_char_width_when_out_of_range_then_error() {
+        let pool = ConstantPool::default();
+        assert!(matches!(
+            pool.char_width(ConstantIndex::new(0)),
+            Err(ContainerError::InvalidConstantIndex(_))
+        ));
     }
 
     #[test]

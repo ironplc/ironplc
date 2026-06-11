@@ -201,7 +201,7 @@ fn build_string_layout_map(container: &Container) -> StringLayoutMap {
 /// Reasons a STRING variable's bytes could not be read from the data region.
 #[derive(Debug, PartialEq, Eq)]
 enum StringReadError {
-    /// The recorded `data_offset` plus the 4-byte header would read past the
+    /// The recorded `data_offset` plus the string header would read past the
     /// end of the data region.
     OffsetOutOfBounds,
     /// The header was readable but `cur_len` plus the data start would read
@@ -1553,7 +1553,9 @@ END_PROGRAM
         let mut data = vec![0u8; 16];
         data[0..2].copy_from_slice(&10u16.to_le_bytes());
         data[2..4].copy_from_slice(&5u16.to_le_bytes());
-        data[4..9].copy_from_slice(b"hello");
+        // data[4..6] is the char_width field; string bytes follow the
+        // STRING_HEADER_BYTES-wide header.
+        data[STRING_HEADER_BYTES..STRING_HEADER_BYTES + 5].copy_from_slice(b"hello");
         assert_eq!(read_string_value(&data, 0).unwrap(), "'hello'");
     }
 

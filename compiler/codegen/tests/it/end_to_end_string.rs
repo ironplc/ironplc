@@ -85,12 +85,12 @@ END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
-    // First string at offset 0: [max:254][cur:3][data]
+    // First string at offset 0: [max:254][cur:3][char_width][data]
     let s1 = read_string(&bufs.data_region, 0);
     assert_eq!(s1, "foo");
 
-    // Second string at offset 4 + 254 = 258
-    let s2 = read_string(&bufs.data_region, 258);
+    // Second string follows the first: STRING_HEADER_BYTES + 254.
+    let s2 = read_string(&bufs.data_region, STRING_HEADER_BYTES + 254);
     assert_eq!(s2, "bar");
 }
 

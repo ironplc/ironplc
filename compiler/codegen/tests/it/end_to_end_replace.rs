@@ -38,7 +38,8 @@ END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
 
-    // s1 at offset 0 (max 254), s2 at offset 258 (4+254), result at offset 516 (4+254+4+254)
+    // Offsets are STRING_HEADER_BYTES-relative (see string_offset): s1 at 0,
+    // s2 after s1, result after s2.
     let result_offset = string_offset(&[254, 254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "Hello Earth");
 }
