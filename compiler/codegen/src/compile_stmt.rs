@@ -263,8 +263,7 @@ fn compile_statement(
                 // STR_STORE_VAR. A string literal is encoded at the target's
                 // width so the store's encoding check passes; variables and
                 // function results already carry their own width (ADR-0034).
-                if let ExprKind::Const(ConstantKind::CharacterString(lit)) =
-                    &assignment.value.kind
+                if let ExprKind::Const(ConstantKind::CharacterString(lit)) = &assignment.value.kind
                 {
                     emit_string_literal_load(emitter, ctx, &lit.value, char_width);
                 } else {

@@ -627,7 +627,11 @@ END_PROGRAM
     ]);
     let max_len = u16::from_le_bytes([init_bc[pos + 5], init_bc[pos + 6]]);
     assert_eq!(max_len, 10, "STRING[10] declares max_len = 10");
-    assert_eq!(init_bc[pos + 7], 1, "STRING declares char_width = 1 (narrow)");
+    assert_eq!(
+        init_bc[pos + 7],
+        1,
+        "STRING declares char_width = 1 (narrow)"
+    );
 }
 
 #[test]
