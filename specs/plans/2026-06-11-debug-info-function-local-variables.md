@@ -131,11 +131,14 @@ have no return variable, so this only applies to functions.
 ### Ordering / invariant
 
 `ContainerBuilder::build` does not require `var_names` to be sorted (only
-the line map is sorted). Append order is fine. Entries for the same
-`var_index` can legitimately appear under different `function_id`s because
-the variable table is partitioned per function — the `(function_id,
-var_index)` pair is what disambiguates, exactly as the design's
-"Why function_id on variables" note describes.
+the line map is sorted). Append order is fine. The variable table is
+*globally partitioned* — each POU's `var_offset` advances past the
+previous one (`compile.rs:536`), so every variable already has a globally
+unique `var_index`. The `function_id` tag is still essential: it lets a
+debugger attribute a slot to the frame that owns it (and globals carry
+`GLOBAL_SCOPE`), exactly as the design's "Why function_id on variables"
+note describes — even though indices do not actually collide across
+functions in this implementation.
 
 ## File map
 
@@ -192,9 +195,10 @@ in `end_to_end_debug_line_map.rs` and `end_to_end_enum.rs`:
   carry `GLOBAL_SCOPE` and function locals carry the function's id (no
   regression to the existing global path, no `var_index` collisions
   surfacing as wrong-scope lookups).
-- `var_names_when_param_and_local_share_index_across_functions_then_disambiguated_by_function_id`
-  — two user functions whose local partitions reuse the same `var_index`
-  values; assert the `(function_id, var_index)` pairs are distinct.
+- `var_names_when_two_functions_then_each_owned_by_its_own_function_id`
+  — two user functions; assert each parameter is owned by its own
+  `function_id` and (because the table is globally partitioned) carries a
+  distinct `var_index`.
 
 These run through the real `compile()` path (not hand-built containers),
 so they also exercise the container round-trip via `build()`.

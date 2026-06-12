@@ -4,12 +4,13 @@
 //! including variable setup, body compilation, and metadata registration.
 //! Separated from compile.rs to keep module sizes within the 1000-line guideline.
 
+use ironplc_container::debug_section::{var_section, VarNameEntry};
 use ironplc_container::{ContainerBuilder, FunctionId, VarIndex};
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind,
     VarDecl, VariableType,
 };
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
 
@@ -22,11 +23,37 @@ use super::compile::{
     NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
-use super::compile_setup::{emit_function_local_prologue, resolve_type_name};
+use super::compile_setup::{
+    debug_type_for_decl, debug_type_for_return, emit_function_local_prologue, map_var_section,
+    resolve_type_name,
+};
 use super::compile_stmt::{
     compile_body, compile_statements, resolve_string_max_length, resolve_string_spec_max_length,
 };
 use crate::emit::Emitter;
+
+/// Records a debug [`VarNameEntry`] for a function- or FB-local variable
+/// (parameter or local) owned by `function_id`. Mirrors the program/global
+/// emission in `compile_setup::assign_variables`, but tags the entry with
+/// the owning function so a debugger can filter a frame's variables to the
+/// current stack frame (plus globals).
+fn push_local_var_name(
+    ctx: &mut CompileContext,
+    var_index: VarIndex,
+    function_id: u16,
+    decl: &VarDecl,
+    id: &Id,
+) {
+    let (tag, type_name) = debug_type_for_decl(decl);
+    ctx.debug_var_names.push(VarNameEntry {
+        var_index,
+        function_id: FunctionId::new(function_id),
+        var_section: map_var_section(&decl.var_type),
+        iec_type_tag: tag,
+        name: id.to_string(),
+        type_name,
+    });
+}
 
 /// Compiles a single user-defined function body.
 ///
@@ -100,6 +127,7 @@ pub(crate) fn compile_user_function(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
+            push_local_var_name(ctx, current_index, function_id, decl, id);
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
                     if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
@@ -166,6 +194,7 @@ pub(crate) fn compile_user_function(
         }
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
+            push_local_var_name(ctx, current_index, function_id, decl, id);
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
                     if let Some(type_info) = resolve_type_name(&simple.type_name.name) {
@@ -228,6 +257,20 @@ pub(crate) fn compile_user_function(
     let return_var_index = current_index;
     let return_id = func_decl.name.clone();
     ctx.variables.insert(return_id.clone(), return_var_index);
+
+    // Debug entry for the return value. The result has no IEC variable
+    // section; it is modeled as VAR_OUTPUT so a debugger surfaces it in the
+    // "Outputs" scope (per the section->DAP-scope table in
+    // specs/design/debugger-support.md).
+    let (return_tag, return_type_name_str) = debug_type_for_return(&func_decl.return_type);
+    ctx.debug_var_names.push(VarNameEntry {
+        var_index: return_var_index,
+        function_id: FunctionId::new(function_id),
+        var_section: var_section::VAR_OUTPUT,
+        iec_type_tag: return_tag,
+        name: return_id.to_string(),
+        type_name: return_type_name_str,
+    });
 
     // Check if this function returns a STRING/WSTRING.
     let return_string_info = match &func_decl.return_type {
@@ -520,6 +563,7 @@ pub(crate) fn compile_user_function_block(
     for decl in &field_decls {
         if let Some(id) = decl.identifier.symbolic_id() {
             ctx.variables.insert(id.clone(), current_index);
+            push_local_var_name(ctx, current_index, function_id, decl, id);
             match &decl.initializer {
                 InitialValueAssignmentKind::Simple(simple) => {
                     if let Some(vti) = resolve_type_name(&simple.type_name.name) {
