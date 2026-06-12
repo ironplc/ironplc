@@ -76,6 +76,7 @@ mod end_to_end_conv_string;
 mod end_to_end_conv_time_date;
 mod end_to_end_date;
 mod end_to_end_debug_line_map;
+mod end_to_end_debug_var_names;
 mod end_to_end_delete;
 mod end_to_end_dialect;
 mod end_to_end_div;
