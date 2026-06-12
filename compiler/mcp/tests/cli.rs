@@ -341,6 +341,84 @@ fn run_when_stimuli_supplied_then_ok_false() -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Schema compatibility (MCP client interoperability)
+//
+// Some MCP clients — notably OpenCode (via the `@ai-sdk/openai-compatible`
+// runtime) — reject a tool whose JSON Schema uses a *boolean* sub-schema
+// (`true`/`false`) as the value of a `properties` entry, and drop the *entire*
+// tool list when any single tool does so. `schemars` emits a bare `true` for an
+// untyped `serde_json::Value` field unless that field carries a description, so
+// this test guards every tool's input schema against silently regressing the
+// integration. See specs/plans/2026-06-12-opencode-integration-e2e.md.
+// ---------------------------------------------------------------------------
+
+/// Recursively asserts that every value inside any `properties` object is a
+/// JSON object (a schema), never a boolean schema. `additionalProperties` and
+/// keyword values like `default` are intentionally not checked — only schema
+/// *positions* under `properties`, which is exactly what OpenCode rejects.
+fn assert_no_boolean_property_schemas(value: &serde_json::Value, path: &str) {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(serde_json::Value::Object(props)) = map.get("properties") {
+                for (name, schema) in props {
+                    assert!(
+                        schema.is_object(),
+                        "tool schema at {path}.properties.{name} is a boolean schema ({schema}); \
+                         OpenCode and other MCP clients reject boolean property schemas and drop \
+                         the whole tool list. Add a doc comment or #[schemars(description = ...)] \
+                         to the field so schemars emits an object schema."
+                    );
+                }
+            }
+            for (key, child) in map {
+                assert_no_boolean_property_schemas(child, &format!("{path}.{key}"));
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for (index, child) in items.iter().enumerate() {
+                assert_no_boolean_property_schemas(child, &format!("{path}[{index}]"));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Every advertised tool must expose an object input schema with no boolean
+/// `properties` values, so MCP clients such as OpenCode can load the tool list.
+#[test]
+fn tools_list_when_parsed_then_no_tool_uses_boolean_property_schema(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let output = Command::cargo_bin("ironplcmcp")?
+        .write_stdin(MCP_TOOLS_LIST)
+        .output()?;
+    let stdout = String::from_utf8(output.stdout)?;
+    // Find the tools/list response among the newline-delimited JSON-RPC messages
+    // (the initialize response also has a `result`, but only this one has `tools`).
+    let tools = stdout
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find_map(|message| message.get("result").and_then(|r| r.get("tools").cloned()))
+        .expect("a tools/list response carrying a `tools` array");
+    let tools = tools.as_array().expect("`tools` is an array");
+    assert!(!tools.is_empty(), "expected at least one advertised tool");
+    for tool in tools {
+        let name = tool
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("<unnamed>");
+        let schema = tool
+            .get("inputSchema")
+            .unwrap_or_else(|| panic!("tool {name} is missing inputSchema"));
+        assert!(
+            schema.is_object(),
+            "tool {name} inputSchema must be an object"
+        );
+        assert_no_boolean_property_schemas(schema, &format!("{name}.inputSchema"));
+    }
+    Ok(())
+}
+
 /// `run` appears in the tools/list response so clients can discover it.
 #[test]
 fn tools_list_includes_run_tool() -> Result<(), Box<dyn std::error::Error>> {

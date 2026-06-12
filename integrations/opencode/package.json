@@ -1,0 +1,15 @@
+{
+  "name": "ironplc-opencode-integration",
+  "private": true,
+  "version": "0.0.0",
+  "description": "End-to-end tests validating IronPLC's MCP server with OpenCode.",
+  "type": "module",
+  "scripts": {
+    "smoke": "node test/connectivity.mjs",
+    "agent-e2e": "node test/agent.mjs",
+    "e2e": "npm run smoke && npm run agent-e2e"
+  },
+  "devDependencies": {
+    "opencode-ai": "1.17.3"
+  }
+}
