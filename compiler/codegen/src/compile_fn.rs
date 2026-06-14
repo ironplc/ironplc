@@ -40,7 +40,7 @@ use crate::emit::Emitter;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compile_user_function(
     func_decl: &FunctionDeclaration,
-    function_id: u16,
+    function_id: FunctionId,
     var_offset: VarIndex,
     ctx: &mut CompileContext,
     functions: &FunctionEnvironment,
@@ -332,7 +332,7 @@ pub(crate) fn compile_user_function(
     // Mark this function as the current caller so nested CALL / FB_CALL
     // emissions record edges into ctx.call_graph.
     let saved_current_fn = ctx.current_function_id.take();
-    ctx.current_function_id = Some(FunctionId::new(function_id));
+    ctx.current_function_id = Some(function_id);
 
     compile_statements(&mut func_emitter, ctx, &body)?;
 
@@ -448,7 +448,7 @@ pub(crate) fn compile_user_function(
 /// The VM's copy-in/copy-out logic mirrors this ordering.
 pub(crate) fn compile_user_function_block(
     fb_decl: &FunctionBlockDeclaration,
-    function_id: u16,
+    function_id: FunctionId,
     var_offset: u16,
     ctx: &mut CompileContext,
     builder: &mut ContainerBuilder,
@@ -585,7 +585,7 @@ pub(crate) fn compile_user_function_block(
     // emissions record edges into ctx.call_graph (mirrors the same setup
     // in compile_user_function and the SCAN-body site).
     let saved_current_fn = ctx.current_function_id.take();
-    ctx.current_function_id = Some(FunctionId::new(function_id));
+    ctx.current_function_id = Some(function_id);
 
     let mut fb_emitter = Emitter::new();
     compile_body(&mut fb_emitter, ctx, &fb_decl.body)?;
