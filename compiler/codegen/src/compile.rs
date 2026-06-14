@@ -329,7 +329,7 @@ fn add_line_map_entries(
 
 /// Holds the compiled bytecode and metadata for a user-defined function.
 pub(crate) struct CompiledFunction {
-    pub(crate) function_id: u16,
+    pub(crate) function_id: FunctionId,
     pub(crate) bytecode: Vec<u8>,
     pub(crate) max_stack_depth: u16,
     pub(crate) num_locals: u16,
@@ -486,7 +486,7 @@ fn compile_program_with_functions(
                 type_id,
                 num_fields: field_decls_tmp.len(),
                 field_indices,
-                function_id: next_function_id,
+                function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_op_types,
             },
@@ -525,7 +525,7 @@ fn compile_program_with_functions(
     for (next_function_id, func_decl) in (user_fn_id_base..).zip(func_decls.iter()) {
         let compiled = compile_user_function(
             func_decl,
-            next_function_id,
+            FunctionId::new(next_function_id),
             var_offset,
             &mut ctx,
             functions,
@@ -638,24 +638,20 @@ fn compile_program_with_functions(
     // Add user-defined function block bodies.
     for compiled in &compiled_fb_bodies {
         builder = builder.add_function(
-            FunctionId::new(compiled.function_id),
+            compiled.function_id,
             &compiled.bytecode,
             compiled.max_stack_depth,
             compiled.num_locals,
             compiled.num_params,
         );
-        builder = add_line_map_entries(
-            builder,
-            FunctionId::new(compiled.function_id),
-            &compiled.line_map,
-        );
+        builder = add_line_map_entries(builder, compiled.function_id, &compiled.line_map);
     }
 
     // Add user FB type descriptors to the container.
     for fb_info in ctx.user_fb_types.values() {
         builder = builder.add_user_fb_type(UserFbDescriptor {
             type_id: FbTypeId::new(fb_info.type_id),
-            function_id: FunctionId::new(fb_info.function_id),
+            function_id: fb_info.function_id,
             var_offset: fb_info.var_offset,
             num_fields: fb_info.num_fields as u8,
         });
@@ -664,17 +660,13 @@ fn compile_program_with_functions(
     // Add user-defined functions.
     for compiled in &compiled_functions {
         builder = builder.add_function(
-            FunctionId::new(compiled.function_id),
+            compiled.function_id,
             &compiled.bytecode,
             compiled.max_stack_depth,
             compiled.num_locals,
             compiled.num_params,
         );
-        builder = add_line_map_entries(
-            builder,
-            FunctionId::new(compiled.function_id),
-            &compiled.line_map,
-        );
+        builder = add_line_map_entries(builder, compiled.function_id, &compiled.line_map);
     }
 
     // Add the SOURCE_FILE_TABLE (tag 6). `ctx.debug_source_files`
@@ -715,13 +707,13 @@ fn compile_program_with_functions(
 
     for compiled in &compiled_fb_bodies {
         builder = builder.add_func_name(FuncNameEntry {
-            function_id: FunctionId::new(compiled.function_id),
+            function_id: compiled.function_id,
             name: compiled.name.clone(),
         });
     }
     for compiled in &compiled_functions {
         builder = builder.add_func_name(FuncNameEntry {
-            function_id: FunctionId::new(compiled.function_id),
+            function_id: compiled.function_id,
             name: compiled.name.clone(),
         });
     }
@@ -771,7 +763,7 @@ pub(crate) struct StringReturnInfo {
 #[derive(Clone)]
 pub(crate) struct UserFunctionInfo {
     /// The function ID assigned in the container.
-    pub(crate) function_id: u16,
+    pub(crate) function_id: FunctionId,
     /// The absolute variable table offset where this function's parameters start.
     pub(crate) var_offset: VarIndex,
     /// Number of input parameters.
@@ -811,7 +803,7 @@ pub(crate) struct UserFbTypeInfo {
     /// Maps field name (lowercase) to field index (ordinal position).
     pub(crate) field_indices: HashMap<String, u8>,
     /// Function ID of the compiled FB body in the container.
-    pub(crate) function_id: u16,
+    pub(crate) function_id: FunctionId,
     /// Variable table offset where the FB body's slots start.
     pub(crate) var_offset: u16,
     /// Maps field name (lowercase) to its op type for codegen at call sites.

@@ -3,7 +3,7 @@
 //! Provides a builder that appends opcodes and operands to a byte buffer.
 
 use ironplc_container::opcode;
-use ironplc_container::{SourceColumn, SourceFileId, SourceLine, VarIndex};
+use ironplc_container::{FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex};
 
 /// A bytecode-offset → source-location entry recorded by the [`Emitter`].
 ///
@@ -807,7 +807,7 @@ impl Emitter {
     /// function's parameters start.
     pub fn emit_call(
         &mut self,
-        function_id: u16,
+        function_id: FunctionId,
         num_params: u16,
         var_offset: VarIndex,
         callee_max_stack: u16,
@@ -1607,7 +1607,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // arg 1
         em.emit_load_const_i32(1); // arg 2
-        em.emit_call(2, 2, VarIndex::new(5), 0); // CALL function 2, 2 params, var_offset=5
+        em.emit_call(FunctionId::new(2), 2, VarIndex::new(5), 0); // CALL function 2, 2 params, var_offset=5
 
         // LOAD_CONST pool:0, LOAD_CONST pool:1, CALL func:2 var_offset:5
         assert_eq!(
@@ -1633,7 +1633,7 @@ mod tests {
         let mut em = Emitter::new();
         em.emit_load_const_i32(0); // stack: 1
         em.emit_load_const_i32(1); // stack: 2
-        em.emit_call(2, 2, VarIndex::new(5), 0); // pop 2 args, push 1 result = stack: 1
+        em.emit_call(FunctionId::new(2), 2, VarIndex::new(5), 0); // pop 2 args, push 1 result = stack: 1
         em.emit_store_var_i32(VarIndex::new(0)); // stack: 0
 
         assert_eq!(em.max_stack_depth(), 2);

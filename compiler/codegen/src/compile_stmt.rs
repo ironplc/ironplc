@@ -506,7 +506,7 @@ fn compile_fb_call(
         .values()
         .find(|info| info.type_id == type_id)
     {
-        ctx.record_call_edge(ironplc_container::FunctionId::new(user_fb.function_id));
+        ctx.record_call_edge(user_fb.function_id);
     }
 
     // Read output parameters.
