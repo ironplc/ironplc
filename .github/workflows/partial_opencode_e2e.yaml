@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: '20'
       - name: Set up Ollama
-        uses: ai-action/setup-ollama@0e1f52e71a815f28db5c677df4bec36812d8bc36 # v2
+        uses: ai-action/setup-ollama@d0eb66d576e0880178be72b68b77b2dbbf5a884f # v2.0.53
 
       # Install the published compiler and run the OpenCode end-to-end test.
       - name: OpenCode end-to-end test
