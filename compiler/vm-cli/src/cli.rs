@@ -9,7 +9,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use ironplc_container::debug_format::{build_var_debug_map, format_variable_value, VarDebugInfo};
-use ironplc_container::Container;
+use ironplc_container::debug_section::var_section;
+use ironplc_container::{Container, FunctionId};
 use ironplc_vm::{Vm, VmBuffers};
 use serde_json::json;
 
@@ -23,7 +24,12 @@ const BUILD_OPT_LEVEL: &str = env!("BUILD_OPT_LEVEL");
 /// When `scans` is `None`, runs continuously until Ctrl+C.
 /// When `dump_vars` is `Some(path)`, writes variable values after stopping.
 /// A path of "-" writes to stdout; any other path writes to a file.
-pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<(), VmError> {
+pub fn run(
+    path: &Path,
+    dump_vars: Option<&Path>,
+    scans: Option<u64>,
+    group_by_scope: bool,
+) -> Result<(), VmError> {
     let mut file = File::open(path).map_err(|e| {
         VmError::io(
             error::FILE_OPEN,
@@ -75,7 +81,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
             let faulted = running.fault(ctx);
             let err = VmError::from_trap(faulted.trap(), faulted.task_id(), faulted.instance_id());
             if let Some(dump_path) = dump_vars {
-                dump_variables_faulted(&faulted, &container, dump_path)?;
+                dump_variables_faulted(&faulted, &container, dump_path, group_by_scope)?;
             }
             return Err(err);
         }
@@ -95,7 +101,7 @@ pub fn run(path: &Path, dump_vars: Option<&Path>, scans: Option<u64>) -> Result<
     let stopped = running.stop();
 
     if let Some(dump_path) = dump_vars {
-        dump_variables_stopped(&stopped, &container, dump_path)?;
+        dump_variables_stopped(&stopped, &container, dump_path, group_by_scope)?;
     }
 
     Ok(())
@@ -274,42 +280,203 @@ fn open_dump_output(dump_path: &Path) -> Result<Box<dyn Write>, VmError> {
     }
 }
 
+/// A variable row in the scoped dump: its slot metadata plus current value.
+struct ScopeRow {
+    var_index: u16,
+    name: String,
+    type_name: String,
+    iec_type_tag: u8,
+    var_section: u8,
+    raw: u64,
+}
+
+/// A group of variables in the scoped dump, owned by a single POU. The
+/// `[Globals]` group uses [`FunctionId::GLOBAL_SCOPE`].
+struct ScopeGroup {
+    function_id: FunctionId,
+    label: String,
+    rows: Vec<ScopeRow>,
+}
+
+/// Returns the IEC 61131-3 section name for a `var_section` code.
+fn var_section_name(section: u8) -> &'static str {
+    match section {
+        var_section::VAR => "VAR",
+        var_section::VAR_TEMP => "VAR_TEMP",
+        var_section::VAR_INPUT => "VAR_INPUT",
+        var_section::VAR_OUTPUT => "VAR_OUTPUT",
+        var_section::VAR_IN_OUT => "VAR_IN_OUT",
+        var_section::VAR_EXTERNAL => "VAR_EXTERNAL",
+        var_section::VAR_GLOBAL => "VAR_GLOBAL",
+        _ => "VAR",
+    }
+}
+
+/// Builds the scoped dump groups from the container's debug section and the
+/// per-index variable values. `values[i]` is the raw value of variable slot
+/// `i`. Returns an empty vector when the container carries no named
+/// variables (the caller then falls back to the flat dump).
+///
+/// Globals (`function_id == GLOBAL_SCOPE`) come first, then each owning POU
+/// in ascending `function_id` order. Within a group, rows are ordered by
+/// `var_index`, which matches declaration order (params, locals, return).
+fn build_scope_groups(container: &Container, values: &[u64]) -> Vec<ScopeGroup> {
+    let Some(debug) = &container.debug_section else {
+        return Vec::new();
+    };
+    if debug.var_names.is_empty() {
+        return Vec::new();
+    }
+
+    // function_id (raw) -> POU name, for group labels.
+    let mut func_names: HashMap<u16, &str> = HashMap::new();
+    for f in &debug.func_names {
+        func_names.insert(f.function_id.raw(), f.name.as_str());
+    }
+
+    // Collect rows per function_id (raw), skipping any entry whose slot is
+    // out of range for the values we read.
+    let mut by_function: HashMap<u16, Vec<ScopeRow>> = HashMap::new();
+    for entry in &debug.var_names {
+        let idx = entry.var_index.raw();
+        let Some(&raw) = values.get(idx as usize) else {
+            continue;
+        };
+        by_function
+            .entry(entry.function_id.raw())
+            .or_default()
+            .push(ScopeRow {
+                var_index: idx,
+                name: entry.name.clone(),
+                type_name: entry.type_name.clone(),
+                iec_type_tag: entry.iec_type_tag,
+                var_section: entry.var_section,
+                raw,
+            });
+    }
+
+    let global_raw = FunctionId::GLOBAL_SCOPE.raw();
+    let mut ordered_ids: Vec<u16> = by_function.keys().copied().collect();
+    // Globals first, then ascending by function id.
+    ordered_ids.sort_by_key(|&id| (id != global_raw, id));
+
+    let mut groups = Vec::with_capacity(ordered_ids.len());
+    for id in ordered_ids {
+        let mut rows = by_function.remove(&id).unwrap_or_default();
+        rows.sort_by_key(|r| r.var_index);
+        let label = if id == global_raw {
+            "Globals".to_string()
+        } else if let Some(name) = func_names.get(&id) {
+            (*name).to_string()
+        } else {
+            format!("function {id}")
+        };
+        groups.push(ScopeGroup {
+            function_id: FunctionId::new(id),
+            label,
+            rows,
+        });
+    }
+    groups
+}
+
+/// Writes one scoped group: a `[label]` header followed by one indented line
+/// per variable. Non-global variables carry an IEC section annotation;
+/// globals omit it (the group already implies global scope).
+fn write_scoped_group(out: &mut dyn Write, group: &ScopeGroup) -> Result<(), VmError> {
+    let is_global = group.function_id == FunctionId::GLOBAL_SCOPE;
+    let mut text = format!("[{}]\n", group.label);
+    for row in &group.rows {
+        let value = format_variable_value(row.raw, row.iec_type_tag);
+        let typed = if row.type_name.is_empty() {
+            row.name.clone()
+        } else {
+            format!("{} : {}", row.name, row.type_name)
+        };
+        if is_global {
+            text.push_str(&format!("  {typed} = {value}\n"));
+        } else {
+            text.push_str(&format!(
+                "  {typed} = {value}  ({})\n",
+                var_section_name(row.var_section)
+            ));
+        }
+    }
+    out.write_all(text.as_bytes()).map_err(|e| {
+        VmError::io(
+            error::DUMP_WRITE,
+            format!("Unable to write dump output: {e}"),
+        )
+    })
+}
+
+/// Writes the variable dump. When `group_by_scope` is set and the container
+/// has named variables, emits the scoped layout; otherwise emits the flat,
+/// one-line-per-variable format (REQ-VC-005/008/009).
+fn write_dump(
+    out: &mut dyn Write,
+    container: &Container,
+    values: &[u64],
+    group_by_scope: bool,
+) -> Result<(), VmError> {
+    if group_by_scope {
+        let groups = build_scope_groups(container, values);
+        if !groups.is_empty() {
+            for group in &groups {
+                write_scoped_group(out, group)?;
+            }
+            return Ok(());
+        }
+        // No debug info to group by — fall back to the flat dump.
+    }
+
+    let debug_map = build_var_debug_map(container);
+    for (i, &raw) in values.iter().enumerate() {
+        write_variable_line(out, i as u16, raw, &debug_map)?;
+    }
+    Ok(())
+}
+
 fn dump_variables_stopped(
     stopped: &ironplc_vm::VmStopped,
     container: &Container,
     dump_path: &Path,
+    group_by_scope: bool,
 ) -> Result<(), VmError> {
-    let debug_map = build_var_debug_map(container);
     let num_vars = stopped.num_variables();
-    let mut out = open_dump_output(dump_path)?;
+    let mut values = Vec::with_capacity(num_vars as usize);
     for i in 0..num_vars {
-        let raw = stopped
-            .read_variable_raw(ironplc_container::VarIndex::new(i))
-            .map_err(|e| {
-                VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
-            })?;
-        write_variable_line(&mut *out, i, raw, &debug_map)?;
+        values.push(
+            stopped
+                .read_variable_raw(ironplc_container::VarIndex::new(i))
+                .map_err(|e| {
+                    VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
+                })?,
+        );
     }
-    Ok(())
+    let mut out = open_dump_output(dump_path)?;
+    write_dump(&mut *out, container, &values, group_by_scope)
 }
 
 fn dump_variables_faulted(
     faulted: &ironplc_vm::VmFaulted,
     container: &Container,
     dump_path: &Path,
+    group_by_scope: bool,
 ) -> Result<(), VmError> {
-    let debug_map = build_var_debug_map(container);
     let num_vars = faulted.num_variables();
-    let mut out = open_dump_output(dump_path)?;
+    let mut values = Vec::with_capacity(num_vars as usize);
     for i in 0..num_vars {
-        let raw = faulted
-            .read_variable_raw(ironplc_container::VarIndex::new(i))
-            .map_err(|e| {
-                VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
-            })?;
-        write_variable_line(&mut *out, i, raw, &debug_map)?;
+        values.push(
+            faulted
+                .read_variable_raw(ironplc_container::VarIndex::new(i))
+                .map_err(|e| {
+                    VmError::io(error::VAR_READ, format!("Unable to read variable {i}: {e}"))
+                })?,
+        );
     }
-    Ok(())
+    let mut out = open_dump_output(dump_path)?;
+    write_dump(&mut *out, container, &values, group_by_scope)
 }
 
 #[cfg(test)]
@@ -501,6 +668,220 @@ mod tests {
         assert!(
             err.to_string().starts_with("V6006"),
             "expected V6006 (dump write), got {err}"
+        );
+    }
+
+    use ironplc_container::debug_section::{FuncNameEntry, VarNameEntry};
+    use ironplc_container::{ContainerBuilder, VarIndex};
+
+    fn var(
+        index: u16,
+        owner: FunctionId,
+        section: u8,
+        tag: u8,
+        name: &str,
+        type_name: &str,
+    ) -> VarNameEntry {
+        VarNameEntry {
+            var_index: VarIndex::new(index),
+            function_id: owner,
+            var_section: section,
+            iec_type_tag: tag,
+            name: name.into(),
+            type_name: type_name.into(),
+        }
+    }
+
+    fn container_with(vars: Vec<VarNameEntry>, funcs: Vec<FuncNameEntry>) -> Container {
+        let mut builder = ContainerBuilder::new();
+        for v in vars {
+            builder = builder.add_var_name(v);
+        }
+        for f in funcs {
+            builder = builder.add_func_name(f);
+        }
+        builder.build()
+    }
+
+    #[test]
+    fn var_section_name_when_known_section_then_returns_iec_name() {
+        assert_eq!(var_section_name(var_section::VAR), "VAR");
+        assert_eq!(var_section_name(var_section::VAR_INPUT), "VAR_INPUT");
+        assert_eq!(var_section_name(var_section::VAR_OUTPUT), "VAR_OUTPUT");
+        assert_eq!(var_section_name(var_section::VAR_IN_OUT), "VAR_IN_OUT");
+    }
+
+    /// REQ-VC-018: scoped dump groups variables, with the `[Globals]` group
+    /// first, then per-POU groups in ascending function-id order.
+    #[spec_test(REQ_VC_018)]
+    fn build_scope_groups_when_globals_and_functions_then_globals_first_then_by_function_id() {
+        let container = container_with(
+            vec![
+                var(
+                    0,
+                    FunctionId::GLOBAL_SCOPE,
+                    var_section::VAR,
+                    iec_type_tag::DINT,
+                    "g",
+                    "DINT",
+                ),
+                var(
+                    2,
+                    FunctionId::new(3),
+                    var_section::VAR_INPUT,
+                    iec_type_tag::DINT,
+                    "n3",
+                    "DINT",
+                ),
+                var(
+                    1,
+                    FunctionId::new(2),
+                    var_section::VAR_INPUT,
+                    iec_type_tag::DINT,
+                    "n2",
+                    "DINT",
+                ),
+            ],
+            vec![
+                FuncNameEntry {
+                    function_id: FunctionId::new(2),
+                    name: "alpha".into(),
+                },
+                FuncNameEntry {
+                    function_id: FunctionId::new(3),
+                    name: "beta".into(),
+                },
+            ],
+        );
+        let groups = build_scope_groups(&container, &[0, 0, 0]);
+        let labels: Vec<&str> = groups.iter().map(|g| g.label.as_str()).collect();
+        assert_eq!(labels, vec!["Globals", "alpha", "beta"]);
+    }
+
+    #[test]
+    fn build_scope_groups_when_rows_then_ordered_by_var_index_within_group() {
+        let container = container_with(
+            vec![
+                var(
+                    2,
+                    FunctionId::new(2),
+                    var_section::VAR,
+                    iec_type_tag::DINT,
+                    "c",
+                    "DINT",
+                ),
+                var(
+                    0,
+                    FunctionId::new(2),
+                    var_section::VAR_INPUT,
+                    iec_type_tag::DINT,
+                    "a",
+                    "DINT",
+                ),
+                var(
+                    1,
+                    FunctionId::new(2),
+                    var_section::VAR,
+                    iec_type_tag::DINT,
+                    "b",
+                    "DINT",
+                ),
+            ],
+            vec![FuncNameEntry {
+                function_id: FunctionId::new(2),
+                name: "f".into(),
+            }],
+        );
+        let groups = build_scope_groups(&container, &[0, 0, 0]);
+        assert_eq!(groups.len(), 1);
+        let names: Vec<&str> = groups[0].rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["a", "b", "c"]);
+    }
+
+    /// REQ-VC-019: non-global lines carry an IEC section annotation; the
+    /// `[Globals]` group omits it.
+    #[spec_test(REQ_VC_019)]
+    fn write_scoped_group_when_function_local_then_includes_section_annotation() {
+        let global = ScopeGroup {
+            function_id: FunctionId::GLOBAL_SCOPE,
+            label: "Globals".into(),
+            rows: vec![ScopeRow {
+                var_index: 0,
+                name: "counter".into(),
+                type_name: "DINT".into(),
+                iec_type_tag: iec_type_tag::DINT,
+                var_section: var_section::VAR_GLOBAL,
+                raw: 3,
+            }],
+        };
+        let mut buf = Vec::new();
+        assert!(write_scoped_group(&mut buf, &global).is_ok());
+        assert_eq!(
+            String::from_utf8(buf).unwrap(),
+            "[Globals]\n  counter : DINT = 3\n"
+        );
+
+        let func = ScopeGroup {
+            function_id: FunctionId::new(2),
+            label: "add_offset".into(),
+            rows: vec![ScopeRow {
+                var_index: 5,
+                name: "n".into(),
+                type_name: "DINT".into(),
+                iec_type_tag: iec_type_tag::DINT,
+                var_section: var_section::VAR_INPUT,
+                raw: 7,
+            }],
+        };
+        let mut buf = Vec::new();
+        assert!(write_scoped_group(&mut buf, &func).is_ok());
+        assert_eq!(
+            String::from_utf8(buf).unwrap(),
+            "[add_offset]\n  n : DINT = 7  (VAR_INPUT)\n"
+        );
+    }
+
+    /// REQ-VC-020: with no debug section, `--group-by-scope` falls back to the
+    /// flat dump format.
+    #[spec_test(REQ_VC_020)]
+    fn write_dump_when_no_debug_section_then_falls_back_to_flat() {
+        let container = ContainerBuilder::new().build();
+        let mut buf = Vec::new();
+        assert!(write_dump(&mut buf, &container, &[10, 42], true).is_ok());
+        assert_eq!(String::from_utf8(buf).unwrap(), "var[0]: 10\nvar[1]: 42\n");
+    }
+
+    #[test]
+    fn write_dump_when_group_by_scope_and_debug_then_emits_grouped_layout() {
+        let container = container_with(
+            vec![
+                var(
+                    0,
+                    FunctionId::GLOBAL_SCOPE,
+                    var_section::VAR,
+                    iec_type_tag::DINT,
+                    "counter",
+                    "DINT",
+                ),
+                var(
+                    1,
+                    FunctionId::new(2),
+                    var_section::VAR_INPUT,
+                    iec_type_tag::DINT,
+                    "step",
+                    "DINT",
+                ),
+            ],
+            vec![FuncNameEntry {
+                function_id: FunctionId::new(2),
+                name: "acc".into(),
+            }],
+        );
+        let mut buf = Vec::new();
+        assert!(write_dump(&mut buf, &container, &[3, 9], true).is_ok());
+        assert_eq!(
+            String::from_utf8(buf).unwrap(),
+            "[Globals]\n  counter : DINT = 3\n[acc]\n  step : DINT = 9  (VAR_INPUT)\n"
         );
     }
 }

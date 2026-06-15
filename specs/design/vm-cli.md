@@ -51,6 +51,7 @@ ironplcvm run [OPTIONS] <FILE>
 |--------|-------------|
 | `--dump-vars [PATH]` | After the VM stops, write all variable values to `PATH`. If `PATH` is omitted or `-`, write to stdout. |
 | `--scans <N>` | Run exactly `N` scheduling rounds then stop. When omitted, runs continuously until SIGINT (Ctrl+C). |
+| `--group-by-scope` | Group the `--dump-vars` output by owning POU (frame) and annotate each variable with its IEC section. Falls back to the flat format when the container has no debug section. |
 
 **Behavior:**
 
@@ -154,6 +155,40 @@ For a program `x := 10; y := x + 32;` with two variables:
 var[0]: 10
 var[1]: 42
 ```
+
+## Scoped Variable Dump Format
+
+The `--group-by-scope` option is a debug-info-aware alternative layout for
+`--dump-vars`. It groups variables by the POU that declares them — using the
+`function_id` and `var_section` metadata in the debug section's VAR_NAME
+table — so the output mirrors the call structure a debugger would show.
+
+### Behavior
+
+- **REQ-VC-018** With `--group-by-scope`, variables are emitted in groups, each introduced by a `[<label>]` header line followed by one indented line per variable; program/global variables form a `[Globals]` group that is emitted first, before any per-POU group.
+- **REQ-VC-019** Within `--group-by-scope`, each non-global variable line is annotated with its IEC section name (`VAR`, `VAR_INPUT`, `VAR_OUTPUT`, `VAR_IN_OUT`, `VAR_TEMP`, `VAR_EXTERNAL`, `VAR_GLOBAL`); variables in the `[Globals]` group omit the annotation.
+- **REQ-VC-020** If the container has no debug section (or it names no variables), `--group-by-scope` falls back to the flat dump format (REQ-VC-005/008/009).
+
+### Format
+
+For a program with a global `counter : DINT`, a function `add_offset`
+(input `n`, local `bump`, return value), and a function block `accumulator`
+(input `step`, output `total`):
+
+```
+[Globals]
+  counter : DINT = 3
+[add_offset]
+  n : DINT = 3  (VAR_INPUT)
+  bump : DINT = 11  (VAR)
+  add_offset : DINT = 14  (VAR_OUTPUT)
+[accumulator]
+  step : DINT = 3  (VAR_INPUT)
+  total : DINT = 6  (VAR_OUTPUT)
+```
+
+The function's return value appears as a `VAR_OUTPUT`-annotated line named
+after the function (matching the debug section's encoding).
 
 ## Exit Codes
 

@@ -54,6 +54,12 @@ enum Action {
         /// Run N scheduling rounds then stop (default: continuous until Ctrl+C).
         #[arg(long)]
         scans: Option<u64>,
+
+        /// Group the variable dump by owning POU (frame) and annotate each
+        /// variable with its IEC section. Requires `--dump-vars`; falls back
+        /// to the flat dump when the container has no debug section.
+        #[arg(long)]
+        group_by_scope: bool,
     },
     /// Benchmarks a bytecode container by running it many times and reporting timing statistics.
     Benchmark {
@@ -80,7 +86,8 @@ pub fn main() -> ExitCode {
             file,
             dump_vars,
             scans,
-        } => cli::run(&file, dump_vars.as_deref(), scans),
+            group_by_scope,
+        } => cli::run(&file, dump_vars.as_deref(), scans, group_by_scope),
         Action::Benchmark {
             file,
             cycles,
