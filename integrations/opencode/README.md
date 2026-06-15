@@ -3,8 +3,14 @@
 These tests validate that IronPLC's MCP server (`ironplcmcp`) works with
 [OpenCode](https://opencode.ai), the open-source terminal coding agent.
 
-They run in CI via `.github/workflows/partial_opencode_e2e.yaml` and can be run
-locally with the recipes below.
+They run in CI in the deployment pipeline (`.github/workflows/deployment.yaml`
+via `partial_opencode_e2e.yaml`), which installs the just-published compiler and
+runs `just opencode-e2e`. A failure blocks publishing, the same as the other
+smoke tests. They can also be run locally with the recipes below.
+
+The deterministic regression guard for the underlying schema bug lives in
+`compiler/mcp/tests/cli.rs` and runs per-PR under `cargo test`, so PRs are
+protected even though the OpenCode-binary tests run at release time.
 
 ## Layers
 

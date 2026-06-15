@@ -2,10 +2,10 @@ name: OpenCode Integration E2E
 on:
   workflow_call:
     inputs:
-      commit-ref:
-        required: false
+      compiler-version:
+        required: true
         type: string
-        description: 'If not empty, then run for the specified branch name or tag'
+        description: 'The version number to test with (without the "v" prefix). Empty string uses the latest release.'
       model:
         required: false
         type: string
@@ -16,59 +16,19 @@ jobs:
   opencode-e2e:
     name: OpenCode Integration E2E Job
     runs-on: ubuntu-latest
-    env:
-      # A larger context window improves small models' tool-calling reliability.
-      OLLAMA_CONTEXT_LENGTH: "16384"
-    defaults:
-      run:
-        working-directory: ./integrations/opencode
     steps:
       # Fetch input artifacts and code
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
-        with:
-          ref: ${{ inputs.commit-ref }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
 
       # Configure the execution environment
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '20'
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-
-      # Build the MCP server under test
-      - name: Build ironplcmcp
-        working-directory: ./compiler
-        run: cargo build --release -p ironplc-mcp --bin ironplcmcp
-
-      # Install the pinned OpenCode CLI
-      - name: Install OpenCode
-        run: npm ci
-
-      # Layer 2 — deterministic connectivity check (no model required). This is
-      # the regression guard for tool-schema compatibility with OpenCode.
-      - name: Connectivity smoke (opencode mcp list)
-        run: npm run smoke
-        env:
-          IRONPLCMCP_BIN: ${{ github.workspace }}/compiler/target/release/ironplcmcp
-
-      # Layer 3 — real-agent end-to-end with a local, key-free Ollama model.
-      # NOTE: pin ai-action/setup-ollama to a commit SHA per the repo's policy
-      # once the SHA for v2 is known.
       - name: Set up Ollama
-        uses: ai-action/setup-ollama@v2
+        uses: ai-action/setup-ollama@0e1f52e71a815f28db5c677df4bec36812d8bc36 # v2
 
-      - name: Start Ollama and pull the model
-        run: |
-          ollama serve &
-          timeout 60 bash -c 'until curl -sf http://localhost:11434/api/tags >/dev/null; do sleep 1; done'
-          ollama pull ${{ inputs.model }}
-
-      - name: Agent end-to-end (Ollama)
-        run: npm run agent-e2e
-        env:
-          IRONPLCMCP_BIN: ${{ github.workspace }}/compiler/target/release/ironplcmcp
-          OPENCODE_E2E_MODEL: ollama/${{ inputs.model }}
+      # Install the published compiler and run the OpenCode end-to-end test.
+      - name: OpenCode end-to-end test
+        run: just opencode-e2e "${{ inputs.compiler-version }}" "${{ inputs.model }}"

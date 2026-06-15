@@ -66,14 +66,3 @@ jobs:
     uses: ./.github/workflows/partial_install_script_test.yaml
     with:
       compiler-version: ""
-
-  opencode-e2e:
-    name: OpenCode Integration E2E
-    needs: approve
-    # Validates that the IronPLC MCP server works with the OpenCode agent:
-    # a deterministic connectivity check plus a real-agent run against a local
-    # Ollama model.
-    uses: ./.github/workflows/partial_opencode_e2e.yaml
-    with:
-      commit-ref: ""
-      model: "llama3.2:3b"

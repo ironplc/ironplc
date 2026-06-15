@@ -72,15 +72,24 @@ layer stays self-contained.
 | `integrations/opencode/test/connectivity.mjs` | Layer 2 |
 | `integrations/opencode/test/agent.mjs` | Layer 3 |
 | `integrations/opencode/test/record-mcp.mjs` | JSON-RPC recording wrapper |
+| `justfile` | `opencode-e2e` recipe: install published compiler + run both layers |
 | `.github/workflows/partial_opencode_e2e.yaml` | New reusable workflow |
-| `.github/workflows/integration.yaml` | Wire in the new job (blocking, `needs: approve`) |
+| `.github/workflows/deployment.yaml` | Wire in the new job after publish-prerelease; gate publish-website |
 | `docs/how-to-guides/ai-agents/write-plc-programs-with-an-ai-agent.rst` | Add an OpenCode tab |
 
 ## Decisions
 
-- **Ollama job is a blocking gate** (per maintainer): a failure to invoke the
-  tool fails the PR. Mitigated by a directive prompt + retries + a larger Ollama
-  context (`OLLAMA_CONTEXT_LENGTH`).
+- **Runs in the deployment pipeline against the published release**, mirroring
+  the VS Code and install-script smoke tests, rather than rebuilding in per-PR
+  CI (per maintainer review). The connectivity + agent layers therefore validate
+  the shipped `ironplcmcp` binary. The per-PR regression guard for the schema bug
+  is the Rust test in `compiler/mcp/tests/cli.rs`.
+- **Blocking gate**: like the other deployment smoke tests, a failure blocks
+  `publish-website` and therefore the release. The agent layer is mitigated by a
+  directive prompt + retries + a larger Ollama context (`OLLAMA_CONTEXT_LENGTH`).
+- **Test steps live in the `just opencode-e2e` recipe**, not inline in the
+  workflow (per maintainer review).
+- **`ai-action/setup-ollama` is pinned to a commit SHA** (per CodeQL).
 - **Model: `llama3.2:3b`** — official tool-calling support, ~2GB, CPU-friendly.
   Exposed as a workflow input so it is trivially swappable.
 - Tool-call detection uses the recording wrapper (stdio), not OpenCode's
@@ -89,8 +98,9 @@ layer stays self-contained.
 ## Verification
 
 - `cargo test -p ironplc-mcp` (schema guard) — local.
-- `just opencode-smoke` — local (verified: `✓ ironplc connected`).
-- `just opencode-agent-e2e` — CI only (Ollama registry blocked in the dev
-  sandbox); the harness was validated against a scripted local model proving the
-  tools are exposed to the agent as `ironplc_*`.
+- `cd integrations/opencode && IRONPLCMCP_BIN=... npm run smoke` — local
+  (verified: `✓ ironplc connected`).
+- `just opencode-e2e` — full flow; the Ollama agent layer is CI-only (Ollama
+  registry blocked in the dev sandbox). The harness was validated against the
+  real OpenCode binary, which exposes the tools to the agent as `ironplc_*`.
 - `cd compiler && just` full pipeline before PR.

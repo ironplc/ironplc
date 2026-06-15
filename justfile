@@ -271,3 +271,51 @@ _install-script-smoke-verify:
 install-script-smoke compiler-version="":
   @echo "install-script-smoke is Unix-only; use endtoend-smoke on Windows"
   exit 1
+
+# OpenCode integration end-to-end test - Unix only.
+#
+# Installs the published IronPLC compiler (which provides ironplcmcp), then
+# verifies that the OpenCode agent works with the MCP server:
+#   1. Connectivity smoke - `opencode mcp list` reports the server connected.
+#   2. Agent end-to-end   - a local, key-free Ollama model invokes the `check`
+#      tool and the compiler returns diagnostics.
+#
+# Tests the shipped binary rather than a local rebuild (mirrors
+# install-script-smoke). Requires the Ollama CLI on PATH (installed in CI via
+# ai-action/setup-ollama).
+#
+# compiler-version: empty to use the latest release; otherwise a bare version
+#                   like "0.218.0" (without the leading "v").
+# model:            the Ollama model used for the agent test.
+[unix]
+opencode-e2e compiler-version="" model="llama3.2:3b":
+  #!/usr/bin/env sh
+  set -eu
+  # Install the published compiler so we exercise the shipped ironplcmcp.
+  just _install-script-smoke-clean
+  just _install-script-smoke-run "{{compiler-version}}"
+  BIN="$HOME/.ironplc/bin"
+  if [ ! -x "$BIN/ironplcmcp" ]; then
+    echo "ironplcmcp was not installed; the release must include it" >&2
+    exit 1
+  fi
+  export IRONPLCMCP_BIN="$BIN/ironplcmcp"
+
+  # Install the pinned OpenCode CLI.
+  cd integrations/opencode
+  npm ci
+
+  # Layer 1: deterministic connectivity check (no model required).
+  npm run smoke
+
+  # Layer 2: real-agent end-to-end against a local Ollama model. A larger
+  # context window improves small models' tool-calling reliability.
+  OLLAMA_CONTEXT_LENGTH=16384 ollama serve >/tmp/ollama-serve.log 2>&1 &
+  timeout 60 sh -c 'until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done'
+  ollama pull "{{model}}"
+  OPENCODE_E2E_MODEL="ollama/{{model}}" npm run agent-e2e
+
+[windows]
+opencode-e2e compiler-version="" model="llama3.2:3b":
+  @echo "opencode-e2e is Unix-only"
+  exit 1
