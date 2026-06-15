@@ -9,8 +9,8 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
-    ElementaryTypeName, FunctionDeclaration, GenericTypeName, InitialValueAssignmentKind,
-    ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
+    ElementaryTypeName, FunctionDeclaration, FunctionReturnType, GenericTypeName,
+    InitialValueAssignmentKind, ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -294,7 +294,7 @@ pub(crate) fn assign_variables(
 }
 
 /// Maps a DSL VariableType to the debug section var_section encoding.
-fn map_var_section(vt: &VariableType) -> u8 {
+pub(crate) fn map_var_section(vt: &VariableType) -> u8 {
     match vt {
         VariableType::Var => var_section::VAR,
         VariableType::VarTemp => var_section::VAR_TEMP,
@@ -338,6 +338,51 @@ fn resolve_iec_type_tag(name: &Id) -> u8 {
             ElementaryTypeName::LDateAndTime => iec_type_tag::LDT,
         },
         Err(()) => iec_type_tag::OTHER,
+    }
+}
+
+/// Computes the debug `(iec_type_tag, type_name)` pair for a function- or
+/// FB-local variable declaration. This mirrors the best-effort resolution
+/// the program/global path performs (see [`assign_variables`]) but without
+/// its side-effecting data-region allocation, so it is safe to call from
+/// the per-function slot-assignment loops in `compile_fn`. Composite or
+/// unsupported initializers fall back to [`iec_type_tag::OTHER`] with a
+/// best-effort type name, matching the global behavior.
+pub(crate) fn debug_type_for_decl(decl: &VarDecl) -> (u8, String) {
+    match &decl.initializer {
+        InitialValueAssignmentKind::Simple(simple) => (
+            resolve_iec_type_tag(&simple.type_name.name),
+            simple.type_name.name.to_string().to_uppercase(),
+        ),
+        InitialValueAssignmentKind::String(string_init) => {
+            if char_width_for_string_type(&string_init.width).is_wide() {
+                (iec_type_tag::WSTRING, "WSTRING".into())
+            } else {
+                (iec_type_tag::STRING, "STRING".into())
+            }
+        }
+        InitialValueAssignmentKind::Reference(_) => (iec_type_tag::OTHER, "REF_TO".into()),
+        InitialValueAssignmentKind::EnumeratedType(enum_init) => (
+            iec_type_tag::DINT,
+            enum_init.type_name.to_string().to_uppercase(),
+        ),
+        _ => (iec_type_tag::OTHER, String::new()),
+    }
+}
+
+/// Computes the debug `(iec_type_tag, type_name)` pair for a user
+/// function's return variable, derived from its declared return type.
+pub(crate) fn debug_type_for_return(return_type: &FunctionReturnType) -> (u8, String) {
+    match return_type {
+        FunctionReturnType::String(_) => (iec_type_tag::STRING, "STRING".into()),
+        FunctionReturnType::WString(_) => (iec_type_tag::WSTRING, "WSTRING".into()),
+        FunctionReturnType::Named(_) => {
+            let type_name = return_type.to_type_name();
+            (
+                resolve_iec_type_tag(&type_name.name),
+                type_name.name.to_string().to_uppercase(),
+            )
+        }
     }
 }
 
