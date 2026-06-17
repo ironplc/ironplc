@@ -8,7 +8,7 @@ import {
 } from 'vscode-languageclient/node';
 import { IplcEditorProvider } from './iplcEditorProvider';
 import { IronplcTaskProvider } from './ironplcTaskProvider';
-import { CompilerEnvironment, findCompilerPath } from './compilerDiscovery';
+import { CompilerEnvironment, findCompilerPath, formatStartFailure } from './compilerDiscovery';
 import { ProblemCode, formatProblem } from './problems';
 import { RunSession, RunState } from './runSession';
 import { findProgramLenses } from './runCodeLensProvider';
@@ -120,14 +120,9 @@ export function activate(context: vscode.ExtensionContext) {
   client = createClient(result.path, config);
 
   client.start().catch((err) => {
-    // A common failure is a compiler binary built for a different platform
-    // (for example, a Linux binary on Windows produces "spawn ENOEXEC").
-    // Surface the path we actually used so the user can verify it.
-    vscode.window.showErrorMessage(
-      'IronPLC failed to start the compiler at "' + result.path
-      + '" (source: ' + result.source + '): '
-      + (err instanceof Error ? err.message : String(err)),
-    );
+    // Surface the path we actually used so the user can verify it (a common
+    // failure is a wrong-platform binary, e.g. a Linux binary on Windows).
+    vscode.window.showErrorMessage(formatStartFailure(result, err));
   });
   context.subscriptions.push(IplcEditorProvider.register(context, client));
   console.debug('Extension "ironplc" is active!');
