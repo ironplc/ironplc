@@ -104,6 +104,18 @@ jobs:
     with:
       compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
 
+  opencode-e2e-test:
+    name: OpenCode Integration E2E Test
+    # Install the just-published compiler and verify the ironplcmcp MCP server
+    # works with the OpenCode agent: a connectivity check plus a real-agent run
+    # against a local Ollama model.
+    needs: [release, publish-prerelease]
+    uses: ./.github/workflows/partial_opencode_e2e.yaml
+    if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
+    with:
+      compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
+      model: "llama3.2:3b"
+
   playground-e2e-test:
     name: Playground E2E Test
     # Run browser-based E2E tests against the built playground before publishing
@@ -116,7 +128,7 @@ jobs:
     # if those are failing so we depend on those. In particular,
     # install-script-smoke-test must pass before we publish the
     # docs site, because the site serves install.sh.
-    needs: [release, smoke-test, install-script-smoke-test, playground-e2e-test]
+    needs: [release, smoke-test, install-script-smoke-test, opencode-e2e-test, playground-e2e-test]
     uses: ./.github/workflows/partial_website.yaml
     with:
       publish: ${{ !inputs.dryrun }}

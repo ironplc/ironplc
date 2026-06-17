@@ -23,6 +23,7 @@ use super::common::{parse_options, serialize_diagnostics, validate_sources, Sour
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct PouLineageInput {
     pub sources: Vec<SourceInput>,
+    /// Compiler options (dialect + optional feature-flag overrides).
     #[schemars(with = "serde_json::Value")]
     pub options: serde_json::Value,
     pub pou: String,

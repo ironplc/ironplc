@@ -101,6 +101,29 @@ that matches your agent.
    #. Type :command:`/mcp` to confirm that the IronPLC server is
       listed and connected.
 
+.. tab:: OpenCode
+
+   #. Create a file called :file:`opencode.json` in your project root:
+
+      .. code-block:: json
+
+         {
+           "$schema": "https://opencode.ai/config.json",
+           "mcp": {
+             "ironplc": {
+               "type": "local",
+               "command": ["ironplcmcp"],
+               "enabled": true
+             }
+           }
+         }
+
+   #. Start OpenCode in that directory. The MCP server connects
+      automatically.
+
+   #. Run :command:`opencode mcp list` to confirm that the ``ironplc``
+      server is listed as ``connected``.
+
 .. figure:: /images/screenshots/mcp-config.png
    :alt: VS Code editor showing an MCP configuration file with the IronPLC server entry
    :width: 600px
