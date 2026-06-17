@@ -14,6 +14,7 @@ const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SymbolsInput {
     pub sources: Vec<SourceInput>,
+    /// Compiler options (dialect + optional feature-flag overrides).
     #[schemars(with = "serde_json::Value")]
     pub options: serde_json::Value,
     #[serde(default)]
