@@ -483,12 +483,21 @@ pub mod bc {
         op_u32(opcode::MID_STR, data_offset)
     }
 
-    // --- 7-byte instruction: opcode + u32 + u16. --------------------------
+    // --- 8-byte instruction: opcode + u32 + u16 + u8 char_width. ----------
 
-    pub fn str_init(data_offset: u32, max_length: u16) -> Vec<u8> {
+    pub fn str_init(data_offset: u32, max_length: u16, char_width: u8) -> Vec<u8> {
         let d = data_offset.to_le_bytes();
         let m = max_length.to_le_bytes();
-        vec![opcode::STR_INIT, d[0], d[1], d[2], d[3], m[0], m[1]]
+        vec![
+            opcode::STR_INIT,
+            d[0],
+            d[1],
+            d[2],
+            d[3],
+            m[0],
+            m[1],
+            char_width,
+        ]
     }
 
     // --- 9-byte instructions: opcode + u32 + u32. -------------------------

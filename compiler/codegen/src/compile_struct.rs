@@ -516,11 +516,11 @@ pub(crate) fn initialize_struct_fields(
                 &inner_field_infos,
                 &nested_inits,
             )?;
-        } else if let IntermediateType::String { .. } = &field_info.field_type {
+        } else if let IntermediateType::String { char_width, .. } = &field_info.field_type {
             // STRING field — initialize the header in the data region.
             if let Some(max_length) = field_info.string_max_length {
                 let byte_offset = struct_data_offset + slot_idx.raw() * 8;
-                emitter.emit_str_init(byte_offset, max_length);
+                emitter.emit_str_init(byte_offset, max_length, *char_width);
             }
         } else if let IntermediateType::Array {
             element_type,
@@ -541,7 +541,7 @@ pub(crate) fn initialize_struct_fields(
                 let field_byte_offset = struct_data_offset + slot_idx.raw() * 8;
                 for i in 0..total_elements {
                     let elem_byte_offset = field_byte_offset + i * stride;
-                    emitter.emit_str_init(elem_byte_offset, max_length);
+                    emitter.emit_str_init(elem_byte_offset, max_length, *char_width);
                 }
             }
         }

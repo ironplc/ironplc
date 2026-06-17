@@ -89,6 +89,21 @@ pub struct ArrayDescriptor {
     pub element_extra: u16,
 }
 
+impl ArrayDescriptor {
+    /// Returns the per-code-unit [`CharWidth`] for a STRING/WSTRING element
+    /// array, derived from `element_type`. Wide for [`FieldType::WString`],
+    /// narrow otherwise. The VM uses this to size the element stride and to
+    /// write element headers (ADR-0035). Non-string arrays return
+    /// [`CharWidth::Narrow`]; callers only consult this for string elements.
+    pub fn element_char_width(&self) -> crate::CharWidth {
+        if self.element_type == FieldType::WString as u8 {
+            crate::CharWidth::Wide
+        } else {
+            crate::CharWidth::Narrow
+        }
+    }
+}
+
 /// Size of a single array descriptor on disk in bytes.
 const ARRAY_DESCRIPTOR_SIZE: usize = 8;
 

@@ -134,7 +134,7 @@ pub(crate) fn resolve_string_arg(
                 ctx.max_string_capacity = max_length;
             }
 
-            emitter.emit_str_init(data_offset, max_length);
+            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
 
             let op_type = DEFAULT_OP_TYPE;
             compile_expr(emitter, ctx, arg, op_type)?;
@@ -158,7 +158,7 @@ pub(crate) fn resolve_string_arg(
             }
 
             // Emit initialization: header + value.
-            emitter.emit_str_init(data_offset, max_length);
+            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
 
             let pool_index = ctx.add_str_constant(bytes);
             ctx.num_temp_bufs += 1;
@@ -183,7 +183,7 @@ pub(crate) fn resolve_string_arg(
                 ctx.max_string_capacity = max_length;
             }
 
-            emitter.emit_str_init(data_offset, max_length);
+            emitter.emit_str_init(data_offset, max_length, NARROW_CHAR_WIDTH);
 
             let op_type = DEFAULT_OP_TYPE;
             compile_expr(emitter, ctx, arg, op_type)?;

@@ -3,7 +3,7 @@
 //! Provides a builder that appends opcodes and operands to a byte buffer.
 
 use ironplc_container::opcode;
-use ironplc_container::{FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex};
+use ironplc_container::{CharWidth, FunctionId, SourceColumn, SourceFileId, SourceLine, VarIndex};
 
 /// A bytecode-offset → source-location entry recorded by the [`Emitter`].
 ///
@@ -632,12 +632,15 @@ impl Emitter {
         // Stack effect: 0 (no pushes, no pops).
     }
 
-    /// Emits STR_INIT with data_offset and max_length operands.
-    /// Initializes a STRING variable's header in the data region.
-    pub fn emit_str_init(&mut self, data_offset: u32, max_length: u16) {
+    /// Emits STR_INIT with data_offset, max_length, and char_width operands.
+    /// Initializes a STRING/WSTRING variable's header in the data region. The
+    /// `char_width` (1 = narrow STRING, 2 = wide WSTRING) is written into the
+    /// header so the VM can verify encoding and scale byte spans (ADR-0035).
+    pub fn emit_str_init(&mut self, data_offset: u32, max_length: u16, char_width: CharWidth) {
         self.emit_opcode(opcode::STR_INIT);
         self.bytecode.extend_from_slice(&data_offset.to_le_bytes());
         self.bytecode.extend_from_slice(&max_length.to_le_bytes());
+        self.bytecode.push(char_width.byte_width());
         // No stack effect.
     }
 

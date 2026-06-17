@@ -856,8 +856,8 @@ pub fn instruction_size(op: Opcode) -> usize {
         // 5-byte: opcode + u32.
         STR_LOAD_VAR | STR_STORE_VAR | LEN_STR | DELETE_STR | LEFT_STR | RIGHT_STR | MID_STR => 5,
 
-        // 7-byte: opcode + u32 + u16.
-        STR_INIT => 7,
+        // 8-byte: opcode + u32 data_offset + u16 max_length + u8 char_width.
+        STR_INIT => 8,
 
         // 8-byte: opcode + u8 + u16 + u16 + i16.
         CMP_BR_I32 | CMP_BR_I64 => 8,

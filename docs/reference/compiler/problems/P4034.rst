@@ -1,0 +1,37 @@
+=====
+P4034
+=====
+
+.. problem-summary:: P4034
+
+This error occurs when a ``STRING`` value and a ``WSTRING`` value are mixed without an explicit conversion. ``STRING`` stores single-byte characters (Latin-1) and ``WSTRING`` stores double-byte code units (UTF-16LE). The two types have different in-memory encodings, so IEC 61131-3 provides no implicit conversion between them. Assigning or comparing one against the other is a type error.
+
+Example
+-------
+
+The following code will generate error P4034:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       narrow : STRING[10];
+       wide : WSTRING[10];
+   END_VAR
+       narrow := wide;
+   END_PROGRAM
+
+The assignment ``narrow := wide`` copies a ``WSTRING`` into a ``STRING``, which would reinterpret UTF-16LE bytes as Latin-1 characters.
+
+To fix this error, use variables of the same string type on both sides:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       narrow : STRING[10];
+       wide : WSTRING[10];
+       other : WSTRING[10];
+   END_VAR
+       wide := other;
+   END_PROGRAM
