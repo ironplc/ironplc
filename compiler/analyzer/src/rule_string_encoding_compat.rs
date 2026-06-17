@@ -87,14 +87,6 @@ fn expr_string_encoding<'a>(
     }
 }
 
-/// Human-readable type name for an encoding, for the diagnostic context.
-fn encoding_type_name(encoding: &StringType) -> &'static str {
-    match encoding {
-        StringType::String => "STRING",
-        StringType::WString => "WSTRING",
-    }
-}
-
 impl RuleStringEncodingCompat {
     fn report(
         &mut self,
@@ -107,8 +99,8 @@ impl RuleStringEncodingCompat {
                 Problem::StringEncodingMismatch,
                 Label::span(span, "Incompatible string encodings"),
             )
-            .with_context("left", &encoding_type_name(left).to_string())
-            .with_context("right", &encoding_type_name(right).to_string()),
+            .with_context("left", &left.keyword().to_string())
+            .with_context("right", &right.keyword().to_string()),
         );
     }
 }
