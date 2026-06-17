@@ -8,7 +8,7 @@ import {
 } from 'vscode-languageclient/node';
 import { IplcEditorProvider } from './iplcEditorProvider';
 import { IronplcTaskProvider } from './ironplcTaskProvider';
-import { CompilerEnvironment, findCompilerPath } from './compilerDiscovery';
+import { CompilerEnvironment, findCompilerPath, formatStartFailure } from './compilerDiscovery';
 import { ProblemCode, formatProblem } from './problems';
 import { RunSession, RunState } from './runSession';
 import { findProgramLenses } from './runCodeLensProvider';
@@ -93,6 +93,12 @@ export function activate(context: vscode.ExtensionContext) {
   };
 
   const result = findCompilerPath(env);
+  if (result) {
+    console.debug(
+      'Extension "ironplc" found compiler at "' + result.path
+      + '" (source: ' + result.source + ')',
+    );
+  }
   if (!result) {
     vscode.window.showErrorMessage(
       formatProblem(ProblemCode.NoCompiler, 'IronPLC is not installed or not configured.'),
@@ -113,7 +119,11 @@ export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration('ironplc');
   client = createClient(result.path, config);
 
-  client.start();
+  client.start().catch((err) => {
+    // Surface the path we actually used so the user can verify it (a common
+    // failure is a wrong-platform binary, e.g. a Linux binary on Windows).
+    vscode.window.showErrorMessage(formatStartFailure(result, err));
+  });
   context.subscriptions.push(IplcEditorProvider.register(context, client));
   console.debug('Extension "ironplc" is active!');
 }
@@ -258,7 +268,7 @@ function createClient(compilerFilePath: string, config: vscode.WorkspaceConfigur
   }
 
   args.push('lsp');
-  console.debug('Extension "ironplc" starting with args: ' + args);
+  console.debug('Extension "ironplc" starting compiler "' + compilerFilePath + '" with args: ' + args);
 
   const application = {
     command: compilerFilePath,
