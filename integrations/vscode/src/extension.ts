@@ -93,6 +93,12 @@ export function activate(context: vscode.ExtensionContext) {
   };
 
   const result = findCompilerPath(env);
+  if (result) {
+    console.debug(
+      'Extension "ironplc" found compiler at "' + result.path
+      + '" (source: ' + result.source + ')',
+    );
+  }
   if (!result) {
     vscode.window.showErrorMessage(
       formatProblem(ProblemCode.NoCompiler, 'IronPLC is not installed or not configured.'),
@@ -113,7 +119,16 @@ export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration('ironplc');
   client = createClient(result.path, config);
 
-  client.start();
+  client.start().catch((err) => {
+    // A common failure is a compiler binary built for a different platform
+    // (for example, a Linux binary on Windows produces "spawn ENOEXEC").
+    // Surface the path we actually used so the user can verify it.
+    vscode.window.showErrorMessage(
+      'IronPLC failed to start the compiler at "' + result.path
+      + '" (source: ' + result.source + '): '
+      + (err instanceof Error ? err.message : String(err)),
+    );
+  });
   context.subscriptions.push(IplcEditorProvider.register(context, client));
   console.debug('Extension "ironplc" is active!');
 }
@@ -258,7 +273,7 @@ function createClient(compilerFilePath: string, config: vscode.WorkspaceConfigur
   }
 
   args.push('lsp');
-  console.debug('Extension "ironplc" starting with args: ' + args);
+  console.debug('Extension "ironplc" starting compiler "' + compilerFilePath + '" with args: ' + args);
 
   const application = {
     command: compilerFilePath,
