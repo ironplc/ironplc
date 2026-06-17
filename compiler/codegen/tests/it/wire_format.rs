@@ -590,9 +590,10 @@ END_PROGRAM
 }
 
 #[test]
-fn wire_when_seven_byte_str_init_then_u32_plus_u16_operands() {
-    // STR_INIT is the only 7-byte shape (op + u32 data_offset + u16 max_len).
-    // It appears in the program-init function (FunctionId 0), not main.
+fn wire_when_eight_byte_str_init_then_u32_plus_u16_plus_u8_operands() {
+    // STR_INIT is an 8-byte shape (op + u32 data_offset + u16 max_len + u8
+    // char_width). It appears in the program-init function (FunctionId 0),
+    // not main.
     let container = parse_and_compile(
         "
 PROGRAM main
@@ -607,16 +608,16 @@ END_PROGRAM
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(0))
         .unwrap();
-    // Find STR_INIT (0xB8). Validate the 6 trailing operand bytes
-    // decode as LE u32 + LE u16.
+    // Find STR_INIT (0xB8). Validate the 7 trailing operand bytes
+    // decode as LE u32 + LE u16 + u8.
     let pos = init_bc
         .iter()
         .position(|&b| b == 0xB8)
         .expect("STR_INIT opcode present in program init");
-    assert_eq!(opcode::instruction_size(opcode::STR_INIT), 7);
+    assert_eq!(opcode::instruction_size(opcode::STR_INIT), 8);
     assert!(
-        pos + 7 <= init_bc.len(),
-        "STR_INIT has 6 trailing operand bytes"
+        pos + 8 <= init_bc.len(),
+        "STR_INIT has 7 trailing operand bytes"
     );
     let _data_offset = u32::from_le_bytes([
         init_bc[pos + 1],
@@ -626,6 +627,11 @@ END_PROGRAM
     ]);
     let max_len = u16::from_le_bytes([init_bc[pos + 5], init_bc[pos + 6]]);
     assert_eq!(max_len, 10, "STRING[10] declares max_len = 10");
+    assert_eq!(
+        init_bc[pos + 7],
+        1,
+        "STRING declares char_width = 1 (narrow)"
+    );
 }
 
 #[test]
