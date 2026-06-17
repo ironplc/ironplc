@@ -1216,20 +1216,17 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             opcode::STR_INIT => {
                 let data_offset = read_u32_le(bytecode, &mut pc)? as usize;
                 let max_length = read_u16_le(bytecode, &mut pc)?;
+                // The char_width operand (1 = narrow, 2 = wide) is emitted by
+                // codegen from the variable's declared type (ADR-0034). Validate
+                // it here so a tampered/garbage byte traps rather than corrupts.
+                let char_width_byte = read_u8(bytecode, &mut pc)?;
+                let char_width = CharWidth::from_u8(char_width_byte)
+                    .map_err(|_| Trap::InvalidCharWidth(char_width_byte))?;
 
                 if data_offset + STRING_HEADER_BYTES > data_region.len() {
                     return Err(Trap::DataRegionOutOfBounds(data_offset as u32));
                 }
-                // STR_INIT carries no char_width operand yet (PR D), so every
-                // declared string is narrow. The field is still written so the
-                // header is a valid v3 record the load path can verify.
-                string_ops::str_write_header(
-                    data_region,
-                    data_offset,
-                    max_length,
-                    0,
-                    CharWidth::Narrow,
-                );
+                string_ops::str_write_header(data_region, data_offset, max_length, 0, char_width);
             }
 
             // LOAD_CONST_STR: Load a string literal from the constant pool
@@ -1781,10 +1778,11 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .ok_or(Trap::InvalidVariableIndex(var_index))?;
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
-                // The array descriptor carries no char_width yet, so every
-                // element is narrow and the stride is one byte per code unit.
-                // PR D adds a descriptor width to size wide-element strides.
-                let stride = STRING_HEADER_BYTES + max_str_len as usize;
+                // Element width comes from the descriptor's element_type
+                // (FieldType::String vs WString). The stride spans the header
+                // plus max_str_len code units, each char_width bytes (ADR-0035).
+                let char_width = desc.element_char_width();
+                let stride = STRING_HEADER_BYTES + max_str_len as usize * char_width.as_usize();
 
                 scope.check_access(var_index)?;
                 let base_offset = variables.load(var_index)?.as_i32() as u32 as usize;
@@ -1799,7 +1797,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         elem_offset,
                         max_str_len,
                         0,
-                        CharWidth::Narrow,
+                        char_width,
                     );
                 }
             }
@@ -1824,7 +1822,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .ok_or(Trap::InvalidVariableIndex(var_index))?;
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
-                let stride = STRING_HEADER_BYTES + max_str_len as usize;
+                let stride = STRING_HEADER_BYTES
+                    + max_str_len as usize * desc.element_char_width().as_usize();
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {
@@ -1892,7 +1891,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .ok_or(Trap::InvalidVariableIndex(var_index))?;
                 let total_elements = desc.total_elements;
                 let max_str_len = desc.element_extra;
-                let stride = STRING_HEADER_BYTES + max_str_len as usize;
+                let stride = STRING_HEADER_BYTES
+                    + max_str_len as usize * desc.element_char_width().as_usize();
 
                 if index_i64 < 0 || index_i64 >= total_elements as i64 {
                     return Err(Trap::ArrayIndexOutOfBounds {

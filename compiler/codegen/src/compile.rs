@@ -107,12 +107,17 @@ pub(crate) const DEFAULT_OP_TYPE: OpType = (OpWidth::W32, Signedness::Signed);
 pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
 
 /// A constant in the pool: integer, float, or string.
+///
+/// `Str` holds Latin-1 bytes (narrow STRING); `WStr` holds UTF-16LE bytes
+/// (wide WSTRING). The encoding is tagged per pool entry so the VM can verify
+/// it against the destination (ADR-0034).
 pub(crate) enum PoolConstant {
     I32(i32),
     I64(i64),
     F32(f32),
     F64(f64),
     Str(Vec<u8>),
+    WStr(Vec<u8>),
 }
 
 /// The IEC 61131-3 default maximum length for STRING (254 characters).
@@ -164,6 +169,29 @@ pub(crate) fn encode_string_literal(chars: &[char], char_width: CharWidth) -> Ve
             .flat_map(|&ch| (ch as u16).to_le_bytes())
             .collect(),
     }
+}
+
+/// Loads a string literal into a temp buffer at the given encoding width.
+///
+/// Encodes the literal (Latin-1 for narrow, UTF-16LE for wide), registers it as
+/// a width-tagged constant-pool entry, accounts for the temp buffer it lands
+/// in, and emits LOAD_CONST_STR (leaving `buf_idx` on the stack). The caller
+/// stores that temp buffer into a destination of the same width; the VM
+/// verifies the encoding match (ADR-0034).
+pub(crate) fn emit_string_literal_load(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    chars: &[char],
+    char_width: CharWidth,
+) {
+    let bytes = encode_string_literal(chars, char_width);
+    let pool_index = if char_width.is_wide() {
+        ctx.add_wstr_constant(bytes)
+    } else {
+        ctx.add_str_constant(bytes)
+    };
+    ctx.num_temp_bufs += 1;
+    emitter.emit_load_const_str(pool_index);
 }
 
 /// Compiles a library into a bytecode container.
@@ -581,13 +609,19 @@ fn compile_program_with_functions(
     if ctx.data_region_offset > 0 {
         builder = builder.data_region_bytes(ctx.data_region_offset);
         if ctx.num_temp_bufs > 0 {
-            builder =
-                builder
-                    .num_temp_bufs(ctx.num_temp_bufs)
-                    .max_temp_buf_bytes(string_region_size(
-                        ctx.max_string_capacity,
-                        NARROW_CHAR_WIDTH,
-                    ));
+            // Temp-buffer slots are uniform. When any wide string exists, size
+            // each slot in wide bytes so an intermediate WSTRING value of up to
+            // max_string_capacity code units fits (the VM allocator divides the
+            // slot capacity by the value's char_width). Narrow-only programs
+            // keep the original byte-identical sizing.
+            let temp_char_width = if ctx.has_wide_string {
+                WIDE_CHAR_WIDTH
+            } else {
+                NARROW_CHAR_WIDTH
+            };
+            builder = builder
+                .num_temp_bufs(ctx.num_temp_bufs)
+                .max_temp_buf_bytes(string_region_size(ctx.max_string_capacity, temp_char_width));
         }
     }
 
@@ -599,6 +633,7 @@ fn compile_program_with_functions(
             PoolConstant::F32(v) => builder = builder.add_f32_constant(*v),
             PoolConstant::F64(v) => builder = builder.add_f64_constant(*v),
             PoolConstant::Str(v) => builder = builder.add_str_constant(v),
+            PoolConstant::WStr(v) => builder = builder.add_wstr_constant(v),
         }
     }
 
@@ -740,7 +775,6 @@ pub(crate) struct StringParamInfo {
     /// Maximum number of code units this parameter can hold.
     pub(crate) max_length: u16,
     /// Per-code-unit byte width: `Narrow` for STRING, `Wide` for WSTRING.
-    #[allow(dead_code)]
     pub(crate) char_width: CharWidth,
 }
 
@@ -755,7 +789,6 @@ pub(crate) struct StringReturnInfo {
     /// Maximum number of code units the return string can hold.
     pub(crate) max_length: u16,
     /// Per-code-unit byte width: `Narrow` for STRING, `Wide` for WSTRING.
-    #[allow(dead_code)]
     pub(crate) char_width: CharWidth,
 }
 
@@ -834,6 +867,9 @@ pub(crate) struct CompileContext {
     pub(crate) data_region_offset: u32,
     /// Maximum string capacity across all STRING variables (for temp buffer sizing).
     pub(crate) max_string_capacity: u16,
+    /// True when any WSTRING (wide) string is declared. Temp buffers are then
+    /// sized in wide bytes so an intermediate wide value fits (ADR-0035).
+    pub(crate) has_wide_string: bool,
     /// Number of temp buffers needed (one per string load in the init function).
     pub(crate) num_temp_bufs: u16,
     /// Debug info: variable name entries collected during assign_variables.
@@ -898,6 +934,7 @@ impl CompileContext {
             struct_vars: HashMap::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
+            has_wide_string: false,
             num_temp_bufs: 0,
             debug_var_names: Vec::new(),
             debug_string_layouts: Vec::new(),
@@ -1028,6 +1065,22 @@ impl CompileContext {
         }
         let index = self.constants.len() as u16;
         self.constants.push(PoolConstant::Str(value));
+        index
+    }
+
+    /// Adds a wide (UTF-16LE / WSTRING) string constant, deduplicating against
+    /// existing wide entries. Kept distinct from [`Self::add_str_constant`] so
+    /// the pool entry carries the wide encoding tag the VM verifies.
+    pub(crate) fn add_wstr_constant(&mut self, value: Vec<u8>) -> u16 {
+        if let Some(i) = self
+            .constants
+            .iter()
+            .position(|c| matches!(c, PoolConstant::WStr(v) if v == &value))
+        {
+            return i as u16;
+        }
+        let index = self.constants.len() as u16;
+        self.constants.push(PoolConstant::WStr(value));
         index
     }
 }

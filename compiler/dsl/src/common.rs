@@ -1623,6 +1623,17 @@ pub enum StringType {
     WString,
 }
 
+impl StringType {
+    /// Returns the IEC 61131-3 keyword for this string type
+    /// (`"STRING"` or `"WSTRING"`).
+    pub fn keyword(&self) -> &'static str {
+        match self {
+            StringType::String => "STRING",
+            StringType::WString => "WSTRING",
+        }
+    }
+}
+
 /// Declares a string type with restricted length.
 ///
 /// See section 2.3.3.1.

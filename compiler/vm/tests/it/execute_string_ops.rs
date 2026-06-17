@@ -84,7 +84,7 @@ fn execute_when_str_init_then_sets_header() {
     // Then read LEN_STR to verify cur_length is 0
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00,  // STR_INIT offset=0 (u32), max_len=20 (u16)
+        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,  // STR_INIT offset=0 (u32), max_len=20 (u16)
         opcode::LEN_STR, 0x00, 0x00, 0x00, 0x00,                // LEN_STR offset=0 (u32)
         opcode::STORE_VAR_I32, 0x00, 0x00,                      // store to var[0]
         opcode::RET_VOID,
@@ -104,7 +104,7 @@ fn execute_when_str_store_and_load_then_roundtrips() {
     // store it, then load it back and get its length.
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00,  // STR_INIT offset=0, max_len=20
+        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,  // STR_INIT offset=0, max_len=20
         opcode::LOAD_CONST_STR, 0x00, 0x00,                     // load str constant[0] ("Hi") -> buf_idx
         opcode::STR_STORE_VAR, 0x00, 0x00, 0x00, 0x00,          // store buf to string var at offset 0 (u32)
         opcode::LEN_STR, 0x00, 0x00, 0x00, 0x00,                // LEN_STR offset=0 (u32)
@@ -129,8 +129,8 @@ fn execute_when_concat_str_then_correct_length() {
     // So second string starts at offset 28 (rounded to allow space).
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00,   // STR_INIT offset=0, max_len=20
-        opcode::STR_INIT, 0x1C, 0x00, 0x00, 0x00, 0x14, 0x00,   // STR_INIT offset=28, max_len=20
+        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,   // STR_INIT offset=0, max_len=20
+        opcode::STR_INIT, 0x1C, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,   // STR_INIT offset=28, max_len=20
         // Store "AB" at offset 0
         opcode::LOAD_CONST_STR, 0x00, 0x00,
         opcode::STR_STORE_VAR, 0x00, 0x00, 0x00, 0x00,
@@ -160,8 +160,8 @@ fn execute_when_find_str_found_then_returns_position() {
     // FIND_STR should return 1-based position of "LL" in "HELLO" = 3.
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00,
-        opcode::STR_INIT, 0x1C, 0x00, 0x00, 0x00, 0x14, 0x00,
+        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,
+        opcode::STR_INIT, 0x1C, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,
         // Store "HELLO" at offset 0
         opcode::LOAD_CONST_STR, 0x00, 0x00,
         opcode::STR_STORE_VAR, 0x00, 0x00, 0x00, 0x00,
@@ -186,8 +186,8 @@ fn execute_when_find_str_found_then_returns_position() {
 fn execute_when_find_str_not_found_then_returns_zero() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00,
-        opcode::STR_INIT, 0x1C, 0x00, 0x00, 0x00, 0x14, 0x00,
+        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,
+        opcode::STR_INIT, 0x1C, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,
         opcode::LOAD_CONST_STR, 0x00, 0x00,
         opcode::STR_STORE_VAR, 0x00, 0x00, 0x00, 0x00,
         opcode::LOAD_CONST_STR, 0x01, 0x00,
@@ -210,7 +210,7 @@ fn execute_when_left_str_then_correct_length() {
     // Constant pool: pool[0] = i32(3), pool[1] = str("ABCDE")
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00,
+        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01,
         opcode::LOAD_CONST_STR, 0x01, 0x00,                     // load str pool[1] ("ABCDE")
         opcode::STR_STORE_VAR, 0x00, 0x00, 0x00, 0x00,
         // LEFT_STR: push L=3, then LEFT_STR offset=0 (u32)
@@ -269,7 +269,7 @@ fn execute_when_wide_const_stored_into_wide_var_then_len_in_code_units() {
 fn execute_when_wide_const_stored_into_narrow_var_then_encoding_mismatch() {
     #[rustfmt::skip]
     let bytecode: Vec<u8> = vec![
-        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, // narrow var at 0, max=20
+        opcode::STR_INIT, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x01, // narrow var at 0, max=20
         opcode::LOAD_CONST_STR, 0x00, 0x00,                   // wide "Hi"
         opcode::STR_STORE_VAR, 0x00, 0x00, 0x00, 0x00,        // wide src -> narrow dest
         opcode::RET_VOID,
