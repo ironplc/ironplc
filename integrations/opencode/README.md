@@ -34,6 +34,20 @@ The suite has three layers, cheapest and most deterministic first:
    (`test/record-mcp.mjs`) so the assertion does not depend on OpenCode's output
    format.
 
+   On failure the test prints full diagnostics (OpenCode's own DEBUG logs via
+   `--print-logs`, the recorded MCP traffic, and the compiler's stderr). It
+   runs `opencode` with `--log-level DEBUG --print-logs` so a server-side error
+   is visible instead of OpenCode's opaque "Unexpected server error. Check
+   server logs for details." message.
+
+   **Soft-skip:** if *every* attempt fails inside OpenCode's own model
+   resolution with `ProviderModelNotFoundError` (thrown in `getModel` before
+   the MCP server is ever contacted), the agent never ran. That is an
+   OpenCode/provider initialization problem, not an IronPLC regression, so the
+   test prints loud warnings plus diagnostics and exits 0 rather than blocking
+   the release. The real MCP contract is still gated deterministically by
+   layers 1 and 2.
+
 ## Running locally
 
 ```sh
