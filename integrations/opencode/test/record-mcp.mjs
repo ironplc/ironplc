@@ -8,7 +8,8 @@
 //
 // Configuration (environment variables):
 //   IRONPLCMCP_BIN          path to the ironplcmcp binary (required)
-//   IRONPLCMCP_RECORD_LOG   log prefix; writes "<prefix>.in" and "<prefix>.out"
+//   IRONPLCMCP_RECORD_LOG   log prefix; writes "<prefix>.in", "<prefix>.out"
+//                           and "<prefix>.err"
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -21,10 +22,14 @@ if (!bin) {
   process.exit(2);
 }
 
-const child = spawn(bin, [], { stdio: ["pipe", "pipe", "inherit"] });
+// Pipe (rather than inherit) the child's stderr so we can tee it to a log file.
+// Inheriting would send the compiler's diagnostics to OpenCode, where the test
+// harness never sees them; capturing them is essential for diagnosing failures.
+const child = spawn(bin, [], { stdio: ["pipe", "pipe", "pipe"] });
 
 const inLog = logPrefix ? fs.createWriteStream(`${logPrefix}.in`, { flags: "a" }) : null;
 const outLog = logPrefix ? fs.createWriteStream(`${logPrefix}.out`, { flags: "a" }) : null;
+const errLog = logPrefix ? fs.createWriteStream(`${logPrefix}.err`, { flags: "a" }) : null;
 
 // OpenCode -> server: record and forward.
 process.stdin.on("data", (chunk) => {
@@ -37,6 +42,12 @@ process.stdin.on("end", () => child.stdin.end());
 child.stdout.on("data", (chunk) => {
   if (outLog) outLog.write(chunk);
   process.stdout.write(chunk);
+});
+
+// server stderr: record and forward to our own stderr.
+child.stderr.on("data", (chunk) => {
+  if (errLog) errLog.write(chunk);
+  process.stderr.write(chunk);
 });
 
 child.on("error", (err) => {
