@@ -164,8 +164,6 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
   }
 }
 
-const lastResult = attemptResults[attemptResults.length - 1] || { stdout: "", stderr: "" };
-
 console.error(
   "FAIL: the agent did not invoke the IronPLC check tool within the attempt budget.",
 );
