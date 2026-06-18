@@ -313,6 +313,40 @@ opencode-e2e compiler-version="" model="llama3.2:3b":
   OLLAMA_CONTEXT_LENGTH=16384 ollama serve >/tmp/ollama-serve.log 2>&1 &
   timeout 60 sh -c 'until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done'
   ollama pull "{{model}}"
+
+  # On any failure below, surface the Ollama server log. The agent failure mode
+  # we are guarding against ("Unexpected server error") originates in the model
+  # provider, so this log is the other half of the picture alongside OpenCode's
+  # own logs (which the agent test now prints on failure).
+  dump_ollama_log() {
+    status=$?
+    if [ "$status" -ne 0 ]; then
+      echo "==== ollama serve log (tail) ====" >&2
+      tail -n 200 /tmp/ollama-serve.log >&2 || true
+    fi
+  }
+  trap dump_ollama_log EXIT
+
+  # Pre-flight: prove the model can do an OpenAI-compatible tool call directly,
+  # independent of OpenCode. This isolates "the model/provider is broken" from
+  # "the agent chose not to call the tool" — the ambiguity that makes a bare
+  # agent-test failure hard to diagnose.
+  echo "Pre-flight: probing {{model}} for OpenAI-compatible tool calling..."
+  PROBE=$(curl -sf http://localhost:11434/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{
+      "model": "{{model}}",
+      "messages": [{"role": "user", "content": "Call the ping tool now."}],
+      "tools": [{"type": "function", "function": {
+        "name": "ping",
+        "description": "Replies to a ping.",
+        "parameters": {"type": "object", "properties": {}}
+      }}],
+      "tool_choice": "auto"
+    }') || { echo "Pre-flight: the model did not respond to a tool-calling request." >&2; echo "$PROBE" >&2; exit 1; }
+  echo "Pre-flight response (truncated):"
+  printf '%s\n' "$PROBE" | head -c 2000; echo
+
   OPENCODE_E2E_MODEL="ollama/{{model}}" npm run agent-e2e
 
 [windows]
