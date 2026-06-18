@@ -20,7 +20,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ironplcmcpBin, makeWorkspace, runOpencode, testDir } from "./lib.mjs";
+import {
+  ironplcmcpBin,
+  makeWorkspace,
+  readOrPlaceholder,
+  readRecentOpencodeLogs,
+  runOpencode,
+  testDir,
+} from "./lib.mjs";
 
 const model = process.env.OPENCODE_E2E_MODEL || "ollama/llama3.2:3b";
 const [providerId, ...modelParts] = model.split("/");
@@ -99,15 +106,27 @@ function resetLogs() {
 
 console.log(`Model: ${model}  Ollama: ${ollamaBaseUrl}  ironplcmcp: ${bin}`);
 
-let lastOutput = "";
+let lastResult = { stdout: "", stderr: "" };
 for (let attempt = 1; attempt <= attempts; attempt++) {
   resetLogs();
   console.log(`Attempt ${attempt}/${attempts}: asking the agent to call ironplc_check...`);
+  // `--print-logs` and `--log-level DEBUG` route OpenCode's own server logs to
+  // stderr. Without them, a server-side failure surfaces only as an opaque
+  // "Unexpected server error. Check server logs for details." message.
   const result = runOpencode(
-    ["run", "--model", model, "--dangerously-skip-permissions", prompt],
+    [
+      "run",
+      "--model",
+      model,
+      "--log-level",
+      "DEBUG",
+      "--print-logs",
+      "--dangerously-skip-permissions",
+      prompt,
+    ],
     { cwd: workspace, timeoutMs: 300000 },
   );
-  lastOutput = `${result.stdout || ""}\n${result.stderr || ""}`;
+  lastResult = result;
 
   const invoked = toolWasInvoked();
   const responded = compilerResponded();
@@ -124,6 +143,27 @@ for (let attempt = 1; attempt <= attempts; attempt++) {
 console.error(
   "FAIL: the agent did not invoke the IronPLC check tool within the attempt budget.",
 );
-console.error("---- last OpenCode output (tail) ----");
-console.error(lastOutput.slice(-4000));
+
+// Dump every diagnostic channel so the failure can be understood from CI logs
+// alone, without re-running locally.
+console.error("\n==== last OpenCode stdout ====");
+console.error(lastResult.stdout || "(empty)");
+console.error("\n==== last OpenCode stderr ====");
+console.error(lastResult.stderr || "(empty)");
+if (lastResult.error) {
+  console.error("\n==== OpenCode spawn error ====");
+  console.error(`${lastResult.error.message} (signal: ${lastResult.signal ?? "none"})`);
+}
+
+console.error("\n==== MCP traffic: OpenCode -> server (.in) ====");
+console.error(readOrPlaceholder(`${recordLog}.in`));
+console.error("\n==== MCP traffic: server -> OpenCode (.out) ====");
+console.error(readOrPlaceholder(`${recordLog}.out`));
+console.error("\n==== ironplcmcp stderr (.err) ====");
+console.error(readOrPlaceholder(`${recordLog}.err`));
+
+const serverLogs = readRecentOpencodeLogs();
+console.error("\n==== OpenCode server logs ====");
+console.error(serverLogs || "(no OpenCode log directory found)");
+
 process.exit(1);
