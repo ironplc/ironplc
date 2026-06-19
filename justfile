@@ -309,7 +309,17 @@ opencode-e2e compiler-version="" model="llama3.2:3b":
   npm run smoke
 
   # Layer 2: real-agent end-to-end against a local Ollama model. A larger
-  # context window improves small models' tool-calling reliability.
+  # context window improves small models' tool-calling reliability: OpenCode's
+  # system prompt plus the ironplc_check tool schema overflow the default
+  # window, truncating the instructions so the model never calls the tool.
+  #
+  # OLLAMA_CONTEXT_LENGTH only takes effect when the server starts, and the CI
+  # environment (ai-action/setup-ollama) has already started `ollama serve` with
+  # the default window. A second `ollama serve` would just fail to bind with
+  # "address already in use" and leave that default window in place, so stop any
+  # running server first, then start our own with the larger window.
+  pkill -x ollama 2>/dev/null || true
+  timeout 30 sh -c 'while curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done' || true
   OLLAMA_CONTEXT_LENGTH=16384 ollama serve >/tmp/ollama-serve.log 2>&1 &
   timeout 60 sh -c 'until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done'
   ollama pull "{{model}}"
