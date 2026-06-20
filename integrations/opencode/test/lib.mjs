@@ -38,12 +38,20 @@ export function makeWorkspace(prefix, config) {
 }
 
 /// Run an OpenCode command synchronously and return its result.
+///
+/// OpenCode's `run` resolves the project directory from `process.env.PWD ??
+/// process.cwd()` — it prefers PWD. `spawnSync`'s `cwd` option changes the
+/// child's actual working directory but does NOT rewrite the inherited PWD, so
+/// a stale PWD (e.g. the repo dir the test was launched from) would make
+/// OpenCode create its session there instead of in `cwd`, missing the inline
+/// provider config and failing with ProviderModelNotFoundError. Keep PWD in
+/// sync with cwd so OpenCode anchors to the workspace we set up.
 export function runOpencode(args, { cwd, timeoutMs = 120000, env = {} } = {}) {
   return spawnSync(opencodeBin(), args, {
     cwd,
     timeout: timeoutMs,
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...(cwd ? { PWD: cwd } : {}), ...env },
   });
 }
 
