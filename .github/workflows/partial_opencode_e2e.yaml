@@ -11,6 +11,20 @@ on:
         type: string
         default: "llama3.2:3b"
         description: 'Ollama model used for the real-agent end-to-end test'
+  # Allow running manually against any branch from the Actions tab. The bulk of
+  # the test lives in the justfile, so this exercises branch changes directly.
+  workflow_dispatch:
+    inputs:
+      compiler-version:
+        required: false
+        type: string
+        default: ""
+        description: 'The version number to test with (without the "v" prefix). Empty string uses the latest release.'
+      model:
+        required: false
+        type: string
+        default: "llama3.2:3b"
+        description: 'Ollama model used for the real-agent end-to-end test'
 
 jobs:
   opencode-e2e:
