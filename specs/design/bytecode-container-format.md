@@ -295,12 +295,12 @@ payload_offset = 2 + (8 × sub_table_count) + sum(directory[0..i].size)
 | 2 | VAR_NAME | v1 | Variable names with scope and type metadata |
 | 3 | FUNC_NAME | v1 | Function/POU name mappings |
 | 4 | STRING_LAYOUT | implemented | String variable layout: var_index → (data_offset, max_length) (`compiler/container/src/debug_section.rs`) |
-| 5 | _reserved_ | reserved | Unused. (Formerly the abandoned FB_FIELD_NAME plan; FB field layout now lives in COMPOSITE_TYPE, tag 10 — see `specs/design/variable-inspection-model.md`.) |
+| 5 | FB_FIELD_NAME | in development | FB field index → field name mappings |
 | 6 | SOURCE_FILE | v1 | Source file table: `(path, BLAKE3 content hash)` per file. `LineMapEntry.file_id` indexes into this table. |
 | 7 | LD_RUNG_MAP | reserved | Ladder Diagram rung ID → bytecode mappings |
 | 8 | FBD_NETWORK_MAP | reserved | Function Block Diagram network/element mappings |
 | 9 | ENUM_DEF | implemented | Enumeration type → ordinal-ordered value names (`compiler/container/src/debug_section.rs`) |
-| 10–65535 | — | reserved | Future use (tags 10/11/12 are reserved for COMPOSITE_TYPE / VAR_TYPE_REF / ARRAY_TYPE — see `specs/design/variable-inspection-model.md`) |
+| 10–65535 | — | reserved | Future use |
 
 **Rules:**
 - Each tag may appear **at most once** in the directory. A reader that encounters a duplicate tag discards the debug section.
@@ -421,12 +421,25 @@ Each StringLayoutEntry (8 bytes):
 | 2 | data_offset | u32 | Offset of the string's bytes within the data region |
 | 6 | max_length | u16 | Declared maximum length of the string |
 
-**Tag 5 — reserved (unused):**
+**Tag 5 — FB_FIELD_NAME (in development):**
 
-Tag 5 is reserved and emits nothing. It was originally earmarked for an
-FB_FIELD_NAME table, but FB type/field layout is now carried by the
-COMPOSITE_TYPE / VAR_TYPE_REF / ARRAY_TYPE tables (tags 10/11/12) defined in
-`specs/design/variable-inspection-model.md`, not by tags 4/5.
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [FieldNameEntry; count] | Variable size each |
+
+Each FieldNameEntry (variable size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | type_id | u16 | FB type ID |
+| 2 | field_index | u8 | Field index within the FB type descriptor |
+| 3 | name_length | u8 | Length of field name in bytes |
+| 4 | name | [u8; name_length] | UTF-8 field name (e.g., "IN", "PT", "Q", "ET") |
+
+A companion FB type-name table is also in development. Its earlier tag-4
+assignment was reclaimed by the implemented STRING_LAYOUT table, so its tag is
+not yet finalized.
 
 **Tag 6 — SOURCE_FILE:**
 

@@ -108,11 +108,11 @@ The container format spec defines a debug section with three sub-tables: source 
 | 2 | No variable scope info | DAP `scopes`/`variables` can't separate Locals from Globals or group by IEC section (VAR_INPUT, VAR_OUTPUT, etc.) | Yes |
 | 3 | No variable type names | Variables pane shows raw slot values with no type context; can't render BOOL as TRUE/FALSE, REAL as float, or FB instances by type name | Yes |
 | 4 | No source column | Breakpoint highlight covers entire line; can't pinpoint within a line containing multiple statements | No — line-level is sufficient for ST (one statement per line is idiomatic) |
-| 5 | ~~No FB type name table~~ Superseded | Expanding an FB instance variable shows "fb_type_3" instead of "TON". The FB type/field layout work moved to `specs/design/variable-inspection-model.md` (COMPOSITE_TYPE, tag 10), not the abandoned tags 4/5 plan. | No — see `variable-inspection-model.md` |
-| 6 | ~~No FB field name table~~ Superseded | FB instance fields show as "field[0]" instead of "IN", "PT", "Q", "ET". Carried by COMPOSITE_TYPE/VAR_TYPE_REF (tags 10/11) in `specs/design/variable-inspection-model.md`. | No — see `variable-inspection-model.md` |
+| 5 | No FB type name table | Expanding an FB instance variable shows "fb_type_3" instead of "TON" | No — FB type/field name display is in development |
+| 6 | No FB field name table | FB instance fields show as "field[0]" instead of "IN", "PT", "Q", "ET" | No — FB type/field name display is in development |
 | 7 | ~~No source file table~~ Closed (2026-05-22) | Line maps now carry a `file_id` indexing into the SOURCE_FILE_TABLE (tag 6); per-file BLAKE3 hashes enable drift detection between an `.iplc` and the user's working copy. | — |
 
-Gaps 1–3 must be addressed in the debug section format before ST debugging can work. Gap 4 is deferred. Gaps 5–6 (FB type/field layout) are superseded by `specs/design/variable-inspection-model.md`, which carries that layout via the new COMPOSITE_TYPE / VAR_TYPE_REF / ARRAY_TYPE tables (tags 10/11/12) rather than the abandoned tags 4/5 plan. Gap 7 is closed by the SOURCE_FILE_TABLE introduced in `specs/plans/2026-05-22-debug-source-file-table.md`.
+Gaps 1–3 must be addressed in the debug section format before ST debugging can work. Gap 4 is deferred. Gaps 5–6 (FB type/field name display) are in development. Gap 7 is closed by the SOURCE_FILE_TABLE introduced in `specs/plans/2026-05-22-debug-source-file-table.md`.
 
 ### Revised Debug Section Format
 
@@ -157,12 +157,12 @@ payload_offset = 2 + (8 × sub_table_count) + sum(directory[0..i].size)
 | 2 | VAR_NAME | v1 | Variable names with scope and type metadata |
 | 3 | FUNC_NAME | v1 | Function/POU name mappings |
 | 4 | STRING_LAYOUT | implemented | String variable layout: var_index → (data_offset, max_length) (`compiler/container/src/debug_section.rs`) |
-| 5 | _reserved_ | reserved | Unused. (Formerly the abandoned FB_FIELD_NAME plan; FB field layout now lives in COMPOSITE_TYPE, tag 10 — see `specs/design/variable-inspection-model.md`.) |
+| 5 | FB_FIELD_NAME | in development | FB field index → field name mappings |
 | 6 | SOURCE_FILE | implemented | Source file table for multi-file projects (`compiler/container/src/debug_section.rs`) |
 | 7 | LD_RUNG_MAP | reserved | Ladder Diagram rung ID → bytecode mappings |
 | 8 | FBD_NETWORK_MAP | reserved | Function Block Diagram network/element mappings |
 | 9 | ENUM_DEF | implemented | Enumeration type → ordinal-ordered value names (`compiler/container/src/debug_section.rs`) |
-| 10–65535 | — | reserved | Future use (tags 10/11/12 are reserved for COMPOSITE_TYPE / VAR_TYPE_REF / ARRAY_TYPE — see `specs/design/variable-inspection-model.md`) |
+| 10–65535 | — | reserved | Future use |
 
 **Rules:**
 - Each tag may appear **at most once** in the directory. A reader that encounters a duplicate tag discards the debug section.
@@ -217,12 +217,11 @@ Same pattern (count + entries): a `count: u16` followed by `StringLayoutEntry`
 items mapping `var_index → (data_offset, max_length)`
 (`compiler/container/src/debug_section.rs`).
 
-**Tag 5 — reserved (unused):**
+**Tag 5 — FB_FIELD_NAME (in development):**
 
-Tag 5 is reserved and emits nothing. It was originally earmarked for an
-FB_FIELD_NAME table, but FB type/field layout is now carried by the
-COMPOSITE_TYPE / VAR_TYPE_REF / ARRAY_TYPE tables (tags 10/11/12) defined in
-`specs/design/variable-inspection-model.md`, not by tags 4/5.
+Same pattern (count + entries): a `count: u16` followed by `FieldNameEntry`
+items mapping `(type_id, field_index) → field name`. FB type/field name display
+is still in development; see the §FB type/field name support section below.
 
 #### LineMapEntry (10 bytes)
 
@@ -275,16 +274,22 @@ The column field is populated when available but may be zero. Stepping and break
 
 The DAP `stackTrace` response requires a function name for each frame. Without this table, stack frames can only display numeric function IDs.
 
-#### FB type/field layout (superseded — see `variable-inspection-model.md`)
+#### FB type/field name support (in development)
 
-The earlier plan reserved tags 4/5 for FB type-name and field-name tables.
-That plan is abandoned: tag 4 is the implemented `STRING_LAYOUT` table and
-tag 5 is reserved/unused. FB type and field layout — the data needed to show
-`myTimer.IN = TRUE` instead of `myTimer.field[0] = 1` — is now defined by
-`specs/design/variable-inspection-model.md` via the `COMPOSITE_TYPE`,
-`VAR_TYPE_REF`, and `ARRAY_TYPE` sub-tables (tags 10/11/12), which unify FB
-instances, structs, and arrays under one model. See that spec for the entry
-formats.
+FB type and field name display — the data needed to show `myTimer.IN = TRUE`
+instead of `myTimer.field[0] = 1` — is in development. The earlier draft placed
+the FB type-name table at tag 4, but tag 4 is the implemented `STRING_LAYOUT`
+table, so that assignment was reclaimed; the FB field-name table is tracked as
+tag 5 (in development) and the FB type-name table's tag is not yet finalized.
+
+`FieldNameEntry` (tag 5, in development):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | type_id | u16 | FB type ID |
+| 2 | field_index | u8 | Field index within the FB type descriptor |
+| 3 | name_length | u8 | Length of field name in bytes |
+| 4 | name | [u8; name_length] | UTF-8 field name (e.g., "IN", "PT", "Q", "ET") |
 
 ### How DAP Uses the Debug Info
 
@@ -378,8 +383,7 @@ pub struct DebugInfo {
     pub string_layouts: Vec<StringLayoutEntry>, // tag 4
     pub source_files: Vec<SourceFileEntry>,      // tag 6
     pub enum_defs: Vec<EnumDefEntry>,            // tag 9
-    // FB type/field layout (tags 10/11/12) is defined in
-    // `variable-inspection-model.md`, not by the abandoned tags 4/5 plan.
+    // FB type/field name tables (tag 5 and a tag TBD) are in development.
 }
 
 pub struct LineMapEntry {
@@ -941,7 +945,7 @@ The "global" sentinel is `FunctionId::GLOBAL_SCOPE` (defined in `compiler/contai
 | BYTE, WORD, DWORD, LWORD | Hexadecimal with `16#` prefix |
 | TIME, LTIME | `T#` duration format |
 | STRING | Quoted string content |
-| (FB type) | `{type_name}` (expand via field layout per `variable-inspection-model.md`, tags 10/11/12) |
+| (FB type) | `{type_name}` (expand via FB field names — in development) |
 
 ### Variable forcing: not in v1
 
@@ -1231,7 +1235,7 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 
 | Crate | Files | Changes |
 |-------|-------|---------|
-| `container` | `debug_section.rs` | Tag registry reconciled with the implemented code: Tag 4 = STRING_LAYOUT, Tag 6 = SOURCE_FILE, Tag 9 = ENUM_DEF; Tag 5 left reserved/unused (FB layout moved to tags 10/11/12 in `variable-inspection-model.md`). No on-disk format change. |
+| `container` | `debug_section.rs` | Tag registry reconciled with the implemented code: Tag 4 = STRING_LAYOUT, Tag 6 = SOURCE_FILE, Tag 9 = ENUM_DEF. Tag 5 (FB_FIELD_NAME) is in development. No on-disk format change. |
 | `container` | `builder.rs` | Existing builder API; verify it accepts a fully populated `DebugSection`. |
 | `container` | `header.rs` | Write `debug_section_offset` and `debug_section_size` when debug section present; set flags bit 1 |
 | `codegen` | `emit.rs` | `set_current_span` per-statement (per `2026-04-07-debug-source-map-and-hook.md`); deduplicate consecutive identical spans |
@@ -1382,8 +1386,8 @@ This spec **replaces** the debug section format defined in the container format 
 2. **Tagged sub-tables** — each sub-table has a type tag; readers skip unknown tags by size
 3. **LineMapEntry is 10 bytes** — grew from 6 → 8 (adding `source_column: u16`) and then 8 → 10 (adding `file_id: u16` for multi-file source maps)
 4. **VarNameEntry gains scope and type fields** — adds `function_id`, `var_section`, `type_name`
-5. **Additional implemented sub-tables** — function names (tag 3), string layout (tag 4, `STRING_LAYOUT`), source files (tag 6), enum definitions (tag 9). FB type/field layout is deferred to the `COMPOSITE_TYPE`/`VAR_TYPE_REF`/`ARRAY_TYPE` tables (tags 10/11/12) in `variable-inspection-model.md`.
-6. **Reserved tags** — tag 5 (unused, formerly the abandoned FB_FIELD_NAME plan), LD rung map (tag 7), FBD network map (tag 8). Tag 6 (source file table) is now implemented; see `specs/plans/2026-05-22-debug-source-file-table.md`.
+5. **Additional implemented sub-tables** — function names (tag 3), string layout (tag 4, `STRING_LAYOUT`), source files (tag 6), enum definitions (tag 9). FB type/field name display (tag 5, FB_FIELD_NAME) is in development.
+6. **Reserved tags** — LD rung map (tag 7), FBD network map (tag 8). Tag 6 (source file table) is now implemented; see `specs/plans/2026-05-22-debug-source-file-table.md`.
 
 These changes affect only the debug section, which is independently hashed and signed (via `debug_hash` and the debug signature section). Adding or modifying debug info does not affect the content signature or the content hash, so existing containers remain valid.
 
