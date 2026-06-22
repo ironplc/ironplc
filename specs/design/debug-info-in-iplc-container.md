@@ -197,7 +197,7 @@ JSON output: { "index": 0, "name": "counter", "type_name": "DINT", "value": "42"
 **Deferred:**
 - Tag 0 (SOURCE_TEXT) — embedded source for debugger "open source" feature
 - Tag 1 (LINE_MAP) — needed for breakpoints/stepping
-- Tags 4-5 (FB_TYPE_NAME, FB_FIELD_NAME) — function block field names
+- FB type/field name display — superseded by `specs/design/variable-inspection-model.md`, which carries this via COMPOSITE_TYPE / VAR_TYPE_REF / ARRAY_TYPE (tags 10/11/12), not the abandoned tags 4/5 plan
 - STRING/WSTRING value display — requires reading from data region, not slot
 - ENUM member name display — requires enum definition table
 - DAP server implementation — separate effort after debug info exists
