@@ -294,12 +294,13 @@ payload_offset = 2 + (8 × sub_table_count) + sum(directory[0..i].size)
 | 1 | LINE_MAP | v1 | Bytecode offset → source line/column mappings |
 | 2 | VAR_NAME | v1 | Variable names with scope and type metadata |
 | 3 | FUNC_NAME | v1 | Function/POU name mappings |
-| 4 | FB_TYPE_NAME | reserved | FB type ID → type name mappings |
-| 5 | FB_FIELD_NAME | reserved | FB field index → field name mappings |
+| 4 | STRING_LAYOUT | implemented | String variable layout: var_index → (data_offset, max_length) (`compiler/container/src/debug_section.rs`) |
+| 5 | FB_FIELD_NAME | in development | FB field index → field name mappings |
 | 6 | SOURCE_FILE | v1 | Source file table: `(path, BLAKE3 content hash)` per file. `LineMapEntry.file_id` indexes into this table. |
 | 7 | LD_RUNG_MAP | reserved | Ladder Diagram rung ID → bytecode mappings |
 | 8 | FBD_NETWORK_MAP | reserved | Function Block Diagram network/element mappings |
-| 9–65535 | — | reserved | Future use |
+| 9 | ENUM_DEF | implemented | Enumeration type → ordinal-ordered value names (`compiler/container/src/debug_section.rs`) |
+| 10–65535 | — | reserved | Future use |
 
 **Rules:**
 - Each tag may appear **at most once** in the directory. A reader that encounters a duplicate tag discards the debug section.
@@ -405,22 +406,22 @@ Each FuncNameEntry (variable size):
 | 2 | name_length | u8 | Length of function name in bytes |
 | 3 | name | [u8; name_length] | UTF-8 POU name (e.g., "MAIN", "MotorControl") |
 
-**Tag 4 — FB_TYPE_NAME:**
+**Tag 4 — STRING_LAYOUT:**
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
 | 0 | count | u16 | Number of entries |
-| 2 | entries | [TypeNameEntry; count] | Variable size each |
+| 2 | entries | [StringLayoutEntry; count] | 8 bytes each |
 
-Each TypeNameEntry (variable size):
+Each StringLayoutEntry (8 bytes):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
-| 0 | type_id | u16 | FB type ID from the type section |
-| 2 | name_length | u8 | Length of type name in bytes |
-| 3 | name | [u8; name_length] | UTF-8 type name (e.g., "TON", "CTU", "MotorController") |
+| 0 | var_index | u16 | Variable-table index of the string variable |
+| 2 | data_offset | u32 | Offset of the string's bytes within the data region |
+| 6 | max_length | u16 | Declared maximum length of the string |
 
-**Tag 5 — FB_FIELD_NAME:**
+**Tag 5 — FB_FIELD_NAME (in development):**
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
@@ -435,6 +436,10 @@ Each FieldNameEntry (variable size):
 | 2 | field_index | u8 | Field index within the FB type descriptor |
 | 3 | name_length | u8 | Length of field name in bytes |
 | 4 | name | [u8; name_length] | UTF-8 field name (e.g., "IN", "PT", "Q", "ET") |
+
+A companion FB type-name table is also in development. Its earlier tag-4
+assignment was reclaimed by the implemented STRING_LAYOUT table, so its tag is
+not yet finalized.
 
 **Tag 6 — SOURCE_FILE:**
 
@@ -452,6 +457,24 @@ Each SourceFileEntry (variable size):
 | 2+N | content_hash | [u8; 32] | BLAKE3-256 of the file's source bytes as the parser saw them (no normalization). All-zero means "no hash available" — debuggers should treat this as drift-check disabled, not drift detected. |
 
 Position in the table is the entry's `file_id`: the first entry is `file_id = 0`, the second is `file_id = 1`, etc. `LineMapEntry.file_id` is an index into this table.
+
+**Tag 9 — ENUM_DEF:**
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | count | u16 | Number of entries |
+| 2 | entries | [EnumDefEntry; count] | Variable size each |
+
+Each EnumDefEntry (variable size):
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | type_name_length | u8 | Length of the enum type name in bytes |
+| 1 | type_name | [u8; type_name_length] | UTF-8 enum type name (e.g., "Color") |
+| 1+N | value_count | u16 | Number of value names |
+| 3+N | values | [EnumValueName; value_count] | Value names in ordinal order |
+
+Each EnumValueName (variable size): `name_length: u8` followed by `name: [u8; name_length]` (e.g., "RED", "GREEN", "BLUE").
 
 ### Malformed Debug Section Handling
 
