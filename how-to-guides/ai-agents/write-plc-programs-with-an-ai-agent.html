@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.219.0">
+<meta name="ironplc-version" content="0.224.0">
 </head>
   <body>
     
@@ -521,6 +521,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P4031.html">P4031</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P4032.html">P4032</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P4033.html">P4033</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P4034.html">P4034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -728,6 +729,28 @@ green indicator.</p></li>
 automatically.</p></li>
 <li><p>Type <strong class="command">/mcp</strong> to confirm that the IronPLC server is
 listed and connected.</p></li>
+</ol>
+</div>
+<input class="tab-input" id="tab-set--0-input--4" name="tab-set--0" type="radio" /><label class="tab-label" for="tab-set--0-input--4">OpenCode</label><div class="tab-content docutils">
+<ol class="arabic">
+<li><p>Create a file called <code class="file docutils literal notranslate"><span class="pre">opencode.json</span></code> in your project root:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;$schema&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://opencode.ai/config.json&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;mcp&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;ironplc&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;local&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;ironplcmcp&quot;</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</li>
+<li><p>Start OpenCode in that directory. The MCP server connects
+automatically.</p></li>
+<li><p>Run <strong class="command">opencode mcp list</strong> to confirm that the <code class="docutils literal notranslate"><span class="pre">ironplc</span></code>
+server is listed as <code class="docutils literal notranslate"><span class="pre">connected</span></code>.</p></li>
 </ol>
 </div>
 </div>
