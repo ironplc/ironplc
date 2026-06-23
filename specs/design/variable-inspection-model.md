@@ -183,27 +183,34 @@ To expand a composite node the inspector needs a **base offset** into the
 data region and a **field layout**:
 
 **REQ-VI-005** The base offset of a top-level composite variable is the
-`data_offset` stored in its variable-table slot (`compile_setup.rs:474`);
-the inspector reads it from the live VM rather than from debug info.
+`data_offset` of its data region, a **compile-time constant** (codegen
+already materializes it via `add_i32_constant`, `compile_setup.rs:474`).
+This spec records it in debug info (on the extended `VarNameEntry`, below)
+so the **structure** of the instance tree — names, types, nesting, offsets —
+resolves from the container alone, without a running VM. A live VM (or the
+static initial values) supplies only the **values** overlaid onto that
+structure.
 
 **REQ-VI-006** Field values are read from the data region at `base_offset +
 field.byte_offset`, dispatched on the field's type reference: a scalar
 field is formatted as a leaf; a composite field is recursed into with its
-own resolved base offset.
+own resolved base offset. Whether a composite field is laid out **inline**
+(its bytes sit at `base_offset + field.byte_offset`) or **by pointer** (that
+slot holds a `data_offset` to recurse at) is determined by the referenced
+type's kind, not by a per-field flag — see
+[Field indirection](#field-indirection-is-type-determined).
 
 The field layout comes from the new composite-type debug tables below.
-
-*Open item:* confirm during implementation whether a nested composite field
-stores an inline region (structs lay fields out contiguously) or an offset
-pointer (as top-level FB instances do); `FieldEntry.inline` (below) encodes
-which, and REQ-VI-006's base resolution honors that flag.
 
 ## Required debug info
 
 The tree needs layout facts the compiler has at codegen time but currently
-discards. This section defines the additions. All are **new debug-section
-sub-tables** (the directory format already lets readers skip unknown tags,
-so old readers are unaffected).
+discards. This section defines the additions. Most are **new debug-section
+sub-tables** (the directory format lets readers skip unknown tags); the one
+exception is the `VarNameEntry` extension (tag 2), which changes an existing
+entry's wire format — acceptable here because there is no
+backward-compatibility constraint to preserve (the #1106 conformance tests
+are updated to match).
 
 ### Debug-section tag reconciliation
 
@@ -229,11 +236,14 @@ This spec assigns fresh tags for composite layout, avoiding the collision:
 | Requirement | Tag | Name | Purpose |
 |-------------|-----|------|---------|
 | **REQ-VI-011** | 10 | COMPOSITE_TYPE | FB + struct type descriptors (name + fields) |
-| **REQ-VI-012** | 11 | VAR_TYPE_REF | var_index → type reference (for composite/array vars) |
 | **REQ-VI-013** | 12 | ARRAY_TYPE | array layout for debug (element type + dims) |
 
-Tags 5, 7, 8 (the stale FB_*/LD/FBD reservations) are left unused and
-re-marked reserved.
+The variable → type-reference link does **not** get its own tag: it extends
+the existing `VarNameEntry` (tag 2) directly (see
+[VarNameEntry extension](#varnameentry-extension-tag-2)).
+
+Tags 5, 7, 8 (the stale FB_*/LD/FBD reservations) and tag 11 are left unused
+and re-marked reserved.
 
 ### TypeRef encoding
 
@@ -242,8 +252,17 @@ knows how to expand it:
 
 | Requirement | Offset | Field | Type | Meaning |
 |-------------|--------|-------|------|---------|
-| **REQ-VI-020** | 0 | kind | u8 | 0 = scalar, 1 = composite, 2 = array |
-| **REQ-VI-021** | 1 | id | u16 | scalar: `iec_type_tag`; composite: COMPOSITE_TYPE id; array: ARRAY_TYPE id |
+| **REQ-VI-020** | 0 | kind | u8 | 0 = scalar, 1 = composite, 2 = array, 3 = enum |
+| **REQ-VI-021** | 1 | id | u16 | scalar: `iec_type_tag`; composite: COMPOSITE_TYPE id; array: ARRAY_TYPE id; enum: ENUM_DEF index |
+
+**REQ-VI-022** An enum-typed variable or field uses `kind = enum` with `id`
+indexing the `ENUM_DEF` table (tag 9). This requires `ENUM_DEF` entries to
+carry a stable index. Without it, an enum *field* of a composite would encode
+as `kind = scalar, id = OTHER` and lose its value-name table, rendering the
+raw ordinal instead of the enumerator — a regression versus a top-level enum
+variable. Top-level enum variables use the same `kind = enum` path (on the
+extended `VarNameEntry`) rather than the legacy `OTHER` + `type_name` string,
+so enum resolution is identical for variables and fields.
 
 ### Tag 10 — COMPOSITE_TYPE
 
@@ -255,10 +274,24 @@ user composite type.
 
 | Requirement | Field | Type | Description |
 |-------------|-------|------|-------------|
-| **REQ-VI-031** | type_id | u16 | Matches `FbInstanceInfo.type_id` for FBs |
+| **REQ-VI-031** | type_id | u16 | Globally unique across all composite types; see the partitioned ranges below |
 | **REQ-VI-032** | kind | u8 | 0 = struct, 1 = function_block |
 | **REQ-VI-033** | name | String | Source type name, e.g. `"ACCUMULATOR"`, `"Settings"` |
 | **REQ-VI-034** | fields | FieldEntry[] | One per field, in declaration order |
+
+**REQ-VI-039** `type_id` is a single u16 space shared by every composite
+type, partitioned so a `TypeRef(kind = composite, id)` resolves
+unambiguously (the reference carries no struct-vs-FB discriminator). Three id
+spaces must coexist, two of which already exist in the codebase:
+
+| Range | Composite kind | Current source |
+|-------|----------------|----------------|
+| `0x0000`–`0x0FFF` | stdlib FB types | `opcode::fb_type::*` (TON=`0x0010`, CTU=`0x0020`, …; `opcode.rs:1279+`) |
+| `0x1000`–`0x7FFF` | user FB types | `next_user_fb_type_id`, starts `0x1000` (`compile.rs:944`) |
+| `0x8000`–`0xFFFF` | struct types | **new** — structs have no numeric id today (keyed by name / `IntermediateType`, `compile_struct.rs:333`) |
+
+Codegen assigns struct `type_id`s from the `0x8000+` range so they cannot
+collide with either FB space.
 
 `FieldEntry`:
 
@@ -266,46 +299,81 @@ user composite type.
 |-------------|-------|------|-------------|
 | **REQ-VI-035** | name | String | Field name, e.g. `"step"`, `"gain"` |
 | **REQ-VI-036** | byte_offset | u16 | Offset within the instance's data region |
-| **REQ-VI-037** | inline | u8 | 1 = field bytes are inline; 0 = field slot holds a data_offset pointer |
-| **REQ-VI-038** | type_ref | TypeRef | scalar / nested composite / array |
+| **REQ-VI-038** | type_ref | TypeRef | scalar / enum / nested composite / array |
 
-`byte_offset` + `inline` + `type_ref` are exactly what
-`build_struct_fields` (`compile_struct.rs:629`) and the FB field map
+`byte_offset` + `type_ref` are exactly what `build_struct_fields`
+(`compile_struct.rs:629`) and the FB field map
 (`FbInstanceInfo.field_indices`, `compile.rs:786`) already compute
 internally — this table just persists them.
 
-### Tag 11 — VAR_TYPE_REF
+#### Field indirection is type-determined
 
-**REQ-VI-040** A VAR_TYPE_REF entry links a named variable to its TypeRef
-without touching the existing `VarNameEntry` wire format (preserving the
-#1106 work and its conformance tests).
+A composite field is reached one of two ways, and which one is **determined
+by the referenced type's kind**, so no per-field flag is stored:
 
-**REQ-VI-041** VAR_TYPE_REF entries are emitted **only** for composite and
-array variables; scalars are fully described by `VarNameEntry.iec_type_tag`
-already.
+- A **struct** field is laid out *inline*: its bytes sit contiguously at
+  `base_offset + field.byte_offset` (`compile_struct.rs:522`).
+- An **FB-instance** field is reached *by pointer*: the slot at
+  `base_offset + field.byte_offset` holds a `data_offset` into the FB's own
+  region, and the inspector recurses there (`compile_setup.rs:474`).
 
-`VarTypeRefEntry`:
+The inspector therefore branches on `COMPOSITE_TYPE.kind` (0 = struct →
+inline, 1 = function_block → pointer), which it already loads to expand the
+field. Codegen **must verify** this invariant holds for every in-scope
+composite field; a counterexample is the signal to introduce an explicit
+*binding* axis (by-value vs by-reference) rather than re-adding a flag.
+Reference-bound fields (`REF_TO`, `VAR_IN_OUT`) are out of scope here and,
+when added, take that binding axis — they do not resurrect an `inline` flag.
+
+### VarNameEntry extension (tag 2)
+
+Rather than a separate var → type table joined back to `VarNameEntry` on
+`(function_id, var_index)`, this spec extends `VarNameEntry` (tag 2)
+directly. The join — and its failure modes (a composite `VarNameEntry` with
+no matching reference, or an orphaned reference) — buys nothing here: there
+is no backward-compatibility constraint worth a second table, so the #1106
+`VarNameEntry` wire format changes and its conformance tests are updated to
+match.
+
+**REQ-VI-040** `VarNameEntry` gains two optional fields, populated **only**
+for composite and array variables; scalar variables leave them empty and
+remain fully described by `VarNameEntry.iec_type_tag`.
 
 | Requirement | Field | Type | Description |
 |-------------|-------|------|-------------|
-| **REQ-VI-042** | function_id | FunctionId | Owner (`GLOBAL_SCOPE` for program/globals) |
-| **REQ-VI-043** | var_index | VarIndex | Variable-table index within the owner |
-| **REQ-VI-044** | type_ref | TypeRef | Composite or array reference |
+| **REQ-VI-042** | type_ref | TypeRef | Composite, array, or enum reference; absent for plain scalars |
+| **REQ-VI-043** | base_offset | u32 | Static `data_offset` of the variable's data region (REQ-VI-005); absent for non-composites |
+
+**REQ-VI-044** Because `base_offset` is the compile-time `data_offset`, a
+reader resolves the entire instance-tree *structure* from the container
+alone; it needs a live VM only to read *values*.
 
 ### Tag 12 — ARRAY_TYPE
 
-The type section already has a runtime `ArrayDescriptor` (element type,
-count, element_extra — `type_section.rs:80`). For source-level display the
-debug side adds dimension bounds and a nested `type_ref` for composite
-element types.
+The type section already has a runtime `ArrayDescriptor`
+(`container/src/type_section.rs:80`), but it carries only a **flat**
+`total_elements` count and a `FieldType`-encoded scalar `element_type` — no
+IEC `lower..upper` bounds and no way to reference a `COMPOSITE_TYPE` for
+arrays of structs/FBs. `ARRAY_TYPE` is a self-contained debug table that adds
+exactly those: per-dimension source bounds and a nested `type_ref`.
+
+It is kept self-contained rather than referencing `ArrayDescriptor` — the two
+use different element encodings (`ArrayDescriptor.element_type` is a
+`FieldType` tag; `TypeRef` scalar `id` is an `iec_type_tag`), so a
+cross-reference would not be clean.
 
 `ArrayTypeEntry`:
 
 | Requirement | Field | Type | Description |
 |-------------|-------|------|-------------|
 | **REQ-VI-050** | array_id | u16 | Referenced by a TypeRef with kind = array |
-| **REQ-VI-051** | element_ref | TypeRef | Element scalar tag, or composite/array id for nested |
+| **REQ-VI-051** | element_ref | TypeRef | Element scalar tag, or composite/array/enum id for nested |
 | **REQ-VI-052** | dims | Dim[] | One per dimension, each `lower:i32, upper:i32` (IEC bounds) |
+
+**REQ-VI-053** For any array, `ARRAY_TYPE.element_ref` and the runtime
+`ArrayDescriptor.element_type` describe the same element type (bridging the
+`iec_type_tag` ↔ `FieldType` encodings). A round-trip test enforces this, so
+the VM's indexing and the debugger's display cannot diverge.
 
 ### Codegen emission
 
@@ -316,15 +384,25 @@ type (`ctx.user_fb_types`) and per struct type, from the field maps already
 built.
 
 **REQ-VI-061** At each composite/array variable assignment
-(`compile_setup.rs`, `compile_fn.rs`), codegen emits the variable's
-VAR_TYPE_REF alongside the existing `VarNameEntry`.
+(`compile_setup.rs`, `compile_fn.rs`), codegen populates the variable's
+`VarNameEntry.type_ref` and `base_offset` (REQ-VI-040) instead of emitting a
+separate entry.
 
 **REQ-VI-062** Codegen emits an ARRAY_TYPE entry alongside the existing
-`add_array_descriptor` (`compile_array.rs:617`), carrying source bounds.
+`add_array_descriptor` (`compile_array.rs:619`), carrying source bounds.
 
 **REQ-VI-063** Built-in (stdlib) FB types (TON, CTU, …) get COMPOSITE_TYPE
-entries with their standard field names, so `acc : TON` expands to
-`IN/PT/Q/ET`. This is the work `debugger-support.md` filed as Gaps #5/#6.
+entries generated from the existing codegen field maps —
+`timer_fb_fields()`, `ctu_fb_fields()`, `ctd_fb_fields()`, … in
+`compile_call.rs:1205+` — which already carry field name → byte offset **and
+already exclude hidden implementation fields** (e.g. the timer's
+`start_time`/`running`), i.e. exactly the user-facing field set. Per-field
+IEC type and section come from the analyzer stdlib definitions
+(`analyzer/src/intermediates/stdlib_function_block.rs`). These maps drive
+intrinsic FB lowering, so debug layout cannot drift from runtime layout; the
+field tables are **not** hand-authored and **not** read from VM internals.
+So `acc : TON` expands to `IN/PT/Q/ET`. This is the work
+`debugger-support.md` filed as Gaps #5/#6.
 
 ## Consumer 1: CLI dump
 
@@ -397,11 +475,11 @@ phase registers this file in the relevant crate's `build.rs` (if not
 already) and lands `#[spec_test(REQ_VI_NNN)]` tests for the requirements it
 implements.
 
-1. **Debug info (codegen + container).** Tags 10/11/12 and the TypeRef
-   encoding; emit for structs, user FBs, stdlib FBs, and arrays.
-   *Requirements:* REQ-VI-010..013, 020..021, 030..052, 060..063. Register
-   in `compiler/codegen/build.rs` (or `container`). Round-trip tests; no
-   consumer change yet.
+1. **Debug info (codegen + container).** Tags 10/12, the `VarNameEntry`
+   extension, and the TypeRef encoding; emit for structs, user FBs, stdlib
+   FBs, and arrays. *Requirements:* REQ-VI-010..013, 020..022, 030..063
+   (excluding 037, retired). Register in `compiler/codegen/build.rs` (or
+   `container`). Round-trip tests; no consumer change yet.
 2. **`VarNode` builder (shared crate).** A pure function from
    `(container debug tables, data-region bytes, variable-table values)` to
    a `VarNode` tree. *Requirements:* REQ-VI-001..006. Unit-tested with
@@ -426,15 +504,30 @@ implements.
 - Pointer/REF_TO graph following beyond one hop; shown as the raw target
   index for now.
 
-## Open questions
+## Resolved design decisions
 
-1. **Nested composite base offset.** Confirm whether struct/FB fields that
-   are themselves composite store inline bytes or an offset pointer; the
-   `FieldEntry.inline` flag is provisioned for both, but emission must set
-   it correctly per codegen reality (`compile_struct.rs`).
-2. **Stdlib FB field tables.** Source the standard FBs' field names/offsets
-   from the existing intrinsic layout (`compiler/vm/src/builtin.rs`) vs. a
-   hand-authored table — decide during Phase 1.
-3. **`type_id` namespace.** Confirm FB `type_id`s and struct ids don't
-   collide in one COMPOSITE_TYPE table; if they can, add `kind` to the key
-   or partition the id space.
+The three questions originally left open here have been resolved against the
+codebase and folded into the requirements above:
+
+1. **Nested composite base offset → indirection is type-determined.** No
+   `inline` flag is stored: struct fields are inline, FB-instance fields are
+   pointers, dispatched on `COMPOSITE_TYPE.kind` (see
+   [Field indirection](#field-indirection-is-type-determined), REQ-VI-006).
+   Codegen verifies the invariant; a counterexample escalates to an explicit
+   binding axis, not a flag.
+2. **Stdlib FB field tables → reuse the codegen field maps.** Generated from
+   `timer_fb_fields()` / `ctu_fb_fields()` / … (`compile_call.rs:1205+`),
+   which already define the visible field set and offsets and drive intrinsic
+   lowering, so debug and runtime layout share one source (REQ-VI-063). Not
+   hand-authored, not from VM internals.
+3. **`type_id` namespace → one partitioned u16 space.** Stdlib FBs
+   `0x0000–0x0FFF`, user FBs `0x1000–0x7FFF`, structs `0x8000–0xFFFF`, so a
+   `TypeRef(kind = composite, id)` resolves unambiguously without a
+   struct-vs-FB discriminator (REQ-VI-031, REQ-VI-039).
+
+Still genuinely open (deferred, not blocking this design):
+
+- **Enum `ENUM_DEF` indexing.** REQ-VI-022 requires `ENUM_DEF` entries to
+  carry a stable index for `TypeRef(kind = enum)`. Confirm during Phase 1
+  that adding the index does not disturb the tag-9 wire format relied on by
+  the enum conformance tests.
