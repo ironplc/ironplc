@@ -1,122 +1,146 @@
-# Phase 4: DAP Server Scaffold
+# Phase 4: DAP Server Scaffold (minimal v1)
 
 ## Goal
 
-Stand up `ironplcvm debug --dap <file.iplc>` — a single-threaded Debug
-Adapter Protocol server that VS Code (or any DAP client) can connect to,
-drive through the `initialize → launch → setBreakpoints →
-configurationDone → continue/step → disconnect` lifecycle, and use to pause
-on a breakpoint, walk the stack, and inspect variables. This is Phase 4 of
-the debugger design (`specs/design/debugger-support.md` §"Phase 4: DAP
-Server").
+Stand up `ironplcdap <file.iplc>` — a single-threaded Debug Adapter Protocol
+server that VS Code (or any DAP client) can connect to, drive through the
+`initialize → launch → setBreakpoints → configurationDone →
+continue/step → disconnect` lifecycle, pause on a **line breakpoint**, walk
+the stack, and inspect variables. This is Phase 4 of the debugger design
+(`specs/design/debugger-support.md` §"Phase 4: DAP Server"), **deliberately
+cut down** from the surface in that spec to the smallest thing that is a real
+debugger.
 
-This phase is the **protocol plumbing** that turns the Phase 3 VM debug
-engine into something an editor can talk to. It depends on Phase 3
-(`DebuggerHook`, `run_round_debug`, `BreakpointTable`, `Phase`) for actual
-execution control, and on Layer 1 debug info only for the *final*
-source-line ↔ bytecode-offset translation and variable rendering — which is
-isolated to one module (`dap/debug_info.rs`) so the rest of the server can
-be built and tested against raw offsets first.
+## Scope cut from the design spec
+
+The design spec's Phase 4 lists logpoints, `evaluate`, custom scan-cycle
+requests, and a packaging split. This plan cuts the first DAP phase to the
+minimum and defers the rest:
+
+- **In:** the handshake; **line breakpoints** (pause-only); one synthetic
+  thread; `stackTrace` / `scopes` / `variables`; and the four execution-
+  control commands **`continue`, `next`, `stepIn`, `stepOut`**.
+- **Deferred to a later phase:** logpoints, `evaluate` (any expression
+  evaluation), the custom `ironplc/stepScan` + `ironplc/scanCount` requests,
+  conditional breakpoints, `pause`, `setVariable`/forcing, multi-instance.
+
+> **Note — departs from the spec's "logpoints are the headline v1 feature"
+> stance.** Logpoints were promoted to v1 in the design doc; this plan pushes
+> them out of the *first* DAP phase to keep it small. They remain a strong
+> early follow-up (the engine hooks for them are cheap once breakpoints
+> work). Reverse this if logpoints should ship in the first cut.
+
+This cut also pulls **Phase 3** down: no `LogpointTable` / `LogSink`, no
+expression-subset evaluator. See `2026-06-25-vm-debug-engine.md`.
 
 ## Why now / sequencing
 
 - **Phase 2 (iterative dispatch) is done**; **Phase 3 (debug engine) is
-  planned** in `specs/plans/2026-06-25-vm-debug-engine.md`.
-- The DAP server is the first thing a user can *see*: it produces a working
-  VS Code debug session. Most of it — framing, the protocol type layer, the
-  event loop, the state-machine legality table, the `initialize`/`launch`
-  handshake — has **no dependency on debug info** and can be built with the
-  Phase 3 engine alone, using offset-based breakpoints.
+  planned** in `2026-06-25-vm-debug-engine.md`.
+- The DAP server is the first thing a user can *see*: a working VS Code
+  debug session. Framing, the type layer, the event loop, the state-machine
+  legality table, and the `initialize`/`launch` handshake have **no
+  dependency on debug info** and can be built with the Phase 3 engine alone,
+  using offset-based breakpoints.
 - The only debug-info-dependent piece is `setBreakpoints` (source line →
   bytecode offset) and `variables`/`scopes` rendering (slot → name/type).
-  Those read the container's debug section via
-  `container::debug_section` / `container::debug_format`, which the Layer 1
-  work is finishing now. Isolating them in `dap/debug_info.rs` lets this
-  phase land with a stubbed/offset-based breakpoint resolver and swap in the
-  real line-map lookup when Layer 1 is ready.
+  Those read the container debug section via `container::debug_section` /
+  `container::debug_format`, which Layer 1 is finishing now. Isolating them
+  in `dap/debug_info.rs` lets this phase land with an offset-passthrough
+  resolver and swap in real line-map lookups when Layer 1 is ready.
 
 ## Current state (`compiler/vm-cli`)
 
 `vm-cli/src/main.rs` defines `Args` with an `Action` subcommand enum (`Run`,
 `Benchmark`, `Version`); each arm dispatches into `cli.rs`. `error.rs`
 defines the CLI error type with `exit_code()`. `serde_json` is already a
-dependency. No `dap` feature, no debug subcommand, no DAP modules.
+dependency. No `dap` feature, no DAP binary, no DAP modules.
 
-## Scope
+## Binary: `ironplcdap` (not `ironplcvm-debug`)
 
-**In:**
+Ship the DAP server as a dedicated, feature-gated binary named **`ironplcdap`**.
 
-- New `dap` cargo feature on `vm-cli` gating all DAP code and its extra
-  dependencies.
-- `Debug { file, --dap, --stop-on-entry, --scan-limit }` subcommand behind
-  `#[cfg(feature = "dap")]`.
-- `dap/framing.rs` — Content-Length header framing (read + write) over
-  stdin/stdout.
-- `dap/types.rs` — the DAP message types needed for v1 (`Request`,
-  `Response`, `Event`, `Capabilities`, and the request/response bodies
-  listed below). Prefer the `dap` / `dap-types` crate if it fits cleanly;
-  otherwise hand-roll with `serde`.
-- `dap/state.rs` — a `Phase` mirror and a per-(state, request) legality
-  table that returns `requestNotApplicable` for illegal requests (including
-  `pause` and `setVariable`, which are v1 cuts).
-- `dap/launch.rs` — launch preconditions: reject multi-instance containers
-  (`MultiInstanceUnsupported`) and containers with no debug section
-  (`NoDebugInfo`).
-- `dap/debug_info.rs` — the **only** debug-info-coupled module: source line
-  ↔ `(FunctionId, offset)` translation (line map), and slot → name/type
-  rendering (`container::debug_format`). Ships first with an offset-passthrough
-  resolver so the server is testable before Layer 1 lands.
-- `dap/server.rs` — the **single-threaded** event loop: drain queued DAP
-  requests at natural stop points, then run the VM under
-  `VmRunning::run_round_debug` to the next stop; translate `RoundOutcome` /
-  `PauseReason` into `stopped` / `output` / `terminated` events.
-- Re-export `ironplcvm-debug` binary (or `dap` feature default-on in the
-  VS Code distribution) per the spec's packaging decision.
+Rationale: `ironplcvm-debug` reads as "a build of the VM for debugging the VM
+itself," which is confusing. `ironplcdap` names what it is — the DAP server.
 
-**Out (deferred):**
+The design spec's §"Why not a separate DAP binary?" argued for a subcommand
+to avoid duplicating the VM-embedding code. We honour that concern *without*
+the confusing name: `ironplcdap` is a **second `[[bin]]` target in the same
+`vm-cli` crate**, gated behind the `dap` feature, reusing the crate's VM
+embedding (buffer sizing, container load) — a few lines of `main`, no
+duplicated embedding logic. The VS Code extension (Phase 5) launches
+`ironplcdap <file.iplc>`, which speaks DAP on stdin/stdout.
 
-- VS Code extension wiring (`debugAdapter.ts`, launch config, toolbar) —
-  Phase 5.
-- `pause` (interactive interrupt), `setVariable` / forcing, multi-instance,
-  conditional breakpoints, compound expression `evaluate` — all v1 cuts;
-  the server returns `requestNotApplicable` / `evaluateUnsupported` for them.
-- Two-thread server, `ArcSwap`, `AtomicBool` — explicitly out
-  (`§Single-threaded DAP loop`).
+```toml
+# vm-cli/Cargo.toml
+[[bin]]
+name = "ironplcdap"
+path = "src/dap_main.rs"
+required-features = ["dap"]
 
-## DAP surface for v1
+[features]
+dap = ["dep:serde"]   # serde_json already present
+```
 
-Requests handled: `initialize`, `launch`, `setBreakpoints` (including
-`logMessage` logpoints), `configurationDone`, `threads` (one synthetic
+## DAP types: hand-rolled (`dap/types.rs`)
+
+**Decision: hand-roll a minimal `serde` types module; do not take the `dap`
+crate as a dependency.**
+
+This is the documented "discuss why we cannot use the dap crate" the review
+asked for. Evidence:
+
+- The `dap` crate (`sztomi/dap-rs`) is **alpha** (`0.4.1-alpha1`), last
+  committed **Feb 2024**, last published **Sep 2023**, and self-warns that
+  "breakages will be frequent; any pre-1.0 version may be breaking."
+- It has **8 reverse dependencies** on all of crates.io, none mainstream.
+- **No major Rust DAP implementation uses it.** Helix hand-rolls
+  `helix-dap-types`; Lapce hand-rolls `lapce/dap-types`; probe-rs's
+  `probe-rs-debug` (the embedded VS Code debugger) defines its own types with
+  no DAP crate dependency. Hand-rolling a small serde types module is the
+  ecosystem norm, not a workaround.
+- Our cut-down v1 surface is **~12–15 small request/response/event structs**
+  — trivial to own, and owning them avoids an alpha dependency on our public
+  build.
+
+**Fallback if we'd rather not own even the types:** vendor or depend on
+`lapce/dap-types` (types only, no transport/runtime). Re-evaluate only if the
+type surface grows past the v1 cut.
+
+The hand-rolled `types.rs` uses `serde` derive + the already-present
+`serde_json`. It models only the v1 messages below.
+
+## DAP surface for the first phase
+
+Requests handled: `initialize`, `launch`, `setBreakpoints` (line breakpoints
+only — no `logMessage`), `configurationDone`, `threads` (one synthetic
 thread), `stackTrace`, `scopes`, `variables`, `continue`, `next`
-(step-over), `stepIn`, `stepOut`, `evaluate` (bare-identifier subset only),
-`disconnect`, plus the custom `ironplc/stepScan` and `ironplc/scanCount`.
+(step-over), `stepIn`, `stepOut`, `disconnect`.
 
-Requests explicitly refused with `requestNotApplicable`: `pause`,
-`setVariable`, `restart`, `setExpression`.
+Everything else returns DAP error `requestNotApplicable`, explicitly
+including `pause`, `setVariable`, `evaluate`, `restart`, and the (not-yet-
+registered) custom `ironplc/*` requests.
 
 Capabilities advertised in `initialize`:
-`supportsConfigurationDoneRequest: true`, `supportsLogPoints: true`,
-`supportsStepInTargetsRequest: false`, `supportsSetVariable: false`,
-`supportsConditionalBreakpoints: false`, `supportsEvaluateForHovers: true`
-(identifier subset).
+`supportsConfigurationDoneRequest: true`. Everything optional is **false /
+omitted**: `supportsLogPoints`, `supportsConditionalBreakpoints`,
+`supportsEvaluateForHovers`, `supportsSetVariable`,
+`supportsStepInTargetsRequest` — all off for the first phase.
 
 ## Design
 
 ### Single-threaded event loop (`dap/server.rs`)
 
 The loop alternates between **servicing the client** and **running the VM**;
-there is no I/O thread and no shared mutable state across threads.
+no I/O thread, no shared mutable state across threads.
 
 ```
 state = Initialized
 loop {
     match state {
-        // Stopped/Initialized: block on the next DAP request, handle it.
         Paused | Initialized | ConfigDone =>
             req = framing.read();
-            handle(req)  // may mutate BreakpointTable, may set state = Running
-        // Running: drive the VM to the next natural stop, then go back
-        // to draining requests.
+            handle(req)  // may mutate BreakpointTable; may set state = Running
         Running =>
             match vm.run_round_debug(now, &mut debugger_hook)? {
                 Completed       => emit(terminated); state = Initialized
@@ -128,105 +152,101 @@ loop {
 ```
 
 `setBreakpoints` received while `Running` is **queued** and applied at the
-next natural stop — this is the documented single-threaded behaviour
-(`§Single-threaded DAP loop`), not a bug. `continue` / `next` / `stepIn` /
-`stepOut` set the `StepController` mode on the `DebuggerHook` and flip state
-to `Running`. `scan-limit` (launch option) bounds runaway scans.
-
-The `DebuggerHook` (Phase 3), its `BreakpointTable`, and the VM buffers are
-all owned directly by the loop — no `Arc`, no atomics.
+next natural stop (documented single-threaded behaviour, not a bug).
+`continue` / `next` / `stepIn` / `stepOut` set the `StepController` mode on
+the `DebuggerHook` and flip state to `Running`. The launch `scanLimit`
+bounds runaway scans. The `DebuggerHook`, its `BreakpointTable`, and the VM
+buffers are owned directly by the loop — no `Arc`, no atomics.
 
 ### State legality (`dap/state.rs`)
 
 A `Phase` mirror (`Initialized`, `Configuring`, `Running`, `Paused`,
-`Terminated`, `Faulted`) plus a function `legal(phase, command) -> bool`.
-Illegal pairs short-circuit to a DAP error response with
-`requestNotApplicable`. This table is the spec's per-request "Legal in"
-column and is unit-tested exhaustively.
+`Terminated`, `Faulted`) plus `legal(phase, command) -> bool`. Illegal pairs
+short-circuit to a DAP error with `requestNotApplicable`. Unit-tested
+exhaustively.
 
 ### Launch preconditions (`dap/launch.rs`)
 
 On `launch`, load the container and check:
-1. Debug section present → else fail `NoDebugInfo` with a message pointing
-   at "compile with debug info enabled".
+1. Debug section present → else fail `NoDebugInfo` (message: "compile with
+   debug info enabled").
 2. `program_instances.len() == 1` → else fail `MultiInstanceUnsupported`
-   with the v1-limitation message from the spec.
+   (v1-limitation message from the spec).
 
 Then size the VM buffers (operand stack, variable table, **frame stack from
 `header.max_call_depth`**, data region) and construct `VmRunning`.
 
 ### Debug-info coupling, isolated (`dap/debug_info.rs`)
 
-Two functions, the only Layer 1 consumers:
+The only Layer 1 consumers, two functions:
 - `resolve_breakpoint(source_path, line) -> Vec<(FunctionId, offset)>` via
-  the line map + SOURCE_FILE table (BLAKE3 drift check optional/warn).
+  the line map + SOURCE_FILE table.
 - `render_variables(frame) -> Vec<DapVariable>` via VAR_NAME + `debug_format`.
 
-Ship first with a passthrough resolver (treat the DAP `line` as a raw
-offset, render slots without names) so `server.rs` is end-to-end testable
-before Layer 1 finishes; swap in the real lookups behind the same signatures.
+Ships first with a passthrough resolver (treat the DAP `line` as a raw
+offset; render slots without names) so `server.rs` is end-to-end testable
+before Layer 1 finishes; swap in real lookups behind the same signatures.
 
 ## Tests
 
-- **Unit — framing**: Content-Length read/write roundtrip, including partial
-  reads and multiple messages in one buffer.
+- **Unit — framing**: Content-Length read/write roundtrip; partial reads;
+  multiple messages in one buffer.
 - **Unit — state legality**: every (phase, command) pair returns the
-  documented result; `pause` and `setVariable` → `requestNotApplicable`.
-- **Unit — launch**: multi-instance container → `MultiInstanceUnsupported`;
-  no-debug-section container → `NoDebugInfo`.
-- **Integration — handshake**: spawn the binary, send `initialize` +
-  `launch` + `setBreakpoints` + `configurationDone`, expect a `stopped`
-  event at the breakpoint. (Uses an offset-based breakpoint until Layer 1
-  line maps land.)
+  documented result; `pause`, `setVariable`, `evaluate` →
+  `requestNotApplicable`.
+- **Unit — launch**: multi-instance → `MultiInstanceUnsupported`;
+  no-debug-section → `NoDebugInfo`.
+- **Integration — handshake**: spawn `ironplcdap`, send `initialize` +
+  `launch` + `setBreakpoints` + `configurationDone`, expect `stopped` at the
+  breakpoint. (Offset-based breakpoint until Layer 1 line maps land.)
 - **Integration — inspection**: from `stopped`, request `stackTrace`,
-  `scopes`, `variables`; verify the frames and entries.
-- **Integration — queued setBreakpoints**: send `setBreakpoints` while
-  `Running`; verify it applies at the next stop, not mid-instruction.
+  `scopes`, `variables`; verify frames and entries.
+- **Integration — stepping**: `next` over a CALL lands on the next line in
+  the caller; `stepIn` enters the callee; `stepOut` returns to the caller.
+- **Integration — queued setBreakpoints**: sent while `Running`, applied at
+  the next stop, not mid-instruction.
 - **Integration — pause refused**: `pause` while `Running` →
   `requestNotApplicable`.
-- **Integration — logpoint**: `setBreakpoints` with `logMessage`; VM does
-  not pause; the formatted text arrives as an `output` event.
 - **Integration — trap**: trigger a trap; expect `stopped{reason:"exception"}`
   then a clean `disconnect`.
 
 ## Commit order
 
 Each commit compiles and passes `cd compiler && just` (DAP code behind the
-feature; CI builds with `--features dap`).
+`dap` feature; CI builds the `ironplcdap` bin with `--features dap`).
 
-1. `dap` feature + `Debug` subcommand wiring (no-op handler) + `framing.rs`
-   with its roundtrip unit test.
-2. `types.rs` + `state.rs` legality table + tests. Still no VM.
-3. `launch.rs` preconditions + buffer sizing; `initialize`/`launch`/
+1. `dap` feature + `ironplcdap` bin target (`dap_main.rs`, no-op handler) +
+   `dap/framing.rs` with its roundtrip unit test.
+2. Hand-rolled `dap/types.rs` (v1 messages only) + `dap/state.rs` legality
+   table + tests. Still no VM.
+3. `dap/launch.rs` preconditions + buffer sizing; `initialize`/`launch`/
    `disconnect` handshake against the Phase 3 engine with an
-   offset-passthrough `debug_info.rs`; handshake integration test.
-4. `server.rs` run/stop loop: `continue`, `stepIn/next/stepOut`,
-   `stackTrace`/`scopes`/`variables`, `stopped`/`output`/`terminated`
-   events; inspection + step integration tests.
-5. Logpoints + `evaluate` (identifier subset) + custom `ironplc/stepScan`,
-   `ironplc/scanCount`.
-6. Swap `debug_info.rs` passthrough for real line-map / debug_format lookups
-   once Layer 1 is complete (or in parallel, behind the same signatures).
+   offset-passthrough `dap/debug_info.rs`; handshake integration test.
+4. `dap/server.rs` run/stop loop: `continue`, `next`/`stepIn`/`stepOut`,
+   `stackTrace`/`scopes`/`variables`, `stopped`/`terminated` events;
+   inspection + stepping integration tests.
+5. Swap `debug_info.rs` passthrough for real line-map / `debug_format`
+   lookups once Layer 1 is complete (or in parallel, behind the same
+   signatures).
 
 ## Dependencies & packaging
 
-- New optional deps under the `dap` feature: `serde` (derive) — `serde_json`
-  is already present. Evaluate the `dap` crate for `types.rs`; hand-roll if
-  it pulls async/`tokio`.
-- Per the spec, ship `ironplcvm` (no DAP) and `ironplcvm-debug` (DAP on), or
-  a single binary with `dap` default-on in the VS Code distribution. The
-  VS Code extension (Phase 5) launches `ironplcvm-debug --dap <file.iplc>`.
+- New optional dep under the `dap` feature: `serde` (derive). `serde_json` is
+  already present. **No `dap` / `dap-types` crate dependency** (see above).
+- One extra binary, `ironplcdap`, feature-gated in the `vm-cli` crate; the
+  production `ironplcvm` binary is unaffected. The VS Code extension (Phase
+  5) launches `ironplcdap <file.iplc>`.
 
 ## Risks
 
-- **DAP type crate fit.** Many Rust DAP crates assume an async runtime; the
-  v1 server is deliberately synchronous. Mitigation: prefer hand-rolled
-  `serde` types if the crate forces `tokio`; the message set is small.
-- **Blocking read starves nothing only because there's no background VM.**
-  The single-threaded model is correct *because* the VM only runs when the
-  loop is in `Running` and never concurrently with a blocking `read`. Keep
-  that invariant explicit; do not add a background runner without moving to
-  the Phase 6 two-thread design.
-- **Layer 1 timing.** If line maps aren't ready when the rest of Phase 4
-  lands, the passthrough resolver keeps the server shippable and testable;
-  only source-line breakpoints and named variables wait on Layer 1.
+- **Owning the DAP types.** Hand-rolling means we track protocol additions
+  ourselves. Mitigation: the v1 surface is tiny and stable (the handshake +
+  breakpoints + stepping messages have been stable in DAP for years);
+  `lapce/dap-types` is the drop-in fallback if the surface grows.
+- **Single-threaded model invariant.** The VM runs only when the loop is in
+  `Running`, never concurrently with a blocking `read`. Keep that explicit;
+  do not add a background runner without moving to the Phase 6 two-thread
+  design.
+- **Layer 1 timing.** If line maps aren't ready, the passthrough resolver
+  keeps the server shippable and testable; only source-line breakpoints and
+  named variables wait on Layer 1.

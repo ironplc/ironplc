@@ -3,17 +3,24 @@
 ## Goal
 
 Turn the VM's existing instruction-level hook into a debugger-grade engine
-that can **pause at breakpoints, single-step (over / in / out / scan),
-inspect a paused frame stack, and emit logpoints** — all driven purely by
-`(FunctionId, bytecode_offset)` coordinates. This is Phase 3 of the
-debugger design (`specs/design/debugger-support.md` §"Phase 3: VM Debug
-Engine").
+that can **pause at breakpoints, single-step (over / in / out), and inspect
+a paused frame stack** — all driven purely by `(FunctionId,
+bytecode_offset)` coordinates. This is Phase 3 of the debugger design
+(`specs/design/debugger-support.md` §"Phase 3: VM Debug Engine").
+
+> **Scope cut.** This plan drops **logpoints** (`Logpoint` / `LogpointTable`
+> / `LogSink`) and any expression evaluation from the first debugger phase,
+> to match the cut-down Phase 4 (`2026-06-25-dap-server-scaffold.md`). The
+> engine is breakpoints + stepping only. Logpoints are a cheap follow-up
+> once this lands (a breakpoint entry that emits instead of pausing), but
+> they are not in the first cut. Reverse this together with the Phase 4
+> logpoint decision if logpoints should ship first.
 
 The deliverable is a `DebuggerHook` (implementing the extended `DebugHook`
 trait) plus a re-entrant `VmRunning::run_round_debug` entry point that runs
 the single program instance to the next natural stop point and reports why
-it stopped. No DAP, no source-line translation, no VS Code — those are
-Phases 4 and 5.
+it stopped. No DAP, no source-line translation, no VS Code, no logpoints —
+those are Phases 4 and 5 / deferred.
 
 ## Why now
 
@@ -73,8 +80,8 @@ completion in one call and cannot stop in the middle.
   to its caller mid-instance, preserving the `FrameStack` for resume.
 - New `compiler/vm/src/debug.rs`: `BreakpointTable` (plain sorted `Vec` —
   no `ArcSwap`, no atomics), `BreakpointId`, `StepMode`, `StepController`,
-  `Logpoint`, `LogpointTable`, `LogSink` trait, and `DebuggerHook`
-  (implements `DebugHook`).
+  and `DebuggerHook` (implements `DebugHook`). **No** `Logpoint` /
+  `LogpointTable` / `LogSink` (cut — see §Goal).
 - `VmRunning` gains a `Phase` field with paused sub-states and a re-entrant
   `run_round_debug<H: DebugHook>` returning `RoundOutcome::{Completed,
   PausedAfterScan, Paused(PauseReason)}`.
@@ -86,9 +93,9 @@ completion in one call and cannot stop in the middle.
 - DAP protocol, framing, server loop, VS Code — Phase 4 / 5.
 - Source-line ↔ offset translation and variable-name/type rendering. The
   engine reports offsets; the DAP server (Phase 4) does the lookup against
-  the debug section. Logpoint format-string *evaluation* against live
-  variables is in scope, but only the v1 expression subset (bare
-  identifiers; `<unsupported: …>` for anything else).
+  the debug section.
+- Logpoints and any expression evaluation — cut from the first phase (see
+  §Goal). The breakpoint table is pause-only.
 - `pause_requested: AtomicBool`, `ArcSwap<BreakpointTable>`, any cross-thread
   pause — explicitly out (`§Single-threaded DAP loop`; the table is owned
   directly by the single-threaded caller).
@@ -195,7 +202,7 @@ struct BreakpointEntry {
     function_id: FunctionId,
     offset: usize,
     enabled: bool,
-    log: Option<LogpointId>, // Some => logpoint (don't pause), None => real bp
+    // pause-only; no logpoint variant in the first phase (see §Goal)
 }
 
 /// Sorted by (function_id, offset); lookup is a binary search. No ArcSwap,
@@ -210,37 +217,22 @@ pub enum StepMode { None, Over, In, Out }
 /// before_call / after_return.
 struct StepController { mode: StepMode, origin_depth: usize, origin_offset: usize }
 
-pub trait LogSink { fn emit(&mut self, message: &str); }
-
-pub struct DebuggerHook<'a, S: LogSink> {
+pub struct DebuggerHook<'a> {
     breakpoints: &'a BreakpointTable,
-    logpoints:   &'a LogpointTable,
     step:        StepController,
     depth:       usize,          // mirrors FrameStack::len()
-    sink:        &'a mut S,
-    // borrowed variable view for logpoint formatting (read-only)
 }
 ```
 
 `DebuggerHook::before_instruction`:
-1. Increment/clear nothing; just read state.
+1. Just read state.
 2. Look up `(function_id, pc)` in the breakpoint table.
-   - Hit + `log == None` + enabled → `Pause(Breakpoint(id))`.
-   - Hit + `log == Some` → format the logpoint against current variables,
-     `sink.emit(...)`, return `Continue` (never pauses).
+   - Hit + enabled → `Pause(Breakpoint(id))`.
 3. Else, if a step is active and the step has landed → `Pause(Step)`.
 4. Else `Continue`.
 
 `before_call` / `after_return` keep `depth` in sync (the engine's own copy,
 so it doesn't have to reach into the VM's `FrameStack`).
-
-Logpoint formatting reuses the v1 evaluate subset: split the format string
-on `{ident}`, resolve each bare identifier to its slot in the current
-frame's variable view, format it, and substitute `<unsupported: …>` for any
-non-identifier token. (Type-aware rendering can be a thin call into
-`container::debug_format::format_variable_value` when debug info is present;
-when it isn't, fall back to the raw slot — keeps Phase 3 runnable before
-Layer 1 finishes.)
 
 ### 4. `Phase` and `run_round_debug` (`vm.rs`)
 
@@ -279,8 +271,7 @@ stack).
 ### 5. Re-exports (`vm/src/lib.rs`)
 
 Export `DebuggerHook`, `BreakpointTable`, `BreakpointId`, `StepMode`,
-`PauseReason`, `RoundOutcome`, `Phase`, `Logpoint`, `LogpointTable`,
-`LogSink`, `HookAction`, `ExecuteOutcome`.
+`PauseReason`, `RoundOutcome`, `Phase`, `HookAction`, `ExecuteOutcome`.
 
 ## Tests
 
@@ -297,10 +288,6 @@ info required.
   instruction *after* the CALL at the origin depth (not inside the callee).
 - **Step-in**: lands on the first instruction of the callee, depth = origin+1.
 - **Step-out**: lands in the caller just after the CALL, depth = origin−1.
-- **Logpoint**: a logpoint with `"x={x}"` on a hot instruction never pauses;
-  `LogSink` captures one message per hit; final state equals an unhooked run.
-- **Logpoint unsupported token**: `"{x*2}"` emits `<unsupported: x*2>`,
-  doesn't fail the run.
 - **Pause/resume parity (corpus)**: reuse the Phase 2 pause-corpus scaffold —
   pause at every instruction boundary via a test hook, resume, assert final
   `variables` and `data_region` are bitwise identical to an unpaused run.
@@ -326,7 +313,6 @@ Each commit must compile and pass `cd compiler && just`.
    `run_round_debug` + `Phase` + `RoundOutcome`; breakpoint + resume-parity
    tests.
 4. Add `StepController` (over/in/out) and step tests.
-5. Add `Logpoint` / `LogpointTable` / `LogSink` and logpoint tests.
 
 Splitting this way keeps each commit independently reviewable and keeps the
 no-overhead bench honest at step 1 (the riskiest change for the hot path).
