@@ -53,7 +53,7 @@ jobs:
 
       - name: Upload SBOM to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}
@@ -61,7 +61,7 @@ jobs:
           file: compiler/bom.cdx.json
       - name: Upload SBOM SHA256 to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}
@@ -170,7 +170,7 @@ jobs:
           if-no-files-found: error
       - name: Upload Compiler Installer to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}
@@ -178,7 +178,7 @@ jobs:
           file: compiler/${{ matrix.artifact }}
       - name: Upload Compiler Installer SHA256 to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}
