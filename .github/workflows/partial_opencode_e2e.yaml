@@ -26,6 +26,9 @@ on:
         default: "llama3.2:3b"
         description: 'Ollama model used for the real-agent end-to-end test'
 
+permissions:
+  contents: read
+
 jobs:
   opencode-e2e:
     name: OpenCode Integration E2E Job
