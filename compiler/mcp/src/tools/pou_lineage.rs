@@ -24,7 +24,7 @@ use super::common::{parse_options, serialize_diagnostics, validate_sources, Sour
 pub struct PouLineageInput {
     pub sources: Vec<SourceInput>,
     /// Compiler options (dialect + optional feature-flag overrides).
-    #[schemars(with = "serde_json::Value")]
+    #[schemars(schema_with = "super::common::options_schema")]
     pub options: serde_json::Value,
     pub pou: String,
 }

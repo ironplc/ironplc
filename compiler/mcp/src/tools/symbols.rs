@@ -15,7 +15,7 @@ const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 pub struct SymbolsInput {
     pub sources: Vec<SourceInput>,
     /// Compiler options (dialect + optional feature-flag overrides).
-    #[schemars(with = "serde_json::Value")]
+    #[schemars(schema_with = "super::common::options_schema")]
     pub options: serde_json::Value,
     #[serde(default)]
     pub pou: Option<String>,

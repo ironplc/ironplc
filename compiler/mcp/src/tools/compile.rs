@@ -29,7 +29,7 @@ pub struct CompileInput {
     /// One or more source files.
     pub sources: Vec<SourceInput>,
     /// Compiler options (dialect + optional feature-flag overrides).
-    #[schemars(with = "serde_json::Value")]
+    #[schemars(schema_with = "super::common::options_schema")]
     pub options: serde_json::Value,
     /// When `true`, the response includes `container_base64`.
     #[serde(default)]

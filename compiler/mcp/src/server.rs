@@ -258,4 +258,57 @@ mod tests {
         let info = server.get_info();
         assert!(info.instructions.is_some());
     }
+
+    /// Some MCP clients (e.g. OpenCode) reject a boolean JSON schema used as a
+    /// `properties` or `items` value and fail to load the entire tool list. This
+    /// guards against schemars regressing a `serde_json::Value` field to its
+    /// default rendering — the boolean schema `true` — which previously broke
+    /// OpenCode connectivity (see integrations/opencode).
+    #[test]
+    fn server_when_listing_tools_then_no_schema_is_boolean() {
+        let router = IronPlcMcp::tool_router();
+        for tool in router.list_all() {
+            let schema = serde_json::Value::Object((*tool.input_schema).clone());
+            let offenders = find_boolean_schemas(&schema, &tool.name);
+            assert!(
+                offenders.is_empty(),
+                "tool `{}` advertises boolean schema(s) that MCP clients reject: {:?}",
+                tool.name,
+                offenders
+            );
+        }
+    }
+
+    /// Returns the paths of any boolean schemas found in `properties`, `items`,
+    /// or `$defs` positions, recursively.
+    fn find_boolean_schemas(node: &serde_json::Value, path: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let Some(obj) = node.as_object() else {
+            return out;
+        };
+        if let Some(props) = obj.get("properties").and_then(|v| v.as_object()) {
+            for (key, value) in props {
+                let child = format!("{path}.properties.{key}");
+                if value.is_boolean() {
+                    out.push(child);
+                } else {
+                    out.extend(find_boolean_schemas(value, &child));
+                }
+            }
+        }
+        if let Some(items) = obj.get("items") {
+            let child = format!("{path}.items");
+            if items.is_boolean() {
+                out.push(child);
+            } else {
+                out.extend(find_boolean_schemas(items, &child));
+            }
+        }
+        if let Some(defs) = obj.get("$defs").and_then(|v| v.as_object()) {
+            for (key, value) in defs {
+                out.extend(find_boolean_schemas(value, &format!("{path}.$defs.{key}")));
+            }
+        }
+        out
+    }
 }

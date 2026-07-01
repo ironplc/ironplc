@@ -36,8 +36,24 @@ pub struct ParseCheckInput {
     /// One or more source files.
     pub sources: Vec<SourceInput>,
     /// Compiler options (dialect + optional feature-flag overrides).
-    #[schemars(with = "serde_json::Value")]
+    #[schemars(schema_with = "options_schema")]
     pub options: serde_json::Value,
+}
+
+/// schemars schema function for the free-form `options` object.
+///
+/// The runtime type is `serde_json::Value`, which schemars would otherwise
+/// render as the boolean schema `true`. Some MCP clients (e.g. OpenCode) reject
+/// a boolean schema used as a `properties` value and fail to load the entire
+/// tool list. Emit an explicit object schema so the field stays free-form but is
+/// always a valid, non-boolean schema — independent of doc comments, which is
+/// what previously (fragilely) kept the rendered schema from collapsing to
+/// `true`. The `options` payload is validated at runtime by `parse_options`.
+pub fn options_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "object",
+        "description": "Compiler options (dialect + optional feature-flag overrides)."
+    })
 }
 
 // ───────────────────────────────────────────────────────────────────
