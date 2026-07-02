@@ -1,0 +1,21 @@
+# OpenCode integration tests.
+#
+# Validates that IronPLC's MCP server (`ironplcmcp`) works with the OpenCode
+# terminal agent. See README.md for prerequisites.
+
+# Install the pinned OpenCode CLI.
+setup:
+  npm ci
+
+# Deterministic: assert OpenCode loads the IronPLC MCP server and all its tools.
+# Requires `ironplcmcp` (build with `cd ../../compiler && cargo build --release -p ironplc-mcp`).
+smoke:
+  node test/connectivity.mjs
+
+# Real-agent end-to-end against a local Ollama model. Requires a running Ollama
+# server with the model pulled (default: llama3.2:3b).
+agent-e2e:
+  node test/agent.mjs
+
+# Run both layers.
+e2e: smoke agent-e2e

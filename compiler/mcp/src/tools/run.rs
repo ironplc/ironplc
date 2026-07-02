@@ -48,6 +48,7 @@ pub struct RunInput {
     pub trace_outputs: bool,
     /// Time-ordered writes applied to drivable inputs. Phase 11 feature.
     #[serde(default)]
+    #[schemars(schema_with = "stimuli_schema")]
     pub stimuli: Vec<Value>,
     /// Controls trace sampling mode and cap.
     #[serde(default)]
@@ -58,6 +59,20 @@ pub struct RunInput {
     /// Restrict trace emission to cycles from named tasks. Phase 11 feature.
     #[serde(default)]
     pub tasks: Option<Vec<String>>,
+}
+
+/// schemars schema function for the free-form `stimuli` array.
+///
+/// The element type is `serde_json::Value`, which schemars renders as the
+/// boolean schema `true` for the array's `items`. Some MCP clients reject a
+/// boolean schema in that position, so emit an explicit object schema for the
+/// items instead. Stimuli are a Phase 11 feature, validated/rejected at runtime.
+fn stimuli_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "array",
+        "items": { "type": "object" },
+        "description": "Time-ordered writes applied to drivable inputs. Phase 11 feature."
+    })
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]

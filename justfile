@@ -271,3 +271,95 @@ _install-script-smoke-verify:
 install-script-smoke compiler-version="":
   @echo "install-script-smoke is Unix-only; use endtoend-smoke on Windows"
   exit 1
+
+# OpenCode integration end-to-end test - Unix only.
+#
+# Installs the published IronPLC compiler (which provides ironplcmcp), then
+# verifies that the OpenCode agent works with the MCP server:
+#   1. Connectivity smoke - `opencode mcp list` reports the server connected.
+#   2. Agent end-to-end   - a local, key-free Ollama model invokes the `check`
+#      tool and the compiler returns diagnostics.
+#
+# Tests the shipped binary rather than a local rebuild (mirrors
+# install-script-smoke). Requires the Ollama CLI on PATH (installed in CI via
+# ai-action/setup-ollama).
+#
+# compiler-version: empty to use the latest release; otherwise a bare version
+#                   like "0.218.0" (without the leading "v").
+# model:            the Ollama model used for the agent test.
+[unix]
+opencode-e2e compiler-version="" model="llama3.2:3b":
+  #!/usr/bin/env sh
+  set -eu
+  # Install the published compiler so we exercise the shipped ironplcmcp.
+  just _install-script-smoke-clean
+  just _install-script-smoke-run "{{compiler-version}}"
+  BIN="$HOME/.ironplc/bin"
+  if [ ! -x "$BIN/ironplcmcp" ]; then
+    echo "ironplcmcp was not installed; the release must include it" >&2
+    exit 1
+  fi
+  export IRONPLCMCP_BIN="$BIN/ironplcmcp"
+
+  # Install the pinned OpenCode CLI.
+  cd integrations/opencode
+  npm ci
+
+  # Layer 1: deterministic connectivity check (no model required).
+  npm run smoke
+
+  # Layer 2: real-agent end-to-end against a local Ollama model. A larger
+  # context window improves small models' tool-calling reliability: OpenCode's
+  # system prompt plus the ironplc_check tool schema overflow the default
+  # window, truncating the instructions so the model never calls the tool.
+  #
+  # OLLAMA_CONTEXT_LENGTH only takes effect when the server starts, and the CI
+  # environment (ai-action/setup-ollama) has already started `ollama serve` with
+  # the default window. A second `ollama serve` would just fail to bind with
+  # "address already in use" and leave that default window in place, so stop any
+  # running server first, then start our own with the larger window.
+  pkill -x ollama 2>/dev/null || true
+  timeout 30 sh -c 'while curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done' || true
+  OLLAMA_CONTEXT_LENGTH=16384 ollama serve >/tmp/ollama-serve.log 2>&1 &
+  timeout 60 sh -c 'until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done'
+  ollama pull "{{model}}"
+
+  # On any failure below, surface the Ollama server log. The agent failure mode
+  # we are guarding against ("Unexpected server error") originates in the model
+  # provider, so this log is the other half of the picture alongside OpenCode's
+  # own logs (which the agent test now prints on failure).
+  dump_ollama_log() {
+    status=$?
+    if [ "$status" -ne 0 ]; then
+      echo "==== ollama serve log (tail) ====" >&2
+      tail -n 200 /tmp/ollama-serve.log >&2 || true
+    fi
+  }
+  trap dump_ollama_log EXIT
+
+  # Pre-flight: prove the model can do an OpenAI-compatible tool call directly,
+  # independent of OpenCode. This isolates "the model/provider is broken" from
+  # "the agent chose not to call the tool" — the ambiguity that makes a bare
+  # agent-test failure hard to diagnose.
+  echo "Pre-flight: probing {{model}} for OpenAI-compatible tool calling..."
+  PROBE=$(curl -sf http://localhost:11434/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{
+      "model": "{{model}}",
+      "messages": [{"role": "user", "content": "Call the ping tool now."}],
+      "tools": [{"type": "function", "function": {
+        "name": "ping",
+        "description": "Replies to a ping.",
+        "parameters": {"type": "object", "properties": {}}
+      }}],
+      "tool_choice": "auto"
+    }') || { echo "Pre-flight: the model did not respond to a tool-calling request." >&2; echo "$PROBE" >&2; exit 1; }
+  echo "Pre-flight response (truncated):"
+  printf '%s\n' "$PROBE" | head -c 2000; echo
+
+  OPENCODE_E2E_MODEL="ollama/{{model}}" npm run agent-e2e
+
+[windows]
+opencode-e2e compiler-version="" model="llama3.2:3b":
+  @echo "opencode-e2e is Unix-only"
+  exit 1
