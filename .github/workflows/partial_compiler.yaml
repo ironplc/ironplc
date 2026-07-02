@@ -53,7 +53,7 @@ jobs:
 
       - name: Upload SBOM to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}
@@ -61,7 +61,7 @@ jobs:
           file: compiler/bom.cdx.json
       - name: Upload SBOM SHA256 to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}
@@ -123,7 +123,7 @@ jobs:
       - name: Cache NSIS
         if: ${{ matrix.os == 'windows-2025' }}
         id: cache-nsis
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: 'C:\Program Files (x86)\NSIS'
           # Bump the suffix (v1 -> v2, etc.) to force a fresh NSIS install
@@ -141,7 +141,7 @@ jobs:
       # Fetch the workspace SBOM produced by compiler-sbom so the
       # package step can embed it inside the tarball / NSIS installer.
       - name: Download SBOM for embedding
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ironplc-compiler-sbom
           path: compiler/
@@ -170,7 +170,7 @@ jobs:
           if-no-files-found: error
       - name: Upload Compiler Installer to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}
@@ -178,7 +178,7 @@ jobs:
           file: compiler/${{ matrix.artifact }}
       - name: Upload Compiler Installer SHA256 to GitHub Release
         if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b # v2
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ inputs.gh-release-tag }}
