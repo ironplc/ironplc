@@ -3,6 +3,9 @@ name: Playground E2E Tests
 on:
   workflow_call: {}
 
+permissions:
+  contents: read
+
 jobs:
   e2e:
     name: Playground E2E Tests

@@ -28,6 +28,11 @@ on:
         description: The version number of components (e.g. 1.0.0)
         value: ${{ jobs.release.outputs.version }}
 
+# Creates the GitHub Release via GITHUB_TOKEN (contents: write) and pushes the
+# version commit/tag via the PAT. The caller caps this to what it grants.
+permissions:
+  contents: write
+
 jobs:
     release:
         name: Create Version Numbers and GitHub Release for the Artifacts

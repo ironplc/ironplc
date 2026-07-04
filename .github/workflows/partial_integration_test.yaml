@@ -27,6 +27,9 @@ on:
         type: string
         description: "The identifier for the Visual Studio Code extension"
 
+permissions:
+  contents: read
+
 jobs:
   endtoend:
     name: End to End Smoke Test Job
