@@ -5,7 +5,8 @@ use ironplc_container::{
 
 use crate::buffers::VmBuffers;
 use crate::builtin;
-use crate::debug_hook::{DebugHook, NoopDebugHook};
+use crate::debug::PauseReason;
+use crate::debug_hook::{DebugHook, HookAction, NoopDebugHook};
 use crate::error::Trap;
 use crate::frame_stack::{FbCallReturn, Frame, FrameStack};
 #[cfg(feature = "profiling")]
@@ -642,7 +643,12 @@ fn execute(
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
     let mut hook = NoopDebugHook;
-    execute_with_hook(
+    // Fresh, non-resumable run: the frame stack starts empty (so the entry
+    // frame is pushed) and no temp-buffer allocations carry over. The noop
+    // hook can never pause, so `Completed` is the only reachable outcome.
+    let mut frame_count = 0usize;
+    let mut temp_alloc_next = 0u16;
+    match execute_with_hook(
         container,
         stack,
         variables,
@@ -653,10 +659,31 @@ fn execute(
         entry_scope,
         current_time_us,
         entry_function_id,
+        &mut frame_count,
+        &mut temp_alloc_next,
         #[cfg(feature = "profiling")]
         profile,
         &mut hook,
-    )
+    )? {
+        ExecuteOutcome::Completed => Ok(()),
+        ExecuteOutcome::Paused(_) => {
+            unreachable!("NoopDebugHook always returns HookAction::Continue")
+        }
+    }
+}
+
+/// Outcome of an [`execute_with_hook`] invocation.
+///
+/// `Completed` means the entry function's frame stack drained (the program
+/// returned). `Paused` means the debug hook requested a stop before an
+/// instruction executed; the frame stack, operand stack, and temp-buffer
+/// allocator position are all preserved so a later call can resume.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecuteOutcome {
+    /// The program returned normally.
+    Completed,
+    /// The hook paused execution before an instruction.
+    Paused(PauseReason),
 }
 
 /// Executes the entry function until its frame stack drains (program
@@ -688,18 +715,28 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     entry_scope: &VariableScope,
     current_time_us: u64,
     entry_function_id: FunctionId,
+    frame_count: &mut usize,
+    temp_alloc_next: &mut u16,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
     hook: &mut H,
-) -> Result<(), Trap> {
+) -> Result<ExecuteOutcome, Trap> {
     let mut temp_alloc = string_ops::TempBufAllocator::new(max_temp_buf_bytes);
-    let mut frame_stack = FrameStack::new(frames);
-    frame_stack.push(Frame {
-        function_id: entry_function_id,
-        pc: 0,
-        scope: *entry_scope,
-        temp_alloc_mark: 0,
-        fb_return: None,
-    })?;
+    // Restore the temp-buffer bump position captured at the last pause. On a
+    // fresh run this is 0 (nothing allocated yet).
+    temp_alloc.rewind_to(*temp_alloc_next);
+    let mut frame_stack = FrameStack::resume(frames, *frame_count);
+    if frame_stack.is_empty() {
+        // Fresh run: push the entry frame. When resuming a paused instance
+        // the frame stack is non-empty and the entry frame (plus any deeper
+        // frames) already survive in the backing slice.
+        frame_stack.push(Frame {
+            function_id: entry_function_id,
+            pc: 0,
+            scope: *entry_scope,
+            temp_alloc_mark: 0,
+            fb_return: None,
+        })?;
+    }
 
     while !frame_stack.is_empty() {
         // Snapshot the top frame's mutable state for this iteration.
@@ -727,7 +764,22 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         // Notify the debug hook before advancing pc so the hook sees the
         // offset of the opcode itself, not its operand bytes. With
         // NoopDebugHook this call is inlined away to nothing.
-        hook.before_instruction(current_function_id, pc, op);
+        match hook.before_instruction(current_function_id, pc, op) {
+            HookAction::Continue => {}
+            HookAction::Pause(reason) => {
+                // Write pc back to the top frame WITHOUT advancing, so the
+                // paused instruction re-executes on resume. The frame stack
+                // and temp-allocator position are preserved so the caller
+                // can resume this instance later.
+                frame_stack
+                    .top_mut()
+                    .expect("non-empty by loop condition")
+                    .pc = pc;
+                *frame_count = frame_stack.len();
+                *temp_alloc_next = temp_alloc.next();
+                return Ok(ExecuteOutcome::Paused(reason));
+            }
+        }
         pc += 1;
 
         #[cfg(feature = "profiling")]
@@ -2316,7 +2368,12 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         }
     }
 
-    Ok(())
+    // The frame stack drained: the program returned. Record the (empty)
+    // frame count and temp-allocator position so a subsequent fresh scan
+    // starts from a clean slate.
+    *frame_count = frame_stack.len();
+    *temp_alloc_next = temp_alloc.next();
+    Ok(ExecuteOutcome::Completed)
 }
 
 /// Pops the topmost frame, rewinds the temp-buffer allocator to the
