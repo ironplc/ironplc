@@ -143,19 +143,80 @@ impl BreakpointTable {
     }
 }
 
-/// The debugger's [`DebugHook`]: pauses at enabled breakpoints and leaves
-/// the frame stack intact for inspection.
+/// Single-step mode requested of the [`DebuggerHook`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StepMode {
+    /// Not stepping.
+    None,
+    /// Step to the next instruction at the same (or a shallower) call depth,
+    /// running any called functions to completion.
+    Over,
+    /// Step to the very next instruction executed, descending into calls.
+    In,
+    /// Run until the current function returns, then stop in the caller.
+    Out,
+}
+
+/// Remembers where a step started so the hook can tell when it has "landed".
+///
+/// Depth is the debugger's own mirror of the call depth (relative to scan
+/// entry), tracked via `before_call` / `after_return` — it never reaches
+/// into the VM's frame stack.
+#[derive(Clone, Copy, Debug)]
+struct StepController {
+    mode: StepMode,
+    origin_depth: usize,
+    origin_offset: usize,
+}
+
+impl StepController {
+    fn idle() -> Self {
+        Self {
+            mode: StepMode::None,
+            origin_depth: 0,
+            origin_offset: 0,
+        }
+    }
+
+    /// Whether a step in progress has landed at `(depth, offset)`.
+    fn landed(&self, depth: usize, offset: usize) -> bool {
+        // The origin instruction itself is never a landing — a step must
+        // make forward progress.
+        let at_origin = depth == self.origin_depth && offset == self.origin_offset;
+        match self.mode {
+            StepMode::None => false,
+            // Same or shallower depth (calls stepped over), but not the
+            // origin instruction.
+            StepMode::Over => depth <= self.origin_depth && !at_origin,
+            // Any next instruction, including the first of a callee.
+            StepMode::In => !at_origin,
+            // Only once control has unwound past the origin frame.
+            StepMode::Out => depth < self.origin_depth,
+        }
+    }
+}
+
+/// The debugger's [`DebugHook`]: pauses at enabled breakpoints, single-steps
+/// (over / in / out), and leaves the frame stack intact for inspection.
 ///
 /// Borrows the [`BreakpointTable`] so the owning (single-threaded) loop can
 /// consult and mutate it between rounds. After the hook reports a pause it
 /// suppresses that exact breakpoint for the immediately-following
-/// instruction, so a `continue`/resume steps off the current location rather
-/// than re-triggering the same breakpoint in place.
+/// instruction, so a `continue`/resume or the first step off the current
+/// location does not re-trigger the same breakpoint in place.
 pub struct DebuggerHook<'a> {
     breakpoints: &'a BreakpointTable,
     /// When set, the next instruction skips the breakpoint check exactly
     /// once. Set on every pause so resume makes forward progress.
     skip_breakpoint_once: bool,
+    /// Call depth relative to scan entry: `+1` per call, `-1` per return.
+    /// Self-heals to 0 at each scan boundary (the entry-frame return uses a
+    /// saturating decrement).
+    depth: usize,
+    /// Location observed at the most recent `before_instruction`, used as a
+    /// step's origin when one is armed while paused.
+    last_offset: usize,
+    step: StepController,
 }
 
 impl<'a> DebuggerHook<'a> {
@@ -164,12 +225,42 @@ impl<'a> DebuggerHook<'a> {
         Self {
             breakpoints,
             skip_breakpoint_once: false,
+            depth: 0,
+            last_offset: 0,
+            step: StepController::idle(),
         }
+    }
+
+    /// Arm a step-over from the current (paused) location: run to the next
+    /// instruction at the same or a shallower call depth.
+    pub fn step_over(&mut self) {
+        self.arm(StepMode::Over);
+    }
+
+    /// Arm a step-in from the current (paused) location: stop at the very
+    /// next instruction, descending into any call.
+    pub fn step_in(&mut self) {
+        self.arm(StepMode::In);
+    }
+
+    /// Arm a step-out from the current (paused) location: run until the
+    /// current function returns, then stop in the caller.
+    pub fn step_out(&mut self) {
+        self.arm(StepMode::Out);
+    }
+
+    fn arm(&mut self, mode: StepMode) {
+        self.step = StepController {
+            mode,
+            origin_depth: self.depth,
+            origin_offset: self.last_offset,
+        };
     }
 }
 
 impl DebugHook for DebuggerHook<'_> {
     fn before_instruction(&mut self, function_id: FunctionId, pc: usize, _op: u8) -> HookAction {
+        self.last_offset = pc;
         let skip = self.skip_breakpoint_once;
         self.skip_breakpoint_once = false;
         if !skip {
@@ -179,7 +270,22 @@ impl DebugHook for DebuggerHook<'_> {
                 return HookAction::Pause(PauseReason::Breakpoint(id));
             }
         }
+        if self.step.landed(self.depth, pc) {
+            // A step lands only once; disarm and suppress a co-located
+            // breakpoint on the resume instruction.
+            self.step.mode = StepMode::None;
+            self.skip_breakpoint_once = true;
+            return HookAction::Pause(PauseReason::Step);
+        }
         HookAction::Continue
+    }
+
+    fn before_call(&mut self, _callee: FunctionId) {
+        self.depth += 1;
+    }
+
+    fn after_return(&mut self, _returning_to: Option<FunctionId>) {
+        self.depth = self.depth.saturating_sub(1);
     }
 }
 

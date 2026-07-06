@@ -322,3 +322,107 @@ fn run_round_debug_when_trap_then_returns_fault_and_phase_faulted() {
     assert_eq!(err.trap, ironplc_vm::error::Trap::InvalidInstruction(0xFF));
     assert_eq!(vm.phase(), Phase::Faulted);
 }
+
+/// Container whose scan calls a doubling function, with fixed offsets used by
+/// the stepping tests: LOAD_CONST\@0, CALL\@3, STORE\@8, RET_VOID\@11; the
+/// callee runs LOAD_VAR\@0, LOAD_VAR\@3, ADD\@6, RET\@7.
+fn stepping_container() -> ironplc_container::Container {
+    #[rustfmt::skip]
+    let func_body: Vec<u8> = vec![
+        opcode::LOAD_VAR_I32, 0x02, 0x00,
+        opcode::LOAD_VAR_I32, 0x02, 0x00,
+        opcode::ADD_I32,
+        opcode::RET,
+    ];
+    #[rustfmt::skip]
+    let scan_bytecode: Vec<u8> = vec![
+        opcode::LOAD_CONST_I32, 0x00, 0x00,   // @0
+        opcode::CALL, 0x02, 0x00, 0x02, 0x00, // @3
+        opcode::STORE_VAR_I32, 0x00, 0x00,    // @8
+        opcode::RET_VOID,                     // @11
+    ];
+    call_container(&scan_bytecode, &[(&func_body, 4, 1, 1)], 3, &[21])
+}
+
+#[test]
+fn run_round_debug_when_step_over_call_then_lands_after_call_in_caller() {
+    let c = stepping_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let mut table = BreakpointTable::new();
+    table.add(FunctionId::SCAN, 3); // the CALL
+    let mut hook = DebuggerHook::new(&table);
+
+    // Pause on the CALL.
+    assert!(matches!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Breakpoint(_))
+    ));
+    assert_eq!(vm.debug_frames().last().unwrap().pc, 3);
+
+    // Step over the call: land on the next instruction in SCAN, not inside
+    // the callee.
+    hook.step_over();
+    let outcome = vm.run_round_debug(0, &mut hook).unwrap();
+    assert_eq!(outcome, RoundOutcome::Paused(PauseReason::Step));
+    let frames = vm.debug_frames();
+    assert_eq!(frames.len(), 1, "must be back in the caller only");
+    assert_eq!(frames[0].function_id, FunctionId::SCAN);
+    assert_eq!(frames[0].pc, 8); // STORE, immediately after the CALL
+}
+
+#[test]
+fn run_round_debug_when_step_in_call_then_lands_on_first_callee_instruction() {
+    let c = stepping_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let mut table = BreakpointTable::new();
+    table.add(FunctionId::SCAN, 3); // the CALL
+    let mut hook = DebuggerHook::new(&table);
+
+    assert!(matches!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Breakpoint(_))
+    ));
+
+    // Step in: descend into the callee, landing on its first instruction.
+    hook.step_in();
+    let outcome = vm.run_round_debug(0, &mut hook).unwrap();
+    assert_eq!(outcome, RoundOutcome::Paused(PauseReason::Step));
+    let frames = vm.debug_frames();
+    assert_eq!(frames.len(), 2, "must have descended one frame");
+    assert_eq!(frames[0].function_id, FunctionId::SCAN);
+    assert_eq!(frames[1].function_id, FunctionId::new(2));
+    assert_eq!(frames[1].pc, 0);
+}
+
+#[test]
+fn run_round_debug_when_step_out_of_callee_then_lands_in_caller_after_call() {
+    let c = stepping_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let func2 = FunctionId::new(2);
+    let mut table = BreakpointTable::new();
+    table.add(func2, 0); // first instruction inside the callee
+    let mut hook = DebuggerHook::new(&table);
+
+    // Pause inside the callee.
+    assert!(matches!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Breakpoint(_))
+    ));
+    assert_eq!(vm.debug_frames().len(), 2);
+
+    // Step out: run the callee to its return, landing back in SCAN just
+    // after the CALL.
+    hook.step_out();
+    let outcome = vm.run_round_debug(0, &mut hook).unwrap();
+    assert_eq!(outcome, RoundOutcome::Paused(PauseReason::Step));
+    let frames = vm.debug_frames();
+    assert_eq!(frames.len(), 1, "must have returned to the caller");
+    assert_eq!(frames[0].function_id, FunctionId::SCAN);
+    assert_eq!(frames[0].pc, 8);
+}
