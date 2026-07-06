@@ -24,4 +24,6 @@ pub use frame_stack::{FbCallReturn, Frame, FrameStack};
 pub use profile::InstructionProfile;
 pub use scheduler::{ProgramInstanceState, TaskState};
 pub use value::Slot;
-pub use vm::{FaultContext, Vm, VmFaulted, VmReady, VmRunning, VmStopped};
+pub use vm::{
+    ExecuteOutcome, FaultContext, Phase, RoundOutcome, Vm, VmFaulted, VmReady, VmRunning, VmStopped,
+};
