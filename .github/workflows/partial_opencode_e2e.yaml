@@ -26,6 +26,9 @@ on:
         default: "llama3.2:3b"
         description: 'Ollama model used for the real-agent end-to-end test'
 
+permissions:
+  contents: read
+
 jobs:
   opencode-e2e:
     name: OpenCode Integration E2E Job
@@ -39,7 +42,7 @@ jobs:
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Set up Ollama
         uses: ai-action/setup-ollama@d0eb66d576e0880178be72b68b77b2dbbf5a884f # v2.0.53
 

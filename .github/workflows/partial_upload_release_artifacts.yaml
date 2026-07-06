@@ -34,7 +34,7 @@ jobs:
     steps:
       # Download every build artifact into ./artifacts/<artifact-name>/<files>.
       - name: Download all build artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           path: ./artifacts
 
@@ -79,7 +79,7 @@ jobs:
 
       - name: Attach assets to GitHub Release
         if: ${{ !inputs.dryrun && inputs.gh-release-tag }}
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag_name: ${{ inputs.gh-release-tag }}

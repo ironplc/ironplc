@@ -175,7 +175,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: ${{ !needs.release.outputs.commit-tag }}
       - name: Download VSIX Build Artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ironplc-vscode-extension.vsix
           path: ./integrations/vscode
@@ -223,7 +223,7 @@ jobs:
     environment: production
     steps:
       - name: Download playground artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ironplc-playground
           path: ./playground-dist
@@ -233,7 +233,7 @@ jobs:
 
       - name: Publish to ironplc/ironplc-playground repository
         if: ${{ !inputs.dryrun }}
-        uses: peaceiris/actions-gh-pages@4a2e02b36f31d8974a0d09d3bb9f3172aa2d0d0d # v3
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           publish_branch: main
           external_repository: ironplc/ironplc-playground
@@ -271,7 +271,7 @@ jobs:
       # Save artifacts
       - name: Copy to Homebrew Tap Repository
         if: ${{ !inputs.dryrun }}
-        uses: peaceiris/actions-gh-pages@4a2e02b36f31d8974a0d09d3bb9f3172aa2d0d0d # v3
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           publish_branch: main
           external_repository: ironplc/homebrew-brew
