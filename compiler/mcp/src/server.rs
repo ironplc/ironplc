@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{Content, ServerCapabilities, ServerInfo};
+use rmcp::model::{ContentBlock, ServerCapabilities, ServerInfo};
 use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 
 use crate::cache::ContainerCache;
@@ -49,11 +49,11 @@ impl IronPlcMcp {
         name = "list_options",
         description = "Enumerates dialects and feature flags accepted in the options object of analysis and execution tools."
     )]
-    fn list_options(&self) -> Result<Content, rmcp::ErrorData> {
+    fn list_options(&self) -> Result<ContentBlock, rmcp::ErrorData> {
         let response = tools::list_options::build_response();
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Look up the explanation for a problem code.
@@ -64,11 +64,11 @@ impl IronPlcMcp {
     fn explain_diagnostic(
         &self,
         Parameters(input): Parameters<ExplainDiagnosticInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response = tools::explain_diagnostic::build_response(&input.code);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Syntax check only.
@@ -76,12 +76,12 @@ impl IronPlcMcp {
         name = "parse",
         description = "Syntax check only. Use while drafting to confirm the source tokenizes and parses. Do NOT use this to validate a change -- it does not catch type errors, undeclared symbols, or any other semantic rule. Call `check` for that."
     )]
-    fn parse(&self, params: Parameters<ParseCheckInput>) -> Result<Content, rmcp::ErrorData> {
+    fn parse(&self, params: Parameters<ParseCheckInput>) -> Result<ContentBlock, rmcp::ErrorData> {
         let input = params.0;
         let response = tools::parse::build_response(&input.sources, &input.options);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Primary validator.
@@ -89,12 +89,12 @@ impl IronPlcMcp {
         name = "check",
         description = "Primary validator. Runs parse and full semantic analysis and returns structured diagnostics. ALWAYS run this before reporting success to the user and before calling `compile` or `run`. Self-heal by reading the returned diagnostics, fixing the code, and calling `check` again. Call `explain_diagnostic` to understand any unfamiliar problem code BEFORE editing the source."
     )]
-    fn check(&self, params: Parameters<ParseCheckInput>) -> Result<Content, rmcp::ErrorData> {
+    fn check(&self, params: Parameters<ParseCheckInput>) -> Result<ContentBlock, rmcp::ErrorData> {
         let input = params.0;
         let response = tools::check::build_response(&input.sources, &input.options);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Full symbol table extraction.
@@ -105,12 +105,12 @@ impl IronPlcMcp {
     fn symbols(
         &self,
         Parameters(input): Parameters<SymbolsInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response =
             tools::symbols::build_response(&input.sources, &input.options, input.pou.as_deref());
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Project manifest: files, POU names, and UDTs grouped by kind.
@@ -121,11 +121,11 @@ impl IronPlcMcp {
     fn project_manifest(
         &self,
         Parameters(input): Parameters<ParseCheckInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response = tools::project_manifest::build_response(&input.sources, &input.options);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Project I/O: inputs the caller can drive, outputs it can observe.
@@ -136,11 +136,11 @@ impl IronPlcMcp {
     fn project_io(
         &self,
         Parameters(input): Parameters<ParseCheckInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response = tools::project_io::build_response(&input.sources, &input.options);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Variables visible to a single POU.
@@ -151,11 +151,11 @@ impl IronPlcMcp {
     fn pou_scope(
         &self,
         Parameters(input): Parameters<PouScopeInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response = tools::pou_scope::build_response(&input.sources, &input.options, &input.pou);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Upstream and downstream POU dependencies.
@@ -166,12 +166,12 @@ impl IronPlcMcp {
     fn pou_lineage(
         &self,
         Parameters(input): Parameters<PouLineageInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response =
             tools::pou_lineage::build_response(&input.sources, &input.options, &input.pou);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Every user-defined type with kind-specific detail fields.
@@ -182,11 +182,11 @@ impl IronPlcMcp {
     fn types_all(
         &self,
         Parameters(input): Parameters<ParseCheckInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response = tools::types_all::build_response(&input.sources, &input.options);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Full pipeline: parse, semantic analysis, and codegen.
@@ -197,7 +197,7 @@ impl IronPlcMcp {
     async fn compile(
         &self,
         Parameters(input): Parameters<CompileInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response = tools::compile::build_response(
             &input.sources,
             &input.options,
@@ -206,7 +206,7 @@ impl IronPlcMcp {
         );
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Explicitly releases a compiled container from the cache.
@@ -217,11 +217,11 @@ impl IronPlcMcp {
     async fn container_drop(
         &self,
         Parameters(input): Parameters<ContainerDropInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response = tools::container_drop::build_response(&input.container_id, &self.cache);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 
     /// Executes a compiled container in the IronPLC VM.
@@ -232,11 +232,11 @@ impl IronPlcMcp {
     async fn run(
         &self,
         Parameters(input): Parameters<RunInput>,
-    ) -> Result<Content, rmcp::ErrorData> {
+    ) -> Result<ContentBlock, rmcp::ErrorData> {
         let response = tools::run::build_response(&input, &self.cache);
         let json = serde_json::to_string(&response)
             .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
-        Ok(Content::text(json))
+        Ok(ContentBlock::text(json))
     }
 }
 
