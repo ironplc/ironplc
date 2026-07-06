@@ -16,7 +16,7 @@ trace = ["debug"]
 
 [dependencies]
 time = "0.3.47"
-phf = { version = "0.13", features = ["macros"] }
+phf = { version = "0.14", features = ["macros"] }
 ironplc-dsl = { path = "../dsl", version = "0.225.0" }
 ironplc-problems = { path = "../problems", version = "0.225.0" }
 ironplc-test = { path = "../test", version = "0.225.0" }
