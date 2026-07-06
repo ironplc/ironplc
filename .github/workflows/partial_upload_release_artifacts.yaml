@@ -1,0 +1,86 @@
+name: Upload Release Artifacts
+# Consolidated release-asset attach step. The build jobs (partial_compiler,
+# partial_vscode_extension) run credential-free and publish only to build-artifact
+# storage. This job is the single place where those artifacts are attached to the
+# GitHub Release, so contents:write / GITHUB_TOKEN is scoped to one small job with
+# a minimal action surface rather than spread across the build attack surface.
+# See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+on:
+  workflow_call:
+    inputs:
+      gh-release-tag:
+        required: false
+        type: string
+        description: 'The GitHub Release tag to attach assets to (empty disables upload)'
+      version:
+        required: false
+        type: string
+        default: "0.0.0"
+        description: "The version number, such as 1.2.3"
+      dryrun:
+        type: boolean
+        description: 'If set, run as a dry run and do not attach assets'
+        default: true
+
+# GITHUB_TOKEN only; this job does not use a publish secret, so it does NOT
+# declare environment: production (see ADR 0032 "GITHUB_TOKEN-only" rule).
+permissions:
+  contents: write
+
+jobs:
+  upload-release-artifacts:
+    name: Attach Build Artifacts to GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      # Download every build artifact into ./artifacts/<artifact-name>/<files>.
+      - name: Download all build artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: ./artifacts
+
+      # Assemble the release-asset directory with the exact public asset names
+      # that downstream consumers expect (install.sh, homebrew tap, smoke tests).
+      # Installers and the VSIX already carry correct filenames; only the SBOMs
+      # are renamed to embed the version number.
+      - name: Assemble release assets
+        # Runs on both dry and real runs (the build jobs upload their artifacts
+        # unconditionally). A dry run therefore fully exercises download +
+        # rename and prints the assembled asset list below; only the final
+        # attach step is skipped. This is the pre-release verification path.
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+
+          # Compiler installers (per matrix leg) and their .sha256 checksums.
+          # Fail loudly if none were found rather than publishing a partial
+          # release (the cp steps below already fail on a missing SBOM/VSIX).
+          installer_count=$(find ./artifacts -path '*/ironplcc-*' -type f | wc -l)
+          if [ "$installer_count" -eq 0 ]; then
+            echo "ERROR: no installer artifacts found under ./artifacts" >&2
+            exit 1
+          fi
+          find ./artifacts -path '*/ironplcc-*' -type f -exec cp {} release-assets/ \;
+
+          # VS Code extension VSIX.
+          cp ./artifacts/ironplc-vscode-extension.vsix/ironplc-vscode-extension.vsix release-assets/
+
+          # SBOMs (renamed with the version number).
+          cp ./artifacts/ironplc-compiler-sbom/bom.cdx.json \
+             release-assets/ironplc-compiler-${{ inputs.version }}.cdx.json
+          cp ./artifacts/ironplc-compiler-sbom/bom.cdx.json.sha256 \
+             release-assets/ironplc-compiler-${{ inputs.version }}.cdx.json.sha256
+          cp ./artifacts/ironplc-vscode-extension-sbom/bom.cdx.json \
+             release-assets/ironplc-vscode-extension-${{ inputs.version }}.cdx.json
+          cp ./artifacts/ironplc-vscode-extension-sbom/bom.cdx.json.sha256 \
+             release-assets/ironplc-vscode-extension-${{ inputs.version }}.cdx.json.sha256
+
+          echo "Assembled release assets:"
+          ls -la release-assets/
+
+      - name: Attach assets to GitHub Release
+        if: ${{ !inputs.dryrun && inputs.gh-release-tag }}
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: ${{ inputs.gh-release-tag }}
+          files: release-assets/*

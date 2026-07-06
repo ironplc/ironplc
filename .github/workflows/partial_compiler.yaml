@@ -17,6 +17,13 @@ on:
         default: "0.0.0"
         description: "The version number, such as 1.2.3"
 
+# Build jobs never write to the repository or a release. They only produce
+# build artifacts (via actions/upload-artifact, which needs no contents:write).
+# The consolidated upload-release-artifacts job attaches them to the release.
+# See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+permissions:
+  contents: read
+
 jobs:
   compiler-sbom:
     name: Compiler SBOM
@@ -50,23 +57,6 @@ jobs:
             compiler/bom.cdx.json
             compiler/bom.cdx.json.sha256
           if-no-files-found: error
-
-      - name: Upload SBOM to GitHub Release
-        if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: ${{ inputs.gh-release-tag }}
-          asset_name: ironplc-compiler-${{ inputs.version }}.cdx.json
-          file: compiler/bom.cdx.json
-      - name: Upload SBOM SHA256 to GitHub Release
-        if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: ${{ inputs.gh-release-tag }}
-          asset_name: ironplc-compiler-${{ inputs.version }}.cdx.json.sha256
-          file: compiler/bom.cdx.json.sha256
 
   compiler:
     name: Build Compiler and Associated Installers
@@ -152,35 +142,23 @@ jobs:
       - name: Create installer package
         run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
 
-      # Save output artifacts
+      # Save output artifacts. Uploaded unconditionally (not gated on
+      # gh-release-tag) so a deployment dry run still produces them and the
+      # upload-release-artifacts job can be exercised end to end without
+      # publishing. Only the consolidated job's final attach step is gated on
+      # a real (non-dry) release.
       - name: Upload Compiler Installer to Build Artifacts
-        if: ${{ inputs.gh-release-tag }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact }}
           path: compiler/${{ matrix.artifact }}
           if-no-files-found: error
+          retention-days: 5
 
       - name: Upload Compiler Installer SHA256 to Build Artifacts
-        if: ${{ inputs.gh-release-tag }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact }}.sha256
           path: compiler/${{ matrix.artifact }}.sha256
           if-no-files-found: error
-      - name: Upload Compiler Installer to GitHub Release
-        if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: ${{ inputs.gh-release-tag }}
-          asset_name: ${{ matrix.artifact }}
-          file: compiler/${{ matrix.artifact }}
-      - name: Upload Compiler Installer SHA256 to GitHub Release
-        if: ${{ inputs.gh-release-tag }}
-        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # v2.11.5
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: ${{ inputs.gh-release-tag }}
-          asset_name: ${{ matrix.artifact }}.sha256
-          file: compiler/${{ matrix.artifact }}.sha256
+          retention-days: 5

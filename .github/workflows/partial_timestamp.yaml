@@ -8,6 +8,9 @@ on:
         description: The identifier for the Github release - a unique number
         value: ${{ jobs.main.outputs.yyyy-mm-dd-hh-mm-ss }}
 
+permissions:
+  contents: read
+
 jobs:
     main:
         name: Determine the current timestamp

@@ -66,6 +66,26 @@ The single job that declares `environment: pr-ci`:
 
 The two layers compose: `pr-ci` answers "is this code allowed to run at all?", `production` answers "is this code allowed to publish?" — and the two sets of jobs never overlap.
 
+### Least-privilege `GITHUB_TOKEN` scoping
+
+The two environments scope the long-lived publish *secrets*. A third layer scopes the ephemeral `GITHUB_TOKEN`: its `contents` permission is `read` by default, and only the jobs that genuinely mutate the repository or a release opt up to `write`.
+
+Previously `deployment.yaml` declared `contents: write` (plus unused `pages: write` and `id-token: write`) at the workflow level, which flowed into every reusable build workflow that did not declare its own `permissions:`. The build jobs (`partial_compiler.yaml`, `partial_vscode_extension.yaml`) then uploaded assets directly to the GitHub Release with `svenstaro/upload-release-action` — meaning a write-capable token was in scope across the largest attack surface in the pipeline: the jobs that run the most third-party actions and compile arbitrary dependency code (`just ci`, `cargo install`, `choco install`, rust-cache, cargo-llvm-cov).
+
+The build jobs now upload only to build-artifact storage via `actions/upload-artifact` (which needs no `contents: write`). A single consolidated job, `partial_upload_release_artifacts.yaml`, downloads those artifacts and attaches them to the release. The result is that a write-capable `GITHUB_TOKEN` exists in only three credentialed stages:
+
+1. **Create version** — `partial_version.yaml::release` (also holds the PAT).
+2. **Upload release artifacts** — `partial_upload_release_artifacts.yaml::upload-release-artifacts`.
+3. **Publish** — `publish-website`, `publish-release`, `cleanup` (`GITHUB_TOKEN` write); `publish-playground`, `publish-homebrew` (PAT only, no `GITHUB_TOKEN` write).
+
+`partial_upload_release_artifacts.yaml` uses only `GITHUB_TOKEN`, not a publish secret, so it deliberately does **not** declare `environment: production` (see the GITHUB_TOKEN-only rule in Confirmation item 4). Do not add it.
+
+Reusable-workflow `GITHUB_TOKEN` permissions are the intersection of caller and callee. Callees declare their own minimal `permissions:` as defense-in-depth; a build partial declaring `contents: read` can never write even if a caller misconfigures. `partial_website.yaml` declares the maximum it may need (`contents: write`, for the gh-pages publish push) and relies on callers that only build (`publish: false`) to cap it to `read` via their own read-only scope.
+
+Because the build/test/lint jobs now hold no write token and no secrets, the third-party actions they use can be updated with no credential-theft risk — the motivating goal of this scoping.
+
+`pages: write` and `id-token: write` were removed from `deployment.yaml`: nothing uses the GitHub Pages deploy API or OIDC (`peaceiris/actions-gh-pages` pushes a branch with a token). Re-add either at the specific job if OIDC/trusted-publishing is ever adopted.
+
 ### Consequences
 
 * Good, because PR runs cannot reach publish secrets even with a fully tampered workflow file — the secrets are not in repo scope at all.
@@ -89,6 +109,8 @@ For any PR that modifies `.github/workflows/**`:
    * It must be added to the `production` environment, not to repo-level secrets, and the consuming job must declare `environment: production`.
 4. Does it add a new workflow that reads `secrets.*`?
    * The reading job must declare an appropriate environment (`production` for publish secrets; none for `GITHUB_TOKEN`-only).
+5. Does a build/test job declare `contents: write`, upload directly to a release (e.g. `svenstaro/upload-release-action`, `softprops/action-gh-release`), or otherwise hold a write-capable token?
+   * If yes, it must instead upload to build-artifact storage via `actions/upload-artifact` and let the consolidated `upload-release-artifacts` job attach the assets. Build/test jobs must run with `contents: read` and no secrets so the actions they use can be updated without credential-theft risk. See "Least-privilege `GITHUB_TOKEN` scoping".
 
 A CODEOWNERS rule on `.github/workflows/**` and `**/justfile` ensures a security-aware reviewer is automatically routed to every such PR. Justfiles are included because privileged jobs (`environment: production`) execute justfile recipes with publish secrets in scope — a malicious recipe edit has the same blast radius as a malicious workflow edit.
 

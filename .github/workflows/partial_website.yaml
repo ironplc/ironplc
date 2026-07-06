@@ -11,6 +11,13 @@ on:
         type: string
         description: 'If not empty, then run for the specified branch name or tag'
 
+# Declares the maximum it may need: peaceiris/actions-gh-pages pushes the
+# gh-pages branch via GITHUB_TOKEN when publish is true. Callers that only
+# build (publish: false) cap this to read via their own job-level permissions.
+# See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+permissions:
+  contents: write
+
 jobs:
   docs:
     name: Documentation Job
