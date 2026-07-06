@@ -2,9 +2,11 @@
 //! [`DebugHook`], call/return depth callbacks, and the re-entrant
 //! `run_round_debug` driver.
 
-use crate::common::VmBuffers;
+use crate::common::{single_function_container, VmBuffers};
 use ironplc_container::{opcode, ContainerBuilder, FunctionId, VarIndex};
-use ironplc_vm::{DebugHook, HookAction, RoundOutcome};
+use ironplc_vm::{
+    BreakpointTable, DebugHook, DebuggerHook, HookAction, PauseReason, Phase, RoundOutcome,
+};
 
 /// Builds a container with init (RET_VOID), a scan entry function, and
 /// additional user functions starting at function id 2.
@@ -143,4 +145,180 @@ fn run_round_debug_when_call_then_call_and_return_callbacks_bracket_callee() {
     assert!(!func2_instr_idxs.is_empty(), "callee ran no instructions");
     assert!(func2_instr_idxs.iter().all(|&i| i > call_idx));
     assert!(func2_instr_idxs.iter().all(|&i| i < return_to_scan_idx));
+}
+
+/// Steel-thread scan: x := 10; y := x + 32. Used for breakpoint tests.
+/// Offsets: LOAD_CONST\@0 STORE_VAR x\@3 LOAD_VAR x\@6 LOAD_CONST\@9
+/// ADD\@12 STORE_VAR y\@13 RET_VOID\@16.
+fn steel_thread_scan() -> Vec<u8> {
+    #[rustfmt::skip]
+    let bytecode = vec![
+        opcode::LOAD_CONST_I32, 0x00, 0x00,
+        opcode::STORE_VAR_I32,  0x00, 0x00,
+        opcode::LOAD_VAR_I32,   0x00, 0x00,
+        opcode::LOAD_CONST_I32, 0x01, 0x00,
+        opcode::ADD_I32,
+        opcode::STORE_VAR_I32,  0x01, 0x00,
+        opcode::RET_VOID,
+    ];
+    bytecode
+}
+
+#[test]
+fn run_round_debug_when_breakpoint_in_entry_then_pauses_there_and_resumes_to_completion() {
+    let c = single_function_container(&steel_thread_scan(), 2, &[10, 32]);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let mut table = BreakpointTable::new();
+    let id = table.add(FunctionId::SCAN, 6); // LOAD_VAR x, after x := 10
+    let mut hook = DebuggerHook::new(&table);
+
+    // First round pauses at the breakpoint.
+    let outcome = vm.run_round_debug(0, &mut hook).unwrap();
+    assert_eq!(outcome, RoundOutcome::Paused(PauseReason::Breakpoint(id)));
+    assert_eq!(vm.phase(), Phase::PausedAt(PauseReason::Breakpoint(id)));
+
+    // The top frame sits exactly on the breakpoint instruction.
+    let frames = vm.debug_frames();
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0].function_id, FunctionId::SCAN);
+    assert_eq!(frames[0].pc, 6);
+
+    // x has been assigned (offset 3 executed), y not yet.
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 0);
+
+    // Resuming completes the scan; final state matches an unhooked run.
+    let outcome = vm.run_round_debug(0, &mut hook).unwrap();
+    assert_eq!(outcome, RoundOutcome::Completed);
+    assert_eq!(vm.phase(), Phase::CompletedScan);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 10);
+    assert_eq!(vm.read_variable(VarIndex::new(1)).unwrap(), 42);
+}
+
+#[test]
+fn run_round_debug_when_breakpoint_in_callee_then_frame_stack_shows_caller_beneath() {
+    // Same doubling function as the callback test.
+    #[rustfmt::skip]
+    let func_body: Vec<u8> = vec![
+        opcode::LOAD_VAR_I32, 0x02, 0x00,
+        opcode::LOAD_VAR_I32, 0x02, 0x00,
+        opcode::ADD_I32,
+        opcode::RET,
+    ];
+    #[rustfmt::skip]
+    let scan_bytecode: Vec<u8> = vec![
+        opcode::LOAD_CONST_I32, 0x00, 0x00,
+        opcode::CALL, 0x02, 0x00, 0x02, 0x00,
+        opcode::STORE_VAR_I32, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+    let c = call_container(&scan_bytecode, &[(&func_body, 4, 1, 1)], 3, &[21]);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let func2 = FunctionId::new(2);
+    let mut table = BreakpointTable::new();
+    let id = table.add(func2, 3); // second LOAD_VAR inside the callee
+    let mut hook = DebuggerHook::new(&table);
+
+    let outcome = vm.run_round_debug(0, &mut hook).unwrap();
+    assert_eq!(outcome, RoundOutcome::Paused(PauseReason::Breakpoint(id)));
+
+    // Two frames: SCAN beneath, callee on top at the breakpoint offset.
+    let frames = vm.debug_frames();
+    assert_eq!(frames.len(), 2);
+    assert_eq!(frames[0].function_id, FunctionId::SCAN);
+    assert_eq!(frames[1].function_id, func2);
+    assert_eq!(frames[1].pc, 3);
+
+    // Resume runs to completion with the correct result.
+    let outcome = vm.run_round_debug(0, &mut hook).unwrap();
+    assert_eq!(outcome, RoundOutcome::Completed);
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 42);
+}
+
+/// Pauses before every instruction, advancing exactly one instruction per
+/// resume, so a full scan is replayed one boundary at a time.
+#[derive(Default)]
+struct PauseEachInstruction {
+    skip: bool,
+    instructions: usize,
+}
+
+impl DebugHook for PauseEachInstruction {
+    fn before_instruction(&mut self, _f: FunctionId, _pc: usize, _op: u8) -> HookAction {
+        if self.skip {
+            self.skip = false;
+            self.instructions += 1;
+            HookAction::Continue
+        } else {
+            self.skip = true;
+            HookAction::Pause(PauseReason::Step)
+        }
+    }
+}
+
+#[test]
+fn run_round_debug_when_paused_at_every_instruction_then_final_state_matches_unhooked_run() {
+    #[rustfmt::skip]
+    let func_body: Vec<u8> = vec![
+        opcode::LOAD_VAR_I32, 0x02, 0x00,
+        opcode::LOAD_VAR_I32, 0x02, 0x00,
+        opcode::ADD_I32,
+        opcode::RET,
+    ];
+    #[rustfmt::skip]
+    let scan_bytecode: Vec<u8> = vec![
+        opcode::LOAD_CONST_I32, 0x00, 0x00,
+        opcode::CALL, 0x02, 0x00, 0x02, 0x00,
+        opcode::STORE_VAR_I32, 0x00, 0x00,
+        opcode::RET_VOID,
+    ];
+
+    // Reference: an ordinary unhooked scan.
+    let c = call_container(&scan_bytecode, &[(&func_body, 4, 1, 1)], 3, &[21]);
+    let mut rb = VmBuffers::from_container(&c);
+    let mut reference = crate::common::load_and_start(&c, &mut rb).unwrap();
+    reference.run_round(0).unwrap();
+    let ref_vars: Vec<i32> = (0..3)
+        .map(|i| reference.read_variable(VarIndex::new(i)).unwrap())
+        .collect();
+    let ref_data = reference.data_region().to_vec();
+
+    // Hooked: resume one instruction at a time until the scan completes.
+    let mut db = VmBuffers::from_container(&c);
+    let mut debugged = crate::common::load_and_start(&c, &mut db).unwrap();
+    let mut hook = PauseEachInstruction::default();
+    let mut rounds = 0;
+    loop {
+        rounds += 1;
+        assert!(rounds < 1000, "pause/resume did not converge");
+        match debugged.run_round_debug(0, &mut hook).unwrap() {
+            RoundOutcome::Paused(_) => continue,
+            RoundOutcome::Completed | RoundOutcome::PausedAfterScan => break,
+        }
+    }
+
+    assert!(hook.instructions > 0);
+    let got_vars: Vec<i32> = (0..3)
+        .map(|i| debugged.read_variable(VarIndex::new(i)).unwrap())
+        .collect();
+    assert_eq!(got_vars, ref_vars);
+    assert_eq!(debugged.data_region(), ref_data.as_slice());
+}
+
+#[test]
+fn run_round_debug_when_trap_then_returns_fault_and_phase_faulted() {
+    // A single invalid opcode traps immediately.
+    let c = single_function_container(&[0xFF], 0, &[]);
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let table = BreakpointTable::new();
+    let mut hook = DebuggerHook::new(&table);
+    let err = vm.run_round_debug(0, &mut hook).unwrap_err();
+    assert_eq!(err.trap, ironplc_vm::error::Trap::InvalidInstruction(0xFF));
+    assert_eq!(vm.phase(), Phase::Faulted);
 }

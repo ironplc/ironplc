@@ -17,7 +17,7 @@ pub(crate) mod variable_table;
 mod vm;
 
 pub use buffers::VmBuffers;
-pub use debug::{BreakpointId, PauseReason};
+pub use debug::{BreakpointId, BreakpointTable, DebuggerHook, PauseReason};
 pub use debug_hook::{DebugHook, HookAction, NoopDebugHook};
 pub use frame_stack::{FbCallReturn, Frame, FrameStack};
 #[cfg(feature = "profiling")]
