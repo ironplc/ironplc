@@ -24,6 +24,11 @@ on:
         description: 'A commit reference that contains the updated dependencies'
         value: ${{ jobs.update-dependencies.outputs.branch-name }}
 
+# Pushes via the PAT configured on checkout, not GITHUB_TOKEN, so the
+# GITHUB_TOKEN stays read-only here.
+permissions:
+  contents: read
+
 jobs:
     update-dependencies:
         name: Update Dependencies
