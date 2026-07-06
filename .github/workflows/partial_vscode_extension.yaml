@@ -74,9 +74,9 @@ jobs:
 
       # Save output artifacts. These upload only to build-artifact storage (no
       # credential required); the consolidated upload-release-artifacts job
-      # attaches them to the GitHub Release.
+      # attaches them to the GitHub Release. Uploaded unconditionally (not gated
+      # on gh-release-tag) so a deployment dry run still produces them.
       - name: Upload SBOM to build artifact
-        if: ${{ inputs.gh-release-tag }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ironplc-vscode-extension-sbom
@@ -84,6 +84,7 @@ jobs:
             integrations/vscode/bom.cdx.json
             integrations/vscode/bom.cdx.json.sha256
           if-no-files-found: error
+          retention-days: 5
       - name: Upload VSIX to build artifact
         if: ${{ inputs.artifact-name }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

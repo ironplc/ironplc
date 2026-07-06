@@ -43,14 +43,22 @@ jobs:
       # Installers and the VSIX already carry correct filenames; only the SBOMs
       # are renamed to embed the version number.
       - name: Assemble release assets
-        # In a dry run gh-release-tag is empty and the build jobs skip uploading
-        # the installer/SBOM artifacts, so there is nothing to assemble.
-        if: ${{ !inputs.dryrun && inputs.gh-release-tag }}
+        # Runs on both dry and real runs (the build jobs upload their artifacts
+        # unconditionally). A dry run therefore fully exercises download +
+        # rename and prints the assembled asset list below; only the final
+        # attach step is skipped. This is the pre-release verification path.
         run: |
           set -euo pipefail
           mkdir -p release-assets
 
           # Compiler installers (per matrix leg) and their .sha256 checksums.
+          # Fail loudly if none were found rather than publishing a partial
+          # release (the cp steps below already fail on a missing SBOM/VSIX).
+          installer_count=$(find ./artifacts -path '*/ironplcc-*' -type f | wc -l)
+          if [ "$installer_count" -eq 0 ]; then
+            echo "ERROR: no installer artifacts found under ./artifacts" >&2
+            exit 1
+          fi
           find ./artifacts -path '*/ironplcc-*' -type f -exec cp {} release-assets/ \;
 
           # VS Code extension VSIX.
