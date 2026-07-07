@@ -330,6 +330,25 @@ mod tests {
     }
 
     #[test]
+    fn breakpoint_table_when_cleared_then_empty_and_lookups_miss() {
+        let mut table = BreakpointTable::new();
+        table.add(FunctionId::SCAN, 0);
+        table.add(FunctionId::SCAN, 6);
+        assert_eq!(table.len(), 2);
+        table.clear();
+        assert!(table.is_empty());
+        assert_eq!(table.lookup(FunctionId::SCAN, 0), None);
+    }
+
+    #[test]
+    fn breakpoint_table_when_id_absent_then_mutators_report_false() {
+        let mut table = BreakpointTable::new();
+        let ghost = BreakpointId(999);
+        assert!(!table.set_enabled(ghost, false));
+        assert!(!table.remove(ghost));
+    }
+
+    #[test]
     fn breakpoint_table_when_many_functions_then_sorted_lookup_works() {
         let mut table = BreakpointTable::new();
         // Insert out of order across functions and offsets.
