@@ -11,6 +11,15 @@ on:
         type: string
         description: 'If not empty, then run for the specified branch name or tag'
 
+# No workflow-level permissions block: this reusable workflow inherits the
+# GITHUB_TOKEN permissions granted by each caller's job. A reusable workflow
+# cannot request more than the caller grants, so declaring contents: write here
+# would force every caller (including build-only ones) to grant write. Instead,
+# the publish caller (deployment.yaml's publish-website job) opts up to
+# contents: write, while build-only callers (integration.yaml, update.yaml)
+# inherit the default contents: read and skip the publish step (publish: false).
+# See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+
 jobs:
   docs:
     name: Documentation Job

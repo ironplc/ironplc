@@ -8,6 +8,9 @@ on:
         type: string
         description: 'If not empty, then run for the specified branch name or tag'
 
+permissions:
+  contents: read
+
 jobs:
   build-playground:
     name: Build Playground

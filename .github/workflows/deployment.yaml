@@ -28,14 +28,20 @@ on:
 
 name: IronPLC Deployment
 
+# Least privilege by default: the GITHUB_TOKEN is read-only for every job.
+# Only the credentialed stages (create version, upload release artifacts,
+# publish) opt up to contents: write at the job level.
+# See specs/adrs/0032-ci-gating-and-secret-scoping.md.
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 jobs:
   release:
     name: Create Version Numbers and GitHub Release for the Artifacts
+    # Creates the GitHub Release via GITHUB_TOKEN and pushes the version
+    # commit/tag via the PAT.
+    permissions:
+      contents: write
     uses: ./.github/workflows/partial_version.yaml
     with:
       dryrun: ${{ !!inputs.dryrun }}
@@ -68,21 +74,25 @@ jobs:
     with:
       commit-ref: ${{ needs.release.outputs.commit-tag }}
 
-  publish-prerelease:
-    name: Label GitHub Release as Prerelease
-    # In order to do a smoke test, we need a public accessible release
-    needs: [release, build-platform-package, build-vscode-extension, build-playground]
-    uses: ./.github/workflows/partial_publish_prerelease.yaml
+  upload-release-artifacts:
+    name: Upload Release Artifacts
+    # Attach the credential-free build artifacts to the (already public,
+    # prerelease) GitHub Release so the smoke tests can download them.
+    needs: [release, build-platform-package, build-vscode-extension]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/partial_upload_release_artifacts.yaml
     with:
       dryrun: ${{ !!inputs.dryrun }}
-      gh-release-id: ${{ needs.release.outputs.gh-release-id }}
+      gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
+      version: ${{ needs.release.outputs.version }}
 
   smoke-test:
     name: End to End Smoke Test
     # Install the components on a real machine and verify that they
     # all work together. If this passes, we have a good consistent
     # build.
-    needs: [release, publish-prerelease]
+    needs: [release, upload-release-artifacts]
     uses: ./.github/workflows/partial_integration_test.yaml
     if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
     with:
@@ -98,7 +108,7 @@ jobs:
     # release on Linux and macOS. Failing this blocks publish-website
     # (via the needs list below), so a broken install.sh cannot reach
     # https://www.ironplc.com/install.sh.
-    needs: [release, publish-prerelease]
+    needs: [release, upload-release-artifacts]
     uses: ./.github/workflows/partial_install_script_test.yaml
     if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
     with:
@@ -121,8 +131,9 @@ jobs:
 
   playground-e2e-test:
     name: Playground E2E Test
-    # Run browser-based E2E tests against the built playground before publishing
-    needs: [publish-prerelease]
+    # Run browser-based E2E tests against the built playground before publishing.
+    # Consumes the playground build artifact, not the GitHub Release.
+    needs: [build-playground]
     uses: ./.github/workflows/partial_playground_e2e.yaml
 
   publish-website:
@@ -132,6 +143,9 @@ jobs:
     # install-script-smoke-test must pass before we publish the
     # docs site, because the site serves install.sh.
     needs: [release, smoke-test, install-script-smoke-test, playground-e2e-test]
+    # peaceiris/actions-gh-pages pushes the gh-pages branch via GITHUB_TOKEN.
+    permissions:
+      contents: write
     uses: ./.github/workflows/partial_website.yaml
     with:
       publish: ${{ !inputs.dryrun }}
@@ -144,6 +158,9 @@ jobs:
     # Scopes VS_MARKETPLACE_TOKEN, OVSX_PAT to deployments from main.
     # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
     environment: production
+    # irongut/EditRelease flips the release to latest via GITHUB_TOKEN.
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: ./integrations/vscode
@@ -268,6 +285,9 @@ jobs:
     name: Cleanup Old Artifacts
     needs: [publish-homebrew, publish-playground]
     runs-on: ubuntu-latest
+    # eregon/keep-last-n-releases deletes old releases/tags via GITHUB_TOKEN.
+    permissions:
+      contents: write
     steps:
       # Execute build recipes
       - name: Cleanup Drafts and Old Release

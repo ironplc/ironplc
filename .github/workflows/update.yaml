@@ -22,8 +22,12 @@ on:
 
 name: IronPLC Update Dependencies
 
+# Least privilege by default. Every writer in this flow (update-dependencies,
+# merge-changes) pushes via the PAT configured on checkout, not GITHUB_TOKEN,
+# so the GITHUB_TOKEN is read-only.
+# See specs/adrs/0032-ci-gating-and-secret-scoping.md.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   timestamp:

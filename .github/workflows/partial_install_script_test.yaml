@@ -7,6 +7,9 @@ on:
         type: string
         description: 'The version number to test with (without the "v" prefix). Empty string uses the latest release.'
 
+permissions:
+  contents: read
+
 jobs:
   install-script-smoke:
     name: Install Script Smoke Test (${{ matrix.os }})
