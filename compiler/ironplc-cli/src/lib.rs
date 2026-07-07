@@ -14,7 +14,7 @@ pub mod lsp_runner;
 mod test_helpers;
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn init_test_logger() {
     let _ = env_logger::builder()
         .is_test(true)
