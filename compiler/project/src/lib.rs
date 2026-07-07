@@ -8,7 +8,7 @@ pub mod tokenizer;
 pub use project::{FileBackedProject, MemoryBackedProject, Project};
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn init_test_logger() {
     let _ = env_logger::builder()
         .is_test(true)
