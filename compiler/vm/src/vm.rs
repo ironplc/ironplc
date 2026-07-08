@@ -914,7 +914,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         if pc >= bytecode.len() {
             // Fell off the end of a function body without an explicit
             // RET — treat as RET_VOID.
-            handle_frame_return(&mut temp_alloc, &mut frame_stack, data_region, variables, hook)?;
+            handle_frame_return(
+                &mut temp_alloc,
+                &mut frame_stack,
+                data_region,
+                variables,
+                hook,
+            )?;
             continue;
         }
 
@@ -1390,7 +1396,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 // Return value is already on the operand stack; just unwind
                 // this frame and let the caller frame (or outer-loop exit)
                 // resume.
-                handle_frame_return(&mut temp_alloc, &mut frame_stack, data_region, variables, hook)?;
+                handle_frame_return(
+                    &mut temp_alloc,
+                    &mut frame_stack,
+                    data_region,
+                    variables,
+                    hook,
+                )?;
                 advance_pc = false;
             }
             // --- String opcodes ---
@@ -2507,7 +2519,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .copy_from_slice(&value_slot.as_i64().to_le_bytes());
             }
             opcode::RET_VOID => {
-                handle_frame_return(&mut temp_alloc, &mut frame_stack, data_region, variables, hook)?;
+                handle_frame_return(
+                    &mut temp_alloc,
+                    &mut frame_stack,
+                    data_region,
+                    variables,
+                    hook,
+                )?;
                 advance_pc = false;
             }
             _ => {

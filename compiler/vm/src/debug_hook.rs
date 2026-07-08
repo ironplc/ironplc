@@ -112,7 +112,12 @@ mod tests {
             events: Vec<(FunctionId, usize, u8)>,
         }
         impl DebugHook for RecordingHook {
-            fn before_instruction(&mut self, function_id: FunctionId, pc: usize, op: u8) -> HookAction {
+            fn before_instruction(
+                &mut self,
+                function_id: FunctionId,
+                pc: usize,
+                op: u8,
+            ) -> HookAction {
                 self.events.push((function_id, pc, op));
                 HookAction::Continue
             }

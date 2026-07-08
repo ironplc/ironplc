@@ -104,7 +104,10 @@ impl<'a> FrameStack<'a> {
     /// continues from the preserved top frame.
     pub fn resume(backing: &'a mut [Frame], len: usize) -> Self {
         debug_assert!(len <= backing.len(), "resume len exceeds frame capacity");
-        FrameStack { slots: backing, len }
+        FrameStack {
+            slots: backing,
+            len,
+        }
     }
 
     /// Number of frames currently on the stack.
