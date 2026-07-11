@@ -164,8 +164,9 @@ function handleCompletion(req, res, body) {
     const safeTools = Array.isArray(body?.tools)
       ? String(body.tools.length)
       : safe("none");
+    const safeStream = safe(body?.stream ? "true" : "false");
     console.error(
-      `[mock] ${safe(req.method)} ${safe(req.url)} stream=${!!body?.stream} ` +
+      `[mock] ${safe(req.method)} ${safe(req.url)} stream=${safeStream} ` +
         `tools=${safeTools} ` +
         `roles=[${(body?.messages || []).map((m) => safe(m?.role)).join(",")}] ` +
         `-> ${toolCall ? "tool_call" : "stop"}`,
