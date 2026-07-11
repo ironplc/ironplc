@@ -1,0 +1,45 @@
+=====
+P4035
+=====
+
+.. problem-summary:: P4035
+
+This error occurs when the value of an assignment statement has a type that is not
+compatible with the type of the variable being assigned to. IronPLC allows implicit
+widening between integer types and lossless integer-to-real conversion (for example,
+assigning an ``INT`` expression to a ``REAL`` variable), but rejects other type
+mismatches such as real-to-integer, boolean-to-numeric, or narrowing conversions.
+
+For the full set of allowed implicit conversions, see
+:doc:`/explanation/type-conversions`.
+
+Example
+-------
+
+The following code will generate error P4035:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flag  : BOOL;
+       value : REAL;
+   END_VAR
+       flag := value * 0.5;  (* Error: REAL expression assigned to BOOL variable *)
+   END_PROGRAM
+
+The right-hand side ``value * 0.5`` is a ``REAL`` expression, but ``flag`` is
+``BOOL``.
+
+To fix this error, assign a value whose type matches the target, or use an explicit
+type conversion:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       flag  : BOOL;
+       value : REAL;
+   END_VAR
+       flag := value > 0.0;  (* comparison yields BOOL *)
+   END_PROGRAM
