@@ -12,10 +12,16 @@ setup:
 smoke:
   node test/connectivity.mjs
 
-# Real-agent end-to-end against a local Ollama model. Requires a running Ollama
-# server with the model pulled (default: llama3.2:3b).
+# Deterministic hard gate: drive OpenCode against a fake model that always calls
+# `check`, proving the tool-call wiring (catalog -> args -> MCP round-trip). No
+# Ollama required.
+mock-e2e:
+  node test/mock-e2e.mjs
+
+# Real-agent end-to-end against a local Ollama model (fidelity signal). Requires
+# a running Ollama server with the model pulled (default: qwen2.5:1.5b).
 agent-e2e:
   node test/agent.mjs
 
-# Run both layers.
-e2e: smoke agent-e2e
+# Run all layers.
+e2e: smoke mock-e2e agent-e2e

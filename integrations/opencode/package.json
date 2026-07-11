@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "smoke": "node test/connectivity.mjs",
+    "mock-e2e": "node test/mock-e2e.mjs",
     "agent-e2e": "node test/agent.mjs",
-    "e2e": "npm run smoke && npm run agent-e2e"
+    "e2e": "npm run smoke && npm run mock-e2e && npm run agent-e2e"
   },
   "devDependencies": {
     "opencode-ai": "1.17.3"

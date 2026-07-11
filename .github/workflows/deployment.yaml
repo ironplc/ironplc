@@ -127,7 +127,7 @@ jobs:
   #   if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
   #   with:
   #     compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
-  #     model: "llama3.2:3b"
+  #     model: "qwen2.5:1.5b"
 
   playground-e2e-test:
     name: Playground E2E Test
