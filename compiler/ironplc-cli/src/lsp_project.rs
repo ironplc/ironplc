@@ -1490,7 +1490,7 @@ INVALID_SYNTAX"
         // Empty project (no configuration with a program instance) still
         // analyses cleanly when there are no parse errors. Either way,
         // the contract is "no errors => no entries".
-        for (_, diags) in by_uri.iter() {
+        for diags in by_uri.values() {
             assert!(
                 diags.is_empty(),
                 "expected no diagnostics for clean project, got: {:?}",
