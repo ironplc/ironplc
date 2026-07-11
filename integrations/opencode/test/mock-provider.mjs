@@ -162,7 +162,7 @@ function handleCompletion(req, res, body) {
     // injection).
     const safe = (v) => String(v).replace(/[^\x20-\x7E]/g, "?").slice(0, 200);
     const safeTools = Array.isArray(body?.tools)
-      ? String(body.tools.length)
+      ? safe(String(body.tools.length))
       : safe("none");
     const safeStream = safe(body?.stream ? "true" : "false");
     console.error(
