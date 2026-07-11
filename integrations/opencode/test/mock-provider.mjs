@@ -156,23 +156,6 @@ function handleCompletion(req, res, body) {
   const model = typeof body?.model === "string" ? body.model : "mock";
   const toolCall = offersCheckTool(body) && !toolAlreadyRan(body);
 
-  if (process.env.MOCK_PROVIDER_DEBUG) {
-    // Strip control characters (e.g. newlines) from untrusted request fields
-    // before logging so a crafted request cannot forge log lines (CodeQL: log
-    // injection).
-    const safe = (v) => String(v).replace(/[^\x20-\x7E]/g, "?").slice(0, 200);
-    const safeTools = Array.isArray(body?.tools)
-      ? safe(String(body.tools.length))
-      : safe("none");
-    const safeStream = safe(body?.stream ? "true" : "false");
-    console.error(
-      `[mock] ${safe(req.method)} ${safe(req.url)} stream=${safeStream} ` +
-        `tools=${safeTools} ` +
-        `roles=[${(body?.messages || []).map((m) => safe(m?.role)).join(",")}] ` +
-        `-> ${toolCall ? "tool_call" : "stop"}`,
-    );
-  }
-
   if (body?.stream) {
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -204,10 +187,6 @@ export function startMockProvider() {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ object: "list", data: [] }));
   });
-
-  if (process.env.MOCK_PROVIDER_DEBUG) {
-    server.on("connection", () => console.error("[mock] tcp connection opened"));
-  }
 
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
