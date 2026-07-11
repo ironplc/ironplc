@@ -356,17 +356,7 @@ impl<'a> VmRunning<'a> {
         }
 
         // System variable injection: write monotonic uptime before task execution.
-        if self.container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME != 0 {
-            let time_ms = (current_time_us / 1000) as i64;
-            // __SYSTEM_UP_TIME at VarIndex(0): i32 milliseconds (wrapping)
-            self.variables
-                .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
-                .expect("system uptime variable must exist at index 0");
-            // __SYSTEM_UP_LTIME at VarIndex(1): i64 milliseconds (non-wrapping)
-            self.variables
-                .store(VarIndex::new(1), Slot::from_i64(time_ms))
-                .expect("system uptime variable must exist at index 1");
-        }
+        self.inject_system_uptime(current_time_us);
 
         // Stub: INPUT_FREEZE (no-op)
 
@@ -379,42 +369,26 @@ impl<'a> VmRunning<'a> {
             let mut last_instance_id = InstanceId::DEFAULT;
 
             // Iterate over program instances for this task.
-            // Copy fields to locals before calling execute() to satisfy borrow checker.
             for pi in 0..self.program_instances.len() {
                 if self.program_instances[pi].task_id != task_id {
                     continue;
                 }
                 let instance_id = self.program_instances[pi].instance_id;
                 last_instance_id = instance_id;
-                let entry_function_id = self.program_instances[pi].entry_function_id;
-                let var_table_offset = self.program_instances[pi].var_table_offset;
-                let var_table_count = self.program_instances[pi].var_table_count;
 
-                let scope = VariableScope {
-                    shared_globals_size: self.shared_globals_size,
-                    instance_offset: var_table_offset,
-                    instance_count: var_table_count,
-                };
-
-                execute(
-                    self.container,
-                    &mut self.stack,
-                    &mut self.variables,
-                    self.data_region,
-                    self.temp_buf,
-                    self.max_temp_buf_bytes,
-                    self.frames,
-                    &scope,
-                    current_time_us,
-                    entry_function_id,
-                    #[cfg(feature = "profiling")]
-                    &mut self.profile,
-                )
-                .map_err(|trap| FaultContext {
-                    trap,
-                    task_id,
-                    instance_id,
-                })?;
+                // Production scan: run the instance to completion with the
+                // zero-cost hook and fresh (non-resumable) frame state.
+                let (outcome, _, _) = self
+                    .run_instance(pi, current_time_us, 0, 0, &mut NoopDebugHook)
+                    .map_err(|trap| FaultContext {
+                        trap,
+                        task_id,
+                        instance_id,
+                    })?;
+                debug_assert!(
+                    matches!(outcome, ExecuteOutcome::Completed),
+                    "NoopDebugHook can never pause a scan"
+                );
             }
 
             #[cfg(not(target_arch = "wasm32"))]
@@ -456,6 +430,16 @@ impl<'a> VmRunning<'a> {
     /// A trap still surfaces through the fault path: the method returns
     /// `Err(FaultContext)` and sets the phase to [`Phase::Faulted`], exactly
     /// as `run_round` does.
+    ///
+    /// **Intentionally bypasses the scheduler and watchdog.** `run_round`
+    /// consults the [`TaskScheduler`] to pick ready tasks, records execution
+    /// time to re-arm cyclic timers, and traps on watchdog overrun. This
+    /// method does none of that: it runs instance 0 unconditionally and never
+    /// times the scan. That is deliberate — while a human controls the clock
+    /// at a breakpoint, cyclic re-arming is meaningless and a watchdog would
+    /// fire the moment execution paused. The shared per-instance execution
+    /// core lives in [`run_instance`](Self::run_instance); only the
+    /// scheduling/lifecycle policy around it differs between the two drivers.
     pub fn run_round_debug<H: DebugHook>(
         &mut self,
         current_time_us: u64,
@@ -469,63 +453,36 @@ impl<'a> VmRunning<'a> {
 
         let resuming = matches!(self.phase, Phase::PausedAt(_));
 
-        // Instance 0 is the single debuggee.
+        // Instance 0 is the single debuggee (v1 is single-instance).
         let instance_id = self.program_instances[0].instance_id;
         let task_id = self.program_instances[0].task_id;
-        let entry_function_id = self.program_instances[0].entry_function_id;
-        let var_table_offset = self.program_instances[0].var_table_offset;
-        let var_table_count = self.program_instances[0].var_table_count;
-
-        let scope = VariableScope {
-            shared_globals_size: self.shared_globals_size,
-            instance_offset: var_table_offset,
-            instance_count: var_table_count,
-        };
 
         if !resuming {
-            // Fresh scan: inject system uptime before running, mirroring
-            // run_round, then start with an empty frame stack so
-            // execute_with_hook pushes the entry frame.
-            if self.container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME != 0 {
-                let time_ms = (current_time_us / 1000) as i64;
-                self.variables
-                    .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
-                    .expect("system uptime variable must exist at index 0");
-                self.variables
-                    .store(VarIndex::new(1), Slot::from_i64(time_ms))
-                    .expect("system uptime variable must exist at index 1");
-            }
+            // Fresh scan: inject system uptime, then reset the resume state so
+            // run_instance starts with an empty frame stack (the dispatch loop
+            // pushes the entry frame). When resuming, the preserved frame count
+            // is non-zero and the paused frames survive in place.
+            self.inject_system_uptime(current_time_us);
             self.debug_frame_count = 0;
             self.debug_temp_alloc_next = 0;
         }
 
         self.phase = Phase::Running;
 
-        let outcome = execute_with_hook(
-            self.container,
-            &mut self.stack,
-            &mut self.variables,
-            self.data_region,
-            self.temp_buf,
-            self.max_temp_buf_bytes,
-            self.frames,
-            &scope,
-            current_time_us,
-            entry_function_id,
-            &mut self.debug_frame_count,
-            &mut self.debug_temp_alloc_next,
-            #[cfg(feature = "profiling")]
-            &mut self.profile,
-            hook,
-        )
-        .map_err(|trap| {
-            self.phase = Phase::Faulted;
-            FaultContext {
-                trap,
-                task_id,
-                instance_id,
-            }
-        })?;
+        let frame_count_in = self.debug_frame_count;
+        let temp_alloc_next_in = self.debug_temp_alloc_next;
+        let (outcome, frame_count, temp_alloc_next) = self
+            .run_instance(0, current_time_us, frame_count_in, temp_alloc_next_in, hook)
+            .map_err(|trap| {
+                self.phase = Phase::Faulted;
+                FaultContext {
+                    trap,
+                    task_id,
+                    instance_id,
+                }
+            })?;
+        self.debug_frame_count = frame_count;
+        self.debug_temp_alloc_next = temp_alloc_next;
 
         match outcome {
             ExecuteOutcome::Paused(reason) => {
@@ -538,6 +495,80 @@ impl<'a> VmRunning<'a> {
                 Ok(RoundOutcome::Completed)
             }
         }
+    }
+
+    /// Writes the monotonic uptime system variables before task execution,
+    /// if the loaded container declares them. Shared by [`run_round`] and
+    /// [`run_round_debug`] so the injection lives in exactly one place.
+    fn inject_system_uptime(&mut self, current_time_us: u64) {
+        if self.container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME == 0 {
+            return;
+        }
+        let time_ms = (current_time_us / 1000) as i64;
+        // __SYSTEM_UP_TIME at VarIndex(0): i32 milliseconds (wrapping)
+        self.variables
+            .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
+            .expect("system uptime variable must exist at index 0");
+        // __SYSTEM_UP_LTIME at VarIndex(1): i64 milliseconds (non-wrapping)
+        self.variables
+            .store(VarIndex::new(1), Slot::from_i64(time_ms))
+            .expect("system uptime variable must exist at index 1");
+    }
+
+    /// Runs one program instance's entry function through the shared dispatch
+    /// loop until it returns (`Completed`) or the hook pauses it (`Paused`).
+    ///
+    /// This is the single execution core behind both drivers:
+    /// - [`run_round`](Self::run_round) calls it per ready instance with
+    ///   [`NoopDebugHook`] and fresh `0` resume state (a production scan is
+    ///   never resumable, so the returned frame state is discarded);
+    /// - [`run_round_debug`](Self::run_round_debug) calls it once with a real
+    ///   hook and the *persisted* resume state, so a paused instance can
+    ///   continue on the next call.
+    ///
+    /// The caller owns all scheduling, watchdog, and instance-selection
+    /// policy; this method only builds the instance's [`VariableScope`] and
+    /// runs it. `frame_count` / `temp_alloc_next` are the resume state on
+    /// entry; the returned pair is the state after this run (advanced only
+    /// when the run paused mid-instance).
+    fn run_instance<H: DebugHook>(
+        &mut self,
+        instance_index: usize,
+        current_time_us: u64,
+        frame_count: usize,
+        temp_alloc_next: u16,
+        hook: &mut H,
+    ) -> Result<(ExecuteOutcome, usize, u16), Trap> {
+        let entry_function_id = self.program_instances[instance_index].entry_function_id;
+        let var_table_offset = self.program_instances[instance_index].var_table_offset;
+        let var_table_count = self.program_instances[instance_index].var_table_count;
+
+        let scope = VariableScope {
+            shared_globals_size: self.shared_globals_size,
+            instance_offset: var_table_offset,
+            instance_count: var_table_count,
+        };
+
+        let mut frame_count = frame_count;
+        let mut temp_alloc_next = temp_alloc_next;
+        let outcome = execute_with_hook(
+            self.container,
+            &mut self.stack,
+            &mut self.variables,
+            self.data_region,
+            self.temp_buf,
+            self.max_temp_buf_bytes,
+            self.frames,
+            &scope,
+            current_time_us,
+            entry_function_id,
+            &mut frame_count,
+            &mut temp_alloc_next,
+            #[cfg(feature = "profiling")]
+            &mut self.profile,
+            hook,
+        )?;
+        Ok((outcome, frame_count, temp_alloc_next))
     }
 
     /// Current debug-driver phase (see [`Phase`]).
