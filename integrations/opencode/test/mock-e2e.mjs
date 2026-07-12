@@ -29,7 +29,7 @@ import {
   toolWasInvoked,
   validateCheckArguments,
 } from "./lib.mjs";
-import { startMockProvider } from "./mock-provider.mjs";
+import { startMockProviderProcess } from "./mock-provider.mjs";
 
 const providerId = "mock";
 const modelId = "mock-model";
@@ -43,7 +43,12 @@ const recordLog = path.join(
   "mcp-record",
 );
 
-const mock = await startMockProvider();
+// The mock provider MUST run in its own process. `runOpencode()` uses
+// `spawnSync`, which blocks this harness's event loop for OpenCode's whole run;
+// an in-process HTTP server could never answer OpenCode's requests during that
+// window, so the round-trip would hang until the timeout. See
+// `startMockProviderProcess()` for the full rationale.
+const mock = await startMockProviderProcess();
 console.log(`Mock provider: ${mock.url}  ironplcmcp: ${bin}`);
 
 try {
