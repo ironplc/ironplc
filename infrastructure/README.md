@@ -1,8 +1,10 @@
 # infrastructure
 
-Terraform that provisions the GitHub-side workflow labels:
+Terraform that provisions:
 
-- 14 workflow labels (`status/*`, `review/*`, `flag/*`).
+- 14 GitHub workflow labels (`status/*`, `review/*`, `flag/*`) — `main.tf`.
+- The PostHog **"IronPLC — Adoption & Success"** product-analytics dashboard
+  and its insights — `posthog.tf`.
 
 This directory does **not** deploy app code.
 
@@ -25,6 +27,9 @@ used.
   ```
 
 - A fine-grained GitHub PAT with `issues: write` on the repo.
+- A PostHog **personal API key** with `insight:write` + `dashboard:write`
+  scopes (Settings → Personal API keys). This is *not* the public `phc_…`
+  ingestion key — that one cannot create dashboards.
 
 ## First apply
 
@@ -47,12 +52,15 @@ and add each one as a **Terraform variable**:
 | `github_token` | ✅ yes | `github_pat_…` |
 | `github_owner` | no | `ironplc` |
 | `github_repo` | no | `ironplc` |
+| `posthog_api_key` | ✅ yes | `phx_…` (personal key) |
+| `posthog_project_id` | no | `12345` |
+| `posthog_host` | no | `https://us.posthog.com` (default) |
 
 Then run the plan + apply from your laptop — it executes remotely in
 HCP, output streams back to your terminal:
 
 ```bash
-terraform plan      # 14 labels the first time
+terraform plan      # 14 labels + 1 dashboard + its insights the first time
 terraform apply
 ```
 
@@ -79,6 +87,28 @@ locally.
 | Stage status | `status/triage`, `status/requirements`, `status/design`, `status/plan`, `status/code`, `status/pr-open`, `status/closed`, `status/needs-info` |
 | Review | `review/requested`, `review/approved`, `review/changes-requested` |
 | Flags | `flag/agent-error`, `flag/revision-limit`, `flag/blocked` |
+
+## PostHog dashboard
+
+`posthog.tf` defines the **"IronPLC — Adoption & Success"** dashboard and one
+insight per tile, using only events already flowing into PostHog (website
+`$pageview` and the playground's `compile_finished` / `run_started` /
+`example_loaded` / … events). Tiles are grouped as acquisition, interest,
+activation, product-health, a visitor→success funnel, and compile retention.
+Product-health includes a **Compile success rate** tile (successful compiles ÷
+all compiles) and a **Top compile error codes** tile that ranks the diagnostic
+codes of failed compiles — the latter surfaces *why* compiles fail using only
+the `error_codes` property, never the program source.
+
+Install-adoption tiles (`install_completed`, `release_downloads`, Open VSX)
+are left as commented stubs at the bottom of `posthog.tf`; they light up once
+the collectors that emit those events exist.
+
+Each insight's `query_json` is the raw PostHog query node. Exact field values
+(boolean property filters, `breakdownFilter` shape, display enums) can vary by
+PostHog version, so if `terraform plan`/`apply` reports a rejected query,
+adjust the offending field and re-apply — the resources are additive and do
+not affect the GitHub labels.
 
 ## What is NOT managed here
 

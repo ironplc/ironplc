@@ -5,7 +5,8 @@ use ironplc_container::{
 
 use crate::buffers::VmBuffers;
 use crate::builtin;
-use crate::debug_hook::{DebugHook, NoopDebugHook};
+use crate::debug::PauseReason;
+use crate::debug_hook::{DebugHook, HookAction, NoopDebugHook};
 use crate::error::Trap;
 use crate::frame_stack::{FbCallReturn, Frame, FrameStack};
 #[cfg(feature = "profiling")]
@@ -215,6 +216,9 @@ impl<'a> VmReady<'a> {
             shared_globals_size,
             scan_count: 0,
             stop_requested: false,
+            phase: Phase::Ready,
+            debug_frame_count: 0,
+            debug_temp_alloc_next: 0,
             #[cfg(feature = "profiling")]
             profile: self.profile,
         })
@@ -242,6 +246,9 @@ impl<'a> VmReady<'a> {
             shared_globals_size,
             scan_count: initial_scan_count,
             stop_requested: false,
+            phase: Phase::Ready,
+            debug_frame_count: 0,
+            debug_temp_alloc_next: 0,
             #[cfg(feature = "profiling")]
             profile: self.profile,
         }
@@ -258,6 +265,41 @@ impl<'a> VmReady<'a> {
         let slot = self.variables.load(index)?;
         Ok(slot.as_u64())
     }
+}
+
+/// Execution phase of the re-entrant debug driver
+/// ([`run_round_debug`](VmRunning::run_round_debug)).
+///
+/// The non-debug [`run_round`](VmRunning::run_round) path never leaves
+/// [`Phase::Ready`]; only the debug driver moves through the paused
+/// sub-states.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Phase {
+    /// No scan in flight; the next debug round starts fresh.
+    Ready,
+    /// A scan is in flight (transient; observed only mid-round).
+    Running,
+    /// Paused before an instruction with the frame stack preserved; the
+    /// next debug round resumes the in-flight instance.
+    PausedAt(PauseReason),
+    /// A scan finished under the debug driver.
+    CompletedScan,
+    /// A trap ended the round; the VM should transition to [`VmFaulted`].
+    Faulted,
+}
+
+/// Outcome of one [`run_round_debug`](VmRunning::run_round_debug) call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RoundOutcome {
+    /// The scan completed; call again to run the next scan.
+    Completed,
+    /// A step spanned the scan boundary and stopped at the start of the
+    /// next scan. Reserved for scan-stepping; not produced in the first
+    /// debug phase (intra-scan steps report [`RoundOutcome::Paused`]).
+    PausedAfterScan,
+    /// The VM paused mid-scan; the frame stack is preserved for inspection
+    /// and a later resume.
+    Paused(PauseReason),
 }
 
 /// A VM that is actively executing scan cycles.
@@ -278,6 +320,12 @@ pub struct VmRunning<'a> {
     shared_globals_size: u16,
     scan_count: u64,
     stop_requested: bool,
+    /// Debug driver phase. `Ready` for the non-debug path.
+    phase: Phase,
+    /// Live frame count preserved across a debug pause (0 when not mid-scan).
+    debug_frame_count: usize,
+    /// Temp-buffer allocator bump position preserved across a debug pause.
+    debug_temp_alloc_next: u16,
     #[cfg(feature = "profiling")]
     profile: InstructionProfile,
 }
@@ -308,17 +356,7 @@ impl<'a> VmRunning<'a> {
         }
 
         // System variable injection: write monotonic uptime before task execution.
-        if self.container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME != 0 {
-            let time_ms = (current_time_us / 1000) as i64;
-            // __SYSTEM_UP_TIME at VarIndex(0): i32 milliseconds (wrapping)
-            self.variables
-                .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
-                .expect("system uptime variable must exist at index 0");
-            // __SYSTEM_UP_LTIME at VarIndex(1): i64 milliseconds (non-wrapping)
-            self.variables
-                .store(VarIndex::new(1), Slot::from_i64(time_ms))
-                .expect("system uptime variable must exist at index 1");
-        }
+        self.inject_system_uptime(current_time_us);
 
         // Stub: INPUT_FREEZE (no-op)
 
@@ -331,42 +369,26 @@ impl<'a> VmRunning<'a> {
             let mut last_instance_id = InstanceId::DEFAULT;
 
             // Iterate over program instances for this task.
-            // Copy fields to locals before calling execute() to satisfy borrow checker.
             for pi in 0..self.program_instances.len() {
                 if self.program_instances[pi].task_id != task_id {
                     continue;
                 }
                 let instance_id = self.program_instances[pi].instance_id;
                 last_instance_id = instance_id;
-                let entry_function_id = self.program_instances[pi].entry_function_id;
-                let var_table_offset = self.program_instances[pi].var_table_offset;
-                let var_table_count = self.program_instances[pi].var_table_count;
 
-                let scope = VariableScope {
-                    shared_globals_size: self.shared_globals_size,
-                    instance_offset: var_table_offset,
-                    instance_count: var_table_count,
-                };
-
-                execute(
-                    self.container,
-                    &mut self.stack,
-                    &mut self.variables,
-                    self.data_region,
-                    self.temp_buf,
-                    self.max_temp_buf_bytes,
-                    self.frames,
-                    &scope,
-                    current_time_us,
-                    entry_function_id,
-                    #[cfg(feature = "profiling")]
-                    &mut self.profile,
-                )
-                .map_err(|trap| FaultContext {
-                    trap,
-                    task_id,
-                    instance_id,
-                })?;
+                // Production scan: run the instance to completion with the
+                // zero-cost hook and fresh (non-resumable) frame state.
+                let (outcome, _, _) = self
+                    .run_instance(pi, current_time_us, 0, 0, &mut NoopDebugHook)
+                    .map_err(|trap| FaultContext {
+                        trap,
+                        task_id,
+                        instance_id,
+                    })?;
+                debug_assert!(
+                    matches!(outcome, ExecuteOutcome::Completed),
+                    "NoopDebugHook can never pause a scan"
+                );
             }
 
             #[cfg(not(target_arch = "wasm32"))]
@@ -393,6 +415,174 @@ impl<'a> VmRunning<'a> {
 
         self.scan_count += 1;
         Ok(())
+    }
+
+    /// Re-entrant debug variant of [`run_round`](Self::run_round).
+    ///
+    /// Runs the single program instance (v1 is single-instance; the Phase 4
+    /// DAP launch enforces exactly one instance) with `hook` observing every
+    /// instruction and call/return. Unlike `run_round`, this can stop
+    /// mid-scan: when the hook returns [`HookAction::Pause`], the frame
+    /// stack, operand stack, and temp-buffer position are preserved and the
+    /// method returns [`RoundOutcome::Paused`]. Calling it again resumes the
+    /// paused instance from exactly where it stopped.
+    ///
+    /// A trap still surfaces through the fault path: the method returns
+    /// `Err(FaultContext)` and sets the phase to [`Phase::Faulted`], exactly
+    /// as `run_round` does.
+    ///
+    /// **Intentionally bypasses the scheduler and watchdog.** `run_round`
+    /// consults the [`TaskScheduler`] to pick ready tasks, records execution
+    /// time to re-arm cyclic timers, and traps on watchdog overrun. This
+    /// method does none of that: it runs instance 0 unconditionally and never
+    /// times the scan. That is deliberate — while a human controls the clock
+    /// at a breakpoint, cyclic re-arming is meaningless and a watchdog would
+    /// fire the moment execution paused. The shared per-instance execution
+    /// core lives in [`run_instance`](Self::run_instance); only the
+    /// scheduling/lifecycle policy around it differs between the two drivers.
+    pub fn run_round_debug<H: DebugHook>(
+        &mut self,
+        current_time_us: u64,
+        hook: &mut H,
+    ) -> Result<RoundOutcome, FaultContext> {
+        // No program instance → nothing to debug; the scan is a no-op.
+        if self.program_instances.is_empty() {
+            self.phase = Phase::CompletedScan;
+            return Ok(RoundOutcome::Completed);
+        }
+
+        let resuming = matches!(self.phase, Phase::PausedAt(_));
+
+        // Instance 0 is the single debuggee (v1 is single-instance).
+        let instance_id = self.program_instances[0].instance_id;
+        let task_id = self.program_instances[0].task_id;
+
+        if !resuming {
+            // Fresh scan: inject system uptime, then reset the resume state so
+            // run_instance starts with an empty frame stack (the dispatch loop
+            // pushes the entry frame). When resuming, the preserved frame count
+            // is non-zero and the paused frames survive in place.
+            self.inject_system_uptime(current_time_us);
+            self.debug_frame_count = 0;
+            self.debug_temp_alloc_next = 0;
+        }
+
+        self.phase = Phase::Running;
+
+        let frame_count_in = self.debug_frame_count;
+        let temp_alloc_next_in = self.debug_temp_alloc_next;
+        let (outcome, frame_count, temp_alloc_next) = self
+            .run_instance(0, current_time_us, frame_count_in, temp_alloc_next_in, hook)
+            .map_err(|trap| {
+                self.phase = Phase::Faulted;
+                FaultContext {
+                    trap,
+                    task_id,
+                    instance_id,
+                }
+            })?;
+        self.debug_frame_count = frame_count;
+        self.debug_temp_alloc_next = temp_alloc_next;
+
+        match outcome {
+            ExecuteOutcome::Paused(reason) => {
+                self.phase = Phase::PausedAt(reason);
+                Ok(RoundOutcome::Paused(reason))
+            }
+            ExecuteOutcome::Completed => {
+                self.scan_count += 1;
+                self.phase = Phase::CompletedScan;
+                Ok(RoundOutcome::Completed)
+            }
+        }
+    }
+
+    /// Writes the monotonic uptime system variables before task execution,
+    /// if the loaded container declares them. Shared by [`run_round`] and
+    /// [`run_round_debug`] so the injection lives in exactly one place.
+    fn inject_system_uptime(&mut self, current_time_us: u64) {
+        if self.container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME == 0 {
+            return;
+        }
+        let time_ms = (current_time_us / 1000) as i64;
+        // __SYSTEM_UP_TIME at VarIndex(0): i32 milliseconds (wrapping)
+        self.variables
+            .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
+            .expect("system uptime variable must exist at index 0");
+        // __SYSTEM_UP_LTIME at VarIndex(1): i64 milliseconds (non-wrapping)
+        self.variables
+            .store(VarIndex::new(1), Slot::from_i64(time_ms))
+            .expect("system uptime variable must exist at index 1");
+    }
+
+    /// Runs one program instance's entry function through the shared dispatch
+    /// loop until it returns (`Completed`) or the hook pauses it (`Paused`).
+    ///
+    /// This is the single execution core behind both drivers:
+    /// - [`run_round`](Self::run_round) calls it per ready instance with
+    ///   [`NoopDebugHook`] and fresh `0` resume state (a production scan is
+    ///   never resumable, so the returned frame state is discarded);
+    /// - [`run_round_debug`](Self::run_round_debug) calls it once with a real
+    ///   hook and the *persisted* resume state, so a paused instance can
+    ///   continue on the next call.
+    ///
+    /// The caller owns all scheduling, watchdog, and instance-selection
+    /// policy; this method only builds the instance's [`VariableScope`] and
+    /// runs it. `frame_count` / `temp_alloc_next` are the resume state on
+    /// entry; the returned pair is the state after this run (advanced only
+    /// when the run paused mid-instance).
+    fn run_instance<H: DebugHook>(
+        &mut self,
+        instance_index: usize,
+        current_time_us: u64,
+        frame_count: usize,
+        temp_alloc_next: u16,
+        hook: &mut H,
+    ) -> Result<(ExecuteOutcome, usize, u16), Trap> {
+        let entry_function_id = self.program_instances[instance_index].entry_function_id;
+        let var_table_offset = self.program_instances[instance_index].var_table_offset;
+        let var_table_count = self.program_instances[instance_index].var_table_count;
+
+        let scope = VariableScope {
+            shared_globals_size: self.shared_globals_size,
+            instance_offset: var_table_offset,
+            instance_count: var_table_count,
+        };
+
+        let mut frame_count = frame_count;
+        let mut temp_alloc_next = temp_alloc_next;
+        let outcome = execute_with_hook(
+            self.container,
+            &mut self.stack,
+            &mut self.variables,
+            self.data_region,
+            self.temp_buf,
+            self.max_temp_buf_bytes,
+            self.frames,
+            &scope,
+            current_time_us,
+            entry_function_id,
+            &mut frame_count,
+            &mut temp_alloc_next,
+            #[cfg(feature = "profiling")]
+            &mut self.profile,
+            hook,
+        )?;
+        Ok((outcome, frame_count, temp_alloc_next))
+    }
+
+    /// Current debug-driver phase (see [`Phase`]).
+    pub fn phase(&self) -> Phase {
+        self.phase
+    }
+
+    /// The live call frames of a paused instance, outermost first.
+    ///
+    /// Empty unless the VM is paused ([`Phase::PausedAt`]). Lets a debugger
+    /// walk the stack — each [`Frame`] carries its `function_id` and `pc`
+    /// so `(function_id, pc)` pairs can be resolved against debug info.
+    pub fn debug_frames(&self) -> &[Frame] {
+        &self.frames[..self.debug_frame_count]
     }
 
     /// Reads a variable value as an i32.
@@ -642,7 +832,12 @@ fn execute(
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
     let mut hook = NoopDebugHook;
-    execute_with_hook(
+    // Fresh, non-resumable run: the frame stack starts empty (so the entry
+    // frame is pushed) and no temp-buffer allocations carry over. The noop
+    // hook can never pause, so `Completed` is the only reachable outcome.
+    let mut frame_count = 0usize;
+    let mut temp_alloc_next = 0u16;
+    match execute_with_hook(
         container,
         stack,
         variables,
@@ -653,10 +848,31 @@ fn execute(
         entry_scope,
         current_time_us,
         entry_function_id,
+        &mut frame_count,
+        &mut temp_alloc_next,
         #[cfg(feature = "profiling")]
         profile,
         &mut hook,
-    )
+    )? {
+        ExecuteOutcome::Completed => Ok(()),
+        ExecuteOutcome::Paused(_) => {
+            unreachable!("NoopDebugHook always returns HookAction::Continue")
+        }
+    }
+}
+
+/// Outcome of an [`execute_with_hook`] invocation.
+///
+/// `Completed` means the entry function's frame stack drained (the program
+/// returned). `Paused` means the debug hook requested a stop before an
+/// instruction executed; the frame stack, operand stack, and temp-buffer
+/// allocator position are all preserved so a later call can resume.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecuteOutcome {
+    /// The program returned normally.
+    Completed,
+    /// The hook paused execution before an instruction.
+    Paused(PauseReason),
 }
 
 /// Executes the entry function until its frame stack drains (program
@@ -688,25 +904,54 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     entry_scope: &VariableScope,
     current_time_us: u64,
     entry_function_id: FunctionId,
+    frame_count: &mut usize,
+    temp_alloc_next: &mut u16,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
     hook: &mut H,
-) -> Result<(), Trap> {
+) -> Result<ExecuteOutcome, Trap> {
     let mut temp_alloc = string_ops::TempBufAllocator::new(max_temp_buf_bytes);
-    let mut frame_stack = FrameStack::new(frames);
-    frame_stack.push(Frame {
-        function_id: entry_function_id,
-        pc: 0,
-        scope: *entry_scope,
-        temp_alloc_mark: 0,
-        fb_return: None,
-    })?;
+    // Restore the temp-buffer bump position captured at the last pause. On a
+    // fresh run this is 0 (nothing allocated yet).
+    temp_alloc.rewind_to(*temp_alloc_next);
+    let mut frame_stack = FrameStack::resume(frames, *frame_count);
+    if frame_stack.is_empty() {
+        // Fresh run: push the entry frame. When resuming a paused instance
+        // the frame stack is non-empty and the entry frame (plus any deeper
+        // frames) already survive in the backing slice.
+        frame_stack.push(Frame {
+            function_id: entry_function_id,
+            pc: 0,
+            scope: *entry_scope,
+            temp_alloc_mark: 0,
+            fb_return: None,
+        })?;
+    }
 
+    // Dispatch loop invariant
+    // ------------------------
+    // At the TOP of every iteration, the top frame's `pc` field is
+    // authoritative: it points at the next opcode to execute. Inside the
+    // iteration we copy it into the local `pc` and treat that local as the
+    // working position — it advances past the opcode (line `pc += 1`) and
+    // over any operand bytes (`read_u16_le(bytecode, &mut pc)`), while the
+    // frame's `pc` stays stale. `pc_dirty` tracks that gap: while it is true,
+    // the local `pc` is ahead of `frame.pc` and still needs committing.
+    //
+    // Exactly ONE of these reconciles the local `pc` back into the frame
+    // before the next iteration (or before returning), restoring the
+    // invariant:
+    //   1. Normal opcodes: `pc_dirty` stays true, so the end-of-iteration
+    //      writeback stores `pc` into the (unchanged) top frame.
+    //   2. CALL / FB_CALL: manually store the caller's advanced `pc`, push the
+    //      callee frame with `pc: 0`, then clear `pc_dirty` — the top frame is
+    //      no longer the one we snapshotted, so the default writeback must not
+    //      run.
+    //   3. RET / RET_VOID / fall-off-end: pop via `handle_frame_return` (the
+    //      revealed caller's `pc` is already correct), then clear `pc_dirty`.
+    //   4. Pause: store the *un-advanced* `pc` so the paused opcode re-executes
+    //      on resume, then return `Paused` without reaching the writeback.
     while !frame_stack.is_empty() {
-        // Snapshot the top frame's mutable state for this iteration.
-        // `pc` is the local working copy; we write it back to the frame
-        // at the end of the iteration unless dispatch pushed or popped
-        // a frame (in which case the frame stack top changed mid-arm
-        // and `pc` is not relevant to the new top).
+        // Snapshot the top frame's authoritative `pc` into the working copy.
         let (current_function_id, scope, mut pc) = {
             let top = frame_stack.top().expect("non-empty by loop condition");
             (top.function_id, top.scope, top.pc)
@@ -719,7 +964,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         if pc >= bytecode.len() {
             // Fell off the end of a function body without an explicit
             // RET — treat as RET_VOID.
-            handle_frame_return(&mut temp_alloc, &mut frame_stack, data_region, variables)?;
+            handle_frame_return(
+                &mut temp_alloc,
+                &mut frame_stack,
+                data_region,
+                variables,
+                hook,
+            )?;
             continue;
         }
 
@@ -727,17 +978,31 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         // Notify the debug hook before advancing pc so the hook sees the
         // offset of the opcode itself, not its operand bytes. With
         // NoopDebugHook this call is inlined away to nothing.
-        hook.before_instruction(current_function_id, pc, op);
+        match hook.before_instruction(current_function_id, pc, op) {
+            HookAction::Continue => {}
+            HookAction::Pause(reason) => {
+                // Invariant reconcile #4: store the *un-advanced* pc (we have
+                // not yet run `pc += 1`), so the paused opcode re-executes on
+                // resume. The frame stack and temp-allocator position are
+                // preserved so the caller can resume this instance later.
+                commit_pc(&mut frame_stack, pc);
+                *frame_count = frame_stack.len();
+                *temp_alloc_next = temp_alloc.next();
+                return Ok(ExecuteOutcome::Paused(reason));
+            }
+        }
         pc += 1;
 
         #[cfg(feature = "profiling")]
         profile.record(op);
 
-        // Set to false in arms that push or pop a frame; the post-match
-        // pc write-back is skipped in those cases so we never clobber a
-        // newly-pushed callee's `pc: 0` or a freshly-popped caller's
-        // already-correct `pc`.
-        let mut advance_pc = true;
+        // True while the local `pc` is ahead of the top frame's `pc` and still
+        // needs committing (see the dispatch-loop invariant above). Arms that
+        // push or pop a frame reconcile the stack themselves and set this to
+        // false, so the end-of-iteration writeback is skipped — otherwise it
+        // would clobber a newly-pushed callee's `pc: 0` or a freshly-popped
+        // caller's already-correct `pc`.
+        let mut pc_dirty = true;
 
         match op {
             // --- Load constants ---
@@ -1162,10 +1427,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 // `FrameStack::push` returns Trap::CallStackOverflow on
                 // capacity overflow — same trap as the old depth-counter
                 // check.
-                frame_stack
-                    .top_mut()
-                    .expect("non-empty: caller frame is still on stack")
-                    .pc = pc;
+                commit_pc(&mut frame_stack, pc);
+                hook.before_call(func_id);
                 frame_stack.push(Frame {
                     function_id: func_id,
                     pc: 0,
@@ -1173,14 +1436,24 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     temp_alloc_mark: temp_alloc.next(),
                     fb_return: None,
                 })?;
-                advance_pc = false;
+                // Reconcile #2: caller pc stored above, callee pushed with
+                // pc: 0 — the snapshotted frame is no longer on top.
+                pc_dirty = false;
             }
             opcode::RET => {
                 // Return value is already on the operand stack; just unwind
                 // this frame and let the caller frame (or outer-loop exit)
                 // resume.
-                handle_frame_return(&mut temp_alloc, &mut frame_stack, data_region, variables)?;
-                advance_pc = false;
+                handle_frame_return(
+                    &mut temp_alloc,
+                    &mut frame_stack,
+                    data_region,
+                    variables,
+                    hook,
+                )?;
+                // Reconcile #3: frame popped; the revealed caller's pc is
+                // already correct.
+                pc_dirty = false;
             }
             // --- String opcodes ---
             //
@@ -2105,10 +2378,8 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         // `fb_return` records what `handle_frame_return`
                         // needs to copy variable slots back to the data
                         // region after the FB body returns.
-                        frame_stack
-                            .top_mut()
-                            .expect("non-empty: caller frame is still on stack")
-                            .pc = pc;
+                        commit_pc(&mut frame_stack, pc);
+                        hook.before_call(func_id);
                         frame_stack.push(Frame {
                             function_id: func_id,
                             pc: 0,
@@ -2120,7 +2391,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                                 num_fields,
                             }),
                         })?;
-                        advance_pc = false;
+                        // Reconcile #2: caller pc stored above, FB frame
+                        // pushed with pc: 0 — snapshotted frame no longer top.
+                        pc_dirty = false;
                     }
                 }
             }
@@ -2295,28 +2568,54 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     .copy_from_slice(&value_slot.as_i64().to_le_bytes());
             }
             opcode::RET_VOID => {
-                handle_frame_return(&mut temp_alloc, &mut frame_stack, data_region, variables)?;
-                advance_pc = false;
+                handle_frame_return(
+                    &mut temp_alloc,
+                    &mut frame_stack,
+                    data_region,
+                    variables,
+                    hook,
+                )?;
+                // Reconcile #3: frame popped; the revealed caller's pc is
+                // already correct.
+                pc_dirty = false;
             }
             _ => {
                 return Err(Trap::InvalidInstruction(op));
             }
         }
 
-        if advance_pc {
-            // Write the working `pc` back to the frame we entered this
-            // iteration with. CALL / RET / FB_CALL-user-branch arms set
-            // `advance_pc = false` because they have already updated
-            // the stack and the top frame is no longer the one we
-            // started with.
-            frame_stack
-                .top_mut()
-                .expect("non-empty: advance_pc=true means no push/pop happened")
-                .pc = pc;
+        if pc_dirty {
+            // Reconcile #1 (the common case): commit the working `pc` back to
+            // the frame we snapshotted at the top of the iteration. Push/pop
+            // arms cleared `pc_dirty`, so this never clobbers a newly-pushed
+            // callee's `pc: 0` or a freshly-popped caller's already-correct pc.
+            commit_pc(&mut frame_stack, pc);
         }
     }
 
-    Ok(())
+    // The frame stack drained: the program returned. Record the (empty)
+    // frame count and temp-allocator position so a subsequent fresh scan
+    // starts from a clean slate.
+    *frame_count = frame_stack.len();
+    *temp_alloc_next = temp_alloc.next();
+    Ok(ExecuteOutcome::Completed)
+}
+
+/// Commit the dispatch loop's working `pc` back onto the topmost frame.
+///
+/// This is the single "store pc to the frame" operation behind every
+/// reconcile point in [`execute_with_hook`] (the normal end-of-iteration
+/// writeback, the CALL / FB_CALL caller-save, and the pause path). Folding
+/// them here keeps all four spellings identical and greppable.
+///
+/// Panics if the frame stack is empty; every caller holds the loop invariant
+/// that a frame is live at the commit point.
+#[inline(always)]
+fn commit_pc(frame_stack: &mut FrameStack, pc: usize) {
+    frame_stack
+        .top_mut()
+        .expect("commit_pc requires a non-empty frame stack")
+        .pc = pc;
 }
 
 /// Pops the topmost frame, rewinds the temp-buffer allocator to the
@@ -2324,12 +2623,16 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
 /// into the FB instance's data-region fields.
 ///
 /// Used by `RET`, `RET_VOID`, and the implicit-return path (running off
-/// the end of a function body) inside the iterative dispatch loop.
-fn handle_frame_return(
+/// the end of a function body) inside the iterative dispatch loop. This is
+/// the single choke point for frame pops, so [`DebugHook::after_return`]
+/// fires here exactly once per pop — keeping a hook's depth counter in
+/// lock-step with `frame_stack.len()`.
+fn handle_frame_return<H: DebugHook>(
     temp_alloc: &mut string_ops::TempBufAllocator,
     frame_stack: &mut FrameStack,
     data_region: &mut [u8],
     variables: &mut VariableTable,
+    hook: &mut H,
 ) -> Result<(), Trap> {
     let popped = frame_stack
         .pop()
@@ -2339,6 +2642,11 @@ fn handle_frame_return(
     if let Some(fbr) = popped.fb_return {
         fbr.copy_out(variables, data_region)?;
     }
+
+    // Notify the hook after the pop, passing the function control returns
+    // to — or `None` when the outermost frame just returned.
+    let returning_to = frame_stack.top().map(|f| f.function_id);
+    hook.after_return(returning_to);
 
     Ok(())
 }

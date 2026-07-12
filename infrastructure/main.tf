@@ -16,12 +16,26 @@ terraform {
       source  = "integrations/github"
       version = "~> 6.0"
     }
+    posthog = {
+      source  = "PostHog/posthog"
+      version = "~> 1.0"
+    }
   }
 }
 
 provider "github" {
   token = var.github_token
   owner = var.github_owner
+}
+
+# PostHog product-analytics dashboard (see posthog.tf). api_key is a
+# personal API key with insight:write + dashboard:write scopes, supplied
+# as the sensitive HCP workspace variable `posthog_api_key`. host is the
+# app host (https://us.posthog.com), not the ingestion host.
+provider "posthog" {
+  api_key    = var.posthog_api_key
+  host       = var.posthog_host
+  project_id = var.posthog_project_id
 }
 
 # ---------------------------------------------------------------------------
