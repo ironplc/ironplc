@@ -7,12 +7,13 @@
 #    2. Create the changes
 
 on:
-  # Automatically try to update every Friday at 19:00
-  # The idea is we do this before Dependabot's weekend run (so Dependabot finds
-  # nothing left to update individually) and before the weekly build on Monday
-  # so that the weekly build contains updated dependencies.
+  # Automatically try to update every Saturday at 02:00 UTC.
+  # The idea is we do this before Dependabot's Saturday 06:00 UTC run (so
+  # Dependabot finds nothing left to update individually) and before the
+  # weekly build on Monday so that the weekly build contains updated
+  # dependencies.
   schedule:
-      - cron: '0 19 * * 5'
+      - cron: '0 2 * * 6'
   # Allow triggering directly
   workflow_dispatch:
     inputs:
