@@ -11,6 +11,10 @@
 #     run_started, run_stopped, example_loaded  (playground)
 #   with super-properties: dialect, host_page, example_name, program_origin.
 #
+# compile_finished carries error_codes (the diagnostic codes of a failed
+# compile) but never the program source, so error-code tiles reveal WHY
+# compiles fail without exposing anyone's code.
+#
 # Install-adoption tiles (install_completed / release_downloads / Open VSX)
 # depend on collectors not built yet and are left as commented stubs at the
 # bottom.
@@ -251,9 +255,34 @@ resource "posthog_insight" "broken_docs_examples" {
   })
 }
 
+resource "posthog_insight" "top_compile_error_codes" {
+  name          = "Top compile error codes"
+  description   = "Diagnostic codes (e.g. P####) from failed playground compiles, ranked by frequency. Reveals why compiles fail without capturing any program source — only the error code is collected."
+  dashboard_ids = [posthog_dashboard.adoption.id]
+  tags          = local.ph_tags
+
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind = "TrendsQuery"
+      series = [{
+        kind       = "EventsNode"
+        event      = "compile_finished"
+        name       = "compile_finished"
+        math       = "total"
+        properties = [{ key = "success", type = "event", operator = "exact", value = [false] }]
+      }]
+      interval        = "week"
+      dateRange       = { date_from = local.ph_date_from }
+      breakdownFilter = { breakdowns = [{ property = "error_codes", type = "event" }] }
+      trendsFilter    = { display = "ActionsBarValue" }
+    }
+  })
+}
+
 resource "posthog_insight" "top_error_codes" {
-  name          = "Top error codes"
-  description   = "Error codes from runs that stopped on an error."
+  name          = "Top runtime error codes"
+  description   = "Error codes from runs that stopped on an error while executing (as opposed to failing to compile)."
   dashboard_ids = [posthog_dashboard.adoption.id]
   tags          = local.ph_tags
 
