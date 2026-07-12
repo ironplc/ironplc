@@ -46,13 +46,34 @@ export function makeWorkspace(prefix, config) {
 /// OpenCode create its session there instead of in `cwd`, missing the inline
 /// provider config and failing with ProviderModelNotFoundError. Keep PWD in
 /// sync with cwd so OpenCode anchors to the workspace we set up.
+///
+/// Each invocation also gets a private `XDG_DATA_HOME`. OpenCode keeps a
+/// machine-global SQLite state DB under it (`~/.local/share/opencode/
+/// opencode.db`) that is shared across every OpenCode version on the host. A DB
+/// written by a different OpenCode version fails the run at the first prompt
+/// with `SQLiteError: no such column: ...` — before the model is ever reached —
+/// which a clean CI runner never hits but a developer's machine does. Pointing
+/// the data home at a fresh per-run temp dir makes the test hermetic: OpenCode
+/// builds a clean DB with the schema its own version expects, and the run never
+/// depends on (or corrupts) the developer's real OpenCode state. A caller may
+/// still override `XDG_DATA_HOME` via `env`.
 export function runOpencode(args, { cwd, timeoutMs = 120000, env = {} } = {}) {
-  return spawnSync(opencodeBin(), args, {
-    cwd,
-    timeout: timeoutMs,
-    encoding: "utf8",
-    env: { ...process.env, ...(cwd ? { PWD: cwd } : {}), ...env },
-  });
+  const xdgDataHome = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-xdg-"));
+  try {
+    return spawnSync(opencodeBin(), args, {
+      cwd,
+      timeout: timeoutMs,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        XDG_DATA_HOME: xdgDataHome,
+        ...(cwd ? { PWD: cwd } : {}),
+        ...env,
+      },
+    });
+  } finally {
+    fs.rmSync(xdgDataHome, { recursive: true, force: true });
+  }
 }
 
 /// Strip ANSI escape sequences so we can match against OpenCode's TUI output.
@@ -155,13 +176,37 @@ export function toolWasInvoked(recordLog) {
 
 /// The compiler responded when the server emitted a check result (which always
 /// carries an `ok` field and, for a broken program, diagnostics).
+///
+/// The result travels as an MCP `tools/call` response whose payload is nested:
+/// the compiler's JSON is serialized into a `content[].text` string, so its
+/// quotes arrive escaped (`\"diagnostics\"`). Parse the JSON-RPC envelope and
+/// inspect the decoded text rather than regexing the escaped bytes.
 export function compilerResponded(recordLog) {
+  let text;
   try {
-    const text = fs.readFileSync(`${recordLog}.out`, "utf8");
-    return /"diagnostics"/.test(text) || /"ok"\s*:/.test(text);
+    text = fs.readFileSync(`${recordLog}.out`, "utf8");
   } catch {
     return false;
   }
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let message;
+    try {
+      message = JSON.parse(trimmed);
+    } catch {
+      continue; // a framed/partial line we cannot parse on its own
+    }
+    const content = message?.result?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block?.type !== "text" || typeof block.text !== "string") continue;
+      if (/"diagnostics"/.test(block.text) || /"ok"\s*:/.test(block.text)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /// Parse the newline-delimited JSON-RPC messages OpenCode sent to the server and

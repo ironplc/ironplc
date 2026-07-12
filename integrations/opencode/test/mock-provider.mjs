@@ -17,7 +17,9 @@
 // Run directly (`node test/mock-provider.mjs`) to serve until killed, printing
 // the base URL; or import `startMockProvider()` to embed it in a test.
 
+import { spawn } from "node:child_process";
 import http from "node:http";
+import { fileURLToPath } from "node:url";
 
 // Mirror the real lane: a deliberately broken IEC 61131-3 program so the
 // compiler returns diagnostics.
@@ -199,7 +201,91 @@ export function startMockProvider() {
   });
 }
 
-// When run directly, serve until killed so the mock can be probed by hand.
+/// Start the mock provider in a SEPARATE process and resolve to the same
+/// `{ url, close }` shape as `startMockProvider()`.
+///
+/// This indirection is essential, not incidental. The test harness reaches
+/// OpenCode through `runOpencode()` -> `spawnSync`, which blocks the Node event
+/// loop for the entire lifetime of the OpenCode child. An in-process HTTP
+/// server (`startMockProvider()`) can therefore never run its request callback
+/// while OpenCode is executing: OpenCode's TCP connection lands in the kernel
+/// backlog but is never answered, its provider fetch fails with
+/// `AI_APICallError` / `AI_RetryError`, the model never returns a tool call, and
+/// the run hangs until the timeout kills it. Giving the provider its own process
+/// gives it its own event loop, so it can serve requests while `spawnSync`
+/// blocks the harness. Keep this out-of-process for the mock lane.
+export function startMockProviderProcess() {
+  const self = fileURLToPath(import.meta.url);
+  const child = spawn(process.execPath, [self], {
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+
+  // Guarantee the child dies with us. Callers drive OpenCode with
+  // `process.exit()`, which bypasses `finally { await mock.close() }` — an
+  // async cleanup can never run once the event loop is torn down. Without this,
+  // the provider would be orphaned, and because it inherits our stderr it would
+  // hold that pipe open, hanging any parent (e.g. `npm run`) that reads it. The
+  // "exit" event fires on `process.exit()` and allows synchronous work, so kill
+  // the child here as a last resort.
+  const killChild = () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    }
+  };
+  process.once("exit", killChild);
+
+  return new Promise((resolve, reject) => {
+    let stdout = "";
+    let settled = false;
+
+    const close = () =>
+      new Promise((done) => {
+        process.removeListener("exit", killChild);
+        if (child.exitCode !== null || child.signalCode !== null) {
+          done();
+          return;
+        }
+        child.once("exit", () => done());
+        child.kill("SIGTERM");
+      });
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      const match = stdout.match(/listening:\s*(\S+)/);
+      if (match && !settled) {
+        settled = true;
+        resolve({ url: match[1], close });
+      }
+    });
+
+    child.once("error", (err) => {
+      if (!settled) {
+        settled = true;
+        reject(err);
+      }
+    });
+
+    child.once("exit", (code, signal) => {
+      if (!settled) {
+        settled = true;
+        reject(
+          new Error(
+            `mock provider process exited before it began listening ` +
+              `(code=${code}, signal=${signal})`,
+          ),
+        );
+      }
+    });
+  });
+}
+
+// When run directly, serve until killed so the mock can be probed by hand and so
+// `startMockProviderProcess()` can spawn this file and read the base URL. The
+// "listening: <url>" shape is the contract that spawner parses — keep it stable.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { url } = await startMockProvider();
   console.log(`mock provider listening: ${url}`);
