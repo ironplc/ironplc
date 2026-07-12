@@ -114,20 +114,17 @@ jobs:
     with:
       compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
 
-  # TODO: Re-enable once OpenCode reliably passes in the release build.
-  # The reusable workflow (.github/workflows/partial_opencode_e2e.yaml) is
-  # retained but is no longer wired into the deployment pipeline.
-  # opencode-e2e-test:
-  #   name: OpenCode Integration E2E Test
-  #   # Install the just-published compiler and verify the ironplcmcp MCP server
-  #   # works with the OpenCode agent: a connectivity check plus a real-agent run
-  #   # against a local Ollama model.
-  #   needs: [release, publish-prerelease]
-  #   uses: ./.github/workflows/partial_opencode_e2e.yaml
-  #   if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
-  #   with:
-  #     compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
-  #     model: "qwen2.5:1.5b"
+  opencode-e2e-test:
+    name: OpenCode Integration E2E Test
+    # Install the just-published compiler and verify the ironplcmcp MCP server
+    # works with the OpenCode agent: a connectivity check plus a real-agent run
+    # against a local Ollama model.
+    needs: [release, upload-release-artifacts]
+    uses: ./.github/workflows/partial_opencode_e2e.yaml
+    if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
+    with:
+      compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
+      model: "qwen2.5:1.5b"
 
   playground-e2e-test:
     name: Playground E2E Test
@@ -142,7 +139,7 @@ jobs:
     # if those are failing so we depend on those. In particular,
     # install-script-smoke-test must pass before we publish the
     # docs site, because the site serves install.sh.
-    needs: [release, smoke-test, install-script-smoke-test, playground-e2e-test]
+    needs: [release, smoke-test, install-script-smoke-test, opencode-e2e-test, playground-e2e-test]
     # peaceiris/actions-gh-pages pushes the gh-pages branch via GITHUB_TOKEN.
     permissions:
       contents: write
