@@ -59,6 +59,11 @@ _ci-publish-workflow-unix:
 ci-update-dependencies-workflow:
   act workflow_dispatch --workflows ./.github/workflows/update.yaml --verbose
 
+# Lint the GitHub Actions workflows with actionlint. Run this to verify any
+# changes to files under .github/workflows/.
+check-actions:
+  actionlint
+
 get-next-version type:
   #! /bin/bash
   RE='[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)'
