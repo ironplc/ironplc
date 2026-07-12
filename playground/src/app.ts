@@ -134,6 +134,22 @@ let stepInFlight = false;
 let previousValues: Map<number, string> = new Map();
 let compilerVersion = "";
 let currentIntervalMs = 500;
+// The exact source last handed to the compiler. Captured on Start so a report
+// reflects what actually produced the diagnostics, even if the user keeps
+// typing afterwards.
+let lastCompiledSource = "";
+
+// Diagnostic codes for which we surface the "Submit Code" affordance. P9999
+// ("capability not implemented yet") can only be fixed once we can see the
+// program that triggered it, so we ask the user to send it. Extend this set to
+// offer submission for other codes.
+const REPORTABLE_CODES = new Set<string>(["P9999"]);
+
+// Cap the source we transmit so a pathological paste can't bloat an event.
+const MAX_REPORT_SOURCE_CHARS = 50000;
+// Keep the prefilled GitHub issue URL under a length browsers reliably accept.
+const MAX_GITHUB_URL_CHARS = 7000;
+const GITHUB_NEW_ISSUE_URL = "https://github.com/ironplc/ironplc/issues/new";
 
 // --- URL parameter handling ---
 
@@ -577,6 +593,7 @@ function resetTransportButtons(): void {
 
 startBtn.addEventListener("click", async () => {
   const source = editor.value;
+  lastCompiledSource = source;
   const intervalMs = getIntervalMs();
   const cycleTimeUs = intervalMs * 1000;
   const programLines = source.split("\n").length;
@@ -859,7 +876,115 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
     }
     html += "</div>";
   }
+
+  const reportable = diagnostics.filter((d) => REPORTABLE_CODES.has(d.code));
+  if (reportable.length > 0) {
+    html += reportPanelHtml(reportable);
+  }
+
   diagnosticsPanel.innerHTML = html;
+
+  if (reportable.length > 0) {
+    wireReportPanel(reportable);
+  }
+}
+
+// --- P9999 "Submit Code" reporting ---
+//
+// P9999 means the program uses a capability the compiler cannot yet handle. We
+// can only prioritize and fix it if we can see the program, so we invite the
+// user to send it. Two things are non-negotiable in the UX:
+//   1. The button says exactly what happens: "Submit Code".
+//   2. A consent line makes clear the program is shared and MAY BECOME PUBLIC
+//      (this holds for the PostHog path and the GitHub path alike).
+// Source is only ever transmitted on the explicit click below — never
+// automatically.
+
+const REPORT_CONSENT_HTML =
+  "Submitting sends the program in the editor to the IronPLC team so we can add " +
+  "support for it. <strong>Your code may be published publicly</strong> — for " +
+  "example in a GitHub issue. Don’t submit anything confidential.";
+
+function reportPanelHtml(reportable: Diagnostic[]): string {
+  const codes = extractErrorCodes(reportable).join(", ");
+  return (
+    '<div class="report-panel" data-testid="report-panel">' +
+    `<p class="report-title">${escapeHtml(codes)}: this isn’t supported yet. Help us add it.</p>` +
+    `<p class="report-consent">${REPORT_CONSENT_HTML}</p>` +
+    '<div class="report-actions">' +
+    '<button type="button" class="submit-code-btn" data-testid="submit-code-btn">Submit Code</button>' +
+    `<a class="report-github-link" data-testid="report-github-link" target="_blank" rel="noopener" href="${escapeHtml(buildGithubIssueUrl(reportable))}">or open a GitHub issue</a>` +
+    "</div>" +
+    "</div>"
+  );
+}
+
+function wireReportPanel(reportable: Diagnostic[]): void {
+  const btn = diagnosticsPanel.querySelector(
+    ".submit-code-btn",
+  ) as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    submitCodeReport(reportable);
+    const panel = diagnosticsPanel.querySelector(".report-panel");
+    if (panel) {
+      panel.innerHTML =
+        '<p class="report-confirmation" data-testid="report-confirmation">' +
+        "✓ Thank you — your code was submitted. We’ll use it to add support." +
+        "</p>";
+    }
+  });
+}
+
+function submitCodeReport(reportable: Diagnostic[]): void {
+  const source = lastCompiledSource;
+  const truncated = source.length > MAX_REPORT_SOURCE_CHARS;
+  capture("todo_report_submitted", {
+    error_codes: extractErrorCodes(reportable),
+    error_count: reportable.length,
+    program: truncated ? source.slice(0, MAX_REPORT_SOURCE_CHARS) : source,
+    program_chars: source.length,
+    program_lines: source.split("\n").length,
+    program_truncated: truncated,
+    // Labels carry the compiler `file#Lline` of each unimplemented site.
+    diagnostic_labels: reportable.map((d) => d.label || ""),
+    dialect: getDialect(),
+    allows: getAllows(),
+    compiler_version: compilerVersion,
+  });
+}
+
+// Build a prefilled "new issue" URL. We include the source inline when it fits
+// under the URL length limit; otherwise we ask the user to attach it. The
+// consent line above the button already covers that this becomes public.
+function buildGithubIssueUrl(reportable: Diagnostic[]): string {
+  const source = lastCompiledSource;
+  const labels = reportable
+    .map((d) => d.label)
+    .filter((l): l is string => !!l)
+    .map((l) => `- ${l}`)
+    .join("\n");
+  const header =
+    "**What happened**\nThe playground reported P9999 (a capability the " +
+    "compiler doesn’t support yet) for this program.\n\n" +
+    (labels ? `**Compiler locations**\n${labels}\n\n` : "") +
+    `**Compiler version:** ${compilerVersion || "unknown"}\n` +
+    `**Dialect:** ${getDialect() || "default"}\n` +
+    (getAllows() ? `**Allows:** ${getAllows()}\n` : "");
+
+  const withProgram =
+    header + `\n**Program**\n\`\`\`iecst\n${source}\n\`\`\`\n`;
+  const withoutProgram =
+    header +
+    "\n**Program**\nThe program is too large to prefill here — please " +
+    "attach the source file to this issue.\n";
+
+  const base = `${GITHUB_NEW_ISSUE_URL}?labels=${encodeURIComponent("P9999")}&title=${encodeURIComponent("P9999 - Compiler To Do")}`;
+  const candidate = `${base}&body=${encodeURIComponent(withProgram)}`;
+  if (candidate.length <= MAX_GITHUB_URL_CHARS) {
+    return candidate;
+  }
+  return `${base}&body=${encodeURIComponent(withoutProgram)}`;
 }
 
 function activateTab(tabName: string): void {

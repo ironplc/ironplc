@@ -15,6 +15,12 @@
 # compile) but never the program source, so error-code tiles reveal WHY
 # compiles fail without exposing anyone's code.
 #
+# The one exception is todo_report_submitted: fired only when a user clicks
+# "Submit Code" on a P9999 diagnostic, it DOES carry the program source (in the
+# `program` property) because fixing P9999 requires seeing the program. That
+# transmission is explicit and consented — the button and its consent line tell
+# the user their code is shared and may become public — never automatic.
+#
 # Install-adoption tiles (install_completed / release_downloads / Open VSX)
 # depend on collectors not built yet and are left as commented stubs at the
 # bottom.
@@ -276,6 +282,29 @@ resource "posthog_insight" "top_compile_error_codes" {
       dateRange       = { date_from = local.ph_date_from }
       breakdownFilter = { breakdowns = [{ property = "error_codes", type = "event" }] }
       trendsFilter    = { display = "ActionsBarValue" }
+    }
+  })
+}
+
+resource "posthog_insight" "todo_report_submissions" {
+  name          = "P9999 code submissions"
+  description   = "Programs users chose to submit (via the playground \"Submit Code\" button) after hitting P9999 — the capability-not-implemented error. Each event carries the program source so the reported feature can be added. Unlike the error-code tiles, this event intentionally includes source, transmitted only on explicit, consented user action."
+  dashboard_ids = [posthog_dashboard.adoption.id]
+  tags          = local.ph_tags
+
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind = "TrendsQuery"
+      series = [{
+        kind  = "EventsNode"
+        event = "todo_report_submitted"
+        name  = "todo_report_submitted"
+        math  = "total"
+      }]
+      interval     = "week"
+      dateRange    = { date_from = local.ph_date_from }
+      trendsFilter = { display = "ActionsLineGraph" }
     }
   })
 }
