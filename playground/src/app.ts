@@ -1,6 +1,7 @@
 import uPlot from "./uPlot.esm.js";
 import type {
   Diagnostic,
+  Dialect,
   RunResult,
   Variable,
   WorkerRequest,
@@ -330,11 +331,22 @@ if (isEmbed) {
 
 // Set dialect from URL parameter (used by embed/Sphinx directives).
 // Also supports the legacy "edition" parameter for backwards compatibility.
+// Legacy year-based values map onto the canonical dialect names.
+const LEGACY_DIALECTS: Record<string, string> = {
+  "2003": "iec61131-3-ed2",
+  "2013": "iec61131-3-ed3",
+};
 const dialectParam = params.get("dialect") || params.get("edition");
-if (dialectParam === "2013") {
-  dialectSelect.value = "2013";
-  dialectBadge.textContent = "IEC 61131-3:2013";
-  dialectBadge.classList.add("visible");
+if (dialectParam) {
+  const resolved = LEGACY_DIALECTS[dialectParam] ?? dialectParam;
+  const option = Array.from(dialectSelect.options).find(
+    (o) => o.value === resolved,
+  );
+  if (option) {
+    dialectSelect.value = resolved;
+    dialectBadge.textContent = option.textContent ?? resolved;
+    dialectBadge.classList.add("visible");
+  }
 }
 
 // `allows` is a comma-separated list of feature flag short names — the part
@@ -347,7 +359,8 @@ const allowsParam = (params.get("allows") || "")
 if (allowsParam.length > 0) {
   dialectBadge.textContent = "Custom";
   const flagList = allowsParam.map((s) => `--allow-${s}`).join(", ");
-  const dialectLabel = dialectParam === "2013" ? "IEC 61131-3:2013" : "default";
+  const dialectLabel =
+    dialectSelect.options[dialectSelect.selectedIndex]?.textContent ?? "default";
   dialectBadge.title = `${dialectLabel} + ${flagList}`;
   dialectBadge.classList.add("visible");
 }
@@ -631,7 +644,7 @@ startBtn.addEventListener("click", async () => {
   const allows = getAllows();
   const compileStart = performance.now();
   capture("compile_attempted", { trigger: "manual" });
-  const loadMsg = await postCommand({ command: "load_program", source, cycleTimeUs, dialect: dialect as "" | "2003" | "2013", allows });
+  const loadMsg = await postCommand({ command: "load_program", source, cycleTimeUs, dialect: dialect as Dialect, allows });
   const compileDurationMs = performance.now() - compileStart;
 
   if (loadMsg.type === "error") {
@@ -897,6 +910,9 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
     html += `<span class="diagnostic-message">${message}</span>`;
     if (d.start_line > 0 && d.start_column > 0) {
       html += `<span class="diagnostic-location">line ${d.start_line}, column ${d.start_column}</span>`;
+    }
+    for (const note of d.help ?? []) {
+      html += `<span class="diagnostic-help">${escapeHtml(note)}</span>`;
     }
     html += "</div>";
   }

@@ -349,6 +349,7 @@ fn map_diagnostic(
         .with_code(diagnostic.code.clone())
         .with_message(description)
         .with_labels(labels)
+        .with_notes(diagnostic.help().to_vec())
 }
 
 fn map_label(

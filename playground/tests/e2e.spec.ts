@@ -421,10 +421,10 @@ END_PROGRAM
     await expect(page.locator('[data-testid="examples-select"]')).toBeHidden();
   });
 
-  test("dialect_select_when_loaded_then_defaults_to_2003", async ({ page }) => {
+  test("dialect_select_when_loaded_then_defaults_to_ed2", async ({ page }) => {
     const select = page.locator('[data-testid="dialect-select"]');
     await expect(select).toBeVisible();
-    await expect(select).toHaveValue("2003");
+    await expect(select).toHaveValue("iec61131-3-ed2");
   });
 
   test("dialect_select_when_embed_mode_then_hidden", async ({ page }) => {
@@ -444,7 +444,7 @@ END_PROGRAM
 
     const badge = page.locator('[data-testid="dialect-badge"]');
     await expect(badge).toBeVisible();
-    await expect(badge).toHaveText("IEC 61131-3:2013");
+    await expect(badge).toHaveText("IEC 61131-3 Ed. 3");
   });
 
   test("dialect_badge_when_allows_set_then_shows_custom_with_tooltip", async ({ page }) => {
@@ -458,7 +458,7 @@ END_PROGRAM
     await expect(badge).toHaveText("Custom");
     await expect(badge).toHaveAttribute(
       "title",
-      "IEC 61131-3:2013 + --allow-sizeof, --allow-c-style-comments",
+      "IEC 61131-3 Ed. 3 + --allow-sizeof, --allow-c-style-comments",
     );
   });
 
@@ -490,7 +490,7 @@ END_PROGRAM
     const editor = page.locator('[data-testid="editor"]');
     const select = page.locator('[data-testid="dialect-select"]');
 
-    await select.selectOption("2013");
+    await select.selectOption("iec61131-3-ed3");
     await editor.fill(`PROGRAM main
   VAR
     duration : LTIME;

@@ -45,23 +45,36 @@ thread_local! {
     static SESSION: RefCell<Option<VmSession>> = const { RefCell::new(None) };
 }
 
+/// Resolve a playground dialect string to a [`Dialect`].
+///
+/// Accepts the canonical [`Dialect::cli_name`] values (`"iec61131-3-ed2"`,
+/// `"iec61131-3-ed3"`, `"rusty"`, `"codesys"`) as well as the legacy `"2003"`
+/// and `"2013"` aliases used by older embeds and Sphinx directives.
+///
+/// The empty string (and any unrecognized value) resolves to the RuSTy
+/// dialect, which enables all vendor extensions. This keeps the many existing
+/// documentation embeds that omit a dialect working, since they rely on the
+/// lenient default to explore non-standard features without toggling flags.
+fn dialect_from(dialect: &str) -> Dialect {
+    match dialect {
+        "2003" => Dialect::Iec61131_3Ed2,
+        "2013" => Dialect::Iec61131_3Ed3,
+        "" => Dialect::Rusty,
+        other => other.parse().unwrap_or(Dialect::Rusty),
+    }
+}
+
 /// Build [`CompilerOptions`] from a dialect string and an optional list of
 /// `--allow-*` feature flags layered on top.
 ///
-/// `"2013"` selects the IEC 61131-3 Edition 3 dialect.
-/// Any other value (including empty) uses the RuSTy dialect, which enables
-/// all vendor extensions so playground users can explore non-standard
-/// features without toggling flags.
+/// The dialect string is resolved by [`dialect_from`]; see that function for
+/// the accepted values and the lenient default.
 ///
 /// `allows` is a comma-separated list of feature short names — the part
 /// after `--allow-` in the CLI flag, e.g. `"sizeof,c-style-comments"`.
 /// Unknown names are ignored.
 fn compiler_options_from(dialect: &str, allows: &str) -> CompilerOptions {
-    let mut options = if dialect == "2013" {
-        CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
-    } else {
-        CompilerOptions::from_dialect(Dialect::Rusty)
-    };
+    let mut options = CompilerOptions::from_dialect(dialect_from(dialect));
     for name in allows.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         let cli_flag = format!("--allow-{name}");
         if let Some(fd) = CompilerOptions::FEATURE_DESCRIPTORS
@@ -108,6 +121,10 @@ struct DiagnosticInfo {
     message: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     label: String,
+    /// Guidance on how to resolve the problem (e.g. "use `(* *)` comments").
+    /// Empty when the diagnostic carries no help notes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    help: Vec<String>,
     start_line: u32,
     start_column: u32,
     end_line: u32,
@@ -136,6 +153,7 @@ fn diagnostic_info(diag: &Diagnostic, source: &str) -> DiagnosticInfo {
         code: diag.code.clone(),
         message: diag.description(),
         label: diag.primary.message.clone(),
+        help: diag.help().to_vec(),
         start_line: start.line + 1,
         start_column: start.column + 1,
         end_line: end.line + 1,
@@ -524,6 +542,7 @@ fn compile_inner(source: &str, dialect: &str, allows: &str) -> CompileResult {
                 code: "INTERNAL".to_string(),
                 message: format!("Failed to serialize bytecode: {e}"),
                 label: String::new(),
+                help: Vec::new(),
                 start_line: 1,
                 start_column: 1,
                 end_line: 1,
@@ -1830,6 +1849,63 @@ END_PROGRAM
 ";
         let result: CompileResult =
             serde_json::from_str(&compile(source, "2013", " sizeof , c-style-comments ")).unwrap();
+        assert!(result.ok, "Expected ok but got: {:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn dialect_from_when_canonical_names_then_resolves() {
+        assert_eq!(dialect_from("iec61131-3-ed2"), Dialect::Iec61131_3Ed2);
+        assert_eq!(dialect_from("iec61131-3-ed3"), Dialect::Iec61131_3Ed3);
+        assert_eq!(dialect_from("rusty"), Dialect::Rusty);
+        assert_eq!(dialect_from("codesys"), Dialect::Codesys);
+    }
+
+    #[test]
+    fn dialect_from_when_legacy_aliases_then_resolves() {
+        assert_eq!(dialect_from("2003"), Dialect::Iec61131_3Ed2);
+        assert_eq!(dialect_from("2013"), Dialect::Iec61131_3Ed3);
+    }
+
+    #[test]
+    fn dialect_from_when_empty_or_unknown_then_defaults_to_rusty() {
+        assert_eq!(dialect_from(""), Dialect::Rusty);
+        assert_eq!(dialect_from("not-a-dialect"), Dialect::Rusty);
+    }
+
+    #[test]
+    fn compile_when_ed2_and_cstyle_comment_then_error_carries_help() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  // C-style comment
+  x := 1;
+END_PROGRAM
+";
+        let result: CompileResult =
+            serde_json::from_str(&compile(source, "iec61131-3-ed2", "")).unwrap();
+        assert!(!result.ok);
+        let cstyle = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "P0004")
+            .expect("expected a P0004 diagnostic");
+        assert!(!cstyle.help.is_empty());
+    }
+
+    #[test]
+    fn compile_when_codesys_and_cstyle_comment_then_ok() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  // C-style comment
+  x := 1;
+END_PROGRAM
+";
+        let result: CompileResult = serde_json::from_str(&compile(source, "codesys", "")).unwrap();
         assert!(result.ok, "Expected ok but got: {:?}", result.diagnostics);
     }
 }

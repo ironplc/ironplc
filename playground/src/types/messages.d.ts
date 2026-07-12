@@ -4,7 +4,17 @@
 // dispatches into the WASM crate and posts back WorkerResponse. The WASM crate
 // returns JSON strings that app.ts parses into RunResult / LoadResult.
 
-export type Dialect = "" | "2003" | "2013";
+// Canonical dialect names (matching the compiler's `Dialect::cli_name`), plus
+// the legacy year-based aliases and the unset default ("") for backwards
+// compatibility with older embeds and Sphinx directives.
+export type Dialect =
+  | "iec61131-3-ed2"
+  | "iec61131-3-ed3"
+  | "rusty"
+  | "codesys"
+  | "2003"
+  | "2013"
+  | "";
 
 export interface CompileRequest {
   id: number;
@@ -89,6 +99,8 @@ export interface Diagnostic {
   code: string;
   message: string;
   label?: string;
+  /** Guidance on how to resolve the problem (e.g. "use `(* *)` comments"). */
+  help?: string[];
   start_line: number;
   start_column: number;
   /** Compiler source file that produced the diagnostic (P9999/P9998 family). */

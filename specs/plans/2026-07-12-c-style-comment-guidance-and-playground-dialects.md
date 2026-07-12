@@ -52,10 +52,15 @@ Two independent, composable changes:
 
 ## Decisions
 
-- **Default stays lenient (`rusty`).** Flipping the empty-string default to
-  strict `ed2` would break the majority of the 127 doc embeds that use vendor
-  syntax without declaring a dialect. The improved diagnostic covers strict
-  dialects, the CLI, and the LSP — where the default *is* strict.
+- **Doc embeds stay lenient; the interactive default becomes honest `ed2`.**
+  These are decoupled: the ~127 doc embeds send an *empty* dialect string
+  (which `dialect_from` maps to `rusty`, unchanged, so none regress), while the
+  interactive dropdown sends its own selected value. The dropdown therefore
+  defaults to strict `iec61131-3-ed2` — the standards-first, honest default —
+  which makes the new C-style guidance discoverable. The built-in example
+  programs all use `(* *)` comments, so the strict default does not error on
+  first load. Users who hit P0004 can either fix the comment or pick
+  `rusty`/`codesys` from the now-complete dropdown.
 - **Diagnostic is dialect-agnostic at the error site**, per the request. Help
   text: convert to `(*` … `*)`, or select a dialect that supports C-style
   comments.
