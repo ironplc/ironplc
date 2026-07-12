@@ -16,6 +16,15 @@ updates:
       day: "saturday"
       time: "06:00"
       timezone: "Etc/UTC"
+    ignore:
+      # typescript-eslint (via @typescript-eslint/typescript-estree) pins its
+      # peer dependency to `typescript >=4.8.4 <6.1.0`, so no released version
+      # supports the TypeScript 7 native rewrite. Bumping typescript to a new
+      # major here breaks `npm install`, `tsc`, and eslint until the
+      # typescript-eslint ecosystem adds support. Re-enable major bumps once it
+      # does. See PR #1159.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm" # See documentation for possible values
     directory: "/playground" # Location of package manifests
     schedule:
