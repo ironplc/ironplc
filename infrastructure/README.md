@@ -95,6 +95,10 @@ insight per tile, using only events already flowing into PostHog (website
 `$pageview` and the playground's `compile_finished` / `run_started` /
 `example_loaded` / … events). Tiles are grouped as acquisition, interest,
 activation, product-health, a visitor→success funnel, and compile retention.
+Product-health includes a **Compile success rate** tile (successful compiles ÷
+all compiles) and a **Top compile error codes** tile that ranks the diagnostic
+codes of failed compiles — the latter surfaces *why* compiles fail using only
+the `error_codes` property, never the program source.
 
 Install-adoption tiles (`install_completed`, `release_downloads`, Open VSX)
 are left as commented stubs at the bottom of `posthog.tf`; they light up once
