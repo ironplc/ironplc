@@ -91,6 +91,10 @@ export interface Diagnostic {
   label?: string;
   start_line: number;
   start_column: number;
+  /** Compiler source file that produced the diagnostic (P9999/P9998 family). */
+  compiler_file?: string;
+  /** Compiler source line paired with `compiler_file`. */
+  compiler_line?: number;
 }
 
 export interface RunResultOk {

@@ -12,7 +12,26 @@ requires adding support for the elements to the IronPLC compiler.
 
 * avoid the particular elements (this is usually not feasible)
 * verify that you have the latest version of the IronPLC compiler
-* report the issue to `IronPLC GitHub issues`_.
+* report the program so support can be added (see below).
+
+Reporting the program
+---------------------
+
+We can only add support for an unsupported capability once we can see the
+program that needs it. Sending us the program gives the best results, so please
+do — there are two ways, and no GitHub account is required:
+
+* **From the** `IronPLC Playground`_ **(easiest).** When a program produces
+  P9999, a **Submit Code** button appears next to the diagnostic. Clicking it
+  sends the program directly to the IronPLC team.
+* **As a** `GitHub issue`_. Attach the source file (or paste it) so we can
+  reproduce the problem.
+
+.. note::
+
+   Whichever route you choose, the program you submit is shared with the
+   IronPLC team and **may become public** — for example in a GitHub issue.
+   Do not submit anything confidential.
 
 Known Limitations
 -----------------
@@ -27,4 +46,5 @@ produce this error:
 * Direct variables (hardware-mapped I/O such as ``%IX0.0``)
 * Enumerated values in expressions and ``CASE`` selectors
 
-.. _IronPLC GitHub issues: https://github.com/ironplc/ironplc/issues/new?template=todo_report.md
+.. _IronPLC Playground: https://playground.ironplc.com/
+.. _GitHub issue: https://github.com/ironplc/ironplc/issues/new?template=todo_report.md
