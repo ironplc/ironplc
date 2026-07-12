@@ -277,7 +277,7 @@
     "@types/node": "26.x",
     "@types/upng-js": "^2.1.5",
     "@types/vscode": "^1.75.0",
-    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@typescript-eslint/eslint-plugin": "^8.63.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vscode/test-electron": "^3.0.0",
     "@vscode/vsce": "^3.0.0",
