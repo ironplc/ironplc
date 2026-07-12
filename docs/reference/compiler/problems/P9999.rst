@@ -18,8 +18,8 @@ Reporting the program
 ---------------------
 
 We can only add support for an unsupported capability once we can see the
-program that needs it, so please send it to us. There are two ways, and no
-GitHub account is required:
+program that needs it. Sending us the program gives the best results, so please
+do — there are two ways, and no GitHub account is required:
 
 * **From the** `IronPLC Playground`_ **(easiest).** When a program produces
   P9999, a **Submit Code** button appears next to the diagnostic. Clicking it

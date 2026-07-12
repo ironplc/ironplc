@@ -315,6 +315,41 @@ END_PROGRAM
     expect(decodeURIComponent(href)).toContain("%QX0.0");
   });
 
+  test("compile_finished_when_p9999_then_auto_reports_compiler_location_without_program", async ({ page }) => {
+    await page.locator('[data-testid="editor"]').fill(P9999_PROGRAM);
+
+    // Intercept captures before compiling.
+    await page.evaluate(() => {
+      const w = window as unknown as { posthog?: unknown; __captured: unknown[] };
+      w.__captured = [];
+      const real = w.posthog as { register?: (p: unknown) => void } | undefined;
+      w.posthog = {
+        capture: (event: string, props: unknown) => w.__captured.push({ event, props }),
+        register: real?.register ? real.register.bind(real) : () => {},
+      };
+    });
+
+    await page.click('[data-testid="start-btn"]');
+    await expect(page.locator('[data-testid="report-panel"]')).toBeVisible({ timeout: 10000 });
+
+    const captured = await page.evaluate(
+      () =>
+        (window as unknown as {
+          __captured: Array<{
+            event: string;
+            props: { success?: boolean; error_locations?: string[]; program?: string };
+          }>;
+        }).__captured,
+    );
+    const finished = captured.find((c) => c.event === "compile_finished");
+    expect(finished).toBeTruthy();
+    expect(finished?.props.success).toBe(false);
+    // The compiler file#line is reported automatically...
+    expect(finished?.props.error_locations?.some((l) => /\.rs#L\d+/.test(l))).toBe(true);
+    // ...but the program itself is never on this automatic event.
+    expect(finished?.props.program).toBeUndefined();
+  });
+
   test("start_when_running_multiple_cycles_then_shows_sparklines", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     await editor.fill(`PROGRAM main

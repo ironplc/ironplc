@@ -309,6 +309,31 @@ resource "posthog_insight" "todo_report_submissions" {
   })
 }
 
+resource "posthog_insight" "top_compiler_error_locations" {
+  name          = "Top P9 compiler error locations"
+  description   = "Compiler source file#line of P9xxx errors (unimplemented capabilities / internal errors) from failed playground compiles, ranked by frequency. This is the compiler's own location — collected automatically because it never contains any program source — and it points maintainers straight at the code that needs work."
+  dashboard_ids = [posthog_dashboard.adoption.id]
+  tags          = local.ph_tags
+
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind = "TrendsQuery"
+      series = [{
+        kind       = "EventsNode"
+        event      = "compile_finished"
+        name       = "compile_finished"
+        math       = "total"
+        properties = [{ key = "success", type = "event", operator = "exact", value = [false] }]
+      }]
+      interval        = "week"
+      dateRange       = { date_from = local.ph_date_from }
+      breakdownFilter = { breakdowns = [{ property = "error_locations", type = "event" }] }
+      trendsFilter    = { display = "ActionsBarValue" }
+    }
+  })
+}
+
 resource "posthog_insight" "top_error_codes" {
   name          = "Top runtime error codes"
   description   = "Error codes from runs that stopped on an error while executing (as opposed to failing to compile)."
