@@ -46,13 +46,34 @@ export function makeWorkspace(prefix, config) {
 /// OpenCode create its session there instead of in `cwd`, missing the inline
 /// provider config and failing with ProviderModelNotFoundError. Keep PWD in
 /// sync with cwd so OpenCode anchors to the workspace we set up.
+///
+/// Each invocation also gets a private `XDG_DATA_HOME`. OpenCode keeps a
+/// machine-global SQLite state DB under it (`~/.local/share/opencode/
+/// opencode.db`) that is shared across every OpenCode version on the host. A DB
+/// written by a different OpenCode version fails the run at the first prompt
+/// with `SQLiteError: no such column: ...` — before the model is ever reached —
+/// which a clean CI runner never hits but a developer's machine does. Pointing
+/// the data home at a fresh per-run temp dir makes the test hermetic: OpenCode
+/// builds a clean DB with the schema its own version expects, and the run never
+/// depends on (or corrupts) the developer's real OpenCode state. A caller may
+/// still override `XDG_DATA_HOME` via `env`.
 export function runOpencode(args, { cwd, timeoutMs = 120000, env = {} } = {}) {
-  return spawnSync(opencodeBin(), args, {
-    cwd,
-    timeout: timeoutMs,
-    encoding: "utf8",
-    env: { ...process.env, ...(cwd ? { PWD: cwd } : {}), ...env },
-  });
+  const xdgDataHome = fs.mkdtempSync(path.join(os.tmpdir(), "opencode-xdg-"));
+  try {
+    return spawnSync(opencodeBin(), args, {
+      cwd,
+      timeout: timeoutMs,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        XDG_DATA_HOME: xdgDataHome,
+        ...(cwd ? { PWD: cwd } : {}),
+        ...env,
+      },
+    });
+  } finally {
+    fs.rmSync(xdgDataHome, { recursive: true, force: true });
+  }
 }
 
 /// Strip ANSI escape sequences so we can match against OpenCode's TUI output.
