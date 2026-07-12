@@ -20,6 +20,13 @@ terraform {
       source  = "PostHog/posthog"
       version = "~> 1.0"
     }
+    # Used only to PATCH the project's primary_dashboard setting, which the
+    # posthog provider does not expose (see the default-dashboard block in
+    # posthog.tf).
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
 }
 

@@ -44,6 +44,49 @@ resource "posthog_dashboard" "adoption" {
 }
 
 # ---------------------------------------------------------------------------
+# Default (primary) dashboard.
+#
+# Make the dashboard above the project's default — the one PostHog opens on the
+# project home. The posthog provider's posthog_project resource does NOT expose
+# this setting, so we set it directly through the REST API:
+#
+#   PATCH {host}/api/projects/{project_id}/  { "primary_dashboard": <id> }
+#
+# Caveats:
+#   * Enforce, not reconcile. There is no read for primary_dashboard, so
+#     Terraform cannot detect drift. The PATCH re-runs only when a trigger below
+#     changes (or on first apply). To re-assert after a manual UI change, run:
+#       terraform apply -replace=null_resource.primary_dashboard
+#   * The personal API key (var.posthog_api_key) must also carry the
+#     `project:write` scope, on top of insight:write + dashboard:write.
+#   * Needs curl on the runner. HCP Terraform's remote image ships it.
+# ---------------------------------------------------------------------------
+
+resource "null_resource" "primary_dashboard" {
+  triggers = {
+    dashboard_id = posthog_dashboard.adoption.id
+    project_id   = var.posthog_project_id
+    host         = var.posthog_host
+  }
+
+  provisioner "local-exec" {
+    # The API key is passed as a redacted environment variable and read inside
+    # the shell so it never appears in the interpolated command string / logs.
+    environment = {
+      POSTHOG_API_KEY = var.posthog_api_key
+    }
+
+    command = <<-EOT
+      curl --fail --silent --show-error \
+        -X PATCH "${var.posthog_host}/api/projects/${var.posthog_project_id}/" \
+        -H "Authorization: Bearer $POSTHOG_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d '{"primary_dashboard": ${posthog_dashboard.adoption.id}}'
+    EOT
+  }
+}
+
+# ---------------------------------------------------------------------------
 # Section A — Acquisition
 # ---------------------------------------------------------------------------
 
