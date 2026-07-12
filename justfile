@@ -288,7 +288,7 @@ install-script-smoke compiler-version="":
 #                   like "0.218.0" (without the leading "v").
 # model:            the Ollama model used for the agent test.
 [unix]
-opencode-e2e compiler-version="" model="llama3.2:3b":
+opencode-e2e compiler-version="" model="qwen2.5:1.5b":
   #!/usr/bin/env sh
   set -eu
   # Install the published compiler so we exercise the shipped ironplcmcp.
@@ -308,7 +308,13 @@ opencode-e2e compiler-version="" model="llama3.2:3b":
   # Layer 1: deterministic connectivity check (no model required).
   npm run smoke
 
-  # Layer 2: real-agent end-to-end against a local Ollama model. A larger
+  # Layer 2: deterministic tool-call gate against a fake model (no Ollama). This
+  # proves OpenCode's real tool-call wiring end to end — read the catalog,
+  # serialize the arguments, MCP round-trip to the real ironplcmcp — without any
+  # model latency, so it is fast and never flaky.
+  npm run mock-e2e
+
+  # Layer 3: real-agent end-to-end against a local Ollama model. A larger
   # context window improves small models' tool-calling reliability: OpenCode's
   # system prompt plus the ironplc_check tool schema overflow the default
   # window, truncating the instructions so the model never calls the tool.
@@ -360,6 +366,6 @@ opencode-e2e compiler-version="" model="llama3.2:3b":
   OPENCODE_E2E_MODEL="ollama/{{model}}" npm run agent-e2e
 
 [windows]
-opencode-e2e compiler-version="" model="llama3.2:3b":
+opencode-e2e compiler-version="" model="qwen2.5:1.5b":
   @echo "opencode-e2e is Unix-only"
   exit 1
