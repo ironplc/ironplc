@@ -985,10 +985,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 // not yet run `pc += 1`), so the paused opcode re-executes on
                 // resume. The frame stack and temp-allocator position are
                 // preserved so the caller can resume this instance later.
-                frame_stack
-                    .top_mut()
-                    .expect("non-empty by loop condition")
-                    .pc = pc;
+                commit_pc(&mut frame_stack, pc);
                 *frame_count = frame_stack.len();
                 *temp_alloc_next = temp_alloc.next();
                 return Ok(ExecuteOutcome::Paused(reason));
@@ -1430,10 +1427,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 // `FrameStack::push` returns Trap::CallStackOverflow on
                 // capacity overflow — same trap as the old depth-counter
                 // check.
-                frame_stack
-                    .top_mut()
-                    .expect("non-empty: caller frame is still on stack")
-                    .pc = pc;
+                commit_pc(&mut frame_stack, pc);
                 hook.before_call(func_id);
                 frame_stack.push(Frame {
                     function_id: func_id,
@@ -2384,10 +2378,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                         // `fb_return` records what `handle_frame_return`
                         // needs to copy variable slots back to the data
                         // region after the FB body returns.
-                        frame_stack
-                            .top_mut()
-                            .expect("non-empty: caller frame is still on stack")
-                            .pc = pc;
+                        commit_pc(&mut frame_stack, pc);
                         hook.before_call(func_id);
                         frame_stack.push(Frame {
                             function_id: func_id,
@@ -2598,10 +2589,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
             // the frame we snapshotted at the top of the iteration. Push/pop
             // arms cleared `pc_dirty`, so this never clobbers a newly-pushed
             // callee's `pc: 0` or a freshly-popped caller's already-correct pc.
-            frame_stack
-                .top_mut()
-                .expect("non-empty: pc_dirty means no push/pop happened")
-                .pc = pc;
+            commit_pc(&mut frame_stack, pc);
         }
     }
 
@@ -2611,6 +2599,23 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     *frame_count = frame_stack.len();
     *temp_alloc_next = temp_alloc.next();
     Ok(ExecuteOutcome::Completed)
+}
+
+/// Commit the dispatch loop's working `pc` back onto the topmost frame.
+///
+/// This is the single "store pc to the frame" operation behind every
+/// reconcile point in [`execute_with_hook`] (the normal end-of-iteration
+/// writeback, the CALL / FB_CALL caller-save, and the pause path). Folding
+/// them here keeps all four spellings identical and greppable.
+///
+/// Panics if the frame stack is empty; every caller holds the loop invariant
+/// that a frame is live at the commit point.
+#[inline(always)]
+fn commit_pc(frame_stack: &mut FrameStack, pc: usize) {
+    frame_stack
+        .top_mut()
+        .expect("commit_pc requires a non-empty frame stack")
+        .pc = pc;
 }
 
 /// Pops the topmost frame, rewinds the temp-buffer allocator to the
