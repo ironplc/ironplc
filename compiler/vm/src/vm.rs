@@ -927,12 +927,31 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         })?;
     }
 
+    // Dispatch loop invariant
+    // ------------------------
+    // At the TOP of every iteration, the top frame's `pc` field is
+    // authoritative: it points at the next opcode to execute. Inside the
+    // iteration we copy it into the local `pc` and treat that local as the
+    // working position — it advances past the opcode (line `pc += 1`) and
+    // over any operand bytes (`read_u16_le(bytecode, &mut pc)`), while the
+    // frame's `pc` stays stale. `pc_dirty` tracks that gap: while it is true,
+    // the local `pc` is ahead of `frame.pc` and still needs committing.
+    //
+    // Exactly ONE of these reconciles the local `pc` back into the frame
+    // before the next iteration (or before returning), restoring the
+    // invariant:
+    //   1. Normal opcodes: `pc_dirty` stays true, so the end-of-iteration
+    //      writeback stores `pc` into the (unchanged) top frame.
+    //   2. CALL / FB_CALL: manually store the caller's advanced `pc`, push the
+    //      callee frame with `pc: 0`, then clear `pc_dirty` — the top frame is
+    //      no longer the one we snapshotted, so the default writeback must not
+    //      run.
+    //   3. RET / RET_VOID / fall-off-end: pop via `handle_frame_return` (the
+    //      revealed caller's `pc` is already correct), then clear `pc_dirty`.
+    //   4. Pause: store the *un-advanced* `pc` so the paused opcode re-executes
+    //      on resume, then return `Paused` without reaching the writeback.
     while !frame_stack.is_empty() {
-        // Snapshot the top frame's mutable state for this iteration.
-        // `pc` is the local working copy; we write it back to the frame
-        // at the end of the iteration unless dispatch pushed or popped
-        // a frame (in which case the frame stack top changed mid-arm
-        // and `pc` is not relevant to the new top).
+        // Snapshot the top frame's authoritative `pc` into the working copy.
         let (current_function_id, scope, mut pc) = {
             let top = frame_stack.top().expect("non-empty by loop condition");
             (top.function_id, top.scope, top.pc)
@@ -962,10 +981,10 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         match hook.before_instruction(current_function_id, pc, op) {
             HookAction::Continue => {}
             HookAction::Pause(reason) => {
-                // Write pc back to the top frame WITHOUT advancing, so the
-                // paused instruction re-executes on resume. The frame stack
-                // and temp-allocator position are preserved so the caller
-                // can resume this instance later.
+                // Invariant reconcile #4: store the *un-advanced* pc (we have
+                // not yet run `pc += 1`), so the paused opcode re-executes on
+                // resume. The frame stack and temp-allocator position are
+                // preserved so the caller can resume this instance later.
                 frame_stack
                     .top_mut()
                     .expect("non-empty by loop condition")
@@ -980,11 +999,13 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
         #[cfg(feature = "profiling")]
         profile.record(op);
 
-        // Set to false in arms that push or pop a frame; the post-match
-        // pc write-back is skipped in those cases so we never clobber a
-        // newly-pushed callee's `pc: 0` or a freshly-popped caller's
-        // already-correct `pc`.
-        let mut advance_pc = true;
+        // True while the local `pc` is ahead of the top frame's `pc` and still
+        // needs committing (see the dispatch-loop invariant above). Arms that
+        // push or pop a frame reconcile the stack themselves and set this to
+        // false, so the end-of-iteration writeback is skipped — otherwise it
+        // would clobber a newly-pushed callee's `pc: 0` or a freshly-popped
+        // caller's already-correct `pc`.
+        let mut pc_dirty = true;
 
         match op {
             // --- Load constants ---
@@ -1421,7 +1442,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     temp_alloc_mark: temp_alloc.next(),
                     fb_return: None,
                 })?;
-                advance_pc = false;
+                // Reconcile #2: caller pc stored above, callee pushed with
+                // pc: 0 — the snapshotted frame is no longer on top.
+                pc_dirty = false;
             }
             opcode::RET => {
                 // Return value is already on the operand stack; just unwind
@@ -1434,7 +1457,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     variables,
                     hook,
                 )?;
-                advance_pc = false;
+                // Reconcile #3: frame popped; the revealed caller's pc is
+                // already correct.
+                pc_dirty = false;
             }
             // --- String opcodes ---
             //
@@ -2375,7 +2400,9 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                                 num_fields,
                             }),
                         })?;
-                        advance_pc = false;
+                        // Reconcile #2: caller pc stored above, FB frame
+                        // pushed with pc: 0 — snapshotted frame no longer top.
+                        pc_dirty = false;
                     }
                 }
             }
@@ -2557,22 +2584,23 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     variables,
                     hook,
                 )?;
-                advance_pc = false;
+                // Reconcile #3: frame popped; the revealed caller's pc is
+                // already correct.
+                pc_dirty = false;
             }
             _ => {
                 return Err(Trap::InvalidInstruction(op));
             }
         }
 
-        if advance_pc {
-            // Write the working `pc` back to the frame we entered this
-            // iteration with. CALL / RET / FB_CALL-user-branch arms set
-            // `advance_pc = false` because they have already updated
-            // the stack and the top frame is no longer the one we
-            // started with.
+        if pc_dirty {
+            // Reconcile #1 (the common case): commit the working `pc` back to
+            // the frame we snapshotted at the top of the iteration. Push/pop
+            // arms cleared `pc_dirty`, so this never clobbers a newly-pushed
+            // callee's `pc: 0` or a freshly-popped caller's already-correct pc.
             frame_stack
                 .top_mut()
-                .expect("non-empty: advance_pc=true means no push/pop happened")
+                .expect("non-empty: pc_dirty means no push/pop happened")
                 .pc = pc;
         }
     }
