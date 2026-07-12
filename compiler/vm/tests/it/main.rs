@@ -11,6 +11,7 @@
 
 mod common;
 
+mod debug_engine;
 mod execute_add_i32;
 mod execute_arith_f32;
 mod execute_arith_f64;
