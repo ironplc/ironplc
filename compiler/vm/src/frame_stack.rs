@@ -96,6 +96,20 @@ impl<'a> FrameStack<'a> {
         }
     }
 
+    /// Rebuild a frame stack over `backing` with `len` frames already live.
+    ///
+    /// Used by the re-entrant debug driver to resume a paused instance: the
+    /// frame contents survive in the embedder's backing slice across a
+    /// pause, and this restores the logical length so the dispatch loop
+    /// continues from the preserved top frame.
+    pub fn resume(backing: &'a mut [Frame], len: usize) -> Self {
+        debug_assert!(len <= backing.len(), "resume len exceeds frame capacity");
+        FrameStack {
+            slots: backing,
+            len,
+        }
+    }
+
     /// Number of frames currently on the stack.
     pub fn len(&self) -> usize {
         self.len
