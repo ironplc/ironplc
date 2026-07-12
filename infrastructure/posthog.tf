@@ -115,8 +115,8 @@ resource "posthog_insight" "install_page_reach" {
         properties = [{
           key      = "$pathname"
           type     = "event"
-          operator = "exact"
-          value    = ["/quickstart/installation/"]
+          operator = "icontains"
+          value    = ["/quickstart/installation"]
         }]
       }]
       interval     = "week"
