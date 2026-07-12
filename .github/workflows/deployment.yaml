@@ -76,8 +76,10 @@ jobs:
 
   upload-release-artifacts:
     name: Upload Release Artifacts
-    # Attach the credential-free build artifacts to the (already public,
-    # prerelease) GitHub Release so the smoke tests can download them.
+    # Attach the credential-free build artifacts to the draft GitHub Release.
+    # The release stays a draft until publish-release; the smoke tests run
+    # against the same build artifacts (not the release), so nothing is public
+    # until the gate passes.
     needs: [release, build-platform-package, build-vscode-extension]
     permissions:
       contents: write
@@ -101,6 +103,10 @@ jobs:
       ironplcc-installer-x86_64-windows-filename: "ironplcc-x86_64-windows.exe"
       ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
       ironplc-vscode-extension-name: "garretfick.ironplc"
+      # On a real release the GitHub Release is still a draft here, so test
+      # against this run's build artifacts. The dry-run-with-override path
+      # tests against an existing public release instead.
+      stage-artifacts: ${{ !inputs.dryrun }}
 
   install-script-smoke-test:
     name: Install Script Smoke Test
@@ -113,6 +119,10 @@ jobs:
     if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
     with:
       compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
+      # On a real release the GitHub Release is still a draft here, so test
+      # against this run's build artifacts. The dry-run-with-override path
+      # tests against an existing public release instead.
+      stage-artifacts: ${{ !inputs.dryrun }}
 
   # TODO: Re-enable once OpenCode reliably passes in the release build.
   # The reusable workflow (.github/workflows/partial_opencode_e2e.yaml) is
@@ -205,12 +215,19 @@ jobs:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
       # Save artifacts
+      # Publish the draft release: draft:false makes it public, prerelease:false
+      # + makeLatest:true mark it as the latest stable release. By now the draft
+      # already carries every asset (attached by upload-release-artifacts) and
+      # the smoke tests have passed, so this single publish is the point at
+      # which the release becomes public. Downstream jobs (Homebrew, playground)
+      # depend on this job and download from the now-public release.
       - name: Publish GitHub Release
         if: ${{ !inputs.dryrun }}
         uses: irongut/EditRelease@ccf529ad26dddf9996e7dd0f24ca5da4ea507cc2 # v1.2.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           id: ${{ needs.release.outputs.gh-release-id }}
+          draft: false
           prerelease: false
           makeLatest: true
 

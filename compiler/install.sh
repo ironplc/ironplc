@@ -17,7 +17,12 @@
 set -eu
 
 REPO="ironplc/ironplc"
-RELEASE_URL="https://github.com/${REPO}/releases/download"
+# Base URL that release assets are downloaded from, laid out as
+# <base>/<tag>/<asset>. Overridable via IRONPLC_RELEASE_BASE_URL for
+# pre-publish (draft) smoke testing, where a local staging directory is
+# served over file:// (see `just install-script-smoke`). Not documented in
+# --help; end users never set it.
+RELEASE_URL="${IRONPLC_RELEASE_BASE_URL:-https://github.com/${REPO}/releases/download}"
 LATEST_API="https://api.github.com/repos/${REPO}/releases/latest"
 LATEST_REDIRECT="https://github.com/${REPO}/releases/latest"
 ISSUES_URL="https://github.com/${REPO}/issues"

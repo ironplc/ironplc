@@ -6,6 +6,11 @@ on:
         required: true
         type: string
         description: 'The version number to test with (without the "v" prefix). Empty string uses the latest release.'
+      stage-artifacts:
+        required: false
+        type: boolean
+        default: false
+        description: 'If set, download the compiler build artifacts from this run and smoke-test install.sh against them (served over file://) instead of the public GitHub release. Enables testing before the release is published (e.g. while it is still a draft).'
 
 permissions:
   contents: read
@@ -27,8 +32,20 @@ jobs:
       # Configure the execution environment
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
 
-      # Execute the install script against a real GitHub release and verify
-      # that the installed binaries are functional. The recipe re-runs the
-      # installer to confirm idempotency.
+      # When testing before publish, stage this run's compiler build artifacts
+      # into ./smoke-assets/v<version>/ so install.sh can fetch them over
+      # file:// (the artifact filenames already match the release asset names).
+      - name: Stage build artifacts
+        if: ${{ inputs.stage-artifacts }}
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: ironplcc-*
+          merge-multiple: true
+          path: ./smoke-assets/v${{ inputs.compiler-version }}
+
+      # Execute the install script and verify that the installed binaries are
+      # functional. The recipe re-runs the installer to confirm idempotency.
+      # With stage-artifacts, install.sh is served the staged assets over
+      # file://; otherwise it downloads from the public GitHub release.
       - name: Install script smoke test
-        run: just install-script-smoke "${{ inputs.compiler-version }}"
+        run: just install-script-smoke "${{ inputs.compiler-version }}" "${{ inputs.stage-artifacts && 'smoke-assets' || '' }}"
