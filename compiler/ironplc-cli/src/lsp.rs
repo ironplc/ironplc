@@ -661,7 +661,12 @@ mod test {
         fn receive_response<T: DeserializeOwned>(&mut self, request_id: RequestId) -> T {
             self.receive();
             let response = self.responses.get(&request_id).expect("No request");
-            let value = response.result.clone().unwrap();
+            let value = match &response.response_kind {
+                lsp_server::ResponseKind::Ok { result } => result.clone(),
+                lsp_server::ResponseKind::Err { error } => {
+                    panic!("Expected successful response but got error: {error:?}")
+                }
+            };
             serde_json::from_value::<T>(value).unwrap()
         }
 
