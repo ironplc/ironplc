@@ -662,11 +662,10 @@ mod test {
             self.receive();
             let response = self.responses.get(&request_id).expect("No request");
             let value = match &response.response_kind {
-                lsp_server::ResponseKind::Ok { result } => result.clone(),
-                lsp_server::ResponseKind::Err { error } => {
-                    panic!("Expected successful response but got error: {error:?}")
-                }
-            };
+                lsp_server::ResponseKind::Ok { result } => Some(result.clone()),
+                lsp_server::ResponseKind::Err { .. } => None,
+            }
+            .expect("Expected successful response");
             serde_json::from_value::<T>(value).unwrap()
         }
 
