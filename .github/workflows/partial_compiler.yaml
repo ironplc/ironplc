@@ -32,14 +32,26 @@ jobs:
       run:
         working-directory: ./compiler
     steps:
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # The validate step constrains the ref SHAPE only (release tag or
+      # auto-update branch); it is a tripwire so the CodeQL untrusted-checkout
+      # sink sees a sanitizer, NOT a real access control. Actual safety comes
+      # from callers computing commit-ref internally and this job being
+      # contents:read with no secrets. See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+      - name: Validate checkout ref
         if: ${{ inputs.commit-ref }}
-        with:
-          ref: ${{ inputs.commit-ref }}
-      - name: Checkout HEAD
+        shell: bash
+        env:
+          REF: ${{ inputs.commit-ref }}
+        run: |
+          if [[ ! "$REF" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z]+)*|feature/AUTO-UPDATE-[0-9A-Za-z._-]+)$ ]]; then
+            echo "::error::Refusing to checkout unexpected ref '$REF'"
+            exit 1
+          fi
+      - name: Checkout ${{ inputs.commit-ref || 'triggering commit' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        with:
+          # Empty ref => the triggering commit (former "Checkout HEAD" path).
+          ref: ${{ inputs.commit-ref }}
 
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
       - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
@@ -86,15 +98,27 @@ jobs:
             rust_target: aarch64-apple-darwin
 
     steps:
-      # Checkout the repository/fetch input artifacts
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # Checkout the repository/fetch input artifacts.
+      # The validate step constrains the ref SHAPE only (release tag or
+      # auto-update branch); it is a tripwire so the CodeQL untrusted-checkout
+      # sink sees a sanitizer, NOT a real access control. Actual safety comes
+      # from callers computing commit-ref internally and this job being
+      # contents:read with no secrets. See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+      - name: Validate checkout ref
         if: ${{ inputs.commit-ref }}
-        with:
-          ref: ${{ inputs.commit-ref  }}
-      - name: Checkout HEAD
+        shell: bash
+        env:
+          REF: ${{ inputs.commit-ref }}
+        run: |
+          if [[ ! "$REF" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z]+)*|feature/AUTO-UPDATE-[0-9A-Za-z._-]+)$ ]]; then
+            echo "::error::Refusing to checkout unexpected ref '$REF'"
+            exit 1
+          fi
+      - name: Checkout ${{ inputs.commit-ref || 'triggering commit' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        with:
+          # Empty ref => the triggering commit (former "Checkout HEAD" path).
+          ref: ${{ inputs.commit-ref }}
 
       # Configure the execution environment
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
