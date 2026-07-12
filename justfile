@@ -324,10 +324,36 @@ opencode-e2e compiler-version="" model="qwen2.5:1.5b":
   # the default window. A second `ollama serve` would just fail to bind with
   # "address already in use" and leave that default window in place, so stop any
   # running server first, then start our own with the larger window.
+  # `timeout` is GNU coreutils: present on the Ubuntu CI runner but absent on
+  # macOS (where it may exist as `gtimeout`). Fall back to a portable bounded
+  # wait so a developer can run this recipe locally, not just in CI.
+  run_timeout() {
+    _secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then
+      timeout "$_secs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout "$_secs" "$@"
+    else
+      "$@" &
+      _pid=$!
+      _waited=0
+      while kill -0 "$_pid" 2>/dev/null; do
+        if [ "$_waited" -ge "$_secs" ]; then
+          kill "$_pid" 2>/dev/null || true
+          wait "$_pid" 2>/dev/null || true
+          return 124
+        fi
+        _waited=$((_waited + 1))
+        sleep 1
+      done
+      wait "$_pid"
+    fi
+  }
+
   pkill -x ollama 2>/dev/null || true
-  timeout 30 sh -c 'while curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done' || true
+  run_timeout 30 sh -c 'while curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done' || true
   OLLAMA_CONTEXT_LENGTH=16384 ollama serve >/tmp/ollama-serve.log 2>&1 &
-  timeout 60 sh -c 'until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done'
+  run_timeout 60 sh -c 'until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done'
   ollama pull "{{model}}"
 
   # On any failure below, surface the Ollama server log. The agent failure mode

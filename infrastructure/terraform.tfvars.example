@@ -12,3 +12,15 @@ github_owner = "ironplc"
 
 # Example: "ironplc" (repo name only, not "owner/repo").
 github_repo = "ironplc"
+
+# --- PostHog (Adoption & Success dashboard, see posthog.tf) ---
+
+# Personal API key with insight:write + dashboard:write scopes.
+# NOT the public phc_ ingestion key.
+posthog_api_key = ""
+
+# Project (environment) numeric ID, as a string. From Project Settings.
+posthog_project_id = ""
+
+# App host for the region (default is US). Not the ingestion host.
+# posthog_host = "https://us.posthog.com"
