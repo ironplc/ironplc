@@ -295,7 +295,7 @@
     "vscode-tmgrammar-test": "^0.1.3"
   },
   "dependencies": {
-    "vscode-languageclient": "^9"
+    "vscode-languageclient": "^10"
   },
   "overrides": {
     "serialize-javascript": "^7.0.5",
