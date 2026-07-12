@@ -436,8 +436,8 @@ END_PROGRAM
     await expect(page.locator('[data-testid="dialect-select"]')).toBeHidden();
   });
 
-  test("dialect_badge_when_embed_with_dialect_2013_then_shows_badge", async ({ page }) => {
-    await page.goto("/?embed=true&dialect=2013");
+  test("dialect_badge_when_embed_with_dialect_ed3_then_shows_badge", async ({ page }) => {
+    await page.goto("/?embed=true&dialect=iec61131-3-ed3");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
       timeout: 15000,
     });
@@ -448,7 +448,7 @@ END_PROGRAM
   });
 
   test("dialect_badge_when_allows_set_then_shows_custom_with_tooltip", async ({ page }) => {
-    await page.goto("/?embed=true&dialect=2013&allows=sizeof,c-style-comments");
+    await page.goto("/?embed=true&dialect=iec61131-3-ed3&allows=sizeof,c-style-comments");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
       timeout: 15000,
     });
@@ -463,7 +463,7 @@ END_PROGRAM
   });
 
   test("start_when_allows_sizeof_set_and_strict_dialect_then_compiles", async ({ page }) => {
-    await page.goto("/?embed=true&dialect=2013&allows=sizeof");
+    await page.goto("/?embed=true&dialect=iec61131-3-ed3&allows=sizeof");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
       timeout: 15000,
     });
@@ -486,7 +486,7 @@ END_PROGRAM
     await page.click('[data-testid="stop-btn"]');
   });
 
-  test("start_when_dialect_2013_and_ltime_program_then_runs", async ({ page }) => {
+  test("start_when_dialect_ed3_and_ltime_program_then_runs", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     const select = page.locator('[data-testid="dialect-select"]');
 

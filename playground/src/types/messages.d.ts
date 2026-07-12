@@ -5,15 +5,12 @@
 // returns JSON strings that app.ts parses into RunResult / LoadResult.
 
 // Canonical dialect names (matching the compiler's `Dialect::cli_name`), plus
-// the legacy year-based aliases and the unset default ("") for backwards
-// compatibility with older embeds and Sphinx directives.
+// the unset default ("") used by embeds that do not force a dialect.
 export type Dialect =
   | "iec61131-3-ed2"
   | "iec61131-3-ed3"
   | "rusty"
   | "codesys"
-  | "2003"
-  | "2013"
   | "";
 
 export interface CompileRequest {

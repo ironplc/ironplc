@@ -30,7 +30,7 @@ Example
 -------
 
 .. playground-with-program::
-   :dialect: 2013
+   :dialect: iec61131-3-ed3
    :vars: today : LDATE; launch : LDATE; is_after : BOOL;
 
    today := LDATE#2024-06-15;

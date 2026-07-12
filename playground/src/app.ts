@@ -329,22 +329,16 @@ if (isEmbed) {
   intervalInput.disabled = true;
 }
 
-// Set dialect from URL parameter (used by embed/Sphinx directives).
-// Also supports the legacy "edition" parameter for backwards compatibility.
-// Legacy year-based values map onto the canonical dialect names.
-const LEGACY_DIALECTS: Record<string, string> = {
-  "2003": "iec61131-3-ed2",
-  "2013": "iec61131-3-ed3",
-};
-const dialectParam = params.get("dialect") || params.get("edition");
+// Set dialect from the URL parameter (used by embed/Sphinx directives). The
+// value is a canonical dialect name (matching the compiler's `Dialect::cli_name`).
+const dialectParam = params.get("dialect");
 if (dialectParam) {
-  const resolved = LEGACY_DIALECTS[dialectParam] ?? dialectParam;
   const option = Array.from(dialectSelect.options).find(
-    (o) => o.value === resolved,
+    (o) => o.value === dialectParam,
   );
   if (option) {
-    dialectSelect.value = resolved;
-    dialectBadge.textContent = option.textContent ?? resolved;
+    dialectSelect.value = dialectParam;
+    dialectBadge.textContent = option.textContent ?? dialectParam;
     dialectBadge.classList.add("visible");
   }
 }

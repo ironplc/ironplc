@@ -48,20 +48,17 @@ thread_local! {
 /// Resolve a playground dialect string to a [`Dialect`].
 ///
 /// Accepts the canonical [`Dialect::cli_name`] values (`"iec61131-3-ed2"`,
-/// `"iec61131-3-ed3"`, `"rusty"`, `"codesys"`) as well as the legacy `"2003"`
-/// and `"2013"` aliases used by older embeds and Sphinx directives.
+/// `"iec61131-3-ed3"`, `"rusty"`, `"codesys"`).
 ///
 /// The empty string (and any unrecognized value) resolves to the RuSTy
 /// dialect, which enables all vendor extensions. This keeps the many existing
 /// documentation embeds that omit a dialect working, since they rely on the
 /// lenient default to explore non-standard features without toggling flags.
 fn dialect_from(dialect: &str) -> Dialect {
-    match dialect {
-        "2003" => Dialect::Iec61131_3Ed2,
-        "2013" => Dialect::Iec61131_3Ed3,
-        "" => Dialect::Rusty,
-        other => other.parse().unwrap_or(Dialect::Rusty),
+    if dialect.is_empty() {
+        return Dialect::Rusty;
     }
+    dialect.parse().unwrap_or(Dialect::Rusty)
 }
 
 /// Build [`CompilerOptions`] from a dialect string and an optional list of
@@ -1734,7 +1731,8 @@ PROGRAM main
   duration := LTIME#100ms;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source, "2013", "")).unwrap();
+        let result: CompileResult =
+            serde_json::from_str(&compile(source, "iec61131-3-ed3", "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}",
@@ -1770,7 +1768,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let result: StepResult =
-            serde_json::from_str(&load_program(source, 100_000, "2013", "")).unwrap();
+            serde_json::from_str(&load_program(source, 100_000, "iec61131-3-ed3", "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got error: {:?}, diagnostics: {:?}",
@@ -1793,7 +1791,8 @@ PROGRAM main
   s := SIZEOF(x);
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source, "2013", "")).unwrap();
+        let result: CompileResult =
+            serde_json::from_str(&compile(source, "iec61131-3-ed3", "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -1810,7 +1809,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let result: CompileResult =
-            serde_json::from_str(&compile(source, "2013", "sizeof")).unwrap();
+            serde_json::from_str(&compile(source, "iec61131-3-ed3", "sizeof")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}",
@@ -1830,7 +1829,8 @@ PROGRAM main
 END_PROGRAM
 ";
         let result: CompileResult =
-            serde_json::from_str(&compile(source, "2013", "not-a-real-flag,sizeof")).unwrap();
+            serde_json::from_str(&compile(source, "iec61131-3-ed3", "not-a-real-flag,sizeof"))
+                .unwrap();
         assert!(result.ok);
     }
 
@@ -1847,8 +1847,12 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
-        let result: CompileResult =
-            serde_json::from_str(&compile(source, "2013", " sizeof , c-style-comments ")).unwrap();
+        let result: CompileResult = serde_json::from_str(&compile(
+            source,
+            "iec61131-3-ed3",
+            " sizeof , c-style-comments ",
+        ))
+        .unwrap();
         assert!(result.ok, "Expected ok but got: {:?}", result.diagnostics);
     }
 
@@ -1861,15 +1865,11 @@ END_PROGRAM
     }
 
     #[test]
-    fn dialect_from_when_legacy_aliases_then_resolves() {
-        assert_eq!(dialect_from("2003"), Dialect::Iec61131_3Ed2);
-        assert_eq!(dialect_from("2013"), Dialect::Iec61131_3Ed3);
-    }
-
-    #[test]
     fn dialect_from_when_empty_or_unknown_then_defaults_to_rusty() {
         assert_eq!(dialect_from(""), Dialect::Rusty);
         assert_eq!(dialect_from("not-a-dialect"), Dialect::Rusty);
+        // Year-based aliases are no longer recognized.
+        assert_eq!(dialect_from("2013"), Dialect::Rusty);
     }
 
     #[test]
