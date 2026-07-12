@@ -10,7 +10,7 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use ironplc_benchmarks::compile_st;
 use ironplc_vm::test_support::load_and_start;
-use ironplc_vm::{Slot, VmBuffers};
+use ironplc_vm::{NoopDebugHook, Slot, VmBuffers};
 use std::hint::black_box;
 
 /// Runs one benchmark iteration: creates `VmBuffers`, applies `$setup`,
@@ -425,8 +425,69 @@ fn bench_counter_up(c: &mut Criterion) {
     group.finish();
 }
 
+/// Debug-mode scan cost: runs an identical counter loop through the
+/// production `run_round` and through the re-entrant `run_round_debug`
+/// driver with the zero-cost [`NoopDebugHook`]. This tracks the cost a
+/// debugger's "run to next breakpoint" pays while streaming through code at
+/// full speed (interactive single-stepping is unaffected by per-scan cost).
+///
+/// The two arms are NOT expected to match: `run_round` inlines and
+/// specialises `execute_with_hook` at its single call site, while
+/// `run_round_debug` calls the out-of-line generic copy. The gap here is
+/// that driver difference, not a hot-path regression — the production
+/// `run_round` path itself is guarded against regression by the other
+/// `run_round` benches in this file (compare a branch to a `main` baseline
+/// with `--save-baseline` / `--baseline`).
+fn bench_debug_scan_cost(c: &mut Criterion) {
+    let mut group = c.benchmark_group("st_debug_scan_cost");
+    let container = compile_st(
+        "PROGRAM main
+  VAR counter : DINT; END_VAR
+  WHILE counter > 0 DO
+    counter := counter - 1;
+  END_WHILE;
+END_PROGRAM",
+    );
+
+    let count = 10_000;
+    group.throughput(Throughput::Elements(count as u64));
+
+    // Production path — reuses the shared macro (run_round).
+    bench_run!(
+        group,
+        BenchmarkId::new("run_round", count),
+        &container,
+        |bufs| {
+            bufs.vars[0] = Slot::from_i32(count);
+        }
+    );
+
+    // Debug driver path — run_round_debug with the zero-cost hook.
+    group.bench_with_input(
+        BenchmarkId::new("run_round_debug_noop", count),
+        &(),
+        |b, _| {
+            b.iter_batched(
+                || {
+                    let mut bufs = VmBuffers::from_container(&container);
+                    bufs.vars[0] = Slot::from_i32(count);
+                    bufs
+                },
+                |mut bufs| {
+                    let mut vm = load_and_start(&container, &mut bufs).unwrap();
+                    let mut hook = NoopDebugHook;
+                    black_box(vm.run_round_debug(0, &mut hook).unwrap());
+                },
+                BatchSize::SmallInput,
+            );
+        },
+    );
+    group.finish();
+}
+
 criterion_group!(
     benches,
+    bench_debug_scan_cost,
     bench_counter_loop,
     bench_arithmetic_i32,
     bench_arithmetic_f64,

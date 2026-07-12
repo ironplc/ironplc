@@ -20,7 +20,25 @@
 
 use ironplc_container::FunctionId;
 
-/// A trait invoked by the VM before executing each instruction.
+use crate::debug::PauseReason;
+
+/// What the VM should do after the hook has inspected the upcoming
+/// instruction.
+///
+/// Returned from [`DebugHook::before_instruction`] on every opcode.
+/// [`NoopDebugHook`] always returns [`HookAction::Continue`] from an
+/// `#[inline(always)]` body so the monomorphised hot path stays branch-free.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HookAction {
+    /// Execute the instruction normally.
+    Continue,
+    /// Stop *before* executing the instruction at `(function_id, pc)`.
+    /// The frame stack is left intact so execution can resume from here.
+    Pause(PauseReason),
+}
+
+/// A trait invoked by the VM before executing each instruction and around
+/// each call/return.
 ///
 /// Implementations may inspect or react to the upcoming instruction —
 /// for example, by checking a breakpoint table, recording a trace, or
@@ -38,7 +56,24 @@ pub trait DebugHook {
     /// pair uniquely identifies the instruction across nested CALL /
     /// FB_CALL frames, so a consumer can perform e.g.
     /// `DebugSection::lookup_source_location(function_id, pc)`.
-    fn before_instruction(&mut self, function_id: FunctionId, pc: usize, op: u8);
+    ///
+    /// Returning [`HookAction::Pause`] stops the VM *before* the
+    /// instruction executes; `pc` is written back to the top frame so
+    /// the same instruction re-executes when the VM is resumed.
+    fn before_instruction(&mut self, function_id: FunctionId, pc: usize, op: u8) -> HookAction;
+
+    /// Called after the hook approves a `CALL` / `FB_CALL` instruction and
+    /// just before the callee frame is pushed. Default: no-op.
+    ///
+    /// Lets a hook track call depth without reaching into the VM's frame
+    /// stack.
+    fn before_call(&mut self, _callee: FunctionId) {}
+
+    /// Called just after a frame is popped (`RET` / `RET_VOID` /
+    /// fall-off-the-end). `returning_to` is the function the VM is
+    /// resuming in, or `None` if the outermost frame just returned.
+    /// Default: no-op.
+    fn after_return(&mut self, _returning_to: Option<FunctionId>) {}
 }
 
 /// A no-op [`DebugHook`] used by default. Zero-sized; the empty
@@ -48,7 +83,9 @@ pub struct NoopDebugHook;
 
 impl DebugHook for NoopDebugHook {
     #[inline(always)]
-    fn before_instruction(&mut self, _function_id: FunctionId, _pc: usize, _op: u8) {}
+    fn before_instruction(&mut self, _function_id: FunctionId, _pc: usize, _op: u8) -> HookAction {
+        HookAction::Continue
+    }
 }
 
 #[cfg(test)]
@@ -57,11 +94,16 @@ mod tests {
     use std::vec::Vec;
 
     #[test]
-    fn noop_debug_hook_when_called_then_does_nothing() {
+    fn noop_debug_hook_when_called_then_continues() {
         let mut hook = NoopDebugHook;
-        hook.before_instruction(FunctionId::INIT, 0, 1);
-        hook.before_instruction(FunctionId::SCAN, usize::MAX, u8::MAX);
-        // No assertion needed: hook has no observable state.
+        assert_eq!(
+            hook.before_instruction(FunctionId::INIT, 0, 1),
+            HookAction::Continue
+        );
+        assert_eq!(
+            hook.before_instruction(FunctionId::SCAN, usize::MAX, u8::MAX),
+            HookAction::Continue
+        );
     }
 
     #[test]
@@ -70,8 +112,14 @@ mod tests {
             events: Vec<(FunctionId, usize, u8)>,
         }
         impl DebugHook for RecordingHook {
-            fn before_instruction(&mut self, function_id: FunctionId, pc: usize, op: u8) {
+            fn before_instruction(
+                &mut self,
+                function_id: FunctionId,
+                pc: usize,
+                op: u8,
+            ) -> HookAction {
                 self.events.push((function_id, pc, op));
+                HookAction::Continue
             }
         }
         let mut hook = RecordingHook { events: Vec::new() };
@@ -80,6 +128,22 @@ mod tests {
         assert_eq!(
             hook.events,
             vec![(FunctionId::SCAN, 0, 0x10), (FunctionId::new(2), 2, 0x11),]
+        );
+    }
+
+    #[test]
+    fn custom_debug_hook_when_pausing_then_returns_pause_action() {
+        use crate::debug::{BreakpointId, PauseReason};
+        struct PausingHook;
+        impl DebugHook for PausingHook {
+            fn before_instruction(&mut self, _f: FunctionId, _pc: usize, _op: u8) -> HookAction {
+                HookAction::Pause(PauseReason::Breakpoint(BreakpointId(7)))
+            }
+        }
+        let mut hook = PausingHook;
+        assert_eq!(
+            hook.before_instruction(FunctionId::SCAN, 0, 0x10),
+            HookAction::Pause(PauseReason::Breakpoint(BreakpointId(7)))
         );
     }
 }
