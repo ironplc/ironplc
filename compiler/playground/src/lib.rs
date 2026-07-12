@@ -112,6 +112,19 @@ struct DiagnosticInfo {
     start_column: u32,
     end_line: u32,
     end_column: u32,
+    /// The compiler source file that produced this diagnostic (e.g. the
+    /// `file!()` recorded by `Diagnostic::todo`). Present for the P9999/P9998
+    /// families; empty otherwise. This is the compiler's own location, never
+    /// the user's program, so it is safe to report automatically.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    compiler_file: String,
+    /// The compiler source line paired with `compiler_file`. Zero when absent.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    compiler_line: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// Build a [`DiagnosticInfo`] from a compiler diagnostic, computing 1-based
@@ -127,6 +140,8 @@ fn diagnostic_info(diag: &Diagnostic, source: &str) -> DiagnosticInfo {
         start_column: start.column + 1,
         end_line: end.line + 1,
         end_column: end.column + 1,
+        compiler_file: diag.source_file.clone().unwrap_or_default(),
+        compiler_line: diag.source_line.unwrap_or(0),
     }
 }
 
@@ -513,6 +528,8 @@ fn compile_inner(source: &str, dialect: &str, allows: &str) -> CompileResult {
                 start_column: 1,
                 end_line: 1,
                 end_column: 1,
+                compiler_file: String::new(),
+                compiler_line: 0,
             }],
         };
     }
@@ -1456,6 +1473,34 @@ END_PROGRAM
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "", "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
         assert_eq!(result.variables[2].value, "16#42"); // indices 0-1 are system globals
+    }
+
+    #[test]
+    fn compile_when_p9999_then_diagnostic_has_compiler_file_and_line() {
+        // A direct hardware-address write is not supported by codegen and
+        // produces P9999. The diagnostic must carry the compiler file/line so
+        // the playground can report the location without the program source.
+        let source = "
+PROGRAM main
+  VAR
+    x : BOOL;
+  END_VAR
+  %QX0.0 := TRUE;
+END_PROGRAM
+";
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
+        assert!(!result.ok);
+        let diag = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "P9999")
+            .expect("expected a P9999 diagnostic");
+        assert!(
+            diag.compiler_file.ends_with(".rs"),
+            "expected a compiler .rs file, got {:?}",
+            diag.compiler_file
+        );
+        assert!(diag.compiler_line > 0, "expected a non-zero compiler line");
     }
 
     #[test]

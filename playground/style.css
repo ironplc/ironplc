@@ -322,6 +322,71 @@ a.diagnostic-code:hover {
   padding: 0.5rem 0;
 }
 
+/* --- P9999 "Submit Code" report panel --- */
+
+.report-panel {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(108, 140, 255, 0.08);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.report-title {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.report-consent {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin-bottom: 0.6rem;
+}
+
+.report-consent strong {
+  color: var(--text);
+}
+
+.report-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.submit-code-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.submit-code-btn:hover {
+  background: var(--accent-hover);
+}
+
+.report-github-link {
+  color: var(--accent);
+  font-size: 0.8rem;
+  text-decoration: underline;
+}
+
+.report-github-link:hover {
+  color: var(--accent-hover);
+}
+
+.report-confirmation {
+  color: var(--success);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-weight: 500;
+}
+
 .success-message {
   color: var(--success);
 }
