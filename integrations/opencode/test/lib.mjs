@@ -155,13 +155,37 @@ export function toolWasInvoked(recordLog) {
 
 /// The compiler responded when the server emitted a check result (which always
 /// carries an `ok` field and, for a broken program, diagnostics).
+///
+/// The result travels as an MCP `tools/call` response whose payload is nested:
+/// the compiler's JSON is serialized into a `content[].text` string, so its
+/// quotes arrive escaped (`\"diagnostics\"`). Parse the JSON-RPC envelope and
+/// inspect the decoded text rather than regexing the escaped bytes.
 export function compilerResponded(recordLog) {
+  let text;
   try {
-    const text = fs.readFileSync(`${recordLog}.out`, "utf8");
-    return /"diagnostics"/.test(text) || /"ok"\s*:/.test(text);
+    text = fs.readFileSync(`${recordLog}.out`, "utf8");
   } catch {
     return false;
   }
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let message;
+    try {
+      message = JSON.parse(trimmed);
+    } catch {
+      continue; // a framed/partial line we cannot parse on its own
+    }
+    const content = message?.result?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block?.type !== "text" || typeof block.text !== "string") continue;
+      if (/"diagnostics"/.test(block.text) || /"ok"\s*:/.test(block.text)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /// Parse the newline-delimited JSON-RPC messages OpenCode sent to the server and
