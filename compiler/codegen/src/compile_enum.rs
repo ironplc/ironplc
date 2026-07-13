@@ -12,7 +12,6 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_problems::Problem;
 
 use super::compile::{OpWidth, Signedness, VarTypeInfo};
 
@@ -108,10 +107,7 @@ pub(crate) fn resolve_enum_ordinal(
             .get(&(type_upper, value_upper))
             .copied()
             .ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::NotImplemented,
-                    Label::span(ev.span(), "Unknown qualified enum value"),
-                )
+                Diagnostic::not_implemented(Label::span(ev.span(), "Unknown qualified enum value"))
             })
     } else {
         // Unqualified: GREEN
@@ -119,10 +115,7 @@ pub(crate) fn resolve_enum_ordinal(
             .get(&value_upper)
             .map(|(_, ordinal)| *ordinal)
             .ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::NotImplemented,
-                    Label::span(ev.span(), "Unknown enum value"),
-                )
+                Diagnostic::not_implemented(Label::span(ev.span(), "Unknown enum value"))
             })
     }
 }
