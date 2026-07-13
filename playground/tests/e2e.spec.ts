@@ -421,10 +421,10 @@ END_PROGRAM
     await expect(page.locator('[data-testid="examples-select"]')).toBeHidden();
   });
 
-  test("dialect_select_when_loaded_then_defaults_to_2003", async ({ page }) => {
+  test("dialect_select_when_loaded_then_defaults_to_ed2", async ({ page }) => {
     const select = page.locator('[data-testid="dialect-select"]');
     await expect(select).toBeVisible();
-    await expect(select).toHaveValue("2003");
+    await expect(select).toHaveValue("iec61131-3-ed2");
   });
 
   test("dialect_select_when_embed_mode_then_hidden", async ({ page }) => {
@@ -436,19 +436,19 @@ END_PROGRAM
     await expect(page.locator('[data-testid="dialect-select"]')).toBeHidden();
   });
 
-  test("dialect_badge_when_embed_with_dialect_2013_then_shows_badge", async ({ page }) => {
-    await page.goto("/?embed=true&dialect=2013");
+  test("dialect_badge_when_embed_with_dialect_ed3_then_shows_badge", async ({ page }) => {
+    await page.goto("/?embed=true&dialect=iec61131-3-ed3");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
       timeout: 15000,
     });
 
     const badge = page.locator('[data-testid="dialect-badge"]');
     await expect(badge).toBeVisible();
-    await expect(badge).toHaveText("IEC 61131-3:2013");
+    await expect(badge).toHaveText("IEC 61131-3 Ed. 3");
   });
 
   test("dialect_badge_when_allows_set_then_shows_custom_with_tooltip", async ({ page }) => {
-    await page.goto("/?embed=true&dialect=2013&allows=sizeof,c-style-comments");
+    await page.goto("/?embed=true&dialect=iec61131-3-ed3&allows=sizeof,c-style-comments");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
       timeout: 15000,
     });
@@ -458,12 +458,12 @@ END_PROGRAM
     await expect(badge).toHaveText("Custom");
     await expect(badge).toHaveAttribute(
       "title",
-      "IEC 61131-3:2013 + --allow-sizeof, --allow-c-style-comments",
+      "IEC 61131-3 Ed. 3 + --allow-sizeof, --allow-c-style-comments",
     );
   });
 
   test("start_when_allows_sizeof_set_and_strict_dialect_then_compiles", async ({ page }) => {
-    await page.goto("/?embed=true&dialect=2013&allows=sizeof");
+    await page.goto("/?embed=true&dialect=iec61131-3-ed3&allows=sizeof");
     await expect(page.locator('[data-testid="status"]')).toHaveText("Ready", {
       timeout: 15000,
     });
@@ -486,11 +486,11 @@ END_PROGRAM
     await page.click('[data-testid="stop-btn"]');
   });
 
-  test("start_when_dialect_2013_and_ltime_program_then_runs", async ({ page }) => {
+  test("start_when_dialect_ed3_and_ltime_program_then_runs", async ({ page }) => {
     const editor = page.locator('[data-testid="editor"]');
     const select = page.locator('[data-testid="dialect-select"]');
 
-    await select.selectOption("2013");
+    await select.selectOption("iec61131-3-ed3");
     await editor.fill(`PROGRAM main
   VAR
     duration : LTIME;

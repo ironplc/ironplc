@@ -61,14 +61,44 @@ fn create_problems() -> Result<(), Box<dyn Error>> {
     let mut out =
         File::create(out_path).map_err(|e| format!("Unable to create 'problems.rs': {e}"))?;
 
+    // Problems whose "location" is the compiler's own source rather than the
+    // IEC 61131-3 program. These must be constructed through the dedicated
+    // `Diagnostic` constructors (`todo*`/`not_implemented`/`internal_error*`)
+    // so that the compiler `file#Lline` is recorded and the P9xxx telemetry
+    // dashboards can rank them. The variants are marked `#[deprecated]` and the
+    // workspace denies the `deprecated` lint, so any direct
+    // `Diagnostic::problem(Problem::NotImplemented, …)` fails to compile.
+    let compiler_located: &[(&str, &str)] = &[
+        (
+            "NotImplemented",
+            "construct via Diagnostic::not_implemented (or todo*) so the compiler file/line is recorded for the P9xxx dashboards",
+        ),
+        (
+            "InternalError",
+            "construct via Diagnostic::internal_error / internal_error_at so the compiler file/line is recorded for the P9xxx dashboards",
+        ),
+    ];
+    let deprecation_note = |name: &str| -> Option<&str> {
+        compiler_located
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, note)| *note)
+    };
+
     // Create the enumeration definition
     out.write_all(b"pub enum Problem {\n")?;
     for def in &defs {
+        if let Some(note) = deprecation_note(&def.name) {
+            out.write_all(format!("    #[deprecated(note = \"{note}\")]\n").as_bytes())?;
+        }
         out.write_all(format!("    {},\n", def.name).as_bytes())?;
     }
     out.write_all(b"}\n\n")?;
 
-    // Create the function to return information about each definition
+    // Create the function to return information about each definition. The impl
+    // allows `deprecated` because `code()`/`message()` legitimately match every
+    // variant, including the compiler-located ones marked above.
+    out.write_all(b"#[allow(deprecated)]\n")?;
     out.write_all(b"impl Problem {\n")?;
 
     // Define code()

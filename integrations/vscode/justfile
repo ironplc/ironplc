@@ -58,6 +58,15 @@ update-grammar-snapshots:
 package filename:
   npx vsce package --out {{filename}}
 
+# Build the Marketplace VSIX package. The Visual Studio Marketplace uses the
+# extension ID ironplc.ironplc-vscode because the original ironplc.ironplc ID
+# cannot be reused; Open VSX keeps ironplc.ironplc. Only the `name` differs, so
+# `displayName` and publisher remain identical on both registries. Overriding
+# the name here mutates package.json in the (ephemeral) build tree only.
+package-marketplace filename:
+  npm pkg set name=ironplc-vscode
+  npx vsce package --out {{filename}}
+
 # Generate a CycloneDX JSON SBOM (bom.cdx.json) for the VS Code extension.
 sbom version:
   just _sbom-{{os()}} {{version}}

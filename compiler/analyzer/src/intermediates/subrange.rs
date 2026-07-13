@@ -48,22 +48,16 @@ pub fn try_from(
 
             // Extract min and max values from the subrange
             let start = spec.subrange.start.as_signed_integer().ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::InternalError,
-                    Label::span(
-                        node_name.span(),
-                        "Subrange start bound is an unresolved constant",
-                    ),
-                )
+                Diagnostic::internal_error_at(Label::span(
+                    node_name.span(),
+                    "Subrange start bound is an unresolved constant",
+                ))
             })?;
             let end = spec.subrange.end.as_signed_integer().ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::InternalError,
-                    Label::span(
-                        node_name.span(),
-                        "Subrange end bound is an unresolved constant",
-                    ),
-                )
+                Diagnostic::internal_error_at(Label::span(
+                    node_name.span(),
+                    "Subrange end bound is an unresolved constant",
+                ))
             })?;
 
             let min_value = if start.is_neg {

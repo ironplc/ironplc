@@ -1405,7 +1405,7 @@ END_PROGRAM
 
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, Problem::NotImplemented.code());
+        assert_eq!(diagnostic.code, "P9999");
     }
 
     #[test]
