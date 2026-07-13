@@ -14,7 +14,6 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_problems::Problem;
 
 use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::TypeEnvironment;
@@ -90,10 +89,10 @@ pub(crate) fn assign_variables(
                         .data_region_offset
                         .checked_add(total_bytes)
                         .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::NotImplemented,
-                                Label::span(string_init.span(), "Data region overflow"),
-                            )
+                            Diagnostic::not_implemented(Label::span(
+                                string_init.span(),
+                                "Data region overflow",
+                            ))
                         })?;
 
                     if max_length > ctx.max_string_capacity {
@@ -130,10 +129,10 @@ pub(crate) fn assign_variables(
                             .data_region_offset
                             .checked_add(instance_size)
                             .ok_or_else(|| {
-                                Diagnostic::problem(
-                                    Problem::NotImplemented,
-                                    Label::span(decl.identifier.span(), "Data region overflow"),
-                                )
+                                Diagnostic::not_implemented(Label::span(
+                                    decl.identifier.span(),
+                                    "Data region overflow",
+                                ))
                             })?;
 
                         ctx.fb_instances.insert(
@@ -153,10 +152,10 @@ pub(crate) fn assign_variables(
                             .data_region_offset
                             .checked_add(instance_size)
                             .ok_or_else(|| {
-                                Diagnostic::problem(
-                                    Problem::NotImplemented,
-                                    Label::span(decl.identifier.span(), "Data region overflow"),
-                                )
+                                Diagnostic::not_implemented(Label::span(
+                                    decl.identifier.span(),
+                                    "Data region overflow",
+                                ))
                             })?;
 
                         ctx.fb_instances.insert(
@@ -182,10 +181,10 @@ pub(crate) fn assign_variables(
                         SpecificationKind::Named(type_name) => {
                             let array_type =
                                 types.resolve_array_type(type_name).ok_or_else(|| {
-                                    Diagnostic::problem(
-                                        Problem::NotImplemented,
-                                        Label::span(type_name.span(), "Unknown array type"),
-                                    )
+                                    Diagnostic::not_implemented(Label::span(
+                                        type_name.span(),
+                                        "Unknown array type",
+                                    ))
                                 })?;
                             let IntermediateType::Array {
                                 element_type,

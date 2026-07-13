@@ -13,7 +13,6 @@ use ironplc_dsl::configuration::{
 };
 use ironplc_dsl::core::{FileId, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_problems::Problem;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -160,13 +159,10 @@ pub fn build_response(
     // Serialize container to bytes
     let mut bytes = Vec::new();
     if let Err(e) = container.write_to(&mut bytes) {
-        let err = Diagnostic::problem(
-            Problem::InternalError,
-            Label::span(
-                SourceSpan::default(),
-                format!("Failed to serialize container: {e}"),
-            ),
-        );
+        let err = Diagnostic::internal_error_at(Label::span(
+            SourceSpan::default(),
+            format!("Failed to serialize container: {e}"),
+        ));
         diagnostics.push(serialize_diagnostic(&err));
         return CompileResponse {
             ok: false,
@@ -218,15 +214,12 @@ pub fn build_response(
         match guard.insert(cached) {
             Ok(id) => id,
             Err(InsertError::TooLarge { size, max }) => {
-                let err = Diagnostic::problem(
-                    Problem::InternalError,
-                    Label::span(
-                        SourceSpan::default(),
-                        format!(
-                            "Compiled container ({size} bytes) exceeds cache byte budget ({max} bytes)"
-                        ),
+                let err = Diagnostic::internal_error_at(Label::span(
+                    SourceSpan::default(),
+                    format!(
+                        "Compiled container ({size} bytes) exceeds cache byte budget ({max} bytes)"
                     ),
-                );
+                ));
                 diagnostics.push(serialize_diagnostic(&err));
                 return CompileResponse {
                     ok: false,

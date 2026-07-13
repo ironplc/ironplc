@@ -155,16 +155,13 @@ fn compile_statement(
                             .get(&field_name)
                             .copied()
                             .ok_or_else(|| {
-                                Diagnostic::problem(
-                                    Problem::NotImplemented,
-                                    Label::span(
-                                        structured.field.span(),
-                                        format!(
-                                            "Unknown field '{}' on function block '{}'",
-                                            structured.field, named.name
-                                        ),
+                                Diagnostic::not_implemented(Label::span(
+                                    structured.field.span(),
+                                    format!(
+                                        "Unknown field '{}' on function block '{}'",
+                                        structured.field, named.name
                                     ),
-                                )
+                                ))
                             })?;
                         let var_index = fb_info.var_index;
                         let type_id = fb_info.type_id;
@@ -192,13 +189,10 @@ fn compile_statement(
                     ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
                 ) {
                     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                        Diagnostic::problem(
-                            Problem::NotImplemented,
-                            Label::span(
-                                structured.span(),
-                                format!("Variable '{}' is not a structure", root_name),
-                            ),
-                        )
+                        Diagnostic::not_implemented(Label::span(
+                            structured.span(),
+                            format!("Variable '{}' is not a structure", root_name),
+                        ))
                     })?;
                     let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
                     compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
@@ -1118,13 +1112,10 @@ fn compile_for(
         Some(step_expr) => match try_constant_sign(step_expr) {
             Some(sign) => sign,
             None => {
-                return Err(Diagnostic::problem(
-                    Problem::NotImplemented,
-                    Label::span(
-                        for_stmt.control.span(),
-                        "FOR loop step must be a constant expression",
-                    ),
-                ))
+                return Err(Diagnostic::not_implemented(Label::span(
+                    for_stmt.control.span(),
+                    "FOR loop step must be a constant expression",
+                )))
             }
         },
     };

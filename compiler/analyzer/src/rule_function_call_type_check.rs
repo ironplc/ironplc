@@ -392,10 +392,11 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
             if !signature.is_stdlib() {
                 for p in &node.param_assignment {
                     if let ParamAssignmentKind::Output(_) = p {
-                        self.diagnostics.push(Diagnostic::problem(
-                            Problem::NotImplemented,
-                            Label::span(node.name.span(), "Function call with output argument"),
-                        ));
+                        self.diagnostics
+                            .push(Diagnostic::not_implemented(Label::span(
+                                node.name.span(),
+                                "Function call with output argument",
+                            )));
                     }
                 }
             }

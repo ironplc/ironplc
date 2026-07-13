@@ -239,6 +239,35 @@ Diagnostic::problem(
 .with_secondary(Label::span(base_type_name.span(), "Base type not found"))
 ```
 
+#### Compiler-located problems (P9998 / P9999)
+
+`Problem::NotImplemented` (P9999) and `Problem::InternalError` (P9998) describe a
+gap in the *compiler*, not the program. Their most useful "location" is the
+compiler `file#Lline` that produced them — the telemetry dashboards rank that to
+point maintainers at the code that needs work. Constructing them via
+`Diagnostic::problem(...)` drops that location, so **both variants are
+`#[deprecated]` and the workspace denies the `deprecated` lint — using them
+directly does not compile.** Use the dedicated constructors, which capture the
+call site's location automatically via `#[track_caller]`:
+
+```rust
+// Unimplemented capability, with a descriptive label + IEC span:
+return Err(Diagnostic::not_implemented(Label::span(
+    span.clone(),
+    format!("Structure field '{}' exceeds maximum nesting depth", field.name),
+)));
+
+// "Should never happen" invariant violation, with a custom label:
+return Err(Diagnostic::internal_error_at(Label::span(
+    node_name.span(),
+    "Subrange start bound is an unresolved constant",
+)));
+
+// Internal error with the generic message (no custom label):
+return Err(Diagnostic::internal_error(file!(), line!()));
+```
+
+
 ### Error Message Guidelines
 
 1. **Be specific**: Include actual values when helpful
