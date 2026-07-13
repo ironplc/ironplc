@@ -233,23 +233,17 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         dimensions: array_dims,
     } = &field_type
     else {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                structured.field.span(),
-                format!("Field '{}' is not an array type", structured.field),
-            ),
-        ));
+        return Err(Diagnostic::not_implemented(Label::span(
+            structured.field.span(),
+            format!("Field '{}' is not an array type", structured.field),
+        )));
     };
 
     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                structured.span(),
-                format!("Variable '{}' is not a structure", root_name),
-            ),
-        )
+        Diagnostic::not_implemented(Label::span(
+            structured.span(),
+            format!("Variable '{}' is not a structure", root_name),
+        ))
     })?;
 
     // STRING array fields use dedicated STR_LOAD/STORE_ARRAY_ELEM opcodes
@@ -261,22 +255,16 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
                 .string_array_descs
                 .get(&field_name)
                 .ok_or_else(|| {
-                    Diagnostic::problem(
-                        Problem::NotImplemented,
-                        Label::span(
-                            structured.field.span(),
-                            "STRING array descriptor not registered for field",
-                        ),
-                    )
+                    Diagnostic::not_implemented(Label::span(
+                        structured.field.span(),
+                        "STRING array descriptor not registered for field",
+                    ))
                 })?;
         let scratch = struct_info.scratch_var_index.ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(
-                    structured.field.span(),
-                    "Scratch variable not allocated for struct",
-                ),
-            )
+            Diagnostic::not_implemented(Label::span(
+                structured.field.span(),
+                "Scratch variable not allocated for struct",
+            ))
         })?;
         let dimensions = dimensions_from_intermediate(array_dims);
         let field_byte_offset = slot_offset.raw() * 8;
@@ -292,9 +280,7 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
 
     let element_op_type =
         crate::compile_struct::resolve_field_op_type(element_type).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(
+            Diagnostic::not_implemented(Label::span(
                     structured.field.span(),
                     "Array element type is not a primitive (nested struct/array elements not supported)",
                 ),
@@ -531,10 +517,7 @@ pub(crate) fn register_array_variable(
         }
     } else {
         super::compile_setup::resolve_type_name(&spec.element_type_name).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(span.clone(), "Unsupported array element type"),
-            )
+            Diagnostic::not_implemented(Label::span(span.clone(), "Unsupported array element type"))
         })?
     };
 
@@ -549,19 +532,16 @@ pub(crate) fn register_array_variable(
             stride: 0,
         });
         total_elements = total_elements.checked_mul(size).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(span.clone(), "Array too large"),
-            )
+            Diagnostic::not_implemented(Label::span(span.clone(), "Array too large"))
         })?;
     }
 
     // 3. Validate element limit (i32 safety for flat-index arithmetic)
     if total_elements > super::compile::MAX_DATA_REGION_SLOTS {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span.clone(), "Array exceeds maximum 32768 elements"),
-        ));
+        return Err(Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            "Array exceeds maximum 32768 elements",
+        )));
     }
 
     // 4. Compute strides (reverse pass)
@@ -579,10 +559,7 @@ pub(crate) fn register_array_variable(
         // STRING/WSTRING elements: each element is [max_len:u16][cur_len:u16][data]
         let element_stride = super::compile::string_region_size(string_max_len, string_char_width);
         total_elements.checked_mul(element_stride).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(span.clone(), "Data region overflow"),
-            )
+            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
         })?
     } else {
         total_elements * 8
@@ -591,18 +568,15 @@ pub(crate) fn register_array_variable(
         .data_region_offset
         .checked_add(total_bytes)
         .ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(span.clone(), "Data region overflow"),
-            )
+            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
         })?;
 
     // 6. Assert data_offset fits in i32 (stored in slot via LOAD_CONST_I32)
     if data_offset > i32::MAX as u32 {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span.clone(), "Data region exceeds 2 GiB limit"),
-        ));
+        return Err(Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            "Data region exceeds 2 GiB limit",
+        )));
     }
 
     // 7. Register descriptor in the container and get its index
@@ -776,10 +750,10 @@ pub(crate) fn emit_flat_index(
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     if subscripts.len() != dimensions.len() {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span.clone(), "Wrong number of array subscripts"),
-        ));
+        return Err(Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            "Wrong number of array subscripts",
+        )));
     }
 
     // Try compile-time constant folding for all-literal subscripts.

@@ -21,7 +21,6 @@ use std::collections::{HashMap, HashSet};
 use ironplc_container::FunctionId;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_problems::Problem;
 
 /// Compute the longest path from `entry` through `graph`, counting
 /// the entry node itself.
@@ -78,17 +77,14 @@ pub(crate) fn compute_max_call_depth(
                     // Back edge — cycle detected. Static analysis
                     // should have rejected this earlier; surface as
                     // an internal error so the bug is visible.
-                    return Err(Diagnostic::problem(
-                        Problem::InternalError,
-                        Label::file(
-                            FileId::default(),
-                            format!(
-                                "codegen call-graph cycle detected involving function {child}; \
+                    return Err(Diagnostic::internal_error_at(Label::file(
+                        FileId::default(),
+                        format!(
+                            "codegen call-graph cycle detected involving function {child}; \
                                  semantic analysis should have rejected this program with \
                                  Problem::RecursiveCycle"
-                            ),
                         ),
-                    ));
+                    )));
                 }
                 Color::Black => {
                     let d = depth[&child];
@@ -190,7 +186,7 @@ mod tests {
         // 1 -> 1
         let g = graph(&[(1, 1)]);
         let err = compute_max_call_depth(&g, FunctionId::new(1)).unwrap_err();
-        assert_eq!(err.code, Problem::InternalError.code());
+        assert_eq!(err.code, "P9998");
     }
 
     #[test]
@@ -198,6 +194,6 @@ mod tests {
         // 1 -> 2 -> 3 -> 1
         let g = graph(&[(1, 2), (2, 3), (3, 1)]);
         let err = compute_max_call_depth(&g, FunctionId::new(1)).unwrap_err();
-        assert_eq!(err.code, Problem::InternalError.code());
+        assert_eq!(err.code, "P9998");
     }
 }

@@ -228,10 +228,7 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
     let outcome = match runner::execute(&cached_snapshot, &trace_set, effective_limits) {
         Ok(o) => o,
         Err(msg) => {
-            let diag = Diagnostic::problem(
-                Problem::InternalError,
-                Label::span(SourceSpan::default(), msg),
-            );
+            let diag = Diagnostic::internal_error_at(Label::span(SourceSpan::default(), msg));
             return fail(vec![diag]);
         }
     };
