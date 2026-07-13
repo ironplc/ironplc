@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.228.0">
+<meta name="ironplc-version" content="0.229.0">
 </head>
   <body>
     
@@ -522,6 +522,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P4032.html">P4032</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4033.html">P4033</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4034.html">P4034</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4035.html">P4035</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -655,8 +656,27 @@ requires adding support for the elements to the IronPLC compiler.</p>
 <ul class="simple">
 <li><p>avoid the particular elements (this is usually not feasible)</p></li>
 <li><p>verify that you have the latest version of the IronPLC compiler</p></li>
-<li><p>report the issue to <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=todo_report.md">IronPLC GitHub issues</a>.</p></li>
+<li><p>report the program so support can be added (see below).</p></li>
 </ul>
+<section id="reporting-the-program">
+<h2>Reporting the program<a class="headerlink" href="#reporting-the-program" title="Link to this heading">¶</a></h2>
+<p>We can only add support for an unsupported capability once we can see the
+program that needs it. Sending us the program gives the best results, so please
+do — there are two ways, and no GitHub account is required:</p>
+<ul class="simple">
+<li><p><strong>From the</strong> <a class="reference external" href="https://playground.ironplc.com/">IronPLC Playground</a> <strong>(easiest).</strong> When a program produces
+P9999, a <strong>Submit Code</strong> button appears next to the diagnostic. Clicking it
+sends the program directly to the IronPLC team.</p></li>
+<li><p><strong>As a</strong> <a class="reference external" href="https://github.com/ironplc/ironplc/issues/new?template=todo_report.md">GitHub issue</a>. Attach the source file (or paste it) so we can
+reproduce the problem.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Whichever route you choose, the program you submit is shared with the
+IronPLC team and <strong>may become public</strong> — for example in a GitHub issue.
+Do not submit anything confidential.</p>
+</div>
+</section>
 <section id="known-limitations">
 <h2>Known Limitations<a class="headerlink" href="#known-limitations" title="Link to this heading">¶</a></h2>
 <p>The following features are not yet supported in code generation and will
@@ -741,6 +761,7 @@ with a small sample that demonstrates the problem.</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">P9999</a><ul>
+<li><a class="reference internal" href="#reporting-the-program">Reporting the program</a></li>
 <li><a class="reference internal" href="#known-limitations">Known Limitations</a></li>
 </ul>
 </li>
