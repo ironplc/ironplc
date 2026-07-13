@@ -1,7 +1,7 @@
 import uPlot from "./uPlot.esm.js";
 import type {
   Diagnostic,
-  Dialect,
+  DialectOption,
   RunResult,
   Variable,
   WorkerRequest,
@@ -329,34 +329,50 @@ if (isEmbed) {
   intervalInput.disabled = true;
 }
 
-// Set dialect from the URL parameter (used by embed/Sphinx directives). The
-// value is a canonical dialect name (matching the compiler's `Dialect::cli_name`).
-const dialectParam = params.get("dialect");
-if (dialectParam) {
-  const option = Array.from(dialectSelect.options).find(
-    (o) => o.value === dialectParam,
-  );
-  if (option) {
-    dialectSelect.value = dialectParam;
-    dialectBadge.textContent = option.textContent ?? dialectParam;
-    dialectBadge.classList.add("visible");
-  }
-}
-
 // `allows` is a comma-separated list of feature flag short names — the part
-// after `--allow-` in the CLI (e.g. "sizeof,c-style-comments"). When present,
-// override the dialect badge to show "Custom" with a hover listing the flags.
+// after `--allow-` in the CLI (e.g. "sizeof,c-style-comments").
 const allowsParam = (params.get("allows") || "")
   .split(",")
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
-if (allowsParam.length > 0) {
-  dialectBadge.textContent = "Custom";
-  const flagList = allowsParam.map((s) => `--allow-${s}`).join(", ");
-  const dialectLabel =
-    dialectSelect.options[dialectSelect.selectedIndex]?.textContent ?? "default";
-  dialectBadge.title = `${dialectLabel} + ${flagList}`;
-  dialectBadge.classList.add("visible");
+
+// Populate the dialect picker from the compiler-provided list (via the WASM
+// `dialects()` export), then apply the URL dialect parameter and dialect badge.
+// Called once the worker reports the WASM module is ready.
+function initDialects(options: DialectOption[]): void {
+  dialectSelect.replaceChildren();
+  for (const d of options) {
+    const opt = document.createElement("option");
+    opt.value = d.value;
+    opt.textContent = d.label;
+    opt.selected = d.is_default;
+    dialectSelect.appendChild(opt);
+  }
+
+  // A URL dialect parameter (used by embed/Sphinx directives) overrides the
+  // default. The value is a canonical dialect name (Dialect::cli_name).
+  const dialectParam = params.get("dialect");
+  if (dialectParam && options.some((d) => d.value === dialectParam)) {
+    dialectSelect.value = dialectParam;
+    dialectBadge.textContent =
+      dialectSelect.options[dialectSelect.selectedIndex]?.textContent ??
+      dialectParam;
+    dialectBadge.classList.add("visible");
+  }
+
+  // When feature flags are set, override the badge to "Custom" with a hover
+  // listing the flags on top of the selected dialect.
+  if (allowsParam.length > 0) {
+    dialectBadge.textContent = "Custom";
+    const flagList = allowsParam.map((s) => `--allow-${s}`).join(", ");
+    const dialectLabel =
+      dialectSelect.options[dialectSelect.selectedIndex]?.textContent ??
+      "default";
+    dialectBadge.title = `${dialectLabel} + ${flagList}`;
+    dialectBadge.classList.add("visible");
+  }
+
+  registerSuper({ dialect: getDialect() });
 }
 
 function getDialect(): string {
@@ -459,7 +475,6 @@ if (params.has("code")) {
 }
 
 renderLineNumbers();
-initAnalytics();
 
 // --- Web Worker communication ---
 
@@ -472,6 +487,8 @@ worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
 
   if (msg.type === "ready") {
     compilerVersion = msg.version || "";
+    initDialects(msg.dialects);
+    initAnalytics();
     startBtn.disabled = false;
     statusEl.textContent = "Ready";
     return;
@@ -638,7 +655,7 @@ startBtn.addEventListener("click", async () => {
   const allows = getAllows();
   const compileStart = performance.now();
   capture("compile_attempted", { trigger: "manual" });
-  const loadMsg = await postCommand({ command: "load_program", source, cycleTimeUs, dialect: dialect as Dialect, allows });
+  const loadMsg = await postCommand({ command: "load_program", source, cycleTimeUs, dialect, allows });
   const compileDurationMs = performance.now() - compileStart;
 
   if (loadMsg.type === "error") {

@@ -10,8 +10,13 @@ import init, {
   step,
   reset_session,
   version,
+  dialects,
 } from "./pkg/ironplc_playground.js";
-import type { WorkerRequest, WorkerResponse } from "./types/messages.js";
+import type {
+  DialectOption,
+  WorkerRequest,
+  WorkerResponse,
+} from "./types/messages.js";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -25,7 +30,8 @@ init()
   .then(() => {
     init_panic_hook();
     ready = true;
-    post({ type: "ready", version: version() });
+    const dialectOptions = JSON.parse(dialects()) as DialectOption[];
+    post({ type: "ready", version: version(), dialects: dialectOptions });
   })
   .catch((err: unknown) => {
     post({ type: "error", error: `WASM init failed: ${err}` });

@@ -4,14 +4,19 @@
 // dispatches into the WASM crate and posts back WorkerResponse. The WASM crate
 // returns JSON strings that app.ts parses into RunResult / LoadResult.
 
-// Canonical dialect names (matching the compiler's `Dialect::cli_name`), plus
-// the unset default ("") used by embeds that do not force a dialect.
-export type Dialect =
-  | "iec61131-3-ed2"
-  | "iec61131-3-ed3"
-  | "rusty"
-  | "codesys"
-  | "";
+// A dialect name (matching the compiler's `Dialect::cli_name`), or "" to use
+// the playground default. The authoritative list of dialects comes from the
+// WASM `dialects()` export (see DialectOption), so no enumeration is duplicated
+// here — this alias just documents the contract.
+export type Dialect = string;
+
+// One selectable dialect, produced by the WASM `dialects()` export and used to
+// build the dialect picker so it never drifts from the compiler.
+export interface DialectOption {
+  value: string;
+  label: string;
+  is_default: boolean;
+}
 
 export interface CompileRequest {
   id: number;
@@ -68,6 +73,7 @@ export type WorkerRequest =
 export interface ReadyMessage {
   type: "ready";
   version: string;
+  dialects: DialectOption[];
 }
 
 export interface ErrorMessage {

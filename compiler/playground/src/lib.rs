@@ -98,6 +98,35 @@ pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// A selectable dialect for the playground dialect picker.
+#[derive(Serialize, Deserialize)]
+struct DialectOption {
+    /// Canonical dialect name (matches [`Dialect::cli_name`]), passed back to
+    /// the compile/run entry points.
+    value: String,
+    /// Human-readable label for display in the picker.
+    label: String,
+    /// Whether this is the default selection.
+    is_default: bool,
+}
+
+/// Return the selectable dialects as a JSON array so the UI builds its dialect
+/// picker from the compiler's own [`Dialect`] list. This keeps the picker from
+/// drifting out of sync with the dialects the compiler actually supports.
+#[wasm_bindgen]
+pub fn dialects() -> String {
+    let default = Dialect::default();
+    let options: Vec<DialectOption> = Dialect::ALL
+        .iter()
+        .map(|d| DialectOption {
+            value: d.cli_name().to_string(),
+            label: d.display_name().to_string(),
+            is_default: *d == default,
+        })
+        .collect();
+    serde_json::to_string(&options).unwrap_or_else(|_| "[]".to_string())
+}
+
 /// Result of a compilation attempt.
 #[derive(Serialize, Deserialize)]
 struct CompileResult {
@@ -1870,6 +1899,21 @@ END_PROGRAM
         assert_eq!(dialect_from("not-a-dialect"), Dialect::Rusty);
         // Year-based aliases are no longer recognized.
         assert_eq!(dialect_from("2013"), Dialect::Rusty);
+    }
+
+    #[test]
+    fn dialects_when_called_then_lists_all_dialects_with_one_default() {
+        let options: Vec<DialectOption> = serde_json::from_str(&dialects()).unwrap();
+        assert_eq!(options.len(), Dialect::ALL.len());
+        // Every listed value round-trips back to a real dialect.
+        for opt in &options {
+            assert!(opt.value.parse::<Dialect>().is_ok());
+            assert!(!opt.label.is_empty());
+        }
+        // Exactly one default, and it is the compiler's default dialect.
+        let defaults: Vec<&DialectOption> = options.iter().filter(|o| o.is_default).collect();
+        assert_eq!(defaults.len(), 1);
+        assert_eq!(defaults[0].value, Dialect::default().cli_name());
     }
 
     #[test]
