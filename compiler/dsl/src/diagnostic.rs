@@ -163,6 +163,7 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    #[allow(deprecated)]
     pub fn todo(file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
@@ -180,6 +181,7 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    #[allow(deprecated)]
     pub fn todo_with_id(id: &Id, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
@@ -194,6 +196,7 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    #[allow(deprecated)]
     pub fn todo_with_type(ty: &TypeName, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
@@ -208,6 +211,7 @@ impl Diagnostic {
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    #[allow(deprecated)]
     pub fn todo_with_span(span: SourceSpan, file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::NotImplemented,
@@ -216,11 +220,31 @@ impl Diagnostic {
         .with_source(file, line)
     }
 
+    /// Creates a P9999 (NotImplemented) diagnostic that automatically records
+    /// the compiler `file#Lline` of the call site as its source location.
+    ///
+    /// Prefer this over `Diagnostic::problem(Problem::NotImplemented, …)` (which
+    /// no longer compiles): the compiler location is what the telemetry
+    /// dashboards rank to point maintainers at the unimplemented code. Unlike
+    /// `todo*()`, the caller supplies the primary label, so a descriptive
+    /// message and IEC 61131-3 span are preserved.
+    ///
+    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
+    /// need to be passed.
+    #[track_caller]
+    #[allow(deprecated)]
+    pub fn not_implemented(primary: Label) -> Self {
+        let caller = std::panic::Location::caller();
+        Diagnostic::problem(Problem::NotImplemented, primary)
+            .with_source(caller.file(), caller.line())
+    }
+
     /// Creates an "internal error" diagnostic associated with a file and line in the Rust
     /// source code.
     ///
     /// Unlike other uses of problem, the location in this is related to the compiler
     /// rather than the IEC 61131-3 source.
+    #[allow(deprecated)]
     pub fn internal_error(file: &str, line: u32) -> Self {
         Diagnostic::problem(
             Problem::InternalError,
@@ -230,6 +254,24 @@ impl Diagnostic {
             ),
         )
         .with_source(file, line)
+    }
+
+    /// Creates a P9998 (InternalError) diagnostic that automatically records
+    /// the compiler `file#Lline` of the call site as its source location, while
+    /// letting the caller supply a descriptive primary label.
+    ///
+    /// Prefer this over `Diagnostic::problem(Problem::InternalError, …)` (which
+    /// no longer compiles). Use `internal_error(file, line)` instead when no
+    /// custom label is needed.
+    ///
+    /// The location is captured via `#[track_caller]`, so no `file!()`/`line!()`
+    /// need to be passed.
+    #[track_caller]
+    #[allow(deprecated)]
+    pub fn internal_error_at(primary: Label) -> Self {
+        let caller = std::panic::Location::caller();
+        Diagnostic::problem(Problem::InternalError, primary)
+            .with_source(caller.file(), caller.line())
     }
 
     /// Adds to the problem description (primary text) additional context
@@ -327,7 +369,7 @@ mod tests {
     #[test]
     fn todo_when_called_then_creates_not_implemented_diagnostic() {
         let diag = Diagnostic::todo("test.rs", 42);
-        assert_eq!(diag.code, Problem::NotImplemented.code());
+        assert_eq!(diag.code, "P9999");
         assert!(diag.primary.message.contains("test.rs"));
         assert!(diag.source_file.is_some());
         assert_eq!(diag.source_line, Some(42));
@@ -337,7 +379,7 @@ mod tests {
     fn todo_with_id_when_called_then_includes_id_location() {
         let id = Id::from("my_var");
         let diag = Diagnostic::todo_with_id(&id, "foo.rs", 10);
-        assert_eq!(diag.code, Problem::NotImplemented.code());
+        assert_eq!(diag.code, "P9999");
         assert!(diag.primary.message.contains("foo.rs"));
     }
 
@@ -345,7 +387,7 @@ mod tests {
     fn todo_with_type_when_called_then_includes_type_location() {
         let ty = TypeName::from("MY_TYPE");
         let diag = Diagnostic::todo_with_type(&ty, "bar.rs", 20);
-        assert_eq!(diag.code, Problem::NotImplemented.code());
+        assert_eq!(diag.code, "P9999");
         assert!(diag.primary.message.contains("bar.rs"));
     }
 
@@ -353,16 +395,42 @@ mod tests {
     fn todo_with_span_when_called_then_includes_span() {
         let span = SourceSpan::default();
         let diag = Diagnostic::todo_with_span(span, "baz.rs", 30);
-        assert_eq!(diag.code, Problem::NotImplemented.code());
+        assert_eq!(diag.code, "P9999");
         assert!(diag.primary.message.contains("baz.rs"));
     }
 
     #[test]
     fn internal_error_when_called_then_creates_diagnostic() {
         let diag = Diagnostic::internal_error("err.rs", 99);
-        assert_eq!(diag.code, Problem::InternalError.code());
+        assert_eq!(diag.code, "P9998");
         assert!(diag.primary.message.contains("err.rs"));
         assert!(diag.primary.message.contains("bug in the compiler"));
+    }
+
+    #[test]
+    fn not_implemented_when_called_then_records_caller_location_and_label() {
+        let diag = Diagnostic::not_implemented(Label::span(
+            SourceSpan::default(),
+            "custom unimplemented message",
+        ));
+        assert_eq!(diag.code, "P9999");
+        // The caller's compiler location is captured automatically.
+        assert_eq!(diag.source_file.as_deref(), Some(file!()));
+        assert!(diag.source_line.is_some());
+        // The caller-supplied label is preserved (unlike todo*()).
+        assert_eq!(diag.primary.message, "custom unimplemented message");
+    }
+
+    #[test]
+    fn internal_error_at_when_called_then_records_caller_location_and_label() {
+        let diag = Diagnostic::internal_error_at(Label::span(
+            SourceSpan::default(),
+            "custom internal error message",
+        ));
+        assert_eq!(diag.code, "P9998");
+        assert_eq!(diag.source_file.as_deref(), Some(file!()));
+        assert!(diag.source_line.is_some());
+        assert_eq!(diag.primary.message, "custom internal error message");
     }
 
     #[test]
@@ -406,7 +474,7 @@ mod tests {
         let primary_file = FileId::from_string("file1");
         let secondary_file = FileId::from_string("file2");
         let diag = Diagnostic::problem(
-            Problem::NotImplemented,
+            Problem::SyntaxError,
             Label::file(primary_file.clone(), "primary"),
         )
         .with_secondary(Label::file(secondary_file.clone(), "secondary"));

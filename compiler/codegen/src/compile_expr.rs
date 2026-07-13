@@ -635,16 +635,13 @@ pub(crate) fn compile_variable_read(
                             .get(&field_name)
                             .copied()
                             .ok_or_else(|| {
-                                Diagnostic::problem(
-                                    Problem::NotImplemented,
-                                    Label::span(
-                                        structured.field.span(),
-                                        format!(
-                                            "Unknown field '{}' on function block '{}'",
-                                            structured.field, named.name
-                                        ),
+                                Diagnostic::not_implemented(Label::span(
+                                    structured.field.span(),
+                                    format!(
+                                        "Unknown field '{}' on function block '{}'",
+                                        structured.field, named.name
                                     ),
-                                )
+                                ))
                             })?;
                     let var_index = fb_info.var_index;
                     emitter.emit_fb_load_instance(var_index);
@@ -669,13 +666,10 @@ pub(crate) fn compile_variable_read(
                 ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
             ) {
                 let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                    Diagnostic::problem(
-                        Problem::NotImplemented,
-                        Label::span(
-                            structured.span(),
-                            format!("Variable '{}' is not a structure", root_name),
-                        ),
-                    )
+                    Diagnostic::not_implemented(Label::span(
+                        structured.span(),
+                        format!("Variable '{}' is not a structure", root_name),
+                    ))
                 })?;
                 let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
                 ctx.num_temp_bufs += 1;
@@ -1016,13 +1010,10 @@ fn compile_bit_access_assignment_on_array(
 
     let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
     let info = ctx.array_vars.get(root_name).ok_or_else(|| {
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                bit_access.span(),
-                "Bit access on non-trivial array base is not yet supported",
-            ),
-        )
+        Diagnostic::not_implemented(Label::span(
+            bit_access.span(),
+            "Bit access on non-trivial array base is not yet supported",
+        ))
     })?;
     // Copy scalar fields out of the borrow so ctx can be used mutably.
     let arr_var_index = info.var_index;
@@ -1106,13 +1097,10 @@ fn compile_bit_access_assignment_on_struct_field(
         crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
     let field_vti =
         crate::compile_struct::var_type_info_for_field(&field_type).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(
-                    structured.field.span(),
-                    "Bit access on non-integer struct field is not supported",
-                ),
-            )
+            Diagnostic::not_implemented(Label::span(
+                structured.field.span(),
+                "Bit access on non-integer struct field is not supported",
+            ))
         })?;
 
     // Index constant is the same for load and store; add once and reuse
@@ -1217,24 +1205,18 @@ fn compile_bit_access_assignment_on_struct_field_array(
         ..
     } = access
     else {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                bit_access.span(),
-                "Bit access on struct-field STRING array is not supported",
-            ),
-        ));
+        return Err(Diagnostic::not_implemented(Label::span(
+            bit_access.span(),
+            "Bit access on struct-field STRING array is not supported",
+        )));
     };
 
     let element_vti =
         crate::compile_struct::var_type_info_for_field(&element_type).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(
-                    bit_access.span(),
-                    "Bit access on non-integer array element type",
-                ),
-            )
+            Diagnostic::not_implemented(Label::span(
+                bit_access.span(),
+                "Bit access on non-integer array element type",
+            ))
         })?;
 
     let span = bit_access.span();
@@ -1354,10 +1336,10 @@ fn compile_partial_access_assignment_on_array(
 
     let root_name = resolve_symbolic_variable_name(&array.subscripted_variable)?;
     let info = ctx.array_vars.get(root_name).ok_or_else(|| {
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(pa.span(), "Partial access on non-trivial array base"),
-        )
+        Diagnostic::not_implemented(Label::span(
+            pa.span(),
+            "Partial access on non-trivial array base",
+        ))
     })?;
     let arr_var_index = info.var_index;
     let arr_desc_index = info.desc_index;
@@ -1406,13 +1388,10 @@ fn compile_partial_access_assignment_on_struct_field(
         crate::compile_struct::resolve_struct_field_access(ctx, structured)?;
     let field_vti =
         crate::compile_struct::var_type_info_for_field(&field_type).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(
-                    structured.field.span(),
-                    "Partial access on non-integer struct field",
-                ),
-            )
+            Diagnostic::not_implemented(Label::span(
+                structured.field.span(),
+                "Partial access on non-integer struct field",
+            ))
         })?;
 
     let idx_const = ctx.add_i32_constant(slot_offset.raw() as i32);
@@ -1458,18 +1437,18 @@ fn compile_partial_access_assignment_on_struct_field_array(
         ..
     } = access
     else {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(pa.span(), "Partial access on struct-field STRING array"),
-        ));
+        return Err(Diagnostic::not_implemented(Label::span(
+            pa.span(),
+            "Partial access on struct-field STRING array",
+        )));
     };
 
     let element_vti =
         crate::compile_struct::var_type_info_for_field(&element_type).ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(pa.span(), "Partial access on non-integer array element"),
-            )
+            Diagnostic::not_implemented(Label::span(
+                pa.span(),
+                "Partial access on non-integer array element",
+            ))
         })?;
     let span = pa.span();
 
