@@ -681,13 +681,18 @@ fn map_diagnostic(
         )
     };
 
+    let mut message = format!("{description}: {} ", diagnostic.primary.message);
+    for note in diagnostic.help() {
+        message.push_str(&format!("\n{note}"));
+    }
+
     lsp_types::Diagnostic {
         range,
         severity: Some(DiagnosticSeverity::ERROR),
         code: Some(NumberOrString::String(diagnostic.code)),
         code_description,
         source: Some("ironplc".into()),
-        message: format!("{description}: {} ", diagnostic.primary.message),
+        message,
         related_information,
         tags: None,
         data: None,

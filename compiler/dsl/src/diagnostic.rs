@@ -124,6 +124,12 @@ pub struct Diagnostic {
     /// Additional descriptions to the constant description.
     pub described: Vec<String>,
 
+    /// Guidance on how to resolve the problem. Unlike labels (which describe
+    /// *what* is at a location), help notes explain *how to fix* the problem.
+    /// Rendered as trailing notes by the CLI and appended to the message by
+    /// the language server.
+    pub help: Vec<String>,
+
     /// Additional information about the diagnostic.
     pub secondary: Vec<Label>,
 
@@ -145,6 +151,7 @@ impl Diagnostic {
             description: problem.message().to_string(),
             primary,
             described: vec![],
+            help: vec![],
             secondary: vec![],
             source_file: None,
             source_line: None,
@@ -306,6 +313,21 @@ impl Diagnostic {
     pub fn with_secondary(mut self, label: Label) -> Self {
         self.secondary.push(label);
         self
+    }
+
+    /// Adds a help note describing how to resolve the problem.
+    ///
+    /// Help notes are for fix guidance (e.g. "use `(* *)` comments"), which is
+    /// intentionally kept out of labels. They are rendered as trailing notes by
+    /// the command line and appended to the message by the language server.
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help.push(help.into());
+        self
+    }
+
+    /// Returns the help notes describing how to resolve the problem.
+    pub fn help(&self) -> &[String] {
+        &self.help
     }
 
     /// Sets the Rust source file and line that produced this diagnostic.

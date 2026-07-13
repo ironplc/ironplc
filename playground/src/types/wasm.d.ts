@@ -40,4 +40,7 @@ declare module "*/pkg/ironplc_playground.js" {
 
   /** Compiler version string. */
   export function version(): string;
+
+  /** JSON-encoded array of selectable dialects ({ value, label, is_default }). */
+  export function dialects(): string;
 }

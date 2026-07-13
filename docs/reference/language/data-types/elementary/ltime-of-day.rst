@@ -31,7 +31,7 @@ Example
 -------
 
 .. playground-with-program::
-   :dialect: 2013
+   :dialect: iec61131-3-ed3
    :vars: shift_start : LTIME_OF_DAY; now : LTIME_OF_DAY; started : BOOL;
 
    shift_start := LTOD#08:00:00;

@@ -317,6 +317,13 @@ a.diagnostic-code:hover {
   font-size: 0.8rem;
 }
 
+.diagnostic-help {
+  display: block;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+}
+
 .error-message {
   color: var(--error);
   padding: 0.5rem 0;

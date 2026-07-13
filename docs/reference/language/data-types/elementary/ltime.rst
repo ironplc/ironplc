@@ -22,7 +22,7 @@ Example
 -------
 
 .. playground-with-program::
-   :dialect: 2013
+   :dialect: iec61131-3-ed3
    :vars: a : LTIME; b : LTIME; c : LTIME;
 
    a := LTIME#1h;
