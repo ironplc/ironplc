@@ -16,10 +16,16 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
         if tok.token_type == TokenType::Comment
             && (tok.text.starts_with("//") || tok.text.starts_with("/*"))
         {
-            errors.push(Diagnostic::problem(
-                ironplc_problems::Problem::CStyleComment,
-                Label::span(tok.span.clone(), "Comment"),
-            ));
+            errors.push(
+                Diagnostic::problem(
+                    ironplc_problems::Problem::CStyleComment,
+                    Label::span(tok.span.clone(), "Comment"),
+                )
+                .with_help(
+                    "Convert the comment to IEC 61131-3 syntax using `(*` and `*)`, \
+                     or select a dialect that supports C-style comments.",
+                ),
+            );
         }
     }
 
@@ -57,6 +63,27 @@ mod test {
             },
         );
         assert!(result.is_err())
+    }
+
+    #[test]
+    fn apply_when_has_cstyle_comment_and_not_allowed_then_diagnostic_has_help() {
+        let tokens = vec![Token {
+            token_type: TokenType::Comment,
+            span: SourceSpan::default(),
+            line: 1,
+            col: 1,
+            text: String::from("// comment"),
+        }];
+
+        let result = apply(
+            &tokens,
+            &CompilerOptions {
+                allow_c_style_comments: false,
+                ..CompilerOptions::default()
+            },
+        );
+        let diagnostics = result.unwrap_err();
+        assert!(!diagnostics[0].help().is_empty());
     }
 
     #[test]
