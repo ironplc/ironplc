@@ -17,16 +17,16 @@ test:
 
 # Run tests and produce coverage report
 coverage:
-  cargo llvm-cov --quiet --ignore-filename-regex "cargo|dsl_macro_derive|rustup" --workspace --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
+  cargo llvm-cov --quiet --ignore-filename-regex "cargo|dsl_macro_derive|rustup" --workspace --features ironplc-vm-cli/dap --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
 
 # Fix linting errors.
 format:
-  cargo clippy --all-targets --fix
+  cargo clippy --all-targets --features ironplc-vm-cli/dap --fix
   cargo fmt --all
 
 # Check for linting errors.
 lint:
-  cargo clippy --all-targets
+  cargo clippy --all-targets --features ironplc-vm-cli/dap
   cargo fmt --all -- --check
 
 # Check for duplicate code (AST-based).
