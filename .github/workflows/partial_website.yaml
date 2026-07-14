@@ -6,10 +6,18 @@ on:
         required: true
         type: boolean
         description: 'If set true, then publish the website'
-      commit-ref:
+      source-artifact:
         required: false
         type: string
-        description: 'If not empty, then run for the specified branch name or tag'
+        default: ""
+        description: >
+          Name of a source-tree artifact (ironplc-source.tar.gz, produced
+          earlier in the same run by the version or dependency-update job) to
+          build instead of the commit that triggered the run. Empty => build the
+          triggering commit. This lets the release/update pipelines feed build
+          jobs the exact prepared tree without any job checking out a
+          caller-supplied git ref. To build an arbitrary tag or commit for
+          testing, run from a clone or dispatch the workflow from that ref.
 
 # No workflow-level permissions block: this reusable workflow inherits the
 # GITHUB_TOKEN permissions granted by each caller's job. A reusable workflow
@@ -28,27 +36,30 @@ jobs:
       run:
         working-directory: ./docs
     steps:
-      # Fetch input artifacts and code.
-      # The validate step constrains the ref SHAPE only (release tag or
-      # auto-update branch); it is a tripwire so the CodeQL untrusted-checkout
-      # sink sees a sanitizer, NOT a real access control. Actual safety comes
-      # from callers computing commit-ref internally and this job being
-      # contents:read with no secrets. See specs/adrs/0032-ci-gating-and-secret-scoping.md.
-      - name: Validate checkout ref
-        if: ${{ inputs.commit-ref }}
-        shell: bash
-        env:
-          REF: ${{ inputs.commit-ref }}
-        run: |
-          if [[ ! "$REF" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z]+)*|feature/AUTO-UPDATE-[0-9A-Za-z._-]+)$ ]]; then
-            echo "::error::Refusing to checkout unexpected ref '$REF'"
-            exit 1
-          fi
-      - name: Checkout ${{ inputs.commit-ref || 'triggering commit' }}
+      # Get the source. Neither path checks out a caller-supplied git ref, so
+      # CodeQL no longer flags an untrusted checkout:
+      #   * default: the commit that triggered this run, or
+      #   * source-artifact: a tree prepared earlier in the same run by the
+      #     version / dependency-update job.
+      # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+      - name: Checkout triggering commit
+        if: ${{ !inputs.source-artifact }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Download prepared source tree
+        if: ${{ inputs.source-artifact }}
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          # Empty ref => the triggering commit (former "Checkout HEAD" path).
-          ref: ${{ inputs.commit-ref }}
+          name: ${{ inputs.source-artifact }}
+          # Relative to the workspace; a relative path keeps the tar step below
+          # portable across Linux/macOS/Windows bash (no backslash issues).
+          path: source-artifact
+      - name: Extract prepared source tree
+        if: ${{ inputs.source-artifact }}
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          tar -xzf source-artifact/ironplc-source.tar.gz
+          rm -rf source-artifact
 
       # Configure the execution environment
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just

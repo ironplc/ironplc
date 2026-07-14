@@ -26,7 +26,6 @@ jobs:
     needs: approve
     uses: ./.github/workflows/partial_compiler.yaml
     with:
-      commit-ref: ""
       gh-release-tag: ""
       version: "0.0.0"
 
@@ -35,7 +34,6 @@ jobs:
     needs: approve
     uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
-      commit-ref: ""
       gh-release-tag: ""
       artifact-name: vscode-extension
 
@@ -46,7 +44,6 @@ jobs:
     # if those are failing so we depend on those.
     uses: ./.github/workflows/partial_website.yaml
     with:
-      commit-ref: ""
       publish: false
 
   install-script-lint:
