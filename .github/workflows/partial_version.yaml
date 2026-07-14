@@ -27,8 +27,9 @@ on:
       source-artifact:
         description: >
           Name of the uploaded source-tree artifact (ironplc-source.tar.gz) for
-          the release commit, or empty on a dry run. Build jobs consume this
-          instead of checking out the tag.
+          the release commit. Build jobs consume this instead of checking out the
+          tag. Produced on dry runs too, so a dry run builds the real stamped
+          tree without publishing.
         value: ${{ jobs.release.outputs.source-artifact }}
 
 # Creates the GitHub Release via GITHUB_TOKEN (contents: write) and pushes the
@@ -56,8 +57,9 @@ jobs:
           commit-tag: ${{ !inputs.dryrun && format('v{0}', steps.nextversion.outputs.version) || '' }}
           # The version number of components (e.g. 1.0.0)
           version: ${{ steps.nextversion.outputs.version || '0.0.0' }}
-          # Source-tree artifact handed to the build jobs (empty on dry run).
-          source-artifact: ${{ !inputs.dryrun && 'ironplc-source' || '' }}
+          # Source-tree artifact handed to the build jobs (produced on dry runs
+          # too, so a dry run exercises the full build path without publishing).
+          source-artifact: ironplc-source
         
         steps:
           # Checkout the repository including the tags
@@ -84,19 +86,20 @@ jobs:
             run: echo "version=$(just get-next-version minor)" >> $GITHUB_OUTPUT
           - name: Update version number in the repository
             run: just version ${{ steps.nextversion.outputs.version }}
+          # Commit the version bump locally in all cases so the archive below
+          # captures it even on a dry run; the push to the remote stays gated on
+          # a real run (see "Push commit" below).
           - name: Commit version number to repository
-            if: ${{ !inputs.dryrun }}
             run: just commit-version "Continuous Integration" "garretfick@users.noreply.github.com" ${{ steps.nextversion.outputs.version }}
 
           # Hand the exact, version-stamped release tree to the build jobs as an
           # artifact so no downstream job checks out a caller-supplied git ref
           # (this is what removes the CodeQL untrusted-checkout finding). HEAD is
-          # the version commit created just above.
+          # the version commit created just above. Produced on dry runs too, so a
+          # dry run exercises the full build path without publishing anything.
           - name: Archive release source tree
-            if: ${{ !inputs.dryrun }}
             run: git archive --format=tar HEAD | gzip -c > "${{ runner.temp }}/ironplc-source.tar.gz"
           - name: Upload release source tree
-            if: ${{ !inputs.dryrun }}
             uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
             with:
               name: ironplc-source
