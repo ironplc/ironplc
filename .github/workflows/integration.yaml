@@ -64,3 +64,61 @@ jobs:
     uses: ./.github/workflows/partial_install_script_test.yaml
     with:
       compiler-version: ""
+
+  # Proves the source-tree artifact handoff that the release/update pipelines
+  # rely on. Those pipelines feed build jobs a prepared tree via an artifact
+  # instead of checking out a caller-supplied git ref (removes the CodeQL
+  # untrusted-checkout finding); their build jobs run on Linux/macOS/Windows.
+  # The pipelines themselves cannot be dry-run from a PR branch (their producer
+  # jobs are pinned to the main-only `production` environment), so this job
+  # exercises the produce -> upload -> download -> overlay path here, on the PR.
+  source-artifact-produce:
+    name: Source Artifact Self-Check (produce)
+    needs: approve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # Mirrors the archive step in partial_version / partial_update_dependencies.
+      - name: Archive source tree
+        shell: bash
+        run: git archive --format=tar HEAD | gzip -c > "${{ runner.temp }}/ironplc-source.tar.gz"
+      - name: Upload source tree
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ironplc-source-selfcheck
+          path: ${{ runner.temp }}/ironplc-source.tar.gz
+          if-no-files-found: error
+
+  source-artifact-consume:
+    name: Source Artifact Self-Check (overlay)
+    needs: [approve, source-artifact-produce]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2025, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout triggering commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # Overlay the produced tree through the same composite the build jobs use.
+      - name: Overlay prepared source tree
+        uses: ./.github/actions/use-prepared-source
+        with:
+          source-artifact: ironplc-source-selfcheck
+      - name: Verify overlaid tree
+        shell: bash
+        run: |
+          set -e
+          for f in justfile compiler/Cargo.toml integrations/vscode/package.json docs/justfile playground/justfile; do
+            test -f "$f" || { echo "::error::missing $f after overlay on ${{ matrix.os }}"; exit 1; }
+          done
+          echo "All expected files present after overlay on ${{ matrix.os }}."
+          # The producer archived this same commit, so overlaying onto a checkout
+          # of it must be byte-faithful. Report drift (file-mode-only diffs are
+          # possible and non-fatal) without failing the OS-portability check.
+          if git diff --quiet; then
+            echo "Overlay is byte-faithful (git tree clean)."
+          else
+            echo "::warning::Overlay changed files vs HEAD (possibly file-mode only):"
+            git status --porcelain | head -20
+          fi
