@@ -47,32 +47,31 @@ manually tested. This plan is delivered in two stages.
    install (`code --install-extension <file>.vsix`) or a manual `vsce publish`
    test. The Open VSX / GitHub-release VSIX is unchanged (`name: ironplc`).
 
-### Stage 1.5 — package the Marketplace VSIX in CI, build-only (this change)
+### Stage 1.5 — package and upload the Marketplace VSIX in CI, no publish (this change)
 
 As a stepping stone toward Stage 2, `partial_vscode_extension.yaml` now runs
 `just package-marketplace` in the credential-free build job to prove that the
 Marketplace build (extension ID `ironplc.ironplc-vscode`) packages cleanly in
-CI. The resulting VSIX is intentionally **not** uploaded as a build artifact and
-**not** published — this step only validates that packaging works. It runs after
-the Open VSX VSIX and the SBOM so its `package.json` `name` override does not
-affect those artifacts.
+CI. Packaging runs unconditionally; the resulting VSIX is uploaded as a separate
+build artifact when the optional `marketplace-artifact-name` input is set (the
+`deployment.yaml` and `integration.yaml` callers set it), so the VSIX can be
+downloaded and installed for **manual** validation. It is **not** published to
+the Marketplace, and — because the consolidated `upload-release-artifacts` job
+hand-picks known asset names — it is **not** attached to the GitHub Release. The
+packaging step runs after the Open VSX VSIX and the SBOM so its `package.json`
+`name` override does not affect those artifacts.
 
 ### Stage 2 — automate Marketplace publishing (deferred)
 
 Once the new listing has been validated by hand:
 
-3. **Upload the Marketplace VSIX from CI.** Building already happens in
-   Stage 1.5. Add an optional `marketplace-artifact-name` input to
-   `partial_vscode_extension.yaml` that uploads the packaged Marketplace VSIX as
-   a separate build artifact, in the credential-free build job (preserving ADR
-   0032's artifact producer/consumer split).
-
-4. **Publish from `deployment.yaml`.** Request the Marketplace artifact from the
-   build job, download it in `publish-release`, and publish with `vsce` using
-   `VS_MARKETPLACE_TOKEN`. Open VSX publishing is unchanged.
+3. **Publish from `deployment.yaml`.** Building and uploading the Marketplace
+   VSIX already happens in Stage 1.5. Request that artifact in `publish-release`,
+   download it, and publish with `vsce` using `VS_MARKETPLACE_TOKEN`. Open VSX
+   publishing is unchanged.
    - The smoke-test job's `ironplc-vscode-extension-name` input must be set to
      the ID the release actually installs (`ironplc.ironplc-vscode`).
 
-5. **Docs.** Update `docs/quickstart/installation.rst` and
+4. **Docs.** Update `docs/quickstart/installation.rst` and
    `integrations/vscode/README.md` to reflect Marketplace availability under the
    new ID, leaving the Open VSX `ironplc.ironplc` link intact.

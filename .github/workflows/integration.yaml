@@ -38,6 +38,7 @@ jobs:
       commit-ref: ""
       gh-release-tag: ""
       artifact-name: vscode-extension
+      marketplace-artifact-name: vscode-extension-marketplace
 
   docs:
     name: Build Website
