@@ -72,6 +72,16 @@ jobs:
       - name: Generate SBOM
         run: just sbom ${{ inputs.version }}
 
+      # Package the Visual Studio Marketplace build (extension ID
+      # ironplc.ironplc-vscode) to validate that Marketplace packaging works
+      # end-to-end in CI. The VSIX is intentionally NOT uploaded or published:
+      # Stage 2 of specs/plans/vscode-marketplace-extension-id.md is deferred
+      # until the new listing is validated by hand. This step only proves the
+      # package builds. It runs after the Open VSX VSIX and the SBOM so its
+      # package.json `name` override does not affect those artifacts.
+      - name: Create Marketplace VSIX package (build only, not uploaded)
+        run: just package-marketplace ironplc-vscode-extension-marketplace.vsix
+
       # Save output artifacts. These upload only to build-artifact storage (no
       # credential required); the consolidated upload-release-artifacts job
       # attaches them to the GitHub Release. Uploaded unconditionally (not gated
