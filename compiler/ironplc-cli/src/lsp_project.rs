@@ -681,13 +681,18 @@ fn map_diagnostic(
         )
     };
 
+    let mut message = format!("{description}: {} ", diagnostic.primary.message);
+    for note in diagnostic.help() {
+        message.push_str(&format!("\n{note}"));
+    }
+
     lsp_types::Diagnostic {
         range,
         severity: Some(DiagnosticSeverity::ERROR),
         code: Some(NumberOrString::String(diagnostic.code)),
         code_description,
         source: Some("ironplc".into()),
-        message: format!("{description}: {} ", diagnostic.primary.message),
+        message,
         related_information,
         tags: None,
         data: None,
@@ -1490,7 +1495,7 @@ INVALID_SYNTAX"
         // Empty project (no configuration with a program instance) still
         // analyses cleanly when there are no parse errors. Either way,
         // the contract is "no errors => no entries".
-        for (_, diags) in by_uri.iter() {
+        for diags in by_uri.values() {
             assert!(
                 diags.is_empty(),
                 "expected no diagnostics for clean project, got: {:?}",

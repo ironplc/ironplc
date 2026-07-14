@@ -59,6 +59,11 @@ _ci-publish-workflow-unix:
 ci-update-dependencies-workflow:
   act workflow_dispatch --workflows ./.github/workflows/update.yaml --verbose
 
+# Lint the GitHub Actions workflows with actionlint. Run this to verify any
+# changes to files under .github/workflows/.
+check-actions:
+  actionlint
+
 get-next-version type:
   #! /bin/bash
   RE='[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)'
@@ -288,7 +293,7 @@ install-script-smoke compiler-version="":
 #                   like "0.218.0" (without the leading "v").
 # model:            the Ollama model used for the agent test.
 [unix]
-opencode-e2e compiler-version="" model="llama3.2:3b":
+opencode-e2e compiler-version="" model="qwen2.5:1.5b":
   #!/usr/bin/env sh
   set -eu
   # Install the published compiler so we exercise the shipped ironplcmcp.
@@ -308,7 +313,13 @@ opencode-e2e compiler-version="" model="llama3.2:3b":
   # Layer 1: deterministic connectivity check (no model required).
   npm run smoke
 
-  # Layer 2: real-agent end-to-end against a local Ollama model. A larger
+  # Layer 2: deterministic tool-call gate against a fake model (no Ollama). This
+  # proves OpenCode's real tool-call wiring end to end — read the catalog,
+  # serialize the arguments, MCP round-trip to the real ironplcmcp — without any
+  # model latency, so it is fast and never flaky.
+  npm run mock-e2e
+
+  # Layer 3: real-agent end-to-end against a local Ollama model. A larger
   # context window improves small models' tool-calling reliability: OpenCode's
   # system prompt plus the ironplc_check tool schema overflow the default
   # window, truncating the instructions so the model never calls the tool.
@@ -318,10 +329,36 @@ opencode-e2e compiler-version="" model="llama3.2:3b":
   # the default window. A second `ollama serve` would just fail to bind with
   # "address already in use" and leave that default window in place, so stop any
   # running server first, then start our own with the larger window.
+  # `timeout` is GNU coreutils: present on the Ubuntu CI runner but absent on
+  # macOS (where it may exist as `gtimeout`). Fall back to a portable bounded
+  # wait so a developer can run this recipe locally, not just in CI.
+  run_timeout() {
+    _secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then
+      timeout "$_secs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout "$_secs" "$@"
+    else
+      "$@" &
+      _pid=$!
+      _waited=0
+      while kill -0 "$_pid" 2>/dev/null; do
+        if [ "$_waited" -ge "$_secs" ]; then
+          kill "$_pid" 2>/dev/null || true
+          wait "$_pid" 2>/dev/null || true
+          return 124
+        fi
+        _waited=$((_waited + 1))
+        sleep 1
+      done
+      wait "$_pid"
+    fi
+  }
+
   pkill -x ollama 2>/dev/null || true
-  timeout 30 sh -c 'while curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done' || true
+  run_timeout 30 sh -c 'while curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done' || true
   OLLAMA_CONTEXT_LENGTH=16384 ollama serve >/tmp/ollama-serve.log 2>&1 &
-  timeout 60 sh -c 'until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done'
+  run_timeout 60 sh -c 'until curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; do sleep 1; done'
   ollama pull "{{model}}"
 
   # On any failure below, surface the Ollama server log. The agent failure mode
@@ -360,6 +397,6 @@ opencode-e2e compiler-version="" model="llama3.2:3b":
   OPENCODE_E2E_MODEL="ollama/{{model}}" npm run agent-e2e
 
 [windows]
-opencode-e2e compiler-version="" model="llama3.2:3b":
+opencode-e2e compiler-version="" model="qwen2.5:1.5b":
   @echo "opencode-e2e is Unix-only"
   exit 1

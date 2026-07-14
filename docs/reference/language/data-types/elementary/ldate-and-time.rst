@@ -30,7 +30,7 @@ Example
 -------
 
 .. playground-with-program::
-   :dialect: 2013
+   :dialect: iec61131-3-ed3
    :vars: event : LDATE_AND_TIME; deadline : LDATE_AND_TIME; on_time : BOOL;
 
    event := LDT#2024-06-15-10:30:00;

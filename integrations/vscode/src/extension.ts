@@ -64,16 +64,23 @@ const VERBOSITY = new Map<string, string[]>([
 let client: LanguageClient | undefined;
 let runSession: RunSession | undefined;
 
+// Captured at activation. Reading the version from the ExtensionContext keeps
+// this independent of the extension ID, which differs by registry: Open VSX
+// publishes ironplc.ironplc while the Marketplace publishes ironplc.ironplc-vscode.
+// A hardcoded getExtension('ironplc.ironplc') lookup would return undefined
+// under the Marketplace ID.
+let extensionVersion = '';
+
 function openProblemInBrowser(code: ProblemCode) {
-  const ext = vscode.extensions.getExtension('ironplc.ironplc');
-  const version = ext?.packageJSON?.version ?? '';
-  const url = 'https://www.ironplc.com/reference/editor/problems/' + code + '.html?version=' + encodeURIComponent(version);
+  const url = 'https://www.ironplc.com/reference/editor/problems/' + code + '.html?version=' + encodeURIComponent(extensionVersion);
   vscode.env.openExternal(vscode.Uri.parse(url));
 }
 
 // This method is called when this extension is activated.
 export function activate(context: vscode.ExtensionContext) {
   console.debug('Extension "ironplc" is activating!');
+
+  extensionVersion = context.extension.packageJSON?.version ?? '';
 
   context.subscriptions.push(vscode.commands.registerCommand('ironplc.createNewStructuredTextFile', async () => {
     await vscode.workspace.openTextDocument({ language: '61131-3-st' }).then((newFile) => {
