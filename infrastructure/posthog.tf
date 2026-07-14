@@ -455,6 +455,49 @@ resource "posthog_insight" "compile_retention" {
 }
 
 # ---------------------------------------------------------------------------
+# Section G — Engagement (lifecycle & stickiness)
+#
+# Both run on compile_finished (the activation event) over the shared 90-day
+# window, so they need no new instrumentation — they re-cut events already
+# flowing into PostHog.
+# ---------------------------------------------------------------------------
+
+resource "posthog_insight" "compile_lifecycle" {
+  name          = "Compile lifecycle"
+  description   = "New, returning, resurrecting, and dormant users per week, measured on compile_finished. Complements the retention tile: retention asks 'do they come back', lifecycle asks 'what is the weekly mix of new vs. returning vs. lapsed compilers'."
+  dashboard_ids = [posthog_dashboard.adoption.id]
+  tags          = local.ph_tags
+
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind            = "LifecycleQuery"
+      series          = [{ kind = "EventsNode", event = "compile_finished", name = "compile_finished", math = "total" }]
+      interval        = "week"
+      dateRange       = { date_from = local.ph_date_from }
+      lifecycleFilter = { showLegend = true }
+    }
+  })
+}
+
+resource "posthog_insight" "compile_stickiness" {
+  name          = "Compile stickiness"
+  description   = "Of users who compile in a given week, on how many distinct days do they compile? A right-shifted distribution means users return within the week, not just once — an engagement signal that retention (week-over-week) does not capture."
+  dashboard_ids = [posthog_dashboard.adoption.id]
+  tags          = local.ph_tags
+
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind      = "StickinessQuery"
+      series    = [{ kind = "EventsNode", event = "compile_finished", name = "compile_finished", math = "total" }]
+      interval  = "day"
+      dateRange = { date_from = local.ph_date_from }
+    }
+  })
+}
+
+# ---------------------------------------------------------------------------
 # STUBS — install-adoption tiles. Uncomment once the collectors emit these
 # events (see the Tier 1 / Tier 2 follow-ups). They need no schema guesswork
 # beyond the event names below.
