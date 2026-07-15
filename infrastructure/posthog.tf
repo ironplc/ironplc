@@ -238,7 +238,7 @@ resource "posthog_insight" "programs_run" {
 
 resource "posthog_insight" "broken_docs_examples" {
   name          = "Broken docs examples"
-  description   = "Failed compiles broken down by the docs page hosting the embed."
+  description   = "Failed compiles of as-shipped docs examples, broken down by the docs page hosting the embed. Scoped to program_origin=docs (only playgrounds embedded in docs pages) and program_modified=false (the example as shipped, not a visitor's edits), so every row is a genuinely broken example rather than general playground experimentation."
   dashboard_ids = [posthog_dashboard.adoption.id]
   tags          = local.ph_tags
 
@@ -247,11 +247,15 @@ resource "posthog_insight" "broken_docs_examples" {
     source = {
       kind = "TrendsQuery"
       series = [{
-        kind       = "EventsNode"
-        event      = "compile_finished"
-        name       = "compile_finished"
-        math       = "total"
-        properties = [{ key = "success", type = "event", operator = "exact", value = [false] }]
+        kind  = "EventsNode"
+        event = "compile_finished"
+        name  = "compile_finished"
+        math  = "total"
+        properties = [
+          { key = "success", type = "event", operator = "exact", value = [false] },
+          { key = "program_origin", type = "event", operator = "exact", value = ["docs"] },
+          { key = "program_modified", type = "event", operator = "exact", value = [false] },
+        ]
       }]
       interval        = "week"
       dateRange       = { date_from = local.ph_date_from }
