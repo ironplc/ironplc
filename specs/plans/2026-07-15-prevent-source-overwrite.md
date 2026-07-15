@@ -22,7 +22,7 @@ changing how unrelated existing output files are overwritten.
 
 ## Tasks
 
-- [ ] Add the output/input conflict diagnostic and documentation.
-- [ ] Reject output files that refer to loaded source files.
-- [ ] Add exact-path and hard-link regression tests.
-- [ ] Run the compiler and documentation checks.
+- [x] Add the output/input conflict diagnostic and documentation.
+- [x] Reject output files that refer to loaded source files.
+- [x] Add exact-path and hard-link regression tests.
+- [x] Run the compiler and documentation checks.

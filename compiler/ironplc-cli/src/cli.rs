@@ -170,6 +170,31 @@ pub fn compile(
             String::from("Error during code generation")
         })?;
 
+    let output_conflicts =
+        output_conflicts_with_source(&project, output).map_err(|diagnostic| {
+            handle_diagnostics(
+                std::slice::from_ref(&diagnostic),
+                Some(&project),
+                suppress_output,
+            );
+            String::from("Error inspecting output file")
+        })?;
+    if output_conflicts {
+        let diagnostic = Diagnostic::problem(
+            Problem::OutputPathConflictsWithInput,
+            Label::file(
+                FileId::from_path(output),
+                "Choose an output path that is not an input source file",
+            ),
+        );
+        handle_diagnostics(
+            std::slice::from_ref(&diagnostic),
+            Some(&project),
+            suppress_output,
+        );
+        return Err(String::from("Output path conflicts with an input file"));
+    }
+
     // Write the container to the output file
     let mut out_file =
         std::fs::File::create(output).map_err(|e| format!("Failed to create output file: {e}"))?;
@@ -178,6 +203,42 @@ pub fn compile(
         .map_err(|e| format!("Failed to write output file: {e}"))?;
 
     Ok(())
+}
+
+fn output_conflicts_with_source(
+    project: &FileBackedProject,
+    output: &Path,
+) -> Result<bool, Diagnostic> {
+    let output_exists = output.try_exists().map_err(|err| {
+        Diagnostic::problem(
+            Problem::CannotReadMetadata,
+            Label::file(
+                FileId::from_path(output),
+                format!("Unable to inspect output path: {err}"),
+            ),
+        )
+    })?;
+    if !output_exists {
+        return Ok(false);
+    }
+
+    for source in project.sources() {
+        let source_path = PathBuf::from(source.file_id().to_string());
+        let is_same_file = same_file::is_same_file(source_path, output).map_err(|err| {
+            Diagnostic::problem(
+                Problem::CannotReadMetadata,
+                Label::file(
+                    FileId::from_path(output),
+                    format!("Unable to compare output and input files: {err}"),
+                ),
+            )
+        })?;
+        if is_same_file {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 /// Codegen [`SourceLookup`](ironplc_codegen::SourceLookup) backed by an

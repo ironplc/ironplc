@@ -1,0 +1,63 @@
+=====
+P6009
+=====
+
+.. problem-summary:: P6009
+
+This error occurs when the output of :program:`ironplcc compile` refers to an
+input source file. Writing the compiled container would replace the source
+text, including when the paths are symbolic links or hard links to the same
+file.
+
+Example
+-------
+
+The following command uses :file:`main.st` as both the input and output:
+
+.. code-block:: console
+
+   ironplcc compile main.st --output main.st
+
+Choose a different output path so the source file remains unchanged:
+
+.. code-block:: console
+
+   ironplcc compile main.st --output main.iplc
+
+Why the Compiler Rejects the Path
+---------------------------------
+
+The compiler writes a binary container after it finishes parsing, analysis,
+and code generation. Opening an input source as that container's destination
+would truncate the source before writing the binary data. The command could
+otherwise report success even though the original program had been lost.
+
+IronPLC compares the underlying files rather than their path text. As a
+result, changing letter case, using an absolute path for one argument and a
+relative path for the other, or referring to the source through a symbolic or
+hard link does not bypass this check. Existing output files remain valid when
+they do not refer to an input source.
+
+Directory Projects
+------------------
+
+The same rule applies to files discovered from a project directory. This
+command is rejected when :file:`project/main.st` is one of the discovered
+sources:
+
+.. code-block:: console
+
+   ironplcc compile project --output project/main.st
+
+Write the container outside the source set instead:
+
+.. code-block:: console
+
+   ironplcc compile project --output project/main.iplc
+
+See Also
+--------
+
+- :doc:`P6001 <P6001>` explains failures while resolving a path.
+- :doc:`Compiler command line </reference/compiler/ironplcc>` describes
+  compiler actions and arguments.

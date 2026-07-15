@@ -950,6 +950,7 @@ dependencies = [
  "lsp-server",
  "lsp-types",
  "predicates",
+ "same-file",
  "serde",
  "serde_json",
  "tempfile",
