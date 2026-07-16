@@ -13,7 +13,7 @@ ci:
 
 # Setup required dependencies. Use this to bootstrap a new host.
 setup:
-  npm install
+  npm ci
 
 # Compile the application code. Because this is type script, this effectively validates the code.
 compile:
