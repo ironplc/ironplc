@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use ironplc_dsl::core::{Id, Located, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{StructuredVariable, SymbolicVariableKind};
-use ironplc_problems::Problem;
 
 use ironplc_analyzer::intermediate_type::{
     ByteSized, IntermediateStructField, IntermediateType, SlotCountError,
@@ -137,7 +136,7 @@ pub(crate) fn build_struct_fields(
                     field.name
                 ),
             };
-            Diagnostic::problem(Problem::NotImplemented, Label::span(span.clone(), msg))
+            Diagnostic::not_implemented(Label::span(span.clone(), msg))
         })?;
         let name = field.name.to_string().to_lowercase();
         let op_type = resolve_field_op_type(&field.field_type);
@@ -151,16 +150,13 @@ pub(crate) fn build_struct_fields(
         // overwriting the HashMap entry would make the first field inaccessible
         // by name while it still occupies slots in the layout.
         if field_index.contains_key(&name) {
-            return Err(Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(
-                    span.clone(),
-                    format!(
-                        "Structure has duplicate field name '{}' (case-insensitive)",
-                        name
-                    ),
+            return Err(Diagnostic::not_implemented(Label::span(
+                span.clone(),
+                format!(
+                    "Structure has duplicate field name '{}' (case-insensitive)",
+                    name
                 ),
-            ));
+            )));
         }
         field_index.insert(name.clone(), field_list.len());
         field_list.push(StructFieldInfo {
@@ -196,10 +192,10 @@ pub(crate) fn find_field_in_type(
     let (field_list, field_index) = build_struct_fields(fields, span)?;
     let name_lower = field_name.to_string().to_lowercase();
     let &idx = field_index.get(&name_lower).ok_or_else(|| {
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span.clone(), format!("Unknown field '{}'", field_name)),
-        )
+        Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            format!("Unknown field '{}'", field_name),
+        ))
     })?;
     let info = &field_list[idx];
     Ok((info.slot_offset, info.field_type.clone()))
@@ -225,23 +221,17 @@ pub(crate) fn resolve_struct_field_access(
         walk_struct_chain(ctx, &structured.record, &structured.field, 0)?;
 
     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                structured.span(),
-                format!("Variable '{}' is not a structure", root_name),
-            ),
-        )
+        Diagnostic::not_implemented(Label::span(
+            structured.span(),
+            format!("Variable '{}' is not a structure", root_name),
+        ))
     })?;
 
     let op_type = resolve_field_op_type(&field_type).ok_or_else(|| {
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                structured.field.span(),
-                "Cannot read composite field directly (nested struct or array)",
-            ),
-        )
+        Diagnostic::not_implemented(Label::span(
+            structured.field.span(),
+            "Cannot read composite field directly (nested struct or array)",
+        ))
     })?;
 
     Ok((
@@ -267,32 +257,26 @@ pub(crate) fn walk_struct_chain(
     depth: u32,
 ) -> Result<(Id, SlotIndex, IntermediateType), Diagnostic> {
     if depth > MAX_STRUCT_CHAIN_DEPTH {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(
-                field.span(),
-                "Structure nesting exceeds maximum depth (possible recursive type)",
-            ),
-        ));
+        return Err(Diagnostic::not_implemented(Label::span(
+            field.span(),
+            "Structure nesting exceeds maximum depth (possible recursive type)",
+        )));
     }
 
     match record {
         SymbolicVariableKind::Named(named) => {
             let struct_info = ctx.struct_vars.get(&named.name).ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::NotImplemented,
-                    Label::span(
-                        named.name.span(),
-                        format!("Variable '{}' is not a structure", named.name),
-                    ),
-                )
+                Diagnostic::not_implemented(Label::span(
+                    named.name.span(),
+                    format!("Variable '{}' is not a structure", named.name),
+                ))
             })?;
             let field_name = field.to_string().to_lowercase();
             let &field_idx = struct_info.field_index.get(&field_name).ok_or_else(|| {
-                Diagnostic::problem(
-                    Problem::NotImplemented,
-                    Label::span(field.span(), format!("Unknown field '{}'", field)),
-                )
+                Diagnostic::not_implemented(Label::span(
+                    field.span(),
+                    format!("Unknown field '{}'", field),
+                ))
             })?;
             let field_info = &struct_info.fields[field_idx];
             Ok((
@@ -306,13 +290,10 @@ pub(crate) fn walk_struct_chain(
                 walk_struct_chain(ctx, &inner.record, &inner.field, depth + 1)?;
 
             let IntermediateType::Structure { fields } = &parent_type else {
-                return Err(Diagnostic::problem(
-                    Problem::NotImplemented,
-                    Label::span(
-                        inner.field.span(),
-                        format!("Field '{}' is not a structure type", inner.field),
-                    ),
-                ));
+                return Err(Diagnostic::not_implemented(Label::span(
+                    inner.field.span(),
+                    format!("Field '{}' is not a structure type", inner.field),
+                )));
             };
 
             let (field_slot_offset, field_type) = find_field_in_type(fields, field, &field.span())?;
@@ -563,10 +544,7 @@ pub(crate) fn allocate_struct_variable(
     span: &SourceSpan,
 ) -> Result<(), Diagnostic> {
     let struct_type = types.resolve_struct_type(type_name).ok_or_else(|| {
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span.clone(), "Unknown structure type"),
-        )
+        Diagnostic::not_implemented(Label::span(span.clone(), "Unknown structure type"))
     })?;
 
     let IntermediateType::Structure { fields } = struct_type else {
@@ -584,42 +562,39 @@ pub(crate) fn allocate_struct_variable(
             }
             SlotCountError::Overflow => "Structure is too large (slot count overflows u32)",
         };
-        Diagnostic::problem(Problem::NotImplemented, Label::span(span.clone(), msg))
+        Diagnostic::not_implemented(Label::span(span.clone(), msg))
     })?;
 
     // Enforce slot limit (matches existing array limit for i32 flat-index safety)
     if total_slots > super::compile::MAX_DATA_REGION_SLOTS {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span.clone(), "Structure exceeds maximum 32768 slots"),
-        ));
+        return Err(Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            "Structure exceeds maximum 32768 slots",
+        )));
     }
 
     // Allocate data region space
     let data_offset = ctx.data_region_offset;
     let total_bytes = total_slots.checked_mul(8).ok_or_else(|| {
-        Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span.clone(), "Structure size overflows (slots * 8)"),
-        )
+        Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            "Structure size overflows (slots * 8)",
+        ))
     })?;
     ctx.data_region_offset = ctx
         .data_region_offset
         .checked_add(total_bytes)
         .ok_or_else(|| {
-            Diagnostic::problem(
-                Problem::NotImplemented,
-                Label::span(span.clone(), "Data region overflow"),
-            )
+            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
         })?;
 
     // Guard against i32 truncation (data_offset is stored as i32 in the
     // variable slot, matching the array pattern)
     if ctx.data_region_offset > i32::MAX as u32 {
-        return Err(Diagnostic::problem(
-            Problem::NotImplemented,
-            Label::span(span.clone(), "Data region exceeds 2 GiB limit"),
-        ));
+        return Err(Diagnostic::not_implemented(Label::span(
+            span.clone(),
+            "Data region exceeds 2 GiB limit",
+        )));
     }
 
     // Register array descriptor (treating struct as flat slot array).
@@ -660,10 +635,7 @@ pub(crate) fn allocate_struct_variable(
                         acc.checked_mul(size)
                     })
                     .ok_or_else(|| {
-                        Diagnostic::problem(
-                            Problem::NotImplemented,
-                            Label::span(span.clone(), "Array too large"),
-                        )
+                        Diagnostic::not_implemented(Label::span(span.clone(), "Array too large"))
                     })?;
                 // Allocate scratch variable once for all STRING/WSTRING array fields.
                 if scratch_var_index.is_none() {

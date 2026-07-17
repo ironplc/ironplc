@@ -40,6 +40,12 @@ RUN cargo install --root /usr/local just
 RUN cargo install --root /usr/local cargo-release
 RUN cargo install --root /usr/local cargo-llvm-cov
 
+# Install actionlint (GitHub Actions workflow linter) so that changes to the
+# workflows under .github/workflows can be validated locally before pushing.
+# Downloads the latest release binary; tracks latest, same philosophy as the
+# Rust and Terraform tooling above.
+RUN curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest /usr/local/bin
+
 # Install typecript for the VS code extension
 RUN npm install -g typescript@5.1.6 vscode
 

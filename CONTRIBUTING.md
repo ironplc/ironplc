@@ -112,6 +112,23 @@ the component's own CI recipe (`just ci` from that component's directory).
 
 Full cross-platform integration tests run in GitHub Actions when you push.
 
+## Automated Changes
+
+We allow certain well-established automated systems:
+
+* Dependabot (dependency updates)
+* Internal CI/CD systems
+* GitHub Actions from this repository
+
+All other changes must have a human as the author. This includes:
+
+* Custom bots or scripts
+* External services
+* Automated agents
+
+If you use an LLM or AI tool to write code, you (the human) must submit the PR
+under your own account.
+
 ## Code Quality Expectations
 
 ### Testing Standards

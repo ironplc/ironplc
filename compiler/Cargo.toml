@@ -37,6 +37,14 @@ repository = "https://github.com/ironplc/ironplc"
 [workspace.lints.rust]
 unsafe_code = "deny"
 
+# Denying `deprecated` turns any use of a `#[deprecated]` item into a hard
+# compile error. We deprecate the compiler-located problem variants
+# (`Problem::NotImplemented`, `Problem::InternalError`) so that constructing them
+# directly via `Diagnostic::problem(...)` — which drops the compiler file/line the
+# P9xxx dashboards rank — fails to compile. The sanctioned `Diagnostic`
+# constructors opt back in with `#[allow(deprecated)]`.
+deprecated = "deny"
+
 # Reduce per-binary debug-info size. `line-tables-only` retains the file/line
 # tables that `cargo llvm-cov` needs to map coverage hits to source, but drops
 # the type-, variable-, and inline-scope DWARF sections that dominate target/

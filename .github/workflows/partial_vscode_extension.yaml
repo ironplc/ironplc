@@ -14,6 +14,10 @@ on:
         required: false
         type: string
         description: 'The name of the VSIX artifact to create'
+      marketplace-artifact-name:
+        required: false
+        type: string
+        description: 'The name of the Visual Studio Marketplace VSIX (ironplc.ironplc-vscode) build artifact to create. When empty the Marketplace VSIX is still packaged (build validation) but not uploaded.'
       install-deps:
         required: false
         type: boolean
@@ -72,6 +76,18 @@ jobs:
       - name: Generate SBOM
         run: just sbom ${{ inputs.version }}
 
+      # Package the Visual Studio Marketplace build (extension ID
+      # ironplc.ironplc-vscode) to validate that Marketplace packaging works
+      # end-to-end in CI. This runs unconditionally so every build proves the
+      # package builds; the VSIX is uploaded as a build artifact only when
+      # marketplace-artifact-name is set (see below) and is never published:
+      # automated Marketplace publishing (Stage 2 of
+      # specs/plans/vscode-marketplace-extension-id.md) is deferred until the new
+      # listing is validated by hand. Runs after the Open VSX VSIX and the SBOM
+      # so its package.json `name` override does not affect those artifacts.
+      - name: Create Marketplace VSIX package
+        run: just package-marketplace ironplc-vscode-extension-marketplace.vsix
+
       # Save output artifacts. These upload only to build-artifact storage (no
       # credential required); the consolidated upload-release-artifacts job
       # attaches them to the GitHub Release. Uploaded unconditionally (not gated
@@ -92,3 +108,15 @@ jobs:
           name: ${{ inputs.artifact-name }}
           path: integrations/vscode/ironplc-vscode-extension.vsix
           if-no-files-found: error
+      # Marketplace VSIX (ironplc.ironplc-vscode), uploaded as a separate build
+      # artifact. The consolidated upload-release-artifacts job attaches it to
+      # the GitHub Release so users can install the Marketplace build manually.
+      # Automated publishing to the Marketplace remains deferred.
+      - name: Upload Marketplace VSIX to build artifact
+        if: ${{ inputs.marketplace-artifact-name }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.marketplace-artifact-name }}
+          path: integrations/vscode/ironplc-vscode-extension-marketplace.vsix
+          if-no-files-found: error
+          retention-days: 5

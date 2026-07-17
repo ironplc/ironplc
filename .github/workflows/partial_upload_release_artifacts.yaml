@@ -61,8 +61,15 @@ jobs:
           fi
           find ./artifacts -path '*/ironplcc-*' -type f -exec cp {} release-assets/ \;
 
-          # VS Code extension VSIX.
+          # VS Code extension VSIX (Open VSX build, extension ID ironplc.ironplc).
           cp ./artifacts/ironplc-vscode-extension.vsix/ironplc-vscode-extension.vsix release-assets/
+
+          # Marketplace VSIX (Visual Studio Marketplace build, extension ID
+          # ironplc.ironplc-vscode). Attached to the GitHub Release so users can
+          # install the Marketplace build manually until automated Marketplace
+          # publishing is reinstated (Stage 2 of
+          # specs/plans/vscode-marketplace-extension-id.md).
+          cp ./artifacts/ironplc-vscode-extension-marketplace.vsix/ironplc-vscode-extension-marketplace.vsix release-assets/
 
           # SBOMs (renamed with the version number).
           cp ./artifacts/ironplc-compiler-sbom/bom.cdx.json \

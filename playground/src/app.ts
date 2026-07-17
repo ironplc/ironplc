@@ -1,6 +1,7 @@
 import uPlot from "./uPlot.esm.js";
 import type {
   Diagnostic,
+  DialectOption,
   RunResult,
   Variable,
   WorkerRequest,
@@ -134,6 +135,23 @@ let stepInFlight = false;
 let previousValues: Map<number, string> = new Map();
 let compilerVersion = "";
 let currentIntervalMs = 500;
+// The exact source last handed to the compiler. Captured on Start so a report
+// reflects what actually produced the diagnostics, even if the user keeps
+// typing afterwards.
+let lastCompiledSource = "";
+
+// The "P9xxx" codes are compiler errors (unimplemented capabilities and
+// internal errors) that we can only fix once we can see the program that
+// triggered them, so every P9 code gets the "Submit Code" affordance.
+function isReportable(code: string): boolean {
+  return /^P9\d{3}$/.test(code);
+}
+
+// Cap the source we transmit so a pathological paste can't bloat an event.
+const MAX_REPORT_SOURCE_CHARS = 50000;
+// Keep the prefilled GitHub issue URL under a length browsers reliably accept.
+const MAX_GITHUB_URL_CHARS = 7000;
+const GITHUB_NEW_ISSUE_URL = "https://github.com/ironplc/ironplc/issues/new";
 
 // --- URL parameter handling ---
 
@@ -201,6 +219,27 @@ function extractErrorCodes(diagnostics: Diagnostic[] | undefined): string[] {
     }
   }
   return codes;
+}
+
+// The compiler `file#Lline` locations of reportable (P9xxx) diagnostics. This
+// is the compiler's own source location — never the user's program — so it is
+// safe to attach to the automatic compile_finished event. It lets us rank the
+// most common unimplemented sites without collecting any program.
+function extractErrorLocations(diagnostics: Diagnostic[] | undefined): string[] {
+  if (!diagnostics) return [];
+  const seen = new Set<string>();
+  const locations: string[] = [];
+  for (const d of diagnostics) {
+    if (!isReportable(d.code) || !d.compiler_file) continue;
+    const loc = d.compiler_line
+      ? `${d.compiler_file}#L${d.compiler_line}`
+      : d.compiler_file;
+    if (!seen.has(loc)) {
+      seen.add(loc);
+      locations.push(loc);
+    }
+  }
+  return locations;
 }
 
 type StopReason = "user" | "error" | "reload";
@@ -290,28 +329,50 @@ if (isEmbed) {
   intervalInput.disabled = true;
 }
 
-// Set dialect from URL parameter (used by embed/Sphinx directives).
-// Also supports the legacy "edition" parameter for backwards compatibility.
-const dialectParam = params.get("dialect") || params.get("edition");
-if (dialectParam === "2013") {
-  dialectSelect.value = "2013";
-  dialectBadge.textContent = "IEC 61131-3:2013";
-  dialectBadge.classList.add("visible");
-}
-
 // `allows` is a comma-separated list of feature flag short names — the part
-// after `--allow-` in the CLI (e.g. "sizeof,c-style-comments"). When present,
-// override the dialect badge to show "Custom" with a hover listing the flags.
+// after `--allow-` in the CLI (e.g. "sizeof,c-style-comments").
 const allowsParam = (params.get("allows") || "")
   .split(",")
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
-if (allowsParam.length > 0) {
-  dialectBadge.textContent = "Custom";
-  const flagList = allowsParam.map((s) => `--allow-${s}`).join(", ");
-  const dialectLabel = dialectParam === "2013" ? "IEC 61131-3:2013" : "default";
-  dialectBadge.title = `${dialectLabel} + ${flagList}`;
-  dialectBadge.classList.add("visible");
+
+// Populate the dialect picker from the compiler-provided list (via the WASM
+// `dialects()` export), then apply the URL dialect parameter and dialect badge.
+// Called once the worker reports the WASM module is ready.
+function initDialects(options: DialectOption[]): void {
+  dialectSelect.replaceChildren();
+  for (const d of options) {
+    const opt = document.createElement("option");
+    opt.value = d.value;
+    opt.textContent = d.label;
+    opt.selected = d.is_default;
+    dialectSelect.appendChild(opt);
+  }
+
+  // A URL dialect parameter (used by embed/Sphinx directives) overrides the
+  // default. The value is a canonical dialect name (Dialect::cli_name).
+  const dialectParam = params.get("dialect");
+  if (dialectParam && options.some((d) => d.value === dialectParam)) {
+    dialectSelect.value = dialectParam;
+    dialectBadge.textContent =
+      dialectSelect.options[dialectSelect.selectedIndex]?.textContent ??
+      dialectParam;
+    dialectBadge.classList.add("visible");
+  }
+
+  // When feature flags are set, override the badge to "Custom" with a hover
+  // listing the flags on top of the selected dialect.
+  if (allowsParam.length > 0) {
+    dialectBadge.textContent = "Custom";
+    const flagList = allowsParam.map((s) => `--allow-${s}`).join(", ");
+    const dialectLabel =
+      dialectSelect.options[dialectSelect.selectedIndex]?.textContent ??
+      "default";
+    dialectBadge.title = `${dialectLabel} + ${flagList}`;
+    dialectBadge.classList.add("visible");
+  }
+
+  registerSuper({ dialect: getDialect() });
 }
 
 function getDialect(): string {
@@ -414,7 +475,6 @@ if (params.has("code")) {
 }
 
 renderLineNumbers();
-initAnalytics();
 
 // --- Web Worker communication ---
 
@@ -427,6 +487,8 @@ worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
 
   if (msg.type === "ready") {
     compilerVersion = msg.version || "";
+    initDialects(msg.dialects);
+    initAnalytics();
     startBtn.disabled = false;
     statusEl.textContent = "Ready";
     return;
@@ -577,6 +639,7 @@ function resetTransportButtons(): void {
 
 startBtn.addEventListener("click", async () => {
   const source = editor.value;
+  lastCompiledSource = source;
   const intervalMs = getIntervalMs();
   const cycleTimeUs = intervalMs * 1000;
   const programLines = source.split("\n").length;
@@ -592,7 +655,7 @@ startBtn.addEventListener("click", async () => {
   const allows = getAllows();
   const compileStart = performance.now();
   capture("compile_attempted", { trigger: "manual" });
-  const loadMsg = await postCommand({ command: "load_program", source, cycleTimeUs, dialect: dialect as "" | "2003" | "2013", allows });
+  const loadMsg = await postCommand({ command: "load_program", source, cycleTimeUs, dialect, allows });
   const compileDurationMs = performance.now() - compileStart;
 
   if (loadMsg.type === "error") {
@@ -627,6 +690,8 @@ startBtn.addEventListener("click", async () => {
       success: false,
       error_codes: extractErrorCodes(diagnostics),
       error_count: diagnostics.length,
+      // Compiler file/line of any P9xxx diagnostics — no program source.
+      error_locations: extractErrorLocations(diagnostics),
       program_lines: programLines,
       duration_ms: compileDurationMs,
     });
@@ -857,9 +922,122 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
     if (d.start_line > 0 && d.start_column > 0) {
       html += `<span class="diagnostic-location">line ${d.start_line}, column ${d.start_column}</span>`;
     }
+    for (const note of d.help ?? []) {
+      html += `<span class="diagnostic-help">${escapeHtml(note)}</span>`;
+    }
     html += "</div>";
   }
+
+  const reportable = diagnostics.filter((d) => isReportable(d.code));
+  if (reportable.length > 0) {
+    html += reportPanelHtml(reportable);
+  }
+
   diagnosticsPanel.innerHTML = html;
+
+  if (reportable.length > 0) {
+    wireReportPanel(reportable);
+  }
+}
+
+// --- P9xxx "Submit Code" reporting ---
+//
+// The P9 codes are compiler errors (unimplemented capabilities and internal
+// errors). We can only prioritize and fix them once we can see the program that
+// triggered them, so we invite the user to send it. Two things are
+// non-negotiable in the UX:
+//   1. The button says exactly what happens: "Submit Code".
+//   2. A consent line makes clear the program is shared and MAY BECOME PUBLIC
+//      (this holds for the PostHog path and the GitHub path alike).
+// Source is only ever transmitted on the explicit click below — never
+// automatically. (The compiler file/line IS reported automatically via
+// compile_finished, but that is the compiler's location, not the program.)
+
+const REPORT_CONSENT_HTML =
+  "Submitting sends the program in the editor to the IronPLC team so we can fix " +
+  "it. <strong>Your code may be published publicly</strong> — for example in a " +
+  "GitHub issue. Don’t submit anything confidential.";
+
+function reportPanelHtml(reportable: Diagnostic[]): string {
+  const codes = extractErrorCodes(reportable).join(", ");
+  return (
+    '<div class="report-panel" data-testid="report-panel">' +
+    `<p class="report-title">${escapeHtml(codes)}: the compiler can’t handle this yet. Send us the program so we can fix it.</p>` +
+    `<p class="report-consent">${REPORT_CONSENT_HTML}</p>` +
+    '<div class="report-actions">' +
+    '<button type="button" class="submit-code-btn" data-testid="submit-code-btn">Submit Code</button>' +
+    `<a class="report-github-link" data-testid="report-github-link" target="_blank" rel="noopener" href="${escapeHtml(buildGithubIssueUrl(reportable))}">or open a GitHub issue</a>` +
+    "</div>" +
+    "</div>"
+  );
+}
+
+function wireReportPanel(reportable: Diagnostic[]): void {
+  const btn = diagnosticsPanel.querySelector(
+    ".submit-code-btn",
+  ) as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    submitCodeReport(reportable);
+    const panel = diagnosticsPanel.querySelector(".report-panel");
+    if (panel) {
+      panel.innerHTML =
+        '<p class="report-confirmation" data-testid="report-confirmation">' +
+        "✓ Thank you — your code was submitted. We’ll use it to add support." +
+        "</p>";
+    }
+  });
+}
+
+function submitCodeReport(reportable: Diagnostic[]): void {
+  const source = lastCompiledSource;
+  const truncated = source.length > MAX_REPORT_SOURCE_CHARS;
+  capture("todo_report_submitted", {
+    error_codes: extractErrorCodes(reportable),
+    error_count: reportable.length,
+    program: truncated ? source.slice(0, MAX_REPORT_SOURCE_CHARS) : source,
+    program_chars: source.length,
+    program_lines: source.split("\n").length,
+    program_truncated: truncated,
+    // Structured compiler `file#Lline` of each reportable site.
+    error_locations: extractErrorLocations(reportable),
+    diagnostic_labels: reportable.map((d) => d.label || ""),
+    dialect: getDialect(),
+    allows: getAllows(),
+    compiler_version: compilerVersion,
+  });
+}
+
+// Build a prefilled "new issue" URL. We include the source inline when it fits
+// under the URL length limit; otherwise we ask the user to attach it. The
+// consent line above the button already covers that this becomes public.
+function buildGithubIssueUrl(reportable: Diagnostic[]): string {
+  const source = lastCompiledSource;
+  const codes = extractErrorCodes(reportable);
+  const primaryCode = codes[0] || "P9999";
+  const locations = extractErrorLocations(reportable);
+  const locationList = locations.map((l) => `- ${l}`).join("\n");
+  const header =
+    `**What happened**\nThe playground reported ${codes.join(", ")} ` +
+    "(a compiler error) for this program.\n\n" +
+    (locationList ? `**Compiler locations**\n${locationList}\n\n` : "") +
+    `**Compiler version:** ${compilerVersion || "unknown"}\n` +
+    `**Dialect:** ${getDialect() || "default"}\n` +
+    (getAllows() ? `**Allows:** ${getAllows()}\n` : "");
+
+  const withProgram =
+    header + `\n**Program**\n\`\`\`iecst\n${source}\n\`\`\`\n`;
+  const withoutProgram =
+    header +
+    "\n**Program**\nThe program is too large to prefill here — please " +
+    "attach the source file to this issue.\n";
+
+  const base = `${GITHUB_NEW_ISSUE_URL}?labels=${encodeURIComponent(primaryCode)}&title=${encodeURIComponent(`${primaryCode} - Compiler problem report`)}`;
+  const candidate = `${base}&body=${encodeURIComponent(withProgram)}`;
+  if (candidate.length <= MAX_GITHUB_URL_CHARS) {
+    return candidate;
+  }
+  return `${base}&body=${encodeURIComponent(withoutProgram)}`;
 }
 
 function activateTab(tabName: string): void {

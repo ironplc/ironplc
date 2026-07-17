@@ -12,7 +12,6 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_problems::Problem;
 
 use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
@@ -144,10 +143,10 @@ pub(crate) fn compile_user_function(
                         .data_region_offset
                         .checked_add(total_bytes)
                         .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::NotImplemented,
-                                Label::span(string_init.span(), "Data region overflow"),
-                            )
+                            Diagnostic::not_implemented(Label::span(
+                                string_init.span(),
+                                "Data region overflow",
+                            ))
                         })?;
 
                     if max_length > ctx.max_string_capacity {
@@ -211,10 +210,10 @@ pub(crate) fn compile_user_function(
                         .data_region_offset
                         .checked_add(total_bytes)
                         .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::NotImplemented,
-                                Label::span(string_init.span(), "Data region overflow"),
-                            )
+                            Diagnostic::not_implemented(Label::span(
+                                string_init.span(),
+                                "Data region overflow",
+                            ))
                         })?;
 
                     if max_length > ctx.max_string_capacity {
@@ -597,10 +596,10 @@ pub(crate) fn compile_user_function_block(
                         .data_region_offset
                         .checked_add(total_bytes)
                         .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::NotImplemented,
-                                Label::span(string_init.span(), "Data region overflow"),
-                            )
+                            Diagnostic::not_implemented(Label::span(
+                                string_init.span(),
+                                "Data region overflow",
+                            ))
                         })?;
 
                     if max_length > ctx.max_string_capacity {

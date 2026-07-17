@@ -15,6 +15,12 @@
 # compile) but never the program source, so error-code tiles reveal WHY
 # compiles fail without exposing anyone's code.
 #
+# The one exception is todo_report_submitted: fired only when a user clicks
+# "Submit Code" on a P9999 diagnostic, it DOES carry the program source (in the
+# `program` property) because fixing P9999 requires seeing the program. That
+# transmission is explicit and consented — the button and its consent line tell
+# the user their code is shared and may become public — never automatic.
+#
 # Install-adoption tiles (install_completed / release_downloads / Open VSX)
 # depend on collectors not built yet and are left as commented stubs at the
 # bottom.
@@ -232,7 +238,7 @@ resource "posthog_insight" "programs_run" {
 
 resource "posthog_insight" "broken_docs_examples" {
   name          = "Broken docs examples"
-  description   = "Failed compiles broken down by the docs page hosting the embed."
+  description   = "Failed compiles of as-shipped docs examples, broken down by the docs page hosting the embed. Scoped to program_origin=docs (only playgrounds embedded in docs pages) and program_modified=false (the example as shipped, not a visitor's edits), so every row is a genuinely broken example rather than general playground experimentation."
   dashboard_ids = [posthog_dashboard.adoption.id]
   tags          = local.ph_tags
 
@@ -241,11 +247,15 @@ resource "posthog_insight" "broken_docs_examples" {
     source = {
       kind = "TrendsQuery"
       series = [{
-        kind       = "EventsNode"
-        event      = "compile_finished"
-        name       = "compile_finished"
-        math       = "total"
-        properties = [{ key = "success", type = "event", operator = "exact", value = [false] }]
+        kind  = "EventsNode"
+        event = "compile_finished"
+        name  = "compile_finished"
+        math  = "total"
+        properties = [
+          { key = "success", type = "event", operator = "exact", value = [false] },
+          { key = "program_origin", type = "event", operator = "exact", value = ["docs"] },
+          { key = "program_modified", type = "event", operator = "exact", value = [false] },
+        ]
       }]
       interval        = "week"
       dateRange       = { date_from = local.ph_date_from }
@@ -275,6 +285,54 @@ resource "posthog_insight" "top_compile_error_codes" {
       interval        = "week"
       dateRange       = { date_from = local.ph_date_from }
       breakdownFilter = { breakdowns = [{ property = "error_codes", type = "event" }] }
+      trendsFilter    = { display = "ActionsBarValue" }
+    }
+  })
+}
+
+resource "posthog_insight" "todo_report_submissions" {
+  name          = "P9999 code submissions"
+  description   = "Programs users chose to submit (via the playground \"Submit Code\" button) after hitting P9999 — the capability-not-implemented error. Each event carries the program source so the reported feature can be added. Unlike the error-code tiles, this event intentionally includes source, transmitted only on explicit, consented user action."
+  dashboard_ids = [posthog_dashboard.adoption.id]
+  tags          = local.ph_tags
+
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind = "TrendsQuery"
+      series = [{
+        kind  = "EventsNode"
+        event = "todo_report_submitted"
+        name  = "todo_report_submitted"
+        math  = "total"
+      }]
+      interval     = "week"
+      dateRange    = { date_from = local.ph_date_from }
+      trendsFilter = { display = "ActionsLineGraph" }
+    }
+  })
+}
+
+resource "posthog_insight" "top_compiler_error_locations" {
+  name          = "Top P9 compiler error locations"
+  description   = "Compiler source file#line of P9xxx errors (unimplemented capabilities / internal errors) from failed playground compiles, ranked by frequency. This is the compiler's own location — collected automatically because it never contains any program source — and it points maintainers straight at the code that needs work."
+  dashboard_ids = [posthog_dashboard.adoption.id]
+  tags          = local.ph_tags
+
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind = "TrendsQuery"
+      series = [{
+        kind       = "EventsNode"
+        event      = "compile_finished"
+        name       = "compile_finished"
+        math       = "total"
+        properties = [{ key = "success", type = "event", operator = "exact", value = [false] }]
+      }]
+      interval        = "week"
+      dateRange       = { date_from = local.ph_date_from }
+      breakdownFilter = { breakdowns = [{ property = "error_locations", type = "event" }] }
       trendsFilter    = { display = "ActionsBarValue" }
     }
   })
@@ -395,6 +453,49 @@ resource "posthog_insight" "compile_retention" {
         targetEntity    = { id = "compile_finished", name = "compile_finished", type = "events" }
         returningEntity = { id = "compile_finished", name = "compile_finished", type = "events" }
       }
+      dateRange = { date_from = local.ph_date_from }
+    }
+  })
+}
+
+# ---------------------------------------------------------------------------
+# Section G — Engagement (lifecycle & stickiness)
+#
+# Both run on compile_finished (the activation event) over the shared 90-day
+# window, so they need no new instrumentation — they re-cut events already
+# flowing into PostHog.
+# ---------------------------------------------------------------------------
+
+resource "posthog_insight" "compile_lifecycle" {
+  name          = "Compile lifecycle"
+  description   = "New, returning, resurrecting, and dormant users per week, measured on compile_finished. Complements the retention tile: retention asks 'do they come back', lifecycle asks 'what is the weekly mix of new vs. returning vs. lapsed compilers'."
+  dashboard_ids = [posthog_dashboard.adoption.id]
+  tags          = local.ph_tags
+
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind            = "LifecycleQuery"
+      series          = [{ kind = "EventsNode", event = "compile_finished", name = "compile_finished", math = "total" }]
+      interval        = "week"
+      dateRange       = { date_from = local.ph_date_from }
+      lifecycleFilter = { showLegend = true }
+    }
+  })
+}
+
+resource "posthog_insight" "compile_stickiness" {
+  name          = "Compile stickiness"
+  description   = "Of users who compile in a given week, on how many distinct days do they compile? A right-shifted distribution means users return within the week, not just once — an engagement signal that retention (week-over-week) does not capture."
+  dashboard_ids = [posthog_dashboard.adoption.id]
+  tags          = local.ph_tags
+
+  query_json = jsonencode({
+    kind = "InsightVizNode"
+    source = {
+      kind      = "StickinessQuery"
+      series    = [{ kind = "EventsNode", event = "compile_finished", name = "compile_finished", math = "total" }]
+      interval  = "day"
       dateRange = { date_from = local.ph_date_from }
     }
   })
