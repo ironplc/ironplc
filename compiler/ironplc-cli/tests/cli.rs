@@ -189,6 +189,51 @@ fn compile_when_short_output_flag_then_creates_output() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn compile_when_output_is_input_then_fails_without_modifying_source(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("input.st");
+    let original = std::fs::read(shared_resource_path("steel_thread.st"))?;
+    std::fs::write(&source, &original)?;
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("compile").arg(&source).arg("--output").arg(&source);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("P6009"));
+
+    // The source must be preserved byte-for-byte when the write is rejected.
+    assert_eq!(std::fs::read(&source)?, original);
+
+    Ok(())
+}
+
+#[test]
+fn compile_when_output_is_input_via_relative_path_then_fails_without_modifying_source(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let source = temp.path().join("input.st");
+    let original = std::fs::read(shared_resource_path("steel_thread.st"))?;
+    std::fs::write(&source, &original)?;
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    // Input is a relative path and output is the absolute path to the same
+    // file. Canonicalization must recognize these as the same file.
+    cmd.current_dir(temp.path())
+        .arg("compile")
+        .arg("input.st")
+        .arg("--output")
+        .arg(&source);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("P6009"));
+
+    assert_eq!(std::fs::read(&source)?, original);
+
+    Ok(())
+}
+
+#[test]
 fn compile_when_syntax_error_then_err() -> Result<(), Box<dyn std::error::Error>> {
     let output = NamedTempFile::new()?;
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
