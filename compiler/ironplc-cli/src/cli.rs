@@ -116,6 +116,19 @@ pub fn compile(
 ) -> Result<(), String> {
     let mut project = create_project(paths, compiler_options, suppress_output)?;
 
+    // Refuse to write the container over a loaded source file. `File::create`
+    // truncates immediately, so this must run before any output is opened to
+    // avoid replacing a source with container bytes.
+    if output_conflicts_with_source(&project, output) {
+        let diagnostics = diagnostic(
+            Problem::OutputPathConflictsWithInput,
+            output,
+            String::from("Choose an output path that is not an input source file"),
+        );
+        handle_diagnostics(&diagnostics, Some(&project), suppress_output);
+        return Err(String::from("Output path conflicts with an input file"));
+    }
+
     // Parse all sources and merge into a single library
     let mut combined = Library::new();
     for src in project.sources_mut() {
@@ -363,6 +376,22 @@ fn map_label(
     };
     let id = file_to_id.get(&label.file_id);
     CodeSpanLabel::new(style, *id.unwrap_or(&0), range).with_message(&label.message)
+}
+
+/// Returns `true` when `output` refers to the same file as any loaded source.
+///
+/// Paths are canonicalized before comparison so relative-vs-absolute
+/// differences and symbolic links resolve to the same target. When `output`
+/// does not yet exist its canonicalization fails, so there is no conflict.
+fn output_conflicts_with_source(project: &FileBackedProject, output: &Path) -> bool {
+    let Ok(output) = canonicalize(output) else {
+        return false;
+    };
+    project.sources().iter().any(|source| {
+        canonicalize(PathBuf::from(source.file_id().to_string()))
+            .map(|resolved| resolved == output)
+            .unwrap_or(false)
+    })
 }
 
 fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic> {
