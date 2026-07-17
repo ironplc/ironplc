@@ -55,11 +55,12 @@ Marketplace build (extension ID `ironplc.ironplc-vscode`) packages cleanly in
 CI. Packaging runs unconditionally; the resulting VSIX is uploaded as a separate
 build artifact when the optional `marketplace-artifact-name` input is set (the
 `deployment.yaml` and `integration.yaml` callers set it), so the VSIX can be
-downloaded and installed for **manual** validation. It is **not** published to
-the Marketplace, and — because the consolidated `upload-release-artifacts` job
-hand-picks known asset names — it is **not** attached to the GitHub Release. The
-packaging step runs after the Open VSX VSIX and the SBOM so its `package.json`
-`name` override does not affect those artifacts.
+downloaded and installed for **manual** validation. The consolidated
+`upload-release-artifacts` job attaches it to the GitHub Release so users can
+install the Marketplace build (extension ID `ironplc.ironplc-vscode`) manually.
+It is **not** automatically published to the Marketplace — that remains deferred
+to Stage 2. The packaging step runs after the Open VSX VSIX and the SBOM so its
+`package.json` `name` override does not affect those artifacts.
 
 ### Stage 2 — automate Marketplace publishing (deferred)
 
