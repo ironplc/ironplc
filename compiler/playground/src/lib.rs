@@ -23,6 +23,7 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
 use ironplc_parser::options::{CompilerOptions, Dialect, FeatureDescriptor};
 use ironplc_sources::{parse_source, FileType};
+use ironplc_vm::error::Trap;
 use ironplc_vm::{Slot, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -189,6 +190,21 @@ fn diagnostic_info(diag: &Diagnostic, source: &str) -> DiagnosticInfo {
     }
 }
 
+/// A VM fault carried across a helper boundary without flattening the trap's
+/// structured v-code into the message string.
+///
+/// Keeps the [`Trap`] itself (rather than pre-stringifying its code) so the
+/// boundary preserves the structured VM code: the caller reads a human-readable
+/// [`message`](Self::message) and derives the stable v-code (e.g. `"V4001"`)
+/// from [`Trap::v_code`] only when it builds the JSON result.
+struct VmFault {
+    /// The trap that halted execution, kept structured so `Trap::v_code` is
+    /// available at the boundary.
+    trap: Trap,
+    /// Human-readable message including task and instance context.
+    message: String,
+}
+
 /// Result of executing bytecode.
 #[derive(Serialize, Deserialize)]
 struct RunResult {
@@ -198,6 +214,11 @@ struct RunResult {
     scans_completed: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// The faulting trap's stable v-code (e.g. `"V4001"`) when execution
+    /// stopped on a VM trap. Kept separate from `error` so callers can act on
+    /// the code without re-parsing the message. Absent when there was no trap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
 }
 
 /// A variable value read from the VM after execution.
@@ -467,6 +488,11 @@ struct StepResult {
     total_scans: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// The faulting trap's stable v-code (e.g. `"V4001"`) when a step stopped
+    /// on a VM trap. Kept separate from `error` so callers can act on the code
+    /// without re-parsing the message. Absent when there was no trap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_code: Option<String>,
 }
 
 /// Parse IEC 61131-3 source code and produce bytecode.
@@ -609,6 +635,7 @@ fn run_inner(bytecode_base64: &str, scans: u32) -> RunResult {
                 variables: vec![],
                 scans_completed: 0,
                 error: Some(format!("Invalid base64: {e}")),
+                error_code: None,
             };
         }
     };
@@ -625,6 +652,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 variables: vec![],
                 scans_completed: 0,
                 error: Some(format!("Invalid bytecode container: {e}")),
+                error_code: None,
             };
         }
     };
@@ -642,6 +670,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                     "VM trap during init: {} (task {}, instance {})",
                     ctx.trap, ctx.task_id, ctx.instance_id
                 )),
+                error_code: Some(ctx.trap.v_code().to_string()),
             };
         }
     };
@@ -674,6 +703,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                     faulted.task_id(),
                     faulted.instance_id()
                 )),
+                error_code: Some(faulted.trap().v_code().to_string()),
             };
         }
     }
@@ -689,6 +719,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
         variables,
         scans_completed,
         error: None,
+        error_code: None,
     }
 }
 
@@ -823,6 +854,7 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
             variables: vec![],
             total_scans: 0,
             error: None,
+            error_code: None,
         };
     }
 
@@ -838,6 +870,7 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
                 variables: vec![],
                 total_scans: 0,
                 error: Some(format!("Failed to load bytecode: {e}")),
+                error_code: None,
             };
         }
     };
@@ -857,6 +890,7 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
                 variables: vec![],
                 total_scans: 0,
                 error: Some(format!("VM init trap: {}", ctx.trap)),
+                error_code: Some(ctx.trap.v_code().to_string()),
             };
         }
     }
@@ -878,6 +912,7 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
         variables: vec![],
         total_scans: 0,
         error: None,
+        error_code: None,
     }
 }
 
@@ -905,6 +940,7 @@ fn step_inner(scans: u32) -> StepResult {
                     variables: vec![],
                     total_scans: 0,
                     error: Some("No program loaded. Call load_program first.".to_string()),
+                    error_code: None,
                 };
             }
         };
@@ -916,6 +952,7 @@ fn step_inner(scans: u32) -> StepResult {
                 variables: vec![],
                 total_scans: 0,
                 error: Some("Session is faulted. Call reset_session to start over.".to_string()),
+                error_code: None,
             };
         }
 
@@ -928,11 +965,12 @@ fn step_inner(scans: u32) -> StepResult {
                     variables: vec![],
                     total_scans: 0,
                     error: Some(format!("Failed to load bytecode: {e}")),
+                    error_code: None,
                 };
             }
         };
 
-        let (variables, total_scans, error) = run_vm_step(
+        let (variables, total_scans, fault) = run_vm_step(
             &container,
             &mut session.var_buf,
             &mut session.data_region,
@@ -942,9 +980,14 @@ fn step_inner(scans: u32) -> StepResult {
         );
 
         session.scan_count = total_scans;
-        if error.is_some() {
+        if fault.is_some() {
             session.faulted = true;
         }
+
+        let (error, error_code) = match fault {
+            Some(f) => (Some(f.message), Some(f.trap.v_code().to_string())),
+            None => (None, None),
+        };
 
         StepResult {
             ok: error.is_none(),
@@ -952,6 +995,7 @@ fn step_inner(scans: u32) -> StepResult {
             variables,
             total_scans,
             error,
+            error_code,
         }
     })
 }
@@ -962,7 +1006,8 @@ fn step_inner(scans: u32) -> StepResult {
 /// (including initial values) persist across calls. The VM's internal scan
 /// counter is the source of truth for total cycles executed.
 ///
-/// Returns `(variables, total_scan_count, error)`.
+/// Returns `(variables, total_scan_count, fault)`, where `fault` carries the
+/// structured [`Trap`] (and its message) when execution stopped on a trap.
 fn run_vm_step(
     container: &Container,
     var_buf: &mut Vec<Slot>,
@@ -970,7 +1015,7 @@ fn run_vm_step(
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
-) -> (Vec<VariableInfo>, u64, Option<String>) {
+) -> (Vec<VariableInfo>, u64, Option<VmFault>) {
     let mut bufs = VmBuffers::from_container(container);
     // Swap the session's persistent buffers into VmBuffers so the VM
     // operates on them directly, avoiding a copy.
@@ -994,7 +1039,7 @@ fn run_vm_scans(
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
-) -> (Vec<VariableInfo>, u64, Option<String>) {
+) -> (Vec<VariableInfo>, u64, Option<VmFault>) {
     let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
     for _ in 0..scans {
@@ -1015,13 +1060,17 @@ fn run_vm_scans(
                 &string_layouts,
             );
             let faulted = running.fault(ctx);
-            let error = format!(
+            let message = format!(
                 "VM trap: {} (task {}, instance {})",
                 faulted.trap(),
                 faulted.task_id(),
                 faulted.instance_id()
             );
-            return (variables, total_scans, Some(error));
+            let fault = VmFault {
+                trap: faulted.trap().clone(),
+                message,
+            };
+            return (variables, total_scans, Some(fault));
         }
     }
 
@@ -1112,6 +1161,32 @@ END_PROGRAM
         assert_eq!(result.scans_completed, 1);
         assert!(!result.variables.is_empty());
         assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
+    }
+
+    #[test]
+    fn run_when_program_traps_then_error_code_is_v_code() {
+        // Divide-by-zero traps with v-code V4001. The structured code must
+        // survive the WASM boundary as RunResult.error_code, not just be
+        // flattened into the error message.
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  y := 0;
+  x := 1 / y;
+END_PROGRAM
+";
+        let compile_result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
+        let bytecode = compile_result.bytecode.unwrap();
+
+        let json = run(&bytecode, 1);
+        let result: RunResult = serde_json::from_str(&json).unwrap();
+        assert!(!result.ok);
+        assert_eq!(result.error_code.as_deref(), Some("V4001"));
+        // The JSON payload carries the structured code alongside the message.
+        assert!(json.contains("\"error_code\":\"V4001\""));
     }
 
     #[test]

@@ -564,7 +564,15 @@ function startStepLoop(): void {
     const result = JSON.parse(msg.json) as RunResult;
     if (!result.ok) {
       const diagnostics = result.diagnostics || [];
-      captureRunStopped("error", extractErrorCodes(diagnostics));
+      // Prefer compiler diagnostic codes; otherwise a VM trap carries its
+      // structured v-code in error_code (e.g. "V4001").
+      const errorCodes =
+        diagnostics.length > 0
+          ? extractErrorCodes(diagnostics)
+          : result.error_code
+            ? [result.error_code]
+            : [];
+      captureRunStopped("error", errorCodes);
       stopExecution();
       if (diagnostics.length > 0) {
         renderDiagnostics(diagnostics);

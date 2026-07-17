@@ -122,6 +122,8 @@ export interface RunResultErr {
   ok: false;
   diagnostics?: Diagnostic[];
   error?: string;
+  /** The faulting trap's stable v-code (e.g. "V4001") on a VM trap. */
+  error_code?: string;
   variables?: Variable[];
 }
 
