@@ -109,9 +109,9 @@ jobs:
           path: integrations/vscode/ironplc-vscode-extension.vsix
           if-no-files-found: error
       # Marketplace VSIX (ironplc.ironplc-vscode), uploaded as a separate build
-      # artifact for manual validation. The consolidated upload-release-artifacts
-      # job hand-picks known asset names, so this artifact is NOT attached to the
-      # GitHub Release. Publishing to the Marketplace remains deferred.
+      # artifact. The consolidated upload-release-artifacts job attaches it to
+      # the GitHub Release so users can install the Marketplace build manually.
+      # Automated publishing to the Marketplace remains deferred.
       - name: Upload Marketplace VSIX to build artifact
         if: ${{ inputs.marketplace-artifact-name }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
