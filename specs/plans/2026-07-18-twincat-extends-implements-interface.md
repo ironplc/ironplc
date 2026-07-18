@@ -32,14 +32,24 @@ sections 1.3–1.4, under [ADR-0012](../adrs/0012-accept-vendor-dialect-files-as
 - **Inheritance/override semantics.** `extends`/`implements` are parsed and
   stored as metadata only. No checking that the base FB exists, that method
   signatures are compatible, or that `IMPLEMENTS` is actually satisfied.
-- **Method signatures inside `INTERFACE`.** Since method bodies are out of
-  scope (see above), and TwinCAT stores each interface method as a separate
-  `<Method>` child element (not inline text) exactly like function blocks do,
-  the interface's own `Declaration` CDATA is just the header line (e.g.
-  `INTERFACE I_Drivable` or `INTERFACE I_Drivable EXTENDS I_Base`). Nothing
-  else needs to be parsed inside `INTERFACE ... END_INTERFACE` for this PR.
-  **This assumption needs verification against real `.TcPOU`/`<Itf>` sample
-  files** — flagged as a task below.
+- **Method/Property signatures inside `INTERFACE`.** Since method bodies are
+  out of scope (see above), and TwinCAT stores each interface member as a
+  separate `<Method>` or `<Property>` child element (not inline text) exactly
+  like function blocks do, the interface's own `Declaration` CDATA is just the
+  header line (e.g. `INTERFACE I_Drivable` or
+  `INTERFACE I_Drivable EXTENDS I_Base`). Nothing else needs to be parsed
+  inside `INTERFACE ... END_INTERFACE` for this PR.
+
+  **Verified against real project files** (14 real `.TcIO` interface files
+  from a BROTLib/IAG50cm-based TwinCAT codebase): confirmed. `<Itf>` elements
+  overwhelmingly contain `<Property>` children (far more common than
+  `<Method>` — e.g. `I_BaseAxis.TcIO` has 13 properties and 1 method) with
+  their own nested `<Get>`/`<Set>`, plus occasional bare `<Method>` siblings.
+  All are structurally identical to how `FUNCTION_BLOCK` already handles
+  `<Method>`/`<Property>` siblings today (ignored). The `Itf`'s own
+  `<Declaration>` CDATA is confirmed to be exactly the bare header line, e.g.
+  `INTERFACE I_Focus EXTENDS I_BaseAxis` or just `INTERFACE I_BaseAxis` with
+  no base — nothing more.
 - **`THIS^`/`SUPER^`, access modifiers (`PUBLIC`/`PRIVATE`/...), `ABSTRACT`/
   `FINAL`/`OVERRIDE`.** Later phases of the design doc.
 
@@ -139,7 +149,16 @@ interface_declaration =
 ```
 
 (Interfaces can extend *multiple* interfaces in TwinCAT, unlike function
-blocks which extend at most one — confirm against real samples.)
+blocks which extend at most one.)
+
+**Verified against real project files**: `IMPLEMENTS I_Hydraulics, I_Brake`
+and `IMPLEMENTS I_RaDecTelescope, I_Telescope` both appear in real FB headers,
+confirming the comma-separated `IMPLEMENTS` list is real and necessary. No
+real example of multi-interface `EXTENDS` on an `INTERFACE` was found in the
+sample set (single-base or none only — e.g. `INTERFACE I_Focus EXTENDS
+I_BaseAxis`), but Beckhoff's own docs describe interface-to-interface
+multi-extension as valid, so the grammar still allows a comma-separated list
+there for correctness even though it's unexercised by this sample.
 
 New top-level alternative in `library_element_declaration()`.
 
@@ -164,15 +183,47 @@ pub enum LibraryElementKind {
 }
 ```
 
-### `twincat_parser.rs`: recognize `<Itf>`
+### New file extension: `.TcIO`
 
-Currently the root-element lookup (`compiler/sources/src/parsers/twincat_parser.rs`,
-~line 76) matches only `"POU" | "GVL" | "DUT"`. Add `"Itf"`. Interfaces are
-extracted the same way as POUs (`Declaration` CDATA + optional
-`Implementation`), reusing the existing CDATA/position-adjustment code path.
-**Needs a real sample `.TcPOU` file with an `<Itf>` root to confirm the exact
-structure** (does it have `<Implementation>` at all? what attributes does
-`<Itf>` carry?) — flagged as a task.
+**Verified against real project files — this was missed in the original plan
+and is a hard requirement, not a nice-to-have.** TwinCAT interfaces are not
+stored in `.TcPOU` files at all; they use a dedicated `.TcIO` extension (e.g.
+`I_Focus.TcIO`, `I_BaseAxis.TcIO`). `compiler/sources/src/file_type.rs`
+today maps only `tcpou`/`tcgvl`/`tcdut` to `FileType::TwinCat` — a `.TcIO`
+file currently falls through to `FileType::Unknown` and is never even handed
+to the parser. Two one-line fixes needed there:
+
+- `FileType::from_path`: add `Some(ext) if ext.eq_ignore_ascii_case("tcio") => FileType::TwinCat,`
+- `FileType::extensions()`: add `"TcIO"` to the `TwinCat` arm's slice
+
+`FileType::from_content` (the extension-less heuristic used by the
+playground) needs no change — it already matches on the `TcPlcObject`
+substring generically, which `.TcIO` files also have as their root element.
+
+`docs/reference/compiler/source-formats/twincat.rst` currently lists only
+`.TcPOU`/`.TcGVL`/`.TcDUT` under "File Extensions" and needs `.TcIO` added.
+
+### `twincat_parser.rs`: recognize `<Itf>` and add `INTERFACE` closing keyword
+
+Two concrete changes, both confirmed against real files:
+
+1. The root-element lookup (`compiler/sources/src/parsers/twincat_parser.rs`,
+   ~line 76, currently `matches!(n.tag_name().name(), "POU" | "GVL" | "DUT")`)
+   needs `"Itf"` added. Interfaces extract the same way as POUs (`Declaration`
+   CDATA + optional `Implementation`), reusing the existing
+   CDATA/position-adjustment code path unchanged.
+2. `closing_keyword()` (~line 249) infers the synthetic closing keyword from
+   the `Declaration` text's leading keyword (`FUNCTION_BLOCK` →
+   `END_FUNCTION_BLOCK`, etc.). Needs one more branch: `INTERFACE` →
+   `END_INTERFACE` (checked before `INTERFACE` could be confused with
+   anything else — no prefix collision risk here, unlike
+   `FUNCTION`/`FUNCTION_BLOCK`).
+
+**Already confirmed safe, no change needed**: `extract_pou_implementation`
+(~line 265) already returns `Ok((String::new(), None))` when `<Implementation>`
+is absent entirely — which is the normal case for `<Itf>` elements (confirmed:
+none of the 14 sample interface files with children had a top-level
+`<Implementation>` element). No fix needed there.
 
 ### Type registration
 
@@ -216,7 +267,9 @@ the full exhaustive-match list)
 | `compiler/parser/src/xform_demote_oop_keywords.rs` (new, or folded into existing demote module) | Demotion transform + prerequisite regression test |
 | `compiler/parser/src/parser.rs` | `EXTENDS`/`IMPLEMENTS` clause on FB; `interface_declaration()` rule |
 | `compiler/dsl/src/common.rs` | `FunctionBlockDeclaration.extends`/`.implements`; `InterfaceDeclaration` struct; `LibraryElementKind::InterfaceDeclaration` |
-| `compiler/sources/src/parsers/twincat_parser.rs` | Recognize `<Itf>` root element |
+| `compiler/sources/src/file_type.rs` | Recognize `.TcIO` extension (new — interfaces are a separate file type, not `.TcPOU`) |
+| `compiler/sources/src/parsers/twincat_parser.rs` | Recognize `<Itf>` root element; `closing_keyword()` gets `INTERFACE` → `END_INTERFACE` branch |
+| `docs/reference/compiler/source-formats/twincat.rst` | Add `.TcIO` to the file extensions list |
 | `compiler/analyzer/src/xform_toposort_declarations.rs` | Handle new variant |
 | `compiler/analyzer/src/symbol_environment.rs` / `type_environment.rs` | Register interface names as known types |
 | `compiler/analyzer/src/xform_resolve_constant_expressions.rs`, `xform_resolve_expr_types.rs` | Handle new variant (likely no-op) |
@@ -237,18 +290,23 @@ the full exhaustive-match list)
   is declared via `INTERFACE I_Foo END_INTERFACE` resolves without a
   "type not declared" diagnostic, but does emit `P9004` for the `INTERFACE`
   declaration itself (and for the FB's `EXTENDS`/`IMPLEMENTS`, separately).
-- `twincat_parser.rs` test: an `<Itf>`-rooted `.TcPOU`-style XML fixture
-  parses cleanly (needs a real sample to base the fixture on).
+- `twincat_parser.rs` test: an `<Itf>`-rooted, `.TcIO`-style XML fixture
+  (synthetic, modeled on the confirmed real structure — not copied from any
+  proprietary project) parses cleanly, both with and without `EXTENDS`.
+- `file_type.rs` test: `.TcIO` path/content maps to `FileType::TwinCat`.
 - Regression: existing TwinCAT XML tests and standard ST tests unaffected.
 - plc2plc round-trip test including `EXTENDS`/`IMPLEMENTS`/`INTERFACE`.
 
 ## Tasks
 
 - [x] Write plan
-- [ ] **Verify against a real `.TcPOU`/`<Itf>` sample**: confirm root element
-      name, whether `<Implementation>` exists, and whether method signatures
-      appear inline or only as separate `<Method>` children (confirms/refutes
-      the "no-op ignore" assumption this plan relies on)
+- [x] Verify against real project files (14 `.TcIO` interface files + 60
+      `.TcPOU` files using `EXTENDS`/`IMPLEMENTS` from a real TwinCAT
+      codebase). Findings folded into this plan: confirmed `.TcIO` is a
+      distinct, currently-unrecognized file extension; confirmed `<Itf>` root
+      shape and bare-header `Declaration` content; confirmed multi-interface
+      `IMPLEMENTS` is real (comma-separated); confirmed absent
+      `<Implementation>` is already handled gracefully, no fix needed there.
 - [ ] Keyword-safety regression test (EXTENDS/IMPLEMENTS/INTERFACE/END_INTERFACE
       as variable names, standard dialect, must still parse)
 - [ ] `ExtensionOrigin` enum + `VendorExtension` trait (DSL crate)
@@ -260,7 +318,9 @@ the full exhaustive-match list)
 - [ ] Grammar: `EXTENDS`/`IMPLEMENTS` clause on `function_block_declaration()`
 - [ ] Grammar + AST: `interface_declaration()`, `InterfaceDeclaration`,
       `LibraryElementKind::InterfaceDeclaration`
-- [ ] `twincat_parser.rs`: recognize `<Itf>` root
+- [ ] `file_type.rs`: recognize `.TcIO` extension
+- [ ] `twincat_parser.rs`: recognize `<Itf>` root; add `INTERFACE` branch to
+      `closing_keyword()`
 - [ ] Thread the new `LibraryElementKind` variant through every exhaustive
       match `cargo build` surfaces (toposort, symbol/type environment,
       codegen, plc2plc renderer, MCP tools, XML transform)
