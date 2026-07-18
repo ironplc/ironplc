@@ -107,15 +107,21 @@ beyond what already exists for comments (neither survives render).
 ## Tasks
 
 - [x] Write plan
-- [ ] Add `allow_pragmas` flag to `options.rs` (+ update existing count/feature-list tests)
-- [ ] Add `TokenType::Pragma` to `token.rs`
-- [ ] Implement `xform_collapse_pragmas.rs` with unit tests (simple pragma, multi-token
+- [x] Add `allow_pragmas` flag to `options.rs` (+ update existing count/feature-list tests)
+- [x] Add `TokenType::Pragma` to `token.rs`
+- [x] Implement `xform_collapse_pragmas.rs` with unit tests (simple pragma, multi-token
       content, unclosed brace left as-is, no-op when flag disabled)
-- [ ] Wire transform into `lib.rs`
-- [ ] Extend `parser.rs` trivia rule
-- [ ] Add parser-level tests: a minimal enum preceded by
+- [x] Wire transform into `lib.rs`
+- [x] Extend `parser.rs` trivia rule
+- [x] Add parser-level tests: a minimal enum preceded by
       `{attribute 'qualified_only'}`/`{attribute 'strict'}` parses cleanly under
       `Codesys`; the same source still fails under default (`Iec61131_3Ed2`)
-- [ ] Update docs (`enabling-dialects-and-features.rst`, `ironplcc.rst`, `syntax-support-guide.md`)
-- [ ] Run full CI pipeline (`cd compiler && just`)
-- [ ] Push branch to fork, open PR referencing issue #1199
+- [x] Update docs (`enabling-dialects-and-features.rst`, `ironplcc.rst`, `syntax-support-guide.md`)
+- [x] Also wired `allow_pragmas` through LSP `extract_compiler_options` (`ironplc-cli/src/lsp.rs`)
+      and semantic-token highlighting (`ironplc-cli/src/lsp_project.rs`), and updated the
+      `list_options` MCP tool test count — required by the exhaustive `TokenType` match and
+      the syntax-support-guide checklist, not called out in the original file map.
+- [x] Run full CI pipeline (`cd compiler && just`) — compile, coverage (85%+), clippy, fmt,
+      and dupes all pass
+- [ ] Push branch to fork, open PR referencing issue #1199 (holding per user instruction —
+      push to fork only, no PR against ironplc/ironplc without explicit go-ahead)
