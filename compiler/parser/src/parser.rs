@@ -224,6 +224,7 @@ parser! {
       / pd:program_declaration() { vec![LibraryElementKind::ProgramDeclaration(pd)] }
       / cd:configuration_declaration() { vec![LibraryElementKind::ConfigurationDeclaration(cd)] }
       / gv:global_var_declarations() { vec![LibraryElementKind::GlobalVarDeclarations(gv)] }
+      / id:interface_declaration() { vec![LibraryElementKind::InterfaceDeclaration(id)] }
 
     // B.1.1 Letters, digits and identifier
     rule identifier() -> Id = i:tok(TokenType::Identifier) {
@@ -1100,7 +1101,12 @@ parser! {
     // but we don't need that distinction here.
     rule function_block_type_name() -> TypeName = type_name()
     rule derived_function_block_name() -> TypeName = type_name()
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
+    // CODESYS/TwinCAT OOP extension: comma-separated list of type names,
+    // e.g. `IMPLEMENTS I_Hydraulics, I_Brake`. Only produced when EXTENDS
+    // or IMPLEMENTS tokens are recognized (allow_oop_extensions), since
+    // both are demoted to identifiers otherwise.
+    rule type_name_list() -> Vec<TypeName> = names:type_name() ++ (_ tok(TokenType::Comma) _) { names }
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ extends:(tok(TokenType::Extends) _ t:type_name() {t})? _ implements:(tok(TokenType::Implements) _ names:type_name_list() {names})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
@@ -1110,8 +1116,23 @@ parser! {
         edge_variables,
         body,
         span: SourceSpan::join(&start.span, &end.span),
+        extends,
+        implements: implements.unwrap_or_default(),
       }
     }
+
+    // CODESYS/TwinCAT OOP extension: INTERFACE ... END_INTERFACE. Only the
+    // header (name + optional EXTENDS list) is parsed — method/property
+    // signatures are not yet supported (see
+    // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+    rule interface_declaration() -> InterfaceDeclaration = start:tok(TokenType::Interface) _ name:identifier() _ extends:(tok(TokenType::Extends) _ names:type_name_list() {names})? _ end:tok(TokenType::EndInterface) {
+      InterfaceDeclaration {
+        name,
+        extends: extends.unwrap_or_default(),
+        span: SourceSpan::join(&start.span, &end.span),
+      }
+    }
+
     rule other_var_declarations() -> VarDeclarations = external_var_declarations() / var_declarations() / retentive_var_declarations() / non_retentive_var_declarations() / incompl_located_var_declarations()
     rule temp_var_decls() -> VarDeclarations = tok(TokenType::VarTemp) _ declarations:semisep_or_empty(<var2_init_decl()>) _ tok(TokenType::EndVar) {
       VarDeclarations::Var(VarDeclarations::flat_map(declarations, VariableType::VarTemp, None))

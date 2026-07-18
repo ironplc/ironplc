@@ -294,6 +294,11 @@ define_compiler_options! {
     "--allow-short-circuit-operators",
     [Rusty, Codesys],
     allow_short_circuit_operators,
+
+    "Allow CODESYS/TwinCAT OOP extensions: EXTENDS/IMPLEMENTS on FUNCTION_BLOCK and INTERFACE declarations",
+    "--allow-oop-extensions",
+    [Rusty, Codesys],
+    allow_oop_extensions,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -399,6 +404,7 @@ mod tests {
                 "allow_partial_access_syntax",
                 "allow_pragmas",
                 "allow_short_circuit_operators",
+                "allow_oop_extensions",
             ],
         );
     }
@@ -429,6 +435,7 @@ mod tests {
                 "allow_partial_access_syntax",
                 "allow_pragmas",
                 "allow_short_circuit_operators",
+                "allow_oop_extensions",
             ],
         );
     }

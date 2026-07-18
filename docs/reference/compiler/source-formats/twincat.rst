@@ -14,6 +14,8 @@ IronPLC recognizes the following TwinCAT file extensions (case-insensitive):
 - :file:`.TcPOU` - Program Organization Units (programs, function blocks, functions)
 - :file:`.TcGVL` - Global Variable Lists
 - :file:`.TcDUT` - Data Unit Types (type declarations)
+- :file:`.TcIO` - Interface declarations (requires
+  ``--allow-oop-extensions``; see :doc:`/explanation/enabling-dialects-and-features`)
 
 -------------------
 Supported Languages

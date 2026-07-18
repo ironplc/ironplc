@@ -11,6 +11,7 @@ use dsl_macro_derive::Recurse;
 
 use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
+use crate::extension::{ExtensionOrigin, VendorExtension};
 use crate::fold::Fold;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
@@ -2481,6 +2482,9 @@ pub enum LibraryElementKind {
     /// CONFIGURATION/RESOURCE blocks. This variant enables the common
     /// vendor extension of declaring globals at the top level.
     GlobalVarDeclarations(Vec<VarDecl>),
+    /// `INTERFACE ... END_INTERFACE` (vendor extension). See
+    /// `InterfaceDeclaration`.
+    InterfaceDeclaration(InterfaceDeclaration),
 }
 
 /// Return type for a function declaration.
@@ -2553,6 +2557,14 @@ pub struct FunctionBlockDeclaration {
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: FunctionBlockBodyKind,
     pub span: SourceSpan,
+    /// `EXTENDS base_name` (CODESYS/TwinCAT OOP extension). Parsed and
+    /// stored as metadata only — inheritance is not yet semantically
+    /// checked. See `VendorExtension` impl below and
+    /// `specs/plans/2026-07-18-twincat-extends-implements-interface.md`.
+    pub extends: Option<TypeName>,
+    /// `IMPLEMENTS interface_list` (CODESYS/TwinCAT OOP extension). Parsed
+    /// and stored as metadata only — not yet semantically checked.
+    pub implements: Vec<TypeName>,
 }
 
 impl HasVariables for FunctionBlockDeclaration {
@@ -2563,6 +2575,66 @@ impl HasVariables for FunctionBlockDeclaration {
 
 impl Located for FunctionBlockDeclaration {
     fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// The `EXTENDS`/`IMPLEMENTS` clause is a vendor extension; the rest of a
+/// `FunctionBlockDeclaration` is standard IEC 61131-3. The
+/// `rule_unsupported_extension` semantic rule only calls this when
+/// `extends`/`implements` is actually present.
+impl VendorExtension for FunctionBlockDeclaration {
+    fn extension_name(&self) -> &'static str {
+        "EXTENDS/IMPLEMENTS clause"
+    }
+
+    fn extension_origins(&self) -> &'static [ExtensionOrigin] {
+        &[ExtensionOrigin::BeckhoffCodesys]
+    }
+
+    fn extension_span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// `INTERFACE name (EXTENDS base_list)? END_INTERFACE` (CODESYS/TwinCAT OOP
+/// extension).
+///
+/// Only the header is represented — method and property signatures are not
+/// yet parsed (TwinCAT stores each as a separate `<Method>`/`<Property>` XML
+/// element, silently ignored today; see
+/// `specs/plans/2026-07-18-twincat-extends-implements-interface.md`). This
+/// is enough for an interface name to be recognized as a known type, so
+/// that variables declared with an interface type resolve instead of
+/// failing with "type not declared."
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct InterfaceDeclaration {
+    pub name: Id,
+    /// Interfaces this interface extends (an interface may extend more than
+    /// one other interface, unlike a function block).
+    pub extends: Vec<TypeName>,
+    pub span: SourceSpan,
+}
+
+impl Located for InterfaceDeclaration {
+    fn span(&self) -> SourceSpan {
+        self.span.clone()
+    }
+}
+
+/// An `InterfaceDeclaration` is always a vendor extension — unlike
+/// `FunctionBlockDeclaration`, there is no standard-IEC-61131-3 meaning for
+/// it.
+impl VendorExtension for InterfaceDeclaration {
+    fn extension_name(&self) -> &'static str {
+        "INTERFACE declaration"
+    }
+
+    fn extension_origins(&self) -> &'static [ExtensionOrigin] {
+        &[ExtensionOrigin::BeckhoffCodesys]
+    }
+
+    fn extension_span(&self) -> SourceSpan {
         self.span.clone()
     }
 }

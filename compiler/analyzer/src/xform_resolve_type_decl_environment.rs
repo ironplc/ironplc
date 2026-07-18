@@ -436,6 +436,31 @@ impl Fold<Diagnostic> for TypeEnvironment {
         Ok(node)
     }
 
+    fn fold_interface_declaration(
+        &mut self,
+        node: InterfaceDeclaration,
+    ) -> Result<InterfaceDeclaration, Diagnostic> {
+        // Register the interface name as a known type so that variables
+        // declared with an interface type (e.g. `pDrv : I_Drivable;`)
+        // resolve instead of failing with "type not declared."
+        //
+        // Modeled as an empty structure: interfaces have no fields in
+        // IronPLC's model today (method/property signatures are not yet
+        // parsed — see specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+        // This is intentionally a placeholder representation, not a claim
+        // that interface field/method access works. Any real use beyond
+        // "declare a variable of this type" is unreachable: the
+        // `InterfaceDeclaration` itself always triggers P9004 via
+        // `rule_unsupported_extension`, which blocks codegen for the whole
+        // project before this representation could matter.
+        let attrs = crate::type_attributes::TypeAttributes::new(
+            node.name.span(),
+            IntermediateType::Structure { fields: vec![] },
+        );
+        self.insert_type(&TypeName::from_id(&node.name), attrs)?;
+        Ok(node)
+    }
+
     fn fold_data_type_declaration_kind(
         &mut self,
         node: DataTypeDeclarationKind,
@@ -1026,5 +1051,60 @@ END_TYPE
             Problem::ParentTypeNotDeclared.code(),
             error.first().unwrap().code
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // CODESYS/TwinCAT OOP extension: INTERFACE registers as a known type.
+    // See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn apply_when_interface_declared_then_registers_as_structure_type() {
+        let program = "
+INTERFACE I_Drivable
+END_INTERFACE
+        ";
+        let options = CompilerOptions {
+            allow_oop_extensions: true,
+            ..CompilerOptions::default()
+        };
+        let input = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(input, &mut env);
+        assert!(result.is_ok(), "{:?}", result.err());
+
+        let interface_type = env.get(&TypeName::from("I_Drivable")).unwrap();
+        assert!(interface_type.representation.is_structure());
+    }
+
+    #[test]
+    fn apply_when_var_declared_with_interface_type_then_resolves() {
+        // Interface must be declared before use (declarations are sorted
+        // upstream by xform_toposort_declarations, but this module alone
+        // only resolves types in file order, so declare first here).
+        let program = "
+INTERFACE I_Drivable
+END_INTERFACE
+
+FUNCTION_BLOCK FB_Example
+VAR
+    pDrv : I_Drivable;
+END_VAR
+END_FUNCTION_BLOCK
+        ";
+        let options = CompilerOptions {
+            allow_oop_extensions: true,
+            ..CompilerOptions::default()
+        };
+        let input = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
+        let mut env = TypeEnvironmentBuilder::new()
+            .with_elementary_types()
+            .build()
+            .unwrap();
+        let result = apply(input, &mut env);
+        assert!(result.is_ok(), "{:?}", result.err());
     }
 }

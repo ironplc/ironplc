@@ -93,5 +93,6 @@ P8001,McpInputValidation,MCP tool input validation error
 P9001,UnsupportedStdLibType,Referenced type is valid but not implemented
 P9002,NoContent,Set of valid source files has no content
 P9003,XmlBodyTypeNotSupported,POU body language is not supported
+P9004,UnsupportedExtension,Recognized vendor extension is not yet supported
 P9998,InternalError,Internal error indicating a bug in the compiler
 P9999,NotImplemented,Capability is not implemented (yet!)

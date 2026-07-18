@@ -29,6 +29,7 @@ mod rule_ref_to;
 mod rule_stdlib_type_redefinition;
 mod rule_string_encoding_compat;
 mod rule_task_names_unique;
+mod rule_unsupported_extension;
 mod rule_unsupported_stdlib_type;
 mod rule_use_declared_enumerated_value;
 mod rule_use_declared_symbolic_var;

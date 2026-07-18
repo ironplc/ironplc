@@ -203,6 +203,18 @@ pub enum TokenType {
     #[token("END_FUNCTION_BLOCK", ignore(case))]
     EndFunctionBlock,
 
+    // CODESYS/TwinCAT OOP extensions (Beckhoff/CODESYS origin). Demoted to
+    // Identifier unless `allow_oop_extensions` is set — see
+    // xform_demote_oop_keywords.rs.
+    #[token("EXTENDS", ignore(case))]
+    Extends,
+    #[token("IMPLEMENTS", ignore(case))]
+    Implements,
+    #[token("INTERFACE", ignore(case))]
+    Interface,
+    #[token("END_INTERFACE", ignore(case))]
+    EndInterface,
+
     #[token("IF", ignore(case))]
     If,
     #[token("THEN", ignore(case))]
@@ -526,6 +538,10 @@ impl TokenType {
             TokenType::EndFunction => "'END_FUNCTION'",
             TokenType::FunctionBlock => "'FUNCTION_BLOCK'",
             TokenType::EndFunctionBlock => "'END_FUNCTION_BLOCK'",
+            TokenType::Extends => "'EXTENDS'",
+            TokenType::Implements => "'IMPLEMENTS'",
+            TokenType::Interface => "'INTERFACE'",
+            TokenType::EndInterface => "'END_INTERFACE'",
             TokenType::If => "'IF'",
             TokenType::Then => "'THEN'",
             TokenType::Elsif => "'ELSIF'",
@@ -741,6 +757,10 @@ mod tests {
             (EndFunction, "END_FUNCTION"),
             (FunctionBlock, "FUNCTION_BLOCK"),
             (EndFunctionBlock, "END_FUNCTION_BLOCK"),
+            (Extends, "EXTENDS"),
+            (Implements, "IMPLEMENTS"),
+            (Interface, "INTERFACE"),
+            (EndInterface, "END_INTERFACE"),
             (If, "IF"),
             (Then, "THEN"),
             (Elsif, "ELSIF"),

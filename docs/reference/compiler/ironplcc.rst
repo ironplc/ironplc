@@ -166,6 +166,14 @@ Options
    IDEs. A pragma is parsed and discarded like a comment; its contents are
    not interpreted. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
+``--allow-oop-extensions``
+   Allow CODESYS/TwinCAT OOP extensions: ``EXTENDS``/``IMPLEMENTS`` on
+   ``FUNCTION_BLOCK`` and ``INTERFACE`` declarations. Parsed and registered
+   as known types; inheritance, interface dispatch, and method/property
+   declarations are not yet semantically supported (produces
+   :doc:`P9004 </reference/compiler/problems/P9004>`). Enabled by
+   ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Examples
 ========
 
