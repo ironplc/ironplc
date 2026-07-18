@@ -11,6 +11,7 @@ mod corpus;
 mod declarations;
 mod enums;
 mod mixed_vars;
+mod oop_extensions;
 mod partial_access;
 mod reference_to;
 mod short_circuit;

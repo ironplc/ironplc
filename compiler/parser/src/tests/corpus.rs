@@ -123,6 +123,8 @@ fn parse_when_first_steps_function_block_counter_fbd_then_builds_structure() {
                 StmtKind::simple_assignment("OUT", "Cnt"),
             ]),
             span: SourceSpan::default(),
+            extends: None,
+            implements: vec![],
         },
     ));
     assert_eq!(actual, expected);
@@ -306,6 +308,8 @@ fn parse_when_first_steps_function_block_logger_then_test_apply_when_names_corre
                 StmtKind::assignment(Variable::named("TRIG0"), ExprKind::late_bound("TRIG")),
             ]),
             span: SourceSpan::default(),
+            extends: None,
+            implements: vec![],
         },
     ));
 
@@ -398,6 +402,8 @@ fn parse_when_first_steps_function_block_counter_sfc_then_builds_structure() {
                 ],
             }]),
             span: SourceSpan::default(),
+            extends: None,
+            implements: vec![],
         },
     ));
     assert_eq!(actual, expected);

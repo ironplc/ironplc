@@ -9,7 +9,7 @@ pub enum FileType {
     StructuredText,
     /// XML files (.xml)
     Xml,
-    /// TwinCAT files (.TcPOU, .TcGVL, .TcDUT)
+    /// TwinCAT files (.TcPOU, .TcGVL, .TcDUT, .TcIO)
     TwinCat,
     /// Unknown file type
     Unknown,
@@ -25,6 +25,10 @@ impl FileType {
             Some(ext) if ext.eq_ignore_ascii_case("tcpou") => FileType::TwinCat,
             Some(ext) if ext.eq_ignore_ascii_case("tcgvl") => FileType::TwinCat,
             Some(ext) if ext.eq_ignore_ascii_case("tcdut") => FileType::TwinCat,
+            // .TcIO holds Beckhoff TwinCAT INTERFACE declarations — a
+            // separate object type from POU/GVL/DUT, stored in its own
+            // extension. See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+            Some(ext) if ext.eq_ignore_ascii_case("tcio") => FileType::TwinCat,
             _ => FileType::Unknown,
         }
     }
@@ -59,7 +63,7 @@ impl FileType {
         match self {
             FileType::StructuredText => &["st", "iec"],
             FileType::Xml => &["xml"],
-            FileType::TwinCat => &["TcPOU", "TcGVL", "TcDUT"],
+            FileType::TwinCat => &["TcPOU", "TcGVL", "TcDUT", "TcIO"],
             FileType::Unknown => &[],
         }
     }
@@ -113,6 +117,12 @@ mod tests {
     }
 
     #[test]
+    fn file_type_from_path_tcio() {
+        let path = PathBuf::from("I_Drivable.TcIO");
+        assert_eq!(FileType::from_path(&path), FileType::TwinCat);
+    }
+
+    #[test]
     fn file_type_case_insensitive() {
         let path = PathBuf::from("test.XML");
         assert_eq!(FileType::from_path(&path), FileType::Xml);
@@ -151,6 +161,17 @@ mod tests {
     }
 
     #[test]
+    fn from_content_when_twincat_interface_xml_then_returns_twincat() {
+        let content = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <Itf Name="I_Drivable" Id="{00000000-0000-0000-0000-000000000000}">
+    <Declaration><![CDATA[INTERFACE I_Drivable]]></Declaration>
+  </Itf>
+</TcPlcObject>"#;
+        assert_eq!(FileType::from_content(content), FileType::TwinCat);
+    }
+
+    #[test]
     fn from_content_when_structured_text_then_returns_st() {
         let content = "PROGRAM Main\nEND_PROGRAM";
         assert_eq!(FileType::from_content(content), FileType::StructuredText);
@@ -166,7 +187,10 @@ mod tests {
     fn file_type_extensions() {
         assert_eq!(FileType::StructuredText.extensions(), &["st", "iec"]);
         assert_eq!(FileType::Xml.extensions(), &["xml"]);
-        assert_eq!(FileType::TwinCat.extensions(), &["TcPOU", "TcGVL", "TcDUT"]);
+        assert_eq!(
+            FileType::TwinCat.extensions(),
+            &["TcPOU", "TcGVL", "TcDUT", "TcIO"]
+        );
         let empty: &[&str] = &[];
         assert_eq!(FileType::Unknown.extensions(), empty);
     }

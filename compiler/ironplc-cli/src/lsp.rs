@@ -1058,15 +1058,23 @@ mod test {
     }
 
     #[test]
+<<<<<<< HEAD
     fn extract_compiler_options_when_allow_mixed_located_var_declarations_then_enables_flag() {
+=======
+    fn extract_compiler_options_when_allow_oop_extensions_then_enables_flag() {
+>>>>>>> b2012fdd (Add EXTENDS/IMPLEMENTS and minimal INTERFACE support)
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
             root_path: None,
             root_uri: None,
+<<<<<<< HEAD
             initialization_options: Some(
                 serde_json::json!({"allowMixedLocatedVarDeclarations": true}),
             ),
+=======
+            initialization_options: Some(serde_json::json!({"allowOopExtensions": true})),
+>>>>>>> b2012fdd (Add EXTENDS/IMPLEMENTS and minimal INTERFACE support)
             capabilities: ClientCapabilities::default(),
             trace: None,
             workspace_folders: None,
@@ -1078,6 +1086,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
+<<<<<<< HEAD
         assert!(options.allow_mixed_located_var_declarations);
     }
 
@@ -1125,6 +1134,9 @@ mod test {
 
         let options = super::extract_compiler_options(&params);
         assert!(options.allow_reference_to);
+=======
+        assert!(options.allow_oop_extensions);
+>>>>>>> b2012fdd (Add EXTENDS/IMPLEMENTS and minimal INTERFACE support)
     }
 
     #[test]

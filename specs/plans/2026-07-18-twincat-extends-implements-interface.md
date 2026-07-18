@@ -307,29 +307,63 @@ the full exhaustive-match list)
       shape and bare-header `Declaration` content; confirmed multi-interface
       `IMPLEMENTS` is real (comma-separated); confirmed absent
       `<Implementation>` is already handled gracefully, no fix needed there.
-- [ ] Keyword-safety regression test (EXTENDS/IMPLEMENTS/INTERFACE/END_INTERFACE
+- [x] Keyword-safety regression test (EXTENDS/IMPLEMENTS/INTERFACE/END_INTERFACE
       as variable names, standard dialect, must still parse)
-- [ ] `ExtensionOrigin` enum + `VendorExtension` trait (DSL crate)
-- [ ] `P9004 UnsupportedExtension` problem code (CSV + doc page)
-- [ ] `allow_oop_extensions` flag in `options.rs` (+ update descriptor-count
+- [x] `ExtensionOrigin` enum + `VendorExtension` trait (DSL crate)
+- [x] `P9004 UnsupportedExtension` problem code (CSV + doc page)
+- [x] `allow_oop_extensions` flag in `options.rs` (+ update descriptor-count
       tests, same as the pragma PR needed)
-- [ ] `Extends`/`Implements`/`Interface`/`EndInterface` tokens + demotion
+- [x] `Extends`/`Implements`/`Interface`/`EndInterface` tokens + demotion
       transform
-- [ ] Grammar: `EXTENDS`/`IMPLEMENTS` clause on `function_block_declaration()`
-- [ ] Grammar + AST: `interface_declaration()`, `InterfaceDeclaration`,
+- [x] Grammar: `EXTENDS`/`IMPLEMENTS` clause on `function_block_declaration()`
+- [x] Grammar + AST: `interface_declaration()`, `InterfaceDeclaration`,
       `LibraryElementKind::InterfaceDeclaration`
-- [ ] `file_type.rs`: recognize `.TcIO` extension
-- [ ] `twincat_parser.rs`: recognize `<Itf>` root; add `INTERFACE` branch to
+- [x] `file_type.rs`: recognize `.TcIO` extension
+- [x] `twincat_parser.rs`: recognize `<Itf>` root; add `INTERFACE` branch to
       `closing_keyword()`
-- [ ] Thread the new `LibraryElementKind` variant through every exhaustive
+- [x] Thread the new `LibraryElementKind` variant through every exhaustive
       match `cargo build` surfaces (toposort, symbol/type environment,
       codegen, plc2plc renderer, MCP tools, XML transform)
-- [ ] Register interface names as resolvable types in symbol/type environment
-- [ ] `rule_unsupported_extension.rs` with `visit_*` for `extends`/`implements`-
+- [x] Register interface names as resolvable types in symbol/type environment
+- [x] `rule_unsupported_extension.rs` with `visit_*` for `extends`/`implements`-
       bearing FBs and `InterfaceDeclaration`
-- [ ] All tests from Testing Strategy
-- [ ] Update docs (`enabling-dialects-and-features.rst`, `ironplcc.rst`,
+- [x] All tests from Testing Strategy
+- [x] Update docs (`enabling-dialects-and-features.rst`, `ironplcc.rst`,
       `syntax-support-guide.md`, new `P9004.rst`)
-- [ ] Run full CI pipeline (`cd compiler && just`)
-- [ ] Push branch to fork (no PR against `ironplc/ironplc` without explicit
+- [x] Run full CI pipeline (`cd compiler && just`)
+- [x] Push branch to fork (no PR against `ironplc/ironplc` without explicit
       go-ahead, per standing instruction)
+
+## Implementation Notes (decisions resolved during implementation)
+
+- **Type registration** (the open question in the Design section): resolved
+  by registering `InterfaceDeclaration` as `IntermediateType::Structure {
+  fields: vec![] }` rather than adding a new `IntermediateType` variant.
+  Adding a variant would have rippled into `is_primitive`/`size_in_bytes`/
+  `alignment_bytes`/codegen field-offset matches — a much bigger blast
+  radius than needed, since interfaces have no runtime representation in
+  this PR. Confirmed safe: `P9004` on the `InterfaceDeclaration` itself
+  always blocks codegen for the whole project (both `ironplc-cli/src/cli.rs`
+  and the MCP `compile` tool check `context.has_diagnostics()`/error
+  severity before invoking codegen), so the placeholder representation is
+  never actually reached at runtime.
+- **`VendorExtension` on `FunctionBlockDeclaration`**: implemented
+  unconditionally (every `FunctionBlockDeclaration` has the impl available),
+  but `rule_unsupported_extension`'s visitor only *calls* it when
+  `extends.is_some() || !implements.is_empty()`. This resolves the tension
+  between "the trait means this type is always an extension" (true for
+  `InterfaceDeclaration`) and "only sometimes" (true for
+  `FunctionBlockDeclaration`) — the trait supplies diagnostic metadata: the
+  visitor decides when to use it.
+- Actual codegen/plc2plc-renderer/MCP-tool ripple from adding
+  `LibraryElementKind::InterfaceDeclaration` was smaller than the file map
+  predicted: `codegen/src/compile.rs`, `mcp/src/tools/compile.rs`,
+  `xform_resolve_constant_expressions.rs`, and `xform_resolve_expr_types.rs`
+  all use `if let`/wildcard matches, not exhaustive ones, so they needed no
+  changes — `cargo build` only surfaced `xform_toposort_declarations.rs` and
+  the LSP semantic-token match as real compile errors. `plc2plc/src/renderer.rs`
+  needed a `visit_interface_declaration` override (added) since the render
+  path is Visitor-based, not an exhaustive match, so it compiled without the
+  override but would have silently dropped `EXTENDS`/`IMPLEMENTS`/
+  `INTERFACE` from rendered output without it — caught by writing the
+  round-trip test before assuming it worked.

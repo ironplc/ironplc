@@ -202,3 +202,24 @@ pub(crate) fn opts_with_constant_initializer_expressions() -> CompilerOptions {
         ..CompilerOptions::default()
     }
 }
+
+// ---------------------------------------------------------------------
+// TwinCAT/CODESYS OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
+// See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+// ---------------------------------------------------------------------
+
+pub(crate) fn opts_with_oop_extensions() -> CompilerOptions {
+    CompilerOptions {
+        allow_oop_extensions: true,
+        ..CompilerOptions::default()
+    }
+}
+
+pub(crate) fn extract_fb(library: &Library) -> &FunctionBlockDeclaration {
+    let element = library
+        .elements
+        .iter()
+        .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
+        .expect("expected a FunctionBlockDeclaration");
+    cast!(element, LibraryElementKind::FunctionBlockDeclaration)
+}

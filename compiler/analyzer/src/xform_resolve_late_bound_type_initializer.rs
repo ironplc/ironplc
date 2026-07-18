@@ -294,6 +294,8 @@ END_FUNCTION_BLOCK
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
+                    extends: None,
+                    implements: vec![],
                 }),
                 LibraryElementKind::FunctionBlockDeclaration(FunctionBlockDeclaration {
                     name: TypeName::from("caller"),
@@ -301,6 +303,8 @@ END_FUNCTION_BLOCK
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
+                    extends: None,
+                    implements: vec![],
                 }),
             ],
         };
@@ -349,6 +353,8 @@ END_FUNCTION_BLOCK
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
+                    extends: None,
+                    implements: vec![],
                 }),
             ],
         };
@@ -396,6 +402,8 @@ END_FUNCTION_BLOCK
                     edge_variables: vec![],
                     body: FunctionBlockBodyKind::empty(),
                     span: SourceSpan::default(),
+                    extends: None,
+                    implements: vec![],
                 }),
             ],
         };

@@ -329,6 +329,16 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    :doc:`P4043 </reference/compiler/problems/P4043>`. A constant value is
    standard syntax and is always allowed.
 
+``--allow-oop-extensions``
+   Allow CODESYS/TwinCAT object-oriented extensions: ``EXTENDS``/
+   ``IMPLEMENTS`` on ``FUNCTION_BLOCK`` declarations, and ``INTERFACE``
+   declarations. These are parsed and the ``EXTENDS``/``IMPLEMENTS``/
+   ``INTERFACE`` names are recognized as valid types, but inheritance,
+   interface dispatch, and method/property declarations are not yet
+   semantically supported — using them produces problem
+   :doc:`P9004 </reference/compiler/problems/P9004>` rather than a parse
+   error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell

@@ -165,6 +165,12 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
             LibraryElementKind::GlobalVarDeclarations(decls) => {
                 global_var_decls.push(decls);
             }
+            LibraryElementKind::InterfaceDeclaration(decl) => {
+                elems_by_name.insert(
+                    decl.name.clone(),
+                    LibraryElementKind::InterfaceDeclaration(decl),
+                );
+            }
         }
     }
 
@@ -463,6 +469,21 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         self.current_from = Some(node.name.clone());
         let idx = self.declarations.add_node(&node.name);
         self.program_nodes.push(idx);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
+    }
+
+    fn visit_interface_declaration(
+        &mut self,
+        node: &InterfaceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.name.clone());
+        let this = self.declarations.add_node(&node.name);
+        for parent in &node.extends {
+            let depends_on = self.declarations.add_node(&parent.name);
+            self.declarations.graph.add_edge(depends_on, this, ());
+        }
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
