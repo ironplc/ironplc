@@ -58,10 +58,16 @@ pub(crate) fn build_enum_ordinal_map(library: &Library) -> EnumOrdinalMap {
             if let SpecificationKind::Inline(spec_values) = &decl.spec_init.spec {
                 let mut value_names = Vec::new();
 
-                for (ordinal, ev) in spec_values.values.iter().enumerate() {
+                // Uses the resolved ordinal (not just declaration
+                // position) so explicit values (`member := 5`, a
+                // CODESYS/TwinCAT extension) are reflected at runtime,
+                // not just at the type-sizing stage.
+                let resolved = ironplc_analyzer::resolve_ordinal_values(&spec_values.values);
+                for (ev, ordinal) in spec_values.values.iter().zip(resolved) {
                     let val_upper = ev.value.to_string().to_uppercase();
-                    ordinals.insert((type_upper.clone(), val_upper.clone()), ordinal as i32);
-                    value_lookup.insert(val_upper.clone(), (type_upper.clone(), ordinal as i32));
+                    let ordinal = ordinal as i32;
+                    ordinals.insert((type_upper.clone(), val_upper.clone()), ordinal);
+                    value_lookup.insert(val_upper.clone(), (type_upper.clone(), ordinal));
                     value_names.push(val_upper);
                 }
 
@@ -279,6 +285,53 @@ mod tests {
         assert_eq!(
             map.value_lookup.get("BLUE"),
             Some(&("COLOR".to_string(), 2))
+        );
+    }
+
+    #[test]
+    fn build_enum_ordinal_map_when_explicit_values_then_uses_resolved_ordinals() {
+        let lib = parse_library(
+            "TYPE E_ModeLanguage : (Deutsch := 1, English := 2); END_TYPE
+             PROGRAM main END_PROGRAM",
+        );
+        let map = build_enum_ordinal_map(&lib);
+
+        // Uses the explicit values, not declaration position (which
+        // would otherwise give Deutsch=0, English=1).
+        assert_eq!(
+            map.ordinals
+                .get(&("E_MODELANGUAGE".into(), "DEUTSCH".into())),
+            Some(&1)
+        );
+        assert_eq!(
+            map.ordinals
+                .get(&("E_MODELANGUAGE".into(), "ENGLISH".into())),
+            Some(&2)
+        );
+    }
+
+    #[test]
+    fn build_enum_ordinal_map_when_first_explicit_then_continues_for_rest() {
+        let lib = parse_library(
+            "TYPE E_AssertionType : (Type_UNDEFINED := 0, Type_ANY, Type_BOOL) BYTE; END_TYPE
+             PROGRAM main END_PROGRAM",
+        );
+        let map = build_enum_ordinal_map(&lib);
+
+        assert_eq!(
+            map.ordinals
+                .get(&("E_ASSERTIONTYPE".into(), "TYPE_UNDEFINED".into())),
+            Some(&0)
+        );
+        assert_eq!(
+            map.ordinals
+                .get(&("E_ASSERTIONTYPE".into(), "TYPE_ANY".into())),
+            Some(&1)
+        );
+        assert_eq!(
+            map.ordinals
+                .get(&("E_ASSERTIONTYPE".into(), "TYPE_BOOL".into())),
+            Some(&2)
         );
     }
 }

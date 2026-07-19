@@ -211,14 +211,59 @@ pub fn resolve_ordinal_values(values: &[EnumeratedValue]) -> Vec<i64> { ... }
 
 ## Tasks
 
-- [ ] Write plan (this document)
-- [ ] Grammar: `enumerated_value_decl()` + base-type suffix
-- [ ] DSL: `EnumeratedValue.explicit_value`, `EnumeratedSpecificationInit.underlying_type`
-- [ ] `resolve_ordinal_values()` in `enumeration.rs`, re-exported from analyzer
-- [ ] Update `enumeration.rs` sizing and `compile_enum.rs` ordinal map to use it
-- [ ] Check plc2plc renderer; fix/extend if needed
-- [ ] Tests from Testing Strategy
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] Write plan (this document)
+- [x] Grammar: `enumerated_value_decl()` + base-type suffix
+- [x] DSL: `EnumeratedValue.explicit_value`, `EnumeratedSpecificationInit.underlying_type`
+- [x] `resolve_ordinal_values()` in `enumeration.rs`, re-exported from analyzer
+- [x] Update `enumeration.rs` sizing and `compile_enum.rs` ordinal map to use it
+- [x] Check plc2plc renderer; fix/extend if needed (found and fixed two
+      pre-existing bugs — see Implementation Notes)
+- [x] Tests from Testing Strategy
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork (no PR against `ironplc/ironplc` without explicit
       go-ahead, per standing instruction)
 - [ ] Merge into `twincat-dev`, update `twincat-status.md`, push
+
+## Implementation Notes
+
+- **`fb_name_decl()`-style dead code, again**: `enumerated_spec_init__with_values()`
+  (a tuple-returning helper used only by `enumerated_type_declaration__with_value()`)
+  became fully unused once that rule was rewritten to inline both branches
+  directly (needed to thread the new `underlying_type` field through
+  without polluting the shared tuple helpers, since one of them —
+  `enumerated_spec_init__with_value()`, singular — is *also* used by
+  `structure_element_declaration()`, which must not gain a base-type
+  suffix). Deleted the now-dead plural helper; left the singular one and
+  the already-separately-dead `enumerated_spec_init()` (confirmed
+  unreferenced anywhere, predating this branch) alone beyond fixing their
+  compile errors from the new `EnumeratedSpecificationInit` field.
+- **Found and fixed two pre-existing plc2plc renderer bugs while adding
+  `explicit_value` rendering**, neither related to this feature directly
+  but both surfaced by the same investigation: (1) there was no dedicated
+  `visit_enumerated_value` override at all — the default recursive
+  visitor rendered a qualified value's `TypeName` via `visit_id`'s
+  `write_ws`, producing `COLOR RED` instead of `COLOR#RED` (the `#` was
+  silently dropped) for *any* qualified enum value reference, regardless
+  of this feature; (2) `explicit_value` itself, being `#[recurse(ignore)]`,
+  was never visited at all by the pre-existing default recursion, so
+  before adding the override, `(Deutsch := 1, English := 2)` silently
+  rendered as `(Deutsch, English)` — total data loss on round-trip. Both
+  fixed by one new `visit_enumerated_value` override.
+- **Sizing must be based on the resolved ordinal value, not the member
+  count**: confirmed necessary (not just theoretical) with a real test —
+  `(A := 300, B)` has only 2 members (would auto-size to 1 byte via the
+  original count-only check) but needs 2 bytes to hold 300. Fixed by
+  computing sizing from `resolve_ordinal_values(...).max()` instead of
+  `values.len()`; the existing 256/65,536-member-count test thresholds
+  are unaffected since, for the all-implicit case, `max value == count -
+  1`, giving identical results to the previous behavior (verified: no
+  regressions in the pre-existing 10/257/65,537-value sizing tests).
+- **The enum base-type suffix (`) BYTE;`) was a new finding, not in the
+  original survey** — found while checking real files for a
+  disambiguating "does an unlabeled member continue from the previous
+  explicit value, or from its own declaration position" example (needed
+  to confirm continuation semantics before implementing). Included here
+  rather than filed separately because one of the two files using it
+  (`tcunit/TcUnit`'s `E_AssertionType.TcDUT`) is the *exact* file that
+  originally motivated this survey item — without support for the
+  suffix, that file would still fail to parse (just further down).
