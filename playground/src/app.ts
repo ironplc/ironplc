@@ -932,8 +932,16 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
     // code chip rather than render an empty one.
     if (d.code) {
       const code = escapeHtml(d.code);
-      if (/^P\d{4}$/.test(d.code)) {
-        const url = `https://www.ironplc.com/reference/compiler/problems/${d.code}.html?version=${encodeURIComponent(compilerVersion)}`;
+      // P#### are compiler problems and V#### are runtime (VM) problems; each
+      // has a documentation page under a different section of the reference
+      // site. Codes outside these families render as plain, unlinked chips.
+      const section = /^P\d{4}$/.test(d.code)
+        ? "compiler"
+        : /^V\d{4}$/.test(d.code)
+          ? "runtime"
+          : null;
+      if (section) {
+        const url = `https://www.ironplc.com/reference/${section}/problems/${d.code}.html?version=${encodeURIComponent(compilerVersion)}`;
         html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
       } else {
         html += `<span class="diagnostic-code">${code}</span>`;
