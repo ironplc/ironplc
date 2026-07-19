@@ -13,15 +13,20 @@
 //!    [`LaunchError::MultiInstanceUnsupported`] (the v1 limitation described in
 //!    `specs/design/debugger-support.md` §"Multi-instance: not supported in v1").
 
+use std::fmt;
 use std::fs::File;
 use std::path::Path;
 
 use ironplc_container::Container;
 use ironplc_vm::{Vm, VmBuffers, VmRunning};
 
-/// A reason a `launch` request could not be satisfied. Each maps to the
-/// human-readable [`message`](LaunchError::message) carried in the failing DAP
-/// response.
+use super::problem_codes;
+
+/// A reason a `launch` request could not be satisfied.
+///
+/// Each variant carries a stable IronPLC [`v_code`](LaunchError::v_code); the
+/// [`Display`] rendering is `"V#### - message"`, matching the CLI's `VmError`
+/// surface, and is what fills the failing DAP response's `message` field.
 #[derive(Debug)]
 pub enum LaunchError {
     /// The `launch` arguments carried no usable `program` path.
@@ -37,12 +42,31 @@ pub enum LaunchError {
     /// single-instance programs only. Carries the declared instance count.
     MultiInstanceUnsupported(usize),
     /// The VM could not be started (an init function trapped). Carries the
-    /// trap description.
-    VmStartFailed(String),
+    /// trap's own V-code and its description.
+    VmStartFailed {
+        v_code: &'static str,
+        detail: String,
+    },
 }
 
 impl LaunchError {
-    /// The message placed in the failing DAP response's `message` field.
+    /// The stable V-code for this failure. File errors reuse the CLI's existing
+    /// `V6001`/`V6002`; a start-time trap surfaces the trap's own `V4xxx`/
+    /// `V9xxx`; the launch-specific preconditions use the `V6008`–`V6010` codes.
+    pub fn v_code(&self) -> &'static str {
+        match self {
+            LaunchError::ProgramArgMissing => problem_codes::LAUNCH_NO_PROGRAM,
+            LaunchError::ContainerOpen(_) => problem_codes::FILE_OPEN,
+            LaunchError::ContainerRead(_) => problem_codes::CONTAINER_READ,
+            LaunchError::NoDebugInfo => problem_codes::LAUNCH_NO_DEBUG_INFO,
+            LaunchError::MultiInstanceUnsupported(_) => problem_codes::LAUNCH_MULTI_INSTANCE,
+            LaunchError::VmStartFailed { v_code, .. } => v_code,
+        }
+    }
+
+    /// The human-readable text (without the V-code prefix). The
+    /// spec-mandated `MultiInstanceUnsupported:` wording is preserved verbatim
+    /// (see `specs/design/debugger-support.md` §"Multi-instance").
     pub fn message(&self) -> String {
         match self {
             LaunchError::ProgramArgMissing => {
@@ -50,16 +74,24 @@ impl LaunchError {
             }
             LaunchError::ContainerOpen(detail) => format!("unable to open container: {detail}"),
             LaunchError::ContainerRead(detail) => format!("unable to read container: {detail}"),
-            LaunchError::NoDebugInfo => "NoDebugInfo: compile with debug info enabled".to_string(),
+            LaunchError::NoDebugInfo => "compile with debug info enabled".to_string(),
             LaunchError::MultiInstanceUnsupported(count) => format!(
                 "MultiInstanceUnsupported: this program declares {count} program instances; \
                  the v1 debugger supports single-instance programs only. Multi-instance \
                  debugging is planned for a future phase."
             ),
-            LaunchError::VmStartFailed(detail) => {
+            LaunchError::VmStartFailed { detail, .. } => {
                 format!("launch failed to start the VM: {detail}")
             }
         }
+    }
+}
+
+impl fmt::Display for LaunchError {
+    /// Renders `"V#### - message"`, matching the CLI's `VmError` surface so a
+    /// DAP client sees the same coded error text.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} - {}", self.v_code(), self.message())
     }
 }
 
@@ -101,7 +133,10 @@ pub fn start_vm<'a>(
     Vm::new()
         .load(container, bufs)
         .start()
-        .map_err(|ctx| LaunchError::VmStartFailed(format!("{:?}", ctx.trap)))
+        .map_err(|ctx| LaunchError::VmStartFailed {
+            v_code: ctx.trap.v_code(),
+            detail: ctx.trap.to_string(),
+        })
 }
 
 #[cfg(test)]
@@ -171,8 +206,10 @@ mod tests {
             .build();
         let err = check_preconditions(&container).unwrap_err();
         assert!(matches!(err, LaunchError::NoDebugInfo));
-        assert!(err.message().contains("NoDebugInfo"));
+        assert_eq!(err.v_code(), "V6009");
         assert!(err.message().contains("debug info"));
+        // Display prefixes the V-code.
+        assert!(err.to_string().starts_with("V6009 - "));
     }
 
     #[test]
@@ -188,8 +225,10 @@ mod tests {
             .build();
         let err = check_preconditions(&container).unwrap_err();
         assert!(matches!(err, LaunchError::MultiInstanceUnsupported(2)));
+        assert_eq!(err.v_code(), "V6010");
         assert!(err.message().contains("MultiInstanceUnsupported"));
         assert!(err.message().contains("2 program instances"));
+        assert!(err.to_string().starts_with("V6010 - "));
     }
 
     #[test]
@@ -225,8 +264,11 @@ mod tests {
             Ok(_) => panic!("expected the dividing-by-zero init to trap"),
             Err(err) => err,
         };
-        assert!(matches!(err, LaunchError::VmStartFailed(_)));
+        assert!(matches!(err, LaunchError::VmStartFailed { .. }));
+        // The start-time trap surfaces its own V-code (divide by zero → V4001).
+        assert_eq!(err.v_code(), "V4001");
         assert!(err.message().contains("launch failed to start"));
+        assert!(err.to_string().starts_with("V4001 - "));
     }
 
     #[test]
@@ -234,6 +276,8 @@ mod tests {
         let err = load_container(Path::new("does/not/exist.iplc")).unwrap_err();
         assert!(matches!(err, LaunchError::ContainerOpen(_)));
         assert!(err.message().contains("unable to open"));
+        // Reuses the CLI's existing file-open code.
+        assert_eq!(err.v_code(), "V6001");
     }
 
     #[test]
@@ -245,6 +289,8 @@ mod tests {
         let err = load_container(file.path()).unwrap_err();
         assert!(matches!(err, LaunchError::ContainerRead(_)));
         assert!(err.message().contains("unable to read container"));
+        // Reuses the CLI's existing container-read code.
+        assert_eq!(err.v_code(), "V6002");
     }
 
     #[test]
@@ -252,5 +298,10 @@ mod tests {
         assert!(LaunchError::ProgramArgMissing
             .message()
             .contains("'program' path"));
+        assert_eq!(LaunchError::ProgramArgMissing.v_code(), "V6008");
+        assert_eq!(
+            LaunchError::ProgramArgMissing.to_string(),
+            "V6008 - launch requires a 'program' path to a compiled .iplc container"
+        );
     }
 }
