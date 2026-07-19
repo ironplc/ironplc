@@ -508,4 +508,56 @@ END_FUNCTION_BLOCK
             .expect("rendered output must parse under the same dialect");
         assert_eq!(library_original, library_rendered);
     }
+
+    #[test]
+    fn write_to_string_when_string_parenthesis_length_then_normalizes_to_brackets() {
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    hostName : STRING(255);
+END_VAR
+END_FUNCTION_BLOCK
+";
+        let library_original =
+            parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let rendered = write_to_string(&library_original).unwrap();
+
+        // The renderer always normalizes to the bracket form -- there's no
+        // bracket/paren marker stored in the DSL, matching how
+        // StringSpecification/StringInitializer already only store
+        // length: Option<IntegerRef> with no delimiter distinction.
+        assert!(rendered.contains("STRING [ 255 ]"));
+
+        let library_rendered =
+            parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
+                .expect("rendered output must parse");
+        assert_eq!(library_original, library_rendered);
+    }
+
+    #[test]
+    fn write_to_string_when_fb_instance_call_style_init_then_round_trips() {
+        let source = "
+FUNCTION_BLOCK FB_Comm
+VAR_INPUT
+    retries : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm(retries := 3, THIS);
+END_VAR
+END_FUNCTION_BLOCK
+";
+        let library_original =
+            parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let rendered = write_to_string(&library_original).unwrap();
+
+        assert!(rendered.contains("FB_Comm ( retries := 3 , THIS )"));
+
+        let library_rendered =
+            parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
+                .expect("rendered output must parse");
+        assert_eq!(library_original, library_rendered);
+    }
 }

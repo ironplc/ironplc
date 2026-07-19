@@ -752,7 +752,17 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_type_name(&node.type_name)
+        self.visit_type_name(&node.type_name)?;
+
+        // CODESYS/TwinCAT call-style instance initializer
+        // (`name : FB_Type(args);`) -- see call_params' doc comment.
+        if let Some(params) = &node.call_params {
+            self.write_ws("(");
+            visit_comma_separated!(self, params.iter(), ParamAssignmentKind);
+            self.write_ws(")");
+        }
+
+        Ok(())
     }
 
     // 2.4.3.2

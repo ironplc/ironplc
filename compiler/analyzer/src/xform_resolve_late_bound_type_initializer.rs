@@ -158,6 +158,7 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                             FunctionBlockInitialValueAssignment {
                                 type_name: name,
                                 init: vec![],
+                                call_params: None,
                             },
                         ));
                     }
@@ -176,6 +177,7 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                         FunctionBlockInitialValueAssignment {
                             type_name: name,
                             init: vec![],
+                            call_params: None,
                         },
                     ));
                 }
@@ -197,6 +199,7 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                                 FunctionBlockInitialValueAssignment {
                                     type_name: name,
                                     init: vec![],
+                                    call_params: None,
                                 },
                             ))
                         }

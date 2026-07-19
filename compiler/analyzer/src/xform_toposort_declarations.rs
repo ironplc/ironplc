@@ -501,12 +501,16 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         init: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        // Current context has a reference to this function block
+        // Current context has a reference to this function block. The
+        // referenced type must be ordered before the containing POU (same
+        // convention as the Structure/LateResolvedType arms below and
+        // visit_interface_declaration's EXTENDS edge), so the edge points
+        // from the referenced type to the containing POU, not the reverse.
         match &self.current_from {
             Some(from) => {
                 let from = self.declarations.add_node(from);
                 let to = self.declarations.add_node(&init.type_name.name);
-                self.declarations.graph.add_edge(from, to, ());
+                self.declarations.graph.add_edge(to, from, ());
             }
             None => return Err(Diagnostic::todo(file!(), line!())),
         }
@@ -527,10 +531,12 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     InitialValueAssignmentKind::EnumeratedValues(_) => {}
                     InitialValueAssignmentKind::EnumeratedType(_) => {}
                     InitialValueAssignmentKind::FunctionBlock(fb) => {
-                        // We only care about these because these may be references to a function block
+                        // Same ordering convention as the Structure/LateResolvedType
+                        // arms below: the referenced type must come before the
+                        // containing POU.
                         let from = self.declarations.add_node(from);
                         let to = self.declarations.add_node(&fb.type_name.name);
-                        self.declarations.graph.add_edge(from, to, ());
+                        self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Subrange(_) => {}
                     InitialValueAssignmentKind::Structure(struct_init) => {
@@ -599,6 +605,46 @@ mod tests {
         FUNCTION_BLOCK Caller
             VAR
                 CalleeInstance : Callee;
+            END_VAR
+
+        END_FUNCTION_BLOCK";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("Callee"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("Caller"));
+    }
+
+    #[test]
+    fn apply_when_function_block_call_style_init_then_return_ok() {
+        // Regression for a toposort edge-direction bug found while adding
+        // the CODESYS/TwinCAT call-style FB instance initializer
+        // (`name : FB_Type(args);`): unlike a bare declaration (which
+        // resolves via LateResolvedType, exercised by the test above),
+        // this syntax constructs InitialValueAssignmentKind::FunctionBlock
+        // directly at parse time. The FunctionBlock arms in this file
+        // previously added the dependency edge backwards relative to the
+        // Structure/LateResolvedType arms, so the referenced type
+        // (Callee) was ordered *after* the referencing POU (Caller)
+        // instead of before it, causing a spurious P2011 "Parent type is
+        // not declared" error downstream.
+        let program = "
+        FUNCTION_BLOCK Callee
+            VAR_INPUT
+               IN1: BOOL;
+            END_VAR
+
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Caller
+            VAR
+                CalleeInstance : Callee(IN1 := TRUE);
             END_VAR
 
         END_FUNCTION_BLOCK";

@@ -811,7 +811,7 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() /  fb_name_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() /  fb_name_decl() / fb_call_style_var_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
     rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
@@ -852,12 +852,36 @@ parser! {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
-          initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: init.clone().unwrap_or_else(Vec::new) }),
+          initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: init.clone().unwrap_or_else(Vec::new), call_params: None }),
         }
       }).collect()
     }
     rule fb_name_list() -> Vec<Id> = commasep_oneplus(<fb_name()>)
     rule fb_name() -> Id = i:identifier() { i }
+    // CODESYS/TwinCAT FB instance declaration with a call-style
+    // initialization parameter list (`FB_Type(args)`, no `:=`), using the
+    // same positional-or-named shape as an ordinary FB call -- e.g.
+    // `comm : FB_Comm(retries := 3, THIS);`. Deliberately uses var1_list()
+    // (not fb_name_list(), which has a pre-existing, unrelated bug --
+    // commasep_oneplus() requires a spurious trailing comma, making
+    // fb_name_decl() above unreachable in practice) and requires the
+    // parens unconditionally (not optional) so this rule can never match
+    // a bare "name : Type;" declaration -- that continues to flow through
+    // the existing late-bound-resolution fallback unchanged. No ordering
+    // hazard: every earlier alternative in var_init_decl() requires its
+    // own mandatory leading token (ARRAY, REF_TO, STRING/WSTRING, or a
+    // literal `:=`) and fails outright (not a partial match) on a bare
+    // type name followed by `(`.
+    rule fb_call_style_var_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ params:fb_call_style_init_params() {
+      names.into_iter().map(|name| {
+        UntypedVarDecl {
+          location: None,
+          name,
+          initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: Vec::new(), call_params: Some(params.clone()) }),
+        }
+      }).collect()
+    }
+    rule fb_call_style_init_params() -> Vec<ParamAssignmentKind> = tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { params }
     rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
@@ -975,7 +999,7 @@ parser! {
       }).collect()
     }
     // TODO this doesn't pass all information. I suspect the rule from the description is not right
-    rule global_var_decl() -> (Vec<VarDecl>) = vs:global_var_spec() _ tok:tok(TokenType::Colon) _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f, init: vec![] })})? {
+    rule global_var_decl() -> (Vec<VarDecl>) = vs:global_var_spec() _ tok:tok(TokenType::Colon) _ initializer:(l:located_var_spec_init() { l } / f:function_block_type_name() { InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment{type_name: f, init: vec![], call_params: None })})? {
       vs.0.into_iter().map(|name| {
         let init = initializer.clone().unwrap_or(InitialValueAssignmentKind::None(SourceSpan::join(&tok.span, &tok.span)));
         VarDecl {
@@ -1007,7 +1031,7 @@ parser! {
         }
       }).collect()
     }
-    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
+    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:string_length_spec()? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::String,
@@ -1023,7 +1047,7 @@ parser! {
         }
       }).collect()
     }
-    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
+    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:string_length_spec()? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::WString,
@@ -1031,6 +1055,14 @@ parser! {
         keyword_span: start.span.clone(),
       }
     }
+    // CODESYS/TwinCAT accept STRING(n)/WSTRING(n) with parentheses as an
+    // alternate delimiter to the standard STRING[n]/WSTRING[n] brackets --
+    // same precedent as string_type_declaration__parenthesis() for TYPE
+    // alias declarations, which already accepts this unconditionally (no
+    // dialect flag: a delimiter choice, not a new keyword).
+    rule string_length_spec() -> IntegerRef =
+      tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) { i }
+      / tok(TokenType::LeftParen) _ i:integer_ref() _ tok(TokenType::RightParen) { i }
     rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
       let declarations = declarations.into_iter().map(|decl| {
         let qualifier = qualifier
@@ -1061,8 +1093,8 @@ parser! {
       sr:subrange_specification__with_range() { VariableSpecificationKind::Subrange(sr) }
       / e:enumerated_specification() { VariableSpecificationKind::Enumerated(e) }
       / a:array_specification() { VariableSpecificationKind::Array(a) }
-      / tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) }
       / id:type_name() { VariableSpecificationKind::Ambiguous(id) }
 
@@ -1071,8 +1103,8 @@ parser! {
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
     rule function_return_type() -> FunctionReturnType =
-      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { FunctionReturnType::Named(et.into()) }
       / dt:derived_type_name() { FunctionReturnType::Named(dt) }
     rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:function_return_type() _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ] } / temp:temp_var_decls() { vec![ temp ] }) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
