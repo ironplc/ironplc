@@ -80,6 +80,7 @@ P4032,ConstantMissingInitializer,Constant referenced in type parameter has no in
 P4033,PartialAccessSyntaxDisabled,Partial-access syntax (.%Xn) requires --allow-partial-access-syntax flag
 P4034,StringEncodingMismatch,Cannot mix STRING and WSTRING without an explicit conversion
 P4035,AssignmentTypeMismatch,Assignment value type does not match assignment target type
+P4038,MixedLocatedVarDeclarationNotAllowed,AT-located variable in a plain VAR block requires --allow-mixed-located-var-declarations flag
 P6001,CannotCanonicalizePath,Unable to canonicalize the path
 P6002,CannotReadMetadata,Unable to read metadata for the path
 P6003,CannotReadDirectory,Unable to read directory

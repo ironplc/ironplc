@@ -1,5 +1,14 @@
 # Plan: Mixed Located/Plain Variable Declarations in One VAR Block
 
+**Status: implemented and landed on this branch.** Mixing `AT`-located and
+plain variables in one `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block now works under
+`--allow-mixed-located-var-declarations`, matching real TwinCAT code. The
+design below (a marker field distinguishing the new mixed-block path from
+the pre-existing, always-allowed dedicated-block path) was implemented as
+planned, with one significant refinement made during implementation — the
+marker must be computed at the *whole-block* level, not per-declaration —
+see "Implementation Notes" at the end of this file.
+
 ## Goal
 
 Allow a single `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block to mix ordinary
@@ -243,14 +252,80 @@ in this session's work.
 ## Tasks
 
 - [x] Write plan (this document)
-- [ ] `in_mixed_var_block` field on `DirectVariableIdentifier`
-- [ ] `UntypedVarDecl.location` + `into_var_decl` update + ~10 call-site updates
-- [ ] `located_var1_init_decl()` grammar rule wired into `var_init_decl()`
-- [ ] New `allow_mixed_located_var_declarations` flag
-- [ ] New `rule_mixed_located_var_declarations.rs` semantic rule + problem code
-- [ ] Wire into `stages.rs`, `lsp.rs`
-- [ ] All tests from Testing Strategy
-- [ ] Update docs
-- [ ] Run full CI pipeline (`cd compiler && just`)
-- [ ] Push branch to fork (no PR against `ironplc/ironplc` without explicit
+- [x] `in_mixed_var_block` field on `DirectVariableIdentifier`
+- [x] `UntypedVarDecl.location` + `into_var_decl` update + 11 call-site updates
+- [x] `located_var1_init_decl()` grammar rule wired into `var_init_decl()`
+- [x] New `allow_mixed_located_var_declarations` flag
+- [x] New `rule_mixed_located_var_declarations.rs` semantic rule + problem
+      code (P4038)
+- [x] Wire into `stages.rs`, `lsp.rs`
+- [x] All tests from Testing Strategy, plus regression tests for the
+      block-level marking discovery (see Implementation Notes)
+- [x] Update docs
+- [x] Run full CI pipeline (`cd compiler && just`)
+- [x] Push branch to fork (no PR against `ironplc/ironplc` without explicit
       go-ahead, per standing instruction)
+
+## Implementation Notes
+
+- **The marker must be computed at the whole-block level, not per
+  declaration — found via a failing test, not by inspection.** The first
+  implementation set `in_mixed_var_block: true` unconditionally whenever
+  `into_var_decl()` saw a location, directly in the grammar-adjacent
+  conversion. This broke the
+  `apply_when_dedicated_incompl_located_block_then_never_flagged`
+  regression test: a block containing *only* located variables (e.g. two
+  `AT%I*` declarations, no plain sibling) was incorrectly flagged too.
+  Root cause: `other_var_declarations()` tries `var_declarations()`
+  *before* `incompl_located_var_declarations()`, and since
+  `var_declarations()` now accepts individual located declarations via the
+  new `located_var1_init_decl()` alternative, it can *fully* parse an
+  all-located block on its own — PEG never even tries the old dedicated
+  block rule, so every declaration in an all-located block now arrives via
+  the "new" path, indistinguishable per-declaration from a genuine mix.
+  Fixed by moving the mixed/not-mixed decision to `VarDeclarations::flat_map`
+  (used by `VAR`/`VAR_OUTPUT`) and `VarDeclarations::with` (used by
+  `VAR_INPUT`, which groups declarations per semicolon-separated line
+  rather than flattening them up front) — both now inspect the *whole*
+  block's collected `VarDecl`s together and only set
+  `in_mixed_var_block = true` when at least one `Symbol` and one `Direct`
+  identifier are both present in that same block.
+- **A second, unrelated bug was hit on the way there**: the first working
+  version of the grammar change parsed correctly (confirmed via a
+  temporary `eprintln!` inside the grammar action) but the final `VarDecl`
+  still came out as `Symbol`, not `Direct`. Cause:
+  `VarDeclarations::flat_map` — the function actually used by
+  `var_declarations()`/`output_declarations()`/etc. — built `VarDecl`
+  directly with `VariableIdentifier::Symbol(declaration.name)`, completely
+  ignoring `UntypedVarDecl.location`; it does not call `into_var_decl()` at
+  all. `into_var_decl()` is only used by `input_declarations()`'s
+  per-line path. Fixed by having `flat_map` call `into_var_decl()` too.
+  Reinforces the "verify against real behavior, not just that the grammar
+  matches" lesson — the DEBUG print of the *parsed* library was necessary
+  to catch this; the grammar action itself looked correct in isolation.
+- **`VAR_INPUT`'s aggregation shape differs from `VAR`/`VAR_OUTPUT`**, which
+  is why the mixed-check couldn't be a single shared helper called from one
+  place: `flat_map` receives one flat `Vec<Vec<UntypedVarDecl>>` for the
+  whole block, while `with()` (used only by `input_declarations()`) keeps
+  each semicolon-separated line as its own `VarDeclarations::Inputs(Vec<VarDecl>)`
+  entry in a `Vec<VarDeclarations>`. The mixed-check for `with()` has to
+  look *across* all `Inputs` entries in that list together, not within any
+  single one, since a mixed `VAR_INPUT` block's located and plain
+  declarations are almost always on separate lines.
+- **`located_var_declarations()` (complete addresses) turned out to be
+  reachable only from `program_declaration()`**, not
+  `function_block_declaration()`/`function_declaration()` — found while
+  tracing the grammar, unrelated to this feature's real-file scope
+  (zero complete-address usage found in the survey) but noted as a
+  separate, pre-existing gap in case a future real file needs it.
+- **plc2plc round-trips a mixed block into two separate rendered blocks**,
+  not one — pre-existing renderer behavior (`visit_var_decl` always emits
+  its own `VAR ... END_VAR` wrapper per declaration, not grouped by
+  original source block), unrelated to this feature. This means a strict
+  `assert_eq!(library_original, library_rendered)` round-trip check isn't
+  meaningful here: re-parsing the split-apart output no longer sees the
+  located variable as "mixed" (its rendered block now contains only
+  itself), so `in_mixed_var_block` legitimately differs between original
+  and round-tripped ASTs even though both are valid. The round-trip test
+  instead asserts on content and per-variable shape rather than full
+  equality.

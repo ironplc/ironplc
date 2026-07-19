@@ -1,0 +1,47 @@
+=====
+P4038
+=====
+
+.. problem-summary:: P4038
+
+This error occurs when an ``AT``-located variable (complete address like
+``AT %IX0.0``, or incomplete/wildcard address like ``AT %I*``) is declared
+inside an otherwise plain ``VAR``/``VAR_INPUT``/``VAR_OUTPUT`` block,
+without the ``--allow-mixed-located-var-declarations`` compiler flag. The
+IEC 61131-3 standard requires located variables to be declared in their
+own dedicated block, separate from ordinary symbolic variables. Mixing
+them in one block is a vendor extension.
+
+A block containing *only* located variables is unaffected by this error —
+that is standard syntax and always allowed.
+
+Example
+-------
+
+The following code will generate error P4038:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       tempSensor AT%I*: INT;
+       fbComm     : BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+To fix this error, either move the located variable into its own block:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       tempSensor AT%I*: INT;
+   END_VAR
+   VAR
+       fbComm : BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Or enable the vendor extension with the
+``--allow-mixed-located-var-declarations`` flag (also enabled by
+``--dialect=rusty`` and ``--dialect=codesys``).
