@@ -24,11 +24,9 @@ minimum and defers the rest:
   evaluation), the custom `ironplc/stepScan` + `ironplc/scanCount` requests,
   conditional breakpoints, `pause`, `setVariable`/forcing, multi-instance.
 
-> **Note — departs from the spec's "logpoints are the headline v1 feature"
-> stance.** Logpoints were promoted to v1 in the design doc; this plan pushes
-> them out of the *first* DAP phase to keep it small. They remain a strong
-> early follow-up (the engine hooks for them are cheap once breakpoints
-> work). Reverse this if logpoints should ship in the first cut.
+Logpoints are deferred out of this first DAP phase. The engine hooks for them
+are cheap once breakpoints work, so they are a natural early follow-up, but
+they are not in the first cut.
 
 This cut also pulls **Phase 3** down: no `LogpointTable` / `LogSink`, no
 expression-subset evaluator. See `2026-06-25-vm-debug-engine.md`.
