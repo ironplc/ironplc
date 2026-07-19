@@ -2,10 +2,18 @@ name: IronPLC Compiler
 on:
   workflow_call:
     inputs:
-      commit-ref:
+      source-artifact:
         required: false
         type: string
-        description: 'If not empty, then run for the specified tag'
+        default: ""
+        description: >
+          Name of a source-tree artifact (ironplc-source.tar.gz, produced
+          earlier in the same run by the version or dependency-update job) to
+          build instead of the commit that triggered the run. Empty => build the
+          triggering commit. This lets the release/update pipelines feed build
+          jobs the exact prepared tree without any job checking out a
+          caller-supplied git ref. To build an arbitrary tag or commit for
+          testing, run from a clone or dispatch the workflow from that ref.
       gh-release-tag:
         required: false
         type: string
@@ -32,14 +40,16 @@ jobs:
       run:
         working-directory: ./compiler
     steps:
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      # Build the triggering commit, or (when a source-artifact is provided) the
+      # prepared tree produced earlier in the same run by the release /
+      # dependency-update job. Neither is a caller-supplied git ref, so CodeQL
+      # sees no untrusted checkout. See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+      - name: Checkout triggering commit
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+      - name: Overlay prepared source tree if provided
+        uses: ./.github/actions/use-prepared-source
         with:
-          ref: ${{ inputs.commit-ref }}
-      - name: Checkout HEAD
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+          source-artifact: ${{ inputs.source-artifact }}
 
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
       - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
@@ -86,15 +96,17 @@ jobs:
             rust_target: aarch64-apple-darwin
 
     steps:
-      # Checkout the repository/fetch input artifacts
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      # Checkout the repository/fetch input artifacts.
+      # Build the triggering commit, or (when a source-artifact is provided) the
+      # prepared tree produced earlier in the same run by the release /
+      # dependency-update job. Neither is a caller-supplied git ref, so CodeQL
+      # sees no untrusted checkout. See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+      - name: Checkout triggering commit
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+      - name: Overlay prepared source tree if provided
+        uses: ./.github/actions/use-prepared-source
         with:
-          ref: ${{ inputs.commit-ref  }}
-      - name: Checkout HEAD
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+          source-artifact: ${{ inputs.source-artifact }}
 
       # Configure the execution environment
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just

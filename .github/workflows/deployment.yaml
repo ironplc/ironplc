@@ -53,7 +53,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-artifact: ${{ needs.release.outputs.source-artifact }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       artifact-name: ironplc-vscode-extension.vsix
       marketplace-artifact-name: ironplc-vscode-extension-marketplace.vsix
@@ -64,7 +64,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_compiler.yaml
     with:
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-artifact: ${{ needs.release.outputs.source-artifact }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       version: ${{ needs.release.outputs.version }}
 
@@ -73,7 +73,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_playground.yaml
     with:
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-artifact: ${{ needs.release.outputs.source-artifact }}
 
   upload-release-artifacts:
     name: Upload Release Artifacts
@@ -147,7 +147,7 @@ jobs:
     uses: ./.github/workflows/partial_website.yaml
     with:
       publish: ${{ !inputs.dryrun }}
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-artifact: ${{ needs.release.outputs.source-artifact }}
 
   publish-release:
     name: Publish Release
@@ -163,15 +163,11 @@ jobs:
       run:
         working-directory: ./integrations/vscode
     steps:
-      # Checkout the repository/fetch input artifacts
-      - name: Checkout tag ${{ needs.release.outputs.commit-tag }}
+      # Checkout the triggering commit. This job publishes a prebuilt VSIX
+      # artifact and edits the release; it does not need the version-bumped tree,
+      # so it checks out the triggering commit rather than a caller-supplied ref.
+      - name: Checkout triggering commit
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ needs.release.outputs.commit-tag }}
-        with:
-          ref: ${{ needs.release.outputs.commit-tag  }}
-      - name: Checkout HEAD
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !needs.release.outputs.commit-tag }}
       - name: Download VSIX Build Artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
@@ -251,13 +247,11 @@ jobs:
       run:
         working-directory: ./compiler
     steps:
-      # Fetch input artifacts and code
+      # Fetch input artifacts and code. This job builds the Homebrew tap from
+      # release assets it downloads by version; it does not need the
+      # version-bumped tree, so it checks out the triggering commit rather than a
+      # caller-supplied ref.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.dryrun }}
-        with:
-          ref: ${{ needs.release.outputs.commit-tag }}
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.dryrun }}
 
       # Configure the execution environment
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just

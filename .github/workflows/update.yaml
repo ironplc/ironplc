@@ -51,7 +51,7 @@ jobs:
     needs: [update-dependencies]
     uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
-      commit-ref: ${{ needs.update-dependencies.outputs.commit-ref }}
+      source-artifact: ${{ needs.update-dependencies.outputs.source-artifact }}
       gh-release-tag: ""
       artifact-name: vscode-extension
     
@@ -60,7 +60,7 @@ jobs:
     needs: [update-dependencies]
     uses: ./.github/workflows/partial_compiler.yaml
     with:
-      commit-ref: ${{ needs.update-dependencies.outputs.commit-ref }}
+      source-artifact: ${{ needs.update-dependencies.outputs.source-artifact }}
       gh-release-tag: ""
 
   build-docs:
@@ -70,7 +70,7 @@ jobs:
     # if those are failing so we depend on those.
     uses: ./.github/workflows/partial_website.yaml
     with:
-      commit-ref: ${{ needs.update-dependencies.outputs.commit-ref }}
+      source-artifact: ${{ needs.update-dependencies.outputs.source-artifact }}
       publish: false
 
   merge-changes:
