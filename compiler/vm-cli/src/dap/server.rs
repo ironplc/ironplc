@@ -129,10 +129,10 @@ fn load_and_check(request: &Request) -> Result<Container, String> {
         .arguments
         .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .ok_or_else(|| launch::LaunchError::ProgramArgMissing.message())?;
+        .ok_or_else(|| launch::LaunchError::ProgramArgMissing.to_string())?;
 
-    let container = launch::load_container(Path::new(&args.program)).map_err(|e| e.message())?;
-    launch::check_preconditions(&container).map_err(|e| e.message())?;
+    let container = launch::load_container(Path::new(&args.program)).map_err(|e| e.to_string())?;
+    launch::check_preconditions(&container).map_err(|e| e.to_string())?;
     Ok(container)
 }
 
@@ -162,7 +162,7 @@ fn launched_session<R: BufRead, W: Write>(
         Err(err) => {
             send(
                 writer,
-                &Response::error(take_seq(seq), launch_request, err.message()),
+                &Response::error(take_seq(seq), launch_request, err.to_string()),
             )?;
             return Ok(());
         }
@@ -397,7 +397,8 @@ mod tests {
         let launch = out.last().unwrap();
         assert_eq!(launch["command"], "launch");
         assert_eq!(launch["success"], false);
-        assert!(launch["message"].as_str().unwrap().contains("NoDebugInfo"));
+        // The message is V-coded (V6009) rather than a bare string.
+        assert!(launch["message"].as_str().unwrap().starts_with("V6009 - "));
     }
 
     #[test]
@@ -410,10 +411,9 @@ mod tests {
         ]);
         let launch = out.last().unwrap();
         assert_eq!(launch["success"], false);
-        assert!(launch["message"]
-            .as_str()
-            .unwrap()
-            .contains("MultiInstanceUnsupported"));
+        let message = launch["message"].as_str().unwrap();
+        assert!(message.starts_with("V6010 - "));
+        assert!(message.contains("MultiInstanceUnsupported"));
     }
 
     #[test]
@@ -428,10 +428,10 @@ mod tests {
         let launch = out.last().unwrap();
         assert_eq!(launch["command"], "launch");
         assert_eq!(launch["success"], false);
-        assert!(launch["message"]
-            .as_str()
-            .unwrap()
-            .contains("launch failed to start"));
+        let message = launch["message"].as_str().unwrap();
+        // The start-time trap surfaces its own V-code (divide by zero → V4001).
+        assert!(message.starts_with("V4001 - "));
+        assert!(message.contains("launch failed to start"));
     }
 
     #[test]
@@ -458,7 +458,9 @@ mod tests {
         ]);
         let launch = out.last().unwrap();
         assert_eq!(launch["success"], false);
-        assert!(launch["message"].as_str().unwrap().contains("'program'"));
+        let message = launch["message"].as_str().unwrap();
+        assert!(message.starts_with("V6008 - "));
+        assert!(message.contains("'program'"));
     }
 
     #[test]

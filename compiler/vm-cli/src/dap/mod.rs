@@ -14,6 +14,7 @@
 pub mod debug_info;
 pub mod framing;
 pub mod launch;
+pub mod problem_codes;
 pub mod server;
 pub mod state;
 pub mod types;

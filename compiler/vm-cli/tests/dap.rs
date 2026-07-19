@@ -217,7 +217,8 @@ fn ironplcdap_when_launch_container_without_debug_then_no_debug_info() {
         .find(|m| m["command"] == "launch")
         .expect("launch response");
     assert_eq!(launch["success"], false);
-    assert!(launch["message"].as_str().unwrap().contains("NoDebugInfo"));
+    // The failure carries the V6009 launch-no-debug-info code.
+    assert!(launch["message"].as_str().unwrap().starts_with("V6009 - "));
 }
 
 #[test]
@@ -236,8 +237,8 @@ fn ironplcdap_when_launch_multi_instance_then_multi_instance_unsupported() {
         .find(|m| m["command"] == "launch")
         .expect("launch response");
     assert_eq!(launch["success"], false);
-    assert!(launch["message"]
-        .as_str()
-        .unwrap()
-        .contains("MultiInstanceUnsupported"));
+    // The failure carries the V6010 multi-instance code plus the descriptive text.
+    let message = launch["message"].as_str().unwrap();
+    assert!(message.starts_with("V6010 - "));
+    assert!(message.contains("MultiInstanceUnsupported"));
 }
