@@ -1141,6 +1141,7 @@ dependencies = [
  "ironplc-vm",
  "log",
  "predicates",
+ "serde",
  "serde_json",
  "spec_test_macro",
  "tempfile",
