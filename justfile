@@ -143,7 +143,7 @@ e2e_fspathesc := replace(e2e_fspath, "\\", "*")
 
 # End to end "smoke" test.
 [windows]
-endtoend-smoke compiler-version compilerfilename extension-version extensionfilename extension-name:
+endtoend-smoke compiler-version compilerfilename extension-version extensionfilename extension-name assets-dir="":
   # There are two parts to IronPLC - the compiler and the extension
   # This test ensures that they actually work together (out of the box).
   # The test supports different versions of the extension and compiler to
@@ -153,14 +153,20 @@ endtoend-smoke compiler-version compilerfilename extension-version extensionfile
   # compiler-version: a semantic version number, such as "0.1.1"
   # compilerfilename: the name of the compiler file in GitHub Releases
   # compilerfilename: the name of the compiler file in GitHub Releases
-  @just endtoend-smoke-download v{{compiler-version}} {{compilerfilename}} v{{extension-version}} {{extensionfilename}}
+  # assets-dir: empty to download from the public GitHub release; otherwise a
+  #             directory holding the staged compiler/extension build artifacts
+  #             (pre-publish/draft smoke test).
+  @just endtoend-smoke-download v{{compiler-version}} {{compilerfilename}} v{{extension-version}} {{extensionfilename}} "{{assets-dir}}"
   @just endtoend-smoke-test {{extension-version}} {{compiler-version}} {{extension-name}}
 
 [windows]
-endtoend-smoke-download compiler-release-tag compilerfilename extension-release-tag extensionfilename:
-  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{compiler-release-tag}}/{{compilerfilename}}" -OutFile ironplcc.exe
+endtoend-smoke-download compiler-release-tag compilerfilename extension-release-tag extensionfilename assets-dir="":
+  # When assets-dir is set, copy the locally staged build artifacts; otherwise
+  # download them from the public GitHub release. Each line is a separate
+  # PowerShell process, so branch inline.
+  if ("{{assets-dir}}" -ne "") { Copy-Item -Path (Join-Path "{{assets-dir}}" "{{compilerfilename}}") -Destination ironplcc.exe } else { Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{compiler-release-tag}}/{{compilerfilename}}" -OutFile ironplcc.exe }
   Invoke-WebRequest -Uri "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user" -OutFile vscode.exe
-  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{extension-release-tag}}/{{extensionfilename}}" -OutFile ironplc.vsix
+  if ("{{assets-dir}}" -ne "") { Copy-Item -Path (Join-Path "{{assets-dir}}" "{{extensionfilename}}") -Destination ironplc.vsix } else { Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/{{extension-release-tag}}/{{extensionfilename}}" -OutFile ironplc.vsix }
 
 [windows]
 endtoend-smoke-test compiler-version extension-version extension-name:
@@ -225,18 +231,21 @@ _endtoend-smoke-unix:
 
 # Install script smoke test - Unix only.
 #
-# Runs compiler/install.sh against a real GitHub release, verifies that the
-# installed binaries run, then re-runs the installer (without clearing state)
-# to confirm idempotency.
+# Runs compiler/install.sh, verifies that the installed binaries run, then
+# re-runs the installer (without clearing state) to confirm idempotency.
 #
 # compiler-version: empty to use the latest release; otherwise a bare version
 #                   like "0.201.0" (without the leading "v").
+# assets-dir:       empty to download from the public GitHub release; otherwise
+#                   a directory laid out as <assets-dir>/v<version>/<asset> that
+#                   is served to install.sh over file:// (pre-publish/draft
+#                   smoke test). Requires a non-empty compiler-version.
 [unix]
-install-script-smoke compiler-version="":
+install-script-smoke compiler-version="" assets-dir="":
   @just _install-script-smoke-clean
-  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-run "{{compiler-version}}" "{{assets-dir}}"
   @just _install-script-smoke-verify
-  @just _install-script-smoke-run "{{compiler-version}}"
+  @just _install-script-smoke-run "{{compiler-version}}" "{{assets-dir}}"
   @just _install-script-smoke-verify
 
 [unix]
@@ -244,10 +253,17 @@ _install-script-smoke-clean:
   rm -rf "$HOME/.ironplc"
 
 [unix]
-_install-script-smoke-run compiler-version:
+_install-script-smoke-run compiler-version assets-dir="":
   #!/usr/bin/env sh
   set -eu
-  if [ -n "{{compiler-version}}" ]; then
+  if [ -n "{{assets-dir}}" ]; then
+    # Pre-publish smoke test: serve locally staged assets (draft or build
+    # artifacts) to install.sh over file:// instead of the public release.
+    [ -n "{{compiler-version}}" ] || { echo "assets-dir requires a compiler-version" >&2; exit 1; }
+    base="file://$(cd "{{assets-dir}}" && pwd)"
+    IRONPLC_RELEASE_BASE_URL="$base" IRONPLC_VERSION="v{{compiler-version}}" \
+      sh ./compiler/install.sh --no-modify-path
+  elif [ -n "{{compiler-version}}" ]; then
     IRONPLC_VERSION="v{{compiler-version}}" sh ./compiler/install.sh --no-modify-path
   else
     sh ./compiler/install.sh --no-modify-path
