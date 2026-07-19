@@ -376,7 +376,8 @@ END_PROGRAM
     const report = captured.find((c) => c.event === "report_submitted");
     expect(report).toBeTruthy();
     expect(report?.props.report_kind).toBe("runtime");
-    expect(report?.props.error_codes).toContain("CYCLE_OVERRUN");
+    // A cycle overrun reports as the watchdog/time-limit code V4003.
+    expect(report?.props.error_codes).toContain("V4003");
     expect(report?.props.interval_ms).toBe(1);
     expect(report?.props.program).toContain("count");
   });

@@ -154,12 +154,13 @@ function isReportable(code: string): boolean {
   return /^P9\d{3}$/.test(code);
 }
 
-// A runtime stop for a reason other than the user pressing Stop — a VM trap
-// (V#### code) or a cycle overrun — also gets the "Submit Code" affordance: we
-// can only understand why a program stopped (especially overruns on seemingly
-// simple programs) once we can see the program and the interval it ran with.
+// A runtime stop for a reason other than the user pressing Stop — any VM
+// problem code (V####), including the watchdog/time-limit code a cycle overrun
+// reports as — also gets the "Submit Code" affordance: we can only understand
+// why a program stopped (especially overruns on seemingly simple programs) once
+// we can see the program and the interval it ran with.
 function isRuntimeReportable(code: string): boolean {
-  return /^V\d{4}$/.test(code) || code === "CYCLE_OVERRUN";
+  return /^V\d{4}$/.test(code);
 }
 
 // Distinguish a compiler report (P9xxx) from a runtime report (VM trap or cycle
@@ -243,13 +244,16 @@ function runErrorToDiagnostic(error: RunError): Diagnostic {
   };
 }
 
-// A cycle overrun is detected in the front end (not the VM), so it has no v-code
-// or source location. Represent it as a diagnostic with a synthetic code so it
-// renders through the same path as compiler diagnostics and VM traps — and so it
-// qualifies for the "Submit Code" panel via isRuntimeReportable.
+// A cycle overrun is detected in the front end (not the VM) and has no source
+// location, but it is the same condition as the VM's watchdog trap — a task
+// exceeding its time budget — so report it under that code (V4003). Rendering it
+// as a diagnostic shares the compiler/VM-trap path (including the link to the
+// V4003 docs) and qualifies it for the "Submit Code" panel via isRuntimeReportable.
+const CYCLE_OVERRUN_CODE = "V4003";
+
 function overrunDiagnostic(message: string): Diagnostic {
   return {
-    code: "CYCLE_OVERRUN",
+    code: CYCLE_OVERRUN_CODE,
     message,
     start_line: 0,
     start_column: 0,
@@ -636,7 +640,7 @@ function startStepLoop(): void {
 
     // Check for cycle overrun against the configured step interval
     if (elapsed > intervalMs) {
-      captureRunStopped("error", ["CYCLE_OVERRUN"]);
+      captureRunStopped("error", [CYCLE_OVERRUN_CODE]);
       stopExecution();
       // Record the run context so a Submit Code click can attach the interval
       // and measured execution time that produced the overrun.
