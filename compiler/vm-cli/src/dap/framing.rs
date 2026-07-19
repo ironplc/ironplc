@@ -19,9 +19,6 @@ use std::io::{self, BufRead, Write};
 
 /// Writes a single DAP message: the `Content-Length` header, the blank-line
 /// separator, then `body`. Flushes so the peer sees the message immediately.
-// The server loop (next commit) is the production caller; for now this send
-// half of the framing API is exercised only by the roundtrip unit tests.
-#[allow(dead_code)]
 pub fn write_message<W: Write>(writer: &mut W, body: &[u8]) -> io::Result<()> {
     write!(writer, "Content-Length: {}\r\n\r\n", body.len())?;
     writer.write_all(body)?;
