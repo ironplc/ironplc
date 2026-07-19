@@ -11,6 +11,18 @@ repository.workspace = true
 name = "ironplcvm"
 path = "src/main.rs"
 
+# The Debug Adapter Protocol server. Feature-gated so the production
+# `ironplcvm` binary does not pull in the DAP layer.
+[[bin]]
+name = "ironplcdap"
+path = "src/dap_main.rs"
+required-features = ["dap"]
+
+[features]
+# Enables the `ironplcdap` Debug Adapter Protocol server binary. Off by
+# default so `ironplcvm` stays lean; CI builds it via `--features dap`.
+dap = []
+
 [dependencies]
 ironplc-vm = { path = "../vm", version = "0.230.0" }
 ironplc-container = { path = "../container", version = "0.230.0" }
