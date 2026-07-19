@@ -296,7 +296,7 @@ END_PROGRAM
     const captured = await page.evaluate(
       () => (window as unknown as { __captured: Array<{ event: string; props: { error_codes?: string[]; program?: string } }> }).__captured,
     );
-    const report = captured.find((c) => c.event === "todo_report_submitted");
+    const report = captured.find((c) => c.event === "report_submitted");
     expect(report).toBeTruthy();
     expect(report?.props.error_codes).toContain("P9999");
     expect(report?.props.program).toContain("%QX0.0");
@@ -313,6 +313,99 @@ END_PROGRAM
     expect(href).toContain("labels=P9999");
     // The program body is prefilled (URL-encoded) for this small program.
     expect(decodeURIComponent(href)).toContain("%QX0.0");
+  });
+
+  // A valid program that runs, used to trigger a cycle overrun by pairing it
+  // with a 1ms interval — the worker round-trip alone exceeds that.
+  const RUNNING_PROGRAM = `PROGRAM main
+  VAR
+    count : INT;
+  END_VAR
+  count := count + 1;
+END_PROGRAM
+`;
+
+  test("start_when_cycle_overrun_then_shows_submit_code_panel", async ({ page }) => {
+    await page.locator('[data-testid="editor"]').fill(RUNNING_PROGRAM);
+    await page.fill('[data-testid="interval-input"]', "1");
+    await page.click('[data-testid="start-btn"]');
+
+    // The overrun stops the run and offers the same consent-gated affordance as
+    // a compiler error, but with runtime-specific copy.
+    const panel = page.locator('[data-testid="report-panel"]');
+    await expect(panel).toBeVisible({ timeout: 10000 });
+    await expect(panel).toContainText("stopped unexpectedly");
+    await expect(panel).toContainText("may be published publicly");
+    await expect(page.locator('[data-testid="submit-code-btn"]')).toHaveText("Submit Code");
+  });
+
+  test("submit_code_when_cycle_overrun_then_captures_runtime_report", async ({ page }) => {
+    await page.locator('[data-testid="editor"]').fill(RUNNING_PROGRAM);
+    await page.fill('[data-testid="interval-input"]', "1");
+    await page.click('[data-testid="start-btn"]');
+
+    await expect(page.locator('[data-testid="report-panel"]')).toBeVisible({ timeout: 10000 });
+
+    await page.evaluate(() => {
+      const w = window as unknown as { posthog?: unknown; __captured: unknown[] };
+      w.__captured = [];
+      const real = w.posthog as { register?: (p: unknown) => void } | undefined;
+      w.posthog = {
+        capture: (event: string, props: unknown) => w.__captured.push({ event, props }),
+        register: real?.register ? real.register.bind(real) : () => {},
+      };
+    });
+
+    await page.click('[data-testid="submit-code-btn"]');
+    await expect(page.locator('[data-testid="report-confirmation"]')).toBeVisible();
+
+    const captured = await page.evaluate(
+      () =>
+        (window as unknown as {
+          __captured: Array<{
+            event: string;
+            props: {
+              report_kind?: string;
+              interval_ms?: number;
+              program?: string;
+              error_codes?: string[];
+            };
+          }>;
+        }).__captured,
+    );
+    const report = captured.find((c) => c.event === "report_submitted");
+    expect(report).toBeTruthy();
+    expect(report?.props.report_kind).toBe("runtime");
+    expect(report?.props.error_codes).toContain("CYCLE_OVERRUN");
+    expect(report?.props.interval_ms).toBe(1);
+    expect(report?.props.program).toContain("count");
+  });
+
+  test("submit_code_when_cycle_overrun_then_github_link_is_prefilled", async ({ page }) => {
+    await page.locator('[data-testid="editor"]').fill(RUNNING_PROGRAM);
+    await page.fill('[data-testid="interval-input"]', "1");
+    await page.click('[data-testid="start-btn"]');
+
+    const link = page.locator('[data-testid="report-github-link"]');
+    await expect(link).toBeVisible({ timeout: 10000 });
+    const href = (await link.getAttribute("href")) ?? "";
+    expect(href).toContain("https://github.com/ironplc/ironplc/issues/new");
+    expect(href).toContain("labels=playground-runtime");
+    expect(decodeURIComponent(href)).toContain("count");
+  });
+
+  test("stop_when_user_stops_healthy_run_then_no_submit_code_panel", async ({ page }) => {
+    await page.locator('[data-testid="editor"]').fill(RUNNING_PROGRAM);
+    await page.fill('[data-testid="interval-input"]', "100");
+    await page.click('[data-testid="start-btn"]');
+
+    // Let it run a little, then stop it the way a user would.
+    const variablesPanel = page.locator('[data-testid="variables-panel"]');
+    await expect(variablesPanel).toContainText("count", { timeout: 10000 });
+    await page.click('[data-testid="stop-btn"]');
+
+    // A user-initiated stop must never offer the "Submit Code" affordance.
+    await expect(page.locator('[data-testid="report-panel"]')).toHaveCount(0);
   });
 
   test("compile_finished_when_p9999_then_auto_reports_compiler_location_without_program", async ({ page }) => {
