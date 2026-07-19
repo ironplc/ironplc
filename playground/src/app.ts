@@ -2,6 +2,7 @@ import uPlot from "./uPlot.esm.js";
 import type {
   Diagnostic,
   DialectOption,
+  RunError,
   RunResult,
   Variable,
   WorkerRequest,
@@ -206,6 +207,19 @@ function markModified(): void {
   if (programModifiedRegistered) return;
   programModifiedRegistered = true;
   registerSuper({ program_modified: true });
+}
+
+// A runtime failure (a VM trap, or an infrastructure error like a decode
+// failure) carries the same message/code shape as a compiler diagnostic, so
+// present it as one. Runtime errors have no source location, so the line/column
+// fields are 0 — renderDiagnostics omits the location line when they are.
+function runErrorToDiagnostic(error: RunError): Diagnostic {
+  return {
+    code: error.code ?? "",
+    message: error.message,
+    start_line: 0,
+    start_column: 0,
+  };
 }
 
 function extractErrorCodes(diagnostics: Diagnostic[] | undefined): string[] {
@@ -563,27 +577,24 @@ function startStepLoop(): void {
 
     const result = JSON.parse(msg.json) as RunResult;
     if (!result.ok) {
-      const diagnostics = result.diagnostics || [];
-      // Prefer compiler diagnostic codes; otherwise a VM trap carries its
-      // structured v-code in error_code (e.g. "V4001").
-      const errorCodes =
-        diagnostics.length > 0
-          ? extractErrorCodes(diagnostics)
-          : result.error_code
-            ? [result.error_code]
-            : [];
-      captureRunStopped("error", errorCodes);
+      // Compiler diagnostics and a runtime fault share one representation, so
+      // fold a runtime error into the diagnostics list and render both alike.
+      const compileDiagnostics = result.diagnostics || [];
+      const isRuntimeError = compileDiagnostics.length === 0 && !!result.error;
+      const diagnostics = result.error
+        ? [...compileDiagnostics, runErrorToDiagnostic(result.error)]
+        : compileDiagnostics;
+      captureRunStopped("error", extractErrorCodes(diagnostics));
       stopExecution();
-      if (diagnostics.length > 0) {
-        renderDiagnostics(diagnostics);
-        activateTab("diagnostics");
-        statusEl.textContent = `${diagnostics.length} error(s)`;
-      } else if (result.error) {
+      if (isRuntimeError) {
+        // A trap can leave meaningful variable state; show it alongside.
         renderVariables(result.variables || []);
-        diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
-        statusEl.textContent = "Runtime error";
-        activateTab("diagnostics");
       }
+      renderDiagnostics(diagnostics);
+      activateTab("diagnostics");
+      statusEl.textContent = isRuntimeError
+        ? "Runtime error"
+        : `${diagnostics.length} error(s)`;
       return;
     }
 
@@ -686,13 +697,15 @@ startBtn.addEventListener("click", async () => {
 
   const loadResult = JSON.parse(loadMsg.json) as RunResult;
   if (!loadResult.ok) {
-    const diagnostics = loadResult.diagnostics || [];
+    // Fold a load-time runtime error (e.g. an init-time VM trap) into the
+    // diagnostics list so it renders through the same path as compiler errors.
+    const diagnostics = loadResult.error
+      ? [...(loadResult.diagnostics || []), runErrorToDiagnostic(loadResult.error)]
+      : loadResult.diagnostics || [];
     if (diagnostics.length > 0) {
       renderDiagnostics(diagnostics);
       activateTab("diagnostics");
       statusEl.textContent = `${diagnostics.length} error(s)`;
-    } else if (loadResult.error) {
-      statusEl.textContent = loadResult.error;
     }
     capture("compile_finished", {
       success: false,
@@ -915,12 +928,16 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
   let html = "";
   for (const d of diagnostics) {
     html += '<div class="diagnostic-item">';
-    const code = escapeHtml(d.code);
-    if (/^P\d{4}$/.test(d.code)) {
-      const url = `https://www.ironplc.com/reference/compiler/problems/${d.code}.html?version=${encodeURIComponent(compilerVersion)}`;
-      html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
-    } else {
-      html += `<span class="diagnostic-code">${code}</span>`;
+    // Infrastructure errors (e.g. a decode failure) carry no code; skip the
+    // code chip rather than render an empty one.
+    if (d.code) {
+      const code = escapeHtml(d.code);
+      if (/^P\d{4}$/.test(d.code)) {
+        const url = `https://www.ironplc.com/reference/compiler/problems/${d.code}.html?version=${encodeURIComponent(compilerVersion)}`;
+        html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
+      } else {
+        html += `<span class="diagnostic-code">${code}</span>`;
+      }
     }
     let message = escapeHtml(d.message);
     if (d.label) {

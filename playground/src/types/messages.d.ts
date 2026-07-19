@@ -118,12 +118,21 @@ export interface RunResultOk {
   variables: Variable[];
 }
 
+/**
+ * A structured runtime error. Shares its `message`/`code` shape with
+ * {@link Diagnostic} so the front end can render runtime failures and compiler
+ * diagnostics through a single path.
+ */
+export interface RunError {
+  message: string;
+  /** The faulting trap's stable v-code (e.g. "V4001"). Absent for non-trap errors. */
+  code?: string;
+}
+
 export interface RunResultErr {
   ok: false;
   diagnostics?: Diagnostic[];
-  error?: string;
-  /** The faulting trap's stable v-code (e.g. "V4001") on a VM trap. */
-  error_code?: string;
+  error?: RunError;
   variables?: Variable[];
 }
 
