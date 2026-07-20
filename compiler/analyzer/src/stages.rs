@@ -15,7 +15,7 @@ use crate::{
     ironplc_dsl::common::Library,
     result::SemanticResult,
     rule_bit_access_range, rule_case_bit_string_label, rule_decl_struct_element_unique_names,
-    rule_decl_subrange_limits, rule_enumeration_values_unique,
+    rule_decl_subrange_limits, rule_enumeration_values_unique, rule_extends_field_duplicated,
     rule_function_block_call_unsupported, rule_function_block_invocation,
     rule_function_call_declared, rule_function_call_type_check,
     rule_mixed_located_var_declarations, rule_no_top_level_var_global, rule_pou_hierarchy,
@@ -312,7 +312,11 @@ pub(crate) fn semantic(
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
+<<<<<<< HEAD
         rule_function_block_call_unsupported::apply,
+=======
+        rule_extends_field_duplicated::apply,
+>>>>>>> 785bfa95 (fix(twincat): reject a derived FB redeclaring a base-class field (P4039))
         rule_function_block_invocation::apply,
         rule_function_call_declared::apply,
         rule_function_call_type_check::apply,

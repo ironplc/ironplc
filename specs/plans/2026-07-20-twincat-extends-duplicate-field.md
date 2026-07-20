@@ -81,9 +81,22 @@ for other declaration-collision checks.
 ## Tasks
 
 - [x] Write plan (this document)
-- [ ] New `P4039` problem code + doc
-- [ ] New semantic rule + registration
-- [ ] Tests from Testing Strategy
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] New `P4039` problem code + doc
+- [x] New semantic rule + registration
+- [x] Tests from Testing Strategy
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
 - [ ] Merge into `twincat-dev`, update `twincat-status.md`, push
+
+## Implementation Notes
+
+- `rule_extends_field_duplicated.rs` needed a `use crate::{..., rule_extends_field_duplicated, ...}`
+  import added to `stages.rs`'s existing multi-line `use crate::{...}`
+  block, not just a `mod` declaration in `lib.rs` -- declaring the module
+  makes it visible crate-wide, but `stages.rs` still needs its own import
+  to reference `rule_extends_field_duplicated::apply` unqualified,
+  matching every other `rule_*`/`xform_*` module already listed there.
+- Verified end-to-end via the CLI: the exact TcXaeShell repro now
+  produces `P4039` under `--dialect=codesys`, with a message identifying
+  both the redeclaring field and that it collides with a base-class
+  field.
