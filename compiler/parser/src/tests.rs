@@ -2728,8 +2728,9 @@ END_FUNCTION_BLOCK";
 
     #[test]
     fn parse_when_fb_call_style_init_named_and_positional_then_parses_call_params() {
-        // Matches real brotlib usage: both named (comm := comm) and
-        // positional (THIS) arguments in the same call-style initializer.
+        // Matches real usage found in a private test corpus: both named
+        // (comm := comm) and positional (THIS) arguments in the same
+        // call-style initializer.
         let source = "
 FUNCTION_BLOCK FB_Comm
 VAR_INPUT
