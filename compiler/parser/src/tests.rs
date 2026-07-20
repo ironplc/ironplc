@@ -406,6 +406,7 @@ END_FUNCTION";
                 span: SourceSpan::default(),
                 extends: None,
                 implements: vec![],
+                is_abstract: false,
             },
         ));
         assert_eq!(actual, expected);
@@ -592,6 +593,7 @@ END_FUNCTION";
                 span: SourceSpan::default(),
                 extends: None,
                 implements: vec![],
+                is_abstract: false,
             },
         ));
 
@@ -689,6 +691,7 @@ END_FUNCTION";
                 span: SourceSpan::default(),
                 extends: None,
                 implements: vec![],
+                is_abstract: false,
             },
         ));
         assert_eq!(actual, expected);
@@ -2656,12 +2659,14 @@ VAR
     IMPLEMENTS : INT;
     INTERFACE : INT;
     END_INTERFACE : INT;
+    ABSTRACT : INT;
 END_VAR
 
 EXTENDS := 1;
 IMPLEMENTS := 2;
 INTERFACE := 3;
 END_INTERFACE := 4;
+ABSTRACT := 5;
 END_FUNCTION_BLOCK
 ";
         let result = parse_program(program, &FileId::default(), &CompilerOptions::default());
@@ -2778,5 +2783,71 @@ END_VAR
 END_FUNCTION_BLOCK";
         let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_when_abstract_only_then_ok_and_is_abstract_set() {
+        let source = "
+FUNCTION_BLOCK ABSTRACT FB_BaseAxis
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK";
+        let library =
+            parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+        let fb = extract_fb(&library);
+        assert!(fb.is_abstract);
+        assert_eq!(fb.extends, None);
+        assert!(fb.implements.is_empty());
+    }
+
+    #[test]
+    fn parse_when_abstract_and_extends_and_implements_then_ok() {
+        // Real-world shape: `ABSTRACT` combined with `EXTENDS`/`IMPLEMENTS`.
+        let source = "
+FUNCTION_BLOCK ABSTRACT FB_AxisControl EXTENDS FB_BaseAxis IMPLEMENTS I_Axis
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK";
+        let library =
+            parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+        let fb = extract_fb(&library);
+        assert!(fb.is_abstract);
+        assert_eq!(fb.extends, Some(TypeName::from("FB_BaseAxis")));
+        assert_eq!(fb.implements, vec![TypeName::from("I_Axis")]);
+    }
+
+    #[test]
+    fn parse_when_no_abstract_then_is_abstract_false() {
+        let source = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+END_FUNCTION_BLOCK";
+        let library =
+            parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+        let fb = extract_fb(&library);
+        assert!(!fb.is_abstract);
+    }
+
+    #[test]
+    fn parse_when_abstract_and_default_dialect_then_ok_as_identifier() {
+        // Without allow_oop_extensions, ABSTRACT demotes to an ordinary
+        // identifier, so `FUNCTION_BLOCK ABSTRACT` is parsed as a function
+        // block literally named "ABSTRACT" -- matching how EXTENDS/IMPLEMENTS
+        // behave when the flag is off.
+        let source = "
+FUNCTION_BLOCK ABSTRACT
+VAR
+    bRunning : BOOL;
+END_VAR
+END_FUNCTION_BLOCK";
+        let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
+            .expect("ABSTRACT must remain a valid identifier in standard mode");
+        let fb = extract_fb(&library);
+        assert_eq!(fb.name, TypeName::from("ABSTRACT"));
+        assert!(!fb.is_abstract);
     }
 }

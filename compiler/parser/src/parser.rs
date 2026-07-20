@@ -1106,7 +1106,7 @@ parser! {
     // or IMPLEMENTS tokens are recognized (allow_oop_extensions), since
     // both are demoted to identifiers otherwise.
     rule type_name_list() -> Vec<TypeName> = names:type_name() ++ (_ tok(TokenType::Comma) _) { names }
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ name:derived_function_block_name() _ extends:(tok(TokenType::Extends) _ t:type_name() {t})? _ implements:(tok(TokenType::Implements) _ names:type_name_list() {names})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(tok(TokenType::Abstract) {})? _ name:derived_function_block_name() _ extends:(tok(TokenType::Extends) _ t:type_name() {t})? _ implements:(tok(TokenType::Implements) _ names:type_name_list() {names})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
@@ -1118,6 +1118,7 @@ parser! {
         span: SourceSpan::join(&start.span, &end.span),
         extends,
         implements: implements.unwrap_or_default(),
+        is_abstract: is_abstract.is_some(),
       }
     }
 

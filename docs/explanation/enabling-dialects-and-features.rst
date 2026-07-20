@@ -194,10 +194,11 @@ features — they never disable features that a dialect already includes.
 
 ``--allow-oop-extensions``
    Allow CODESYS/TwinCAT object-oriented extensions: ``EXTENDS``/
-   ``IMPLEMENTS`` on ``FUNCTION_BLOCK`` declarations, and ``INTERFACE``
-   declarations. These are parsed and the ``EXTENDS``/``IMPLEMENTS``/
-   ``INTERFACE`` names are recognized as valid types, but inheritance,
-   interface dispatch, and method/property declarations are not yet
+   ``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK`` declarations, and
+   ``INTERFACE`` declarations. These are parsed and the
+   ``EXTENDS``/``IMPLEMENTS``/``INTERFACE`` names are recognized as valid
+   types, but inheritance, interface dispatch, method/property
+   declarations, and abstract-instantiation checking are not yet
    semantically supported — using them produces problem
    :doc:`P9004 </reference/compiler/problems/P9004>` rather than a parse
    error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.

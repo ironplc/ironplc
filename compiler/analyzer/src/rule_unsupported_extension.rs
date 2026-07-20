@@ -71,8 +71,8 @@ impl Visitor<Diagnostic> for RuleUnsupportedExtension {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         // Most function blocks are standard IEC 61131-3 — only flag when
-        // the EXTENDS/IMPLEMENTS clause is actually present.
-        if node.extends.is_some() || !node.implements.is_empty() {
+        // the EXTENDS/IMPLEMENTS/ABSTRACT clause is actually present.
+        if node.extends.is_some() || !node.implements.is_empty() || node.is_abstract {
             self.flag(node);
         }
         node.recurse_visit(self)
@@ -154,6 +154,45 @@ END_FUNCTION_BLOCK";
         let result = apply(&input, &context, &opts_with_oop_extensions());
 
         let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+    }
+
+    #[test]
+    fn apply_when_abstract_then_p9004() {
+        let program = "
+FUNCTION_BLOCK ABSTRACT FB_BaseAxis
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let (input, _context) =
+            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&input, &context, &opts_with_oop_extensions());
+
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+    }
+
+    #[test]
+    fn apply_when_abstract_and_implements_then_only_one_p9004() {
+        let program = "
+FUNCTION_BLOCK ABSTRACT FB_BaseAxis IMPLEMENTS I_BaseAxis
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK";
+
+        let (input, _context) =
+            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&input, &context, &opts_with_oop_extensions());
+
+        let errors = result.unwrap_err();
+        // One diagnostic for the whole FB, not one per clause.
         assert_eq!(errors.len(), 1);
         assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
     }
