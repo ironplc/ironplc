@@ -27,12 +27,12 @@ fails with `P0002` exactly at the first `:=`).
 
 ## Verification against real files
 
-Checked `/home/husser/code/brotlib` and the 5 cross-repo clones from the
-prior branch's validation (still present in the scratchpad) before
-designing anything:
+Checked a private local checkout of a real TwinCAT codebase and the 5
+cross-repo clones from the prior branch's validation (still present in
+the scratchpad) before designing anything:
 
-- `brotlib`: `E_ModeLanguage.TcDUT` — `(Deutsch:=1,English:=2)`, **every**
-  member has an explicit value, no base-type suffix.
+- The private checkout: `E_ModeLanguage.TcDUT` — `(Deutsch:=1,English:=2)`,
+  **every** member has an explicit value, no base-type suffix.
 - Cross-repo: `tcunit/TcUnit`'s `E_AssertionType.TcDUT` (the file that
   originally motivated this survey item) and `E_XmlError.TcDUT`,
   `OpenCommissioning`'s `E_ControllerType.TcDUT`/`E_FileIoState.TcDUT`/
@@ -196,7 +196,7 @@ pub fn resolve_ordinal_values(values: &[EnumeratedValue]) -> Vec<i64> { ... }
 ## Testing Strategy
 
 - Parser tests: all-explicit (`(Deutsch := 1, English := 2)`, matches
-  `brotlib`); first-only-explicit (`(A := 0, B, C)`, matches
+  the private test corpus); first-only-explicit (`(A := 0, B, C)`, matches
   `E_AssertionType`); base-type suffix (`(A, B) BYTE;`); regression —
   plain enum with no explicit values or base type still parses unchanged.
 - Unit tests for `resolve_ordinal_values`: all-implicit (0,1,2,...);
