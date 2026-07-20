@@ -2784,6 +2784,12 @@ pub struct FunctionBlockDeclaration {
     /// `IMPLEMENTS interface_list` (CODESYS/TwinCAT OOP extension). Parsed
     /// and stored as metadata only — not yet semantically checked.
     pub implements: Vec<TypeName>,
+    /// `ABSTRACT` modifier (CODESYS/TwinCAT OOP extension), e.g.
+    /// `FUNCTION_BLOCK ABSTRACT FB_Base`. Parsed and stored as metadata
+    /// only — instantiation of an abstract function block is not yet
+    /// semantically checked.
+    #[recurse(ignore)]
+    pub is_abstract: bool,
 }
 
 impl HasVariables for FunctionBlockDeclaration {
@@ -2798,13 +2804,13 @@ impl Located for FunctionBlockDeclaration {
     }
 }
 
-/// The `EXTENDS`/`IMPLEMENTS` clause is a vendor extension; the rest of a
-/// `FunctionBlockDeclaration` is standard IEC 61131-3. The
+/// The `EXTENDS`/`IMPLEMENTS`/`ABSTRACT` clause is a vendor extension; the
+/// rest of a `FunctionBlockDeclaration` is standard IEC 61131-3. The
 /// `rule_unsupported_extension` semantic rule only calls this when
-/// `extends`/`implements` is actually present.
+/// `extends`/`implements`/`is_abstract` is actually present.
 impl VendorExtension for FunctionBlockDeclaration {
     fn extension_name(&self) -> &'static str {
-        "EXTENDS/IMPLEMENTS clause"
+        "EXTENDS/IMPLEMENTS/ABSTRACT clause"
     }
 
     fn extension_origins(&self) -> &'static [ExtensionOrigin] {

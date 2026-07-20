@@ -64,3 +64,29 @@ END_INTERFACE
         .expect("rendered output must parse under the same dialect");
     assert_eq!(library_original, library_rendered);
 }
+
+#[test]
+fn write_to_string_when_abstract_fb_then_round_trips() {
+    let source = "
+FUNCTION_BLOCK ABSTRACT FB_BaseAxis IMPLEMENTS I_BaseAxis
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+INTERFACE I_BaseAxis
+END_INTERFACE
+";
+    let options = CompilerOptions {
+        allow_oop_extensions: true,
+        ..CompilerOptions::default()
+    };
+    let library_original = parse_program(source, &FileId::default(), &options).unwrap();
+    let rendered = write_to_string(&library_original).unwrap();
+
+    assert!(rendered.contains("FUNCTION_BLOCK ABSTRACT FB_BaseAxis"));
+
+    let library_rendered = parse_program(&rendered, &FileId::default(), &options)
+        .expect("rendered output must parse under the same dialect");
+    assert_eq!(library_original, library_rendered);
+}

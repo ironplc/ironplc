@@ -918,6 +918,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION_BLOCK");
+        if node.is_abstract {
+            self.write_ws("ABSTRACT");
+        }
         self.visit_id(&node.name.name)?;
         if let Some(extends) = &node.extends {
             self.write_ws("EXTENDS");

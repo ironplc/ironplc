@@ -4,8 +4,8 @@ use crate::{
 };
 
 /// Demote CODESYS/TwinCAT OOP keyword tokens (`EXTENDS`, `IMPLEMENTS`,
-/// `INTERFACE`, `END_INTERFACE`) to identifiers when `allow_oop_extensions`
-/// is not enabled.
+/// `INTERFACE`, `END_INTERFACE`, `ABSTRACT`) to identifiers when
+/// `allow_oop_extensions` is not enabled.
 ///
 /// These words are valid IEC 61131-3 identifiers (e.g. variable or type
 /// names). Demoting them back to `Identifier` when the flag is off keeps
@@ -24,6 +24,7 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
                 | TokenType::Implements
                 | TokenType::Interface
                 | TokenType::EndInterface
+                | TokenType::Abstract
         ) {
             tok.token_type = TokenType::Identifier;
         }
@@ -119,6 +120,21 @@ mod tests {
         let mut tokens = vec![make_token(TokenType::EndInterface, "END_INTERFACE")];
         apply(&mut tokens, &opts_enabled());
         assert_eq!(tokens[0].token_type, TokenType::EndInterface);
+    }
+
+    #[test]
+    fn apply_when_abstract_and_disabled_then_demoted_to_identifier() {
+        let mut tokens = vec![make_token(TokenType::Abstract, "ABSTRACT")];
+        apply(&mut tokens, &opts_disabled());
+        assert_eq!(tokens[0].token_type, TokenType::Identifier);
+        assert_eq!(tokens[0].text, "ABSTRACT");
+    }
+
+    #[test]
+    fn apply_when_abstract_and_enabled_then_stays_keyword() {
+        let mut tokens = vec![make_token(TokenType::Abstract, "ABSTRACT")];
+        apply(&mut tokens, &opts_enabled());
+        assert_eq!(tokens[0].token_type, TokenType::Abstract);
     }
 
     #[test]

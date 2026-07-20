@@ -481,9 +481,10 @@ fn transform_function_block(
             edge_variables: vec![],
             body,
             span,
-            // PLCopen XML has no EXTENDS/IMPLEMENTS concept.
+            // PLCopen XML has no EXTENDS/IMPLEMENTS/ABSTRACT concept.
             extends: None,
             implements: vec![],
+            is_abstract: false,
         },
     ))
 }
