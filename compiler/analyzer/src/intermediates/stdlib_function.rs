@@ -1049,14 +1049,14 @@ pub fn get_sizeof_function() -> FunctionSignature {
 // Extended math functions (Beckhoff Tc2_Math library, Vendor Extension)
 // =============================================================================
 
-/// Returns the `LTRUNC`/`LMOD` function definitions.
+/// Returns the `LTRUNC`/`LMOD`/`MODABS` function definitions.
 ///
-/// Both are Beckhoff `Tc2_Math` library functions, not core IEC 61131-3
-/// (unlike `TRUNC`/`MOD` above) -- a real TwinCAT project must reference
-/// that library to use them. Registered conditionally based on the
-/// `allow_extended_math_functions` compiler option.
+/// All three are Beckhoff `Tc2_Math` library functions, not core IEC
+/// 61131-3 (unlike `TRUNC`/`MOD` above) -- a real TwinCAT project must
+/// reference that library to use them. Registered conditionally based on
+/// the `allow_extended_math_functions` compiler option.
 ///
-/// Unlike the generic `ANY_REAL`/`ANY_NUM`-typed `TRUNC`/`MOD`, both
+/// Unlike the generic `ANY_REAL`/`ANY_NUM`-typed `TRUNC`/`MOD`, all three
 /// operate on `LREAL` only, matching their real Beckhoff signatures:
 ///
 /// - `LTRUNC` truncates the fractional part like `TRUNC`, but returns
@@ -1064,6 +1064,10 @@ pub fn get_sizeof_function() -> FunctionSignature {
 ///   integer type's value range.
 /// - `LMOD` is a floating-point modulo (e.g. `LMOD(400.56, 360) = 40.56`),
 ///   unlike the integer-oriented `MOD`.
+/// - `MODABS` is like `LMOD` but always returns an unsigned/non-negative
+///   result (`MODABS(-400.56, 360) = 319.44`, where `LMOD` would return
+///   `-40.56`) -- used in NC-axis contexts where modulo values are
+///   conventionally unsigned.
 pub fn get_extended_math_functions() -> Vec<FunctionSignature> {
     vec![
         FunctionSignature::stdlib(
@@ -1073,6 +1077,11 @@ pub fn get_extended_math_functions() -> Vec<FunctionSignature> {
         ),
         FunctionSignature::stdlib(
             "LMOD",
+            TypeName::from("LREAL"),
+            vec![input_param("IN1", "LREAL"), input_param("IN2", "LREAL")],
+        ),
+        FunctionSignature::stdlib(
+            "MODABS",
             TypeName::from("LREAL"),
             vec![input_param("IN1", "LREAL"), input_param("IN2", "LREAL")],
         ),
@@ -1490,10 +1499,10 @@ mod tests {
     }
 
     #[test]
-    fn get_extended_math_functions_when_called_then_contains_ltrunc_and_lmod() {
+    fn get_extended_math_functions_when_called_then_contains_ltrunc_lmod_and_modabs() {
         let functions = get_extended_math_functions();
 
-        assert_eq!(functions.len(), 2);
+        assert_eq!(functions.len(), 3);
 
         let ltrunc = functions
             .iter()
@@ -1520,6 +1529,21 @@ mod tests {
         assert_eq!(lmod.parameters[1].param_type, TypeName::from("LREAL"));
         assert_eq!(
             lmod.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("LREAL")))
+        );
+
+        let modabs = functions
+            .iter()
+            .find(|f| f.name.original() == "MODABS")
+            .unwrap();
+        assert!(modabs.is_stdlib());
+        assert_eq!(modabs.parameters.len(), 2);
+        assert_eq!(modabs.parameters[0].name.original(), "IN1");
+        assert_eq!(modabs.parameters[1].name.original(), "IN2");
+        assert_eq!(modabs.parameters[0].param_type, TypeName::from("LREAL"));
+        assert_eq!(modabs.parameters[1].param_type, TypeName::from("LREAL"));
+        assert_eq!(
+            modabs.return_type,
             Some(FunctionReturnType::Named(TypeName::from("LREAL")))
         );
     }

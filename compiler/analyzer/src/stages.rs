@@ -421,4 +421,43 @@ END_FUNCTION_BLOCK";
 
         assert!(context.has_diagnostics());
     }
+
+    #[test]
+    fn analyze_when_modabs_used_then_resolves() {
+        let program = "
+FUNCTION_BLOCK FB_Example
+VAR
+    remainder : LREAL;
+END_VAR
+remainder := MODABS(-400.56, 360.0);
+END_FUNCTION_BLOCK";
+        let lib = parse_program(
+            program,
+            &FileId::default(),
+            &opts_with_extended_math_functions(),
+        )
+        .unwrap();
+        let (_library, context) = analyze(&[&lib], &opts_with_extended_math_functions()).unwrap();
+
+        assert!(
+            !context.has_diagnostics(),
+            "unexpected diagnostics: {:?}",
+            context.diagnostics()
+        );
+    }
+
+    #[test]
+    fn analyze_when_modabs_used_and_extended_math_functions_disabled_then_diagnostics() {
+        let program = "
+FUNCTION_BLOCK FB_Example
+VAR
+    remainder : LREAL;
+END_VAR
+remainder := MODABS(-400.56, 360.0);
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        assert!(context.has_diagnostics());
+    }
 }

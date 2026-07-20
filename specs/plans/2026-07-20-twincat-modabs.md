@@ -66,10 +66,10 @@ already-iterated `Vec`.
 ## Tasks
 
 - [x] Write plan (this document)
-- [ ] Add `MODABS` to `get_extended_math_functions()` + update its test
-- [ ] Semantic test
-- [ ] Docs update
-- [ ] Verify end-to-end via CLI
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] Add `MODABS` to `get_extended_math_functions()` + update its test
+- [x] Semantic test
+- [x] Docs update
+- [x] Verify end-to-end via CLI
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
 - [ ] Merge into `twincat-dev`, update `twincat-status.md`, push
