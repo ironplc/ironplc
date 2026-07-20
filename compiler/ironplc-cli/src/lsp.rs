@@ -662,11 +662,11 @@ mod test {
         fn receive_response<T: DeserializeOwned>(&mut self, request_id: RequestId) -> T {
             self.receive();
             let response = self.responses.get(&request_id).expect("No request");
-            // A successful `ResponseKind` serializes to `{ "result": <value> }`;
-            // an error to `{ "error": ... }`, so `result` is absent on failure.
-            let value = serde_json::to_value(&response.response_kind).unwrap();
-            let result = value
-                .get("result")
+            // `response_result` is `Ok(value)` for a successful response and
+            // `Err(..)` for a failure, so `expect` asserts success here.
+            let result = response
+                .response_result
+                .as_ref()
                 .expect("Expected successful response")
                 .clone();
             serde_json::from_value::<T>(result).unwrap()

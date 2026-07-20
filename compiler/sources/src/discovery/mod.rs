@@ -99,23 +99,77 @@ fn detect_beremiz(dir: &Path) -> Option<DiscoveredProject> {
     }
 }
 
+/// Recursively collects all regular files under `dir`.
+///
+/// Skips hidden directories (name starts with `.` -- `.git`, `.idea`,
+/// `.vs`, etc., all commonly present alongside real TwinCAT checkouts)
+/// and does not follow symlinks (treated as neither a file nor a
+/// directory), which also rules out symlink cycles. Each directory's
+/// entries are sorted by name before recursing, so the result is
+/// deterministic regardless of filesystem iteration order.
+fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+
+    let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with('.'))
+        {
+            continue;
+        }
+
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        if file_type.is_dir() {
+            walk_files(&entry.path(), out);
+        } else if file_type.is_file() {
+            out.push(entry.path());
+        }
+    }
+}
+
 /// Detect a TwinCAT project by searching for a `.plcproj` file.
+///
+/// Searches recursively, since real TwinCAT layouts commonly nest the
+/// `.plcproj` file several levels below the directory a user would
+/// naturally point the tool at (e.g. a Visual-Studio-style
+/// solution/project structure). If more than one `.plcproj` is found,
+/// picks deterministically (sorted by path) -- the pre-existing
+/// single-level behavior already picked an arbitrary match with no
+/// disambiguation when this happened within one directory.
 ///
 /// Returns `None` if no `.plcproj` exists. Returns `Some(Err(...))` if
 /// the `.plcproj` is found but malformed or references missing files.
 fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
-    let entries = fs::read_dir(dir).ok()?;
+    let mut files = Vec::new();
+    walk_files(dir, &mut files);
 
-    let plcproj = entries.filter_map(Result::ok).find(|entry| {
-        trace!("Check if file {entry:?} is plcproj");
-        entry
-            .path()
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("plcproj"))
-    })?;
+    let mut candidates: Vec<PathBuf> = files
+        .into_iter()
+        .filter(|path| {
+            trace!("Check if file {path:?} is plcproj");
+            path.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("plcproj"))
+        })
+        .collect();
+    candidates.sort();
 
-    let plcproj_path = plcproj.path();
-    Some(parse_plcproj(&plcproj_path, dir))
+    let plcproj_path = candidates.into_iter().next()?;
+
+    // <Compile Include="..."> paths in the .plcproj are always relative
+    // to the .plcproj file's own directory, not the (possibly higher, now
+    // that the file can be nested arbitrarily deep) directory originally
+    // passed to discover().
+    let plcproj_dir = plcproj_path.parent().unwrap_or(dir);
+    Some(parse_plcproj(&plcproj_path, plcproj_dir))
 }
 
 /// Parse a `.plcproj` file and extract `<Compile Include="...">` paths.
@@ -177,15 +231,17 @@ fn parse_plcproj(plcproj_path: &Path, root_dir: &Path) -> Result<DiscoveredProje
     })
 }
 
-/// Fallback detection: enumerate all supported files in the directory.
+/// Fallback detection: recursively enumerate all supported files under
+/// the directory.
 ///
 /// Returns files sorted alphabetically for deterministic ordering.
 fn detect_fallback(dir: &Path) -> DiscoveredProject {
-    let mut files: Vec<PathBuf> = fs::read_dir(dir)
+    let mut files = Vec::new();
+    walk_files(dir, &mut files);
+
+    let mut files: Vec<PathBuf> = files
         .into_iter()
-        .flat_map(|entries| entries.filter_map(Result::ok))
-        .filter(|entry| entry.path().is_file() && FileType::from_path(&entry.path()).is_supported())
-        .map(|entry| entry.path())
+        .filter(|path| FileType::from_path(path).is_supported())
         .collect();
 
     files.sort();
@@ -469,5 +525,189 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let result = detect_fallback(dir.path());
         assert_eq!(result.root_dir, dir.path());
+    }
+
+    // -- Recursive discovery tests --
+
+    #[test]
+    fn discover_when_plcproj_nested_several_levels_then_finds_it() {
+        // Matches a real layout found in a private test corpus:
+        // TestProject/TestProject/TestProjectRuntime/TestProjectRuntime.plcproj
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("Solution").join("Runtime");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            nested.join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("MAIN.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_nested_plcproj_then_root_dir_is_plcproj_directory() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("Solution").join("Runtime");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            nested.join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        // root_dir must be where the .plcproj actually lives, not the
+        // top-level directory passed to discover() -- otherwise a
+        // .plcproj referencing a file in a further subdirectory of its
+        // own would resolve against the wrong base.
+        assert_eq!(result.root_dir, nested);
+    }
+
+    #[test]
+    fn discover_when_nested_plcproj_references_file_in_its_own_subdirectory_then_resolves() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("Solution").join("Runtime");
+        let pous_dir = nested.join("POUs");
+        fs::create_dir_all(&pous_dir).unwrap();
+        fs::write(pous_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            nested.join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="POUs\MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("POUs/MAIN.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_hidden_directory_contains_plcproj_then_ignored() {
+        // .git/.idea-style directories must not be descended into, both
+        // for correctness (a decoy .plcproj shouldn't win) and to avoid
+        // wastefully/riskily walking into a real .git tree.
+        let dir = TempDir::new().unwrap();
+        let hidden = dir.path().join(".git");
+        fs::create_dir_all(&hidden).unwrap();
+        fs::write(hidden.join("decoy.plcproj"), "<Project/>").unwrap();
+
+        let real = dir.path().join("Runtime");
+        fs::create_dir_all(&real).unwrap();
+        fs::write(real.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            real.join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("MAIN.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_multiple_plcproj_candidates_then_picks_deterministically() {
+        // Matches a real duplicate found in a private test corpus (an
+        // apparent stale rename artifact): two .plcproj files in the
+        // same directory. Must not error or pick non-deterministically.
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("AAA.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+        fs::write(dir.path().join("ZZZ.plcproj"), "<Project/>").unwrap();
+
+        let result1 = discover(dir.path()).unwrap();
+        let result2 = discover(dir.path()).unwrap();
+
+        // Sorted lexicographically: AAA.plcproj wins over ZZZ.plcproj.
+        assert_eq!(result1.files.len(), 1);
+        assert_eq!(result1.files, result2.files);
+    }
+
+    #[test]
+    fn detect_fallback_when_files_nested_in_subdirectories_then_finds_them() {
+        let dir = TempDir::new().unwrap();
+        let subdir = dir.path().join("src").join("nested");
+        fs::create_dir_all(&subdir).unwrap();
+        fs::write(dir.path().join("a_top.st"), "PROGRAM END_PROGRAM").unwrap();
+        fs::write(subdir.join("b_nested.st"), "PROGRAM END_PROGRAM").unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::Unstructured);
+        assert_eq!(result.files.len(), 2);
+        assert!(result.files[0].ends_with("a_top.st"));
+        assert!(result.files[1].ends_with("nested/b_nested.st"));
+    }
+
+    #[test]
+    fn detect_fallback_when_hidden_directory_present_then_ignored() {
+        let dir = TempDir::new().unwrap();
+        let hidden = dir.path().join(".git");
+        fs::create_dir_all(&hidden).unwrap();
+        fs::write(hidden.join("decoy.st"), "PROGRAM END_PROGRAM").unwrap();
+        fs::write(dir.path().join("main.st"), "PROGRAM END_PROGRAM").unwrap();
+
+        let result = detect_fallback(dir.path());
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("main.st"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn detect_fallback_when_symlinked_directory_then_not_followed() {
+        use std::os::unix::fs::symlink;
+
+        let dir = TempDir::new().unwrap();
+        let real_subdir = dir.path().join("real");
+        fs::create_dir_all(&real_subdir).unwrap();
+        fs::write(real_subdir.join("main.st"), "PROGRAM END_PROGRAM").unwrap();
+
+        // Symlink pointing back at the parent directory -- if followed,
+        // this would recurse infinitely.
+        let link = dir.path().join("link_to_self");
+        symlink(dir.path(), &link).unwrap();
+
+        let result = detect_fallback(dir.path());
+
+        // Only the real file is found; the symlink is not traversed.
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("real/main.st"));
     }
 }

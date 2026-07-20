@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IEC 61131-3 Structured Text language support with real-time error checking, syntax highlighting, and build tools for PLC programs.",
-  "version": "0.230.0",
+  "version": "0.231.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -283,7 +283,7 @@
     "@vscode/vsce": "^3.0.0",
     "ajv": "^8.17.1",
     "ajv-draft-04": "^1.0.0",
-    "c8": "^11.0.0",
+    "c8": "^12.0.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.7.0",
     "glob": "^13.0.6",
