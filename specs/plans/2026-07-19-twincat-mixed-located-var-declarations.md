@@ -30,9 +30,10 @@ block the same already-supported declaration forms can appear in.
 
 ## Verified against real project files
 
-Checked `/home/husser/code/brotlib` (same TwinCAT codebase used for prior
-plans), scripted rather than eyeballed, since the previous session's
-lesson ("survey counts aren't cost estimates") applies here too:
+Checked a private local checkout of a real TwinCAT codebase (the same
+one used for prior plans), scripted rather than eyeballed, since the
+previous session's lesson ("survey counts aren't cost estimates")
+applies here too:
 
 - `AT %I*`/`AT %Q*` (bare wildcard, no size prefix) appear **243 times**
   across the codebase — 233 inside plain `VAR` blocks, 4 inside
