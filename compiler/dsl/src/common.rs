@@ -2341,6 +2341,22 @@ pub enum ReferenceInitialValue {
     Ref(Variable),
 }
 
+/// Which of the three CODESYS/TwinCAT-recognized spellings declared a
+/// reference-type variable. `REFERENCE TO` is the genuine IEC
+/// 61131-3:2013 reference type (auto-dereferencing, no `^` at the access
+/// site); `REF_TO` and `POINTER TO` behave identically to each other
+/// (explicit `^`-deref required). Only `REFERENCE TO` currently gets a
+/// distinct semantic treatment (see `rule_ref_to.rs`'s `check_deref`,
+/// which rejects an explicit `^` on a `Reference`-kind variable) --
+/// verified against real TwinCAT, which rejects `r^` on a `REFERENCE TO`
+/// variable. `RefTo` and `Pointer` are otherwise treated the same today.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ReferenceKeyword {
+    RefTo,
+    Reference,
+    Pointer,
+}
+
 /// Initializer for a reference variable declaration (REF_TO).
 ///
 /// See IEC 61131-3 Edition 3, section 2.4.3.2.
@@ -2348,6 +2364,10 @@ pub enum ReferenceInitialValue {
 pub struct ReferenceInitializer {
     pub target: ReferenceTarget,
     pub initial_value: Option<ReferenceInitialValue>,
+    /// Which keyword spelling declared this variable -- see
+    /// `ReferenceKeyword`.
+    #[recurse(ignore)]
+    pub keyword: ReferenceKeyword,
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]

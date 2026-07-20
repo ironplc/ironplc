@@ -6,8 +6,8 @@ mod test {
         EnumeratedSpecificationInit, EnumerationDeclaration, FunctionBlockBodyKind,
         FunctionBlockDeclaration, FunctionDeclaration, FunctionReturnType,
         InitialValueAssignmentKind, Library, LibraryElementKind, ProgramDeclaration, RealLiteral,
-        ReferenceTarget, SimpleInitializer, SpecificationKind, TypeName, TypeReference, VarDecl,
-        VariableIdentifier, VariableType,
+        ReferenceKeyword, ReferenceTarget, SimpleInitializer, SpecificationKind, TypeName,
+        TypeReference, VarDecl, VariableIdentifier, VariableType,
     };
     use dsl::configuration::{
         ConfigurationDeclaration, DataSourceKind, ProgramConfiguration, ResourceDeclaration,
@@ -1429,6 +1429,7 @@ END_PROGRAM",
             InitialValueAssignmentKind::Reference
         );
         assert_eq!(ref_init.target.type_name().unwrap().to_string(), "INT");
+        assert_eq!(ref_init.keyword, ReferenceKeyword::Reference);
     }
 
     #[test]
@@ -1447,6 +1448,24 @@ END_PROGRAM",
             InitialValueAssignmentKind::Reference
         );
         assert_eq!(ref_init.target.type_name().unwrap().to_string(), "INT");
+        assert_eq!(ref_init.keyword, ReferenceKeyword::Pointer);
+    }
+
+    #[test]
+    fn parse_when_ref_to_var_decl_then_keyword_is_ref_to() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    x : REF_TO INT;
+END_VAR
+END_PROGRAM",
+        );
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let ref_init = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Reference
+        );
+        assert_eq!(ref_init.keyword, ReferenceKeyword::RefTo);
     }
 
     #[test]

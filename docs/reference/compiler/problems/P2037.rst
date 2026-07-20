@@ -1,0 +1,52 @@
+=====
+P2037
+=====
+
+.. problem-summary:: P2037
+
+This error occurs when the dereference operator (``^``) is used
+explicitly on a variable declared with ``REFERENCE TO``. Unlike
+``REF_TO`` and ``POINTER TO`` (which require an explicit ``^`` to
+access the referenced value), ``REFERENCE TO`` -- the genuine IEC
+61131-3:2013 reference type -- auto-dereferences: the variable itself
+already reads and writes through the reference, with no ``^`` needed or
+allowed at the access site.
+
+Example
+-------
+
+The following code will generate error P2037:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       r : REFERENCE TO INT;
+       src : INT := 42;
+       result : INT;
+   END_VAR
+   r := REF(src);
+   result := r^;
+   END_FUNCTION_BLOCK
+
+To fix this error, remove the ``^`` -- ``REFERENCE TO`` variables
+auto-dereference:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       r : REFERENCE TO INT;
+       src : INT := 42;
+       result : INT;
+   END_VAR
+   r := REF(src);
+   result := r;
+   END_FUNCTION_BLOCK
+
+This does not apply to ``REF_TO`` or ``POINTER TO`` variables, which
+still require an explicit ``^``.
+
+Verified against a real TcXaeShell compile (``C0064: Dereference
+requires a pointer``) before this check was implemented. Covered by
+``rule_ref_to::tests`` in the compiler's own test suite.

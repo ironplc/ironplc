@@ -864,17 +864,18 @@ parser! {
     // produce the exact same ReferenceTarget/reference-initializer
     // shape. Gated by the same allow_ref_to condition as REF_TO itself
     // (see xform_demote_edition3_keywords.rs), not a new flag.
-    rule ref_to_keyword() -> () =
-      tok(TokenType::RefTo) {}
-      / tok(TokenType::Reference) _ tok(TokenType::To) {}
-      / tok(TokenType::Pointer) _ tok(TokenType::To) {}
-    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ ref_to_keyword() _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
+    rule ref_to_keyword() -> ReferenceKeyword =
+      tok(TokenType::RefTo) { ReferenceKeyword::RefTo }
+      / tok(TokenType::Reference) _ tok(TokenType::To) { ReferenceKeyword::Reference }
+      / tok(TokenType::Pointer) _ tok(TokenType::To) { ReferenceKeyword::Pointer }
+    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ keyword:ref_to_keyword() _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Reference(ReferenceInitializer {
             target: ref_target.clone(),
             initial_value: init.clone(),
+            keyword,
           }),
         }
       }).collect()

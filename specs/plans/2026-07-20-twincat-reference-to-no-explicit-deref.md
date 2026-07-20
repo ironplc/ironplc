@@ -130,11 +130,48 @@ block used for the other two checks in this batch).
 ## Tasks
 
 - [x] Write plan (this document)
-- [ ] `ReferenceKeyword` enum + `ReferenceInitializer.keyword` field
-- [ ] Grammar: `ref_to_keyword()` return type + `ref_to_var_init_decl()`
-- [ ] New `P2037` problem code + doc
-- [ ] `rule_ref_to.rs`: extend `check_deref`
-- [ ] Tests from Testing Strategy
-- [ ] Run full CI pipeline (`cd compiler && just`)
-- [ ] Push branch to fork
+- [x] `ReferenceKeyword` enum + `ReferenceInitializer.keyword` field
+- [x] Grammar: `ref_to_keyword()` return type + `ref_to_var_init_decl()`
+- [x] New `P2037` problem code + doc
+- [x] `rule_ref_to.rs`: extend `check_deref`
+- [x] Tests from Testing Strategy
+- [x] Run full CI pipeline (`cd compiler && just`)
+- [x] Push branch to fork
 - [ ] Merge into `twincat-dev`, update `twincat-status.md`, push
+
+## Implementation Notes
+
+- `cargo build --workspace --tests` after adding the `keyword` field
+  surfaced exactly one construction site needing a fix:
+  `xform_resolve_late_bound_type_initializer.rs`'s TYPE-alias-resolved
+  reference path, defaulted to `ReferenceKeyword::RefTo` (preserves
+  prior, unrestricted behavior for that untouched path, per the
+  TYPE-alias non-goal above).
+- The two other `ref_to_keyword()` call sites (array-element type,
+  TYPE-alias rule) needed zero grammar changes, confirmed by direct
+  reading before implementing.
+- The pre-existing plc2plc round-trip test
+  `write_to_string_when_reference_to_fb_type_then_round_trips` asserted
+  full `Library` equality between the original and re-parsed-after-render
+  library. The new `keyword` field broke that: render normalizes
+  `REFERENCE TO` to `REF_TO` text (pre-existing, documented behavior),
+  so the re-parsed library now has `keyword: RefTo` where the original
+  had `keyword: Reference` -- exactly the plc2plc-normalization tension
+  flagged as a known non-goal above, now surfaced as a real test failure
+  rather than just a theoretical risk. Fixed by asserting idempotency
+  (render → parse → render again yields identical output) instead of
+  literal AST equality with the pre-render original, matching the
+  `assert!(rendered.contains(...))` -only style already used by the two
+  neighboring "normalizes to REF_TO" tests.
+- Also anonymized two parser test doc-comments
+  (`parse_when_reference_to_var_decl_then_same_shape_as_ref_to`,
+  `parse_when_pointer_to_var_decl_then_same_shape_as_ref_to`) that
+  referenced a private test corpus by a domain-specific type name;
+  replaced with a generic comment, per the standing anonymization rule.
+- End-to-end CLI verification: the exact TcXaeShell repro (`r := REF(src);
+  result := r^;` on a `REFERENCE TO INT` variable, compiled with
+  `--dialect iec61131-3-ed3`) now produces `P2037`; the fixed version
+  (`result := r;`, no `^`) compiles clean.
+- Full CI (`cd compiler && just`) passed: build, coverage ≥85%, clippy
+  (pre-existing unrelated `large_enum_variant` warning only), fmt, dupes
+  check.

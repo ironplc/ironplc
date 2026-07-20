@@ -130,6 +130,21 @@ impl RuleRefTo<'_> {
         }
     }
 
+    /// Returns the `ReferenceKeyword` the variable was declared with, if
+    /// it's a directly-declared reference variable (not a `TYPE`-alias
+    /// reference type, which doesn't track the keyword -- see
+    /// `xform_resolve_late_bound_type_initializer.rs`).
+    fn variable_reference_keyword(&self, var: &Variable) -> Option<ReferenceKeyword> {
+        let id = match var {
+            Variable::Symbolic(SymbolicVariableKind::Named(named)) => &named.name,
+            _ => return None,
+        };
+        match self.var_types.get(id)? {
+            InitialValueAssignmentKind::Reference(ri) => Some(ri.keyword),
+            _ => None,
+        }
+    }
+
     /// Returns true if the expression resolves to a reference type.
     fn is_expr_reference(&self, expr: &Expr) -> bool {
         match &expr.kind {
@@ -199,7 +214,10 @@ impl RuleRefTo<'_> {
         }
     }
 
-    /// P2031: Dereference requires reference type
+    /// P2031: Dereference requires reference type.
+    /// P2037: Explicit dereference not allowed on a REFERENCE TO variable
+    /// (it auto-dereferences) -- verified against real TwinCAT, which
+    /// rejects `r^` for a `REFERENCE TO`-declared `r`.
     fn check_deref(&mut self, inner: &Expr) {
         if let ExprKind::Variable(var) = &inner.kind {
             if !self.is_variable_reference(var) {
@@ -208,6 +226,14 @@ impl RuleRefTo<'_> {
                     Label::span(
                         variable_span(var),
                         "Dereference operator (^) requires a REF_TO type",
+                    ),
+                ));
+            } else if self.variable_reference_keyword(var) == Some(ReferenceKeyword::Reference) {
+                self.diagnostics.push(Diagnostic::problem(
+                    Problem::ExplicitDerefOnAutoDerefReference,
+                    Label::span(
+                        variable_span(var),
+                        "REFERENCE TO variables auto-dereference; explicit ^ is not allowed",
                     ),
                 ));
             }
@@ -561,6 +587,67 @@ VAR
     y : INT;
 END_VAR
     y := r^;
+END_PROGRAM",
+        );
+    }
+
+    // P2037: Explicit ^ is not allowed on a REFERENCE TO variable -- it
+    // auto-dereferences (verified against a real TcXaeShell compile).
+    #[test]
+    fn deref_when_type_is_reference_to_then_error() {
+        assert_err(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r : REFERENCE TO INT := REF(x);
+    y : INT;
+END_VAR
+    y := r^;
+END_PROGRAM",
+        );
+    }
+
+    // P2037 regression: REF_TO still requires (and allows) explicit ^.
+    #[test]
+    fn deref_when_type_is_ref_to_then_still_ok() {
+        assert_ok(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r : REF_TO INT := REF(x);
+    y : INT;
+END_VAR
+    y := r^;
+END_PROGRAM",
+        );
+    }
+
+    // P2037 regression: POINTER TO still requires (and allows) explicit ^.
+    #[test]
+    fn deref_when_type_is_pointer_to_then_still_ok() {
+        assert_ok(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r : POINTER TO INT := REF(x);
+    y : INT;
+END_VAR
+    y := r^;
+END_PROGRAM",
+        );
+    }
+
+    // P2037 regression: bare (auto-deref) access on REFERENCE TO is still ok.
+    #[test]
+    fn access_when_type_is_reference_to_without_deref_then_ok() {
+        assert_ok(
+            "PROGRAM Main
+VAR
+    x : INT;
+    r : REFERENCE TO INT := REF(x);
+    y : INT;
+END_VAR
+    y := r;
 END_PROGRAM",
         );
     }
