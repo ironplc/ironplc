@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.230.0">
+<meta name="ironplc-version" content="0.231.0">
 </head>
   <body>
     
@@ -531,6 +531,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6006.html">P6006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6007.html">P6007</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6008.html">P6008</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6009.html">P6009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P8001.html">P8001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9002.html">P9002</a></li>
@@ -651,6 +652,9 @@
 </dl>
 <p>A task exceeded the configured watchdog time limit (<code class="docutils literal notranslate"><span class="pre">max_scan_time</span></code>). This
 typically indicates an infinite loop or unexpectedly long computation.</p>
+<p>In the playground, this code is also reported when a scan takes longer than the
+configured step interval (a cycle overrun) — the same condition of a task not
+finishing within its allotted time.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code may generate error V4003:</p>
