@@ -607,6 +607,13 @@ pub enum CompareOp {
     Or,
     Xor,
     And,
+    /// CODESYS/TwinCAT short-circuit `AND` (Beckhoff/CODESYS extension).
+    /// Kept as a distinct variant from `And` (not normalized) since the
+    /// short-circuit vs. eager evaluation distinction is real and
+    /// externally-visible in TwinCAT/CODESYS itself, unlike e.g.
+    /// `REFERENCE TO`/`POINTER TO` which really are behaviorally
+    /// identical to `REF_TO`.
+    AndThen,
     Eq,
     Ne,
     Lt,
@@ -621,6 +628,7 @@ impl fmt::Display for CompareOp {
             CompareOp::Or => "OR",
             CompareOp::Xor => "XOR",
             CompareOp::And => "AND",
+            CompareOp::AndThen => "AND_THEN",
             CompareOp::Eq => "=",
             CompareOp::Ne => "<>",
             CompareOp::Lt => "<",

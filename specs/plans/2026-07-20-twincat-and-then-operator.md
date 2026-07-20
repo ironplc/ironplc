@@ -134,15 +134,47 @@ instead of miscompiling. Two other exhaustive-match sites in
 ## Tasks
 
 - [x] Write plan (this document)
-- [ ] `AndThen` token + demotion module + flag
-- [ ] Grammar + `CompareOp::AndThen` + `Display`
-- [ ] plc2plc renderer
-- [ ] Semantic analysis groupings (`rule_ref_to.rs`, `xform_resolve_expr_types.rs`)
-- [ ] Codegen: `not_implemented` + the two other groupings
-- [ ] LSP semantic-highlighting entry
-- [ ] Tests from Testing Strategy
-- [ ] Docs
-- [ ] Verify end-to-end via CLI
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] `AndThen` token + demotion module + flag
+- [x] Grammar + `CompareOp::AndThen` + `Display`
+- [x] plc2plc renderer
+- [x] Semantic analysis groupings (`rule_ref_to.rs`, `xform_resolve_expr_types.rs`)
+- [x] Codegen: `not_implemented` + the two other groupings
+- [x] LSP semantic-highlighting entry
+- [x] Tests from Testing Strategy
+- [x] Docs
+- [x] Verify end-to-end via CLI
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
 - [ ] Merge into `twincat-dev`, update `twincat-status.md`, push
+
+## Implementation Notes
+
+- `cargo build`'s exhaustiveness checking found 3 of the 4 non-codegen
+  `CompareOp` match sites automatically (compile errors); the 4th
+  (`condition_op_type` in `compile_expr.rs`) and 5th
+  (`xform_resolve_expr_types.rs`'s type-preserving group) both already
+  had a `_`/wildcard catch-all, so they compiled *without* error but
+  would have silently routed `AndThen` through the wrong branch (treating
+  it like a comparison operator instead of like `AND`/`OR`/`XOR`) if not
+  found and fixed manually. A reminder that exhaustiveness-driven
+  discovery only catches match sites without a wildcard arm -- worth
+  grepping for the enum name directly as a second pass, not just relying
+  on the compiler.
+- `compile_string.rs`'s `CompareOp` match already had a `_ =>
+  todo_with_span(...)` catch-all covering `And`/`Or`/`Xor` (string
+  comparison doesn't support boolean combinators), so `AndThen` falls
+  into the same existing, correct behavior there with no change needed.
+- Found and fixed a small pre-existing drift while touching
+  `options.rs`: the `allow_extended_math_functions` flag's description
+  string still said "LTRUNC, LMOD" only, missing `MODABS` (added in the
+  previous branch but the description wasn't updated then). Fixed as
+  part of this branch since it was the same file/line being touched
+  anyway.
+- Verified end-to-end via the CLI both ways: the full motivating shape
+  (`ptr <> 0 AND_THEN ptr^ = 99`) parses and analyzes clean under
+  `--dialect=codesys`; a plain `AND_THEN` expression correctly fails to
+  parse under the default dialect (demoted to identifier, so `a
+  AND_THEN b` is a syntax error at the unexpected `AND_THEN` "identifier"
+  in expression position); a codegen integration test confirms
+  compiling an `AND_THEN` expression returns `P9999` rather than
+  succeeding with (behaviorally wrong) eager bytecode.
