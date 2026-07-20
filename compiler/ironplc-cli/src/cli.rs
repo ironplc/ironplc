@@ -214,7 +214,7 @@ fn create_project(
     let mut had_error = false;
 
     for path in paths {
-        match enumerate_files(path) {
+        match enumerate_files(path, suppress_output) {
             Ok(mut paths) => files.append(&mut paths),
             Err(err) => {
                 handle_diagnostics(&err, None, suppress_output);
@@ -254,7 +254,12 @@ fn create_project(
 /// If the path is a file, then returns the file. If the path is a directory,
 /// then uses project discovery to detect the project structure and return
 /// the appropriate set of files.
-fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
+///
+/// Non-fatal discovery problems (e.g. a `.plcproj` `<Compile Include="...">`
+/// entry that doesn't resolve to a real file) are printed as warnings via
+/// `handle_diagnostics` rather than failing enumeration -- the rest of the
+/// project's files are still returned.
+fn enumerate_files(path: &PathBuf, suppress_output: bool) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
     // Get the canonical path so that error messages are unambiguous
     let path = canonicalize(path).map_err(|e| {
         diagnostic(
@@ -269,6 +274,9 @@ fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
         .map_err(|e| diagnostic(Problem::CannotReadMetadata, &path, e.to_string()))?;
     if metadata.is_dir() {
         let project = ironplc_sources::discovery::discover(&path).map_err(|e| vec![e])?;
+        if !project.warnings.is_empty() {
+            handle_diagnostics(&project.warnings, None, suppress_output);
+        }
         return Ok(project.files);
     }
     if metadata.is_file() {

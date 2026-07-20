@@ -117,14 +117,33 @@ caller/subcommand is unaffected.
 
 ## Tasks
 
-- [ ] Write plan (this document)
-- [ ] `DiscoveredProject.warnings` field
-- [ ] `parse_plcproj`: collect+skip instead of abort
-- [ ] Update the 2 existing tests whose old assertions tested the bug
+- [x] Write plan (this document)
+- [x] `DiscoveredProject.warnings` field
+- [x] `parse_plcproj`: collect+skip instead of abort
+- [x] Update the 2 existing tests whose old assertions tested the bug
       being fixed
-- [ ] New tests from Testing Strategy
-- [ ] `enumerate_files`/`create_project`: thread `suppress_output`,
+- [x] New tests from Testing Strategy
+- [x] `enumerate_files`/`create_project`: thread `suppress_output`,
       surface warnings non-fatally
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
 - [ ] Merge into `twincat-dev`, update `twincat-status.md`, push
+
+## Implementation Notes
+
+- **Verified end-to-end via the actual CLI, not just unit tests**: a
+  synthetic project with a valid file, a file with a genuine syntax
+  error, and a `.plcproj` entry referencing a missing file now correctly
+  prints *both* the missing-file warning *and* the real syntax error for
+  the broken file, while the valid file passes silently -- confirming
+  the fix doesn't accidentally swallow genuine per-file diagnostics
+  alongside the new warning, and that a single bad reference no longer
+  hides every other file in the project.
+- **Two existing tests were asserting the exact bug being fixed**
+  (`discover_when_plcproj_references_missing_file_then_returns_diagnostic`,
+  `discover_when_twincat_and_plcproj_error_propagates`) -- both flipped
+  to assert the new, correct behavior (`Ok` with a recorded warning)
+  rather than being left as regressions or deleted outright, since they
+  still exercise the same code paths (`parse_plcproj` directly, and
+  propagation through `detect_twincat`/`discover`) with corrected
+  expectations.
