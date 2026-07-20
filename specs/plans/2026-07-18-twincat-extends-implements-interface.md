@@ -41,7 +41,7 @@ sections 1.3–1.4, under [ADR-0012](../adrs/0012-accept-vendor-dialect-files-as
   inside `INTERFACE ... END_INTERFACE` for this PR.
 
   **Verified against real project files** (14 real `.TcIO` interface files
-  from a BROTLib/IAG50cm-based TwinCAT codebase): confirmed. `<Itf>` elements
+  from a private, real-world TwinCAT codebase): confirmed. `<Itf>` elements
   overwhelmingly contain `<Property>` children (far more common than
   `<Method>` — e.g. `I_BaseAxis.TcIO` has 13 properties and 1 method) with
   their own nested `<Get>`/`<Set>`, plus occasional bare `<Method>` siblings.
