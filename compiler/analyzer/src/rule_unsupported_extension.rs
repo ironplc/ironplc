@@ -1,13 +1,16 @@
 //! Semantic rule that flags vendor-specific language extensions that are
 //! parsed and represented in the AST but not yet semantically analyzed.
 //!
-//! See `ironplc_dsl::extension::VendorExtension` and
-//! `specs/plans/2026-07-18-twincat-extends-implements-interface.md`.
+//! See `ironplc_dsl::extension::VendorExtension`,
+//! `specs/plans/2026-07-18-twincat-extends-implements-interface.md`, and
+//! `specs/plans/2026-07-20-twincat-extends-field-inheritance.md` (plain
+//! `EXTENDS` with no `IMPLEMENTS`/`ABSTRACT` no longer flags, since field
+//! inheritance is fully resolved).
 //!
 //! ## Fails
 //!
 //! ```ignore
-//! FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
+//! FUNCTION_BLOCK FB_AdvancedMotor IMPLEMENTS I_Drivable
 //! END_FUNCTION_BLOCK
 //! ```
 //!
@@ -71,8 +74,14 @@ impl Visitor<Diagnostic> for RuleUnsupportedExtension {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         // Most function blocks are standard IEC 61131-3 — only flag when
-        // the EXTENDS/IMPLEMENTS/ABSTRACT clause is actually present.
-        if node.extends.is_some() || !node.implements.is_empty() || node.is_abstract {
+        // something genuinely unsupported is present. Plain EXTENDS (no
+        // IMPLEMENTS, not ABSTRACT) is no longer flagged: field
+        // inheritance through the EXTENDS chain is fully resolved (see
+        // specs/plans/2026-07-20-twincat-extends-field-inheritance.md),
+        // so there's nothing left unsupported for that shape. IMPLEMENTS
+        // (interface dispatch) and ABSTRACT (instantiation-legality
+        // enforcement) remain unimplemented and still flag.
+        if !node.implements.is_empty() || node.is_abstract {
             self.flag(node);
         }
         node.recurse_visit(self)
@@ -121,11 +130,20 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_extends_then_p9004() {
+    fn apply_when_plain_extends_then_ok() {
+        // Plain EXTENDS (no IMPLEMENTS, not ABSTRACT) no longer flags --
+        // field inheritance through the EXTENDS chain is fully resolved.
+        // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
         let program = "
-FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
+FUNCTION_BLOCK FB_Motor
 VAR
     bRunning : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
+VAR
+    bTurbo : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
 
@@ -134,9 +152,7 @@ END_FUNCTION_BLOCK";
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&input, &context, &opts_with_oop_extensions());
 
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -231,8 +247,8 @@ END_FUNCTION_BLOCK";
         let result = apply(&input, &context, &opts_with_oop_extensions());
 
         let errors = result.unwrap_err();
-        // One for the INTERFACE declaration, one for the FB's
-        // EXTENDS/IMPLEMENTS clause.
+        // One for the INTERFACE declaration, one for the FB's IMPLEMENTS
+        // clause (EXTENDS alone wouldn't flag, but IMPLEMENTS still does).
         assert_eq!(errors.len(), 2);
     }
 }
