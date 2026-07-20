@@ -222,6 +222,13 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
     },
+    // LTRUNC is only registered as a stdlib function when the flag is on;
+    // with it off, the call is to an undeclared function.
+    FlagFixture {
+        key: "allow_extended_math_functions",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_Example\nVAR\ntruncated : LREAL;\nEND_VAR\ntruncated := LTRUNC(123.456);\nEND_FUNCTION_BLOCK",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.
