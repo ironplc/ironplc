@@ -1,13 +1,12 @@
 # Plan: Merge Multiple LSP Workspace Folders Into One Compilation Unit
 
-**Status: drafted, not started.** This plan scopes a real, already-known
-gap (flagged under "What's Missing" in the pre-existing
+**Status: implemented.** This plan scopes a real, already-known gap
+(flagged under "What's Missing" in the pre-existing
 `specs/plans/multi-file-project-support.md`, but never given its own
-phase there) — written up here at a finer grain because it's now
-directly motivated by a concrete external use case (an editor plugin
-using `ironplcc lsp` as a diagnostics backend for a multi-sub-project
-TwinCAT solution). Not yet implemented; queued for prioritization
-alongside the other items in `twincat-status.md`'s "Next" list.
+phase there) — written up here at a finer grain because it's directly
+motivated by a concrete external use case (an editor plugin using
+`ironplcc lsp` as a diagnostics backend for a multi-sub-project TwinCAT
+solution).
 
 ## Goal
 
@@ -172,12 +171,43 @@ match initialize_params.workspace_folders {
 
 ## Tasks
 
-- [ ] Confirm priority against the rest of `twincat-status.md`'s "Next"
+- [x] Confirm priority against the rest of `twincat-status.md`'s "Next"
       list before starting implementation
-- [ ] `initialize_from_directories()` + tests
-- [ ] `Project` trait `initialize_many()` + `FileBackedProject` override
-- [ ] `lsp.rs`: pass all workspace folders
-- [ ] Tests from Testing Strategy
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] `initialize_from_directories()` + tests
+- [x] `Project` trait `initialize_many()` + `FileBackedProject` override
+- [x] `lsp.rs`: pass all workspace folders
+- [x] Tests from Testing Strategy
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
 - [ ] Merge into `twincat-dev`, update `twincat-status.md`, push
+
+## Implementation Notes
+
+- `SourceProject::initialize_from_directory` and the new
+  `initialize_from_directories` share a private `discover_and_add`
+  helper (discover one directory, add its files, don't clear) --
+  `initialize_from_directory` clears once then calls it once,
+  `initialize_from_directories` clears once then calls it per directory.
+  No duplicated discovery logic between the single- and multi-directory
+  paths.
+- `Project::initialize_many`'s default implementation (for any future
+  implementor that doesn't override it) delegates to `initialize` for
+  zero or one directories, and returns a `Problem::NoContent` diagnostic
+  for more than one -- deliberately not attempting a "call `initialize`
+  per directory" default, since that would silently reproduce the exact
+  clearing bug this plan fixes for any implementor whose `initialize`
+  clears state per call. Only `FileBackedProject` needed a real
+  multi-directory implementation; `MemoryBackedProject` never receives
+  directories at all (its `initialize` already errors unconditionally).
+- Renamed `LspProject::initialize` to `initialize_many` (no `initialize`
+  overload kept) -- one single-folder-shaped call site (`lsp.rs`), so a
+  parallel single-folder method would have been unused surface area.
+- The most direct verification of "does this actually fix the reported
+  problem" wasn't a unit test on the merge logic in isolation, but an
+  end-to-end test (`initialize_many_when_two_folders_then_cross_folder_type_resolves`):
+  two real temp directories, one declaring a function block, the other
+  referencing it by type name, wired through the real
+  `LspProject::initialize_many` -> `semantic_all()` path -- proving the
+  cross-folder type reference resolves with zero diagnostics once both
+  folders are loaded together, not just that files get merged into one
+  list.

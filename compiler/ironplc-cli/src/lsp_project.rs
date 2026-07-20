@@ -1,7 +1,7 @@
 //! Adapts data types between what is required by the compiler
 //! and the language server protocol.
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use ironplc_analyzer::extractors::TypeSymbolKind;
@@ -121,16 +121,24 @@ impl LspProject {
         }
     }
 
-    pub(crate) fn initialize(&mut self, folder: &WorkspaceFolder) {
-        let path = to_path_buf(&folder.uri);
-        if let Ok(path) = path {
-            self.wrapped.initialize(&path);
-        } else {
-            error!(
-                "URL must be convertible to a file path {}",
-                folder.uri.as_str()
-            );
-        }
+    /// Initializes the project from every given workspace folder, merged
+    /// into one compilation unit -- see `Project::initialize_many`.
+    pub(crate) fn initialize_many(&mut self, folders: &[WorkspaceFolder]) {
+        let paths: Vec<PathBuf> = folders
+            .iter()
+            .filter_map(|folder| match to_path_buf(&folder.uri) {
+                Ok(path) => Some(path),
+                Err(_) => {
+                    error!(
+                        "URL must be convertible to a file path {}",
+                        folder.uri.as_str()
+                    );
+                    None
+                }
+            })
+            .collect();
+        let refs: Vec<&Path> = paths.iter().map(|p| p.as_path()).collect();
+        self.wrapped.initialize_many(&refs);
     }
 
     pub(crate) fn change_text_document(&mut self, uri: &Uri, content: String) {
@@ -744,6 +752,68 @@ mod test {
 
     fn new_empty_project() -> LspProject {
         LspProject::new(Box::new(FileBackedProject::new()))
+    }
+
+    // -----------------------------------------------------------------
+    // Multi-workspace-folder initialization.
+    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
+    // -----------------------------------------------------------------
+
+    fn workspace_folder(dir: &std::path::Path) -> lsp_types::WorkspaceFolder {
+        let uri_str = format!("file://{}", dir.display());
+        lsp_types::WorkspaceFolder {
+            uri: Uri::from_str(&uri_str).unwrap(),
+            name: dir.display().to_string(),
+        }
+    }
+
+    #[test]
+    fn initialize_many_when_two_folders_then_cross_folder_type_resolves() {
+        use std::fs;
+
+        let dir1 = tempfile::TempDir::new().unwrap();
+        fs::write(
+            dir1.path().join("base.st"),
+            "FUNCTION_BLOCK FB_Base\nEND_FUNCTION_BLOCK",
+        )
+        .unwrap();
+
+        let dir2 = tempfile::TempDir::new().unwrap();
+        fs::write(
+            dir2.path().join("caller.st"),
+            "FUNCTION_BLOCK FB_Caller\nVAR\n    inst : FB_Base;\nEND_VAR\nEND_FUNCTION_BLOCK",
+        )
+        .unwrap();
+
+        let mut proj = new_empty_project();
+        let folders = vec![workspace_folder(dir1.path()), workspace_folder(dir2.path())];
+        proj.initialize_many(&folders);
+
+        let diagnostics = proj.semantic_all();
+        let all_diagnostics: Vec<_> = diagnostics.values().flatten().collect();
+        assert!(
+            all_diagnostics.is_empty(),
+            "unexpected diagnostics: {all_diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn initialize_many_when_single_folder_then_still_works() {
+        use std::fs;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), "PROGRAM Main\nEND_PROGRAM").unwrap();
+
+        let mut proj = new_empty_project();
+        let folders = vec![workspace_folder(dir.path())];
+        proj.initialize_many(&folders);
+
+        let diagnostics = proj.semantic_all();
+        let all_diagnostics: Vec<_> = diagnostics.values().flatten().collect();
+        assert!(
+            all_diagnostics.is_empty(),
+            "unexpected diagnostics: {all_diagnostics:?}"
+        );
     }
 
     #[test]
