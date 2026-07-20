@@ -17,6 +17,7 @@ mod constant_folding;
 mod function_environment;
 pub mod intermediate_type;
 mod result;
+mod rule_abstract_not_instantiated;
 mod rule_bit_access_range;
 mod rule_case_bit_string_label;
 mod rule_decl_struct_element_unique_names;

@@ -49,7 +49,7 @@ including `xform_resolve_late_bound_type_initializer`), a bare
 `LateResolvedType` into the concrete `FunctionBlock` variant, so this
 check doesn't need to duplicate that resolution logic.
 
-New problem code `P4040` (`AbstractFunctionBlockInstantiated`).
+New problem code `P4045` (`AbstractFunctionBlockInstantiated`).
 
 ## Non-goals
 
@@ -69,15 +69,15 @@ New problem code `P4040` (`AbstractFunctionBlockInstantiated`).
 
 | File | Change |
 |------|--------|
-| `compiler/problems/resources/problem-codes.csv` | New `P4040` |
-| `docs/reference/compiler/problems/P4040.rst` | New problem doc |
+| `compiler/problems/resources/problem-codes.csv` | New `P4045` |
+| `docs/reference/compiler/problems/P4045.rst` | New problem doc |
 | `compiler/analyzer/src/rule_abstract_not_instantiated.rs` | New semantic rule |
 | `compiler/analyzer/src/stages.rs` | Register the new rule |
 
 ## Testing Strategy
 
 - Semantic tests: declaring a variable of an `ABSTRACT` FB type produces
-  `P4040`; declaring a variable of a non-abstract FB type is unaffected;
+  `P4045`; declaring a variable of a non-abstract FB type is unaffected;
   a *derived* (non-abstract) FB that `EXTENDS` an abstract base can
   itself still be instantiated (only the abstract type itself is
   flagged, not its concrete subclasses).
@@ -87,9 +87,21 @@ New problem code `P4040` (`AbstractFunctionBlockInstantiated`).
 ## Tasks
 
 - [x] Write plan (this document)
-- [ ] New `P4040` problem code + doc
-- [ ] New semantic rule + registration
-- [ ] Tests from Testing Strategy
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] New `P4045` problem code + doc
+- [x] New semantic rule + registration
+- [x] Tests from Testing Strategy
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
 - [ ] Merge into `twincat-dev`, update `twincat-status.md`, push
+
+## Implementation Notes
+
+- Verified end-to-end via the CLI: the exact TcXaeShell repro now
+  produces `P4045` under `--dialect=codesys` (alongside the pre-existing
+  `P9004` for the `ABSTRACT` clause itself -- both fire independently,
+  which is correct: one flags the vendor extension as recognized-but-
+  unsupported in general, the other specifically flags the instantiation
+  attempt).
+- Confirmed a concrete subclass of an abstract base can still be
+  instantiated normally -- the check only looks at the *declared*
+  type's own `is_abstract`, not anything about its ancestry.
