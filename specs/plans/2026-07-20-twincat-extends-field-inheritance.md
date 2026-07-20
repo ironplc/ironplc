@@ -237,13 +237,39 @@ if !node.implements.is_empty() || node.is_abstract {
 ## Tasks
 
 - [x] Write plan (this document)
-- [ ] Toposort: add the `FUNCTION_BLOCK` `extends` edge
-- [ ] `collect_inherited_fields()` + unit tests
-- [ ] Wire into `rule_use_declared_symbolic_var.rs`
-- [ ] Wire into `xform_resolve_expr_types.rs`
-- [ ] `rule_unsupported_extension.rs`: drop `extends` from the `P9004` condition
-- [ ] Tests from Testing Strategy
-- [ ] Verify end-to-end via CLI
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] Toposort: add the `FUNCTION_BLOCK` `extends` edge
+- [x] `collect_inherited_fields()` + unit tests
+- [x] Wire into `rule_use_declared_symbolic_var.rs`
+- [x] Wire into `xform_resolve_expr_types.rs`
+- [x] `rule_unsupported_extension.rs`: drop `extends` from the `P9004` condition
+- [x] Tests from Testing Strategy
+- [x] Verify end-to-end via CLI
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
 - [ ] Merge into `twincat-dev`, update `twincat-status.md`, push
+
+## Implementation Notes
+
+- `rule_use_declared_symbolic_var.rs` previously implemented `Visitor`
+  directly on the generic `ScopedTable<'_, Id, DummyNode>` type, which
+  can't carry the new `inherited_fields` map (can't add a field to a
+  generic type defined in another module). Introduced a thin
+  `SymbolScopeChecker` wrapper struct (`table` + `inherited_fields`) and
+  moved the `Visitor` impl onto it instead, delegating every `ScopedTable`
+  call through `self.table`.
+- `collect_inherited_fields()` needed two passes internally, not one: a
+  top-level function that returns *only* the inherited set (excluding a
+  function block's own fields, since those belong to the caller to
+  insert separately for shadowing), backed by a memoized recursive helper
+  that computes *own-plus-inherited* per name (needed internally so a
+  shared ancestor reached through multiple descendants isn't
+  recomputed). Conflating the two initially caused every "inherited
+  fields" test to also include the FB's own fields — caught immediately
+  by the unit tests, not downstream.
+- Verified end-to-end via the CLI: the original repro
+  (`FB_Derived EXTENDS FB_Base` with `bRunning := bEnabled;` referencing
+  the base's field) now parses and analyzes clean under
+  `--dialect=codesys`, and a plain `IMPLEMENTS`-only function block still
+  correctly produces `P9004`.
+- Full workspace test suite (652+ tests) passed on the first run after
+  wiring all four consumers — no unrelated regressions surfaced.
