@@ -20,6 +20,7 @@ mod rule_bit_access_range;
 mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;
 mod rule_enumeration_values_unique;
+mod rule_extends_field_duplicated;
 mod rule_function_block_invocation;
 mod rule_function_call_declared;
 mod rule_function_call_type_check;
