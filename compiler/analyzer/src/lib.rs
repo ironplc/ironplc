@@ -16,6 +16,7 @@ fn init_test_logger() {
 mod function_environment;
 pub mod intermediate_type;
 mod result;
+mod rule_abstract_not_instantiated;
 mod rule_bit_access_range;
 mod rule_decl_struct_element_unique_names;
 mod rule_decl_subrange_limits;
