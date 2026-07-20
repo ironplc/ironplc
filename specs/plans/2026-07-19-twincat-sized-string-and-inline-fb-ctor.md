@@ -25,8 +25,9 @@ END_FUNCTION_BLOCK
 
 ## Verification against real files
 
-Checked `/home/husser/code/brotlib` directly before designing anything
-(per the standing "verify before assuming" habit):
+Checked a private local checkout of a real TwinCAT codebase directly
+before designing anything (per the standing "verify before assuming"
+habit):
 
 - `STRING(n)`/`WSTRING(n)`: 51 occurrences across 11 files (`STRING(255)`
   x45, `STRING(1)` x5, `STRING(511)` x1), all in `VAR` declarations
@@ -35,7 +36,7 @@ Checked `/home/husser/code/brotlib` directly before designing anything
   type (`FUNCTION NCError_TO_STRING : STRING(255)`).
 - Inline FB-constructor-call: 24 occurrences (`MAIN.TcPOU`,
   `FB_CoverControl.TcPOU`, `FB_PendantControl.TcPOU`,
-  `FB_DomeControl.TcPOU`, `MONETRoof/MAIN.TcPOU`), using **both** named
+  `FB_DomeControl.TcPOU`, `TestProject3/MAIN.TcPOU`), using **both** named
   args (`FB_CoverControl(comm := comm)`) **and** positional args
   (`FB_CoverIdleState(THIS)`) — confirming this needs the same
   positional-or-named parameter grammar as an ordinary FB call
@@ -178,7 +179,7 @@ match) on `Type(args)` and correctly falls through to `fb_name_decl()`.
   identically); `FUNCTION ... : STRING(255)` return type parses.
   Regression: bracket form still parses unchanged.
 - Parser tests: `name : FB_Type(a, b := c);` parses with `call_params`
-  populated (mixed positional/named, matching real brotlib usage);
+  populated (mixed positional/named, matching real test-corpus usage);
   `name : FB_Type := (member := value);` still parses unchanged
   (regression, `init` populated, `call_params: None`); `name : FB_Type;`
   (no initializer at all) still parses unchanged (regression, both empty/
