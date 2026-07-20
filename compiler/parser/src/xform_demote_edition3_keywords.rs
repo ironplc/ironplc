@@ -11,10 +11,11 @@ use crate::{
 /// * **Long-time-type keywords** (`LTIME`, `LDATE`, `LTOD`, `LDT`) —
 ///   demoted when Edition 3 mode is disabled (`!allow_iec_61131_3_2013`).
 ///
-/// * **Reference keywords** (`REF_TO`, `REF`, `NULL`) — demoted when
-///   *both* Edition 3 mode *and* `allow_ref_to` are disabled.  This lets
-///   the RuSTy dialect enable `REF_TO` syntax while keeping `LDT` etc.
-///   available as identifiers.
+/// * **Reference keywords** (`REF_TO`, `REF`, `NULL`, plus the
+///   CODESYS/TwinCAT alternate spellings `REFERENCE`, `POINTER`) —
+///   demoted when *both* Edition 3 mode *and* `allow_ref_to` are
+///   disabled.  This lets the RuSTy dialect enable `REF_TO` syntax while
+///   keeping `LDT` etc. available as identifiers.
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     let demote_time_types = !options.allow_iec_61131_3_2013;
     let demote_ref = !options.allow_iec_61131_3_2013 && !options.allow_ref_to;
@@ -30,7 +31,13 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
             {
                 tok.token_type = TokenType::Identifier;
             }
-            TokenType::RefTo | TokenType::Ref | TokenType::Null if demote_ref => {
+            TokenType::RefTo
+            | TokenType::Ref
+            | TokenType::Null
+            | TokenType::Reference
+            | TokenType::Pointer
+                if demote_ref =>
+            {
                 tok.token_type = TokenType::Identifier;
             }
             _ => {}
@@ -224,6 +231,36 @@ mod tests {
         let mut tokens = vec![make_token(TokenType::Null, "NULL")];
         apply(&mut tokens, &opts_ref_to_only());
         assert_eq!(tokens[0].token_type, TokenType::Null);
+    }
+
+    #[test]
+    fn apply_when_reference_and_not_edition3_then_demoted_to_identifier() {
+        let mut tokens = vec![make_token(TokenType::Reference, "REFERENCE")];
+        apply(&mut tokens, &opts_no_edition3());
+        assert_eq!(tokens[0].token_type, TokenType::Identifier);
+        assert_eq!(tokens[0].text, "REFERENCE");
+    }
+
+    #[test]
+    fn apply_when_reference_and_allow_ref_to_then_stays_keyword() {
+        let mut tokens = vec![make_token(TokenType::Reference, "REFERENCE")];
+        apply(&mut tokens, &opts_ref_to_only());
+        assert_eq!(tokens[0].token_type, TokenType::Reference);
+    }
+
+    #[test]
+    fn apply_when_pointer_and_not_edition3_then_demoted_to_identifier() {
+        let mut tokens = vec![make_token(TokenType::Pointer, "POINTER")];
+        apply(&mut tokens, &opts_no_edition3());
+        assert_eq!(tokens[0].token_type, TokenType::Identifier);
+        assert_eq!(tokens[0].text, "POINTER");
+    }
+
+    #[test]
+    fn apply_when_pointer_and_allow_ref_to_then_stays_keyword() {
+        let mut tokens = vec![make_token(TokenType::Pointer, "POINTER")];
+        apply(&mut tokens, &opts_ref_to_only());
+        assert_eq!(tokens[0].token_type, TokenType::Pointer);
     }
 
     // --- Non-edition3 tokens: always unchanged ---

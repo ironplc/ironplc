@@ -133,6 +133,15 @@ features — they never disable features that a dialect already includes.
    Edition 2 keyword handling for the rest of your code. See
    :doc:`/reference/language/data-types/derived/reference-types`.
 
+   Also accepts ``REFERENCE TO`` and ``POINTER TO`` as alternate
+   CODESYS/TwinCAT spellings of ``REF_TO`` under this same flag —
+   ``REFERENCE TO`` is the genuine IEC 61131-3:2013 reference type
+   (auto-dereferencing, no ``^`` needed at the access site) and
+   ``POINTER TO`` is TwinCAT's pre-Edition-3 pointer spelling (``^``-deref,
+   identical behavior to ``REF_TO``). IronPLC does not currently enforce
+   a semantic distinction between the three at the access site — all
+   three produce the same reference-type representation.
+
 ``--allow-pointer-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``

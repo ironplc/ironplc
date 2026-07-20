@@ -1414,6 +1414,104 @@ END_PROGRAM",
     }
 
     #[test]
+    fn parse_when_reference_to_var_decl_then_same_shape_as_ref_to() {
+        // CODESYS/TwinCAT alternate spelling of REF_TO.
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    x : REFERENCE TO INT;
+END_VAR
+END_PROGRAM",
+        );
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let ref_init = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Reference
+        );
+        assert_eq!(ref_init.target.type_name().unwrap().to_string(), "INT");
+    }
+
+    #[test]
+    fn parse_when_pointer_to_var_decl_then_same_shape_as_ref_to() {
+        // CODESYS/TwinCAT alternate spelling of REF_TO.
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    x : POINTER TO INT;
+END_VAR
+END_PROGRAM",
+        );
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let ref_init = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Reference
+        );
+        assert_eq!(ref_init.target.type_name().unwrap().to_string(), "INT");
+    }
+
+    #[test]
+    fn parse_when_reference_to_type_decl_then_ok() {
+        let lib = parse_text_edition3("TYPE IntRef : REFERENCE TO INT; END_TYPE");
+        let dt = cast!(&lib.elements[0], LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(dt, DataTypeDeclarationKind::Reference);
+        assert_eq!(decl.target.type_name().unwrap().to_string(), "INT");
+    }
+
+    #[test]
+    fn parse_when_pointer_to_type_decl_then_ok() {
+        let lib = parse_text_edition3("TYPE IntRef : POINTER TO INT; END_TYPE");
+        let dt = cast!(&lib.elements[0], LibraryElementKind::DataTypeDeclaration);
+        let decl = cast!(dt, DataTypeDeclarationKind::Reference);
+        assert_eq!(decl.target.type_name().unwrap().to_string(), "INT");
+    }
+
+    #[test]
+    fn parse_when_reference_to_array_var_decl_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    x : REFERENCE TO ARRAY[1..10] OF INT;
+END_VAR
+END_PROGRAM",
+        );
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let ref_init = cast!(
+            &prog.variables[0].initializer,
+            InitialValueAssignmentKind::Reference
+        );
+        assert!(matches!(ref_init.target, ReferenceTarget::Array(_)));
+    }
+
+    #[test]
+    fn parse_when_pointer_to_array_element_type_then_ok() {
+        let lib = parse_text_edition3(
+            "PROGRAM main
+VAR
+    x : ARRAY[1..3] OF POINTER TO INT;
+END_VAR
+END_PROGRAM",
+        );
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        assert_eq!(prog.variables.len(), 1);
+    }
+
+    #[test]
+    fn parse_when_reference_to_and_ref_to_disabled_then_parses_as_identifiers() {
+        // Regression: without allow_ref_to (or Edition 3), REFERENCE and
+        // POINTER demote to plain identifiers, same as REF_TO/REF/NULL
+        // already do -- so ordinary code using these as variable/type
+        // names elsewhere is unaffected.
+        let source = "PROGRAM main
+VAR
+    REFERENCE : INT;
+    POINTER : INT;
+END_VAR
+END_PROGRAM";
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+    }
+
+    #[test]
     fn parse_when_ref_operator_then_ok() {
         let lib = parse_text_edition3(
             "PROGRAM main

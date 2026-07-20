@@ -242,6 +242,65 @@ END_PROGRAM",
     }
 
     #[test]
+    fn write_to_string_when_reference_to_var_decl_then_normalizes_to_ref_to() {
+        // CODESYS/TwinCAT alternate spellings always normalize to REF_TO
+        // on render -- there's no delimiter/spelling marker stored in the
+        // DSL, matching the STRING(n)-parentheses precedent.
+        let rendered = parse_and_render_edition3(
+            "PROGRAM main
+VAR
+    x : REFERENCE TO INT;
+END_VAR
+END_PROGRAM",
+        );
+        assert!(
+            rendered.contains("REF_TO INT"),
+            "Expected REF_TO INT in output, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn write_to_string_when_pointer_to_var_decl_then_normalizes_to_ref_to() {
+        let rendered = parse_and_render_edition3(
+            "PROGRAM main
+VAR
+    x : POINTER TO INT;
+END_VAR
+END_PROGRAM",
+        );
+        assert!(
+            rendered.contains("REF_TO INT"),
+            "Expected REF_TO INT in output, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn write_to_string_when_reference_to_fb_type_then_round_trips() {
+        let source = "
+FUNCTION_BLOCK FB_Comm
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    fbCovers : REFERENCE TO FB_Comm;
+END_VAR
+END_FUNCTION_BLOCK
+";
+        let options = CompilerOptions {
+            allow_ref_to: true,
+            ..CompilerOptions::default()
+        };
+        let library_original = parse_program(source, &FileId::default(), &options).unwrap();
+        let rendered = write_to_string(&library_original).unwrap();
+
+        assert!(rendered.contains("REF_TO FB_Comm"));
+
+        let library_rendered = parse_program(&rendered, &FileId::default(), &options)
+            .expect("rendered output must parse");
+        assert_eq!(library_original, library_rendered);
+    }
+
+    #[test]
     fn write_to_string_when_ref_to_var_decl_with_null_init_then_preserves() {
         let rendered = parse_and_render_edition3(
             "PROGRAM main
