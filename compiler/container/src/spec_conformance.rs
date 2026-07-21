@@ -35,18 +35,18 @@ fn all_spec_requirements_have_tests() {
 }
 
 // ---------------------------------------------------------------------------
-// Container Format — File Header (REQ-CF-001 through REQ-CF-007)
+// Container Format — File Header (REQ-CF-container-001 through REQ-CF-container-007)
 // ---------------------------------------------------------------------------
 
-/// REQ-CF-001: The file header is exactly 256 bytes.
-#[spec_test(REQ_CF_001)]
+/// REQ-CF-container-001: The file header is exactly 256 bytes.
+#[spec_test(REQ_CF_container_001)]
 fn container_spec_req_cf_001_header_size_is_256_bytes() {
     assert_eq!(core::mem::size_of::<FileHeader>(), HEADER_SIZE);
     assert_eq!(HEADER_SIZE, 256);
 }
 
-/// REQ-CF-002: Magic number is 0x49504C43 ("IPLC" in ASCII).
-#[spec_test(REQ_CF_002)]
+/// REQ-CF-container-002: Magic number is 0x49504C43 ("IPLC" in ASCII).
+#[spec_test(REQ_CF_container_002)]
 fn container_spec_req_cf_002_magic_is_iplc() {
     assert_eq!(MAGIC, 0x49504C43);
     // On disk (little-endian): bytes are [0x43, 0x4C, 0x50, 0x49].
@@ -55,14 +55,14 @@ fn container_spec_req_cf_002_magic_is_iplc() {
     assert_eq!(bytes, [0x43, 0x4C, 0x50, 0x49]);
 }
 
-/// REQ-CF-003: Format version is 3.
-#[spec_test(REQ_CF_003)]
+/// REQ-CF-container-003: Format version is 3.
+#[spec_test(REQ_CF_container_003)]
 fn container_spec_req_cf_003_format_version_is_3() {
     assert_eq!(FORMAT_VERSION, 3);
 }
 
-/// REQ-CF-004: All multi-byte values in the header are little-endian.
-#[spec_test(REQ_CF_004)]
+/// REQ-CF-container-004: All multi-byte values in the header are little-endian.
+#[spec_test(REQ_CF_container_004)]
 fn container_spec_req_cf_004_header_uses_little_endian() {
     let header = FileHeader::default();
     let mut buf = Vec::new();
@@ -75,9 +75,9 @@ fn container_spec_req_cf_004_header_uses_little_endian() {
     assert_eq!(&buf[4..6], &3u16.to_le_bytes());
 }
 
-/// REQ-CF-005: Header field offsets match the spec table layout, totaling
+/// REQ-CF-container-005: Header field offsets match the spec table layout, totaling
 /// 256 bytes with reserved at 218-255.
-#[spec_test(REQ_CF_005)]
+#[spec_test(REQ_CF_container_005)]
 fn container_spec_req_cf_005_header_field_offsets() {
     // Write a header with distinctive values and verify byte offsets
     let header = FileHeader {
@@ -104,8 +104,8 @@ fn container_spec_req_cf_005_header_field_offsets() {
     assert_eq!(&buf[40..72], &[0u8; 32]);
 }
 
-/// REQ-CF-006: Reserved bytes are 38 bytes at offsets 218-255.
-#[spec_test(REQ_CF_006)]
+/// REQ-CF-container-006: Reserved bytes are 38 bytes at offsets 218-255.
+#[spec_test(REQ_CF_container_006)]
 fn container_spec_req_cf_006_reserved_is_38_bytes_at_offset_218() {
     let header = FileHeader::default();
     assert_eq!(header.reserved.len(), 38);
@@ -119,8 +119,8 @@ fn container_spec_req_cf_006_reserved_is_38_bytes_at_offset_218() {
     assert_eq!(buf.len(), 256);
 }
 
-/// REQ-CF-007: Flags bit 0 is FLAG_HAS_SYSTEM_UPTIME (0x01).
-#[spec_test(REQ_CF_007)]
+/// REQ-CF-container-007: Flags bit 0 is FLAG_HAS_SYSTEM_UPTIME (0x01).
+#[spec_test(REQ_CF_container_007)]
 fn container_spec_req_cf_007_flags_bit0_is_system_uptime() {
     assert_eq!(FLAG_HAS_SYSTEM_UPTIME, 0x01);
 
@@ -135,11 +135,11 @@ fn container_spec_req_cf_007_flags_bit0_is_system_uptime() {
 }
 
 // ---------------------------------------------------------------------------
-// Container Format — Type Section (REQ-CF-008 through REQ-CF-009)
+// Container Format — Type Section (REQ-CF-container-008 through REQ-CF-container-009)
 // ---------------------------------------------------------------------------
 
-/// REQ-CF-008: Each FieldEntry is 4 bytes.
-#[spec_test(REQ_CF_008)]
+/// REQ-CF-container-008: Each FieldEntry is 4 bytes.
+#[spec_test(REQ_CF_container_008)]
 fn container_spec_req_cf_008_field_entry_is_4_bytes() {
     let section = TypeSection {
         fb_types: vec![FbTypeDescriptor {
@@ -159,8 +159,8 @@ fn container_spec_req_cf_008_field_entry_is_4_bytes() {
     assert_eq!(buf.len(), 14);
 }
 
-/// REQ-CF-009: FieldType/var_type encoding values 0 through 10.
-#[spec_test(REQ_CF_009)]
+/// REQ-CF-container-009: FieldType/var_type encoding values 0 through 10.
+#[spec_test(REQ_CF_container_009)]
 fn container_spec_req_cf_009_field_type_encoding_values() {
     assert_eq!(FieldType::I32 as u8, 0);
     assert_eq!(FieldType::U32 as u8, 1);
