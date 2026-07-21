@@ -164,6 +164,15 @@ features — they never disable features that a dialect already includes.
    ``--dialect=rusty``. Byte/word/dword/lword partial access (``.%Bn``,
    ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
 
+``--allow-pragmas``
+   Allow curly-brace pragmas such as ``{attribute 'qualified_only'}`` and
+   ``{attribute 'strict'}``. These are CODESYS-core syntax (documented by
+   CODESYS itself, and inherited by any IDE built on the CODESYS V3 runtime,
+   including Beckhoff TwinCAT and Schneider Electric Machine Expert). A
+   pragma is parsed and discarded like a comment — its contents are not yet
+   interpreted. Pragmas do not nest; an unclosed ``{`` still produces a parse
+   error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell

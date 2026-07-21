@@ -199,7 +199,8 @@ parser! {
     rule whitespace() -> () = tok(TokenType::Whitespace) {} / tok(TokenType::Newline) {}
 
     rule comment() -> () = tok(TokenType::Comment) ()
-    rule _ = (whitespace() / comment())*
+    rule pragma() -> () = tok(TokenType::Pragma) ()
+    rule _ = (whitespace() / comment() / pragma())*
 
     // Lists of separated items with required ending separator
     rule periodsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) _ period() {v}
