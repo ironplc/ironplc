@@ -2,7 +2,7 @@
 //!
 //! Looks up the human-readable explanation for a compiler problem code
 //! (e.g. `P0001`). The RST documentation is embedded at build time via
-//! `include_str!` (REQ-TOL-072) — the tool handler performs no filesystem I/O.
+//! `include_str!` (REQ-TOL-mcp-072) — the tool handler performs no filesystem I/O.
 
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};

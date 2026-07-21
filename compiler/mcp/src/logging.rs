@@ -1,6 +1,6 @@
 //! Logger configuration for the MCP server.
 //!
-//! Logs go to stderr because stdout is the JSON-RPC channel (REQ-ARC-043).
+//! Logs go to stderr because stdout is the JSON-RPC channel (REQ-ARC-mcp-043).
 
 use env_logger::Builder;
 use log::LevelFilter;
