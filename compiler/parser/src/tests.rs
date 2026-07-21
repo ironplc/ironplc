@@ -23,7 +23,7 @@ mod test {
     use rstest::rstest;
     use time::Duration;
 
-    use crate::options::CompilerOptions;
+    use crate::options::{CompilerOptions, Dialect};
     use crate::parse_program;
 
     pub fn parse_resource(name: &'static str) -> Result<Library, Diagnostic> {
@@ -196,7 +196,7 @@ mod test {
 
         let err = res.unwrap_err();
         assert_eq!("Syntax error".to_owned(), err.description());
-        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | '\\n' (new line) | (identifier). Found text '&' that matched token 'AND' | '&'".to_owned(), err.primary.message);
+        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | '\\n' (new line) | '{ ... }' (pragma) | (identifier). Found text '&' that matched token 'AND' | '&'".to_owned(), err.primary.message);
     }
 
     #[test]
@@ -209,7 +209,7 @@ mod test {
 
         let err = res.unwrap_err();
         assert_eq!("Syntax error".to_owned(), err.description());
-        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | 'CONFIGURATION' | 'FUNCTION' | 'FUNCTION_BLOCK' | 'PROGRAM' | 'TYPE' | 'VAR_GLOBAL' | '\\n' (new line). Found text 'ACTION' that matched token 'ACTION'".to_owned(), err.primary.message);
+        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | 'CONFIGURATION' | 'FUNCTION' | 'FUNCTION_BLOCK' | 'PROGRAM' | 'TYPE' | 'VAR_GLOBAL' | '\\n' (new line) | '{ ... }' (pragma). Found text 'ACTION' that matched token 'ACTION'".to_owned(), err.primary.message);
     }
 
     #[test]
@@ -2370,5 +2370,75 @@ END_PROGRAM
             "parse failed for {literal}: {:?}",
             result.err()
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // TwinCAT/Siemens `{ ... }` pragma skipping.
+    // See specs/plans/2026-07-18-twincat-pragma-skipping.md.
+    // ---------------------------------------------------------------------
+
+    fn enum_with_pragma_header() -> String {
+        "
+        {attribute 'qualified_only'}
+        {attribute 'strict'}
+        TYPE E_Color :
+            (Red, Green, Blue);
+        END_TYPE"
+            .to_owned()
+    }
+
+    #[test]
+    fn parse_program_when_pragma_header_and_codesys_dialect_then_ok() {
+        let source = enum_with_pragma_header();
+        let options = CompilerOptions::from_dialect(Dialect::Codesys);
+
+        let result = parse_program(&source, &FileId::default(), &options);
+
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_program_when_pragma_header_and_default_dialect_then_err() {
+        let source = enum_with_pragma_header();
+
+        let result = parse_program(&source, &FileId::default(), &CompilerOptions::default());
+
+        assert!(
+            result.is_err(),
+            "pragmas should still be unrecognized syntax without allow_pragmas"
+        );
+    }
+
+    #[test]
+    fn parse_program_when_pragma_between_declarations_then_ok() {
+        let source = "
+        TYPE E_Color :
+            (Red, Green, Blue);
+        END_TYPE
+        {attribute 'qualified_only'}
+        FUNCTION_BLOCK FB_Example
+        VAR
+            x : INT;
+        END_VAR
+        END_FUNCTION_BLOCK";
+        let options = CompilerOptions::from_dialect(Dialect::Codesys);
+
+        let result = parse_program(source, &FileId::default(), &options);
+
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_program_when_unclosed_pragma_and_codesys_dialect_then_err() {
+        let source = "
+        {attribute 'qualified_only'
+        TYPE E_Color :
+            (Red, Green, Blue);
+        END_TYPE";
+        let options = CompilerOptions::from_dialect(Dialect::Codesys);
+
+        let result = parse_program(source, &FileId::default(), &options);
+
+        assert!(result.is_err());
     }
 }

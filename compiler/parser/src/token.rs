@@ -86,6 +86,10 @@ pub enum TokenType {
     LeftBrace,
     #[token("}")]
     RightBrace,
+    // Not produced directly by the lexer. Populated only by
+    // `xform_collapse_pragmas` when the `allow_pragmas` dialect flag is set,
+    // by collapsing a `LeftBrace ..= RightBrace` token run into one token.
+    Pragma,
     #[token("[")]
     LeftBracket,
     #[token("]")]
@@ -474,6 +478,7 @@ impl TokenType {
             TokenType::RightParen => "')'",
             TokenType::LeftBrace => "'{'",
             TokenType::RightBrace => "'}'",
+            TokenType::Pragma => "'{ ... }' (pragma)",
             TokenType::LeftBracket => "'['",
             TokenType::RightBracket => "']'",
             TokenType::Comma => "','",
@@ -687,6 +692,7 @@ mod tests {
             (RightParen, ")"),
             (LeftBrace, "{"),
             (RightBrace, "}"),
+            (Pragma, "{attribute 'qualified_only'}"),
             (LeftBracket, "["),
             (RightBracket, "]"),
             (Comma, ","),

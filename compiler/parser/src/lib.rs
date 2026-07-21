@@ -12,6 +12,7 @@ mod rule_token_no_c_style_comment;
 mod rule_token_no_partial_access_syntax;
 mod vars;
 mod xform_assign_file_id;
+mod xform_collapse_pragmas;
 mod xform_demote_edition3_keywords;
 mod xform_demote_time_keyword;
 mod xform_tokens;
@@ -50,6 +51,7 @@ pub fn tokenize_program(
     let source = preprocess(source);
     let (tokens, mut errors) = tokenize(&source, file_id, line_offset, col_offset);
 
+    let tokens = xform_collapse_pragmas::apply(tokens, options);
     let mut tokens = insert_keyword_statement_terminators(tokens, file_id, options);
     xform_demote_edition3_keywords::apply(&mut tokens, options);
     xform_demote_time_keyword::apply(&mut tokens, options);
