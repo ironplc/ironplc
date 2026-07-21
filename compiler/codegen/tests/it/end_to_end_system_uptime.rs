@@ -68,12 +68,13 @@ END_PROGRAM
 
         // Index 0: __SYSTEM_UP_TIME (i32 ms)
         // Index 1: __SYSTEM_UP_LTIME (i64 ms)
-        // Index 2: user_var (initial value 42)
-        // Index 3: result (should be 42)
+        // Index 2: PI (implicit math constant, Rusty dialect)
+        // Index 3: user_var (initial value 42)
+        // Index 4: result (should be 42)
         assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 5000);
         assert_eq!(vm.read_variable_i64(VarIndex::new(1)).unwrap(), 5000);
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 42);
         assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 42);
+        assert_eq!(vm.read_variable(VarIndex::new(4)).unwrap(), 42);
     });
 }
 
@@ -129,9 +130,9 @@ END_PROGRAM
 ";
     parse_and_run_rounds(source, &rusty_options(), |vm| {
         vm.run_round(3_000_000).unwrap();
-        // Index 0: __SYSTEM_UP_TIME, Index 1: __SYSTEM_UP_LTIME, Index 2: t
+        // Index 0: __SYSTEM_UP_TIME, Index 1: __SYSTEM_UP_LTIME, Index 2: PI, Index 3: t
         assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 3000);
-        assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 3000);
+        assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 3000);
     });
 }
 

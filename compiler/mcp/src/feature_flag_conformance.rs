@@ -222,6 +222,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
     },
+    // With the flag off, PI is not a declared symbol, so the statement-context
+    // reference fails to resolve. With the flag on, the compiler injects PI
+    // as an implicit LREAL global constant and the reference resolves.
+    FlagFixture {
+        key: "allow_math_constants",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_Example\nVAR\nd2r : LREAL;\nEND_VAR\nd2r := PI/180.0;\nEND_FUNCTION_BLOCK",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.

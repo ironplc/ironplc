@@ -262,12 +262,13 @@ PROGRAM main
   result := phys.T0 + phys.T1;
 END_PROGRAM
 ";
-    // Rusty dialect prepends 2 system uptime globals, so:
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: phys (global struct), var 3: result (program local)
+    // Rusty dialect prepends 2 system uptime globals; PI is appended after
+    // the source's own top-level VAR_GLOBAL, so:
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME, var 2: phys
+    // (global struct), var 3: PI, var 4: result (program local)
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
 
-    assert_eq!(bufs.vars[3].as_i32(), 300);
+    assert_eq!(bufs.vars[4].as_i32(), 300);
 }
 
 #[test]
@@ -298,11 +299,11 @@ PROGRAM main
   result := GET_T0(dummy := 0);
 END_PROGRAM
 ";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: phys (global struct), var 3: result (program local)
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME, var 2: phys
+    // (global struct), var 3: PI, var 4: result (program local)
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
 
-    assert_eq!(bufs.vars[3].as_i32(), 273);
+    assert_eq!(bufs.vars[4].as_i32(), 273);
 }
 
 #[test]
@@ -319,12 +320,13 @@ PROGRAM main
   result := counter;
 END_PROGRAM
 ";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: counter (global), var 3: result (program local)
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME, var 2: counter
+    // (user's own top-level global, parsed before PI is appended), var 3: PI,
+    // var 4: result (program local)
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
 
     assert_eq!(bufs.vars[2].as_i32(), 42);
-    assert_eq!(bufs.vars[3].as_i32(), 42);
+    assert_eq!(bufs.vars[4].as_i32(), 42);
 }
 
 #[test]
@@ -345,12 +347,13 @@ PROGRAM main
   result := read_counter();
 END_PROGRAM
 ";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: counter (global), var 3: result (program local)
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME, var 2: counter
+    // (user's own top-level global, parsed before PI is appended), var 3: PI,
+    // var 4: result (program local)
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
 
     assert_eq!(bufs.vars[2].as_i32(), 42);
-    assert_eq!(bufs.vars[3].as_i32(), 42);
+    assert_eq!(bufs.vars[4].as_i32(), 42);
 }
 
 #[test]
@@ -371,12 +374,13 @@ PROGRAM main
   result := use_const();
 END_PROGRAM
 ";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: MY_CONST (global constant), var 3: result (program local)
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME, var 2: MY_CONST
+    // (user's own top-level global, parsed before PI is appended), var 3: PI,
+    // var 4: result (program local)
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
 
     assert_eq!(bufs.vars[2].as_i32(), 100);
-    assert_eq!(bufs.vars[3].as_i32(), 100);
+    assert_eq!(bufs.vars[4].as_i32(), 100);
 }
 
 #[test]
@@ -401,8 +405,9 @@ PROGRAM main
   s(value := 10);
 END_PROGRAM
 ";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: scale_factor (global), var 3: fb_result (global), var 4: s
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME, var 2: scale_factor,
+    // var 3: fb_result (user's own top-level globals, parsed before PI is
+    // appended), var 4: PI, var 5: s
     // After FB call: fb_result = 10 * 5 = 50
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
 
@@ -442,10 +447,10 @@ END_VAR
     result := USE_GLOBAL_STRUCT(x := 42);
 END_PROGRAM
 ";
-    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME,
-    // var 2: setup (global struct), var 3: result (program local)
+    // var 0: __SYSTEM_UP_TIME, var 1: __SYSTEM_UP_LTIME, var 2: setup
+    // (global struct), var 3: PI, var 4: result (program local)
     // setup.FLAG is set to TRUE, so the IF branch returns x=42
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
 
-    assert_eq!(bufs.vars[3].as_i32(), 42);
+    assert_eq!(bufs.vars[4].as_i32(), 42);
 }

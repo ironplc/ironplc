@@ -342,6 +342,15 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    :doc:`P9004 </reference/compiler/problems/P9004>` rather than a parse
    error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
+``--allow-math-constants``
+   Register implicit math constants (currently just ``PI``) as built-in
+   ``LREAL`` globals, matching CODESYS/TwinCAT behavior where these names
+   are available without declaration. Only resolves in *statement* context
+   today (e.g. ``x := PI/180.0;``); using ``PI`` as a ``VAR`` initializer
+   (``d2r : LREAL := PI/180.0;``) is not yet supported, since ``VAR``
+   initializers only accept a literal constant, not an expression. Enabled
+   by ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell

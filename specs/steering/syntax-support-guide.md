@@ -202,6 +202,7 @@ table is a convenience mirror, so consult the macro if the two ever disagree.
 | `allow_bit_string_case_labels` | `--allow-bit-string-case-labels` | Hex/binary/octal bit-string literals (`16#D012`, `2#1010`) as `CASE` labels (TwinCAT/CODESYS) |
 | `allow_paren_string_length` | `--allow-paren-string-length` | `STRING(n)`/`WSTRING(n)` parenthesis length delimiter in addition to the standard `STRING[n]` brackets (gated by P4042; matched delimiters required) |
 | `allow_oop_extensions` | `--allow-oop-extensions` | CODESYS/TwinCAT OOP: `EXTENDS`/`IMPLEMENTS` on `FUNCTION_BLOCK`, `INTERFACE` declarations |
+| `allow_math_constants` | `--allow-math-constants` | Implicit math constants (`PI`) as built-in `LREAL` globals; statement context only, not yet usable as a `VAR` initializer |
 
 ### Dialects
 

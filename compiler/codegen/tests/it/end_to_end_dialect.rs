@@ -21,8 +21,8 @@ END_VAR
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
-    // var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, LDT=2, result=3
-    assert_eq!(bufs.vars[3].as_i32(), 42);
+    // var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, PI=2, LDT=3, result=4
+    assert_eq!(bufs.vars[4].as_i32(), 42);
 }
 
 #[test]
@@ -40,8 +40,8 @@ END_VAR
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
-    // var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, counter=2, r=3, result=4
-    assert_eq!(bufs.vars[4].as_i32(), 99);
+    // var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, PI=2, counter=3, r=4, result=5
+    assert_eq!(bufs.vars[5].as_i32(), 99);
 }
 
 #[test]
@@ -58,8 +58,8 @@ END_VAR
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
-    // var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, LDT=2, r=3, result=4
-    assert_eq!(bufs.vars[4].as_i32(), 42);
+    // var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, PI=2, LDT=3, r=4, result=5
+    assert_eq!(bufs.vars[5].as_i32(), 42);
 }
 
 #[test]
@@ -98,9 +98,9 @@ END_VAR
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
-    // CODESYS does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
-    // user variables start at index 0: LDT=0, result=1.
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    // CODESYS does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, but does
+    // pre-bind PI: PI=0, LDT=1, result=2.
+    assert_eq!(bufs.vars[2].as_i32(), 42);
 }
 
 #[test]
@@ -117,8 +117,8 @@ END_VAR
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
-    // var layout: counter=0, r=1, result=2
-    assert_eq!(bufs.vars[2].as_i32(), 99);
+    // var layout: PI=0, counter=1, r=2, result=3
+    assert_eq!(bufs.vars[3].as_i32(), 99);
 }
 
 #[test]
@@ -135,8 +135,8 @@ END_VAR
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
-    // var layout: x=0, result=1
-    assert_eq!(bufs.vars[1].as_i32(), 4);
+    // var layout: PI=0, x=1, result=2
+    assert_eq!(bufs.vars[2].as_i32(), 4);
 }
 
 #[test]
