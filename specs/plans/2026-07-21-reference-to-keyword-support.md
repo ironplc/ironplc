@@ -103,38 +103,39 @@ All new work is confined to the front end plus one analyzer transform:
 
 ### Spec conformance & requirements traceability
 
-Every testable claim in `reference-to-twincat.md` gets a `**REQ-RTO-NNN**`
+Every testable claim in `reference-to-twincat.md` gets a `**REQ-RTO-<slug>-NNN**`
 marker, and every marker has a spec-linked conformance test. `RTO` is an unused
-prefix (existing prefixes: CF, IS, EN, PAB, STL, TOL, ARC, DST, SR, TL, VC).
+area prefix (existing prefixes: CF, IS, EN, PAB, STL, TOL, ARC, DST, SR, TL, VC).
 
-**Enforcement approach — formal `#[spec_test]`.** Every REQ-RTO gets a true
-`#[spec_test(REQ_RTO_NNN)]` conformance test, so the build fails if a requirement
-is removed from the spec (compile error) or added without a test (the
-`all_spec_requirements_have_tests` meta-test).
+**Enforcement approach — formal, cross-crate `#[spec_test]`.** The cross-crate
+mechanism landed in [#1211](https://github.com/ironplc/ironplc/pull/1211)
+(mandatory crate slug in requirement IDs;
+[ADR-0037](../adrs/0037-mandatory-crate-slug-in-requirement-ids.md)), which
+resolves the gap tracked by #1210. This feature uses it directly — no workarounds.
 
-This feature's tests span the `parser`, `analyzer`, `codegen`, and `plc2plc`
-crates. Enforcing that from a **single** design doc requires cross-crate
-`#[spec_test]` aggregation, which today's per-crate
-`ironplc_spec_requirements_gen::generate()` does not provide — that gap is
-[ironplc/ironplc#1210](https://github.com/ironplc/ironplc/issues/1210).
+How it works for this feature:
 
-**Sequencing: this feature is scheduled after #1210 lands.** Once the cross-crate
-mechanism is in, the plan is straightforward and needs no workarounds:
+- **Slugged IDs.** Each requirement's ID carries the owning crate's slug:
+  `REQ-RTO-<slug>-NNN`, where the slug is `CARGO_PKG_NAME` minus the `ironplc-`
+  prefix (`parser`, `analyzer`, `codegen`, `plc2plc`). The `#[spec_test]`
+  attribute uses the underscore form, e.g. `#[spec_test(REQ_RTO_codegen_400)]`.
+- **Single design doc.** One `reference-to-twincat.md` holds **all** REQ-RTO
+  markers (0xx–6xx). Requirements are grouped by owning crate via their slug.
+- **Each participating crate lists the doc.** `parser`, `analyzer`, `codegen`,
+  and `plc2plc` each add `reference-to-twincat.md` to their
+  `spec_requirements_gen::generate([...])` call in `build.rs`. Only `codegen`
+  has the spec-conformance harness today, so `parser`, `analyzer`, and `plc2plc`
+  each need a one-time bootstrap (`build.rs` + the `ironplc-spec-requirements-gen`
+  build-dep and `spec_test_macro` dep + `mod spec_requirements { include!(…) }`
+  in `lib.rs` + a `spec_conformance.rs` with the meta-test). A crate is
+  accountable only for the requirements whose slug matches its own; each crate's
+  `all_spec_requirements_have_tests` meta-test enforces its subset independently.
 
-- A single `reference-to-twincat.md` holds **all** REQ-RTO markers
-  (0xx–6xx).
-- Each requirement's `#[spec_test(REQ_RTO_NNN)]` lives in its **natural crate**
-  (options/lexer/parser in `parser`, resolution/rules in `analyzer`, execution
-  in `codegen`, rendering in `plc2plc`).
-- The doc is registered once with the cross-crate mechanism from #1210; the
-  meta-test enforces completeness across all of those crates.
-
-(No two-doc split and no `plc2plc` spec-harness bootstrap — those were the
-interim workaround for the per-crate limitation and are obviated by #1210.)
-
-Test names use the `{area}_spec_req_rto_{nnn}_{description}` convention; the
-"Crate" column in the traceability tables below is where each `#[spec_test]`
-lives — its natural crate.
+Test **function** names keep the `{area}_spec_req_rto_{nnn}_{description}`
+convention (no slug in the fn name, matching the migrated `REQ-EN-codegen-*`
+tests); the slug lives in the requirement ID / `#[spec_test]` attribute. The
+"Crate" column in the traceability tables below equals the ID's slug — where each
+`#[spec_test]` lives.
 
 ## File map
 
@@ -143,9 +144,9 @@ lives — its natural crate.
 | File | Change |
 |------|--------|
 | `specs/adrs/0038-no-restrictions-on-flag-combinations.md` | **New** — records that the compiler does not restrict `--allow-*` flag combinations; preference is expressed through dialect presets. |
-| `specs/design/reference-to-twincat.md` | **New** — single design doc with **all** `**REQ-RTO-NNN**` markers (0xx–6xx) and the traceability table; supersedes `beckhoff-twincat-dialect.md` §2.1/§3.6; references ADR-0038. Committed first, before implementation code. (PR 1 authors 0xx–4xx + 6xx; PR 2 adds 5xx.) |
-| Spec-conformance wiring | Register `reference-to-twincat.md` with the cross-crate `#[spec_test]` mechanism from #1210, and add each REQ-RTO's `#[spec_test(REQ_RTO_NNN)]` in its natural crate (`parser`, `analyzer`, `codegen`, `plc2plc`). Depends on #1210 having landed — see enforcement approach. |
-| `compiler/parser/src/options.rs` | New `allow_reference_to` field via `define_compiler_options!`; add to `Codesys` dialect preset; **not** `Rusty` (Rusty already carries `REF_TO`). Dialect tests (REQ-RTO-001/002). |
+| `specs/design/reference-to-twincat.md` | **New** — single design doc with **all** `**REQ-RTO-<slug>-NNN**` markers (slugs: `parser`/`analyzer`/`codegen`/`plc2plc`) and the traceability table; supersedes `beckhoff-twincat-dialect.md` §2.1/§3.6; references ADR-0038. Committed first, before implementation code. (PR 1 authors the 0xx–4xx + 6xx requirements; PR 2 adds 5xx.) |
+| `compiler/{parser,analyzer,codegen,plc2plc}/build.rs` | Add `reference-to-twincat.md` to each crate's `spec_requirements_gen::generate([...])` list. `codegen` already has `build.rs`; **bootstrap** the harness in `parser`, `analyzer`, `plc2plc` (build.rs + `ironplc-spec-requirements-gen`/`spec_test_macro` deps + `mod spec_requirements` include + `spec_conformance.rs` meta-test). Uses the crate-slug mechanism from #1211. |
+| `compiler/parser/src/options.rs` | New `allow_reference_to` field via `define_compiler_options!`; add to `Codesys` dialect preset; **not** `Rusty` (Rusty already carries `REF_TO`). Dialect tests (REQ-RTO-parser-001/002). |
 | `compiler/ironplc-cli/bin/main.rs` | `--allow-reference-to` clap arg; `|=` overlay in `compiler_options()`. No combination validation (ADR-0038). |
 | `compiler/ironplc-cli/src/lsp.rs` | `allowReferenceTo` extraction in `extract_compiler_options()`; test. |
 | `compiler/mcp/src/tools/common.rs` | Expose the new option key (mirrors other `allow_*` flags). |
@@ -170,7 +171,7 @@ lives — its natural crate.
 
 | File | Change |
 |------|--------|
-| `specs/design/reference-to-twincat.md` | Extend with the implicit-dereference `**REQ-RTO-5xx**` markers (incl. `__ISVALIDREF` gating) and their traceability rows. |
+| `specs/design/reference-to-twincat.md` | Extend with the implicit-dereference 5xx markers (`REQ-RTO-codegen-5xx` / `REQ-RTO-analyzer-5xx`, incl. `__ISVALIDREF` gating) and their traceability rows. |
 | `compiler/analyzer/src/xform_insert_implicit_deref.rs` | **New** — post-type-resolution transform that wraps reads of `REFERENCE`-typed variables in `ExprKind::Deref` and sets `deref: true` on assignment targets, skipping `REF=` targets and `__ISVALIDREF` arguments. |
 | `compiler/analyzer/src/stages.rs` | Wire the transform into the pipeline after type resolution, before codegen. |
 | `compiler/analyzer/src/rule_ref_to.rs` | Review which rules apply under implicit-deref semantics. Notably, arithmetic/ordering that `REF_TO` rejects (P2033/P2035) is *legal* for `REFERENCE` because it operates on the dereferenced value — ensure the transform runs first so these rules see `ref^`, not `ref`. Gate any `REF_TO`-only checks on `RefSyntax`. |
@@ -184,9 +185,8 @@ lives — its natural crate.
 ### Phase 1 (PR 1): Front end & binding
 
 - [ ] **Write `specs/adrs/0038-no-restrictions-on-flag-combinations.md`** recording that the compiler does not restrict `--allow-*` combinations; commit before implementation code.
-- [ ] **Precondition:** #1210 (cross-crate `#[spec_test]` enforcement) has merged. This feature is sequenced after it — do not start implementation until then.
-- [ ] **Author `specs/design/reference-to-twincat.md`** — a single design doc with **all** `**REQ-RTO-NNN**` markers (0xx–4xx + 6xx here; PR 2 adds 5xx) and the traceability table below; reference ADR-0038; commit it *before* implementation code (Planning/Design-requirement standard).
-- [ ] Register `reference-to-twincat.md` with the cross-crate spec-conformance mechanism from #1210, and add each `#[spec_test(REQ_RTO_NNN)]` in its natural crate (`parser`, `analyzer`, `codegen`, `plc2plc`).
+- [ ] **Author `specs/design/reference-to-twincat.md`** — a single design doc with **all** slugged `**REQ-RTO-<slug>-NNN**` markers (0xx–4xx + 6xx here; PR 2 adds 5xx) and the traceability table below; reference ADR-0038; commit it *before* implementation code (Planning/Design-requirement standard).
+- [ ] Add `reference-to-twincat.md` to `codegen/build.rs`'s `generate([...])`, and bootstrap the spec-conformance harness in `parser`, `analyzer`, and `plc2plc` (build.rs + deps + `mod spec_requirements` include + `spec_conformance.rs` meta-test) so each can host its slug's `#[spec_test(REQ_RTO_<slug>_NNN)]` tests. Uses the crate-slug mechanism from #1211.
 - [ ] Add `allow_reference_to` to `define_compiler_options!` (`options.rs`); enable it in the `Codesys` dialect preset, not `Rusty`; update the `from_dialect` / `FEATURE_DESCRIPTORS` count tests. Tests: `options_spec_req_rto_001_codesys_enables_reference_to`, `options_spec_req_rto_002_rusty_does_not_enable_reference_to`, `options_spec_req_rto_003_reference_to_and_ref_to_coexist` (both flags set is accepted — ADR-0038).
 - [ ] Add `--allow-reference-to` clap arg and `|=` overlay in `ironplc-cli/bin/main.rs`. No combination validation (ADR-0038).
 - [ ] Add `allowReferenceTo` to LSP `extract_compiler_options()` + test.
@@ -207,7 +207,7 @@ lives — its natural crate.
 
 ### Phase 2 (PR 2): Implicit dereference & semantics
 
-- [ ] Extend `specs/design/reference-to-twincat.md` with the `**REQ-RTO-5xx**` markers (implicit-deref behavior + non-deref contexts) and their traceability rows; commit before implementation code.
+- [ ] Extend `specs/design/reference-to-twincat.md` with the 5xx markers (`REQ-RTO-codegen-5xx` / `REQ-RTO-analyzer-5xx`: implicit-deref behavior + non-deref contexts) and their traceability rows; commit before implementation code.
 - [ ] Implement `xform_insert_implicit_deref.rs`: wrap reads of `REFERENCE`-typed variables in `Deref`; set `deref: true` on `REFERENCE`-typed assignment targets; skip `REF=` targets and `__ISVALIDREF` arguments.
 - [ ] Wire the transform into `stages.rs` after type resolution and before codegen.
 - [ ] Reconcile `rule_ref_to.rs`: ensure the transform runs before the rules so arithmetic/ordering on `REFERENCE` values (legal, because auto-dereferenced) is not wrongly rejected; gate any `REF_TO`-only checks on `RefSyntax`. Test: `codegen_spec_req_rto_510_arithmetic_on_reference_uses_deref_value`.
@@ -225,45 +225,47 @@ named `{area}_spec_req_rto_{nnn}_{description}` (see enforcement approach above)
 
 ### PR 1
 
-The "Crate" column is where each `#[spec_test]` lives — its natural crate.
-All markers live in the single `reference-to-twincat.md`, enforced across crates
-via the mechanism from #1210 (see enforcement approach above).
+The requirement ID's slug names the crate that owns (hosts) the test; all
+markers live in the single `reference-to-twincat.md`, enforced per-crate via the
+slug mechanism from #1211 (see enforcement approach above). The `#[spec_test]`
+attribute is the underscore form of the ID (e.g. `REQ_RTO_codegen_400`); the test
+**function** name keeps the `{area}_spec_req_rto_{nnn}_{description}` convention.
 
-| Req | Claim | Test | Crate |
-|-----|-------|------|-------|
-| **REQ-RTO-001** | The `codesys` dialect enables `allow_reference_to` | `options_spec_req_rto_001_*` | parser |
-| **REQ-RTO-002** | The `rusty` dialect does *not* enable `allow_reference_to` | `options_spec_req_rto_002_*` | parser |
-| **REQ-RTO-003** | Setting both `allow_reference_to` and `allow_ref_to` is accepted (no combination error; ADR-0038) | `options_spec_req_rto_003_*` | parser |
-| **REQ-RTO-100** | `REFERENCE` lexes as the `Reference` token | `lexer_spec_req_rto_100_*` | parser |
-| **REQ-RTO-101** | With the flag off, `REFERENCE` is demoted to `Identifier` | `xform_spec_req_rto_101_*` | parser |
-| **REQ-RTO-102** | With the flag on, `REFERENCE` stays the `Reference` keyword | `xform_spec_req_rto_102_*` | parser |
-| **REQ-RTO-103** | `REFERENCE` is a valid identifier in standard mode | `parser_spec_req_rto_103_*` | parser |
-| **REQ-RTO-200** | `r : REFERENCE TO INT;` yields a decl tagged `RefSyntax::ReferenceTo` | `parser_spec_req_rto_200_*` | parser |
-| **REQ-RTO-201** | `TYPE T : REFERENCE TO INT; END_TYPE` yields a decl tagged `ReferenceTo` | `parser_spec_req_rto_201_*` | parser |
-| **REQ-RTO-202** | `REF_TO` declarations are tagged `RefSyntax::RefTo` | `parser_spec_req_rto_202_*` | parser |
-| **REQ-RTO-210** | `r REF= x;` parses as a reference binding equivalent to `r := REF(x)` | `parser_spec_req_rto_210_*` | parser |
-| **REQ-RTO-220** | `ARRAY [..] OF REFERENCE TO T` parses and tags the element `RefSyntax::ReferenceTo` | `parser_spec_req_rto_220_*` | parser |
-| **REQ-RTO-300** | `REFERENCE TO T` resolves to `IntermediateType::Reference` | `analyzer_spec_req_rto_300_*` | analyzer |
-| **REQ-RTO-301** | Binding a reference to a mismatched target type is rejected (P2032) | `analyzer_spec_req_rto_301_*` | analyzer |
-| **REQ-RTO-400** | Reading a `REF=`-bound reference via `^` yields the referenced value | `codegen_spec_req_rto_400_*` | codegen |
-| **REQ-RTO-401** | Writing through `^` stores to the referenced variable | `codegen_spec_req_rto_401_*` | codegen |
-| **REQ-RTO-402** | Dereferencing an unbound `REFERENCE TO` variable traps `NullDereference` | `codegen_spec_req_rto_402_*` | codegen |
-| **REQ-RTO-420** | An `ARRAY [..] OF REFERENCE TO T` element can be bound and accessed | `codegen_spec_req_rto_420_*` | codegen |
-| **REQ-RTO-600** | A `ReferenceTo`-tagged declaration renders as `REFERENCE TO <target>` | `plc2plc_spec_req_rto_600_*` | plc2plc |
-| **REQ-RTO-601** | A `REF=` binding renders back as `REF=` | `plc2plc_spec_req_rto_601_*` | plc2plc |
-| **REQ-RTO-602** | A `RefTo`-tagged declaration still renders as `REF_TO` (regression) | `plc2plc_spec_req_rto_602_*` | plc2plc |
+| Req | Claim | Test fn | Crate |
+|-----|-------|---------|-------|
+| **REQ-RTO-parser-001** | The `codesys` dialect enables `allow_reference_to` | `options_spec_req_rto_001_*` | parser |
+| **REQ-RTO-parser-002** | The `rusty` dialect does *not* enable `allow_reference_to` | `options_spec_req_rto_002_*` | parser |
+| **REQ-RTO-parser-003** | Setting both `allow_reference_to` and `allow_ref_to` is accepted (no combination error; ADR-0038) | `options_spec_req_rto_003_*` | parser |
+| **REQ-RTO-parser-100** | `REFERENCE` lexes as the `Reference` token | `lexer_spec_req_rto_100_*` | parser |
+| **REQ-RTO-parser-101** | With the flag off, `REFERENCE` is demoted to `Identifier` | `xform_spec_req_rto_101_*` | parser |
+| **REQ-RTO-parser-102** | With the flag on, `REFERENCE` stays the `Reference` keyword | `xform_spec_req_rto_102_*` | parser |
+| **REQ-RTO-parser-103** | `REFERENCE` is a valid identifier in standard mode | `parser_spec_req_rto_103_*` | parser |
+| **REQ-RTO-parser-200** | `r : REFERENCE TO INT;` yields a decl tagged `RefSyntax::ReferenceTo` | `parser_spec_req_rto_200_*` | parser |
+| **REQ-RTO-parser-201** | `TYPE T : REFERENCE TO INT; END_TYPE` yields a decl tagged `ReferenceTo` | `parser_spec_req_rto_201_*` | parser |
+| **REQ-RTO-parser-202** | `REF_TO` declarations are tagged `RefSyntax::RefTo` | `parser_spec_req_rto_202_*` | parser |
+| **REQ-RTO-parser-210** | `r REF= x;` parses as a reference binding equivalent to `r := REF(x)` | `parser_spec_req_rto_210_*` | parser |
+| **REQ-RTO-parser-220** | `ARRAY [..] OF REFERENCE TO T` parses and tags the element `RefSyntax::ReferenceTo` | `parser_spec_req_rto_220_*` | parser |
+| **REQ-RTO-analyzer-300** | `REFERENCE TO T` resolves to `IntermediateType::Reference` | `analyzer_spec_req_rto_300_*` | analyzer |
+| **REQ-RTO-analyzer-301** | Binding a reference to a mismatched target type is rejected (P2032) | `analyzer_spec_req_rto_301_*` | analyzer |
+| **REQ-RTO-codegen-400** | Reading a `REF=`-bound reference via `^` yields the referenced value | `codegen_spec_req_rto_400_*` | codegen |
+| **REQ-RTO-codegen-401** | Writing through `^` stores to the referenced variable | `codegen_spec_req_rto_401_*` | codegen |
+| **REQ-RTO-codegen-402** | Dereferencing an unbound `REFERENCE TO` variable traps `NullDereference` | `codegen_spec_req_rto_402_*` | codegen |
+| **REQ-RTO-codegen-420** | An `ARRAY [..] OF REFERENCE TO T` element can be bound and accessed | `codegen_spec_req_rto_420_*` | codegen |
+| **REQ-RTO-plc2plc-600** | A `ReferenceTo`-tagged declaration renders as `REFERENCE TO <target>` | `plc2plc_spec_req_rto_600_*` | plc2plc |
+| **REQ-RTO-plc2plc-601** | A `REF=` binding renders back as `REF=` | `plc2plc_spec_req_rto_601_*` | plc2plc |
+| **REQ-RTO-plc2plc-602** | A `RefTo`-tagged declaration still renders as `REF_TO` (regression) | `plc2plc_spec_req_rto_602_*` | plc2plc |
 
 ### PR 2
 
-| Req | Claim | Test | Crate |
-|-----|-------|------|-------|
-| **REQ-RTO-500** | A bare read of a `REFERENCE`-typed variable auto-dereferences | `codegen_spec_req_rto_500_*` | codegen |
-| **REQ-RTO-501** | A bare write to a `REFERENCE`-typed variable auto-dereferences | `codegen_spec_req_rto_501_*` | codegen |
-| **REQ-RTO-502** | The target of `REF=` is *not* auto-dereferenced | `analyzer_spec_req_rto_502_*` | analyzer |
-| **REQ-RTO-503** | `__ISVALIDREF(r)` is FALSE for an unbound reference, TRUE once bound | `codegen_spec_req_rto_503_*` | codegen |
-| **REQ-RTO-504** | Two references to one variable observe each other's writes | `codegen_spec_req_rto_504_*` | codegen |
-| **REQ-RTO-505** | `__ISVALIDREF` is recognized as a builtin only when `allow_reference_to` is set | `analyzer_spec_req_rto_505_*` | analyzer |
-| **REQ-RTO-510** | Arithmetic on a bare `REFERENCE` operand uses the dereferenced value | `codegen_spec_req_rto_510_*` | codegen |
+| Req | Claim | Test fn | Crate |
+|-----|-------|---------|-------|
+| **REQ-RTO-codegen-500** | A bare read of a `REFERENCE`-typed variable auto-dereferences | `codegen_spec_req_rto_500_*` | codegen |
+| **REQ-RTO-codegen-501** | A bare write to a `REFERENCE`-typed variable auto-dereferences | `codegen_spec_req_rto_501_*` | codegen |
+| **REQ-RTO-analyzer-502** | The target of `REF=` is *not* auto-dereferenced | `analyzer_spec_req_rto_502_*` | analyzer |
+| **REQ-RTO-codegen-503** | `__ISVALIDREF(r)` is FALSE for an unbound reference, TRUE once bound | `codegen_spec_req_rto_503_*` | codegen |
+| **REQ-RTO-codegen-504** | Two references to one variable observe each other's writes | `codegen_spec_req_rto_504_*` | codegen |
+| **REQ-RTO-analyzer-505** | `__ISVALIDREF` is recognized as a builtin only when `allow_reference_to` is set | `analyzer_spec_req_rto_505_*` | analyzer |
+| **REQ-RTO-codegen-510** | Arithmetic on a bare `REFERENCE` operand uses the dereferenced value | `codegen_spec_req_rto_510_*` | codegen |
 
 ## Out of scope
 
