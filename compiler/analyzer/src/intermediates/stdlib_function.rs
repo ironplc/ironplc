@@ -1045,6 +1045,40 @@ pub fn get_sizeof_function() -> FunctionSignature {
     )
 }
 
+// =============================================================================
+// Extended math functions (Beckhoff Tc2_Math library, Vendor Extension)
+// =============================================================================
+
+/// Returns the `LTRUNC`/`LMOD` function definitions.
+///
+/// Both are Beckhoff `Tc2_Math` library functions, not core IEC 61131-3
+/// (unlike `TRUNC`/`MOD` above) -- a real TwinCAT project must reference
+/// that library to use them. Registered conditionally based on the
+/// `allow_extended_math_functions` compiler option.
+///
+/// Unlike the generic `ANY_REAL`/`ANY_NUM`-typed `TRUNC`/`MOD`, both
+/// operate on `LREAL` only, matching their real Beckhoff signatures:
+///
+/// - `LTRUNC` truncates the fractional part like `TRUNC`, but returns
+///   `LREAL` rather than `ANY_INT` -- the result isn't clamped to an
+///   integer type's value range.
+/// - `LMOD` is a floating-point modulo (e.g. `LMOD(400.56, 360) = 40.56`),
+///   unlike the integer-oriented `MOD`.
+pub fn get_extended_math_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "LTRUNC",
+            TypeName::from("LREAL"),
+            vec![input_param("IN", "LREAL")],
+        ),
+        FunctionSignature::stdlib(
+            "LMOD",
+            TypeName::from("LREAL"),
+            vec![input_param("IN1", "LREAL"), input_param("IN2", "LREAL")],
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1453,5 +1487,40 @@ mod tests {
                 func.name.original()
             );
         }
+    }
+
+    #[test]
+    fn get_extended_math_functions_when_called_then_contains_ltrunc_and_lmod() {
+        let functions = get_extended_math_functions();
+
+        assert_eq!(functions.len(), 2);
+
+        let ltrunc = functions
+            .iter()
+            .find(|f| f.name.original() == "LTRUNC")
+            .unwrap();
+        assert!(ltrunc.is_stdlib());
+        assert_eq!(ltrunc.parameters.len(), 1);
+        assert_eq!(ltrunc.parameters[0].name.original(), "IN");
+        assert_eq!(ltrunc.parameters[0].param_type, TypeName::from("LREAL"));
+        assert_eq!(
+            ltrunc.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("LREAL")))
+        );
+
+        let lmod = functions
+            .iter()
+            .find(|f| f.name.original() == "LMOD")
+            .unwrap();
+        assert!(lmod.is_stdlib());
+        assert_eq!(lmod.parameters.len(), 2);
+        assert_eq!(lmod.parameters[0].name.original(), "IN1");
+        assert_eq!(lmod.parameters[1].name.original(), "IN2");
+        assert_eq!(lmod.parameters[0].param_type, TypeName::from("LREAL"));
+        assert_eq!(lmod.parameters[1].param_type, TypeName::from("LREAL"));
+        assert_eq!(
+            lmod.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("LREAL")))
+        );
     }
 }
