@@ -3,150 +3,164 @@
 ## Goal
 
 Let a single design spec link conformance tests that live in more than one
-crate, while preserving the existing bidirectional validity (removing a
-requirement breaks compilation) and completeness (every requirement has a
-test) guarantees. Ownership becomes explicit via an optional crate slug in the
-requirement ID, and `spec_requirements_gen` becomes crate-aware.
+crate, while preserving the existing validity (removing a requirement breaks
+compilation) and completeness (every requirement has a test) guarantees.
+Ownership becomes explicit and **mandatory** via a crate slug in every
+requirement ID. The single-crate form is removed entirely — there is no
+backward-compatible fallback — so every enforced requirement is migrated.
 
 ## Design doc reference
 
 [specs/design/cross-crate-spec-conformance.md](../design/cross-crate-spec-conformance.md)
-— proposal, grammar, trade-offs. Builds on
+— grammar, generator behavior, orphan guard, migration. Supersedes the
+single-crate model in
 [specs/design/spec-conformance-testing.md](../design/spec-conformance-testing.md).
 
 ## Architecture
 
-1. **ID grammar** gains an optional crate slug: `REQ-<AREA>-<crate-slug>-<NNN>`.
+1. **ID grammar** requires a crate slug: `REQ-<AREA>-<crate-slug>-<NNN>`.
    Parsed by anchoring on the ends — leading `[A-Z0-9]+` is the area, trailing
-   `[0-9]+` is the number, the lowercase middle is the crate slug (empty =
-   legacy). Ident form is unchanged (`REQ-RT-vm-cli-001` → `REQ_RT_vm_cli_001`).
+   `[0-9]+` is the number, the lowercase middle is the crate slug. An empty
+   middle is an error. Ident form is unchanged
+   (`REQ-VC-vm-cli-001` → `REQ_VC_vm_cli_001`).
 
-2. **`spec_requirements_gen` is crate-aware.** It derives the current crate's
-   slug from `CARGO_PKG_NAME` (strip the `ironplc-` prefix — equals the crate
-   directory name), computes `owner(req)` = the requirement's slug if present
-   else the current crate's slug, and includes a requirement in this crate's
-   `UNTESTED`/`ALL` only when `owner(req) == my_slug`. Requirements owned by
-   other crates are skipped. Existing `generate(&[...])` call sites are
-   unchanged; an explicit `generate_for_crate(slug, &[...])` override is added
-   for cases where the slug should not be auto-derived.
+2. **`spec_requirements_gen` is crate-aware and strict.** It derives the
+   current crate's slug from `CARGO_PKG_NAME` (strip `ironplc-`, which equals
+   the crate directory name). `owner(req)` is the requirement's slug, with **no
+   fallback**. If a listed doc contains a `**REQ-…**` marker with no slug,
+   `generate()` panics with an actionable message — this is the mechanism that
+   removes the single-crate form. A requirement enters this crate's
+   `UNTESTED`/`ALL` only when `owner(req) == my_slug`. `build.rs` signatures are
+   unchanged.
 
-3. **Single-lister invariant.** The "empty slug ⇒ owned by the lister"
-   fallback is only sound while a doc has exactly **one** participating crate.
-   The moment a second crate lists the same doc, every legacy (unslugged)
-   requirement in that doc must be given an explicit slug, otherwise both
-   crates would claim the unslugged requirements and one meta-test would fail.
-   This is a migration rule, not a code change, and is enforced by the orphan
-   guard below.
+3. **Workspace orphan guard.** A single workspace-level test parses every
+   enforced `specs/design/*.md` for requirement IDs (recovering `(doc, slug)`)
+   and every `compiler/*/build.rs` for the `.md` filenames it lists (recovering
+   the slug from the `build.rs` directory name), then asserts every
+   `(slug, doc)` used by a requirement is claimed by a listing crate and that
+   no enforced requirement lacks a slug. No separate manifest — both sides come
+   from files in the tree.
 
-4. **Workspace orphan guard.** A single workspace-level test parses every
-   `specs/design/*.md` for requirement IDs (recovering each requirement's doc
-   and slug), parses every `compiler/*/build.rs` for the `.md` filenames it
-   lists (recovering the crate slug from the `build.rs` directory name), and
-   asserts every `(slug, doc)` pair used by a requirement is claimed by some
-   crate that lists that doc. Legacy unslugged requirements are checked to be
-   listed by exactly one crate. Any orphan or ambiguity fails with an
-   actionable message. This needs no separate manifest — both sides are
-   recovered from files already in the tree.
+## Migration surface (enforced set)
+
+| Doc(s)                                                        | Crate     | Areas             | ~refs |
+|--------------------------------------------------------------|-----------|-------------------|-------|
+| `bytecode-container-format.md`, `bytecode-instruction-set.md`| container | `CF`, `IS`        | ~12   |
+| `enumeration-codegen.md`                                     | codegen   | `EN`              | ~33   |
+| `mcp-server.md`                                              | mcp       | `STL`,`TOL`,`ARC` | ~90   |
+| `vm-cli.md`                                                  | vm-cli    | `VC`              | ~31   |
+
+~135 requirement markers and ~166 `#[spec_test]` references. Each doc is
+single-crate today, so its slug is uniform throughout the doc — a mechanical
+per-doc rename. Unwired docs (`partial-access-bit-syntax.md`,
+`subrange-codegen.md`, `time-literals.md`, `mcp-server-distribution.md`) are
+**out of scope**; they adopt the slug form when first wired.
 
 ## File map
 
 **Modified**
 - `compiler/spec_requirements_gen/src/lib.rs` — slug parsing, crate-slug
-  derivation, `owner()` filtering, `generate_for_crate`, unit tests.
-- `specs/design/cross-crate-spec-conformance.md` — add the single-lister
-  invariant note (item 3 above).
-- `specs/design/spec-conformance-testing.md` — cross-reference the extended
-  grammar and the cross-crate doc.
-- `specs/steering/development-standards.md` — document the optional crate slug
-  in the "Design Requirement" section.
-- `.claude/commands/reconcile-spec.md` — note the slug form when a spec spans
-  crates.
+  derivation, `owner()` with no fallback, panic-on-unslugged, unit tests.
+- `specs/design/spec-conformance-testing.md` — mark the single-crate model
+  superseded; cross-reference the mandatory grammar and the cross-crate doc.
+- `specs/steering/development-standards.md` — update the "Design Requirement"
+  section to require the crate slug.
+- `.claude/commands/reconcile-spec.md` — update the ID format and the
+  find-highest-ID grep to the slugged form.
+- **Enforced spec docs** (rename markers): `bytecode-container-format.md`,
+  `bytecode-instruction-set.md`, `enumeration-codegen.md`, `mcp-server.md`,
+  `vm-cli.md`.
+- **Enforced test sources** (rename `#[spec_test]` refs): container, codegen,
+  mcp, vm-cli conformance modules (`spec_conformance.rs`, `tests/cli.rs`, and
+  any other `src/` files carrying `#[spec_test]`).
 
 **Created**
-- A workspace orphan-guard test. Location: the `ironplc-test` crate
-  (`compiler/test/src/…`, added to its build so it runs under `just`), reading
-  the repo via `CARGO_MANIFEST_DIR` (`../../specs/design`, `../*/build.rs`).
-- Proof-of-concept: a new small design doc under `specs/design/` with two
-  slugged requirements owned by two different crates, and the two `#[spec_test]`
-  functions plus `build.rs` wiring that exercise the cross-crate path
-  end-to-end. (New doc chosen so existing IDs stay untouched.)
+- Workspace orphan-guard test in the `ironplc-test` crate
+  (`compiler/test/src/…`), reading the repo via `CARGO_MANIFEST_DIR`
+  (`../../specs/design`, `../*/build.rs`).
+- Proof-of-concept: split one enforced doc across a second crate to exercise
+  the cross-crate path end-to-end (see Phase 4).
 
 **Unchanged (verified)**
 - `compiler/spec_test_macro/src/lib.rs` — the ident form already handles the
   extra segment.
-- Existing `build.rs` call sites (container, codegen, mcp, vm-cli) — legacy
-  behavior preserved via auto-derived slug + single-lister fallback.
+- `build.rs` call sites — signatures unchanged; slug is auto-derived.
 
 ## Tasks
 
-### Phase 1 — Generator (crate-aware, backward compatible)
-- [ ] Add slug parsing to `spec_requirements_gen`: a helper that splits a raw
-      `REQ-…` ID into `(area, slug, number)` by anchoring on the ends; empty
-      slug for legacy IDs. Add unit tests including hyphenated slugs
-      (`REQ-RT-vm-cli-001`) and legacy IDs (`REQ-CF-001`).
+### Phase 1 — Generator (mandatory slug, strict)
+- [ ] Add slug parsing to `spec_requirements_gen`: split a raw `REQ-…` ID into
+      `(area, slug, number)` by anchoring on the ends. Unit tests: hyphenated
+      slug (`REQ-VC-vm-cli-001`), single-word slug, and an unslugged ID
+      (`REQ-CF-001`) which must be reported as invalid.
 - [ ] Derive the current crate slug from `CARGO_PKG_NAME` (strip `ironplc-`).
-      Add `generate_for_crate(slug, files)`; make `generate(files)` delegate to
-      it with the derived slug so existing call sites need no change.
-- [ ] Compute `owner(req)` and filter `UNTESTED` and `ALL` to
-      `owner(req) == my_slug`. Add unit tests covering: a req owned by another
-      crate is excluded; an unslugged req is owned by the sole lister; a slugged
-      req untested in its owner shows up in that owner's `UNTESTED`.
-- [ ] `cargo test -p ironplc-spec-requirements-gen` passes; the four existing
-      participating crates still build and their meta-tests still pass
-      (no behavior change for single-lister docs).
+- [ ] Set `owner(req)` = the requirement's slug with no fallback; filter
+      `UNTESTED` and `ALL` to `owner(req) == my_slug`. Panic in `generate()`
+      when a listed doc contains an unslugged `**REQ-…**` marker, naming the
+      offending marker and doc.
+- [ ] Unit tests: req owned by another crate is excluded from `UNTESTED`; a
+      slugged req untested in its owner appears in that owner's `UNTESTED`; a
+      doc with an unslugged marker triggers the panic.
+- [ ] `cargo test -p ironplc-spec-requirements-gen` passes.
 
-### Phase 2 — Workspace orphan guard
-- [ ] Add the guard test in the `ironplc-test` crate. Parse `specs/design/*.md`
+### Phase 2 — Migrate the enforced set (one doc/crate per commit)
+For each of container (CF, IS), codegen (EN), mcp (STL, TOL, ARC), vm-cli (VC):
+- [ ] Rename every `**REQ-XX-NNN**` in the doc(s) to `**REQ-XX-<crate>-NNN**`
+      (including table-form `| **REQ-XX-NNN** |` rows).
+- [ ] Rename every `#[spec_test(REQ_XX_NNN)]` reference (and any prose/comment
+      references to the old ID) to the slugged form, across `src/` and `tests/`.
+- [ ] Build the crate; confirm compilation (validity check) and the
+      `all_spec_requirements_have_tests` meta-test both pass. A missed
+      reference fails to compile; a missed marker leaves `UNTESTED` non-empty.
+- [ ] Commit per crate so each rename is independently reviewable.
+
+### Phase 3 — Workspace orphan guard
+- [ ] Add the guard test in `ironplc-test`. Parse enforced `specs/design/*.md`
       for requirement IDs → `(doc, slug)`; parse `compiler/*/build.rs` for
       listed `.md` filenames + directory-name slug → `(slug, doc)` listings.
-- [ ] Assert: every slugged `(slug, doc)` is claimed by a listing crate; every
-      doc with any slugged requirement is listed by every crate whose slug it
-      uses; every doc containing legacy unslugged requirements is listed by
-      exactly one crate. Failures name the offending requirement, slug, and doc.
-- [ ] Add a unit-level self-check (fixture strings) for the guard's parsers so
-      the guard itself is covered without depending on live repo state.
+- [ ] Assert: no enforced requirement is unslugged; every `(slug, doc)` a
+      requirement uses is claimed by a listing crate; every doc a requirement's
+      slug names is actually listed by that crate. Failures name the
+      requirement, slug, and doc.
+- [ ] Add fixture-based unit tests for the guard's markdown and `build.rs`
+      parsers so the guard is covered without depending on live repo state.
 
-### Phase 3 — Proof of concept (end-to-end cross-crate)
-- [ ] Add a new small design doc in `specs/design/` describing one behavior
-      that genuinely spans two crates, with two slugged requirements (one per
-      crate). Recommended pair: `codegen` (has infra) + `vm` (adjacent runtime).
-- [ ] Wire both crates' `build.rs` to list the new doc (adding a `build.rs` and
-      `spec_requirements`/`spec_conformance` modules to `vm` if absent, mirroring
-      the container reference).
-- [ ] Add one `#[spec_test(REQ_…_codegen_…)]` in codegen and one
-      `#[spec_test(REQ_…_vm_…)]` in vm; confirm both meta-tests pass with the
-      same doc listed by both crates.
-- [ ] Confirm the negative paths by hand: (a) removing a requirement from the
-      doc breaks compilation of its `#[spec_test]`; (b) omitting a slugged
-      test leaves that owner's `UNTESTED` non-empty; (c) a slug typo in the doc
-      trips the orphan guard.
+### Phase 4 — Proof of concept (end-to-end cross-crate)
+- [ ] Pick one enforced doc that genuinely spans layers and move a small,
+      naturally-runtime subset of its requirements to a second crate.
+      Recommended: `enumeration-codegen.md`, splitting a runtime-observable
+      enumeration behavior from `codegen` to `vm` (re-slugging those
+      requirements `-vm-` and adding the `vm` `build.rs`/`spec_requirements`/
+      `spec_conformance` wiring, mirroring the container reference).
+- [ ] Add the moved `#[spec_test(REQ_EN_vm_…)]` in `vm`; confirm both codegen
+      and vm meta-tests pass with the same doc listed by both crates.
+- [ ] Verify the negative paths by hand: (a) removing a requirement breaks its
+      `#[spec_test]` compilation; (b) omitting a slugged test leaves that
+      owner's `UNTESTED` non-empty; (c) an unslugged marker panics the build;
+      (d) a slug naming an unlisted crate trips the orphan guard.
 
-### Phase 4 — Docs and CI
+### Phase 5 — Docs and CI
 - [ ] Update `spec-conformance-testing.md`, `development-standards.md`, and
-      `reconcile-spec.md` per the file map. Add the single-lister invariant note
-      to the design doc.
+      `reconcile-spec.md` per the file map.
 - [ ] Run `cd compiler && just` (compile, coverage ≥ 85%, clippy, fmt) — all
       green — before opening any PR.
 
 ## Risks and mitigations
 
-- **ID churn on refactor.** Moving a test between crates changes its slug and
-  every reference. Mitigated by: the validity check catches stale references at
-  compile time (mechanical find-and-replace), and this is expected to be rare.
-- **Second-lister migration foot-gun.** Adding a second crate to an existing
-  single-crate doc without slugging its legacy requirements silently breaks a
-  meta-test. Mitigated by the orphan guard, which fails with a message pointing
-  at the unslugged requirements that now need slugs.
+- **Large mechanical rename.** ~166 references across four crates. Mitigated by
+  migrating one doc/crate per commit, and by the build itself catching any
+  missed reference (compile error) or missed marker (meta-test failure).
+- **ID churn on future refactors.** Moving a test between crates changes its
+  slug and every reference. Mitigated by the compile-time validity check; the
+  fix is a find-and-replace.
 - **`build.rs` parsing brittleness in the guard.** The guard reads `.md`
-  filenames from `build.rs` source text. Mitigated by covering the parser with
-  fixture-based unit tests and keeping the match narrow (quoted `"*.md"`
-  literals within `generate`/`generate_for_crate` calls).
+  filenames from `build.rs` source text. Mitigated by fixture-based unit tests
+  and matching only quoted `"*.md"` literals within `generate` calls.
 - **Coverage gate.** New generator branches and the guard must carry tests to
-  stay above the 85% threshold; the unit tests in Phases 1–2 are scoped to
-  cover them.
+  stay above 85%; the unit tests in Phases 1–3 are scoped to cover them.
 
 ## Out of scope
 
-- Migrating existing single-crate specs to the slug form. They keep working
-  unchanged; migration is incremental and follows the reconcile flow when a
-  spec actually needs to span crates.
+- Migrating unwired docs (`partial-access-bit-syntax.md`, `subrange-codegen.md`,
+  `time-literals.md`, `mcp-server-distribution.md`). They adopt the slug form
+  when first wired into conformance.
