@@ -89,9 +89,52 @@ per-doc rename. Unwired docs (`partial-access-bit-syntax.md`,
   extra segment.
 - `build.rs` call sites — signatures unchanged; slug is auto-derived.
 
+## Verification strategy (TDD, red-first)
+
+The conformance system exists to **fail loudly when spec and code disagree**,
+so every guarantee is proven by deliberately creating its failure, observing
+red, then fixing to green. The headline proof that the new work does anything
+is that a cross-crate scenario is **red on today's generator and green only
+after** the crate-aware change — that single red→green is the load-bearing
+evidence.
+
+| Guarantee | Red (deliberately broken) | Green (after fix) |
+|-----------|---------------------------|-------------------|
+| Cross-crate capability | 2 crates list one demo doc, each owns a slugged req + test; run on the current generator → the other crate's req shows as `UNTESTED` | crate-aware `owner()` filter → both meta-tests pass |
+| Mandatory slug | leave an unslugged `**REQ-…**` in a listed doc | generator panics naming the marker → slug it |
+| Validity | `#[spec_test(REQ_…_missing)]` for a non-existent req | compile error until the req exists |
+| Completeness | add a slugged req with no test | owner's `UNTESTED` non-empty → meta-test fails |
+| Orphan guard | slug a req for a crate that doesn't list the doc | guard fails naming (req, slug, doc) |
+
+**Little old code is removed.** The single-crate model is the *absence* of
+slug-awareness, not a deletable subsystem. The work is tightening `generate()`
+(additive), renaming IDs (a rename, not a deletion), and adding the guard.
+`spec_test_macro` is untouched and no module becomes dead. Removal of the
+single-crate model is enforced behaviorally by the build-time panic.
+
+**Ordering foot-gun.** Once `owner()` has no fallback, a still-unslugged
+requirement in a listed doc loses its owner and would be *silently untested*.
+The panic-on-unslugged therefore ships in the **same** change as the owner
+filter, and the capability proof (Phase 0) uses an **isolated, fully-slugged
+demo doc** so it is not entangled with the half-migrated real docs.
+
 ## Tasks
 
-### Phase 1 — Generator (mandatory slug, strict)
+### Phase 0 — Red harness (prove the gap before implementing)
+- [ ] Add a throwaway demo design doc under `specs/design/` (e.g.
+      `cross-crate-demo.md`) containing exactly two slugged requirements owned
+      by two different already-wired crates (e.g. `REQ-XD-codegen-001` and
+      `REQ-XD-vm-001`), plus minimal `build.rs`/`spec_conformance` wiring in
+      each so both crates list it and each has one `#[spec_test]`.
+- [ ] Run the build on the **current** generator and confirm it is **RED**: a
+      meta-test reports the other crate's requirement as `UNTESTED`. Capture the
+      exact failure. This is the evidence the old system cannot express
+      cross-crate.
+- [ ] Keep this harness until Phase 1 turns it green; then either delete it or
+      graft it into the real PoC (Phase 4). Do not leave the demo doc in the
+      tree at merge.
+
+### Phase 1 — Generator (mandatory slug, strict) — turns Phase 0 GREEN
 - [ ] Add slug parsing to `spec_requirements_gen`: split a raw `REQ-…` ID into
       `(area, slug, number)` by anchoring on the ends. Unit tests: hyphenated
       slug (`REQ-VC-vm-cli-001`), single-word slug, and an unslugged ID
@@ -105,6 +148,9 @@ per-doc rename. Unwired docs (`partial-access-bit-syntax.md`,
       slugged req untested in its owner appears in that owner's `UNTESTED`; a
       doc with an unslugged marker triggers the panic.
 - [ ] `cargo test -p ironplc-spec-requirements-gen` passes.
+- [ ] Confirm the Phase 0 red harness now passes (RED→GREEN) — the two-crate
+      demo doc builds and both meta-tests are green. This is the proof the
+      crate-aware change is load-bearing.
 
 ### Phase 2 — Migrate the enforced set (one doc/crate per commit)
 For each of container (CF, IS), codegen (EN), mcp (STL, TOL, ARC), vm-cli (VC):
