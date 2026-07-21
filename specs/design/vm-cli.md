@@ -54,12 +54,12 @@ ironplcvm run [OPTIONS] <FILE>
 
 **Behavior:**
 
-- **REQ-VC-001** `run` opens the container file at `<FILE>`. If the file cannot be opened, the command exits with code 2 and emits V6001 to stderr.
-- **REQ-VC-002** `run` decodes the container. If the bytes are not a valid container (bad magic, truncated, unsupported version), the command exits with code 2 and emits V6002 to stderr.
-- **REQ-VC-003** `run --scans N` executes exactly `N` scheduling rounds then exits 0.
-- **REQ-VC-004** When execution traps (divide by zero, stack overflow, invalid instruction, etc.), `run` exits with code 1 and emits the trap's V-code to stderr.
-- **REQ-VC-011** When no `--scans` value is given, `run` loops until SIGINT (Ctrl+C). On SIGINT it requests a clean stop and exits 0 after the current round.
-- **REQ-VC-012** Between rounds, `run` sleeps until the next cyclic task is due (based on `next_due_us`) to avoid busy-looping.
+- **REQ-VC-vm-cli-001** `run` opens the container file at `<FILE>`. If the file cannot be opened, the command exits with code 2 and emits V6001 to stderr.
+- **REQ-VC-vm-cli-002** `run` decodes the container. If the bytes are not a valid container (bad magic, truncated, unsupported version), the command exits with code 2 and emits V6002 to stderr.
+- **REQ-VC-vm-cli-003** `run --scans N` executes exactly `N` scheduling rounds then exits 0.
+- **REQ-VC-vm-cli-004** When execution traps (divide by zero, stack overflow, invalid instruction, etc.), `run` exits with code 1 and emits the trap's V-code to stderr.
+- **REQ-VC-vm-cli-011** When no `--scans` value is given, `run` loops until SIGINT (Ctrl+C). On SIGINT it requests a clean stop and exits 0 after the current round.
+- **REQ-VC-vm-cli-012** Between rounds, `run` sleeps until the next cyclic task is due (based on `next_due_us`) to avoid busy-looping.
 
 #### `benchmark`
 
@@ -78,11 +78,11 @@ ironplcvm benchmark [OPTIONS] <FILE>
 
 **Behavior:**
 
-- **REQ-VC-013** `benchmark` prints a single JSON object to stdout containing `program`, `opt_level`, `cycles`, `warmup`, a `scan_us` object with `mean`, `stddev`, `p99`, and `max` in microseconds, and a `tasks` array with per-task metadata.
-- **REQ-VC-014** `benchmark --cycles N --warmup M` executes `M` unmeasured warmup rounds followed by `N` measured rounds.
-- **REQ-VC-015** For each cyclic task with `interval_us > 0`, the JSON `tasks[*]` entry includes a `budget_pct` object with `mean`, `p99`, and `max` expressed as a percentage of the task's interval.
-- **REQ-VC-016** File-open (V6001) and container-read (V6002) errors behave identically to `run`: exit code 2 with the V-code on stderr.
-- **REQ-VC-017** If a trap occurs during either the warmup or measured phase, `benchmark` exits with code 1 and emits the trap's V-code to stderr.
+- **REQ-VC-vm-cli-013** `benchmark` prints a single JSON object to stdout containing `program`, `opt_level`, `cycles`, `warmup`, a `scan_us` object with `mean`, `stddev`, `p99`, and `max` in microseconds, and a `tasks` array with per-task metadata.
+- **REQ-VC-vm-cli-014** `benchmark --cycles N --warmup M` executes `M` unmeasured warmup rounds followed by `N` measured rounds.
+- **REQ-VC-vm-cli-015** For each cyclic task with `interval_us > 0`, the JSON `tasks[*]` entry includes a `budget_pct` object with `mean`, `p99`, and `max` expressed as a percentage of the task's interval.
+- **REQ-VC-vm-cli-016** File-open (V6001) and container-read (V6002) errors behave identically to `run`: exit code 2 with the V-code on stderr.
+- **REQ-VC-vm-cli-017** If a trap occurs during either the warmup or measured phase, `benchmark` exits with code 1 and emits the trap's V-code to stderr.
 
 #### `version`
 
@@ -100,11 +100,11 @@ The `--dump-vars [PATH]` option writes all variable slot values after the VM sto
 
 ### Behavior
 
-- **REQ-VC-005** After a successful run, `--dump-vars <PATH>` writes one variable per line, newline-terminated.
-- **REQ-VC-006** If `--dump-vars` is specified without a `PATH`, or with `PATH` equal to `-`, the dump is written to stdout.
-- **REQ-VC-007** If a runtime trap occurs and `--dump-vars` is set, the dump of the current variable state is written before the command exits non-zero.
-- **REQ-VC-008** When the container's debug section names a variable, the line uses `<name>: <value>`. Otherwise the line uses `var[<index>]: <raw_i32>`.
-- **REQ-VC-009** When debug info provides an IEC type tag, `<value>` is formatted per the type:
+- **REQ-VC-vm-cli-005** After a successful run, `--dump-vars <PATH>` writes one variable per line, newline-terminated.
+- **REQ-VC-vm-cli-006** If `--dump-vars` is specified without a `PATH`, or with `PATH` equal to `-`, the dump is written to stdout.
+- **REQ-VC-vm-cli-007** If a runtime trap occurs and `--dump-vars` is set, the dump of the current variable state is written before the command exits non-zero.
+- **REQ-VC-vm-cli-008** When the container's debug section names a variable, the line uses `<name>: <value>`. Otherwise the line uses `var[<index>]: <raw_i32>`.
+- **REQ-VC-vm-cli-009** When debug info provides an IEC type tag, `<value>` is formatted per the type:
 
 | Tag | Format | Example |
 |-----|--------|---------|
@@ -121,7 +121,7 @@ The `--dump-vars [PATH]` option writes all variable slot values after the VM sto
 | `LTIME` | `LTIME#<ms>ms` | `LTIME#250ms` |
 | other | signed decimal fallback | `0` |
 
-- **REQ-VC-010** If the dump file cannot be created (e.g., parent directory missing), the command exits with code 2 and emits V6004 to stderr.
+- **REQ-VC-vm-cli-010** If the dump file cannot be created (e.g., parent directory missing), the command exits with code 2 and emits V6004 to stderr.
 
 ### Format
 
