@@ -51,6 +51,7 @@ fn array_container(
         .add_function(ironplc_container::FunctionId::new(1), bytecode, 16, 2, 0)
         .init_function_id(ironplc_container::FunctionId::new(0))
         .entry_function_id(ironplc_container::FunctionId::new(1))
+        .max_call_depth(1)
         .build()
 }
 

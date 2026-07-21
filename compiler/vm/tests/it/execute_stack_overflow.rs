@@ -23,6 +23,7 @@ fn execute_when_stack_overflow_then_traps() {
         .add_function(FunctionId::SCAN, &bytecode, 2, 1, 0) // max_stack_depth=2
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build();
     let mut b = crate::common::VmBuffers::from_container(&c);
     let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
@@ -44,6 +45,7 @@ fn execute_when_stack_underflow_then_traps() {
         .add_function(FunctionId::SCAN, &bytecode, 4, 1, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build();
     let mut b = crate::common::VmBuffers::from_container(&c);
     let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
@@ -62,12 +64,15 @@ fn execute_when_call_recursion_exceeds_max_depth_then_traps_call_stack_overflow(
         opcode::CALL, scan_id[0], scan_id[1], 0x00, 0x00, // CALL SCAN, var_offset=0
         opcode::RET_VOID,
     ];
+    // The frame buffer holds 4 frames; unbounded self-recursion fills it
+    // and the 5th CALL traps Trap::CallStackOverflow.
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_function(FunctionId::INIT, &init_bytecode, 0, 1, 0)
         .add_function(FunctionId::SCAN, &bytecode, 4, 1, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(4)
         .build();
     let mut b = crate::common::VmBuffers::from_container(&c);
     let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
@@ -94,6 +99,7 @@ fn execute_when_exactly_at_stack_limit_then_succeeds() {
         .add_function(FunctionId::SCAN, &bytecode, 2, 1, 0) // max_stack_depth=2
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build();
     let mut b = crate::common::VmBuffers::from_container(&c);
     let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();

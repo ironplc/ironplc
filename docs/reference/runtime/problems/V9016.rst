@@ -21,6 +21,5 @@ To resolve:
 * Recompile with a shallower call chain.
 
 The trap message reports both numbers (``required`` and ``capacity``).
-A ``required`` of ``0`` means the container was built without
-populating the field (legacy or hand-built containers); in that case
-no comparison runs and this trap is not raised.
+A declared depth of ``0`` is invalid and is rejected separately at load
+with :doc:`V9017` before this comparison runs.
