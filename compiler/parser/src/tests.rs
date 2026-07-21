@@ -2596,7 +2596,7 @@ END_FUNCTION_BLOCK";
         let source = "
 FUNCTION_BLOCK FB_Example
 VAR
-    ptr : POINTER TO INT;
+    ptr : REF_TO INT;
     result : BOOL;
 END_VAR
 result := ptr <> 0 AND_THEN ptr^ = 99;
