@@ -1,6 +1,6 @@
 # ADR-0037: Mandatory Crate Slug in Spec-Conformance Requirement IDs
 
-status: proposed
+status: accepted
 date: 2026-07-21
 
 ## Context and Problem Statement

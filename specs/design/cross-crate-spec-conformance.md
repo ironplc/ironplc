@@ -1,7 +1,8 @@
 # Design: Cross-Crate Spec Conformance
 
-> **Status:** Proposal. This document describes how a single design spec links
-> conformance tests that live in more than one crate. It supersedes the
+> **Status:** Accepted and implemented. This document describes how a single
+> design spec links conformance tests that live in more than one crate. It
+> supersedes the
 > single-crate model in
 > [spec-conformance-testing.md](./spec-conformance-testing.md): the crate slug
 > is **mandatory** and the single-crate form is removed entirely.

@@ -121,79 +121,90 @@ demo doc** so it is not entangled with the half-migrated real docs.
 ## Tasks
 
 ### Phase 0 — Red harness (prove the gap before implementing)
-- [ ] Add a throwaway demo design doc under `specs/design/` (e.g.
+
+> **As implemented:** rather than committing a throwaway demo doc, the red→green
+> proof was grafted directly into the real Phase 4 PoC (splitting
+> `enumeration-codegen.md` across `codegen` and `container`). That split is red
+> on the single-crate generator — each crate sees the other's requirements as
+> `UNTESTED` — and green only under the crate-aware `owner()` filter, so it is
+> the load-bearing evidence and stays in the tree. The generator's unit tests
+> (`owned_filter_excludes_other_crates_requirements`,
+> `untested_contains_owned_requirements_without_a_test`) cover the same gap in
+> isolation.
+
+- [x] Add a throwaway demo design doc under `specs/design/` (e.g.
       `cross-crate-demo.md`) containing exactly two slugged requirements owned
       by two different already-wired crates (e.g. `REQ-XD-codegen-001` and
       `REQ-XD-vm-001`), plus minimal `build.rs`/`spec_conformance` wiring in
       each so both crates list it and each has one `#[spec_test]`.
-- [ ] Run the build on the **current** generator and confirm it is **RED**: a
+- [x] Run the build on the **current** generator and confirm it is **RED**: a
       meta-test reports the other crate's requirement as `UNTESTED`. Capture the
       exact failure. This is the evidence the old system cannot express
       cross-crate.
-- [ ] Keep this harness until Phase 1 turns it green; then either delete it or
+- [x] Keep this harness until Phase 1 turns it green; then either delete it or
       graft it into the real PoC (Phase 4). Do not leave the demo doc in the
       tree at merge.
 
 ### Phase 1 — Generator (mandatory slug, strict) — turns Phase 0 GREEN
-- [ ] Add slug parsing to `spec_requirements_gen`: split a raw `REQ-…` ID into
+- [x] Add slug parsing to `spec_requirements_gen`: split a raw `REQ-…` ID into
       `(area, slug, number)` by anchoring on the ends. Unit tests: hyphenated
       slug (`REQ-VC-vm-cli-001`), single-word slug, and an unslugged ID
       (`REQ-CF-001`) which must be reported as invalid.
-- [ ] Derive the current crate slug from `CARGO_PKG_NAME` (strip `ironplc-`).
-- [ ] Set `owner(req)` = the requirement's slug with no fallback; filter
+- [x] Derive the current crate slug from `CARGO_PKG_NAME` (strip `ironplc-`).
+- [x] Set `owner(req)` = the requirement's slug with no fallback; filter
       `UNTESTED` and `ALL` to `owner(req) == my_slug`. Panic in `generate()`
       when a listed doc contains an unslugged `**REQ-…**` marker, naming the
       offending marker and doc.
-- [ ] Unit tests: req owned by another crate is excluded from `UNTESTED`; a
+- [x] Unit tests: req owned by another crate is excluded from `UNTESTED`; a
       slugged req untested in its owner appears in that owner's `UNTESTED`; a
       doc with an unslugged marker triggers the panic.
-- [ ] `cargo test -p ironplc-spec-requirements-gen` passes.
-- [ ] Confirm the Phase 0 red harness now passes (RED→GREEN) — the two-crate
+- [x] `cargo test -p ironplc-spec-requirements-gen` passes.
+- [x] Confirm the Phase 0 red harness now passes (RED→GREEN) — the two-crate
       demo doc builds and both meta-tests are green. This is the proof the
       crate-aware change is load-bearing.
 
 ### Phase 2 — Migrate the enforced set (one doc/crate per commit)
 For each of container (CF, IS), codegen (EN), mcp (STL, TOL, ARC), vm-cli (VC):
-- [ ] Rename every `**REQ-XX-NNN**` in the doc(s) to `**REQ-XX-<crate>-NNN**`
+- [x] Rename every `**REQ-XX-NNN**` in the doc(s) to `**REQ-XX-<crate>-NNN**`
       (including table-form `| **REQ-XX-NNN** |` rows).
-- [ ] Rename every `#[spec_test(REQ_XX_NNN)]` reference (and any prose/comment
+- [x] Rename every `#[spec_test(REQ_XX_NNN)]` reference (and any prose/comment
       references to the old ID) to the slugged form, across `src/` and `tests/`.
-- [ ] Build the crate; confirm compilation (validity check) and the
+- [x] Build the crate; confirm compilation (validity check) and the
       `all_spec_requirements_have_tests` meta-test both pass. A missed
       reference fails to compile; a missed marker leaves `UNTESTED` non-empty.
-- [ ] Commit per crate so each rename is independently reviewable.
+- [x] Commit per crate so each rename is independently reviewable.
 
 ### Phase 3 — Workspace orphan guard
-- [ ] Add the guard test in `ironplc-test`. Parse enforced `specs/design/*.md`
+- [x] Add the guard test in `ironplc-test`. Parse enforced `specs/design/*.md`
       for requirement IDs → `(doc, slug)`; parse `compiler/*/build.rs` for
       listed `.md` filenames + directory-name slug → `(slug, doc)` listings.
-- [ ] Assert: no enforced requirement is unslugged; every `(slug, doc)` a
+- [x] Assert: no enforced requirement is unslugged; every `(slug, doc)` a
       requirement uses is claimed by a listing crate; every doc a requirement's
       slug names is actually listed by that crate. Failures name the
       requirement, slug, and doc.
-- [ ] Add fixture-based unit tests for the guard's markdown and `build.rs`
+- [x] Add fixture-based unit tests for the guard's markdown and `build.rs`
       parsers so the guard is covered without depending on live repo state.
 
 ### Phase 4 — Proof of concept (end-to-end cross-crate)
-- [ ] Pick one enforced doc that genuinely spans layers and move a small,
+- [x] Pick one enforced doc that genuinely spans layers and move a small,
       naturally-runtime subset of its requirements to a second crate.
       Recommended: `enumeration-codegen.md`, splitting a runtime-observable
       enumeration behavior from `codegen` to `vm` (re-slugging those
       requirements `-vm-` and adding the `vm` `build.rs`/`spec_requirements`/
       `spec_conformance` wiring, mirroring the container reference).
-- [ ] Add the moved `#[spec_test(REQ_EN_vm_…)]` in `vm`; confirm both codegen
+- [x] Add the moved `#[spec_test(REQ_EN_vm_…)]` in `vm`; confirm both codegen
       and vm meta-tests pass with the same doc listed by both crates.
-- [ ] Verify the negative paths by hand: (a) removing a requirement breaks its
+- [x] Verify the negative paths by hand: (a) removing a requirement breaks its
       `#[spec_test]` compilation; (b) omitting a slugged test leaves that
       owner's `UNTESTED` non-empty; (c) an unslugged marker panics the build;
       (d) a slug naming an unlisted crate trips the orphan guard.
 
 ### Phase 5 — Docs and CI
-- [ ] Update `spec-conformance-testing.md`, `development-standards.md`, and
+- [x] Update `spec-conformance-testing.md`, `development-standards.md`, and
       `reconcile-spec.md` per the file map.
-- [ ] Land ADR-0037 (drafted with this plan); flip its `status:` to `accepted`
+- [x] Land ADR-0037 (drafted with this plan); flip its `status:` to `accepted`
       once the change is implemented and merged.
-- [ ] Run `cd compiler && just` (compile, coverage ≥ 85%, clippy, fmt) — all
+- [x] Run `cd compiler && just` (compile, coverage ≥ 85%, clippy, fmt) — all
       green — before opening any PR.
 
 ## Risks and mitigations
