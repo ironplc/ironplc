@@ -1,4 +1,4 @@
-# ADR-0037: Feature Flags Are Freely Composable; Dialects Express Preferred Combinations
+# ADR-0038: Feature Flags Are Freely Composable; Dialects Express Preferred Combinations
 
 status: proposed
 date: 2026-07-21

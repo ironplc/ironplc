@@ -17,7 +17,7 @@ syntax. The two are surface-level variants of the same underlying concept
 | Validity| `r = NULL` | `__ISVALIDREF(r)` / `r = 0` |
 
 `REF_TO` and `REFERENCE TO` are **not** made mutually exclusive at the compiler
-level. Per [ADR-0037](../adrs/0037-no-restrictions-on-flag-combinations.md), the
+level. Per [ADR-0038](../adrs/0038-no-restrictions-on-flag-combinations.md), the
 compiler does not restrict `--allow-*` flag combinations; preference is expressed
 through dialect presets (only the CODESYS/Beckhoff-facing dialect bundles
 `REFERENCE TO`, and no dialect bundles both). Coexistence stays well-defined
@@ -62,7 +62,7 @@ All new work is confined to the front end plus one analyzer transform:
    productions simply never fire when the keyword is demoted.
 2. **No combination restriction.** The compiler does not reject enabling both
    `--allow-reference-to` and `--allow-ref-to`/Edition 3 (see
-   [ADR-0037](../adrs/0037-no-restrictions-on-flag-combinations.md)). The two
+   [ADR-0038](../adrs/0038-no-restrictions-on-flag-combinations.md)). The two
    syntaxes coexist unambiguously because dereference behavior is keyed on each
    declaration's `RefSyntax` tag, not on flag state. Preference is expressed by
    dialect presets, not validation — the CODESYS-facing dialect bundles
@@ -96,7 +96,7 @@ All new work is confined to the front end plus one analyzer transform:
   REQ ID has a corresponding spec-linked test (see below). This doc also
   reconciles the divergence from the dialect design above (supersedes
   `beckhoff-twincat-dialect.md` §2.1/§3.6).
-- **New:** [ADR-0037](../adrs/0037-no-restrictions-on-flag-combinations.md) —
+- **New:** [ADR-0038](../adrs/0038-no-restrictions-on-flag-combinations.md) —
   records the decision *not* to reject `--allow-reference-to` +
   `--allow-ref-to`/Edition 3 combinations; flags are freely composable and
   dialects express the preferred combinations.
@@ -142,11 +142,11 @@ lives — its natural crate.
 
 | File | Change |
 |------|--------|
-| `specs/adrs/0037-no-restrictions-on-flag-combinations.md` | **New** — records that the compiler does not restrict `--allow-*` flag combinations; preference is expressed through dialect presets. |
-| `specs/design/reference-to-twincat.md` | **New** — single design doc with **all** `**REQ-RTO-NNN**` markers (0xx–6xx) and the traceability table; supersedes `beckhoff-twincat-dialect.md` §2.1/§3.6; references ADR-0037. Committed first, before implementation code. (PR 1 authors 0xx–4xx + 6xx; PR 2 adds 5xx.) |
+| `specs/adrs/0038-no-restrictions-on-flag-combinations.md` | **New** — records that the compiler does not restrict `--allow-*` flag combinations; preference is expressed through dialect presets. |
+| `specs/design/reference-to-twincat.md` | **New** — single design doc with **all** `**REQ-RTO-NNN**` markers (0xx–6xx) and the traceability table; supersedes `beckhoff-twincat-dialect.md` §2.1/§3.6; references ADR-0038. Committed first, before implementation code. (PR 1 authors 0xx–4xx + 6xx; PR 2 adds 5xx.) |
 | Spec-conformance wiring | Register `reference-to-twincat.md` with the cross-crate `#[spec_test]` mechanism from #1210, and add each REQ-RTO's `#[spec_test(REQ_RTO_NNN)]` in its natural crate (`parser`, `analyzer`, `codegen`, `plc2plc`). Depends on #1210 having landed — see enforcement approach. |
 | `compiler/parser/src/options.rs` | New `allow_reference_to` field via `define_compiler_options!`; add to `Codesys` dialect preset; **not** `Rusty` (Rusty already carries `REF_TO`). Dialect tests (REQ-RTO-001/002). |
-| `compiler/ironplc-cli/bin/main.rs` | `--allow-reference-to` clap arg; `|=` overlay in `compiler_options()`. No combination validation (ADR-0037). |
+| `compiler/ironplc-cli/bin/main.rs` | `--allow-reference-to` clap arg; `|=` overlay in `compiler_options()`. No combination validation (ADR-0038). |
 | `compiler/ironplc-cli/src/lsp.rs` | `allowReferenceTo` extraction in `extract_compiler_options()`; test. |
 | `compiler/mcp/src/tools/common.rs` | Expose the new option key (mirrors other `allow_*` flags). |
 | `compiler/parser/src/token.rs` | New `#[token("REFERENCE", ignore(case))] Reference`; `describe()` arm `"'REFERENCE'"`; lexer test. (`TO` already exists.) |
@@ -161,7 +161,7 @@ lives — its natural crate.
 | `compiler/plc2plc/src/tests.rs` | Round-trip test using `CompilerOptions { allow_reference_to: true, .. }`. |
 | `compiler/parser/src/tests.rs` | Keyword-safety regression (`REFERENCE` as identifier in standard mode); parser tests for the new productions incl. array-of-reference. |
 | `compiler/codegen/tests/it/end_to_end_reference_to.rs` | **New** — bind via `REF=`, read/write via explicit `^`, verify values; array-of-reference element access (parallels the existing `end_to_end_array_ref_to.rs`). Proves backend reuse. |
-| `docs/explanation/enabling-dialects-and-features.rst` | Document `--allow-reference-to`, noting it is the TwinCAT/CODESYS alternative to `--allow-ref-to` and that dialects (not a compiler restriction) express the preferred combination (ADR-0037). |
+| `docs/explanation/enabling-dialects-and-features.rst` | Document `--allow-reference-to`, noting it is the TwinCAT/CODESYS alternative to `--allow-ref-to` and that dialects (not a compiler restriction) express the preferred combination (ADR-0038). |
 | `docs/reference/compiler/ironplcc.rst` | Add the flag to the Options section. |
 | `docs/reference/language/data-types/derived/reference-types.rst` | Note the TwinCAT variant. |
 | `specs/steering/syntax-support-guide.md` | Add `--allow-reference-to` to the flag table. |
@@ -183,12 +183,12 @@ lives — its natural crate.
 
 ### Phase 1 (PR 1): Front end & binding
 
-- [ ] **Write `specs/adrs/0037-no-restrictions-on-flag-combinations.md`** recording that the compiler does not restrict `--allow-*` combinations; commit before implementation code.
+- [ ] **Write `specs/adrs/0038-no-restrictions-on-flag-combinations.md`** recording that the compiler does not restrict `--allow-*` combinations; commit before implementation code.
 - [ ] **Precondition:** #1210 (cross-crate `#[spec_test]` enforcement) has merged. This feature is sequenced after it — do not start implementation until then.
-- [ ] **Author `specs/design/reference-to-twincat.md`** — a single design doc with **all** `**REQ-RTO-NNN**` markers (0xx–4xx + 6xx here; PR 2 adds 5xx) and the traceability table below; reference ADR-0037; commit it *before* implementation code (Planning/Design-requirement standard).
+- [ ] **Author `specs/design/reference-to-twincat.md`** — a single design doc with **all** `**REQ-RTO-NNN**` markers (0xx–4xx + 6xx here; PR 2 adds 5xx) and the traceability table below; reference ADR-0038; commit it *before* implementation code (Planning/Design-requirement standard).
 - [ ] Register `reference-to-twincat.md` with the cross-crate spec-conformance mechanism from #1210, and add each `#[spec_test(REQ_RTO_NNN)]` in its natural crate (`parser`, `analyzer`, `codegen`, `plc2plc`).
-- [ ] Add `allow_reference_to` to `define_compiler_options!` (`options.rs`); enable it in the `Codesys` dialect preset, not `Rusty`; update the `from_dialect` / `FEATURE_DESCRIPTORS` count tests. Tests: `options_spec_req_rto_001_codesys_enables_reference_to`, `options_spec_req_rto_002_rusty_does_not_enable_reference_to`, `options_spec_req_rto_003_reference_to_and_ref_to_coexist` (both flags set is accepted — ADR-0037).
-- [ ] Add `--allow-reference-to` clap arg and `|=` overlay in `ironplc-cli/bin/main.rs`. No combination validation (ADR-0037).
+- [ ] Add `allow_reference_to` to `define_compiler_options!` (`options.rs`); enable it in the `Codesys` dialect preset, not `Rusty`; update the `from_dialect` / `FEATURE_DESCRIPTORS` count tests. Tests: `options_spec_req_rto_001_codesys_enables_reference_to`, `options_spec_req_rto_002_rusty_does_not_enable_reference_to`, `options_spec_req_rto_003_reference_to_and_ref_to_coexist` (both flags set is accepted — ADR-0038).
+- [ ] Add `--allow-reference-to` clap arg and `|=` overlay in `ironplc-cli/bin/main.rs`. No combination validation (ADR-0038).
 - [ ] Add `allowReferenceTo` to LSP `extract_compiler_options()` + test.
 - [ ] Expose the option key in `mcp/src/tools/common.rs`.
 - [ ] Add the `REFERENCE` token to `token.rs` (+ `describe()` arm); confirm `TO` tokenizes separately. Test: `lexer_spec_req_rto_100_reference_lexes_as_reference_token`.
@@ -233,7 +233,7 @@ via the mechanism from #1210 (see enforcement approach above).
 |-----|-------|------|-------|
 | **REQ-RTO-001** | The `codesys` dialect enables `allow_reference_to` | `options_spec_req_rto_001_*` | parser |
 | **REQ-RTO-002** | The `rusty` dialect does *not* enable `allow_reference_to` | `options_spec_req_rto_002_*` | parser |
-| **REQ-RTO-003** | Setting both `allow_reference_to` and `allow_ref_to` is accepted (no combination error; ADR-0037) | `options_spec_req_rto_003_*` | parser |
+| **REQ-RTO-003** | Setting both `allow_reference_to` and `allow_ref_to` is accepted (no combination error; ADR-0038) | `options_spec_req_rto_003_*` | parser |
 | **REQ-RTO-100** | `REFERENCE` lexes as the `Reference` token | `lexer_spec_req_rto_100_*` | parser |
 | **REQ-RTO-101** | With the flag off, `REFERENCE` is demoted to `Identifier` | `xform_spec_req_rto_101_*` | parser |
 | **REQ-RTO-102** | With the flag on, `REFERENCE` stays the `Reference` keyword | `xform_spec_req_rto_102_*` | parser |
