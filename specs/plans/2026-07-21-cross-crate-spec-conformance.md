@@ -75,6 +75,9 @@ per-doc rename. Unwired docs (`partial-access-bit-syntax.md`,
   any other `src/` files carrying `#[spec_test]`).
 
 **Created**
+- `specs/adrs/0037-mandatory-crate-slug-in-requirement-ids.md` — ADR recording
+  the decision to make the crate slug mandatory and remove the single-crate
+  model (drafted; committed with this plan).
 - Workspace orphan-guard test in the `ironplc-test` crate
   (`compiler/test/src/…`), reading the repo via `CARGO_MANIFEST_DIR`
   (`../../specs/design`, `../*/build.rs`).
@@ -142,6 +145,8 @@ For each of container (CF, IS), codegen (EN), mcp (STL, TOL, ARC), vm-cli (VC):
 ### Phase 5 — Docs and CI
 - [ ] Update `spec-conformance-testing.md`, `development-standards.md`, and
       `reconcile-spec.md` per the file map.
+- [ ] Land ADR-0037 (drafted with this plan); flip its `status:` to `accepted`
+      once the change is implemented and merged.
 - [ ] Run `cd compiler && just` (compile, coverage ≥ 85%, clippy, fmt) — all
       green — before opening any PR.
 
