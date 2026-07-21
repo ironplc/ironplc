@@ -173,6 +173,18 @@ features — they never disable features that a dialect already includes.
    interpreted. Pragmas do not nest; an unclosed ``{`` still produces a parse
    error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
+``--allow-extended-math-functions``
+   Register ``LTRUNC`` and ``LMOD`` as built-in stdlib functions. Both are
+   Beckhoff ``Tc2_Math`` library functions, not core IEC 61131-3, and unlike
+   the generic ``ANY_REAL``/``ANY_NUM``-typed ``TRUNC``/``MOD`` they operate
+   on ``LREAL`` only, matching their real Beckhoff signatures: ``LTRUNC``
+   truncates the fractional part like ``TRUNC`` but returns ``LREAL``
+   instead of ``ANY_INT`` (not clamped to an integer type's range), and
+   ``LMOD`` is a floating-point modulo that can return a non-integer
+   remainder (e.g. ``LMOD(400.56, 360) = 40.56``), unlike the
+   integer-oriented ``MOD``. Enabled by ``--dialect=rusty`` and
+   ``--dialect=codesys``.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell

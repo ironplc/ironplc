@@ -103,6 +103,15 @@ pub fn resolve_types(
             .expect("SIZEOF should not conflict with stdlib");
     }
 
+    if options.allow_extended_math_functions {
+        use crate::intermediates::stdlib_function::get_extended_math_functions;
+        for sig in get_extended_math_functions() {
+            function_environment
+                .insert(sig)
+                .expect("LTRUNC/LMOD should not conflict with stdlib");
+        }
+    }
+
     let mut symbol_environment = SymbolEnvironment::new();
 
     // Register implicit system globals when the uptime feature is enabled.
@@ -358,5 +367,58 @@ END_FUNCTION_BLOCK";
     fn parse_shared_library(name: &'static str) -> Library {
         let src = read_shared_resource(name);
         parse_program(&src, &FileId::default(), &CompilerOptions::default()).unwrap()
+    }
+
+    // ---------------------------------------------------------------------
+    // LTRUNC/LMOD extended math functions (Beckhoff Tc2_Math library).
+    // See specs/plans/2026-07-20-twincat-ltrunc-lmod.md.
+    // ---------------------------------------------------------------------
+
+    fn opts_with_extended_math_functions() -> CompilerOptions {
+        CompilerOptions {
+            allow_extended_math_functions: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    #[test]
+    fn analyze_when_ltrunc_and_lmod_used_then_resolve() {
+        let program = "
+FUNCTION_BLOCK FB_Example
+VAR
+    truncated : LREAL;
+    remainder : LREAL;
+END_VAR
+truncated := LTRUNC(123.456);
+remainder := LMOD(400.56, 360.0);
+END_FUNCTION_BLOCK";
+        let lib = parse_program(
+            program,
+            &FileId::default(),
+            &opts_with_extended_math_functions(),
+        )
+        .unwrap();
+        let (_library, context) = analyze(&[&lib], &opts_with_extended_math_functions()).unwrap();
+
+        assert!(
+            !context.has_diagnostics(),
+            "unexpected diagnostics: {:?}",
+            context.diagnostics()
+        );
+    }
+
+    #[test]
+    fn analyze_when_ltrunc_used_and_extended_math_functions_disabled_then_diagnostics() {
+        let program = "
+FUNCTION_BLOCK FB_Example
+VAR
+    truncated : LREAL;
+END_VAR
+truncated := LTRUNC(123.456);
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        assert!(context.has_diagnostics());
     }
 }
