@@ -2441,4 +2441,82 @@ END_PROGRAM
 
         assert!(result.is_err());
     }
+
+    // -----------------------------------------------------------------
+    // CASE branch with no statements.
+    // See specs/plans/2026-07-20-twincat-empty-case-branch.md.
+    // -----------------------------------------------------------------
+
+    fn extract_case(library: &Library) -> Case {
+        let element = library
+            .elements
+            .iter()
+            .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
+            .expect("expected a FunctionBlockDeclaration");
+        let fb = cast!(element, LibraryElementKind::FunctionBlockDeclaration);
+        let stmts = cast!(&fb.body, FunctionBlockBodyKind::Statements);
+        cast!(&stmts.body[0], StmtKind::Case).clone()
+    }
+
+    #[test]
+    fn parse_when_case_branch_empty_and_followed_by_another_label_then_ok() {
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+CASE x OF
+    1: y := 1;
+    5: (* no statement here, falls through to nothing *)
+    10: y := 3;
+END_CASE;
+END_FUNCTION_BLOCK";
+        let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
+            .expect("empty CASE branch followed by another label must parse");
+        let case = extract_case(&library);
+        assert_eq!(case.statement_groups.len(), 3);
+        assert!(case.statement_groups[1].statements.is_empty());
+    }
+
+    #[test]
+    fn parse_when_case_branch_empty_and_last_before_end_case_then_ok() {
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+CASE x OF
+    1: y := 1;
+    5: (* no statement here *)
+END_CASE;
+END_FUNCTION_BLOCK";
+        let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
+            .expect("empty CASE branch as the last one must parse");
+        let case = extract_case(&library);
+        assert_eq!(case.statement_groups.len(), 2);
+        assert!(case.statement_groups[1].statements.is_empty());
+    }
+
+    #[test]
+    fn parse_when_case_branch_has_statement_then_regression_ok() {
+        // Regression: an ordinary populated CASE branch must be unaffected.
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+CASE x OF
+    1: y := 1;
+    5: y := 2;
+END_CASE;
+END_FUNCTION_BLOCK";
+        let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
+            .expect("populated CASE branch must still parse");
+        let case = extract_case(&library);
+        assert_eq!(case.statement_groups.len(), 2);
+        assert_eq!(case.statement_groups[1].statements.len(), 1);
+    }
 }

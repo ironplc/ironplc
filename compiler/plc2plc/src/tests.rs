@@ -447,4 +447,29 @@ END_PROGRAM",
         let expected = read_resource("sizeof_rendered.st");
         assert_eq!(rendered, expected);
     }
+
+    #[test]
+    fn write_to_string_when_case_branch_empty_then_round_trips() {
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+CASE x OF
+    1: y := 1;
+    5: (* no statement here *)
+    10: y := 3;
+END_CASE;
+END_FUNCTION_BLOCK
+";
+        let library_original =
+            parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let rendered = write_to_string(&library_original).unwrap();
+
+        let library_rendered =
+            parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
+                .expect("rendered output must parse");
+        assert_eq!(library_original, library_rendered);
+    }
 }
