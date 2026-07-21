@@ -474,7 +474,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::RightParen => None,
             TokenType::LeftBrace => None,
             TokenType::RightBrace => None,
-            TokenType::Pragma => Some(COMMENT_INDEX),
+            TokenType::Pragma => Some(KEYWORD_INDEX),
             TokenType::LeftBracket => None,
             TokenType::RightBracket => None,
             TokenType::Comma => None,
