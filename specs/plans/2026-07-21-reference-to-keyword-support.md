@@ -112,39 +112,29 @@ prefix (existing prefixes: CF, IS, EN, PAB, STL, TOL, ARC, DST, SR, TL, VC).
 is removed from the spec (compile error) or added without a test (the
 `all_spec_requirements_have_tests` meta-test).
 
-The one wrinkle is that `ironplc_spec_requirements_gen::generate()` is
-**per-crate** — each crate's `build.rs` computes `UNTESTED` against *its own*
-`src/` + `tests/`, so a single design doc can only be completeness-enforced by
-one crate. Because this feature's tests span crates, we split the markers across
-**two design docs, each owned by one enforcing crate**:
+This feature's tests span the `parser`, `analyzer`, `codegen`, and `plc2plc`
+crates. Enforcing that from a **single** design doc requires cross-crate
+`#[spec_test]` aggregation, which today's per-crate
+`ironplc_spec_requirements_gen::generate()` does not provide — that gap is
+[ironplc/ironplc#1210](https://github.com/ironplc/ironplc/issues/1210).
 
-- **`reference-to-twincat.md` → enforced by `codegen`.** Holds REQ-RTO-0xx–5xx
-  (options, lexer/gating, parser, analyzer, execution). `codegen` transitively
-  depends on `analyzer`→`parser`→`dsl` and reaches the VM, so its
-  `spec_conformance.rs` can exercise all of these — from "the flag sets the
-  option" to "a bare read auto-dereferences." Wire the doc into
-  `codegen/build.rs`'s existing `generate([...])` call; host the
-  `#[spec_test]` tests in `codegen/src/spec_conformance.rs` (and
-  `codegen/tests/it/` for the e2e ones — the generator scans `tests/` too).
-- **`reference-to-twincat-rendering.md` → enforced by `plc2plc`.** Holds the
-  rendering requirements (REQ-RTO-6xx). `codegen` does not depend on `plc2plc`,
-  so these cannot live in `codegen`. This requires a one-time bootstrap of the
-  spec-conformance harness in `plc2plc` (it has none today): add `build.rs`
-  calling `generate(["reference-to-twincat-rendering.md"])`, add the
-  `ironplc-spec-requirements-gen` (build-dep) and `spec_test_macro` deps, add
-  `mod spec_requirements { include!(…) }` to `lib.rs`, and add a
-  `spec_conformance.rs` with the meta-test.
+**Sequencing: this feature is scheduled after #1210 lands.** Once the cross-crate
+mechanism is in, the plan is straightforward and needs no workarounds:
 
-The two-doc split is a workaround for the per-crate limitation, **not** the
-desired end state — [ironplc/ironplc#1210](https://github.com/ironplc/ironplc/issues/1210)
-tracks extending the generator to aggregate `#[spec_test]` usages across crates
-so one design doc can be enforced by tests in their natural crates. When that
-lands, the two docs can be merged.
+- A single `reference-to-twincat.md` holds **all** REQ-RTO markers
+  (0xx–6xx).
+- Each requirement's `#[spec_test(REQ_RTO_NNN)]` lives in its **natural crate**
+  (options/lexer/parser in `parser`, resolution/rules in `analyzer`, execution
+  in `codegen`, rendering in `plc2plc`).
+- The doc is registered once with the cross-crate mechanism from #1210; the
+  meta-test enforces completeness across all of those crates.
 
-Test names keep the `{area}_spec_req_rto_{nnn}_{description}` convention; the
-"Crate" column in the traceability tables below is the *enforcing* crate (where
-the `#[spec_test]` physically lives), which for behavior/execution is `codegen`
-and for rendering is `plc2plc`.
+(No two-doc split and no `plc2plc` spec-harness bootstrap — those were the
+interim workaround for the per-crate limitation and are obviated by #1210.)
+
+Test names use the `{area}_spec_req_rto_{nnn}_{description}` convention; the
+"Crate" column in the traceability tables below is where each `#[spec_test]`
+lives — its natural crate.
 
 ## File map
 
@@ -153,11 +143,8 @@ and for rendering is `plc2plc`.
 | File | Change |
 |------|--------|
 | `specs/adrs/0037-no-restrictions-on-flag-combinations.md` | **New** — records that the compiler does not restrict `--allow-*` flag combinations; preference is expressed through dialect presets. |
-| `specs/design/reference-to-twincat.md` | **New** — design doc with `**REQ-RTO-0xx–5xx**` markers (codegen-enforced) and the traceability table; supersedes `beckhoff-twincat-dialect.md` §2.1/§3.6; references ADR-0037. Committed first, before implementation code. (PR 1 authors 0xx–4xx; PR 2 adds 5xx.) |
-| `specs/design/reference-to-twincat-rendering.md` | **New** — design doc with `**REQ-RTO-6xx**` rendering markers (plc2plc-enforced). |
-| `compiler/codegen/build.rs` | Add `reference-to-twincat.md` to the `ironplc_spec_requirements_gen::generate([...])` list. |
-| `compiler/codegen/src/spec_conformance.rs` | Host `#[spec_test(REQ_RTO_NNN)]` tests for REQ-RTO-0xx–4xx (options, lexer, parser, analyzer, execution). |
-| `compiler/plc2plc/build.rs`, `compiler/plc2plc/Cargo.toml`, `compiler/plc2plc/src/lib.rs`, `compiler/plc2plc/src/spec_conformance.rs` | **New/bootstrap** — stand up the spec-conformance harness in `plc2plc`: `build.rs` calling `generate(["reference-to-twincat-rendering.md"])`, `ironplc-spec-requirements-gen`/`spec_test_macro` deps, `mod spec_requirements` include, and `spec_conformance.rs` with the meta-test + REQ-RTO-6xx tests. |
+| `specs/design/reference-to-twincat.md` | **New** — single design doc with **all** `**REQ-RTO-NNN**` markers (0xx–6xx) and the traceability table; supersedes `beckhoff-twincat-dialect.md` §2.1/§3.6; references ADR-0037. Committed first, before implementation code. (PR 1 authors 0xx–4xx + 6xx; PR 2 adds 5xx.) |
+| Spec-conformance wiring | Register `reference-to-twincat.md` with the cross-crate `#[spec_test]` mechanism from #1210, and add each REQ-RTO's `#[spec_test(REQ_RTO_NNN)]` in its natural crate (`parser`, `analyzer`, `codegen`, `plc2plc`). Depends on #1210 having landed — see enforcement approach. |
 | `compiler/parser/src/options.rs` | New `allow_reference_to` field via `define_compiler_options!`; add to `Codesys` dialect preset; **not** `Rusty` (Rusty already carries `REF_TO`). Dialect tests (REQ-RTO-001/002). |
 | `compiler/ironplc-cli/bin/main.rs` | `--allow-reference-to` clap arg; `|=` overlay in `compiler_options()`. No combination validation (ADR-0037). |
 | `compiler/ironplc-cli/src/lsp.rs` | `allowReferenceTo` extraction in `extract_compiler_options()`; test. |
@@ -197,8 +184,9 @@ and for rendering is `plc2plc`.
 ### Phase 1 (PR 1): Front end & binding
 
 - [ ] **Write `specs/adrs/0037-no-restrictions-on-flag-combinations.md`** recording that the compiler does not restrict `--allow-*` combinations; commit before implementation code.
-- [ ] **Author `specs/design/reference-to-twincat.md`** (REQ-RTO-0xx–4xx, codegen-enforced) and **`specs/design/reference-to-twincat-rendering.md`** (REQ-RTO-6xx, plc2plc-enforced) with the traceability table below; reference ADR-0037; commit them *before* implementation code (Planning/Design-requirement standard).
-- [ ] Wire spec-conformance enforcement: add `reference-to-twincat.md` to `codegen/build.rs`'s `generate([...])`; bootstrap the harness in `plc2plc` (`build.rs` + `ironplc-spec-requirements-gen`/`spec_test_macro` deps + `mod spec_requirements` include + `spec_conformance.rs` meta-test). Host `#[spec_test(REQ_RTO_NNN)]` tests in `codegen/src/spec_conformance.rs` (behavior/execution) and `plc2plc/src/spec_conformance.rs` (rendering). Tracking: ironplc/ironplc#1210.
+- [ ] **Precondition:** #1210 (cross-crate `#[spec_test]` enforcement) has merged. This feature is sequenced after it — do not start implementation until then.
+- [ ] **Author `specs/design/reference-to-twincat.md`** — a single design doc with **all** `**REQ-RTO-NNN**` markers (0xx–4xx + 6xx here; PR 2 adds 5xx) and the traceability table below; reference ADR-0037; commit it *before* implementation code (Planning/Design-requirement standard).
+- [ ] Register `reference-to-twincat.md` with the cross-crate spec-conformance mechanism from #1210, and add each `#[spec_test(REQ_RTO_NNN)]` in its natural crate (`parser`, `analyzer`, `codegen`, `plc2plc`).
 - [ ] Add `allow_reference_to` to `define_compiler_options!` (`options.rs`); enable it in the `Codesys` dialect preset, not `Rusty`; update the `from_dialect` / `FEATURE_DESCRIPTORS` count tests. Tests: `options_spec_req_rto_001_codesys_enables_reference_to`, `options_spec_req_rto_002_rusty_does_not_enable_reference_to`, `options_spec_req_rto_003_reference_to_and_ref_to_coexist` (both flags set is accepted — ADR-0037).
 - [ ] Add `--allow-reference-to` clap arg and `|=` overlay in `ironplc-cli/bin/main.rs`. No combination validation (ADR-0037).
 - [ ] Add `allowReferenceTo` to LSP `extract_compiler_options()` + test.
@@ -237,27 +225,26 @@ named `{area}_spec_req_rto_{nnn}_{description}` (see enforcement approach above)
 
 ### PR 1
 
-The "Crate" column is the *enforcing* crate — where the `#[spec_test]` lives:
-`codegen` for behavior/execution (doc `reference-to-twincat.md`), `plc2plc` for
-rendering (doc `reference-to-twincat-rendering.md`). See the enforcement approach
-above.
+The "Crate" column is where each `#[spec_test]` lives — its natural crate.
+All markers live in the single `reference-to-twincat.md`, enforced across crates
+via the mechanism from #1210 (see enforcement approach above).
 
 | Req | Claim | Test | Crate |
 |-----|-------|------|-------|
-| **REQ-RTO-001** | The `codesys` dialect enables `allow_reference_to` | `options_spec_req_rto_001_*` | codegen |
-| **REQ-RTO-002** | The `rusty` dialect does *not* enable `allow_reference_to` | `options_spec_req_rto_002_*` | codegen |
-| **REQ-RTO-003** | Setting both `allow_reference_to` and `allow_ref_to` is accepted (no combination error; ADR-0037) | `options_spec_req_rto_003_*` | codegen |
-| **REQ-RTO-100** | `REFERENCE` lexes as the `Reference` token | `lexer_spec_req_rto_100_*` | codegen |
-| **REQ-RTO-101** | With the flag off, `REFERENCE` is demoted to `Identifier` | `xform_spec_req_rto_101_*` | codegen |
-| **REQ-RTO-102** | With the flag on, `REFERENCE` stays the `Reference` keyword | `xform_spec_req_rto_102_*` | codegen |
-| **REQ-RTO-103** | `REFERENCE` is a valid identifier in standard mode | `parser_spec_req_rto_103_*` | codegen |
-| **REQ-RTO-200** | `r : REFERENCE TO INT;` yields a decl tagged `RefSyntax::ReferenceTo` | `parser_spec_req_rto_200_*` | codegen |
-| **REQ-RTO-201** | `TYPE T : REFERENCE TO INT; END_TYPE` yields a decl tagged `ReferenceTo` | `parser_spec_req_rto_201_*` | codegen |
-| **REQ-RTO-202** | `REF_TO` declarations are tagged `RefSyntax::RefTo` | `parser_spec_req_rto_202_*` | codegen |
-| **REQ-RTO-210** | `r REF= x;` parses as a reference binding equivalent to `r := REF(x)` | `parser_spec_req_rto_210_*` | codegen |
-| **REQ-RTO-220** | `ARRAY [..] OF REFERENCE TO T` parses and tags the element `RefSyntax::ReferenceTo` | `parser_spec_req_rto_220_*` | codegen |
-| **REQ-RTO-300** | `REFERENCE TO T` resolves to `IntermediateType::Reference` | `analyzer_spec_req_rto_300_*` | codegen |
-| **REQ-RTO-301** | Binding a reference to a mismatched target type is rejected (P2032) | `analyzer_spec_req_rto_301_*` | codegen |
+| **REQ-RTO-001** | The `codesys` dialect enables `allow_reference_to` | `options_spec_req_rto_001_*` | parser |
+| **REQ-RTO-002** | The `rusty` dialect does *not* enable `allow_reference_to` | `options_spec_req_rto_002_*` | parser |
+| **REQ-RTO-003** | Setting both `allow_reference_to` and `allow_ref_to` is accepted (no combination error; ADR-0037) | `options_spec_req_rto_003_*` | parser |
+| **REQ-RTO-100** | `REFERENCE` lexes as the `Reference` token | `lexer_spec_req_rto_100_*` | parser |
+| **REQ-RTO-101** | With the flag off, `REFERENCE` is demoted to `Identifier` | `xform_spec_req_rto_101_*` | parser |
+| **REQ-RTO-102** | With the flag on, `REFERENCE` stays the `Reference` keyword | `xform_spec_req_rto_102_*` | parser |
+| **REQ-RTO-103** | `REFERENCE` is a valid identifier in standard mode | `parser_spec_req_rto_103_*` | parser |
+| **REQ-RTO-200** | `r : REFERENCE TO INT;` yields a decl tagged `RefSyntax::ReferenceTo` | `parser_spec_req_rto_200_*` | parser |
+| **REQ-RTO-201** | `TYPE T : REFERENCE TO INT; END_TYPE` yields a decl tagged `ReferenceTo` | `parser_spec_req_rto_201_*` | parser |
+| **REQ-RTO-202** | `REF_TO` declarations are tagged `RefSyntax::RefTo` | `parser_spec_req_rto_202_*` | parser |
+| **REQ-RTO-210** | `r REF= x;` parses as a reference binding equivalent to `r := REF(x)` | `parser_spec_req_rto_210_*` | parser |
+| **REQ-RTO-220** | `ARRAY [..] OF REFERENCE TO T` parses and tags the element `RefSyntax::ReferenceTo` | `parser_spec_req_rto_220_*` | parser |
+| **REQ-RTO-300** | `REFERENCE TO T` resolves to `IntermediateType::Reference` | `analyzer_spec_req_rto_300_*` | analyzer |
+| **REQ-RTO-301** | Binding a reference to a mismatched target type is rejected (P2032) | `analyzer_spec_req_rto_301_*` | analyzer |
 | **REQ-RTO-400** | Reading a `REF=`-bound reference via `^` yields the referenced value | `codegen_spec_req_rto_400_*` | codegen |
 | **REQ-RTO-401** | Writing through `^` stores to the referenced variable | `codegen_spec_req_rto_401_*` | codegen |
 | **REQ-RTO-402** | Dereferencing an unbound `REFERENCE TO` variable traps `NullDereference` | `codegen_spec_req_rto_402_*` | codegen |
@@ -272,10 +259,10 @@ above.
 |-----|-------|------|-------|
 | **REQ-RTO-500** | A bare read of a `REFERENCE`-typed variable auto-dereferences | `codegen_spec_req_rto_500_*` | codegen |
 | **REQ-RTO-501** | A bare write to a `REFERENCE`-typed variable auto-dereferences | `codegen_spec_req_rto_501_*` | codegen |
-| **REQ-RTO-502** | The target of `REF=` is *not* auto-dereferenced | `analyzer_spec_req_rto_502_*` | codegen |
+| **REQ-RTO-502** | The target of `REF=` is *not* auto-dereferenced | `analyzer_spec_req_rto_502_*` | analyzer |
 | **REQ-RTO-503** | `__ISVALIDREF(r)` is FALSE for an unbound reference, TRUE once bound | `codegen_spec_req_rto_503_*` | codegen |
 | **REQ-RTO-504** | Two references to one variable observe each other's writes | `codegen_spec_req_rto_504_*` | codegen |
-| **REQ-RTO-505** | `__ISVALIDREF` is recognized as a builtin only when `allow_reference_to` is set | `analyzer_spec_req_rto_505_*` | codegen |
+| **REQ-RTO-505** | `__ISVALIDREF` is recognized as a builtin only when `allow_reference_to` is set | `analyzer_spec_req_rto_505_*` | analyzer |
 | **REQ-RTO-510** | Arithmetic on a bare `REFERENCE` operand uses the dereferenced value | `codegen_spec_req_rto_510_*` | codegen |
 
 ## Out of scope
