@@ -480,31 +480,10 @@ END_PROGRAM
     );
 }
 
-/// REQ-EN-codegen-061: ENUM_DEF sub-table roundtrips through write/read.
-#[spec_test(REQ_EN_codegen_061)]
-fn enum_spec_req_en_061_enum_def_payload_roundtrips() {
-    use ironplc_container::debug_section::{DebugSection, EnumDefEntry};
-    use std::io::Cursor;
-
-    let section = DebugSection {
-        var_names: vec![],
-        func_names: vec![],
-        line_map: vec![],
-        string_layouts: vec![],
-        source_files: vec![],
-        enum_defs: vec![EnumDefEntry {
-            type_name: "COLOR".into(),
-            values: vec!["RED".into(), "GREEN".into(), "BLUE".into()],
-        }],
-    };
-    let mut buf = Vec::new();
-    section.write_to(&mut buf).unwrap();
-
-    let decoded = DebugSection::read_from(&mut Cursor::new(&buf)).unwrap();
-    assert_eq!(decoded.enum_defs.len(), 1);
-    assert_eq!(decoded.enum_defs[0].type_name, "COLOR");
-    assert_eq!(decoded.enum_defs[0].values, vec!["RED", "GREEN", "BLUE"]);
-}
+// REQ-EN-container-061 (ENUM_DEF sub-table payload roundtrip) is owned and
+// tested by the `container` crate — the on-disk format is a container concern.
+// It lives in `container/src/spec_conformance.rs`; codegen lists the same
+// design doc but is not accountable for that requirement.
 
 /// REQ-EN-codegen-062: Value names appear in ordinal order in the definition table.
 #[spec_test(REQ_EN_codegen_062)]

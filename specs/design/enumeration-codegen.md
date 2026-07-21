@@ -91,7 +91,7 @@ The existing debug section Tag Registry reserves tags 4-8 for other purposes. Th
 |-----|------|--------|-------------|
 | 9   | ENUM_DEF | v1 | Enumeration type definitions (type name → ordered value names) |
 
-**REQ-EN-codegen-061** The ENUM_DEF sub-table payload format is:
+**REQ-EN-container-061** The ENUM_DEF sub-table payload format is:
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|
