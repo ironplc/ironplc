@@ -150,7 +150,7 @@ pub struct StringLayoutEntry {
 /// An enumeration type definition entry (debug section Tag 9).
 ///
 /// Maps a named enumeration type to its value names in ordinal order.
-/// See `specs/design/enumeration-codegen.md`, REQ-EN-060 through REQ-EN-064.
+/// See `specs/design/enumeration-codegen.md`, REQ-EN-codegen-060 through REQ-EN-codegen-064.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnumDefEntry {
     /// The user-defined type name (e.g., "COLOR").
