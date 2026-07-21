@@ -173,6 +173,15 @@ features — they never disable features that a dialect already includes.
    interpreted. Pragmas do not nest; an unclosed ``{`` still produces a parse
    error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
+``--allow-math-constants``
+   Register implicit math constants (currently just ``PI``) as built-in
+   ``LREAL`` globals, matching CODESYS/TwinCAT behavior where these names
+   are available without declaration. Only resolves in *statement* context
+   today (e.g. ``x := PI/180.0;``); using ``PI`` as a ``VAR`` initializer
+   (``d2r : LREAL := PI/180.0;``) is not yet supported, since ``VAR``
+   initializers only accept a literal constant, not an expression. Enabled
+   by ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell

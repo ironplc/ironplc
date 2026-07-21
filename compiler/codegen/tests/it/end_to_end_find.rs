@@ -168,6 +168,8 @@ END_PROGRAM
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
 
     // 'bet' starts at position 1 in 'beta'.
-    // Rusty dialect: var 0-1 system, var 2 struct, var 3 scratch, var 4 pos.
-    assert_eq!(bufs.vars[4].as_i32(), 1);
+    // Rusty dialect: var 0-1 system, var 2 struct (source's own top-level
+    // VAR_GLOBAL, parsed before PI is appended), var 3 PI, var 4 scratch,
+    // var 5 pos.
+    assert_eq!(bufs.vars[5].as_i32(), 1);
 }

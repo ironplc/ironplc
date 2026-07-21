@@ -3,6 +3,10 @@
 //! The compiler as individual stages (to enable testing).
 
 use ironplc_dsl::{
+    common::{
+        ConstantKind, DeclarationQualifier, InitialValueAssignmentKind, LibraryElementKind,
+        RealLiteral, VarDecl, VariableIdentifier, VariableType,
+    },
     core::{FileId, Id, SourceSpan},
     diagnostic::{Diagnostic, Label},
 };
@@ -82,6 +86,26 @@ pub fn resolve_types(
     let mut library = Library::new();
     for x in sources {
         library = library.extend((*x).clone());
+    }
+
+    // Register implicit math constants (PI) as a real global constant, so
+    // that ordinary variable resolution, type checking, and codegen's
+    // generic top-level VAR_GLOBAL collection all just work — unlike
+    // __SYSTEM_UP_TIME below, PI is a genuine compile-time constant, not a
+    // runtime-read system value, so one injected VarDecl is enough (no
+    // separate codegen-side synthesis needed).
+    //
+    // Note: PI only resolves in *statement* context today (e.g.
+    // `x := PI/180.0;`). Using it as a VAR initializer (the dominant real
+    // usage: `d2r : LREAL := PI/180.0;`) still fails to parse — VAR
+    // initializers only accept a bare literal, not an expression. See
+    // specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
+    if options.allow_math_constants {
+        library
+            .elements
+            .push(LibraryElementKind::GlobalVarDeclarations(vec![
+                pi_var_decl(),
+            ]));
     }
 
     // Hard failures: these are foundational and all subsequent steps depend on them.
@@ -300,6 +324,24 @@ pub(crate) fn semantic(
     Ok(())
 }
 
+/// The implicit `PI` global constant (CODESYS/TwinCAT math constant),
+/// registered when `allow_math_constants` is set. Equivalent to a
+/// user-written `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979; END_VAR`.
+fn pi_var_decl() -> VarDecl {
+    VarDecl {
+        identifier: VariableIdentifier::new_symbol("PI"),
+        var_type: VariableType::Global,
+        qualifier: DeclarationQualifier::Constant,
+        initializer: InitialValueAssignmentKind::simple(
+            "LREAL",
+            ConstantKind::RealLiteral(RealLiteral {
+                value: std::f64::consts::PI,
+                data_type: None,
+            }),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::stages::analyze;
@@ -358,5 +400,124 @@ END_FUNCTION_BLOCK";
     fn parse_shared_library(name: &'static str) -> Library {
         let src = read_shared_resource(name);
         parse_program(&src, &FileId::default(), &CompilerOptions::default()).unwrap()
+    }
+
+    // ---------------------------------------------------------------------
+    // Implicit PI math constant.
+    // See specs/plans/2026-07-19-twincat-pi-constant.md.
+    // ---------------------------------------------------------------------
+
+    fn opts_with_math_constants() -> CompilerOptions {
+        CompilerOptions {
+            allow_math_constants: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    #[test]
+    fn resolve_types_when_math_constants_disabled_then_pi_not_injected() {
+        let lib = Library::new();
+        let (library, _context) =
+            crate::stages::resolve_types(&[&lib], &CompilerOptions::default()).unwrap();
+
+        let has_pi = library.elements.iter().any(|e| {
+            matches!(e, ironplc_dsl::common::LibraryElementKind::GlobalVarDeclarations(decls)
+                if decls.iter().any(|d| d.identifier.to_string() == "PI"))
+        });
+        assert!(!has_pi);
+    }
+
+    #[test]
+    fn resolve_types_when_math_constants_enabled_then_pi_injected_as_lreal_constant() {
+        let lib = Library::new();
+        let (library, _context) =
+            crate::stages::resolve_types(&[&lib], &opts_with_math_constants()).unwrap();
+
+        let pi_decl = library
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                ironplc_dsl::common::LibraryElementKind::GlobalVarDeclarations(decls) => {
+                    decls.iter().find(|d| d.identifier.to_string() == "PI")
+                }
+                _ => None,
+            })
+            .expect("PI should be injected as a GlobalVarDeclarations entry");
+
+        assert_eq!(
+            pi_decl.qualifier,
+            ironplc_dsl::common::DeclarationQualifier::Constant
+        );
+        match &pi_decl.initializer {
+            ironplc_dsl::common::InitialValueAssignmentKind::Simple(simple) => {
+                assert_eq!(simple.type_name.to_string(), "lreal");
+                match &simple.initial_value {
+                    Some(ironplc_dsl::common::ConstantKind::RealLiteral(lit)) => {
+                        assert_eq!(lit.value, std::f64::consts::PI);
+                    }
+                    other => panic!("expected RealLiteral initializer, got {other:?}"),
+                }
+            }
+            other => panic!("expected Simple initializer, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn analyze_when_pi_used_in_statement_then_resolves() {
+        // Statement-context usage (the real-world pattern in ATAN2.TcPOU
+        // etc.) already works — expressions are unrestricted there.
+        let program = "
+FUNCTION_BLOCK FB_Example
+VAR
+    d2r : LREAL;
+END_VAR
+d2r := PI/180.0;
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &opts_with_math_constants()).unwrap();
+        let (_library, context) = analyze(&[&lib], &opts_with_math_constants()).unwrap();
+
+        assert!(
+            !context.has_diagnostics(),
+            "unexpected diagnostics: {:?}",
+            context.diagnostics()
+        );
+    }
+
+    #[test]
+    fn analyze_when_pi_used_in_statement_and_math_constants_disabled_then_diagnostics() {
+        let program = "
+FUNCTION_BLOCK FB_Example
+VAR
+    d2r : LREAL;
+END_VAR
+d2r := PI/180.0;
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        assert!(context.has_diagnostics());
+    }
+
+    #[test]
+    fn parse_when_pi_used_as_var_initializer_then_still_fails_known_limitation() {
+        // Documents the current capability boundary: PI resolving as a
+        // symbol doesn't help here because VAR initializers only accept a
+        // bare literal, not an expression — a separate, larger gap tracked
+        // by specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
+        // If this test starts failing (i.e. it now parses), that plan's
+        // fold pass has landed and this test (and the plan's status) should
+        // be updated together.
+        let program = "
+FUNCTION_BLOCK FB_Example
+VAR
+    d2r : LREAL := PI/180.0;
+END_VAR
+END_FUNCTION_BLOCK";
+        let result = parse_program(program, &FileId::default(), &opts_with_math_constants());
+        assert!(
+            result.is_err(),
+            "expected VAR-initializer PI usage to still fail to parse; if this now \
+             succeeds, the initializer-expressions plan has landed and this test is stale"
+        );
     }
 }
