@@ -9,8 +9,10 @@ for the full design of the enforcement mechanism.
 
 ### Step 1: Understand the infrastructure
 
-Read `specs/design/spec-conformance-testing.md` to understand:
-- Requirement ID format (`**REQ-XX-NNN**`)
+Read `specs/design/spec-conformance-testing.md` and
+`specs/design/cross-crate-spec-conformance.md` to understand:
+- Requirement ID format (`**REQ-<AREA>-<crate-slug>-<NNN>**`) — the crate slug
+  is **mandatory** and names the crate that owns the conformance test
 - Annotation rules (ID-first, one per line, bold markers)
 - Enforcement mechanism (build.rs generates constants, proc macro references them)
 - Test naming convention
@@ -18,7 +20,8 @@ Read `specs/design/spec-conformance-testing.md` to understand:
 ### Step 2: Pick one small section
 
 Read the target spec file. Find a section that describes testable behavior but
-lacks `**REQ-XX-NNN**` markers. Pick **ONE** small, concrete subsection:
+lacks `**REQ-<AREA>-<crate-slug>-<NNN>**` markers. Pick **ONE** small, concrete
+subsection:
 - A single struct/record format (e.g., one 4-byte entry)
 - A single encoding table (e.g., one enum's value assignments)
 - A single behavioral rule
@@ -28,11 +31,13 @@ Never pick an entire major section in one pass.
 Find the highest existing requirement ID in the spec:
 
 ```bash
-grep -oP '\*\*REQ-\w+-\d+\*\*' <spec-file> | sort -u | tail -1
+grep -oP '\*\*REQ-[A-Z0-9]+-[a-z0-9-]+-\d+\*\*' <spec-file> | sort -u | tail -1
 ```
 
-If no IDs exist yet, determine the correct prefix from
-`spec-conformance-testing.md` or propose a new one following the convention.
+If no IDs exist yet, determine the correct area code from
+`spec-conformance-testing.md` (or propose a new one following the convention),
+and use the owning crate's slug (`CARGO_PKG_NAME` minus `ironplc-`) for the
+slug segment.
 
 ### Step 3: Find the implementation
 
@@ -51,7 +56,7 @@ grep -rl '<spec-filename>' compiler/*/build.rs
 If found, identify the crate and its conformance test module (look for
 `spec_conformance` in its `lib.rs`). If not found, set up the infrastructure
 by following the pattern in `spec-conformance-testing.md`:
-- Add a `build.rs` that scans the spec markdown for `**REQ-XX-NNN**` markers
+- Add a `build.rs` that scans the spec markdown for `**REQ-<AREA>-<crate-slug>-<NNN>**` markers
 - Add a `spec_test_macro` dependency to `Cargo.toml`
 - Add `spec_requirements` and `spec_conformance` test modules to `lib.rs`
 - Add the `all_spec_requirements_have_tests` completeness meta-test
@@ -71,7 +76,9 @@ use `#[ignore]` on the test.
 
 ### Step 6: Update the spec
 
-- Assign the next available `**REQ-XX-NNN**` ID(s)
+- Assign the next available `**REQ-<AREA>-<crate-slug>-<NNN>**` ID(s), using the
+  owning crate's slug (a requirement tested in a different crate than the rest of
+  the doc takes that crate's slug — see `cross-crate-spec-conformance.md`)
 - Place each ID on its own line (ID-first) or in a table's Requirement column
 - If code diverges from spec, update the spec text to match the code
 - Keep changes minimal -- only touch the section being reconciled
@@ -96,13 +103,14 @@ cd compiler && just
 ```
 
 All checks must pass (compile, coverage, lint). If the
-`all_spec_requirements_have_tests` meta-test fails, ensure every `**REQ-XX-NNN**`
-in the spec has a matching `#[spec_test(REQ_XX_NNN)]`.
+`all_spec_requirements_have_tests` meta-test fails, ensure every
+`**REQ-<AREA>-<crate-slug>-<NNN>**` in the spec has a matching
+`#[spec_test(REQ_<AREA>_<crate_slug>_NNN)]` in the owning crate.
 
 Commit message format:
 
 ```
-spec: reconcile {section name} with implementation (REQ-XX-NNN through REQ-XX-MMM)
+spec: reconcile {section name} with implementation (REQ-XX-<crate>-NNN through REQ-XX-<crate>-MMM)
 ```
 
 ## Token Efficiency
