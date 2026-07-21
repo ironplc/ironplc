@@ -2,7 +2,7 @@
 //!
 //! These were previously duplicated across `ironplc-cli` (the LSP runner),
 //! `vm-cli`, and the playground WASM crate. The format produced by
-//! [`format_variable_value`] follows REQ-VC-009 in
+//! [`format_variable_value`] follows REQ-VC-vm-cli-009 in
 //! `specs/design/vm-cli.md` so the CLI dump remains spec-compliant.
 //! Tools such as the playground that need richer rendering (decimal
 //! seconds, `D#YYYY-MM-DD`, enum value names) can still wrap or replace
