@@ -35,10 +35,10 @@ habit):
   too: `FormatString : STRING(255) := '%s';`) and one `FUNCTION` return
   type (`FUNCTION NCError_TO_STRING : STRING(255)`).
 - Inline FB-constructor-call: 24 occurrences (`MAIN.TcPOU`,
-  `FB_CoverControl.TcPOU`, `FB_PendantControl.TcPOU`,
-  `FB_DomeControl.TcPOU`, `TestProject3/MAIN.TcPOU`), using **both** named
-  args (`FB_CoverControl(comm := comm)`) **and** positional args
-  (`FB_CoverIdleState(THIS)`) — confirming this needs the same
+  `FB_Comm.TcPOU`, `FB_Pendant.TcPOU`,
+  `FB_Sensor.TcPOU`, `TestProject3/MAIN.TcPOU`), using **both** named
+  args (`FB_Comm(comm := comm)`) **and** positional args
+  (`FB_IdleState(THIS)`) — confirming this needs the same
   positional-or-named parameter grammar as an ordinary FB call
   (`param_assignment()`), not the named-only `member := value` shape that
   `structure_initialization()` already provides for the `:=` form.
