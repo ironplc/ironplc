@@ -134,6 +134,7 @@ mod end_to_end_partial_access;
 mod end_to_end_pow;
 mod end_to_end_ref;
 mod end_to_end_ref_to_array;
+mod end_to_end_reference_to;
 mod end_to_end_replace;
 mod end_to_end_right;
 mod end_to_end_sel;
