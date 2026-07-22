@@ -22,6 +22,8 @@ fn fb_container(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        // Intrinsic FB calls run inline (no user frame); depth 1 suffices.
+        .max_call_depth(1)
         .build()
 }
 
@@ -165,6 +167,8 @@ fn execute_when_user_fb_call_then_executes_body_and_persists_state() {
         })
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        // Deepest user-FB test nests SCAN -> outer FB -> inner FB (3 frames).
+        .max_call_depth(3)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -235,6 +239,8 @@ fn execute_when_user_fb_call_then_internal_state_persists_across_rounds() {
         })
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        // Deepest user-FB test nests SCAN -> outer FB -> inner FB (3 frames).
+        .max_call_depth(3)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -325,6 +331,8 @@ fn execute_when_nested_user_fb_calls_then_both_copy_outs_run() {
         })
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        // Deepest user-FB test nests SCAN -> outer FB -> inner FB (3 frames).
+        .max_call_depth(3)
         .build();
 
     let mut b = VmBuffers::from_container(&c);

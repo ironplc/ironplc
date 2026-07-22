@@ -36,6 +36,9 @@ fn call_container(
     builder
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        // Call tests nest SCAN -> callee (2 frames); depth 2 fits every
+        // debug scenario including the single-level CALL cases.
+        .max_call_depth(2)
         .build()
 }
 

@@ -86,7 +86,7 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 | | 184 | debug_section_offset | u32 | Offset of debug section (0 if absent) |
 | | 188 | debug_section_size | u32 | Size of debug section |
 | | 192 | max_stack_depth | u16 | Maximum operand stack depth across all functions |
-| | 194 | max_call_depth | u16 | Maximum call nesting depth |
+| | 194 | max_call_depth | u16 | Maximum call nesting depth, counting the entry frame. Must be `>= 1`; codegen always writes at least `1`. A value of `0` is invalid (field not computed) and is rejected at load with trap `V9017`. |
 | | 196 | num_variables | u16 | Total variable table entries (including compiler-generated hidden variables) |
 | | 198 | data_region_bytes | u32 | Total size of the mutable data region in bytes (compiler-summed across all variable-length variables: strings, arrays, FB instances) — see [ADR-0017](../adrs/0017-unified-data-region.md) |
 | | 202 | num_temp_bufs | u16 | Number of temporary buffers for string operations |

@@ -31,6 +31,7 @@ fn string_container(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 
@@ -60,6 +61,7 @@ fn wstring_container(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 
@@ -567,6 +569,7 @@ fn wstr_array_container(
         .add_function(FunctionId::new(1), bytecode, 16, 2, 0)
         .init_function_id(FunctionId::new(0))
         .entry_function_id(FunctionId::new(1))
+        .max_call_depth(1)
         .build()
 }
 
