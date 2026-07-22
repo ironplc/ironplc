@@ -73,6 +73,28 @@ pub trait Project {
     /// Initialize
     fn initialize(&mut self, dir: &Path) -> Vec<Diagnostic>;
 
+    /// Initialize from multiple directories, merging all discovered files
+    /// into one compilation unit (unlike calling `initialize` once per
+    /// directory, which would discard the previous directory's files).
+    ///
+    /// Default implementation delegates to `initialize` for a single
+    /// directory, or does nothing for zero directories -- sufficient for
+    /// implementors (e.g. `MemoryBackedProject`) that don't have a
+    /// meaningful multi-directory story.
+    fn initialize_many(&mut self, dirs: &[&Path]) -> Vec<Diagnostic> {
+        match dirs {
+            [] => vec![],
+            [dir] => self.initialize(dir),
+            _ => vec![Diagnostic::problem(
+                Problem::NoContent,
+                Label::span(
+                    SourceSpan::default(),
+                    "This project implementation does not support multiple directories",
+                ),
+            )],
+        }
+    }
+
     /// Updates the text for a document.
     fn change_text_document(&mut self, file_id: &FileId, content: String);
 
@@ -160,6 +182,12 @@ impl Project for FileBackedProject {
     /// Create a new project from the files in the specified directory.
     fn initialize(&mut self, dir: &Path) -> Vec<Diagnostic> {
         self.source_project.initialize_from_directory(dir)
+    }
+
+    /// Create a new project from the files in multiple directories,
+    /// merged into one compilation unit.
+    fn initialize_many(&mut self, dirs: &[&Path]) -> Vec<Diagnostic> {
+        self.source_project.initialize_from_directories(dirs)
     }
 
     fn change_text_document(&mut self, file_id: &FileId, content: String) {
@@ -491,6 +519,47 @@ END_CONFIGURATION
     fn memory_initialize_when_called_then_returns_error() {
         let mut project = MemoryBackedProject::new(CompilerOptions::default());
         let diagnostics = project.initialize(Path::new("/some/dir"));
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    // -----------------------------------------------------------------
+    // Multi-directory initialization.
+    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn file_backed_initialize_many_when_two_directories_then_merges_both() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir1 = TempDir::new().unwrap();
+        fs::write(dir1.path().join("a.st"), "PROGRAM A\nEND_PROGRAM").unwrap();
+
+        let dir2 = TempDir::new().unwrap();
+        fs::write(dir2.path().join("b.st"), "PROGRAM B\nEND_PROGRAM").unwrap();
+
+        let mut project = FileBackedProject::default();
+        let diagnostics = project.initialize_many(&[dir1.path(), dir2.path()]);
+
+        assert!(diagnostics.is_empty());
+        assert_eq!(project.sources().len(), 2);
+    }
+
+    #[test]
+    fn file_backed_initialize_many_when_zero_directories_then_no_op() {
+        let mut project = FileBackedProject::default();
+        let diagnostics = project.initialize_many(&[]);
+
+        assert!(diagnostics.is_empty());
+        assert_eq!(project.sources().len(), 0);
+    }
+
+    #[test]
+    fn memory_initialize_many_when_multiple_directories_then_returns_error() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        let diagnostics =
+            project.initialize_many(&[Path::new("/some/dir"), Path::new("/other/dir")]);
 
         assert!(!diagnostics.is_empty());
     }
