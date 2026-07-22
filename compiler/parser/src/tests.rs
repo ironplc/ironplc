@@ -1712,7 +1712,7 @@ END_PROGRAM",
             InitialValueAssignmentKind::Array
         );
         let subranges = cast!(&arr.spec, SpecificationKind::Inline);
-        assert!(subranges.ref_to);
+        assert!(subranges.ref_to.is_some());
         assert_eq!(subranges.type_name.to_type_name().to_string(), "BYTE");
         assert_eq!(subranges.ranges.len(), 1);
     }
@@ -1723,7 +1723,7 @@ END_PROGRAM",
         let dt = cast!(&lib.elements[0], LibraryElementKind::DataTypeDeclaration);
         let arr = cast!(dt, DataTypeDeclarationKind::Array);
         let subranges = cast!(&arr.spec, SpecificationKind::Inline);
-        assert!(subranges.ref_to);
+        assert!(subranges.ref_to.is_some());
         assert_eq!(subranges.type_name.to_type_name().to_string(), "INT");
     }
 
@@ -1742,7 +1742,7 @@ END_PROGRAM",
             InitialValueAssignmentKind::Array
         );
         let subranges = cast!(&arr.spec, SpecificationKind::Inline);
-        assert!(!subranges.ref_to);
+        assert!(subranges.ref_to.is_none());
     }
 
     #[test]

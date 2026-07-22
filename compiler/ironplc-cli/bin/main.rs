@@ -104,6 +104,12 @@ struct FileArgs {
     #[arg(long)]
     allow_ref_to: bool,
 
+    /// Allow the Beckhoff TwinCAT/CODESYS `REFERENCE TO` reference type and the
+    /// `REF=` binding operator. This is a vendor extension, an alternative to
+    /// `--allow-ref-to`; the `twincat` and `codesys` dialects enable it.
+    #[arg(long)]
+    allow_reference_to: bool,
+
     /// Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types.
     /// This is a vendor extension not part of the IEC 61131-3 standard.
     #[arg(long)]
@@ -180,6 +186,7 @@ impl FileArgs {
         options.allow_time_as_function_name |= self.allow_time_as_function_name;
         options.allow_c_style_comments |= self.allow_c_style_comments;
         options.allow_ref_to |= self.allow_ref_to;
+        options.allow_reference_to |= self.allow_reference_to;
         options.allow_ref_arithmetic |= self.allow_ref_arithmetic;
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
