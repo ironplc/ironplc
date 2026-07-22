@@ -43,6 +43,29 @@ library yet, and even with one this function is meaningful only for
 `REFERENCE TO` (it reports whether a reference is bound). Gating it keeps it from
 leaking into standard or `REF_TO`-only programs as a magic name.
 
+## Status & handoff notes
+
+- **Nothing is implemented yet.** The only artifacts committed so far are this
+  plan and [ADR-0038](../adrs/0038-no-restrictions-on-flag-combinations.md). The
+  design doc `specs/design/reference-to-twincat.md` is **not yet written** — it is
+  the first task of PR 1, and until it exists the traceability tables in this plan
+  are the source of truth for the REQ-RTO set.
+- **Rebase onto `main` first.** This branch was cut before #1210/#1211 merged and
+  is a few commits behind. The `parser.rs` line anchors (`:442` type decl,
+  `:554` `array_specification`, `:860` var-init) and `compile_array.rs:31`
+  (`ArraySpec.ref_to`) are **guides that will have drifted** — re-locate them by
+  symbol, not line number, after rebasing.
+- **ADR numbering:** ours is **ADR-0038**; `0037` is taken by the crate-slug ADR
+  (`0037-mandatory-crate-slug-in-requirement-ids.md`) that landed with #1211.
+- **Auto-wired surfaces (no per-flag code):** MCP applies flags via
+  `set_flag_by_key`, and the playground via `FEATURE_DESCRIPTORS`, so both pick up
+  `allow_reference_to` automatically (playground exposes it in its allow-list, not
+  on by default). **LSP is manual** — add the `allowReferenceTo` line in
+  `extract_compiler_options`.
+- **Spec harness:** only `codegen` has it today; `parser`, `analyzer`, and
+  `plc2plc` each need the one-time bootstrap (see enforcement approach) before
+  they can host their slug's `#[spec_test]`s.
+
 ## Architecture
 
 The key insight is that the reference **backend is already complete and is
@@ -90,8 +113,9 @@ All new work is confined to the front end plus one analyzer transform:
   instead introduces a standalone `--allow-reference-to` flag that *reuses the
   `REF_TO` backend* to produce executable code.
 - **New:** [specs/design/reference-to-twincat.md](../design/reference-to-twincat.md)
-  — authored as the first task of PR 1. Holds the `**REQ-RTO-NNN**` requirement
-  markers for both phases and the requirements→test traceability table. Per the
+  — **not yet written**; authored as the first task of PR 1. Holds the slugged
+  `**REQ-RTO-<slug>-NNN**` requirement markers for both phases and the
+  requirements→test traceability table. Per the
   design-requirement standard, every testable claim carries a REQ ID and every
   REQ ID has a corresponding spec-linked test (see below). This doc also
   reconciles the divergence from the dialect design above (supersedes
@@ -149,14 +173,15 @@ tests); the slug lives in the requirement ID / `#[spec_test]` attribute. The
 | `compiler/parser/src/options.rs` | New `allow_reference_to` field via `define_compiler_options!`; add to `Codesys` dialect preset; **not** `Rusty` (Rusty already carries `REF_TO`). Dialect tests (REQ-RTO-parser-001/002). |
 | `compiler/ironplc-cli/bin/main.rs` | `--allow-reference-to` clap arg; `|=` overlay in `compiler_options()`. No combination validation (ADR-0038). |
 | `compiler/ironplc-cli/src/lsp.rs` | `allowReferenceTo` extraction in `extract_compiler_options()`; test. |
-| `compiler/mcp/src/tools/common.rs` | Expose the new option key (mirrors other `allow_*` flags). |
+| `compiler/mcp/src/tools/common.rs` | **No code change** — the MCP option layer applies flags generically via `CompilerOptions::set_flag_by_key`, so `allow_reference_to` is picked up automatically from `FEATURE_DESCRIPTORS`. (Add a test only if desired.) |
 | `compiler/parser/src/token.rs` | New `#[token("REFERENCE", ignore(case))] Reference`; `describe()` arm `"'REFERENCE'"`; lexer test. (`TO` already exists.) |
 | `compiler/parser/src/xform_demote_reference_keyword.rs` | **New** — demote `Reference` → `Identifier` when `!allow_reference_to`. Separate module because it is vendor-flag-gated, not edition-gated. |
 | `compiler/parser/src/lib.rs` | Register the new demotion transform in `tokenize_program()` before `check_tokens()`/`parse_library()`. |
-| `compiler/dsl/src/common.rs` | Add `RefSyntax { RefTo, ReferenceTo }` enum; add `syntax: RefSyntax` field to `ReferenceDeclaration` and `ReferenceInitializer`. Change `ArraySubranges.ref_to: bool` → `ref_to: Option<RefSyntax>` (`None` = non-reference element; `Some(_)` = element is a reference, tagged with its surface syntax) so `ARRAY [..] OF REFERENCE TO T` round-trips distinctly from `ARRAY [..] OF REF_TO T`. |
+| `compiler/dsl/src/common.rs` | Add `RefSyntax { RefTo, ReferenceTo }` enum (same derives as other leaf AST enums — `Debug, Clone, PartialEq, Recurse`); add `syntax: RefSyntax` field to `ReferenceDeclaration` and `ReferenceInitializer`. Change **only the DSL** `ArraySubranges.ref_to: bool` → `ref_to: Option<RefSyntax>` (`None` = non-reference element; `Some(_)` = reference element, tagged with its surface syntax) so `ARRAY [..] OF REFERENCE TO T` round-trips distinctly from `ARRAY [..] OF REF_TO T`. |
 | `compiler/parser/src/parser.rs` | (a) `REFERENCE TO` productions paralleling the `RefTo` productions at `parser.rs:442` (type decl) and `:860` (var init decl), tagging nodes `RefSyntax::ReferenceTo`; existing `REF_TO` productions tag `RefSyntax::RefTo`. (b) **Array elements:** extend `array_specification` (`parser.rs:554`) so the element type accepts `REFERENCE TO` as well as the existing `REF_TO`, recording the `RefSyntax` in `ArraySubranges.ref_to`. `REFERENCE TO ARRAY[..] OF T` (reference *to* an array) reuses `ref_to_target`'s existing `ReferenceTarget::Array` arm and comes for free. (c) `REF=` binding operator in assignment/statement context: recognize `Identifier("REF") + Equal` after the LHS and lower to the existing reference-assignment (`ExprKind::Ref`) form. |
 | `compiler/plc2plc/src/renderer.rs` | `visit_reference_declaration` / `visit_reference_initializer` emit `REFERENCE TO` (and `REF=`) when `syntax == ReferenceTo`, else `REF_TO`; array-element rendering follows `ArraySubranges.ref_to`'s tag. |
-| `compiler/codegen/src/compile_array.rs` | Adjust for the `ref_to: bool → Option<RefSyntax>` change (behavior unchanged — reference array elements are already handled for `REF_TO`). |
+| `compiler/analyzer/src/intermediates/array.rs` | Reads `ArraySubranges.ref_to` (the resolve site) and constructs the analyzer's own array intermediate, which keeps a **`ref_to: bool`** field. Populate it from the DSL via `subranges.ref_to.is_some()` — the syntax tag is only needed up to the renderer, not in the type system. Update the several `ref_to: false/true` literal constructions in this file's tests to the bool value they already use (unchanged). |
+| `compiler/codegen/src/compile_array.rs` | The codegen `ArraySpec` struct (`compile_array.rs:31`) also keeps **`ref_to: bool`**; set it from the intermediate's bool. The `if spec.ref_to` / `if subranges.ref_to` read sites stay bool-valued. Only the DSL→intermediate boundary changes (`.is_some()`); reference-array codegen behavior is unchanged (already handled for `REF_TO`). |
 | `compiler/resources/test/reference_to.st` | **New** — `REFERENCE TO` declarations, `REF=` binding, explicit `^` access, and `ARRAY [..] OF REFERENCE TO T`. |
 | `compiler/plc2plc/resources/test/reference_to_rendered.st` | **New** — expected round-trip output. |
 | `compiler/plc2plc/src/tests.rs` | Round-trip test using `CompilerOptions { allow_reference_to: true, .. }`. |
@@ -190,12 +215,12 @@ tests); the slug lives in the requirement ID / `#[spec_test]` attribute. The
 - [ ] Add `allow_reference_to` to `define_compiler_options!` (`options.rs`); enable it in the `Codesys` dialect preset, not `Rusty`; update the `from_dialect` / `FEATURE_DESCRIPTORS` count tests. Tests: `options_spec_req_rto_001_codesys_enables_reference_to`, `options_spec_req_rto_002_rusty_does_not_enable_reference_to`, `options_spec_req_rto_003_reference_to_and_ref_to_coexist` (both flags set is accepted — ADR-0038).
 - [ ] Add `--allow-reference-to` clap arg and `|=` overlay in `ironplc-cli/bin/main.rs`. No combination validation (ADR-0038).
 - [ ] Add `allowReferenceTo` to LSP `extract_compiler_options()` + test.
-- [ ] Expose the option key in `mcp/src/tools/common.rs`.
+- [ ] MCP: no code change needed — `set_flag_by_key` picks up `allow_reference_to` automatically. (Optional: add an MCP test asserting the key is accepted.)
 - [ ] Add the `REFERENCE` token to `token.rs` (+ `describe()` arm); confirm `TO` tokenizes separately. Test: `lexer_spec_req_rto_100_reference_lexes_as_reference_token`.
 - [ ] Create `xform_demote_reference_keyword.rs` (demote when `!allow_reference_to`); register it in `lib.rs` `tokenize_program()`. Tests: `xform_spec_req_rto_101_reference_demoted_when_flag_off`, `xform_spec_req_rto_102_reference_kept_when_flag_on`.
 - [ ] Add `RefSyntax { RefTo, ReferenceTo }` and the `syntax` field to `ReferenceDeclaration` / `ReferenceInitializer` (`dsl/src/common.rs`); update all constructors/pattern matches (parser, renderer, analyzer, codegen) to set/handle the tag; existing `REF_TO` paths set `RefSyntax::RefTo`. Test: `parser_spec_req_rto_202_ref_to_is_tagged_ref_to`.
 - [ ] Add `REFERENCE TO` parser productions (type decl + var init) tagging `RefSyntax::ReferenceTo`. Tests: `parser_spec_req_rto_200_reference_to_var_decl_is_tagged`, `parser_spec_req_rto_201_reference_to_type_decl_is_tagged`.
-- [ ] Support `ARRAY [..] OF REFERENCE TO T`: change `ArraySubranges.ref_to: bool` → `Option<RefSyntax>` (`dsl`), extend `array_specification` to accept `REFERENCE TO` in the element type (`parser.rs:554`), and adjust `compile_array.rs`/renderer for the changed field. Tests: `parser_spec_req_rto_220_array_of_reference_to_is_tagged`, `codegen_spec_req_rto_420_array_of_reference_element_access`.
+- [ ] Support `ARRAY [..] OF REFERENCE TO T`: change the **DSL** `ArraySubranges.ref_to: bool` → `Option<RefSyntax>`, extend `array_specification` to accept `REFERENCE TO` in the element type, and collapse to `bool` via `.is_some()` at the DSL→intermediate boundary (`analyzer/src/intermediates/array.rs`) and intermediate→codegen `ArraySpec` (`compile_array.rs`); renderer reads the DSL tag. Tests: `parser_spec_req_rto_220_array_of_reference_to_is_tagged`, `codegen_spec_req_rto_420_array_of_reference_element_access`.
 - [ ] Add the `REF=` binding operator in assignment context, lowering to the existing `ExprKind::Ref` reference-assignment. Test: `parser_spec_req_rto_210_ref_assign_parses_as_reference_binding`.
 - [ ] Update the renderer to emit `REFERENCE TO` / `REF=` based on `RefSyntax`. Tests: `plc2plc_spec_req_rto_600_reference_to_declaration_renders`, `plc2plc_spec_req_rto_601_ref_assign_renders`, `plc2plc_spec_req_rto_602_ref_to_still_renders`.
 - [ ] Keyword-safety regression: `REFERENCE` usable as an identifier in standard mode. Test: `parser_spec_req_rto_103_reference_is_identifier_in_standard_mode`.
