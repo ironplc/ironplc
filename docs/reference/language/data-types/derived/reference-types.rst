@@ -14,6 +14,21 @@ variable.
    ``--allow-ref-to`` or by selecting the ``rusty`` dialect.
    See :doc:`/explanation/enabling-dialects-and-features`.
 
+.. note::
+
+   Beckhoff TwinCAT and CODESYS spell references ``REFERENCE TO`` and bind them
+   with the ``REF=`` operator (``r REF= x;``) rather than ``REF_TO`` and
+   ``r := REF(x);``. Enable this variant with ``--allow-reference-to`` or the
+   ``codesys`` dialect. It describes the same underlying reference and, in this
+   release, is read and written through the same explicit ``^`` operator:
+
+   .. code-block::
+
+      r : REFERENCE TO INT;
+      r REF= counter;    (* bind the reference *)
+      value := r^;       (* read through the reference *)
+      r^ := 99;          (* write through the reference *)
+
 .. list-table::
    :widths: 30 70
 

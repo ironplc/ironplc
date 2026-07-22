@@ -151,6 +151,16 @@ features — they never disable features that a dialect already includes.
    Edition 2 keyword handling for the rest of your code. See
    :doc:`/reference/language/data-types/derived/reference-types`.
 
+``--allow-reference-to``
+   Allow the Beckhoff TwinCAT / CODESYS ``REFERENCE TO`` reference type and the
+   ``REF=`` binding operator. This is the TwinCAT/CODESYS-facing alternative to
+   ``--allow-ref-to``: the two describe the same underlying reference but with
+   different surface syntax. ``REFERENCE TO`` is bundled by the ``twincat`` and
+   ``codesys`` dialects. The compiler does not restrict flag combinations, so
+   ``--allow-ref-to`` and ``--allow-reference-to`` may be set at once, though no
+   single real dialect bundles both. See
+   :doc:`/reference/language/data-types/derived/reference-types`.
+
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``

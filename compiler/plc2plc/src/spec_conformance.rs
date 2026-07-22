@@ -41,7 +41,10 @@ fn reference_to_options() -> CompilerOptions {
 /// `REFERENCE TO <target>`.
 #[spec_test(REQ_RTO_plc2plc_600)]
 fn plc2plc_spec_req_rto_600_reference_to_declaration_renders() {
-    let rendered = render("TYPE T : REFERENCE TO INT; END_TYPE", &reference_to_options());
+    let rendered = render(
+        "TYPE T : REFERENCE TO INT; END_TYPE",
+        &reference_to_options(),
+    );
     assert!(
         rendered.contains("REFERENCE TO INT"),
         "expected `REFERENCE TO INT` in:\n{rendered}"
