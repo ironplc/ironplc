@@ -147,3 +147,45 @@ caller/subcommand is unaffected.
   still exercise the same code paths (`parse_plcproj` directly, and
   propagation through `detect_twincat`/`discover`) with corrected
   expectations.
+
+## Revision: address maintainer feedback on PR #1215
+
+garretfick (maintainer) requested changes: keep the "don't abort the
+whole project" fix, but drop the "demote to a non-fatal warning" half.
+Per [ADR-0012](../adrs/0012-accept-vendor-dialect-files-as-is.md)
+(rejects "Best-Effort with Warnings") and
+[ADR-0005](../adrs/0005-safety-first-design-principle.md)
+(safety-first: never silently report success when something is wrong),
+a `.plcproj` naming a file that doesn't exist is a broken project, and
+`ironplcc check` must still fail on it -- exactly like MSBuild's
+`CS2001` or GCC's fatal `#include` errors, all of which keep processing
+every other file while still failing the build. The CLI also has no
+warning tier: `handle_diagnostics` always renders at `Severity::Error`,
+so "warning" only meant the diagnostic printed but didn't set
+`had_error` -- a silently non-fatal error, strictly more confusing than
+a real one.
+
+Fix, in the already-reviewed code:
+
+- `DiscoveredProject.warnings` renamed to `errors` (same shape, same
+  "doesn't abort discovery of the rest of the project" semantics) --
+  only the name and doc comment change, to make clear these must still
+  fail the overall command.
+- `enumerate_files()` in `cli.rs` no longer prints-then-discards these;
+  it returns `(Vec<PathBuf>, Vec<Diagnostic>)` so `create_project()` can
+  both keep the successfully-resolved files (still gets checked, still
+  reports its own diagnostics) and set `had_error = true` from the
+  unresolved-entry diagnostics -- the overall command now exits non-zero
+  exactly as it did before this branch, but without losing the "other
+  files still get checked" improvement.
+- Added `check_when_plcproj_references_missing_file_then_error` and
+  `check_when_plcproj_has_valid_and_missing_entries_then_error_but_valid_file_still_checked`
+  in `cli.rs` to lock in the maintainer's exact requirement at the
+  `ironplcc check` level, not just the `discovery` module's internal
+  `errors` field.
+
+No behavior changed for the case-sensitivity / genuinely-missing-file
+scenarios beyond this: they're still collected rather than aborting
+discovery, but the command now correctly fails again, matching
+pre-branch behavior for "is this a passing build" while adding the
+"other files still get checked" fix this branch set out to make.

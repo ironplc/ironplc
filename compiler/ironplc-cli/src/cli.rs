@@ -214,17 +214,12 @@ fn create_project(
     let mut had_error = false;
 
     for path in paths {
-        match enumerate_files(path, suppress_output) {
-            Ok(mut paths) => files.append(&mut paths),
-            Err(err) => {
-                handle_diagnostics(&err, None, suppress_output);
-                had_error = true;
-            }
+        let (mut resolved, diagnostics) = enumerate_files(path);
+        files.append(&mut resolved);
+        if !diagnostics.is_empty() {
+            handle_diagnostics(&diagnostics, None, suppress_output);
+            had_error = true;
         }
-    }
-
-    if had_error {
-        return Err(String::from("Error enumerating files"));
     }
 
     // Create the project
@@ -243,7 +238,11 @@ fn create_project(
 
     if !errors.is_empty() {
         handle_diagnostics(&errors, Some(&project), suppress_output);
-        return Err(String::from("Error reading source files"));
+        had_error = true;
+    }
+
+    if had_error {
+        return Err(String::from("Error enumerating or reading source files"));
     }
 
     Ok(project)
@@ -255,41 +254,54 @@ fn create_project(
 /// then uses project discovery to detect the project structure and return
 /// the appropriate set of files.
 ///
-/// Non-fatal discovery problems (e.g. a `.plcproj` `<Compile Include="...">`
-/// entry that doesn't resolve to a real file) are printed as warnings via
-/// `handle_diagnostics` rather than failing enumeration -- the rest of the
-/// project's files are still returned.
-fn enumerate_files(path: &PathBuf, suppress_output: bool) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
+/// Discovery problems that shouldn't stop the rest of the project from
+/// being enumerated (e.g. a `.plcproj` `<Compile Include="...">` entry
+/// that doesn't resolve to a real file) are returned alongside whatever
+/// files DID resolve, rather than aborting enumeration entirely -- but
+/// they are still genuine errors: the caller must still fail the overall
+/// command if this returns any diagnostics.
+fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<Diagnostic>) {
     // Get the canonical path so that error messages are unambiguous
-    let path = canonicalize(path).map_err(|e| {
-        diagnostic(
-            Problem::CannotCanonicalizePath,
-            path,
-            format!("{}, {}", path.display(), e),
-        )
-    })?;
+    let path = match canonicalize(path) {
+        Ok(path) => path,
+        Err(e) => {
+            return (
+                vec![],
+                diagnostic(
+                    Problem::CannotCanonicalizePath,
+                    path,
+                    format!("{}, {}", path.display(), e),
+                ),
+            );
+        }
+    };
 
     // Determine what kind of path we have.
-    let metadata = metadata(&path)
-        .map_err(|e| diagnostic(Problem::CannotReadMetadata, &path, e.to_string()))?;
-    if metadata.is_dir() {
-        let project = ironplc_sources::discovery::discover(&path).map_err(|e| vec![e])?;
-        if !project.warnings.is_empty() {
-            handle_diagnostics(&project.warnings, None, suppress_output);
+    let metadata = match metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(e) => {
+            return (
+                vec![],
+                diagnostic(Problem::CannotReadMetadata, &path, e.to_string()),
+            );
         }
-        return Ok(project.files);
+    };
+    if metadata.is_dir() {
+        return match ironplc_sources::discovery::discover(&path) {
+            Ok(project) => (project.files, project.errors),
+            Err(e) => (vec![], vec![e]),
+        };
     }
     if metadata.is_file() {
-        return Ok(vec![path.to_path_buf()]);
+        return (vec![path.to_path_buf()], vec![]);
     }
     if metadata.is_symlink() {
-        return Err(diagnostic(
-            Problem::SymlinkUnsupported,
-            &path,
-            String::from(""),
-        ));
+        return (
+            vec![],
+            diagnostic(Problem::SymlinkUnsupported, &path, String::from("")),
+        );
     }
-    Ok(vec![])
+    (vec![], vec![])
 }
 
 /// Converts an IronPLC diagnostic into the
@@ -436,6 +448,51 @@ mod tests {
         let paths = vec![resource_path("set")];
         let result = check(&paths, CompilerOptions::default(), true);
         assert!(result.is_ok())
+    }
+
+    #[test]
+    fn check_when_plcproj_references_missing_file_then_error() {
+        // Maintainer feedback on the PR that introduced discovery
+        // continuing past one bad `.plcproj` entry: the missing
+        // reference itself must still fail the overall command, even
+        // though discovery no longer aborts because of it.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MISSING.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().to_path_buf()];
+        let result = check(&paths, CompilerOptions::default(), true);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn check_when_plcproj_has_valid_and_missing_entries_then_error_but_valid_file_still_checked() {
+        // The valid entry must still be loaded and checked (and would
+        // surface its own diagnostics if invalid) even though the
+        // command as a whole fails because of the missing entry.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("A.st"), "PROGRAM A END_PROGRAM").unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.st" />
+    <Compile Include="MISSING.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().to_path_buf()];
+        let result = check(&paths, CompilerOptions::default(), true);
+        assert!(result.is_err())
     }
 
     #[test]
