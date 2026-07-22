@@ -50,10 +50,10 @@ When a document contains both design and plan content, split it into two files w
 
 ### Design Requirement
 
-Compiler design documents in `specs/design/` **must** include **requirement IDs** for every testable claim. Requirements use the ID-first, one-per-line format:
+Compiler design documents in `specs/design/` **must** include **requirement IDs** for every testable claim. Every ID carries a **mandatory crate slug** naming the crate that owns its conformance test — `**REQ-<AREA>-<crate-slug>-<NNN>**`:
 
 ```markdown
-**REQ-CF-001** The file header is exactly 256 bytes.
+**REQ-CF-container-001** The file header is exactly 256 bytes.
 ```
 
 For tables, add a Requirement column as the first column:
@@ -61,16 +61,20 @@ For tables, add a Requirement column as the first column:
 ```markdown
 | Requirement | Offset | Field | Type | Description |
 |-------------|--------|-------|------|-------------|
-| **REQ-CF-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
+| **REQ-CF-container-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
 ```
 
 Rules:
 - At most one requirement per line
-- ID-first: `**REQ-XX-NNN**` followed by the testable claim
+- ID-first: `**REQ-<AREA>-<crate-slug>-<NNN>**` followed by the testable claim
+  - `<AREA>` is an uppercase code grouping requirements by design section (`CF`, `EN`, …)
+  - `<crate-slug>` is the lowercase owning-crate slug (`CARGO_PKG_NAME` minus `ironplc-`; may contain hyphens, e.g. `vm-cli`)
+- The unslugged form (`**REQ-CF-001**`) is **not** valid; a listed doc containing one panics the build
+- One design doc may distribute requirements across several crates by giving each requirement the owning crate's slug (e.g. `REQ-EN-codegen-001` and `REQ-EN-container-061` in the same doc)
 - IDs use three-digit zero-padded numbers grouped by section with gaps for future additions
 - IDs are never reused; gaps are allowed
 
-Each requirement **must** have a corresponding conformance test annotated with `#[spec_test(REQ_XX_NNN)]`. The build system enforces this bidirectionally: removing a requirement from the spec causes a compile error; adding a requirement without a test causes the completeness meta-test to fail.
+Each requirement **must** have a corresponding conformance test annotated with `#[spec_test(REQ_<AREA>_<crate_slug>_NNN)]` in the owning crate. The build system enforces this bidirectionally: removing a requirement from the spec causes a compile error; adding a requirement without a test causes that crate's completeness meta-test to fail.
 
 See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism.
 

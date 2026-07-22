@@ -11,8 +11,8 @@
 //! `ok: false` with a diagnostic directing the caller to the follow-up.
 //!
 //! Design references: `specs/design/mcp-server.md` §`run`
-//! (REQ-TOL-040..048), §Variable Naming (REQ-ARC-020..021), §VM
-//! Sandboxing (REQ-ARC-030..035).
+//! (REQ-TOL-mcp-040..048), §Variable Naming (REQ-ARC-mcp-020..021), §VM
+//! Sandboxing (REQ-ARC-mcp-030..035).
 
 use std::sync::Mutex;
 
@@ -53,7 +53,7 @@ pub struct RunInput {
     /// Controls trace sampling mode and cap.
     #[serde(default)]
     pub trace: Option<TraceOptions>,
-    /// Per-call limit tighteners. May not loosen server defaults (REQ-ARC-031).
+    /// Per-call limit tighteners. May not loosen server defaults (REQ-ARC-mcp-031).
     #[serde(default)]
     pub limits: Option<LimitOverrides>,
     /// Restrict trace emission to cycles from named tasks. Phase 11 feature.
@@ -127,9 +127,9 @@ pub struct RunSummary {
 /// Entry point. Validates input, resolves the trace set, runs the VM,
 /// and returns a `RunResponse`. Never returns an MCP-layer error —
 /// compiler-surfaced problems always come back as diagnostics
-/// (REQ-TOL-024).
+/// (REQ-TOL-mcp-024).
 pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunResponse {
-    // --- Shape validation (REQ-TOL-040 sentence 1) ---
+    // --- Shape validation (REQ-TOL-mcp-040 sentence 1) ---
     match (&input.container_id, &input.container_base64) {
         (None, None) => {
             return fail(vec![validation(
@@ -169,14 +169,14 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
         }
     }
 
-    // --- Limit override validation (REQ-ARC-031) ---
+    // --- Limit override validation (REQ-ARC-mcp-031) ---
     let defaults = EffectiveLimits::DEFAULTS;
     let limits = match resolve_limits(defaults, input.limits.as_ref()) {
         Ok(l) => l,
         Err(diags) => return fail(diags),
     };
 
-    // --- Container lookup (REQ-ARC-073) ---
+    // --- Container lookup (REQ-ARC-mcp-073) ---
     let container_id = input.container_id.as_deref().unwrap_or_default();
     let mut guard = cache.lock().unwrap();
     let cached = match guard.get(container_id) {
@@ -188,14 +188,14 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
         }
     };
 
-    // REQ-TOL-040 sentence 4: a container with no tasks cannot be scheduled.
+    // REQ-TOL-mcp-040 sentence 4: a container with no tasks cannot be scheduled.
     if cached.tasks.is_empty() {
         return fail(vec![validation(
             "Container declares no tasks; declare at least one TASK in a CONFIGURATION to run.",
         )]);
     }
 
-    // --- Trace set resolution (REQ-TOL-041, REQ-ARC-020/021) ---
+    // --- Trace set resolution (REQ-TOL-mcp-041, REQ-ARC-mcp-020/021) ---
     let trace_set = match resolve_trace_set(
         &input.variables,
         input.trace_outputs,
@@ -433,7 +433,7 @@ fn resolve_trace_set(
     Ok(out)
 }
 
-/// Mirrors the `project_io::classify` output rules (REQ-TOL-211) without
+/// Mirrors the `project_io::classify` output rules (REQ-TOL-mcp-211) without
 /// re-running analysis — operates on the pre-built symbol map.
 fn is_observable_output(v: &ResolvedVar) -> bool {
     use ironplc_container::debug_section::var_section;
@@ -452,7 +452,7 @@ enum NameError {
     Ambiguous(Vec<String>),
 }
 
-/// Resolves a fully-qualified or bare name per REQ-ARC-020.
+/// Resolves a fully-qualified or bare name per REQ-ARC-mcp-020.
 fn resolve_name(symbols: &VariableSymbolMap, requested: &str) -> Result<ResolvedVar, NameError> {
     // Qualified lookup first.
     if requested.contains('.') {

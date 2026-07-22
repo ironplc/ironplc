@@ -160,6 +160,12 @@ Options
    ``--dialect=rusty``. Byte/word/dword/lword partial access (``.%Bn``,
    ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
 
+``--allow-pragmas``
+   Allow curly-brace pragmas such as ``{attribute 'qualified_only'}``. This
+   is CODESYS-core syntax, inherited by TwinCAT and other CODESYS-based
+   IDEs. A pragma is parsed and discarded like a comment; its contents are
+   not interpreted. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Examples
 ========
 

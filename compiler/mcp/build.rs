@@ -1,11 +1,11 @@
 //! Build script that generates:
 //!
 //! 1. `spec_requirements.rs` from requirement markers in the MCP server design
-//!    spec (`**REQ-STL-001**`, `**REQ-TOL-010**`, `**REQ-ARC-001**`).
+//!    spec (`**REQ-STL-mcp-001**`, `**REQ-TOL-mcp-010**`, `**REQ-ARC-mcp-001**`).
 //!
 //! 2. `problem_docs.rs` — a lookup function that maps problem codes (e.g.
 //!    `"P0001"`) to their embedded `.rst` documentation and CSV title, used by
-//!    the `explain_diagnostic` tool (REQ-TOL-072).
+//!    the `explain_diagnostic` tool (REQ-TOL-mcp-072).
 //!
 //! See `specs/design/spec-conformance-testing.md`.
 
@@ -22,7 +22,7 @@ fn main() {
 }
 
 // ---------------------------------------------------------------------------
-// Problem-doc embedding (REQ-TOL-072)
+// Problem-doc embedding (REQ-TOL-mcp-072)
 // ---------------------------------------------------------------------------
 
 /// Generates `problem_docs.rs` which embeds every `P####.rst` file at compile

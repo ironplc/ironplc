@@ -20,7 +20,7 @@ The format builds on:
 
 ## File Layout
 
-**REQ-CF-004** All multi-byte values are little-endian, matching the instruction set encoding.
+**REQ-CF-container-004** All multi-byte values are little-endian, matching the instruction set encoding.
 
 Sections appear in this fixed order.
 
@@ -46,7 +46,7 @@ Sections appear in this fixed order.
 
 ## File Header
 
-**REQ-CF-001** The header is exactly 256 bytes.
+**REQ-CF-container-001** The header is exactly 256 bytes.
 
 The VM reads this in a single read and decides whether to proceed.
 
@@ -59,14 +59,14 @@ The header is organized into four logical regions:
 
 Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 6), not in this header. The 32-byte slot at bytes 40-71 was formerly a single combined `source_hash` (SHA-256); it is now reserved and must be zero. The slot is preserved to keep the header layout stable; future revisions may reuse those bytes if a new top-level hash is ever needed.
 
-**REQ-CF-005** The header field layout is as follows, totaling 256 bytes.
+**REQ-CF-container-005** The header field layout is as follows, totaling 256 bytes.
 
 | Requirement | Offset | Field | Type | Description |
 |-------------|--------|-------|------|-------------|
-| **REQ-CF-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
-| **REQ-CF-003** | 4 | format_version | u16 | Container format version (currently 3; bumped to 2 from 1 by ADR-0033 opcode-encoding migration, then to 3 by ADR-0035 WSTRING string-header/constant-pool encoding tags) |
+| **REQ-CF-container-002** | 0 | magic | u32 | `0x49504C43` ("IPLC" in ASCII) |
+| **REQ-CF-container-003** | 4 | format_version | u16 | Container format version (currently 3; bumped to 2 from 1 by ADR-0033 opcode-encoding migration, then to 3 by ADR-0035 WSTRING string-header/constant-pool encoding tags) |
 | | 6 | profile | u8 | Reserved for future VM profile definitions; must be zero |
-| **REQ-CF-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section; Bit 2: has type section |
+| **REQ-CF-container-007** | 7 | flags | u8 | Bit 0: has system uptime variables (`FLAG_HAS_SYSTEM_UPTIME`); Bit 1: has debug section; Bit 2: has type section |
 | | 8 | content_hash | [u8; 32] | BLAKE3 over `type_section \|\| constant_pool \|\| code_section` (see Content Hash Scope) |
 | | 40 | reserved_hash_slot | [u8; 32] | Reserved (formerly `source_hash`); must be zero. Per-file source integrity is now in the debug section's `SOURCE_FILE_TABLE` (tag 6). |
 | | 72 | debug_hash | [u8; 32] | BLAKE3 over debug section (all zeros if no debug section) |
@@ -96,7 +96,7 @@ Per-file source integrity lives in the debug section's `SOURCE_FILE_TABLE` (tag 
 | | 212 | input_image_bytes | u16 | Total input process image size in bytes (%I) |
 | | 214 | output_image_bytes | u16 | Total output process image size in bytes (%Q) |
 | | 216 | memory_image_bytes | u16 | Total memory region size in bytes (%M) |
-| **REQ-CF-006** | 218 | reserved | [u8; 38] | Reserved for future use; must be zero |
+| **REQ-CF-container-006** | 218 | reserved | [u8; 38] | Reserved for future use; must be zero |
 
 ### Resource Budget Calculation
 
@@ -158,7 +158,7 @@ Each VarEntry (4 bytes, fixed size):
 | 1 | flags | u8 | Bit 0: is array (see array descriptors) |
 | 2 | extra | u16 | For STRING/WSTRING: max length. For FB_INSTANCE: fb_type_id. For arrays: array descriptor index. |
 
-**REQ-CF-009** The `var_type` / `field_type` encoding is: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=STRING, 7=WSTRING, 8=FB_INSTANCE, 9=TIME, 10=SLOT. The SLOT type represents a heterogeneous structure field slot (8-byte slot for flattened struct layouts).
+**REQ-CF-container-009** The `var_type` / `field_type` encoding is: 0=I32, 1=U32, 2=I64, 3=U64, 4=F32, 5=F64, 6=STRING, 7=WSTRING, 8=FB_INSTANCE, 9=TIME, 10=SLOT. The SLOT type represents a heterogeneous structure field slot (8-byte slot for flattened struct layouts).
 
 Variable indices are compiler-assigned. The compiler must produce deterministic indices across compilations using the ordering rules in [Deterministic Ordering](#deterministic-ordering) to ensure that the same source program (with only logic changes) produces compatible bytecode.
 
@@ -186,7 +186,7 @@ Each FB type descriptor defines the field layout for a function block type.
 | 3 | reserved | u8 | Reserved; must be zero |
 | 4 | fields | [FieldEntry; num_fields] | Field descriptors |
 
-**REQ-CF-008** Each FieldEntry is 4 bytes (fixed size):
+**REQ-CF-container-008** Each FieldEntry is 4 bytes (fixed size):
 
 | Offset | Field | Type | Description |
 |--------|-------|------|-------------|

@@ -48,17 +48,17 @@ Every tool in this design is a pure function of its explicit inputs. There is no
 
 The agent is the sole owner of project state. It holds the files (in its own context, on its own filesystem, or both), decides which subset to send on any given call, and persists edits on its own side. The MCP server's job is to answer one question at a time about whichever sources the agent hands it, and to hand back structured results the agent can react to.
 
-**REQ-STL-001** Every analysis, context, and execution tool accepts a required `sources` parameter: an array of `{ name: string, content: string }` objects. The tool operates on exactly the supplied sources for that single call. Subsequent calls that want the same inputs must re-send them.
+**REQ-STL-mcp-001** Every analysis, context, and execution tool accepts a required `sources` parameter: an array of `{ name: string, content: string }` objects. The tool operates on exactly the supplied sources for that single call. Subsequent calls that want the same inputs must re-send them.
 
-**REQ-STL-002** Every analysis, context, and execution tool accepts a required `options` object that specifies the compiler dialect and any feature-flag overrides. The tool uses those options for exactly that single call. The server does not carry options across calls and does not apply implicit defaults; callers that want the standard IEC 61131-3 Edition 2 dialect must pass `{ "dialect": "iec61131-3-ed2" }` explicitly. The set of valid keys is the set returned by `list_options`; any other key is rejected with a diagnostic and the tool does not run.
+**REQ-STL-mcp-002** Every analysis, context, and execution tool accepts a required `options` object that specifies the compiler dialect and any feature-flag overrides. The tool uses those options for exactly that single call. The server does not carry options across calls and does not apply implicit defaults; callers that want the standard IEC 61131-3 Edition 2 dialect must pass `{ "dialect": "iec61131-3-ed2" }` explicitly. The set of valid keys is the set returned by `list_options`; any other key is rejected with a diagnostic and the tool does not run.
 
-**REQ-STL-003** The server holds no per-client state across tool calls other than the process-level container cache (see Container Cache under Architecture). Two successive calls from the same MCP client that supply identical `sources` and `options` produce identical responses up to non-determinism in wall-clock fields such as log timestamps.
+**REQ-STL-mcp-003** The server holds no per-client state across tool calls other than the process-level container cache (see Container Cache under Architecture). Two successive calls from the same MCP client that supply identical `sources` and `options` produce identical responses up to non-determinism in wall-clock fields such as log timestamps.
 
-**REQ-STL-004** File identity inside a single call is carried by the `name` field of each `sources` entry. Names must be valid UTF-8, non-empty, at most 256 bytes, and must not contain NUL, `/`, or `\`. Duplicate names within a single `sources` array are rejected with a diagnostic before any analysis runs. The server does not interpret names as filesystem paths and never touches the filesystem with them; they exist so that diagnostics can cite a file identifier the agent already recognizes in its own context.
+**REQ-STL-mcp-004** File identity inside a single call is carried by the `name` field of each `sources` entry. Names must be valid UTF-8, non-empty, at most 256 bytes, and must not contain NUL, `/`, or `\`. Duplicate names within a single `sources` array are rejected with a diagnostic before any analysis runs. The server does not interpret names as filesystem paths and never touches the filesystem with them; they exist so that diagnostics can cite a file identifier the agent already recognizes in its own context.
 
-**REQ-STL-005** Every tool response includes a top-level `ok: boolean` field. `ok` is `true` when the tool produced its primary result (for analysis tools, a diagnostics array with no `error`-severity entries; for `compile`, a non-null `container_id`; for `run`, a completed trace) and `false` when it did not. The `ok` field never replaces a tool's specific result fields; it exists as a single uniform success predicate so that agent code handling many tools can share one success check.
+**REQ-STL-mcp-005** Every tool response includes a top-level `ok: boolean` field. `ok` is `true` when the tool produced its primary result (for analysis tools, a diagnostics array with no `error`-severity entries; for `compile`, a non-null `container_id`; for `run`, a completed trace) and `false` when it did not. The `ok` field never replaces a tool's specific result fields; it exists as a single uniform success predicate so that agent code handling many tools can share one success check.
 
-**REQ-STL-006** The server performs no disk I/O from any tool or resource handler. It does not accept filesystem paths as tool inputs, does not read files relative to any working directory, and does not write compilation or analysis artifacts to disk. The only files the server process ever opens are its own log output (see Logging and Observability) and, optionally, its own binary-embedded problem-code documentation.
+**REQ-STL-mcp-006** The server performs no disk I/O from any tool or resource handler. It does not accept filesystem paths as tool inputs, does not read files relative to any working directory, and does not write compilation or analysis artifacts to disk. The only files the server process ever opens are its own log output (see Logging and Observability) and, optionally, its own binary-embedded problem-code documentation.
 
 ## Tools
 
@@ -68,7 +68,7 @@ Tools are grouped into three categories:
 2. **Context tools** — `project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`. These are lightweight lookups that answer a specific structural question about a source set without requiring the agent to parse the much larger output of `symbols` itself.
 3. **Execution tools** — `compile`, `container_drop`, `run`. These produce or consume bytecode and drive the VM.
 
-Every tool obeys REQ-STL-001..006: `sources` and `options` are required on every analysis, context, and execution tool; there is no implicit session; and every response carries a top-level `ok: boolean` field in addition to its tool-specific fields.
+Every tool obeys REQ-STL-mcp-001..006: `sources` and `options` are required on every analysis, context, and execution tool; there is no implicit session; and every response carries a top-level `ok: boolean` field in addition to its tool-specific fields.
 
 ### `parse`
 
@@ -78,15 +78,15 @@ Use this for rapid iteration on code structure. It is faster than `check` and us
 
 **Inputs:**
 - `sources`: required array of `{ name: string, content: string }`
-- `options`: required object; see REQ-STL-002
+- `options`: required object; see REQ-STL-mcp-002
 
-**REQ-TOL-010** The `parse` tool runs the parse stage only and does not run semantic analysis.
+**REQ-TOL-mcp-010** The `parse` tool runs the parse stage only and does not run semantic analysis.
 
-**REQ-TOL-011** The `parse` tool returns a `diagnostics` array using the same format as `check`.
+**REQ-TOL-mcp-011** The `parse` tool returns a `diagnostics` array using the same format as `check`.
 
-**REQ-TOL-012** The `parse` tool accepts the same `options` object as `check`, since dialect and feature flags affect the parser.
+**REQ-TOL-mcp-012** The `parse` tool accepts the same `options` object as `check`, since dialect and feature flags affect the parser.
 
-**REQ-TOL-013** The `parse` tool returns a best-effort `structure` array alongside `diagnostics`, even when `diagnostics` contains errors. Each entry describes a top-level declaration the parser was able to recognize and contains `kind` (`"program"`, `"function"`, `"function_block"`, `"type"`, or `"configuration"`), `name` (string, or `null` when the parser could not recover a name), `file`, `start` (0-indexed byte offset of the declaration's name), and `end` (0-indexed byte offset one past the last byte of the name). This gives the agent an outline of its own in-progress draft to reason about even when the source is not yet valid — without it, a broken parse leaves the agent with only an opaque diagnostic and no structural context.
+**REQ-TOL-mcp-013** The `parse` tool returns a best-effort `structure` array alongside `diagnostics`, even when `diagnostics` contains errors. Each entry describes a top-level declaration the parser was able to recognize and contains `kind` (`"program"`, `"function"`, `"function_block"`, `"type"`, or `"configuration"`), `name` (string, or `null` when the parser could not recover a name), `file`, `start` (0-indexed byte offset of the declaration's name), and `end` (0-indexed byte offset one past the last byte of the name). This gives the agent an outline of its own in-progress draft to reason about even when the source is not yet valid — without it, a broken parse leaves the agent with only an opaque diagnostic and no structural context.
 
 **Output:**
 ```json
@@ -115,19 +115,19 @@ This is the highest-value tool. AI assistants use it to validate code they gener
   - `dialect: string` — one of `"iec61131-3-ed2"`, `"iec61131-3-ed3"`, or any other dialect id returned by `list_options`. Selects a preset that enables the appropriate flags in one shot.
   - individual feature flags (e.g. `allow_c_style_comments: bool`) — override specific flags on top of the dialect preset. The full list of flags and their descriptions is returned by `list_options`.
 
-**REQ-TOL-020** The `check` tool runs the parse stage and the full semantic analysis stage on the provided sources.
+**REQ-TOL-mcp-020** The `check` tool runs the parse stage and the full semantic analysis stage on the provided sources.
 
-**REQ-TOL-021** The `check` tool does not run code generation.
+**REQ-TOL-mcp-021** The `check` tool does not run code generation.
 
-**REQ-TOL-022** The `check` tool returns a `diagnostics` array and a top-level `ok: boolean`. `ok` is `true` when the diagnostics array contains no entries with `severity: "error"`; otherwise `ok` is `false`.
+**REQ-TOL-mcp-022** The `check` tool returns a `diagnostics` array and a top-level `ok: boolean`. `ok` is `true` when the diagnostics array contains no entries with `severity: "error"`; otherwise `ok` is `false`.
 
-**REQ-TOL-023** Each diagnostic in the `check` response includes: `code`, `message`, `file`, `start`, `end`, and `severity`. `start` and `end` are 0-indexed byte offsets into the source text of the file identified by `file`. `end` points one past the last byte of the span, so an empty span has `start == end`. Byte offsets are the same offsets the compiler stores internally; no line/column conversion is applied.
+**REQ-TOL-mcp-023** Each diagnostic in the `check` response includes: `code`, `message`, `file`, `start`, `end`, and `severity`. `start` and `end` are 0-indexed byte offsets into the source text of the file identified by `file`. `end` points one past the last byte of the span, so an empty span has `start == end`. Byte offsets are the same offsets the compiler stores internally; no line/column conversion is applied.
 
-**REQ-TOL-024** The `check` tool never returns an MCP-level error for a compiler failure; parse and semantic errors are returned as diagnostics.
+**REQ-TOL-mcp-024** The `check` tool never returns an MCP-level error for a compiler failure; parse and semantic errors are returned as diagnostics.
 
-**REQ-TOL-025** The `check` tool rejects an `options` object that is missing `dialect`, that contains a `dialect` value not returned by `list_options`, or that contains any key not returned by `list_options`. Rejection is surfaced as a diagnostic with `severity: "error"` and `ok: false`; the tool does not run.
+**REQ-TOL-mcp-025** The `check` tool rejects an `options` object that is missing `dialect`, that contains a `dialect` value not returned by `list_options`, or that contains any key not returned by `list_options`. Rejection is surfaced as a diagnostic with `severity: "error"` and `ok: false`; the tool does not run.
 
-**REQ-TOL-026** The `check` tool accepts individual feature flag overrides in `options` that are applied on top of the dialect preset.
+**REQ-TOL-mcp-026** The `check` tool accepts individual feature flag overrides in `options` that are applied on top of the dialect preset.
 
 **Output:**
 ```json
@@ -150,15 +150,15 @@ This keeps agent-authored code stylistically consistent with the rest of a proje
 - `sources`: required array of `{ name: string, content: string }`
 - `options`: required object; same `dialect` and feature-flag schema as `check`
 
-**REQ-TOL-080** The `format` tool parses each source in the request and, on successful parse, returns the rendered canonical form in a `sources` array whose entries match the input names one-to-one.
+**REQ-TOL-mcp-080** The `format` tool parses each source in the request and, on successful parse, returns the rendered canonical form in a `sources` array whose entries match the input names one-to-one.
 
-**REQ-TOL-081** When a source fails to parse, the `format` tool returns the failing source's original content unchanged in its `sources` entry, sets `formatted: false` for that entry, and includes that entry's parser diagnostics in a per-entry `diagnostics` array scoped to the failing file. The top-level `diagnostics` array aggregates every per-entry diagnostic so that callers that do not care which file failed can scan a single list. `ok` is `true` only when every entry formatted successfully.
+**REQ-TOL-mcp-081** When a source fails to parse, the `format` tool returns the failing source's original content unchanged in its `sources` entry, sets `formatted: false` for that entry, and includes that entry's parser diagnostics in a per-entry `diagnostics` array scoped to the failing file. The top-level `diagnostics` array aggregates every per-entry diagnostic so that callers that do not care which file failed can scan a single list. `ok` is `true` only when every entry formatted successfully.
 
-**REQ-TOL-082** The `format` tool is idempotent: running `format` on its own output returns byte-identical content.
+**REQ-TOL-mcp-082** The `format` tool is idempotent: running `format` on its own output returns byte-identical content.
 
-**REQ-TOL-083** The `format` tool produces the same canonical output that the `plc2plc` crate produces for a given AST and dialect.
+**REQ-TOL-mcp-083** The `format` tool produces the same canonical output that the `plc2plc` crate produces for a given AST and dialect.
 
-**REQ-TOL-084** The `format` tool is pure: it does not retain any of the supplied sources, and its output is not cached. Callers that want to persist the formatted content must store it themselves.
+**REQ-TOL-mcp-084** The `format` tool is pure: it does not retain any of the supplied sources, and its output is not cached. Callers that want to persist the formatted content must store it themselves.
 
 **Output:**
 ```json
@@ -182,17 +182,17 @@ This is the full-project answer to "what is declared here?" For questions about 
 - `options`: required object; same schema as `check`
 - `pou`: optional string — when present, the response is narrowed to just the named POU and the types its declarations reference
 
-**REQ-TOL-050** The `symbols` tool returns the top-level declarations for programs, functions, function blocks, and types found in the sources under analysis.
+**REQ-TOL-mcp-050** The `symbols` tool returns the top-level declarations for programs, functions, function blocks, and types found in the sources under analysis.
 
-**REQ-TOL-051** Each program entry in the `symbols` response includes the program name and its variable declarations. Each variable entry contains `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), `address` (the direct-variable string such as `"%IX0.0"` when the variable is mapped to a hardware address, otherwise `null`), and `external` (`true` when the variable can be driven from outside the program — i.e. `direction` is `"In"`, `"InOut"`, `"External"`, or `"Global"`, or `address` is a `%I*` hardware input).
+**REQ-TOL-mcp-051** Each program entry in the `symbols` response includes the program name and its variable declarations. Each variable entry contains `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), `address` (the direct-variable string such as `"%IX0.0"` when the variable is mapped to a hardware address, otherwise `null`), and `external` (`true` when the variable can be driven from outside the program — i.e. `direction` is `"In"`, `"InOut"`, `"External"`, or `"Global"`, or `address` is a `%I*` hardware input).
 
-**REQ-TOL-052** Each function entry in the `symbols` response includes the function name, return type, and parameter list.
+**REQ-TOL-mcp-052** Each function entry in the `symbols` response includes the function name, return type, and parameter list.
 
-**REQ-TOL-053** The `symbols` response includes a `diagnostics` array using the same format as `check`, and a top-level `ok` following the same rule as `check` (true when no `error`-severity diagnostics).
+**REQ-TOL-mcp-053** The `symbols` response includes a `diagnostics` array using the same format as `check`, and a top-level `ok` following the same rule as `check` (true when no `error`-severity diagnostics).
 
-**REQ-TOL-054** When the `pou` input is present, the `symbols` response includes only the matching POU (in exactly one of `programs`, `functions`, or `function_blocks`) and only the types actually referenced by that POU's declarations. When no POU with the given name exists, the response returns `ok: false`, `found: false`, and an empty `programs`/`functions`/`function_blocks`/`types` set along with a diagnostic, rather than raising an MCP-level error.
+**REQ-TOL-mcp-054** When the `pou` input is present, the `symbols` response includes only the matching POU (in exactly one of `programs`, `functions`, or `function_blocks`) and only the types actually referenced by that POU's declarations. When no POU with the given name exists, the response returns `ok: false`, `found: false`, and an empty `programs`/`functions`/`function_blocks`/`types` set along with a diagnostic, rather than raising an MCP-level error.
 
-**REQ-TOL-055** The `symbols` tool bounds its response by the server-configured `max_symbols_response_bytes` limit (default 256 KiB). When an unfiltered call would exceed the limit, the tool returns `ok: false`, `truncated: true`, an empty `programs`/`functions`/`function_blocks`/`types` set, and a single diagnostic instructing the caller to pass a `pou` filter or to call one of the context tools instead. This prevents a single `symbols` call on a large project from silently consuming the agent's entire context window.
+**REQ-TOL-mcp-055** The `symbols` tool bounds its response by the server-configured `max_symbols_response_bytes` limit (default 256 KiB). When an unfiltered call would exceed the limit, the tool returns `ok: false`, `truncated: true`, an empty `programs`/`functions`/`function_blocks`/`types` set, and a single diagnostic instructing the caller to pass a `pou` filter or to call one of the context tools instead. This prevents a single `symbols` call on a large project from silently consuming the agent's entire context window.
 
 **Output:**
 - `ok: bool`
@@ -211,13 +211,13 @@ This tool lets an agent discover what flags exist without memorizing them and wi
 
 **Inputs:** none.
 
-**REQ-TOL-060** The `list_options` tool takes no inputs.
+**REQ-TOL-mcp-060** The `list_options` tool takes no inputs.
 
-**REQ-TOL-061** The `list_options` tool returns a `dialects` array whose entries each contain `id`, `display_name`, and `description`.
+**REQ-TOL-mcp-061** The `list_options` tool returns a `dialects` array whose entries each contain `id`, `display_name`, and `description`.
 
-**REQ-TOL-062** The `list_options` tool returns a `flags` array whose entries each contain `id`, `type` (`"bool"`, `"string"`, `"enum"`), `default`, `description`, and — for enum flags — an `allowed_values` array.
+**REQ-TOL-mcp-062** The `list_options` tool returns a `flags` array whose entries each contain `id`, `type` (`"bool"`, `"string"`, `"enum"`), `default`, `description`, and — for enum flags — an `allowed_values` array.
 
-**REQ-TOL-063** The option `id` values returned by `list_options` are the exact keys accepted in the `options` object of `parse`, `check`, and `compile`.
+**REQ-TOL-mcp-063** The option `id` values returned by `list_options` are the exact keys accepted in the `options` object of `parse`, `check`, and `compile`.
 
 **Output:**
 ```json
@@ -243,11 +243,11 @@ The self-healing loop depends on this: without it, an agent sees `P0042` in a di
 **Inputs:**
 - `code: string` — the problem code, case-insensitive (e.g. `"P0001"`).
 
-**REQ-TOL-070** The `explain_diagnostic` tool accepts a `code` string and returns `code`, `title`, `description`, and optionally `suggested_fix`. The returned text is plain-text rendering of the source reStructuredText.
+**REQ-TOL-mcp-070** The `explain_diagnostic` tool accepts a `code` string and returns `code`, `title`, `description`, and optionally `suggested_fix`. The returned text is plain-text rendering of the source reStructuredText.
 
-**REQ-TOL-071** The `explain_diagnostic` tool returns `ok: false`, `found: false`, and a populated `diagnostics` array when the code is unknown, rather than raising an MCP-level error.
+**REQ-TOL-mcp-071** The `explain_diagnostic` tool returns `ok: false`, `found: false`, and a populated `diagnostics` array when the code is unknown, rather than raising an MCP-level error.
 
-**REQ-TOL-072** The text returned by `explain_diagnostic` is embedded in the server binary at build time via `include_str!` from the same problem-code documentation published under `docs/compiler/problems/`. The tool handler performs no filesystem I/O.
+**REQ-TOL-mcp-072** The text returned by `explain_diagnostic` is embedded in the server binary at build time via `include_str!` from the same problem-code documentation published under `docs/compiler/problems/`. The tool handler performs no filesystem I/O.
 
 **Output:**
 ```json
@@ -276,9 +276,9 @@ Returns a flat summary of what is declared across the supplied sources: every fi
 - `sources`: required array of `{ name: string, content: string }`
 - `options`: required object; same schema as `check`
 
-**REQ-TOL-200** The `project_manifest` tool returns the list of file names in the supplied `sources`, the names of all Programs, Functions, and Function Blocks declared across those files, and the UDTs grouped by kind (`enumerations`, `structures`, `arrays`, `subranges`, `aliases`, `strings`, `references`).
+**REQ-TOL-mcp-200** The `project_manifest` tool returns the list of file names in the supplied `sources`, the names of all Programs, Functions, and Function Blocks declared across those files, and the UDTs grouped by kind (`enumerations`, `structures`, `arrays`, `subranges`, `aliases`, `strings`, `references`).
 
-**REQ-TOL-201** The `project_manifest` tool runs parse and semantic analysis. When analysis fails, the tool returns `ok: false`, the partial manifest for whatever the parser could recognize, and the analysis diagnostics.
+**REQ-TOL-mcp-201** The `project_manifest` tool runs parse and semantic analysis. When analysis fails, the tool returns `ok: false`, the partial manifest for whatever the parser could recognize, and the analysis diagnostics.
 
 **Output:**
 ```json
@@ -307,11 +307,11 @@ Returns every variable the caller can drive (`inputs`) and every variable the ca
 - `sources`: required array of `{ name: string, content: string }`
 - `options`: required object; same schema as `check`
 
-**REQ-TOL-210** The `project_io` tool returns every variable that can be driven from outside the program: `VAR_INPUT` parameters of Programs, `VAR_IN_OUT` parameters of Programs, `VAR_EXTERNAL` references, global variables without a direct-variable address, and variables mapped to a hardware input address (`%I*`).
+**REQ-TOL-mcp-210** The `project_io` tool returns every variable that can be driven from outside the program: `VAR_INPUT` parameters of Programs, `VAR_IN_OUT` parameters of Programs, `VAR_EXTERNAL` references, global variables without a direct-variable address, and variables mapped to a hardware input address (`%I*`).
 
-**REQ-TOL-211** The `project_io` tool returns every variable that represents an output visible outside the program: `VAR_OUTPUT` parameters of Programs, `VAR_IN_OUT` parameters of Programs, global variables without a direct-variable address, and variables mapped to a hardware output address (`%Q*`). A `VAR_IN_OUT` variable and a non-addressed global appear in both `inputs` and `outputs`; this reflects the IEC 61131-3 semantics that they can be both driven and observed. Variables mapped to marker memory (`%M*`) are neither inputs nor outputs and do not appear in either list.
+**REQ-TOL-mcp-211** The `project_io` tool returns every variable that represents an output visible outside the program: `VAR_OUTPUT` parameters of Programs, `VAR_IN_OUT` parameters of Programs, global variables without a direct-variable address, and variables mapped to a hardware output address (`%Q*`). A `VAR_IN_OUT` variable and a non-addressed global appear in both `inputs` and `outputs`; this reflects the IEC 61131-3 semantics that they can be both driven and observed. Variables mapped to marker memory (`%M*`) are neither inputs nor outputs and do not appear in either list.
 
-**REQ-TOL-212** Each entry in the `inputs` and `outputs` arrays contains `name` (fully qualified; see Variable Naming in Architecture), `type`, and `address` (the direct-variable string such as `"%IX0.0"` when present, otherwise `null`).
+**REQ-TOL-mcp-212** Each entry in the `inputs` and `outputs` arrays contains `name` (fully qualified; see Variable Naming in Architecture), `type`, and `address` (the direct-variable string such as `"%IX0.0"` when present, otherwise `null`).
 
 **Output:**
 ```json
@@ -332,9 +332,9 @@ Returns all variables visible to the named POU, derived from the symbol table bu
 - `options`: required object; same schema as `check`
 - `pou`: required string — the POU name to scope the query to
 
-**REQ-TOL-220** The `pou_scope` tool returns a `variables` array for the named POU. Each entry contains: `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), and `initial_value` (opaque string rendering, or `null` when no initial value is declared). The rendering is for display only and is not guaranteed to be a parseable expression.
+**REQ-TOL-mcp-220** The `pou_scope` tool returns a `variables` array for the named POU. Each entry contains: `name`, `type`, `direction` (one of `"Local"`, `"In"`, `"Out"`, `"InOut"`, `"Global"`, `"External"`), and `initial_value` (opaque string rendering, or `null` when no initial value is declared). The rendering is for display only and is not guaranteed to be a parseable expression.
 
-**REQ-TOL-221** The `pou_scope` tool resolves `pou` against Programs, Functions, and Function Blocks in that order. When no POU with the given name exists, the tool returns `ok: false`, `found: false`, an empty `variables` array, and a diagnostic.
+**REQ-TOL-mcp-221** The `pou_scope` tool resolves `pou` against Programs, Functions, and Function Blocks in that order. When no POU with the given name exists, the tool returns `ok: false`, `found: false`, an empty `variables` array, and a diagnostic.
 
 **Output:**
 ```json
@@ -360,9 +360,9 @@ Returns the upstream and downstream dependencies of the named POU, derived from 
 - `options`: required object; same schema as `check`
 - `pou`: required string — the POU name to query
 
-**REQ-TOL-230** The `pou_lineage` tool returns a JSON object with three fields: `pou` (the requested POU name), `upstream` (an array of POU names that the requested POU depends on, directly or transitively), and `downstream` (an array of POU names that depend on the requested POU, directly or transitively). JSON adjacency-list is the only format this tool produces; callers that want a DOT rendering should convert client-side.
+**REQ-TOL-mcp-230** The `pou_lineage` tool returns a JSON object with three fields: `pou` (the requested POU name), `upstream` (an array of POU names that the requested POU depends on, directly or transitively), and `downstream` (an array of POU names that depend on the requested POU, directly or transitively). JSON adjacency-list is the only format this tool produces; callers that want a DOT rendering should convert client-side.
 
-**REQ-TOL-231** When no POU with the given name exists, the tool returns `ok: false`, `found: false`, empty `upstream` and `downstream` arrays, and a diagnostic.
+**REQ-TOL-mcp-231** When no POU with the given name exists, the tool returns `ok: false`, `found: false`, empty `upstream` and `downstream` arrays, and a diagnostic.
 
 **Output:**
 ```json
@@ -384,7 +384,7 @@ Returns every user-defined type (UDT, enumeration, type alias, array, subrange, 
 - `sources`: required array of `{ name: string, content: string }`
 - `options`: required object; same schema as `check`
 
-**REQ-TOL-240** The `types_all` tool returns a `types` array. Each entry contains `name`, `kind` (`"enum"`, `"struct"`, `"array"`, `"subrange"`, `"alias"`, `"string"`, `"reference"`), and kind-specific detail fields: `values` for enumerations, `fields` for structures, `element_type` + `bounds` for arrays, `base_type` + `low` + `high` for subranges, `target_type` for aliases, `length` for strings, `target_type` for references.
+**REQ-TOL-mcp-240** The `types_all` tool returns a `types` array. Each entry contains `name`, `kind` (`"enum"`, `"struct"`, `"array"`, `"subrange"`, `"alias"`, `"string"`, `"reference"`), and kind-specific detail fields: `values` for enumerations, `fields` for structures, `element_type` + `bounds` for arrays, `base_type` + `low` + `high` for subranges, `target_type` for aliases, `length` for strings, `target_type` for references.
 
 **Output:**
 ```json
@@ -413,19 +413,19 @@ The container handle is the primary transport: agents pass it back to `run` with
 - `options`: required object; same schema as `check`
 - `include_bytes`: optional boolean (default `false`) — when `true`, the response also includes `container_base64`
 
-**REQ-TOL-030** The `compile` tool returns a `container_id` string that uniquely identifies the compiled `.iplc` container inside the server process. `container_id` values are opaque strings with no structure the caller should rely on.
+**REQ-TOL-mcp-030** The `compile` tool returns a `container_id` string that uniquely identifies the compiled `.iplc` container inside the server process. `container_id` values are opaque strings with no structure the caller should rely on.
 
-**REQ-TOL-031** The `compile` tool returns `ok: false`, `container_id: null`, and a populated `diagnostics` array on failure.
+**REQ-TOL-mcp-031** The `compile` tool returns `ok: false`, `container_id: null`, and a populated `diagnostics` array on failure.
 
-**REQ-TOL-032** The `compile` tool returns a `tasks` array describing each task declared in the program. Each entry contains `name`, `priority`, `kind` (one of `"cyclic"`, `"single"`, `"event"`), and `interval_ms` (the cyclic interval in milliseconds when `kind == "cyclic"`, otherwise `null`).
+**REQ-TOL-mcp-032** The `compile` tool returns a `tasks` array describing each task declared in the program. Each entry contains `name`, `priority`, `kind` (one of `"cyclic"`, `"single"`, `"event"`), and `interval_ms` (the cyclic interval in milliseconds when `kind == "cyclic"`, otherwise `null`).
 
-**REQ-TOL-033** The `compile` tool returns a `programs` array listing each program name and the task it is bound to. When a program is not bound to any task, its `task` field is `null`.
+**REQ-TOL-mcp-033** The `compile` tool returns a `programs` array listing each program name and the task it is bound to. When a program is not bound to any task, its `task` field is `null`.
 
-**REQ-TOL-034** The `compile` tool returns the `.iplc` container encoded as a base64 string in `container_base64` only when the caller sets `include_bytes: true`; otherwise `container_base64` is `null`. This keeps the default response small and lets the agent pass `container_id` back to `run` without ever routing the bytecode through the LLM context.
+**REQ-TOL-mcp-034** The `compile` tool returns the `.iplc` container encoded as a base64 string in `container_base64` only when the caller sets `include_bytes: true`; otherwise `container_base64` is `null`. This keeps the default response small and lets the agent pass `container_id` back to `run` without ever routing the bytecode through the LLM context.
 
-**REQ-TOL-035** The server stores the compiled container bytes in a process-level container cache keyed by `container_id`. See Container Cache under Architecture for the cache's capacity and eviction policy.
+**REQ-TOL-mcp-035** The server stores the compiled container bytes in a process-level container cache keyed by `container_id`. See Container Cache under Architecture for the cache's capacity and eviction policy.
 
-**REQ-TOL-036** A container produced by `compile` is an immutable snapshot of the exact `sources` and `options` used at compile time. Subsequent calls to `compile` or `run` — including calls whose `sources` differ — do not affect any previously cached container. A `container_id` that has not been evicted from the cache can be passed to `run` for the lifetime of the server process.
+**REQ-TOL-mcp-036** A container produced by `compile` is an immutable snapshot of the exact `sources` and `options` used at compile time. Subsequent calls to `compile` or `run` — including calls whose `sources` differ — do not affect any previously cached container. A `container_id` that has not been evicted from the cache can be passed to `run` for the lifetime of the server process.
 
 **Output:**
 ```json
@@ -451,9 +451,9 @@ Removes a previously compiled container from the process container cache. Agents
 **Inputs:**
 - `container_id: string`
 
-**REQ-TOL-150** The `container_drop` tool removes the container identified by `container_id` from the process container cache and returns `ok: true`, `removed: true`.
+**REQ-TOL-mcp-150** The `container_drop` tool removes the container identified by `container_id` from the process container cache and returns `ok: true`, `removed: true`.
 
-**REQ-TOL-151** The `container_drop` tool returns `ok: false`, `removed: false`, and a populated `diagnostics` array when the `container_id` is unknown (either never existed, or already evicted by LRU or by a prior `container_drop`), rather than raising an MCP-level error.
+**REQ-TOL-mcp-151** The `container_drop` tool returns `ok: false`, `removed: false`, and a populated `diagnostics` array when the `container_id` is unknown (either never existed, or already evicted by LRU or by a prior `container_drop`), rather than raising an MCP-level error.
 
 ### `run`
 
@@ -486,13 +486,13 @@ A `TraceOptions` object has these fields (all optional):
 }
 ```
 
-**REQ-TOL-040** The `run` tool executes the referenced `.iplc` container in the IronPLC VM for the simulated duration specified by `duration_ms`, deriving the number of scan cycles from the task intervals declared in the container. Exactly one of `container_id` and `container_base64` must be present; when `container_id` is supplied, the server looks up the compiled bytes in the process container cache (see REQ-TOL-035). When a container declares no tasks at all, the `run` tool returns `ok: false` and a diagnostic instructing the caller to declare at least one task; it does not attempt to invent a cycle schedule.
+**REQ-TOL-mcp-040** The `run` tool executes the referenced `.iplc` container in the IronPLC VM for the simulated duration specified by `duration_ms`, deriving the number of scan cycles from the task intervals declared in the container. Exactly one of `container_id` and `container_base64` must be present; when `container_id` is supplied, the server looks up the compiled bytes in the process container cache (see REQ-TOL-mcp-035). When a container declares no tasks at all, the `run` tool returns `ok: false` and a diagnostic instructing the caller to declare at least one task; it does not attempt to invent a cycle schedule.
 
-**REQ-TOL-041** The `run` tool returns a `trace` array. Each entry contains `time_ms` (simulated milliseconds since start of run), `task` (the name of the task whose cycle end produced the entry), and `variables` (a map from the fully-qualified names in the effective trace set to their values at that instant). Entries are time-ordered by `time_ms`; ties are broken by task priority (lower priority number first), then by task name. Each requested variable name must be fully qualified and must resolve against the loaded container (see REQ-ARC-020 and REQ-ARC-021); unresolved or ambiguous names cause the run to return `ok: false` with a diagnostic before the VM starts. Wildcard names (for example `"*"`, `"Main.*"`) are rejected with a diagnostic — agents that want to trace many variables set `trace_outputs: true` or enumerate the names explicitly. The effective trace set (the union of `variables` and the expansion of `trace_outputs`) is capped at the server-configured `max_variables_per_run` limit (see VM Sandboxing); a request that exceeds the cap is rejected with a diagnostic that reports the limit and the request size.
+**REQ-TOL-mcp-041** The `run` tool returns a `trace` array. Each entry contains `time_ms` (simulated milliseconds since start of run), `task` (the name of the task whose cycle end produced the entry), and `variables` (a map from the fully-qualified names in the effective trace set to their values at that instant). Entries are time-ordered by `time_ms`; ties are broken by task priority (lower priority number first), then by task name. Each requested variable name must be fully qualified and must resolve against the loaded container (see REQ-ARC-mcp-020 and REQ-ARC-mcp-021); unresolved or ambiguous names cause the run to return `ok: false` with a diagnostic before the VM starts. Wildcard names (for example `"*"`, `"Main.*"`) are rejected with a diagnostic — agents that want to trace many variables set `trace_outputs: true` or enumerate the names explicitly. The effective trace set (the union of `variables` and the expansion of `trace_outputs`) is capped at the server-configured `max_variables_per_run` limit (see VM Sandboxing); a request that exceeds the cap is rejected with a diagnostic that reports the limit and the request size.
 
-**REQ-TOL-042** The `run` tool accepts a `stimuli` array that must be sorted by strictly non-decreasing `time_ms`; an out-of-order array is rejected with a diagnostic before the VM starts. Each stimulus is applied at the start of the first scan cycle whose simulated **start** time is greater than or equal to the stimulus `time_ms`. Values persist in their target variables until overwritten by a later stimulus or by the program itself. The `run` tool only permits stimuli to write variables that `project_io` would classify as inputs for the same container (`VAR_INPUT` or `VAR_IN_OUT` of Programs, `VAR_EXTERNAL`, non-addressed globals, and `%I*`-mapped variables); attempts to write a local, a pure `VAR_OUTPUT`, a `%Q*`-mapped variable, or a `%M*`-mapped marker result in a diagnostic and the run is not started. A stimulus whose value does not match the declared type of the target variable (for example, setting a `BOOL` to `42`) is likewise rejected.
+**REQ-TOL-mcp-042** The `run` tool accepts a `stimuli` array that must be sorted by strictly non-decreasing `time_ms`; an out-of-order array is rejected with a diagnostic before the VM starts. Each stimulus is applied at the start of the first scan cycle whose simulated **start** time is greater than or equal to the stimulus `time_ms`. Values persist in their target variables until overwritten by a later stimulus or by the program itself. The `run` tool only permits stimuli to write variables that `project_io` would classify as inputs for the same container (`VAR_INPUT` or `VAR_IN_OUT` of Programs, `VAR_EXTERNAL`, non-addressed globals, and `%I*`-mapped variables); attempts to write a local, a pure `VAR_OUTPUT`, a `%Q*`-mapped variable, or a `%M*`-mapped marker result in a diagnostic and the run is not started. A stimulus whose value does not match the declared type of the target variable (for example, setting a `BOOL` to `42`) is likewise rejected.
 
-**REQ-TOL-043** The JSON encoding of values in `stimuli.set`, `trace[].variables`, and `summary.final_values` is recursive and is defined for every IEC 61131-3 type the compiler accepts:
+**REQ-TOL-mcp-043** The JSON encoding of values in `stimuli.set`, `trace[].variables`, and `summary.final_values` is recursive and is defined for every IEC 61131-3 type the compiler accepts:
   - `BOOL` ↔ JSON boolean.
   - `SINT`/`INT`/`DINT`/`USINT`/`UINT`/`UDINT` ↔ JSON number.
   - `LINT`/`ULINT` ↔ JSON string in decimal (to preserve 64-bit precision). Stimuli may also supply a JSON number for these types when the value fits in a signed 53-bit integer; larger magnitudes must use the string form.
@@ -505,19 +505,19 @@ A `TraceOptions` object has these fields (all optional):
   - Nested aggregates apply the rules recursively.
   Any value that does not match its declared type is rejected with a diagnostic.
 
-**REQ-TOL-044** The `run` tool accepts an optional `trace.mode` of `"every_cycle"` (default), `"every_ms"`, `"on_change"`, or `"final_only"`:
-  - `"every_cycle"` emits one sample per task cycle end, as described in REQ-TOL-041.
+**REQ-TOL-mcp-044** The `run` tool accepts an optional `trace.mode` of `"every_cycle"` (default), `"every_ms"`, `"on_change"`, or `"final_only"`:
+  - `"every_cycle"` emits one sample per task cycle end, as described in REQ-TOL-mcp-041.
   - `"every_ms"` requires `trace.interval_ms` and emits at most one sample per interval. A sample is emitted at the first task cycle end whose `time_ms` is greater than or equal to the next interval tick; samples carry the actual `time_ms` (they are not interpolated).
   - `"on_change"` emits a sample only when at least one variable in the effective trace set has a different value than the most recently emitted sample for that set. The first cycle always emits.
   - `"final_only"` emits exactly one sample at the end of the run, containing the final values of every variable in the effective trace set. `task` on that sample is the literal string `"final"`.
 
-**REQ-TOL-045** The `run` tool accepts an optional `tasks` filter. When present, only cycles from the named tasks appear in the trace; cycles from other tasks still execute in the VM and still influence `summary.completed_cycles`, but are not emitted as samples.
+**REQ-TOL-mcp-045** The `run` tool accepts an optional `tasks` filter. When present, only cycles from the named tasks appear in the trace; cycles from other tasks still execute in the VM and still influence `summary.completed_cycles`, but are not emitted as samples.
 
-**REQ-TOL-046** The `run` tool caps the returned trace at `min(trace.max_samples, server_max_samples)` entries, where `server_max_samples` is a server-configured limit described under VM Sandboxing. When the cap is hit, the last entry in `trace` is the most recent sample that fit; `truncated: true` is set in the response; and `terminated_reason` is set to `"sample_cap"`. The run still executes to completion (up to other limits) — only the emitted trace is truncated.
+**REQ-TOL-mcp-046** The `run` tool caps the returned trace at `min(trace.max_samples, server_max_samples)` entries, where `server_max_samples` is a server-configured limit described under VM Sandboxing. When the cap is hit, the last entry in `trace` is the most recent sample that fit; `truncated: true` is set in the response; and `terminated_reason` is set to `"sample_cap"`. The run still executes to completion (up to other limits) — only the emitted trace is truncated.
 
-**REQ-TOL-047** The `run` tool enforces the resource limits described under VM Sandboxing (maximum simulated `duration_ms`, VM fuel, wall-clock time). When a limit is exceeded, or when the VM encounters a trap, the run terminates early. In all early-termination cases the response carries the partial trace up to the last cycle that completed before termination, a populated `diagnostics` entry identifying the cause, and `terminated_reason` set to one of `"duration"`, `"fuel"`, `"wall_clock"`, `"sample_cap"`, `"error"`, or — for a run that finished cleanly — `"completed"`. An agent-supplied `limits` override may only tighten the server-configured bounds, never loosen them. `ok` is `true` only when `terminated_reason == "completed"`.
+**REQ-TOL-mcp-047** The `run` tool enforces the resource limits described under VM Sandboxing (maximum simulated `duration_ms`, VM fuel, wall-clock time). When a limit is exceeded, or when the VM encounters a trap, the run terminates early. In all early-termination cases the response carries the partial trace up to the last cycle that completed before termination, a populated `diagnostics` entry identifying the cause, and `terminated_reason` set to one of `"duration"`, `"fuel"`, `"wall_clock"`, `"sample_cap"`, `"error"`, or — for a run that finished cleanly — `"completed"`. An agent-supplied `limits` override may only tighten the server-configured bounds, never loosen them. `ok` is `true` only when `terminated_reason == "completed"`.
 
-**REQ-TOL-048** The `run` tool's response always includes a `summary` object with at least: `final_values` (a map of every variable in the effective trace set to its value at the last simulated instant, regardless of `trace.mode`), `completed_cycles` (a map from task name to the number of cycles that completed for that task), and `terminated_reason`. `summary` is populated even when the trace is empty because of `"final_only"` mode or because `"on_change"` never fired.
+**REQ-TOL-mcp-048** The `run` tool's response always includes a `summary` object with at least: `final_values` (a map of every variable in the effective trace set to its value at the last simulated instant, regardless of `trace.mode`), `completed_cycles` (a map from task name to the number of cycles that completed for that task), and `terminated_reason`. `summary` is populated even when the trace is empty because of `"final_only"` mode or because `"on_change"` never fired.
 
 **Output:**
 ```json
@@ -541,7 +541,7 @@ A `TraceOptions` object has these fields (all optional):
 
 ### Transport
 
-**REQ-ARC-001** The MCP server uses stdio transport (stdin/stdout JSON-RPC).
+**REQ-ARC-mcp-001** The MCP server uses stdio transport (stdin/stdout JSON-RPC).
 
 This matches how the VS Code extension and CLI are invoked and avoids requiring a network port.
 
@@ -555,7 +555,7 @@ The `ironplc-mcp` crate depends on:
 - `ironplc-problems` — for the `explain_diagnostic` tool
 - An MCP SDK crate (see below)
 
-`ironplc-mcp` does **not** depend on `FileBackedProject` or any other filesystem-backed project implementation. REQ-STL-006 forbids filesystem I/O from tool handlers, and the only `Project` instance the server ever constructs is a short-lived in-memory one that holds the `sources` array of the tool call currently in flight.
+`ironplc-mcp` does **not** depend on `FileBackedProject` or any other filesystem-backed project implementation. REQ-STL-mcp-006 forbids filesystem I/O from tool handlers, and the only `Project` instance the server ever constructs is a short-lived in-memory one that holds the `sources` array of the tool call currently in flight.
 
 ### MCP SDK
 
@@ -563,27 +563,27 @@ The server uses [`rmcp`](https://crates.io/crates/rmcp) (the official Rust SDK f
 
 ### Source Handling
 
-**REQ-ARC-010** Source text enters the server exactly once per tool call, as the `sources: [{ name, content }]` array on that call. The server constructs a fresh in-memory `Project` instance, loads every `(name, content)` pair into it, runs the tool's handler, and discards the `Project` when the handler returns. Tool calls never share `Project` instances and never persist them.
+**REQ-ARC-mcp-010** Source text enters the server exactly once per tool call, as the `sources: [{ name, content }]` array on that call. The server constructs a fresh in-memory `Project` instance, loads every `(name, content)` pair into it, runs the tool's handler, and discards the `Project` when the handler returns. Tool calls never share `Project` instances and never persist them.
 
-**REQ-ARC-011** Each `{ name, content }` pair is mapped to a `FileId::from_string(name)` and loaded via `change_text_document` against the per-call `Project` instance. File names are validated against REQ-STL-004 before any compiler code runs.
+**REQ-ARC-mcp-011** Each `{ name, content }` pair is mapped to a `FileId::from_string(name)` and loaded via `change_text_document` against the per-call `Project` instance. File names are validated against REQ-STL-mcp-004 before any compiler code runs.
 
-**REQ-ARC-012** The server does not accept raw filesystem paths as arguments in any tool, does not read files from the on-disk project directory, and does not write compilation or analysis artifacts to disk. This is the same requirement as REQ-STL-006; it is repeated here so that an implementer browsing the Architecture section cannot miss it.
+**REQ-ARC-mcp-012** The server does not accept raw filesystem paths as arguments in any tool, does not read files from the on-disk project directory, and does not write compilation or analysis artifacts to disk. This is the same requirement as REQ-STL-mcp-006; it is repeated here so that an implementer browsing the Architecture section cannot miss it.
 
 ### Container Cache
 
 `compile` returns an opaque `container_id` that later `run` calls can reference without routing the bytecode through the LLM context. The container cache is the only piece of cross-call server state in this design, and it is explicitly a performance optimization: losing a cached container is never a correctness problem, only a "the agent must call `compile` again" problem.
 
-**REQ-ARC-070** The server maintains a single process-wide container cache keyed by `container_id`. The cache stores the raw `.iplc` bytes, the task and program metadata returned by `compile`, and the symbol table needed by `run` to resolve fully-qualified variable names. It does not store the original `sources` or `options`.
+**REQ-ARC-mcp-070** The server maintains a single process-wide container cache keyed by `container_id`. The cache stores the raw `.iplc` bytes, the task and program metadata returned by `compile`, and the symbol table needed by `run` to resolve fully-qualified variable names. It does not store the original `sources` or `options`.
 
-**REQ-ARC-071** The cache has a bounded capacity, measured in both entry count (default 64 containers) and total bytes (default 64 MiB). Both bounds are configurable at server startup via `--max-cached-containers` and `--max-cached-container-bytes`. When inserting a new container would exceed either bound, the cache evicts entries in least-recently-used order until the new entry fits; a container that is larger than the entire byte budget on its own causes `compile` to return `ok: false` with a diagnostic rather than pinning an oversized entry.
+**REQ-ARC-mcp-071** The cache has a bounded capacity, measured in both entry count (default 64 containers) and total bytes (default 64 MiB). Both bounds are configurable at server startup via `--max-cached-containers` and `--max-cached-container-bytes`. When inserting a new container would exceed either bound, the cache evicts entries in least-recently-used order until the new entry fits; a container that is larger than the entire byte budget on its own causes `compile` to return `ok: false` with a diagnostic rather than pinning an oversized entry.
 
-**REQ-ARC-072** Cached containers never expire on a timer; they are only evicted by LRU pressure, by `container_drop`, or by process exit. Entries are immutable from the moment `compile` inserts them — no tool mutates a cached container in place — which makes REQ-TOL-036's snapshot guarantee trivially implementable.
+**REQ-ARC-mcp-072** Cached containers never expire on a timer; they are only evicted by LRU pressure, by `container_drop`, or by process exit. Entries are immutable from the moment `compile` inserts them — no tool mutates a cached container in place — which makes REQ-TOL-mcp-036's snapshot guarantee trivially implementable.
 
-**REQ-ARC-073** A `run` call whose `container_id` is not in the cache returns `ok: false` with a diagnostic that names the unknown `container_id`. The agent's recovery is to re-compile. The diagnostic must distinguish "never existed" from "evicted by LRU" only if doing so is cheap; a single shared error message is acceptable.
+**REQ-ARC-mcp-073** A `run` call whose `container_id` is not in the cache returns `ok: false` with a diagnostic that names the unknown `container_id`. The agent's recovery is to re-compile. The diagnostic must distinguish "never existed" from "evicted by LRU" only if doing so is cheap; a single shared error message is acceptable.
 
 ### Variable Naming
 
-**REQ-ARC-020** Variable names appearing in `run.variables`, `run.stimuli[].set`, and the `inputs`/`outputs` arrays of the `project_io` tool are fully qualified. The format is:
+**REQ-ARC-mcp-020** Variable names appearing in `run.variables`, `run.stimuli[].set`, and the `inputs`/`outputs` arrays of the `project_io` tool are fully qualified. The format is:
 
 - `<program>.<variable>` for program-local variables.
 - `<program>.<fb_instance>.<variable>` for variables inside a function-block instance declared directly in a program. Nested function-block instances extend this rule recursively: `<program>.<outer_fb>.<inner_fb>.<variable>`, with one dot separating every level of nesting.
@@ -593,7 +593,7 @@ The server uses [`rmcp`](https://crates.io/crates/rmcp) (the official Rust SDK f
 
 The server resolves a request by scanning from the most specific prefix to the least specific; a bare name first matches top-level globals, then resource-scoped globals if the container has exactly one resource, and so on. An ambiguous match is always rejected — the resolution rule exists to reduce bookkeeping in the common single-configuration, single-resource case, not to paper over ambiguity.
 
-**REQ-ARC-021** When a requested variable name is ambiguous or does not resolve against the loaded container, the server returns `ok: false` with a diagnostic identifying the unresolved name. The tool call does not run and the VM does not start.
+**REQ-ARC-mcp-021** When a requested variable name is ambiguous or does not resolve against the loaded container, the server returns `ok: false` with a diagnostic identifying the unresolved name. The tool call does not run and the VM does not start.
 
 Fully-qualified names are required even when only one program exists, so that agent-authored prompts and saved scenarios remain valid as a project grows.
 
@@ -613,17 +613,17 @@ The limits are configured at server startup and exposed as a `LimitOverrides` ob
 }
 ```
 
-**REQ-ARC-030** The server imposes a `max_duration_ms` (simulated time), a `max_fuel` (VM instruction budget), a `max_wall_clock_ms` (real-world execution time), a `max_samples` (trace entry cap), and a `max_variables_per_run` (maximum length of the effective trace set in `run`) on every VM invocation. The defaults are configurable at server startup via command-line arguments (e.g. `--max-duration-ms`, `--max-fuel`, `--max-wall-clock-ms`, `--max-samples`, `--max-variables-per-run`) and have sane defaults for an interactive agent session: 60000 ms simulated, 50000000 fuel, 5000 ms wall-clock, 1000 samples, 64 variables per run.
+**REQ-ARC-mcp-030** The server imposes a `max_duration_ms` (simulated time), a `max_fuel` (VM instruction budget), a `max_wall_clock_ms` (real-world execution time), a `max_samples` (trace entry cap), and a `max_variables_per_run` (maximum length of the effective trace set in `run`) on every VM invocation. The defaults are configurable at server startup via command-line arguments (e.g. `--max-duration-ms`, `--max-fuel`, `--max-wall-clock-ms`, `--max-samples`, `--max-variables-per-run`) and have sane defaults for an interactive agent session: 60000 ms simulated, 50000000 fuel, 5000 ms wall-clock, 1000 samples, 64 variables per run.
 
-**REQ-ARC-031** The server rejects any `limits` override in `run.limits` whose field exceeds the server-configured default for that field, returning a diagnostic that names the offending field and does not start the VM.
+**REQ-ARC-mcp-031** The server rejects any `limits` override in `run.limits` whose field exceeds the server-configured default for that field, returning a diagnostic that names the offending field and does not start the VM.
 
-**REQ-ARC-032** When a VM invocation would exceed a limit, the VM terminates cleanly at the end of the most recent completed task cycle. The `run` response includes a diagnostic identifying the exceeded limit and sets `terminated_reason` to `"duration"`, `"fuel"`, `"wall_clock"`, or `"sample_cap"` as appropriate.
+**REQ-ARC-mcp-032** When a VM invocation would exceed a limit, the VM terminates cleanly at the end of the most recent completed task cycle. The `run` response includes a diagnostic identifying the exceeded limit and sets `terminated_reason` to `"duration"`, `"fuel"`, `"wall_clock"`, or `"sample_cap"` as appropriate.
 
-**REQ-ARC-033** The `max_fuel` budget is shared across all tasks for a single VM invocation; fuel consumed by any task counts against the same budget. Stimulus application is billed against fuel.
+**REQ-ARC-mcp-033** The `max_fuel` budget is shared across all tasks for a single VM invocation; fuel consumed by any task counts against the same budget. Stimulus application is billed against fuel.
 
-**REQ-ARC-034** When a VM invocation completes without exceeding any limit, `terminated_reason` is `"completed"`. When the VM traps (type error, division by zero, array bounds violation, etc.) it is `"error"`.
+**REQ-ARC-mcp-034** When a VM invocation completes without exceeding any limit, `terminated_reason` is `"completed"`. When the VM traps (type error, division by zero, array bounds violation, etc.) it is `"error"`.
 
-**REQ-ARC-035** The server is not required to enforce wall-clock limits with hard real-time precision. The implementation is permitted to check the wall-clock between task cycle ends, so the actual termination time may exceed `max_wall_clock_ms` by up to one task cycle's worth of VM work.
+**REQ-ARC-mcp-035** The server is not required to enforce wall-clock limits with hard real-time precision. The implementation is permitted to check the wall-clock between task cycle ends, so the actual termination time may exceed `max_wall_clock_ms` by up to one task cycle's worth of VM work.
 
 ### Logging and Observability
 
@@ -631,9 +631,9 @@ The MCP server is the first place we get to watch a real AI agent drive the Iron
 
 Because the server holds no session state, the "unit of observation" is a single connection: every MCP client connection gets a fresh `connection_id` and every tool call within that connection carries the connection id plus a monotonic per-connection sequence number. An analyst reconstructing agent behavior reads a contiguous log stream for a given `connection_id`.
 
-**REQ-ARC-040** The server emits a structured log entry for every tool call. Each entry contains at minimum: `connection_id` (a UUID assigned when the MCP client connects), `seq` (a monotonic per-connection counter), `timestamp` (ISO 8601 UTC), `name` (the tool name), `duration_ms` (wall-clock execution time of the handler), `ok` (the top-level `ok` field from the response, see REQ-STL-005), and — when `ok` is `false` — `error_kind` drawn from a stable taxonomy (`"invalid_arguments"`, `"unknown_container"`, `"limit_exceeded"`, `"parse_failed"`, `"analysis_failed"`, `"vm_trap"`, `"internal"`).
+**REQ-ARC-mcp-040** The server emits a structured log entry for every tool call. Each entry contains at minimum: `connection_id` (a UUID assigned when the MCP client connects), `seq` (a monotonic per-connection counter), `timestamp` (ISO 8601 UTC), `name` (the tool name), `duration_ms` (wall-clock execution time of the handler), `ok` (the top-level `ok` field from the response, see REQ-STL-mcp-005), and — when `ok` is `false` — `error_kind` drawn from a stable taxonomy (`"invalid_arguments"`, `"unknown_container"`, `"limit_exceeded"`, `"parse_failed"`, `"analysis_failed"`, `"vm_trap"`, `"internal"`).
 
-**REQ-ARC-041** Each log entry additionally includes a tool-specific summary so that an analyst can reconstruct agent behavior without the payload itself:
+**REQ-ARC-mcp-041** Each log entry additionally includes a tool-specific summary so that an analyst can reconstruct agent behavior without the payload itself:
   - Analysis tools (`parse`, `check`, `format`, `symbols`) and context tools (`project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`): `source_count`, `source_total_bytes`, `dialect` (the dialect id that was used), `diagnostic_count`, `error_count`, `warning_count`, and — for `check` and `parse` — a sorted deduplicated `problem_codes` array.
   - `compile`: `container_id`, `container_size_bytes`, `task_count`, `program_count`, `include_bytes`, plus the analysis-tool fields above.
   - `container_drop`: `container_id`, `removed`.
@@ -641,19 +641,19 @@ Because the server holds no session state, the "unit of observation" is a single
   - `list_options` and `explain_diagnostic`: `response_size_bytes`.
   - Every entry also carries `response_size_bytes` so that an analyst can spot an agent pulling large responses repeatedly.
 
-**REQ-ARC-042** The server does **not** log source text, stimulus values, expectation values, trace variable values, or explanation bodies by default. These fields are replaced in the log with fixed-width content hashes (first 12 hex characters of a SHA-256 over the UTF-8 bytes of the canonical JSON encoding) so that an analyst can detect "the agent sent the same source twice" or "the source changed between `check` calls" without the payload ever leaving the host. A `--log-level=debug` startup flag opts into logging full payloads for local debugging; this mode must print a warning to stderr at connection start that payload logging is enabled.
+**REQ-ARC-mcp-042** The server does **not** log source text, stimulus values, expectation values, trace variable values, or explanation bodies by default. These fields are replaced in the log with fixed-width content hashes (first 12 hex characters of a SHA-256 over the UTF-8 bytes of the canonical JSON encoding) so that an analyst can detect "the agent sent the same source twice" or "the source changed between `check` calls" without the payload ever leaving the host. A `--log-level=debug` startup flag opts into logging full payloads for local debugging; this mode must print a warning to stderr at connection start that payload logging is enabled.
 
-**REQ-ARC-043** Logs are written to stderr by default, because the stdio transport uses stdout for the MCP JSON-RPC stream and any log output on stdout would corrupt the protocol. The `--log-file <path>` startup flag redirects logs to a file. The `--log-format` startup flag accepts `"json"` (one JSON object per line, the default) or `"text"` (human-readable, not intended for machine analysis).
+**REQ-ARC-mcp-043** Logs are written to stderr by default, because the stdio transport uses stdout for the MCP JSON-RPC stream and any log output on stdout would corrupt the protocol. The `--log-file <path>` startup flag redirects logs to a file. The `--log-format` startup flag accepts `"json"` (one JSON object per line, the default) or `"text"` (human-readable, not intended for machine analysis).
 
-**REQ-ARC-044** At connection start the server emits a `connection_start` event containing `connection_id`, the server version, the effective resource limits (after applying command-line overrides), and the effective container-cache bounds. At connection end the server emits a `connection_end` event containing `connection_id`, the total connection wall-clock, the total number of tool calls, per-tool call counts, and the reason for termination (`"client_disconnect"`, `"signal"`, `"internal_error"`).
+**REQ-ARC-mcp-044** At connection start the server emits a `connection_start` event containing `connection_id`, the server version, the effective resource limits (after applying command-line overrides), and the effective container-cache bounds. At connection end the server emits a `connection_end` event containing `connection_id`, the total connection wall-clock, the total number of tool calls, per-tool call counts, and the reason for termination (`"client_disconnect"`, `"signal"`, `"internal_error"`).
 
-**REQ-ARC-045** The log stream is sufficient — without any payload fields — to answer at least: (1) the full ordered sequence of tool calls in a connection; (2) which `check` calls returned which problem codes and whether a subsequent call presented a source with a different content hash; (3) the distribution of `terminated_reason` values across `run` calls in the connection; (4) container-cache pressure, measured as the ratio of `unknown_container` errors to `compile` calls.
+**REQ-ARC-mcp-045** The log stream is sufficient — without any payload fields — to answer at least: (1) the full ordered sequence of tool calls in a connection; (2) which `check` calls returned which problem codes and whether a subsequent call presented a source with a different content hash; (3) the distribution of `terminated_reason` values across `run` calls in the connection; (4) container-cache pressure, measured as the ratio of `unknown_container` errors to `compile` calls.
 
 ### Diagnostic Mapping
 
 The existing `Diagnostic` type (from `ironplc-dsl`) carries file ID, source span (byte offsets), problem code, and message. The MCP server converts byte offsets to line/column numbers using the source text supplied in the same call, before serializing to JSON. This is the same conversion the LSP server already performs, and once both servers mature they should share a single implementation (see Future Work).
 
-Line numbers in the serialized diagnostic are 1-indexed. Columns are 1-indexed and count Unicode scalar values — not bytes, not UTF-16 code units — so that a diagnostic's span is identical regardless of how the agent's MCP client encodes strings internally. A tab counts as one column; the server does not interpret tab stops. `end_line`/`end_col` refer to the character immediately after the last character of the span, so an empty span has `start == end`. These are the same semantics as REQ-TOL-023.
+Line numbers in the serialized diagnostic are 1-indexed. Columns are 1-indexed and count Unicode scalar values — not bytes, not UTF-16 code units — so that a diagnostic's span is identical regardless of how the agent's MCP client encodes strings internally. A tab counts as one column; the server does not interpret tab stops. `end_line`/`end_col` refer to the character immediately after the last character of the span, so an empty span has `start == end`. These are the same semantics as REQ-TOL-mcp-023.
 
 ### Error Handling
 
@@ -665,7 +665,7 @@ MCP-level errors (invalid tool name, malformed arguments that the SDK rejects be
 
 Every MCP tool is registered with a short description string that the client hands to the model. Those strings are the first line of defense against common agent failure modes: picking the wrong tool, escalating to a heavier tool to "try again", or toggling options to make errors disappear. These descriptions are part of the contract, not marketing text.
 
-**REQ-ARC-050** The MCP tool descriptions shipped with the server must follow the guidance below. These are contractual, not flavor text; any change requires a design-note update in this document.
+**REQ-ARC-mcp-050** The MCP tool descriptions shipped with the server must follow the guidance below. These are contractual, not flavor text; any change requires a design-note update in this document.
 
 - `parse`: "Syntax check only. Use while drafting to confirm the source tokenizes and parses. Do NOT use this to validate a change — it does not catch type errors, undeclared symbols, or any other semantic rule. Call `check` for that."
 - `check`: "Primary validator. Runs parse and full semantic analysis and returns structured diagnostics. ALWAYS run this before reporting success to the user and before calling `compile` or `run`. Self-heal by reading the returned diagnostics, fixing the code, and calling `check` again. Call `explain_diagnostic` to understand any unfamiliar problem code BEFORE editing the source."
@@ -682,17 +682,17 @@ Every MCP tool is registered with a short description string that the client han
 - `container_drop`: "Explicitly releases a compiled container from the cache. Not usually necessary — the cache evicts on LRU pressure — but available for long-running connections."
 - `run`: "Simulates a compiled container in the VM for a caller-specified duration. Use this only after `check` passes. Drive inputs over time via `stimuli` and observe outputs via `variables` (or set `trace_outputs: true` to pull every externally visible variable). The returned `trace` is bounded; use the `summary` object when you only care about outcomes. Evaluate pass/fail conditions yourself against the returned trace and `summary.final_values`."
 
-**REQ-ARC-051** Tool descriptions must NOT make claims the server cannot verify. In particular, tool descriptions may not promise things like "always faster than X" or "preferred for all use cases"; they must state concrete semantic differences and call out the cases where the wrong tool is tempting.
+**REQ-ARC-mcp-051** Tool descriptions must NOT make claims the server cannot verify. In particular, tool descriptions may not promise things like "always faster than X" or "preferred for all use cases"; they must state concrete semantic differences and call out the cases where the wrong tool is tempting.
 
 ### Context Scoping
 
 Context scoping is enforced structurally, not by prose recommendations to the agent. Three mechanisms work together to keep token usage lean:
 
-**REQ-ARC-060** The `symbols` tool accepts an optional `pou: string` filter and caps unfiltered responses at `max_symbols_response_bytes` (see REQ-TOL-055). Agents editing a single POU are pushed toward the filter; a server that hits the cap returns an empty set and a diagnostic that names the context tools instead.
+**REQ-ARC-mcp-060** The `symbols` tool accepts an optional `pou: string` filter and caps unfiltered responses at `max_symbols_response_bytes` (see REQ-TOL-mcp-055). Agents editing a single POU are pushed toward the filter; a server that hits the cap returns an empty set and a diagnostic that names the context tools instead.
 
-**REQ-ARC-061** The Context Tools group (`project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`) is the blessed path for targeted lookups. The tool descriptions in REQ-ARC-050 explicitly steer the agent toward a context tool over `symbols` whenever the agent's question is narrower than "the whole project".
+**REQ-ARC-mcp-061** The Context Tools group (`project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`) is the blessed path for targeted lookups. The tool descriptions in REQ-ARC-mcp-050 explicitly steer the agent toward a context tool over `symbols` whenever the agent's question is narrower than "the whole project".
 
-**REQ-ARC-062** Every tool response carries a `response_size_bytes` field in the structured log (see REQ-ARC-041). An analyst reviewing the connection log can trivially spot an agent that is pulling the entire project on every turn instead of scoped context, and use that evidence to refine tool descriptions or add further structural guards.
+**REQ-ARC-mcp-062** Every tool response carries a `response_size_bytes` field in the structured log (see REQ-ARC-mcp-041). An analyst reviewing the connection log can trivially spot an agent that is pulling the entire project on every turn instead of scoped context, and use that evidence to refine tool descriptions or add further structural guards.
 
 ## Milestones
 
@@ -700,9 +700,9 @@ The design above is intentionally split into two milestones so that the first re
 
 **Milestone 1 — validation surface.** `parse`, `check`, `format`, `symbols`, `list_options`, `explain_diagnostic`, plus every context tool (`project_manifest`, `project_io`, `pou_scope`, `pou_lineage`, `types_all`). This milestone depends only on the compiler front end, the analyzer, `plc2plc`, and `ironplc-problems`. It covers the highest-value agent use case — "write PLC code, get structured feedback, self-heal" — without pulling in `ironplc-codegen` or `ironplc-vm`.
 
-**Milestone 2 — execution surface.** `compile`, `container_drop`, `run`, the container cache (REQ-ARC-070..073), and the VM sandboxing limits (REQ-ARC-030..035). This milestone adds dependencies on `ironplc-codegen` and `ironplc-vm`.
+**Milestone 2 — execution surface.** `compile`, `container_drop`, `run`, the container cache (REQ-ARC-mcp-070..073), and the VM sandboxing limits (REQ-ARC-mcp-030..035). This milestone adds dependencies on `ironplc-codegen` and `ironplc-vm`.
 
-Both milestones obey every REQ in the Design Principle section (REQ-STL-001..006). The milestone split is a delivery schedule, not an architectural boundary: the stateless tool surface is designed so that adding the Milestone 2 tools does not require revisiting any Milestone 1 interface.
+Both milestones obey every REQ in the Design Principle section (REQ-STL-mcp-001..006). The milestone split is a delivery schedule, not an architectural boundary: the stateless tool surface is designed so that adding the Milestone 2 tools does not require revisiting any Milestone 1 interface.
 
 ## Future Work
 
@@ -711,7 +711,7 @@ These items are intentionally out of scope for this design. They are listed here
 - **Stateful caching layer.** The current design re-parses and re-analyzes every `check` call. A future revision may add a content-addressed cache keyed by a hash of `(sources, options)` so that repeated calls on unchanged inputs skip analysis. This is purely a performance optimization and must not change any tool's observable behavior.
 - **Server-side assertion evaluation.** This design deliberately omits a `verify` tool that would compile + run + evaluate caller-supplied expectations and return a structured pass/fail result. The decision is to let real agent usage tell us how badly we need it: agents can currently drive `compile` + `run` themselves and evaluate pass/fail against the returned `trace` and `summary.final_values` in their own reasoning. If that workflow produces unreliable pass/fail conclusions in practice — hallucinated passes, missed regressions, float-comparison bugs — a future milestone should add `verify` with a stripped-down expectation grammar (at-final comparisons, `equals` / `not_equals` / `approximately` with tolerance for floats) and the trace-sample guarantees needed to evaluate time-indexed expectations reliably.
 - **Persistent test harness.** A future milestone should let the agent register named scenarios out-of-band and invoke them by name, so the agent curates tests alongside the source instead of re-inventing assertions on every turn. This work sits on top of the `verify` deferral above and should not be started before `verify` exists.
-- **Aggregate stimulus values for complex types.** REQ-TOL-043 currently requires the caller to supply a full array or full struct when driving one via `stimuli.set`. A follow-up should define partial-update semantics (for example, setting a single array element by index, or setting one field of a struct without supplying the whole object) once real agent usage reveals what shapes are needed.
+- **Aggregate stimulus values for complex types.** REQ-TOL-mcp-043 currently requires the caller to supply a full array or full struct when driving one via `stimuli.set`. A follow-up should define partial-update semantics (for example, setting a single array element by index, or setting one field of a struct without supplying the whole object) once real agent usage reveals what shapes are needed.
 - **Streaming traces.** Long `run` calls currently return the complete trace in a single response. A future revision may offer incremental trace delivery via MCP's streaming facilities, which would let the agent react to intermediate values without extending `duration_ms` conservatively.
 - **On-disk workspace management.** The server never touches disk in this design. An agent that wants to persist an edit writes it through its own filesystem tools. A future companion tool or MCP client helper could formalize the "write these sources back to a project directory" workflow, but it deliberately lives outside the MCP boundary — the server itself stays stateless and file-system-free.
 - **IEC 61131-3 Edition 3 dialect semantics.** The `dialect` preset exists but the precise set of Ed. 3 features supported by the MCP server should be documented once the compiler's Ed. 3 support is complete. A future revision of this doc should link directly to a compatibility matrix.
