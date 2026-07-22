@@ -682,3 +682,120 @@ END_PROGRAM
 ";
     let _container = compile_only(source);
 }
+
+// ---------------------------------------------------------------------------
+// Section: TwinCAT REFERENCE TO execution (REQ-RTO-codegen-4xx)
+//
+// REFERENCE TO reuses the REF_TO backend wholesale, so these tests exercise the
+// TwinCAT surface syntax (REFERENCE TO declarations, REF= binding) and the
+// explicit `^` dereference through the same codegen and VM path.
+// See `specs/design/reference-to-twincat.md`.
+// ---------------------------------------------------------------------------
+
+fn reference_to_options() -> CompilerOptions {
+    CompilerOptions {
+        allow_reference_to: true,
+        ..CompilerOptions::default()
+    }
+}
+
+/// Parse, analyze, compile, and run one scan cycle with the given options.
+fn compile_and_run_with(
+    source: &str,
+    options: &CompilerOptions,
+) -> (ironplc_container::Container, VmBuffers) {
+    compile_and_try_run_with(source, options).expect("VM execution trapped unexpectedly")
+}
+
+/// Like [`compile_and_run_with`] but returns `Err` on a VM trap.
+fn compile_and_try_run_with(
+    source: &str,
+    options: &CompilerOptions,
+) -> Result<(ironplc_container::Container, VmBuffers), ironplc_vm::FaultContext> {
+    let library = ironplc_parser::parse_program(source, &FileId::default(), options).unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&library], options).unwrap();
+    let codegen_options = crate::CodegenOptions::default();
+    let container =
+        crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
+    let mut bufs = VmBuffers::from_container(&container);
+    {
+        let mut vm = load_and_start(&container, &mut bufs)?;
+        vm.run_round(0)?;
+    }
+    Ok((container, bufs))
+}
+
+/// REQ-RTO-codegen-400: Reading a `REF=`-bound reference via `^` yields the
+/// referenced value.
+#[spec_test(REQ_RTO_codegen_400)]
+fn codegen_spec_req_rto_400_read_through_reference() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 42;
+    r : REFERENCE TO INT;
+    y : INT;
+  END_VAR
+  r REF= x;
+  y := r^;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    // vars: x=0, r=1, y=2
+    assert_eq!(bufs.vars[2].as_i32(), 42);
+}
+
+/// REQ-RTO-codegen-401: Writing through `^` stores to the referenced variable.
+#[spec_test(REQ_RTO_codegen_401)]
+fn codegen_spec_req_rto_401_write_through_reference() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 1;
+    r : REFERENCE TO INT;
+  END_VAR
+  r REF= x;
+  r^ := 99;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    // Writing through r must update x (var 0).
+    assert_eq!(bufs.vars[0].as_i32(), 99);
+}
+
+/// REQ-RTO-codegen-402: Dereferencing an unbound `REFERENCE TO` variable traps
+/// `NullDereference`.
+#[spec_test(REQ_RTO_codegen_402)]
+fn codegen_spec_req_rto_402_unbound_reference_deref_traps() {
+    let source = "
+PROGRAM main
+  VAR
+    r : REFERENCE TO INT;
+    y : INT;
+  END_VAR
+  y := r^;
+END_PROGRAM
+";
+    let err = compile_and_try_run_with(source, &reference_to_options()).unwrap_err();
+    assert_eq!(err.trap, ironplc_vm::error::Trap::NullDereference);
+}
+
+/// REQ-RTO-codegen-420: An `ARRAY [..] OF REFERENCE TO T` element can be bound
+/// (`REF=`) and accessed (`^`).
+#[spec_test(REQ_RTO_codegen_420)]
+fn codegen_spec_req_rto_420_array_of_reference_element_access() {
+    let source = "
+PROGRAM main
+  VAR
+    val : INT := 77;
+    refs : ARRAY[0..2] OF REFERENCE TO INT;
+    result : INT;
+  END_VAR
+  refs[0] REF= val;
+  result := refs[0]^;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    // vars: val=0, refs=1, result=2
+    assert_eq!(bufs.vars[2].as_i32(), 77);
+}
