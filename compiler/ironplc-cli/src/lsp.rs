@@ -119,9 +119,7 @@ fn start_with_connection(
     match initialize_params.workspace_folders {
         Some(folders) => {
             debug!("Initialize server with workspace folders {folders:?}");
-            if let Some(folder) = folders.first() {
-                server.project.initialize(folder);
-            }
+            server.project.initialize_many(&folders);
         }
         None => {
             debug!("Initialize server without a workspace folder");
