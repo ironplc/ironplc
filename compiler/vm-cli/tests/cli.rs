@@ -95,6 +95,7 @@ fn write_steel_thread_container(path: &Path) {
             name: "y".to_string(),
             type_name: "DINT".to_string(),
         })
+        .max_call_depth(1)
         .build();
 
     let mut buf = Vec::new();
@@ -196,6 +197,7 @@ fn write_debug_source_file_table_container(path: &Path) {
             source_line: SourceLine::new(4),
             source_column: SourceColumn::new(1),
         })
+        .max_call_depth(1)
         .build();
 
     let mut buf = Vec::new();
@@ -285,11 +287,13 @@ fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Er
     cmd.assert().success();
 
     let contents = std::fs::read_to_string(&dump_path)?;
-    // Golden file pre-dates this PR's header revisions; the fact that it
+    // Golden file pre-dates several header revisions; the fact that it
     // still loads and runs is itself the backwards-compatibility check —
     // bytes 40-71 (formerly `source_hash`) are silently accepted by the
     // new reader as `reserved_hash_slot`, and every other field offset is
     // unchanged. See `specs/plans/2026-05-22-debug-source-file-table.md`.
+    // Its `max_call_depth` field (offset 194) was bumped 0 -> 1 when zero
+    // call depth became invalid; every other byte is preserved.
     assert_eq!(contents, "x: 10\ny: 42\n");
 
     Ok(())
@@ -391,6 +395,7 @@ fn write_divide_by_zero_container(path: &Path) {
         .add_i32_constant(10)
         .add_i32_constant(0)
         .add_function(ironplc_container::FunctionId::new(0), &bytecode, 2, 0, 0)
+        .max_call_depth(1)
         .build();
 
     let mut buf = Vec::new();
@@ -456,6 +461,7 @@ fn write_doorbell_container(path: &Path) {
             name: "Buzzer".into(),
             type_name: "BOOL".into(),
         })
+        .max_call_depth(1)
         .build();
 
     let mut buf = Vec::new();
@@ -537,6 +543,7 @@ fn write_fault_with_vars_container(path: &Path) {
         .add_function(FunctionId::new(1), &scan_bytecode, 2, 2, 0)
         .init_function_id(FunctionId::new(0))
         .entry_function_id(FunctionId::new(1))
+        .max_call_depth(1)
         .build();
 
     let mut buf = Vec::new();
@@ -635,6 +642,7 @@ fn write_scan_divide_by_zero_container(path: &Path) {
         .add_function(FunctionId::new(1), &scan_bytecode, 2, 0, 0)
         .init_function_id(FunctionId::new(0))
         .entry_function_id(FunctionId::new(1))
+        .max_call_depth(1)
         .build();
 
     let mut buf = Vec::new();
@@ -747,6 +755,7 @@ fn write_cyclic_task_container(path: &Path, interval_us: u64) {
         .add_function(FunctionId::new(0), &bytecode, 0, 0, 0)
         .add_task(task)
         .add_program_instance(program)
+        .max_call_depth(1)
         .build();
 
     let mut buf = Vec::new();

@@ -21,17 +21,6 @@ use ironplc_container::opcode;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-/// Maximum depth of nested CALL / user-FB_CALL frames before the VM
-/// traps with [`Trap::CallStackOverflow`].
-///
-/// Sized at the embedder side via [`VmBuffers::frames`]. The dispatch
-/// loop pushes one [`Frame`] per CALL / user-FB_CALL onto an explicit
-/// frame stack and the Rust call stack is no longer consumed
-/// proportionally to PLC call depth. The bound here matches what the
-/// previous recursion-based check enforced, so no program that runs
-/// today will trap that did not before.
-pub(crate) const MAX_CALL_DEPTH: u32 = 32;
-
 /// Context for a fault that occurred during task execution.
 #[derive(Debug)]
 pub struct FaultContext {
@@ -148,15 +137,22 @@ impl<'a> VmReady<'a> {
     pub fn start(mut self) -> Result<VmRunning<'a>, FaultContext> {
         let shared_globals_size = self.container.task_table.shared_globals_size;
 
-        // Reject containers whose declared call depth would not fit in
-        // the embedder's frame buffer. Codegen populates
-        // `max_call_depth` from the static call graph; a value of 0
-        // means "not computed" (legacy or hand-built test containers)
-        // and disables the check, preserving the prior behavior where
-        // the runtime `Trap::CallStackOverflow` is the only signal.
+        // Validate the container's declared call depth against the
+        // embedder's frame buffer. Codegen populates `max_call_depth`
+        // from the static call graph and always declares at least one
+        // frame (the entry function), so a value of 0 is invalid: it
+        // means the field was never computed (a legacy or hand-built
+        // container). Reject it before any init code runs.
         let declared = self.container.header.max_call_depth;
         let capacity = self.frames.len();
-        if declared != 0 && declared as usize > capacity {
+        if declared == 0 {
+            return Err(FaultContext {
+                trap: Trap::ZeroCallDepth,
+                task_id: TaskId::DEFAULT,
+                instance_id: InstanceId::DEFAULT,
+            });
+        }
+        if declared as usize > capacity {
             return Err(FaultContext {
                 trap: Trap::ProgramExceedsCallDepth {
                     required: declared,
@@ -2752,6 +2748,7 @@ mod tests {
             .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0) // scan: test bytecode
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
+            .max_call_depth(1)
             .build()
     }
 
@@ -2785,6 +2782,7 @@ mod tests {
             .add_function(FunctionId::SCAN, &bytecode, 2, 2, 0) // scan: program body
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
+            .max_call_depth(1)
             .build()
     }
 
@@ -2880,6 +2878,7 @@ mod tests {
             .add_function(FunctionId::SCAN, &bytecode, 1, 0, 0) // scan: triggers overflow
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
+            .max_call_depth(1)
             .build();
 
         let mut b = VmBuffers::from_container(&c);
@@ -2976,6 +2975,7 @@ mod tests {
             .add_function(FunctionId::new(2), &func_bytecode, 2, 3, 2) // add (num_params=2)
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
+            .max_call_depth(2) // SCAN -> add (2 frames)
             .build();
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
@@ -3046,6 +3046,7 @@ mod tests {
             })
             .init_function_id(FunctionId::INIT)
             .entry_function_id(FunctionId::SCAN)
+            .max_call_depth(1)
             .build();
         let mut b = VmBuffers::from_container(&c);
         let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
