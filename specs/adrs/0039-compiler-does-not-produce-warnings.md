@@ -87,19 +87,25 @@ MCP).
 Warnings are not forbidden forever — they are gated. A warning tier may be added
 only when **all** of the following hold:
 
-1. **Opt-in, never default.** No problem code is a warning out of the box. The
+1. **It must not violate ADR-0005 (safety-first).** A finding may be demotable to
+   a warning only if letting a user ignore it does not weaken a safety guarantee.
+   A problem whose being ignored could lead to wrong values, corrupted state, or
+   unsafe control of a physical process must remain a non-demotable error. This
+   is the gate that comes first: if demoting a code would violate safety-first,
+   none of the conditions below can rescue it.
+2. **Opt-in, never default.** No problem code is a warning out of the box. The
    default severity of every code is error. A warning exists only because a user
    explicitly *demoted* a specific code (e.g. via a future project/CLI
    configuration). The set of codes demoted is chosen by the user, not by the
    compiler.
-2. **Per-code, explicit, and discoverable.** Demotion is expressed against a
+3. **Per-code, explicit, and discoverable.** Demotion is expressed against a
    concrete `P####` code, so the user knows exactly what they chose to
    down-rank. It is not a blanket "treat category X as warnings" switch.
-3. **Every renderer can faithfully distinguish the tier.** A demoted code
+4. **Every renderer can faithfully distinguish the tier.** A demoted code
    renders as a genuine warning in the CLI, the LSP (`DiagnosticSeverity`), and
    the MCP severity field — not as an error with a softer message. Until all
    surfaces can represent the distinction, there is no warning tier to expose.
-4. **The default build stays honest.** With no demotions configured, behavior is
+5. **The default build stays honest.** With no demotions configured, behavior is
    identical to today: every finding is an error and fails the build. Demotion
    only ever loosens what a specific user opted into loosening; it never changes
    the out-of-the-box contract.
