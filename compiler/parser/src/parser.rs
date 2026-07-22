@@ -866,7 +866,7 @@ parser! {
           initializer: InitialValueAssignmentKind::Reference(ReferenceInitializer {
             target: ref_target.clone(),
             initial_value: init.clone(),
-            syntax: syntax.clone(),
+            syntax,
           }),
         }
       }).collect()

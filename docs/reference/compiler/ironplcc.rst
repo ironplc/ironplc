@@ -133,6 +133,11 @@ Options
    Edition 3. This is a vendor extension useful when you need references
    but want to keep Edition 2 keyword handling for the rest of your code.
 
+``--allow-reference-to``
+   Allow the Beckhoff TwinCAT / CODESYS ``REFERENCE TO`` reference type and the
+   ``REF=`` binding operator — the TwinCAT/CODESYS-facing alternative to
+   ``--allow-ref-to``. Enabled by the ``codesys`` dialect.
+
 ``--allow-pointer-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
