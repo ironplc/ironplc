@@ -93,12 +93,20 @@ only when **all** of the following hold:
    unsafe control of a physical process must remain a non-demotable error. This
    is the gate that comes first: if demoting a code would violate safety-first,
    none of the conditions below can rescue it.
-2. **It must be stylistic — it must not affect behavior.** A demotable finding
-   concerns form, not meaning: naming, layout, deprecated-but-equivalent
-   spellings, portability hints. If ignoring it would change what the program
-   *does* — including its performance or resource use — it is not stylistic and
-   must stay a non-demotable error. Two programs that differ only by a demoted
-   code must compile to equivalent behavior.
+2. **It must not affect behavior — it is either stylistic or a
+   cross-compiler compatibility hint.** A demotable finding falls into one of
+   two categories, and in both cases must leave what the program *does*
+   unchanged (including its performance and resource use):
+   * **Stylistic** — concerns form, not meaning: naming, layout,
+     deprecated-but-equivalent spellings.
+   * **Cross-compiler compatibility** — the code is accepted and behaves
+     identically in IronPLC, but the construct may not port to another
+     toolchain; the finding warns about that portability, not about a
+     behavioral difference here.
+   If ignoring the finding would change what the program does, it is neither
+   stylistic nor a compatibility hint and must stay a non-demotable error. Two
+   programs that differ only by a demoted code must compile to equivalent
+   behavior.
 3. **Opt-in, never default.** No problem code is a warning out of the box. The
    default severity of every code is error. A warning exists only because a user
    explicitly *demoted* a specific code (e.g. via a future project/CLI
@@ -111,12 +119,8 @@ only when **all** of the following hold:
    renders as a genuine warning in the CLI, the LSP (`DiagnosticSeverity`), and
    the MCP severity field — not as an error with a softer message. Until all
    surfaces can represent the distinction, there is no warning tier to expose.
-6. **The default build stays honest.** With no demotions configured, behavior is
-   identical to today: every finding is an error and fails the build. Demotion
-   only ever loosens what a specific user opted into loosening; it never changes
-   the out-of-the-box contract.
 
-Until a change satisfies all four, the answer stays "errors only."
+Until a change satisfies all of these, the answer stays "errors only."
 
 ### How this shaped PR #1215
 
