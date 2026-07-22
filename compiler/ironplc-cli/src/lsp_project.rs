@@ -760,7 +760,16 @@ mod test {
     // -----------------------------------------------------------------
 
     fn workspace_folder(dir: &std::path::Path) -> lsp_types::WorkspaceFolder {
-        let uri_str = format!("file://{}", dir.display());
+        // Windows paths are backslash-separated and start with a drive
+        // letter (`C:\...`), neither of which is valid straight in a
+        // `file://` URI -- normalise separators and add the extra `/`
+        // before the drive letter, matching `UriKey::from_file_id`.
+        let normalised = dir.display().to_string().replace('\\', "/");
+        let uri_str = if normalised.starts_with('/') {
+            format!("file://{normalised}")
+        } else {
+            format!("file:///{normalised}")
+        };
         lsp_types::WorkspaceFolder {
             uri: Uri::from_str(&uri_str).unwrap(),
             name: dir.display().to_string(),
