@@ -28,6 +28,7 @@ fn data_region_container(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 

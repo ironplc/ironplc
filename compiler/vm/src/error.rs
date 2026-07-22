@@ -51,6 +51,12 @@ pub enum Trap {
         required: u16,
         capacity: u16,
     },
+    /// The container's `header.max_call_depth` is zero. Every program needs
+    /// at least one call frame for its entry function, so codegen always
+    /// declares a depth of one or more; a zero means the field was never
+    /// computed (a hand-built or legacy container). `VmReady::start`
+    /// rejects it before any init code runs.
+    ZeroCallDepth,
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -104,6 +110,9 @@ impl fmt::Display for Trap {
                     f,
                     "program declares call depth {required} but VM frame buffer holds at most {capacity}"
                 )
+            }
+            Trap::ZeroCallDepth => {
+                write!(f, "container declares a maximum call depth of zero")
             }
         }
     }
@@ -431,6 +440,19 @@ mod tests {
     }
 
     #[test]
+    fn trap_display_when_zero_call_depth_then_expected() {
+        assert_eq!(
+            format!("{}", Trap::ZeroCallDepth),
+            "container declares a maximum call depth of zero"
+        );
+    }
+
+    #[test]
+    fn v_code_when_zero_call_depth_then_v9017() {
+        assert_eq!(Trap::ZeroCallDepth.v_code(), "V9017");
+    }
+
+    #[test]
     fn exit_code_when_internal_error_then_3() {
         assert_eq!(Trap::StackOverflow.exit_code(), 3);
         assert_eq!(Trap::StackUnderflow.exit_code(), 3);
@@ -465,5 +487,6 @@ mod tests {
             .exit_code(),
             3
         );
+        assert_eq!(Trap::ZeroCallDepth.exit_code(), 3);
     }
 }
