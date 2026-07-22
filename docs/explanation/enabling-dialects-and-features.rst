@@ -106,7 +106,10 @@ features — they never disable features that a dialect already includes.
 
 ``--allow-missing-semicolon``
    Allow missing semicolons after keyword statements like ``END_IF`` and
-   ``END_STRUCT``.
+   ``END_STRUCT``. Also allows a ``CASE`` branch with no statements at
+   all (a label that falls straight through to the next label, ``ELSE``,
+   or ``END_CASE``) -- strict IEC 61131-3 only allows this via an
+   explicit empty statement (``5: ;``); this fills in the dropped ``;``.
 
 ``--allow-top-level-var-global``
    Allow :code:`VAR_GLOBAL` declarations at the top level of a file,
