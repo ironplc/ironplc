@@ -1,8 +1,8 @@
 //! The `pou_lineage` MCP tool.
 //!
 //! Returns the upstream (dependencies) and downstream (dependents) of a
-//! named POU, derived from the library's call graph. Implements REQ-TOL-230
-//! and REQ-TOL-231.
+//! named POU, derived from the library's call graph. Implements REQ-TOL-mcp-230
+//! and REQ-TOL-mcp-231.
 
 use std::collections::{BTreeMap, BTreeSet};
 

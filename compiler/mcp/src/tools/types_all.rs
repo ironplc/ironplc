@@ -1,7 +1,7 @@
 //! The `types_all` MCP tool.
 //!
 //! Returns every user-defined type declared in the supplied sources with
-//! kind-specific detail fields. Implements REQ-TOL-240.
+//! kind-specific detail fields. Implements REQ-TOL-mcp-240.
 
 use ironplc_analyzer::intermediate_type::{ByteSized, IntermediateType};
 use ironplc_analyzer::SemanticContext;

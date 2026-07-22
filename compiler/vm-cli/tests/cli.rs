@@ -203,8 +203,8 @@ fn write_debug_source_file_table_container(path: &Path) {
     std::fs::write(path, &buf).unwrap();
 }
 
-/// REQ-VC-003: `run --scans N` runs exactly N rounds then exits 0.
-#[spec_test(REQ_VC_003)]
+/// REQ-VC-vm-cli-003: `run --scans N` runs exactly N rounds then exits 0.
+#[spec_test(REQ_VC_vm_cli_003)]
 fn run_when_valid_container_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("test.iplc");
@@ -217,8 +217,8 @@ fn run_when_valid_container_file_then_ok() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-/// REQ-VC-005: `run --dump-vars <PATH>` writes variable values to a file.
-#[spec_test(REQ_VC_005)]
+/// REQ-VC-vm-cli-005: `run --dump-vars <PATH>` writes variable values to a file.
+#[spec_test(REQ_VC_vm_cli_005)]
 fn run_when_valid_container_file_and_dump_vars_then_writes_variables(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -241,8 +241,8 @@ fn run_when_valid_container_file_and_dump_vars_then_writes_variables(
     Ok(())
 }
 
-/// REQ-VC-001: a missing container file yields V6001 exit 2.
-#[spec_test(REQ_VC_001)]
+/// REQ-VC-vm-cli-001: a missing container file yields V6001 exit 2.
+#[spec_test(REQ_VC_vm_cli_001)]
 fn run_when_file_not_found_then_exit_2_and_v6001() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
     cmd.arg("run").arg("test/file/doesnt/exist.iplc");
@@ -253,8 +253,8 @@ fn run_when_file_not_found_then_exit_2_and_v6001() -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-/// REQ-VC-002: a malformed container yields V6002 exit 2.
-#[spec_test(REQ_VC_002)]
+/// REQ-VC-vm-cli-002: a malformed container yields V6002 exit 2.
+#[spec_test(REQ_VC_vm_cli_002)]
 fn run_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let bad_path = dir.path().join("bad.iplc");
@@ -338,8 +338,8 @@ fn read_when_debug_source_file_table_golden_then_decodes_new_debug_fields() {
     assert_eq!(container.header.reserved_hash_slot, [0u8; 32]);
 }
 
-/// REQ-VC-013: `benchmark` prints a JSON object with `scan_us` stats and tasks.
-#[spec_test(REQ_VC_013)]
+/// REQ-VC-vm-cli-013: `benchmark` prints a JSON object with `scan_us` stats and tasks.
+#[spec_test(REQ_VC_vm_cli_013)]
 fn benchmark_when_valid_container_then_outputs_json_with_scan_us(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -364,8 +364,8 @@ fn benchmark_when_valid_container_then_outputs_json_with_scan_us(
     Ok(())
 }
 
-/// REQ-VC-016: `benchmark` surfaces file-open errors as V6001 exit 2.
-#[spec_test(REQ_VC_016)]
+/// REQ-VC-vm-cli-016: `benchmark` surfaces file-open errors as V6001 exit 2.
+#[spec_test(REQ_VC_vm_cli_016)]
 fn benchmark_when_file_not_found_then_exit_2_and_v6001() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcvm"));
     cmd.arg("benchmark").arg("nonexistent.iplc");
@@ -398,8 +398,8 @@ fn write_divide_by_zero_container(path: &Path) {
     std::fs::write(path, &buf).unwrap();
 }
 
-/// REQ-VC-004: a runtime trap exits 1 with the trap's V-code on stderr.
-#[spec_test(REQ_VC_004)]
+/// REQ-VC-vm-cli-004: a runtime trap exits 1 with the trap's V-code on stderr.
+#[spec_test(REQ_VC_vm_cli_004)]
 fn run_when_divide_by_zero_then_exit_1_and_v4001() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("div_zero.iplc");
@@ -463,8 +463,8 @@ fn write_doorbell_container(path: &Path) {
     std::fs::write(path, &buf).unwrap();
 }
 
-/// REQ-VC-008: with debug info, the dump uses named variables.
-#[spec_test(REQ_VC_008)]
+/// REQ-VC-vm-cli-008: with debug info, the dump uses named variables.
+#[spec_test(REQ_VC_vm_cli_008)]
 fn run_when_debug_info_and_dump_vars_then_shows_named_variables(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -487,8 +487,8 @@ fn run_when_debug_info_and_dump_vars_then_shows_named_variables(
     Ok(())
 }
 
-/// REQ-VC-006: `--dump-vars` without a path writes the dump to stdout.
-#[spec_test(REQ_VC_006)]
+/// REQ-VC-vm-cli-006: `--dump-vars` without a path writes the dump to stdout.
+#[spec_test(REQ_VC_vm_cli_006)]
 fn run_when_dump_vars_without_path_then_prints_to_stdout() -> Result<(), Box<dyn std::error::Error>>
 {
     let dir = TempDir::new()?;
@@ -544,9 +544,9 @@ fn write_fault_with_vars_container(path: &Path) {
     std::fs::write(path, &buf).unwrap();
 }
 
-/// REQ-VC-007: a runtime trap with `--dump-vars` writes the current variable
+/// REQ-VC-vm-cli-007: a runtime trap with `--dump-vars` writes the current variable
 /// state before exiting with code 1.
-#[spec_test(REQ_VC_007)]
+#[spec_test(REQ_VC_vm_cli_007)]
 fn run_when_fault_and_dump_vars_then_writes_variables_and_exits_1(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -572,8 +572,8 @@ fn run_when_fault_and_dump_vars_then_writes_variables_and_exits_1(
     Ok(())
 }
 
-/// REQ-VC-010: an unreachable dump path returns V6004 with exit code 2.
-#[spec_test(REQ_VC_010)]
+/// REQ-VC-vm-cli-010: an unreachable dump path returns V6004 with exit code 2.
+#[spec_test(REQ_VC_vm_cli_010)]
 fn run_when_dump_path_in_nonexistent_directory_then_exit_2_and_v6004(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
@@ -597,8 +597,8 @@ fn run_when_dump_path_in_nonexistent_directory_then_exit_2_and_v6004(
     Ok(())
 }
 
-/// REQ-VC-016: `benchmark` surfaces malformed-container errors as V6002/exit 2.
-#[spec_test(REQ_VC_016)]
+/// REQ-VC-vm-cli-016: `benchmark` surfaces malformed-container errors as V6002/exit 2.
+#[spec_test(REQ_VC_vm_cli_016)]
 fn benchmark_when_invalid_file_then_exit_2_and_v6002() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let bad_path = dir.path().join("bad.iplc");
@@ -642,8 +642,8 @@ fn write_scan_divide_by_zero_container(path: &Path) {
     std::fs::write(path, &buf).unwrap();
 }
 
-/// REQ-VC-017: a trap during the benchmark warmup phase exits 1 with the trap's V-code.
-#[spec_test(REQ_VC_017)]
+/// REQ-VC-vm-cli-017: a trap during the benchmark warmup phase exits 1 with the trap's V-code.
+#[spec_test(REQ_VC_vm_cli_017)]
 fn benchmark_when_fault_during_warmup_then_exit_1() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("scan_div_zero.iplc");
@@ -663,8 +663,8 @@ fn benchmark_when_fault_during_warmup_then_exit_1() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-/// REQ-VC-017: a trap during the measured phase (warmup=0) exits 1 with the trap's V-code.
-#[spec_test(REQ_VC_017)]
+/// REQ-VC-vm-cli-017: a trap during the measured phase (warmup=0) exits 1 with the trap's V-code.
+#[spec_test(REQ_VC_vm_cli_017)]
 fn benchmark_when_fault_during_measured_then_exit_1() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("scan_div_zero.iplc");
@@ -684,9 +684,9 @@ fn benchmark_when_fault_during_measured_then_exit_1() -> Result<(), Box<dyn std:
     Ok(())
 }
 
-/// REQ-VC-014: with `--cycles 0 --warmup 0`, `benchmark` still emits valid
+/// REQ-VC-vm-cli-014: with `--cycles 0 --warmup 0`, `benchmark` still emits valid
 /// JSON — `scan_us` stats are zero and no samples were measured.
-#[spec_test(REQ_VC_014)]
+#[spec_test(REQ_VC_vm_cli_014)]
 fn benchmark_when_zero_cycles_then_outputs_zero_stats() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("test.iplc");
@@ -754,9 +754,9 @@ fn write_cyclic_task_container(path: &Path, interval_us: u64) {
     std::fs::write(path, &buf).unwrap();
 }
 
-/// REQ-VC-015: `benchmark` emits per-cyclic-task `budget_pct` when the task's
+/// REQ-VC-vm-cli-015: `benchmark` emits per-cyclic-task `budget_pct` when the task's
 /// interval is non-zero.
-#[spec_test(REQ_VC_015)]
+#[spec_test(REQ_VC_vm_cli_015)]
 fn benchmark_when_cyclic_task_then_budget_pct_in_output() -> Result<(), Box<dyn std::error::Error>>
 {
     let dir = TempDir::new()?;
@@ -788,9 +788,9 @@ fn benchmark_when_cyclic_task_then_budget_pct_in_output() -> Result<(), Box<dyn 
     Ok(())
 }
 
-/// REQ-VC-012: `run` sleeps between rounds for a cyclic task — two rounds with
+/// REQ-VC-vm-cli-012: `run` sleeps between rounds for a cyclic task — two rounds with
 /// a 20 ms interval must take at least one interval of wall-clock time.
-#[spec_test(REQ_VC_012)]
+#[spec_test(REQ_VC_vm_cli_012)]
 fn run_when_cyclic_task_then_sleeps_between_rounds() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
     let container_path = dir.path().join("cyclic.iplc");
@@ -816,11 +816,11 @@ fn run_when_cyclic_task_then_sleeps_between_rounds() -> Result<(), Box<dyn std::
     Ok(())
 }
 
-/// REQ-VC-011: without `--scans`, `run` loops until SIGINT then exits 0.
+/// REQ-VC-vm-cli-011: without `--scans`, `run` loops until SIGINT then exits 0.
 /// Unix-only: we send SIGINT via `kill(2)` after giving the child time to
 /// install the ctrlc handler and enter the main loop.
 #[cfg(unix)]
-#[spec_test(REQ_VC_011)]
+#[spec_test(REQ_VC_vm_cli_011)]
 fn run_without_scans_then_stops_on_sigint() -> Result<(), Box<dyn std::error::Error>> {
     use std::process::{Command as ProcessCommand, Stdio};
     use std::time::Duration;
