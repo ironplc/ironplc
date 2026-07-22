@@ -1,0 +1,17 @@
+=====
+V6010
+=====
+
+.. problem-summary:: V6010
+
+The container declares more than one program instance. The first version of the
+debugger supports single-instance programs only; multi-instance debugging is
+planned for a future release.
+
+Solutions
+---------
+
+1. Debug a program that declares a single program instance
+2. Temporarily reduce the configuration to one program instance for the debug session
+3. Run the multi-instance program with ``ironplcvm`` when debugging is not required
+4. Track multi-instance debugger support in the IronPLC project roadmap
