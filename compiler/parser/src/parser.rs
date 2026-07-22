@@ -1520,11 +1520,6 @@ parser! {
     pub rule statement_list() -> Vec<StmtKind> = items:statements_or_empty()+ {
       flatten_statements(items)
     }
-    // A CASE branch can have zero statements (a label that falls through
-    // to nothing -- confirmed against real TwinCAT). statement_list() on
-    // its own requires at least one, so this falls back to an empty Vec,
-    // matching the semisep_or_empty pattern used elsewhere in this file.
-    rule statement_list_or_empty() -> Vec<StmtKind> = statement_list() / { vec![] }
     rule statements_or_empty() -> StatementsOrEmpty = _ tok(TokenType::Semicolon) _ { StatementsOrEmpty::Empty() } / s:semisep(<statement()>) { StatementsOrEmpty::Statements(s)}
     rule statement() -> StmtKind = assignment_statement() / selection_statement() / iteration_statement() / subprogram_control_statement()
 
@@ -1595,7 +1590,7 @@ parser! {
         span: SourceSpan::join(&start.span, &end.span),
       })
     }
-    rule case_element() -> CaseStatementGroup = selectors:case_list() _ tok(TokenType::Colon) _ statements:statement_list_or_empty() {
+    rule case_element() -> CaseStatementGroup = selectors:case_list() _ tok(TokenType::Colon) _ statements:statement_list() {
       CaseStatementGroup {
         selectors,
         statements,

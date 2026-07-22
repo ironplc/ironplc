@@ -107,3 +107,60 @@ handling changes).
   self.write_ws(";");`) -- someone had anticipated this shape on the
   render side already, even though the parser couldn't produce it until
   this fix. No renderer change needed.
+
+## Revision: address maintainer feedback on PR #1214
+
+garretfick (maintainer) requested changes: this isn't strictly valid
+IEC 61131-3 (Annex B's `statement_list` is one-or-more `statement ';'`,
+and the `NIL` alternative only legalizes an *explicit* empty statement,
+`5: ;` -- not a dropped `;` falling straight through). Making
+`case_element()` use an unconditional `statement_list_or_empty()`
+therefore relaxed the strict default dialect too, since
+`parse_library()` has no access to `CompilerOptions` to gate a raw
+grammar rule. Per the syntax-support-guide rule ("anything not in the
+standard must ride on an `--allow-x` flag"), this needed to route
+through the already-existing `--allow-missing-semicolon` flag instead
+(the flag that exists precisely for "the source dropped a required
+`;`" cases), reusing the token-insertion pass in `xform_tokens.rs`
+rather than the grammar itself.
+
+**Fix**:
+
+- `compiler/parser/src/parser.rs`: reverted `case_element()` to plain
+  `statement_list()`, removed `statement_list_or_empty()`. Strict IEC
+  is back to rejecting a truly-empty branch (only `5: ;` is legal).
+- `compiler/parser/src/xform_tokens.rs`:
+  `insert_keyword_statement_terminators()` (already gated behind
+  `allow_missing_semicolon`, already used to inject a missing `;`
+  after `END_IF`/`END_CASE`/etc.) gained a second, independent piece of
+  state: while inside `CASE...END_CASE` (tracked with a depth counter
+  for nesting), tokens seen right after a case label's `:` are
+  buffered rather than emitted immediately, because until the next
+  token disambiguates it, they could be either the start of a real
+  statement or the constants of the *next* case label (e.g. is `5:`
+  followed by `6:` an empty branch, or is `6` about to turn out to be
+  `6 := ...`? Token-level information alone can't tell until we see
+  what comes after `6`). The buffer resolves the moment we see either
+  an unambiguous statement token (`:=`, `(`, `.`, `[`, `^`, or a
+  statement keyword -- a real statement, flush the buffer unchanged)
+  or the next branch terminator (another `:`, `ELSE`, `END_CASE` --
+  the branch was empty, inject a `;` before flushing). This correctly
+  handles the exact case the plan's repro needs: multiple *consecutive*
+  empty numeric labels (`5:` immediately followed by `6:` immediately
+  followed by `7: y := 1;`), which a non-buffering single-token
+  lookahead would get wrong (it would misread the bare numeral `6` as
+  "a statement started" and never insert the needed `;` for label
+  `5`).
+- Tests: the two success-case parser tests now build
+  `CompilerOptions` via the existing `with_missing_semicolon_flag()`
+  helper instead of `CompilerOptions::default()`; added
+  `parse_when_case_branch_empty_and_flag_not_set_then_err` asserting
+  the default dialect still rejects it. The plc2plc round-trip test
+  needs the flag only for the *first* parse (the source's dropped
+  `;`) -- the renderer already writes an explicit `(* empty *) ;` for
+  an empty branch, so the second parse (of the rendered output) is
+  already strict-grammar-valid and needs no flag, unchanged from
+  before this revision.
+- `docs/explanation/enabling-dialects-and-features.rst`: documents the
+  empty-`CASE`-branch behavior under the existing
+  `--allow-missing-semicolon` entry rather than as a new flag.

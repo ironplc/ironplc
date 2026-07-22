@@ -450,6 +450,11 @@ END_PROGRAM",
 
     #[test]
     fn write_to_string_when_case_branch_empty_then_round_trips() {
+        // The source's dropped `;` needs `--allow-missing-semicolon` to
+        // parse at all, but the renderer always writes an explicit `(*
+        // empty *) ;` for an empty branch, so the re-parse of the
+        // rendered output is already strict-grammar-valid and needs no
+        // flag.
         let source = "
 FUNCTION_BLOCK FB_Example
 VAR
@@ -463,8 +468,11 @@ CASE x OF
 END_CASE;
 END_FUNCTION_BLOCK
 ";
-        let library_original =
-            parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let options = CompilerOptions {
+            allow_missing_semicolon: true,
+            ..CompilerOptions::default()
+        };
+        let library_original = parse_program(source, &FileId::default(), &options).unwrap();
         let rendered = write_to_string(&library_original).unwrap();
 
         let library_rendered =
