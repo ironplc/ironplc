@@ -245,6 +245,11 @@ define_compiler_options! {
     [Rusty, Codesys],
     allow_ref_to,
 
+    "Allow Beckhoff TwinCAT/CODESYS REFERENCE TO reference types and the REF= binding operator",
+    "--allow-reference-to",
+    [Codesys],
+    allow_reference_to,
+
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
     "--allow-ref-arithmetic",
     [Rusty, Codesys],
@@ -414,6 +419,7 @@ mod tests {
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
                 "allow_ref_to",
+                "allow_reference_to",
                 "allow_ref_arithmetic",
                 "allow_ref_stack_variables",
                 "allow_ref_type_punning",

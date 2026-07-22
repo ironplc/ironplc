@@ -440,10 +440,11 @@ parser! {
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
-      / type_name:type_name() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() {
+      / type_name:type_name() _ tok(TokenType::Colon) _ syntax:ref_to_keyword() _ ref_target:ref_to_target() {
         DataTypeDeclarationKind::Reference(ReferenceDeclaration {
           type_name,
           target: ref_target,
+          syntax,
         })
       }
       // The remaining are structure, enumerated and simple without an initializer
@@ -552,8 +553,8 @@ parser! {
         initial_values: init.unwrap_or_default()
       }
     }
-    rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:tok(TokenType::RefTo)? _ type_name:array_element_type() {
-      SpecificationKind::Inline(ArraySubranges { ranges, type_name, ref_to: ref_to.is_some() } )
+    rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:ref_to_keyword()? _ type_name:array_element_type() {
+      SpecificationKind::Inline(ArraySubranges { ranges, type_name, ref_to } )
     }
     rule array_element_type() -> ArrayElementType =
       tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::String(StringSpecification { width: StringType::String, length, keyword_span: tok.span.clone() }) }
@@ -858,17 +859,32 @@ parser! {
     }
     rule fb_name_list() -> Vec<Id> = commasep_oneplus(<fb_name()>)
     rule fb_name() -> Id = i:identifier() { i }
-    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
+    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ syntax:ref_to_keyword() _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Reference(ReferenceInitializer {
             target: ref_target.clone(),
             initial_value: init.clone(),
+            syntax: syntax.clone(),
           }),
         }
       }).collect()
     }
+    // Matches either the IEC `REF_TO` keyword or the TwinCAT/CODESYS
+    // `REFERENCE TO` keyword pair, returning which surface syntax matched.
+    // See `specs/design/reference-to-twincat.md`.
+    rule ref_to_keyword() -> RefSyntax =
+      tok(TokenType::RefTo) { RefSyntax::RefTo }
+      / tok(TokenType::Reference) _ tok(TokenType::To) { RefSyntax::ReferenceTo }
+    // Matches the TwinCAT/CODESYS `REF=` binding operator, returning the `=`
+    // token (used for the assignment span). `REF` may be the `Ref` keyword
+    // token (when `--allow-ref-to`/Edition 3 is also active) or a demoted
+    // identifier `REF` (when only `--allow-reference-to` is set); both are
+    // accepted, case-insensitively.
+    rule ref_bind_op() -> &'input Token =
+      tok(TokenType::Ref) _ eq:tok(TokenType::Equal) { eq }
+      / [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("REF")] _ eq:tok(TokenType::Equal) { eq }
     rule ref_initial_value() -> ReferenceInitialValue =
       t:tok(TokenType::Null) { ReferenceInitialValue::Null(t.span.clone()) }
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }
@@ -1525,10 +1541,24 @@ parser! {
 
     // B.3.2.1 Assignment statements
     pub rule assignment_statement() -> StmtKind =
-      var:variable() _ tok(TokenType::Caret) _ assign:tok(TokenType::Assignment) _ expr:expression() {
+      // TwinCAT / CODESYS reference binding: `r REF= x` binds the reference `r`
+      // to variable `x`, equivalent to the IEC `r := REF(x)`. It lowers to the
+      // same `ExprKind::Ref` value, so it reuses the entire reference backend.
+      // See `specs/design/reference-to-twincat.md`.
+      target:variable() _ eq:ref_bind_op() _ referent:variable() {
+        StmtKind::Assignment(Assignment {
+          target,
+          deref: false,
+          ref_bind: true,
+          value: Expr::new(ExprKind::Ref(Box::new(referent))),
+          span: eq.span.clone(),
+        })
+      }
+      / var:variable() _ tok(TokenType::Caret) _ assign:tok(TokenType::Assignment) _ expr:expression() {
         StmtKind::Assignment(Assignment {
           target: var,
           deref: true,
+          ref_bind: false,
           value: Expr::new(expr),
           span: assign.span.clone(),
         })
@@ -1537,6 +1567,7 @@ parser! {
         StmtKind::Assignment(Assignment {
           target: var,
           deref: false,
+          ref_bind: false,
           value: Expr::new(expr),
           span: assign.span.clone(),
         })

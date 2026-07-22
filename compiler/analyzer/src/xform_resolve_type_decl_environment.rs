@@ -92,6 +92,8 @@ impl TypeEnvironment {
                             target: ironplc_dsl::common::ReferenceTarget::Named(
                                 node.base_type_name,
                             ),
+                            // Resolved alias; original surface keyword not preserved.
+                            syntax: ironplc_dsl::common::RefSyntax::RefTo,
                         },
                     ))
                 }

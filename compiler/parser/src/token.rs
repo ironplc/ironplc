@@ -342,6 +342,10 @@ pub enum TokenType {
     Ref,
     #[token("NULL", ignore(case))]
     Null,
+    // Beckhoff TwinCAT / CODESYS `REFERENCE TO` reference types
+    // (`--allow-reference-to`). Longest-match keeps this distinct from `REF`.
+    #[token("REFERENCE", ignore(case))]
+    Reference,
 
     #[token("DATE", ignore(case))]
     Date,
@@ -581,6 +585,7 @@ impl TokenType {
             TokenType::RefTo => "'REF_TO'",
             TokenType::Ref => "'REF'",
             TokenType::Null => "'NULL'",
+            TokenType::Reference => "'REFERENCE'",
             TokenType::Date => "'DATE' | 'D'",
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",

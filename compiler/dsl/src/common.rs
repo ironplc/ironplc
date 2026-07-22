@@ -1324,13 +1324,36 @@ impl ReferenceTarget {
     }
 }
 
-/// Reference type declaration (REF_TO).
+/// The surface syntax that produced a reference declaration or initializer.
 ///
-/// See IEC 61131-3 Edition 3, section 2.3.3.1.
+/// References share a single backend (a variable-table index), but two
+/// keywords produce them: the IEC 61131-3 `REF_TO` and the Beckhoff
+/// TwinCAT / CODESYS `REFERENCE TO`. This tag records which one appeared in
+/// the source so the renderer can reproduce it and so per-declaration
+/// dereference behavior can be keyed on it. See
+/// `specs/design/reference-to-twincat.md`.
+///
+/// This is a leaf tag, always carried behind a `#[recurse(ignore)]` field, so
+/// it deliberately does not derive `Recurse`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RefSyntax {
+    /// IEC 61131-3 Edition 3 `REF_TO`.
+    RefTo,
+    /// Beckhoff TwinCAT / CODESYS `REFERENCE TO`.
+    ReferenceTo,
+}
+
+/// Reference type declaration (`REF_TO` or `REFERENCE TO`).
+///
+/// See IEC 61131-3 Edition 3, section 2.3.3.1, and
+/// `specs/design/reference-to-twincat.md`.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ReferenceDeclaration {
     pub type_name: TypeName,
     pub target: ReferenceTarget,
+    /// The surface keyword that produced this declaration.
+    #[recurse(ignore)]
+    pub syntax: RefSyntax,
 }
 
 /// See section 2.3.3.1.
@@ -1787,9 +1810,11 @@ impl ArrayElementType {
 pub struct ArraySubranges {
     pub ranges: Vec<Subrange>,
     pub type_name: ArrayElementType,
-    /// Whether the element type is wrapped in REF_TO (Edition 3).
+    /// The reference syntax of the element type, if any. `None` for a
+    /// non-reference element; `Some(_)` when the element is wrapped in a
+    /// reference keyword (`REF_TO` or `REFERENCE TO`), tagged with which one.
     #[recurse(ignore)]
-    pub ref_to: bool,
+    pub ref_to: Option<RefSyntax>,
 }
 
 /// Subrange of an array.
@@ -2341,13 +2366,18 @@ pub enum ReferenceInitialValue {
     Ref(Variable),
 }
 
-/// Initializer for a reference variable declaration (REF_TO).
+/// Initializer for a reference variable declaration (`REF_TO` or
+/// `REFERENCE TO`).
 ///
-/// See IEC 61131-3 Edition 3, section 2.4.3.2.
+/// See IEC 61131-3 Edition 3, section 2.4.3.2, and
+/// `specs/design/reference-to-twincat.md`.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ReferenceInitializer {
     pub target: ReferenceTarget,
     pub initial_value: Option<ReferenceInitialValue>,
+    /// The surface keyword that produced this initializer.
+    #[recurse(ignore)]
+    pub syntax: RefSyntax,
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]

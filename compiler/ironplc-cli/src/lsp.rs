@@ -65,6 +65,7 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
         options.allow_top_level_var_global |= flag("allowTopLevelVarGlobal");
         options.allow_constant_type_params |= flag("allowConstantTypeParams");
         options.allow_ref_to |= flag("allowRefTo");
+        options.allow_reference_to |= flag("allowReferenceTo");
         options.allow_ref_stack_variables |= flag("allowRefStackVariables");
         options.allow_ref_type_punning |= flag("allowRefTypePunning");
         options.allow_int_to_bool_initializer |= flag("allowIntToBoolInitializer");
@@ -960,6 +961,28 @@ mod test {
 
         let options = super::extract_compiler_options(&params);
         assert!(options.allow_pragmas);
+    }
+
+    #[test]
+    fn extract_compiler_options_when_allow_reference_to_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowReferenceTo": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(options.allow_reference_to);
     }
 
     #[test]

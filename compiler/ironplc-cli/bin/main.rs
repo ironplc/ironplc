@@ -103,6 +103,12 @@ struct FileArgs {
     #[arg(long)]
     allow_ref_to: bool,
 
+    /// Allow the Beckhoff TwinCAT/CODESYS `REFERENCE TO` reference type and the
+    /// `REF=` binding operator. This is a vendor extension, an alternative to
+    /// `--allow-ref-to`; the `codesys` dialect enables it.
+    #[arg(long)]
+    allow_reference_to: bool,
+
     /// Allow REF() on stack-allocated variables (VAR_TEMP, FUNCTION VAR_INPUT/VAR_OUTPUT).
     /// Required for OSCAT type-punning patterns where the reference doesn't escape.
     #[arg(long)]
@@ -152,6 +158,7 @@ impl FileArgs {
         options.allow_time_as_function_name |= self.allow_time_as_function_name;
         options.allow_c_style_comments |= self.allow_c_style_comments;
         options.allow_ref_to |= self.allow_ref_to;
+        options.allow_reference_to |= self.allow_reference_to;
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
         options.allow_int_to_bool_initializer |= self.allow_int_to_bool_initializer;

@@ -76,8 +76,9 @@ pub fn try_from(
                 })
                 .collect::<Result<Vec<_>, Diagnostic>>()?;
 
-            // Wrap in Reference if the element type is REF_TO
-            let resolved_element_type = if array_subranges.ref_to {
+            // Wrap in Reference if the element type is a reference
+            // (REF_TO or REFERENCE TO — the surface syntax is immaterial here).
+            let resolved_element_type = if array_subranges.ref_to.is_some() {
                 IntermediateType::Reference {
                     target_type: Box::new(element_repr),
                 }
@@ -328,7 +329,7 @@ mod tests {
                 end: literal(10, false),
             }],
             type_name: ArrayElementType::Named(TypeName::from("int")),
-            ref_to: false,
+            ref_to: None,
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
@@ -393,7 +394,7 @@ mod tests {
                 end: literal(10, false),
             }],
             type_name: ArrayElementType::Named(TypeName::from("MISSING_TYPE")),
-            ref_to: false,
+            ref_to: None,
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
@@ -433,7 +434,7 @@ mod tests {
                 },
             ],
             type_name: ArrayElementType::Named(TypeName::from("bool")),
-            ref_to: false,
+            ref_to: None,
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
@@ -472,7 +473,7 @@ mod tests {
                 end: literal(3, false),
             }],
             type_name: ArrayElementType::Named(TypeName::from("byte")),
-            ref_to: true,
+            ref_to: Some(RefSyntax::RefTo),
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
@@ -519,7 +520,7 @@ mod tests {
                 })),
                 keyword_span: SourceSpan::default(),
             }),
-            ref_to: false,
+            ref_to: None,
         };
 
         let spec = SpecificationKind::Inline(array_subranges);
@@ -568,7 +569,7 @@ mod tests {
                 length: None,
                 keyword_span: SourceSpan::default(),
             }),
-            ref_to: false,
+            ref_to: None,
         };
 
         let spec = SpecificationKind::Inline(array_subranges);

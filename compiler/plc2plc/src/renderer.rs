@@ -87,6 +87,18 @@ impl LibraryRenderer {
         self.buffer.push('\n');
     }
 
+    /// Writes the reference-type keyword for the given surface syntax:
+    /// `REF_TO` for IEC, `REFERENCE TO` for the TwinCAT/CODESYS variant.
+    fn write_ref_keyword(&mut self, syntax: &RefSyntax) {
+        match syntax {
+            RefSyntax::RefTo => self.write_ws("REF_TO"),
+            RefSyntax::ReferenceTo => {
+                self.write_ws("REFERENCE");
+                self.write_ws("TO");
+            }
+        }
+    }
+
     fn indent(&mut self) {
         self.indents += 1;
     }
@@ -493,8 +505,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("]");
         self.write_ws("OF");
 
-        if node.ref_to {
-            self.write_ws("REF_TO");
+        if let Some(syntax) = &node.ref_to {
+            self.write_ref_keyword(syntax);
         }
 
         match &node.type_name {
@@ -1205,6 +1217,19 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &dsl::textual::Assignment,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_variable(&node.target)?;
+        if node.ref_bind {
+            // Reproduce the TwinCAT/CODESYS `REF=` binding. The value is always
+            // an `ExprKind::Ref(referent)`; render `target REF= referent`.
+            self.write_ws("REF=");
+            if let dsl::textual::ExprKind::Ref(referent) = &node.value.kind {
+                self.visit_variable(referent)?;
+            } else {
+                self.visit_expr(&node.value)?;
+            }
+            self.write_ws(";");
+            self.newline();
+            return Ok(());
+        }
         if node.deref {
             self.write("^");
         }
@@ -1503,7 +1528,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_type_name(&node.type_name)?;
         self.write_ws(":");
-        self.write_ws("REF_TO");
+        self.write_ref_keyword(&node.syntax);
         self.visit_reference_target(&node.target)
     }
 
@@ -1511,7 +1536,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &ReferenceInitializer,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("REF_TO");
+        self.write_ref_keyword(&node.syntax);
         self.visit_reference_target(&node.target)?;
 
         if let Some(init) = &node.initial_value {

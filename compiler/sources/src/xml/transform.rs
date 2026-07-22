@@ -164,7 +164,7 @@ fn transform_array_decl(
         spec: SpecificationKind::Inline(ArraySubranges {
             ranges: subranges,
             type_name: ArrayElementType::Named(base_type_name),
-            ref_to: false,
+            ref_to: None,
         }),
         init: vec![],
     }))

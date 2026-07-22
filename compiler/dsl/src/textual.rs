@@ -781,6 +781,7 @@ impl StmtKind {
         StmtKind::Assignment(Assignment {
             target,
             deref: false,
+            ref_bind: false,
             value: Expr::new(value),
             span: SourceSpan::default(),
         })
@@ -790,6 +791,7 @@ impl StmtKind {
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
             deref: false,
+            ref_bind: false,
             value: Expr::new(ExprKind::LateBound(LateBound {
                 value: Id::from(src),
             })),
@@ -807,6 +809,7 @@ impl StmtKind {
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
             deref: false,
+            ref_bind: false,
             value: Expr::new(ExprKind::Variable(variable)),
             span: SourceSpan::default(),
         })
@@ -821,6 +824,13 @@ pub struct Assignment {
     pub target: Variable,
     #[recurse(ignore)]
     pub deref: bool,
+    /// `true` when the assignment was written with the TwinCAT/CODESYS `REF=`
+    /// reference-binding operator rather than `:=`. The value is an
+    /// `ExprKind::Ref` either way (so the backend is identical to `r := REF(x)`);
+    /// this flag only lets the renderer reproduce the original `REF=` surface
+    /// syntax. See `specs/design/reference-to-twincat.md`.
+    #[recurse(ignore)]
+    pub ref_bind: bool,
     pub value: Expr,
     pub span: SourceSpan,
 }
