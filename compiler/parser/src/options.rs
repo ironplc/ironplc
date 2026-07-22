@@ -192,6 +192,19 @@ macro_rules! define_compiler_options {
                     _ => false,
                 }
             }
+
+            /// Get a vendor-extension feature flag by its `option_key` (the
+            /// field name from [`FeatureDescriptor`]).
+            ///
+            /// Returns `None` if the key does not match a known flag.
+            pub fn get_flag_by_key(&self, key: &str) -> Option<bool> {
+                match key {
+                    $(
+                        stringify!($vendor_field) => Some(self.$vendor_field),
+                    )*
+                    _ => None,
+                }
+            }
         }
     };
 }
@@ -312,99 +325,105 @@ pub fn describe_dialects() -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn from_dialect_when_ed2_then_all_flags_false() {
-        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2);
-
-        assert!(!options.allow_iec_61131_3_2013);
-        assert!(!options.allow_c_style_comments);
-        assert!(!options.allow_missing_semicolon);
-        assert!(!options.allow_top_level_var_global);
-        assert!(!options.allow_constant_type_params);
-        assert!(!options.allow_empty_var_blocks);
-        assert!(!options.allow_time_as_function_name);
-        assert!(!options.allow_ref_to);
-        assert!(!options.allow_ref_arithmetic);
-        assert!(!options.allow_ref_stack_variables);
-        assert!(!options.allow_ref_type_punning);
-        assert!(!options.allow_int_to_bool_initializer);
-        assert!(!options.allow_sizeof);
-        assert!(!options.allow_system_uptime_global);
-        assert!(!options.allow_cross_family_widening);
-        assert!(!options.allow_partial_access_syntax);
-        assert!(!options.allow_pragmas);
+    /// Collect the vendor-flag `option_key`s that `from_dialect(dialect)`
+    /// turns on, sorted for order-independent comparison.
+    fn enabled_vendor_flags(dialect: Dialect) -> Vec<&'static str> {
+        let options = CompilerOptions::from_dialect(dialect);
+        let mut enabled: Vec<&'static str> = CompilerOptions::FEATURE_DESCRIPTORS
+            .iter()
+            .filter(|f| options.get_flag_by_key(f.option_key) == Some(true))
+            .map(|f| f.option_key)
+            .collect();
+        enabled.sort_unstable();
+        enabled
     }
 
-    #[test]
-    fn from_dialect_when_ed3_then_edition3_enabled_and_vendor_flags_false() {
-        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
-
-        assert!(options.allow_iec_61131_3_2013);
-        assert!(!options.allow_c_style_comments);
-        assert!(!options.allow_missing_semicolon);
-        assert!(!options.allow_top_level_var_global);
-        assert!(!options.allow_constant_type_params);
-        assert!(!options.allow_empty_var_blocks);
-        assert!(!options.allow_time_as_function_name);
-        assert!(!options.allow_ref_to);
-        assert!(!options.allow_ref_arithmetic);
-        assert!(!options.allow_ref_stack_variables);
-        assert!(!options.allow_ref_type_punning);
-        assert!(!options.allow_int_to_bool_initializer);
-        assert!(!options.allow_sizeof);
-        assert!(!options.allow_system_uptime_global);
-        assert!(!options.allow_cross_family_widening);
-        // Edition 3 standardized partial-access syntax (.%Xn).
-        assert!(options.allow_partial_access_syntax);
-        assert!(!options.allow_pragmas);
+    /// Assert that a dialect enables *exactly* the given set of vendor flags --
+    /// no more, no less. This is the guard against a newly added option
+    /// silently leaking into a dialect it should not belong to: adding an
+    /// option to a dialect's macro tags forces a matching update here, and an
+    /// accidental extra tag makes that dialect's expected set mismatch.
+    fn assert_enabled_vendor_flags(dialect: Dialect, expected: &[&str]) {
+        let mut expected_sorted = expected.to_vec();
+        expected_sorted.sort_unstable();
+        assert_eq!(
+            enabled_vendor_flags(dialect),
+            expected_sorted,
+            "dialect {dialect} does not enable exactly the expected vendor flags"
+        );
     }
 
+    /// IEC 61131-3 Ed. 2 (the default) enables no vendor extensions at all.
     #[test]
-    fn from_dialect_when_rusty_then_all_vendor_flags_enabled_and_edition3_disabled() {
-        let options = CompilerOptions::from_dialect(Dialect::Rusty);
-
-        assert!(!options.allow_iec_61131_3_2013);
-        assert!(options.allow_c_style_comments);
-        assert!(options.allow_missing_semicolon);
-        assert!(options.allow_top_level_var_global);
-        assert!(options.allow_constant_type_params);
-        assert!(options.allow_empty_var_blocks);
-        assert!(options.allow_time_as_function_name);
-        assert!(options.allow_ref_to);
-        assert!(options.allow_ref_arithmetic);
-        assert!(options.allow_ref_stack_variables);
-        assert!(options.allow_ref_type_punning);
-        assert!(options.allow_int_to_bool_initializer);
-        assert!(options.allow_sizeof);
-        assert!(options.allow_system_uptime_global);
-        assert!(options.allow_cross_family_widening);
-        assert!(options.allow_partial_access_syntax);
-        assert!(options.allow_pragmas);
+    fn ed2_dialect_enables_no_vendor_flags() {
+        assert!(!CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(Dialect::Iec61131_3Ed2, &[]);
     }
 
+    /// IEC 61131-3 Ed. 3 turns on the Edition-3 keyword set and, among vendor
+    /// extensions, only partial-access syntax (standardized in Edition 3).
     #[test]
-    fn from_dialect_when_codesys_then_all_vendor_flags_except_system_uptime_enabled() {
-        let options = CompilerOptions::from_dialect(Dialect::Codesys);
+    fn ed3_dialect_enables_only_partial_access_syntax() {
+        assert!(CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(Dialect::Iec61131_3Ed3, &["allow_partial_access_syntax"]);
+    }
 
-        assert!(!options.allow_iec_61131_3_2013);
-        assert!(options.allow_c_style_comments);
-        assert!(options.allow_missing_semicolon);
-        assert!(options.allow_top_level_var_global);
-        assert!(options.allow_constant_type_params);
-        assert!(options.allow_empty_var_blocks);
-        assert!(options.allow_time_as_function_name);
-        assert!(options.allow_ref_to);
-        assert!(options.allow_ref_arithmetic);
-        assert!(options.allow_ref_stack_variables);
-        assert!(options.allow_ref_type_punning);
-        assert!(options.allow_int_to_bool_initializer);
-        assert!(options.allow_sizeof);
-        // __SYSTEM_UP_TIME globals are an IronPLC/RuSTy runtime convention,
-        // not a CODESYS feature.
-        assert!(!options.allow_system_uptime_global);
-        assert!(options.allow_cross_family_widening);
-        assert!(options.allow_partial_access_syntax);
-        assert!(options.allow_pragmas);
+    /// The RuSTy dialect stays on the Edition-2 keyword base and enables every
+    /// vendor extension. Listed explicitly (not derived) so a new option that
+    /// is meant to be Rusty-only, or accidentally left off Rusty, is caught.
+    #[test]
+    fn rusty_dialect_enables_exactly_these_vendor_flags() {
+        assert!(!CompilerOptions::from_dialect(Dialect::Rusty).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(
+            Dialect::Rusty,
+            &[
+                "allow_c_style_comments",
+                "allow_missing_semicolon",
+                "allow_top_level_var_global",
+                "allow_constant_type_params",
+                "allow_empty_var_blocks",
+                "allow_time_as_function_name",
+                "allow_ref_to",
+                "allow_ref_arithmetic",
+                "allow_ref_stack_variables",
+                "allow_ref_type_punning",
+                "allow_int_to_bool_initializer",
+                "allow_sizeof",
+                "allow_system_uptime_global",
+                "allow_cross_family_widening",
+                "allow_partial_access_syntax",
+                "allow_pragmas",
+            ],
+        );
+    }
+
+    /// The CODESYS dialect matches RuSTy except it does *not* bind the
+    /// `__SYSTEM_UP_TIME` globals (`allow_system_uptime_global`), which are an
+    /// IronPLC/RuSTy runtime convention rather than a CODESYS feature. Listed
+    /// explicitly so that omission is asserted rather than assumed.
+    #[test]
+    fn codesys_dialect_enables_exactly_these_vendor_flags() {
+        assert!(!CompilerOptions::from_dialect(Dialect::Codesys).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(
+            Dialect::Codesys,
+            &[
+                "allow_c_style_comments",
+                "allow_missing_semicolon",
+                "allow_top_level_var_global",
+                "allow_constant_type_params",
+                "allow_empty_var_blocks",
+                "allow_time_as_function_name",
+                "allow_ref_to",
+                "allow_ref_arithmetic",
+                "allow_ref_stack_variables",
+                "allow_ref_type_punning",
+                "allow_int_to_bool_initializer",
+                "allow_sizeof",
+                "allow_cross_family_widening",
+                "allow_partial_access_syntax",
+                "allow_pragmas",
+            ],
+        );
     }
 
     /// REQ-PAB-051: The `rusty` dialect preset enables partial-access syntax.
@@ -430,33 +449,12 @@ mod tests {
     }
 
     #[test]
-    fn feature_descriptors_when_called_then_contains_all_vendor_flags() {
-        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 16);
+    fn feature_descriptors_when_called_then_non_empty_and_stably_ordered() {
+        assert!(!CompilerOptions::FEATURE_DESCRIPTORS.is_empty());
         assert_eq!(
             CompilerOptions::FEATURE_DESCRIPTORS[0].cli_flag,
             "--allow-c-style-comments"
         );
-    }
-
-    #[test]
-    fn feature_descriptors_when_rusty_then_all_features_listed() {
-        let rusty_features: Vec<&str> = CompilerOptions::FEATURE_DESCRIPTORS
-            .iter()
-            .filter(|f| f.dialects.contains(&Dialect::Rusty))
-            .map(|f| f.cli_flag)
-            .collect();
-        assert_eq!(rusty_features.len(), 16);
-    }
-
-    #[test]
-    fn feature_descriptors_when_codesys_then_omits_only_system_uptime_global() {
-        let codesys_features: Vec<&str> = CompilerOptions::FEATURE_DESCRIPTORS
-            .iter()
-            .filter(|f| f.dialects.contains(&Dialect::Codesys))
-            .map(|f| f.cli_flag)
-            .collect();
-        assert_eq!(codesys_features.len(), 15);
-        assert!(!codesys_features.contains(&"--allow-system-uptime-global"));
     }
 
     #[test]
