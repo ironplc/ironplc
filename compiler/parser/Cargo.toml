@@ -23,8 +23,12 @@ ironplc-test = { path = "../test", version = "0.231.0" }
 logos = "0.16.1"
 peg = "0.8.5"
 
+[build-dependencies]
+ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
+
 [dev-dependencies]
 rstest = "0.26"
+spec_test_macro = { path = "../spec_test_macro" }
 
 [lints]
 workspace = true

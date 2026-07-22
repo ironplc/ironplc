@@ -75,3 +75,11 @@ pub use type_environment::{TypeEnvironment, TypeEnvironmentBuilder, UsageContext
 
 #[cfg(test)]
 mod test_helpers;
+
+// Spec conformance testing infrastructure (test-only).
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;

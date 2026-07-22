@@ -16,8 +16,12 @@ ironplc-test = { path = "../test", version = "0.231.0" }
 dsl_macro_derive = { path = "../dsl_macro_derive", version = "0.231.0" }
 paste = "1.0"
 
+[build-dependencies]
+ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
+
 [dev-dependencies]
 ironplc-parser = { path = "../parser", version = "0.231.0" }
+spec_test_macro = { path = "../spec_test_macro" }
 
 [lints]
 workspace = true

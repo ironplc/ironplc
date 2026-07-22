@@ -21,11 +21,15 @@ phf = { version = "0.14", features = ["macros"] }
 petgraph = { version = "0.8" }
 fixedbitset = { version = "0.5" }
 
+[build-dependencies]
+ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
+
 [dev-dependencies]
 ironplc-parser = { path = "../parser", version = "0.231.0" }
 ctor = "1.0"
 env_logger = "0.11"
 rstest = "0.26"
+spec_test_macro = { path = "../spec_test_macro" }
 
 [lints]
 workspace = true

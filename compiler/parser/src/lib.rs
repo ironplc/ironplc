@@ -30,6 +30,14 @@ use xform_tokens::insert_keyword_statement_terminators;
 
 #[cfg(test)]
 mod tests;
+
+// Spec conformance testing infrastructure (test-only).
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;
 pub mod token;
 
 /// Tokenize a IEC 61131 program.

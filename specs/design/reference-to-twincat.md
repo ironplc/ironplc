@@ -93,7 +93,7 @@ is required; the reference is bound exactly as the IEC form binds it.
 
 ## Requirements
 
-Each requirement below carries a `**REQ-RTO-<slug>-NNN**` marker, where the
+Each requirement below carries a bold `REQ-RTO-<slug>-NNN` marker, where the
 slug names the crate that owns (hosts) the conformance test. `RTO` is an unused
 area prefix. Every marker has a spec-linked test named
 `{area}_spec_req_rto_{nnn}_{description}` (the slug lives in the

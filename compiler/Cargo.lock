@@ -904,11 +904,13 @@ dependencies = [
  "ironplc-dsl",
  "ironplc-parser",
  "ironplc-problems",
+ "ironplc-spec-requirements-gen",
  "ironplc-test",
  "log",
  "petgraph",
  "phf",
  "rstest",
+ "spec_test_macro",
 ]
 
 [[package]]
@@ -1028,11 +1030,13 @@ version = "0.231.0"
 dependencies = [
  "ironplc-dsl",
  "ironplc-problems",
+ "ironplc-spec-requirements-gen",
  "ironplc-test",
  "logos",
  "peg",
  "phf",
  "rstest",
+ "spec_test_macro",
  "time",
 ]
 
@@ -1062,8 +1066,10 @@ dependencies = [
  "dsl_macro_derive",
  "ironplc-dsl",
  "ironplc-parser",
+ "ironplc-spec-requirements-gen",
  "ironplc-test",
  "paste",
+ "spec_test_macro",
 ]
 
 [[package]]
