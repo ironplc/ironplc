@@ -39,6 +39,15 @@ pub struct DiscoveredProject {
     pub root_dir: PathBuf,
     /// The source files to load, in deterministic order
     pub files: Vec<PathBuf>,
+    /// Problems found during discovery that should not abort discovery of
+    /// the rest of the project -- currently just `.plcproj`
+    /// `<Compile Include="...">` entries that don't resolve to a real
+    /// file. Discovery still returns all files that DID resolve, but
+    /// these are genuine errors: a project that names a file it doesn't
+    /// have is broken, and callers must still treat the overall result
+    /// as failed (matching the "keep going, but still fail the build"
+    /// behavior of e.g. MSBuild's `CS2001`).
+    pub errors: Vec<Diagnostic>,
 }
 
 /// Discover the project structure in a directory.
@@ -93,6 +102,7 @@ fn detect_beremiz(dir: &Path) -> Option<DiscoveredProject> {
             project_type: ProjectType::Beremiz,
             root_dir: dir.to_path_buf(),
             files: vec![plc_xml],
+            errors: vec![],
         })
     } else {
         None
@@ -195,8 +205,16 @@ fn parse_plcproj(plcproj_path: &Path, root_dir: &Path) -> Result<DiscoveredProje
     })?;
 
     let mut files = Vec::new();
+    let mut errors = Vec::new();
 
-    // Find all <Compile Include="..."> elements anywhere in the document
+    // Find all <Compile Include="..."> elements anywhere in the document.
+    // An entry that doesn't resolve to a real file (a stale reference, a
+    // case-sensitivity mismatch, a genuinely missing asset) is recorded
+    // as an error and skipped -- but does not abort the whole project:
+    // every other per-file problem in the codebase already works this
+    // way, and one bad reference shouldn't hide every other, perfectly
+    // valid file in the same project from ever being checked. The
+    // command as a whole must still fail, though (see `errors` field doc).
     for node in doc.descendants() {
         if node.is_element() && node.tag_name().name() == "Compile" {
             if let Some(include) = node.attribute("Include") {
@@ -206,7 +224,7 @@ fn parse_plcproj(plcproj_path: &Path, root_dir: &Path) -> Result<DiscoveredProje
                 let resolved = root_dir.join(&normalized);
 
                 if !resolved.is_file() {
-                    return Err(Diagnostic::problem(
+                    errors.push(Diagnostic::problem(
                         Problem::CannotReadFile,
                         Label::file(
                             FileId::from_path(plcproj_path),
@@ -217,6 +235,7 @@ fn parse_plcproj(plcproj_path: &Path, root_dir: &Path) -> Result<DiscoveredProje
                             ),
                         ),
                     ));
+                    continue;
                 }
 
                 files.push(resolved);
@@ -228,6 +247,7 @@ fn parse_plcproj(plcproj_path: &Path, root_dir: &Path) -> Result<DiscoveredProje
         project_type: ProjectType::TwinCat,
         root_dir: root_dir.to_path_buf(),
         files,
+        errors,
     })
 }
 
@@ -252,6 +272,7 @@ fn detect_fallback(dir: &Path) -> DiscoveredProject {
         project_type: ProjectType::Unstructured,
         root_dir: dir.to_path_buf(),
         files,
+        errors: vec![],
     }
 }
 
@@ -365,7 +386,13 @@ mod tests {
     }
 
     #[test]
-    fn discover_when_plcproj_references_missing_file_then_returns_diagnostic() {
+    fn discover_when_plcproj_references_missing_file_then_returns_error_but_keeps_discovering() {
+        // A single unresolvable <Compile> entry must not abort discovery
+        // for the whole project -- it's recorded as an error and
+        // skipped, matching how every other per-file problem in the
+        // codebase is handled. It must still be surfaced as an error,
+        // though (not downgraded to a mere warning): the caller is
+        // responsible for still failing the overall command.
         let dir = TempDir::new().unwrap();
         fs::write(
             dir.path().join("project.plcproj"),
@@ -377,11 +404,35 @@ mod tests {
         )
         .unwrap();
 
-        let result = discover(dir.path());
-        assert!(result.is_err());
+        let result = discover(dir.path()).unwrap();
 
-        let diag = result.unwrap_err();
-        assert!(diag.primary.message.contains("MISSING.TcPOU"));
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert!(result.files.is_empty());
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].primary.message.contains("MISSING.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_plcproj_has_valid_and_missing_entries_then_valid_file_still_resolves() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("A.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.TcPOU" />
+    <Compile Include="MISSING.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("A.TcPOU"));
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].primary.message.contains("MISSING.TcPOU"));
     }
 
     #[test]
@@ -482,8 +533,11 @@ mod tests {
 
     #[test]
     fn discover_when_twincat_and_plcproj_error_propagates() {
-        // A .plcproj that references a missing file should propagate the error
-        // through the detect_twincat -> discover path (covers the `result?` on line 77)
+        // A .plcproj that references a missing file must not abort
+        // discovery through the detect_twincat -> discover path -- the
+        // error is collected on `DiscoveredProject::errors`, not
+        // returned as `Err`, so the rest of the project can still be
+        // enumerated. Callers must still surface it as a failure.
         let dir = TempDir::new().unwrap();
         fs::write(
             dir.path().join("project.plcproj"),
@@ -495,11 +549,31 @@ mod tests {
         )
         .unwrap();
 
-        let result = discover(dir.path());
-        assert!(
-            result.is_err(),
-            "Expected error for missing referenced file"
-        );
+        let result = discover(dir.path()).expect("missing entries must not abort discovery itself");
+        assert_eq!(result.errors.len(), 1);
+    }
+
+    #[test]
+    fn discover_when_all_plcproj_entries_unresolvable_then_returns_empty_with_errors() {
+        // Not a special case -- matches the existing "no <Compile>
+        // entries at all" precedent (empty files list, no `Err`), but
+        // still reports one error per unresolvable entry.
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MISSING_A.TcPOU" />
+    <Compile Include="MISSING_B.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert!(result.files.is_empty());
+        assert_eq!(result.errors.len(), 2);
     }
 
     #[test]
