@@ -875,7 +875,6 @@ parser! {
     rule fb_call_style_var_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ params:fb_call_style_init_params() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
-          location: None,
           name,
           initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: Vec::new(), call_params: Some(params.clone()) }),
         }
