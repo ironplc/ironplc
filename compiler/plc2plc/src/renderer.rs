@@ -1227,6 +1227,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             dsl::textual::CompareOp::Or => "OR",
             dsl::textual::CompareOp::Xor => "XOR",
             dsl::textual::CompareOp::And => "AND",
+            dsl::textual::CompareOp::AndThen => "AND_THEN",
             dsl::textual::CompareOp::Eq => "=",
             dsl::textual::CompareOp::Ne => "<>",
             dsl::textual::CompareOp::Lt => "<",

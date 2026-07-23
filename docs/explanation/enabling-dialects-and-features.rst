@@ -176,6 +176,22 @@ features — they never disable features that a dialect already includes.
    interpreted. Pragmas do not nest; an unclosed ``{`` still produces a parse
    error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
+``--allow-short-circuit-operators``
+   Allow the ``AND_THEN`` short-circuit boolean operator, a
+   Beckhoff/CODESYS extension. Unlike plain ``AND`` (which always
+   evaluates both operands), ``AND_THEN`` only evaluates its right
+   operand when the left operand is ``TRUE`` — commonly used to guard a
+   dereference (``ptr <> 0 AND_THEN ptr^ = 99``). ``ironplcc check``
+   fully supports ``AND_THEN`` (parsing, type-checking, and
+   round-tripping through plc2plc with its spelling preserved — it is
+   *not* normalized to ``AND``, since the short-circuit behavior is a
+   real, externally-visible difference in TwinCAT/CODESYS). Codegen
+   (``ironplcc compile``) does not yet implement the short-circuit
+   evaluation this operator requires and refuses to compile it
+   (problem :doc:`P9999 </reference/compiler/problems/P9999>`) rather
+   than silently emitting eager (behaviorally incorrect) bytecode.
+   Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell
