@@ -610,9 +610,7 @@ pub enum CompareOp {
     /// CODESYS/TwinCAT short-circuit `AND` (Beckhoff/CODESYS extension).
     /// Kept as a distinct variant from `And` (not normalized) since the
     /// short-circuit vs. eager evaluation distinction is real and
-    /// externally-visible in TwinCAT/CODESYS itself, unlike e.g.
-    /// `REFERENCE TO`/`POINTER TO` which really are behaviorally
-    /// identical to `REF_TO`.
+    /// externally-visible in TwinCAT/CODESYS itself.
     AndThen,
     Eq,
     Ne,

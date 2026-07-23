@@ -26,12 +26,10 @@ Checked Beckhoff's own docs before implementing:
 
 ### Parsing: a distinct token and AST node, not folded into `AND`
 
-Unlike the `REFERENCE TO`/`POINTER TO` -> `REF_TO` unification (safe
-because all three spellings are behaviorally identical even in real
-TwinCAT/CODESYS), `AND_THEN` has a real, externally-visible behavioral
-difference from `AND` recognized by TwinCAT/CODESYS itself
-(short-circuit vs. eager evaluation) — the null-pointer-guard example is
-exactly a case where eagerly evaluating the right operand would crash.
+`AND_THEN` has a real, externally-visible behavioral difference from
+`AND` recognized by TwinCAT/CODESYS itself (short-circuit vs. eager
+evaluation) — the null-pointer-guard example is exactly a case where
+eagerly evaluating the right operand would crash.
 Folding `AND_THEN` into `CompareOp::And` would make plc2plc silently
 rewrite it back to `AND` on render, which is not behavior-preserving for
 a real downstream TwinCAT/CODESYS toolchain even though IronPLC's own
