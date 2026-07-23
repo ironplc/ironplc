@@ -2542,4 +2542,91 @@ END_FUNCTION_BLOCK";
         assert_eq!(case.statement_groups.len(), 2);
         assert_eq!(case.statement_groups[1].statements.len(), 1);
     }
+
+    // -----------------------------------------------------------------
+    // AND_THEN short-circuit boolean operator.
+    // See specs/plans/2026-07-20-twincat-and-then-operator.md.
+    // -----------------------------------------------------------------
+
+    fn opts_with_short_circuit_operators() -> CompilerOptions {
+        CompilerOptions {
+            allow_short_circuit_operators: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    fn extract_assignment_value(library: &Library) -> Expr {
+        let element = library
+            .elements
+            .iter()
+            .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
+            .expect("expected a FunctionBlockDeclaration");
+        let fb = cast!(element, LibraryElementKind::FunctionBlockDeclaration);
+        let stmts = cast!(&fb.body, FunctionBlockBodyKind::Statements);
+        let assignment = cast!(&stmts.body[0], StmtKind::Assignment);
+        assignment.value.clone()
+    }
+
+    #[test]
+    fn parse_when_and_then_then_ok_and_compare_op_and_then() {
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    a : BOOL;
+    b : BOOL;
+    result : BOOL;
+END_VAR
+result := a AND_THEN b;
+END_FUNCTION_BLOCK";
+        let library = parse_program(
+            source,
+            &FileId::default(),
+            &opts_with_short_circuit_operators(),
+        )
+        .unwrap();
+        let value = extract_assignment_value(&library);
+        let compare = cast!(&value.kind, ExprKind::Compare);
+        assert_eq!(compare.op, CompareOp::AndThen);
+    }
+
+    #[test]
+    fn parse_when_and_then_real_world_shape_then_ok() {
+        // The real motivating shape: guarding a dereference behind a
+        // null-pointer check.
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    ptr : REF_TO INT;
+    result : BOOL;
+END_VAR
+result := ptr <> 0 AND_THEN ptr^ = 99;
+END_FUNCTION_BLOCK";
+        let options = CompilerOptions {
+            allow_short_circuit_operators: true,
+            allow_ref_to: true,
+            ..CompilerOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_when_and_then_and_disabled_then_parses_as_identifiers() {
+        // AND_THEN demotes to an ordinary identifier when the flag is
+        // off, matching the pattern used for every other vendor-extension
+        // keyword.
+        let source = "
+FUNCTION_BLOCK FB_ALL_AND_THEN_AS_VAR
+VAR
+    AND_THEN : INT;
+END_VAR
+AND_THEN := 1;
+END_FUNCTION_BLOCK";
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
+        assert!(
+            result.is_ok(),
+            "AND_THEN must remain a valid identifier in standard mode: {:?}",
+            result.err()
+        );
+    }
 }

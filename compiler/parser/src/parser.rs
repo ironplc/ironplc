@@ -1441,6 +1441,7 @@ parser! {
       --
       // and_expression
       x:(@) _ tok(TokenType::And) _ y:@ { ExprKind::compare(CompareOp::And, x, y ) }
+      x:(@) _ tok(TokenType::AndThen) _ y:@ { ExprKind::compare(CompareOp::AndThen, x, y ) }
       --
       // comparison
       x:(@) _ tok(TokenType::Equal)_ y:@ { ExprKind::compare(CompareOp::Eq, x, y ) }
