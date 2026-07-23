@@ -1,5 +1,16 @@
 # Plan: Mixed Located/Plain Variable Declarations in One VAR Block
 
+## Revision: un-stacked from sibling PRs
+
+garretfick (maintainer) asked that PRs not be stacked on each other. This
+branch now stands alone against `main` instead of building on the
+PI-constant/var-initializer-expressions PRs. One consequence: the problem
+code is **P4036**, not P4038 as originally assigned when this sat further
+down the stack — P4036/P4037 were only taken by the (still separate, still
+open) var-initializer-expressions PR, so P4036 was the next free number
+against `main` directly. If both PRs are merged, whichever merges second
+may need a quick renumber to resolve the collision at that point.
+
 **Status: implemented and landed on this branch.** Mixing `AT`-located and
 plain variables in one `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block now works under
 `--allow-mixed-located-var-declarations`, matching real TwinCAT code. The
@@ -258,7 +269,7 @@ in this session's work.
 - [x] `located_var1_init_decl()` grammar rule wired into `var_init_decl()`
 - [x] New `allow_mixed_located_var_declarations` flag
 - [x] New `rule_mixed_located_var_declarations.rs` semantic rule + problem
-      code (P4038)
+      code (P4036, after un-stacking -- see Revision note above)
 - [x] Wire into `stages.rs`, `lsp.rs`
 - [x] All tests from Testing Strategy, plus regression tests for the
       block-level marking discovery (see Implementation Notes)
