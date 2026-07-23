@@ -83,9 +83,13 @@ mod tests {
     }
 
     #[test]
-    fn build_response_when_called_then_contains_all_flags() {
+    fn build_response_when_called_then_contains_every_feature_descriptor() {
+        // Derived from the source of truth (`FEATURE_DESCRIPTORS`) rather than a
+        // hard-coded count, so adding a feature flag does not force an edit here.
+        // That each flag gates real compiler behavior — not just sets a struct
+        // field — is proven behaviorally in the `feature_flag_conformance` suite.
         let resp = build_response();
-        assert_eq!(resp.flags.len(), 16);
+        assert_eq!(resp.flags.len(), CompilerOptions::FEATURE_DESCRIPTORS.len());
     }
 
     #[test]

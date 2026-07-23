@@ -16,6 +16,13 @@ mod spec_requirements {
 #[cfg(test)]
 mod spec_conformance;
 
+// Behavioral conformance for compiler feature flags: proves each `--allow-*`
+// flag gates real accept/reject behavior on identical source, and (via a
+// completeness meta-test) that every flag has such a fixture. Replaces
+// count-based coupling in the `list_options` tests.
+#[cfg(test)]
+mod feature_flag_conformance;
+
 use rmcp::ServiceExt;
 use server::IronPlcMcp;
 
