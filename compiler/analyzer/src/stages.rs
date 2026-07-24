@@ -403,11 +403,8 @@ END_FUNCTION_BLOCK";
             &opts_with_constant_initializer_expressions(),
         )
         .unwrap();
-        let (_library, context) = analyze(
-            &[&lib],
-            &opts_with_constant_initializer_expressions(),
-        )
-        .unwrap();
+        let (_library, context) =
+            analyze(&[&lib], &opts_with_constant_initializer_expressions()).unwrap();
 
         assert!(
             !context.has_diagnostics(),
