@@ -440,7 +440,7 @@ parser! {
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
-      / type_name:type_name() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() {
+      / type_name:type_name() _ tok(TokenType::Colon) _ ref_to_keyword() _ ref_target:ref_to_target() {
         DataTypeDeclarationKind::Reference(ReferenceDeclaration {
           type_name,
           target: ref_target,
@@ -552,7 +552,7 @@ parser! {
         initial_values: init.unwrap_or_default()
       }
     }
-    rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:tok(TokenType::RefTo)? _ type_name:array_element_type() {
+    rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:ref_to_keyword()? _ type_name:array_element_type() {
       SpecificationKind::Inline(ArraySubranges { ranges, type_name, ref_to: ref_to.is_some() } )
     }
     rule array_element_type() -> ArrayElementType =
@@ -858,13 +858,24 @@ parser! {
     }
     rule fb_name_list() -> Vec<Id> = commasep_oneplus(<fb_name()>)
     rule fb_name() -> Id = i:identifier() { i }
-    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
+    // CODESYS/TwinCAT accept REFERENCE TO / POINTER TO as alternate
+    // spellings of REF_TO -- IronPLC doesn't enforce a semantic
+    // ^-vs-bare-access distinction between them today, so all three
+    // produce the exact same ReferenceTarget/reference-initializer
+    // shape. Gated by the same allow_ref_to condition as REF_TO itself
+    // (see xform_demote_edition3_keywords.rs), not a new flag.
+    rule ref_to_keyword() -> ReferenceKeyword =
+      tok(TokenType::RefTo) { ReferenceKeyword::RefTo }
+      / tok(TokenType::Reference) _ tok(TokenType::To) { ReferenceKeyword::Reference }
+      / tok(TokenType::Pointer) _ tok(TokenType::To) { ReferenceKeyword::Pointer }
+    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ keyword:ref_to_keyword() _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           name,
           initializer: InitialValueAssignmentKind::Reference(ReferenceInitializer {
             target: ref_target.clone(),
             initial_value: init.clone(),
+            keyword,
           }),
         }
       }).collect()

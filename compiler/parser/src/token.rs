@@ -342,6 +342,15 @@ pub enum TokenType {
     Ref,
     #[token("NULL", ignore(case))]
     Null,
+    // CODESYS/TwinCAT alternate spellings of `REF_TO` -- `REFERENCE TO`
+    // (real IEC 61131-3:2013 REFERENCE semantics, auto-dereferencing) and
+    // `POINTER TO` (TwinCAT's pre-Edition-3 pointer spelling, `^`-deref,
+    // identical behavior to REF_TO). Demoted under the same
+    // `allow_ref_to` condition as RefTo/Ref/Null.
+    #[token("REFERENCE", ignore(case))]
+    Reference,
+    #[token("POINTER", ignore(case))]
+    Pointer,
 
     #[token("DATE", ignore(case))]
     Date,
@@ -586,6 +595,8 @@ impl TokenType {
             TokenType::RefTo => "'REF_TO'",
             TokenType::Ref => "'REF'",
             TokenType::Null => "'NULL'",
+            TokenType::Reference => "'REFERENCE'",
+            TokenType::Pointer => "'POINTER'",
             TokenType::Date => "'DATE' | 'D'",
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",
@@ -801,6 +812,8 @@ mod tests {
             (RefTo, "REF_TO"),
             (Ref, "REF"),
             (Null, "NULL"),
+            (Reference, "REFERENCE"),
+            (Pointer, "POINTER"),
             (Date, "DATE"),
             (TimeOfDay, "TIME_OF_DAY"),
             (DateAndTime, "DATE_AND_TIME"),

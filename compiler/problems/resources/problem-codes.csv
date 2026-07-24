@@ -45,6 +45,7 @@ P2033,ArithmeticOnReference,Arithmetic operations are not allowed on reference t
 P2034,NullRequiresReferenceType,NULL can only be assigned to a REF_TO type
 P2035,OrderingOnReference,Ordering comparison on reference types (only = and <> are allowed)
 P2036,NestedRefToNotSupported,Nested REF_TO (multi-level indirection) is not supported
+P2037,ExplicitDerefOnAutoDerefReference,Explicit dereference (^) is not allowed on a REFERENCE TO variable
 P4001,FunctionCallMixedArgTypes,Function call mixes named (formal) and positional (non-format) input arguments
 P4002,FunctionInvocationMissingInput,Function invocation assigns named (formal) input that is not defined
 P4003,FunctionInvocationRequiresFormal,Function invocation requires non-formal inputs but the invocation has formal inputs

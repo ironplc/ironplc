@@ -609,6 +609,8 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::RefTo => Some(KEYWORD_INDEX),
             TokenType::Ref => Some(KEYWORD_INDEX),
             TokenType::Null => Some(KEYWORD_INDEX),
+            TokenType::Reference => Some(KEYWORD_INDEX),
+            TokenType::Pointer => Some(KEYWORD_INDEX),
             TokenType::Date => Some(KEYWORD_INDEX),
             TokenType::TimeOfDay => Some(KEYWORD_INDEX),
             TokenType::DateAndTime => Some(KEYWORD_INDEX),

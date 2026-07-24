@@ -224,6 +224,16 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                             InitialValueAssignmentKind::Reference(ReferenceInitializer {
                                 target: ref_target.clone(),
                                 initial_value: None,
+                                // A TYPE-alias-defined reference type (e.g.
+                                // `TYPE T : REF_TO INT; END_TYPE`) doesn't
+                                // track which keyword spelling declared the
+                                // alias -- ReferenceDeclaration has no
+                                // keyword field (see
+                                // specs/plans/2026-07-20-twincat-reference-to-no-explicit-deref.md's
+                                // non-goals). Defaulting to RefTo keeps
+                                // existing (explicit-deref-allowed)
+                                // behavior for this path unchanged.
+                                keyword: ReferenceKeyword::RefTo,
                             }),
                         ),
                         TypeDefinitionKind::Subrange => Ok(InitialValueAssignmentKind::Subrange(
