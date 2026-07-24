@@ -164,6 +164,12 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     return Err(Diagnostic::internal_error(file!(), line!()))
                 }
+                InitialValueAssignmentKind::SimpleExpr(_) => {
+                    // Always normalized to `Simple` by
+                    // xform_fold_initializer_expressions before semantic
+                    // rules run; reaching here indicates a compiler bug.
+                    return Err(Diagnostic::internal_error(file!(), line!()));
+                }
             },
             // Do not care about the following qualifiers
             DeclarationQualifier::Unspecified => {}

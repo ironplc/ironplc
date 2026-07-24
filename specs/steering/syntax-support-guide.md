@@ -174,6 +174,7 @@ table is a convenience mirror, so consult the macro if the two ever disagree.
 | `allow_partial_access_syntax` | `--allow-partial-access-syntax` | IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) |
 | `allow_pragmas` | `--allow-pragmas` | Curly-brace pragmas (`{attribute 'qualified_only'}`) parsed and discarded like a comment |
 | `allow_short_circuit_operators` | `--allow-short-circuit-operators` | AND_THEN short-circuit boolean operator (Beckhoff/CODESYS) |
+| `allow_constant_initializer_expressions` | `--allow-constant-initializer-expressions` | Constant expressions (not just bare literals) in `VAR` initializers, e.g. `SCALE*4.0` |
 
 ### Dialects
 

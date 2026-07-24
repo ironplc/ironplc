@@ -33,7 +33,7 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
 struct ConstantFolder;
 
 /// Extracts the value of an integer literal as an i128.
-fn integer_value(lit: &IntegerLiteral) -> i128 {
+pub(crate) fn integer_value(lit: &IntegerLiteral) -> i128 {
     let unsigned = lit.value.value.value as i128;
     if lit.value.is_neg {
         -unsigned
@@ -43,7 +43,7 @@ fn integer_value(lit: &IntegerLiteral) -> i128 {
 }
 
 /// Builds a `ConstantKind::IntegerLiteral` from an i128 result value.
-fn make_integer_constant(value: i128) -> ConstantKind {
+pub(crate) fn make_integer_constant(value: i128) -> ConstantKind {
     let (unsigned, is_neg) = if value < 0 {
         ((-value) as u128, true)
     } else {
@@ -62,7 +62,7 @@ fn make_integer_constant(value: i128) -> ConstantKind {
 }
 
 /// Builds a `ConstantKind::RealLiteral` from an f64 result value.
-fn make_real_constant(value: f64) -> ConstantKind {
+pub(crate) fn make_real_constant(value: f64) -> ConstantKind {
     ConstantKind::RealLiteral(RealLiteral {
         value,
         data_type: None,
@@ -70,7 +70,7 @@ fn make_real_constant(value: f64) -> ConstantKind {
 }
 
 /// Attempts to fold a binary expression on two integer constants.
-fn fold_integer_binary(op: &Operator, left: i128, right: i128) -> Option<i128> {
+pub(crate) fn fold_integer_binary(op: &Operator, left: i128, right: i128) -> Option<i128> {
     match op {
         Operator::Add => left.checked_add(right),
         Operator::Sub => left.checked_sub(right),
@@ -102,7 +102,7 @@ fn fold_integer_binary(op: &Operator, left: i128, right: i128) -> Option<i128> {
 }
 
 /// Attempts to fold a binary expression on two real constants.
-fn fold_real_binary(op: &Operator, left: f64, right: f64) -> f64 {
+pub(crate) fn fold_real_binary(op: &Operator, left: f64, right: f64) -> f64 {
     match op {
         Operator::Add => left + right,
         Operator::Sub => left - right,
@@ -114,7 +114,7 @@ fn fold_real_binary(op: &Operator, left: f64, right: f64) -> f64 {
 }
 
 /// Extracts a constant as an f64, converting integers to float if needed.
-fn const_as_f64(kind: &ExprKind) -> Option<f64> {
+pub(crate) fn const_as_f64(kind: &ExprKind) -> Option<f64> {
     match kind {
         ExprKind::Const(ConstantKind::RealLiteral(lit)) => Some(lit.value),
         ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => Some(integer_value(lit) as f64),
@@ -124,7 +124,7 @@ fn const_as_f64(kind: &ExprKind) -> Option<f64> {
 
 /// Tries to fold a `BinaryExpr` whose operands are both constants.
 /// Returns `Some(folded_kind)` if folding succeeded, `None` otherwise.
-fn try_fold_binary(binary: &BinaryExpr) -> Option<ExprKind> {
+pub(crate) fn try_fold_binary(binary: &BinaryExpr) -> Option<ExprKind> {
     match (&binary.left.kind, &binary.right.kind) {
         (
             ExprKind::Const(ConstantKind::IntegerLiteral(left)),
@@ -162,7 +162,7 @@ fn try_fold_binary(binary: &BinaryExpr) -> Option<ExprKind> {
 
 /// Tries to fold a `UnaryExpr` whose operand is a constant.
 /// Returns `Some(folded_kind)` if folding succeeded, `None` otherwise.
-fn try_fold_unary(unary: &UnaryExpr) -> Option<ExprKind> {
+pub(crate) fn try_fold_unary(unary: &UnaryExpr) -> Option<ExprKind> {
     match unary.op {
         UnaryOp::Neg => match &unary.term.kind {
             ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {

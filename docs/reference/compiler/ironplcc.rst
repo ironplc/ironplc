@@ -189,6 +189,14 @@ Options
    refuses to compile it. Enabled by ``--dialect=rusty`` and
    ``--dialect=codesys``.
 
+``--allow-constant-initializer-expressions``
+   Allow a ``VAR`` initializer to be a constant expression (e.g.
+   ``scaled : LREAL := SCALE*4.0;``) rather than only a bare literal.
+   Folded to a literal at compile time; produces
+   :doc:`P4037 </reference/compiler/problems/P4037>` if the expression does
+   not fully reduce to a constant. Enabled by ``--dialect=rusty`` and
+   ``--dialect=codesys``.
+
 Examples
 ========
 

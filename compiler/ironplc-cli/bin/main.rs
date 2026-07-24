@@ -154,6 +154,12 @@ struct FileArgs {
     /// This is a vendor extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_short_circuit_operators: bool,
+
+    /// Allow a VAR initializer to be a constant expression (e.g. SCALE*4.0)
+    /// rather than only a bare literal. This is a vendor extension not part
+    /// of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_constant_initializer_expressions: bool,
 }
 
 impl FileArgs {
@@ -177,6 +183,8 @@ impl FileArgs {
         options.allow_partial_access_syntax |= self.allow_partial_access_syntax;
         options.allow_pragmas |= self.allow_pragmas;
         options.allow_short_circuit_operators |= self.allow_short_circuit_operators;
+        options.allow_constant_initializer_expressions |=
+            self.allow_constant_initializer_expressions;
         options
     }
 }

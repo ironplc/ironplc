@@ -1,8 +1,44 @@
 # Plan: Constant Expressions in VAR Initializers
 
-**Status: plan only, implementation deliberately deferred** (per user
-decision — this is bigger than the previous three PRs and deserves its own
-session rather than being rushed alongside them).
+## Revision: un-stacked from the PI-constant PR
+
+garretfick (maintainer) asked that PRs not be stacked on each other, and
+separately wants a different approach for the "library support" PRs
+(PI, LTRUNC/LMOD, MODABS). This branch no longer includes or depends on
+the PI-constant feature at all — every example below and in the tests
+uses a user-declared `CONSTANT` (e.g. `SCALE`) instead of the built-in
+`PI` this plan was originally motivated by and tested against. The
+narrative below is left as-is since it's an accurate account of how the
+feature was discovered and designed (via real `PI`-using TwinCAT code),
+but "PI" in code examples elsewhere in this branch's diff refers to a
+plain user-declared constant, not the separate, still-unmerged
+`--allow-math-constants` feature.
+
+**Status: implemented and landed on this branch.** `scaled : LREAL :=
+SCALE*4.0;` now compiles and runs correctly under
+`--allow-constant-initializer-expressions`. The core design below (new
+`SimpleExpr` placeholder variant, normalize-away-early via a dedicated fold
+pass) was implemented largely as planned, with two significant discoveries
+made during implementation that the plan did not anticipate — see
+"Implementation Notes" at the end of this file:
+
+1. The planned grammar approach ("try `constant()` first, fall back to
+   `expression()`") does not work — `constant()` greedily matches a
+   *prefix* of the input and succeeds without consuming trailing operators,
+   so PEG's ordered choice never reaches the fallback for inputs like
+   `3.14/180.0`. Fixed by using `expression()` unconditionally and
+   dispatching on the *shape* of the parsed result instead.
+2. That fix initially broke every negative-literal initializer in the
+   codebase (e.g. `x : INT := -123;`) because `expression()` routes a
+   leading `-` through its own unary-operator handling rather than
+   `constant()`'s built-in signed-literal parsing, changing the AST shape
+   from `Const` to `UnaryOp(Neg, Const)`. Fixed by collapsing that specific
+   shape back to `Const` (unconditionally, not gated by the new flag, since
+   it isn't new capability) directly in the parser.
+
+Both fixes, the reasoning behind them, and the enum-disambiguation subtlety
+in `simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()` are
+detailed in "Implementation Notes".
 
 ## Goal
 
@@ -190,17 +226,116 @@ the placeholder existed. Apply the same pattern here, scoped to keep the
 ## Tasks
 
 - [x] Write plan (this document)
-- [ ] Extract shared fold logic from `xform_fold_constant_expressions.rs`
-- [ ] New `InitialValueAssignmentKind::SimpleExpr` variant + dispatch boilerplate
-- [ ] Grammar: `constant()` then fall back to `expression()` in initializer productions
-- [ ] New `xform_fold_initializer_expressions.rs` pass
-- [ ] New `allow_constant_initializer_expressions` flag
-- [ ] New problem code + doc page
-- [ ] Wire into `stages.rs`, `lsp.rs`
-- [ ] All tests from Testing Strategy
-- [ ] Revisit the paused `PI` plan together with this one (they combine to
-      fully unblock the real-world pattern)
-- [ ] Update docs
-- [ ] Run full CI pipeline (`cd compiler && just`)
-- [ ] Push branch to fork (no PR against `ironplc/ironplc` without explicit
+- [x] Extract shared fold logic from `xform_fold_constant_expressions.rs`
+- [x] New `InitialValueAssignmentKind::SimpleExpr` variant + dispatch boilerplate
+- [x] Grammar: `expression()`-based initializer parsing with shape-based
+      dispatch (see Implementation Notes for why "constant() then fall
+      back" doesn't work)
+- [x] New `xform_fold_initializer_expressions.rs` pass
+- [x] New `allow_constant_initializer_expressions` flag
+- [x] New problem codes (P4036, P4037) + doc pages
+- [x] Wire into `stages.rs`, `lsp.rs`
+- [x] All tests from Testing Strategy, plus regression tests for the two
+      discoveries (negative-literal collapse, enum-initializer
+      disambiguation)
+- [x] Un-stacked from PI (`2026-07-19-twincat-pi-constant.md`, still a
+      separate open PR) per maintainer request -- tests use a
+      user-declared `CONSTANT` instead of the built-in `PI` global
+- [x] Update docs
+- [x] Run full CI pipeline (`cd compiler && just`)
+- [x] Push branch to fork (no PR against `ironplc/ironplc` without explicit
       go-ahead, per standing instruction)
+
+## Implementation Notes
+
+- **"`constant()` first, `expression()` fallback" doesn't work — discovered
+  via a real end-to-end test, not by inspection.** The plan's original
+  grammar design assumed ordered choice would naturally try `constant()`
+  first and fall back to `expression()` on failure. This is wrong: for
+  input like `3.14/180.0`, `c:constant()` doesn't fail — it *succeeds*,
+  matching just `3.14` and stopping (constant() has no way to know an
+  operator follows). Since the alternative as a whole "succeeded" by PEG's
+  rules, the parser never backtracks to try the `expression()` fallback;
+  instead the surrounding rule (expecting `;` next) fails on the
+  leftover `/180.0`. Fixed by dropping the `constant()`-based alternative
+  entirely and always parsing via `expression()` (which includes `constant()`
+  as one of its own sub-alternatives, so bare literals parse identically),
+  then dispatching on the *resulting AST shape*: `ExprKind::Const(c)` →
+  `Simple`, anything else → `SimpleExpr`. This is a more general instance of
+  a rule worth remembering: in `peg`/PEG generally, "try A, then B" only
+  backtracks to B if A *fails outright* — it never backtracks because A
+  succeeded but left something unparsed that a surrounding rule later
+  rejects.
+- **Negative-literal initializers broke everywhere, caught by the full
+  workspace test suite, not by targeted testing.** Switching to
+  `expression()` changed how `x : INT := -123;` parses: `expression()`'s
+  `unary_expression()` rule greedily consumes a leading `-` as a unary
+  operator *before* trying to parse the operand as a `constant()`, so the
+  literal itself parses as non-negative and gets wrapped in
+  `ExprKind::UnaryOp(Neg, Const(123))` — a different shape than plain
+  `constant()` parsing (`Const(-123)` directly, since `constant()`'s own
+  `integer_literal()`/`real_literal()`/`duration()` productions each handle
+  a leading sign internally). Every negative-literal `VAR` initializer in
+  the entire codebase (4 codegen tests: `INT_TO_STRING`, `DINT_TO_STRING`,
+  `SINT_TO_STRING`, `REAL_TO_STRING` with negative inputs) silently started
+  requiring `--allow-constant-initializer-expressions` and producing `0`
+  instead of the intended value when the flag was off. Fixed with a
+  targeted `negate_literal_constant()` helper in `parser.rs` that collapses
+  `UnaryOp(Neg, Const(c))` back to a directly-negated `Const` for the 3
+  literal kinds `constant()` itself supports with a sign
+  (`IntegerLiteral`/`RealLiteral`/`Duration`), applied unconditionally (not
+  gated by the new flag, since this isn't new capability — it's the same
+  literal syntax reached via a different code path). This ran clean on the
+  *targeted* new tests but broke 4 *unrelated, pre-existing* tests — a
+  reminder that a grammar change touching a shared production needs the
+  full workspace suite run, not just the tests for the new feature.
+- **Enum-initializer disambiguation required a fallible (`{? }`) grammar
+  action, not a plain ordered-choice fallback.**
+  `simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()` already
+  had a documented ambiguity: `identifier := identifier` could mean "simple
+  type with a value" or "enum type with an enum default", resolved by
+  trying the simple/constant interpretation first and falling through to
+  the enum interpretation when `constant()` fails on the bare identifier.
+  Switching to `expression()` breaks this the same way as the two points
+  above: `expression()` *does* successfully parse a bare identifier (as
+  `ExprKind::Variable`/`LateBound`), so naively taking "not a `Const`" as
+  "must be `SimpleExpr`" would swallow every enum-default declaration in
+  the codebase. Fixed by making the grammar action fallible (`{? ... }`,
+  returning `Result<T, &str>`) and explicitly rejecting (`Err(...)`) when
+  the parsed expression is a bare `Variable`/`LateBound` with no operators
+  — this makes PEG backtrack fully (undoing the `simple_specification()`
+  match too) and try the `enumerated_specification()` alternative next,
+  exactly reproducing the pre-existing disambiguation. `simple_spec_init()`
+  (used for `AT`-located variables, which has no sibling enum alternative
+  to defer to) does not need this guard and uses a plain infallible
+  dispatch.
+- **The "21-file blast radius" from the plan turned out to be 6 files, not
+  21.** The grep-based estimate counted every file referencing
+  `SimpleInitializer`/`Simple(...)` at all; `cargo build` after adding the
+  enum variant showed only 6 actual non-exhaustive-match compile errors
+  (`rule_var_decl_const_initialized.rs`, `xform_resolve_expr_types.rs`,
+  `xform_resolve_late_bound_expr_kind.rs`,
+  `xform_resolve_type_decl_environment.rs`, `xform_toposort_declarations.rs`,
+  `intermediates/structure.rs`) — most of the 21 files use `if let`/match
+  guards on `Simple` specifically rather than exhaustively matching the
+  whole enum, so they were unaffected by the new variant. Reconfirms the
+  existing lesson (also noted in `twincat-status.md`) that `cargo build`
+  is the authoritative way to find the real blast radius, not grepping.
+- **`substitute_and_fold` handles both `Variable` and `LateBound` node
+  shapes**, not just one. The pass is wired to run after
+  `xform_resolve_late_bound_expr_kind` in the normal pipeline (so
+  references are already `Variable` by the time it runs), but the unit
+  tests in this module call `apply()` directly without running that
+  earlier pass first, leaving references as `LateBound` — handling both
+  shapes makes the pass correct regardless of invocation context, at
+  negligible cost.
+- **`InitialValueAssignmentKind::SimpleExpr` reaches struct field
+  initializers too**, not just `VAR` declarations — both
+  `var1_init_decl__with_ambiguous_struct()` (used by `VAR`/`VAR_INPUT`/etc.)
+  and `structure_element_declaration()` (`STRUCT ... field := expr; END_STRUCT`)
+  route through the same `simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()`
+  production, so the constant-expression capability (and the
+  `intermediates/structure.rs` fix for `field_has_default()`) apply to
+  struct fields for free. Not separately tested (out of scope per the
+  plan's non-goals) but worth knowing if a bug report mentions struct
+  fields specifically.

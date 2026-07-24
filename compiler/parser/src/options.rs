@@ -294,6 +294,11 @@ define_compiler_options! {
     "--allow-short-circuit-operators",
     [Rusty, Codesys],
     allow_short_circuit_operators,
+
+    "Allow constant expressions (not just bare literals) in VAR initializers, e.g. SCALE*4.0",
+    "--allow-constant-initializer-expressions",
+    [Rusty, Codesys],
+    allow_constant_initializer_expressions,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -399,6 +404,7 @@ mod tests {
                 "allow_partial_access_syntax",
                 "allow_pragmas",
                 "allow_short_circuit_operators",
+                "allow_constant_initializer_expressions",
             ],
         );
     }
@@ -429,6 +435,7 @@ mod tests {
                 "allow_partial_access_syntax",
                 "allow_pragmas",
                 "allow_short_circuit_operators",
+                "allow_constant_initializer_expressions",
             ],
         );
     }

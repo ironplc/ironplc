@@ -1024,6 +1024,30 @@ mod test {
     }
 
     #[test]
+    fn extract_compiler_options_when_allow_constant_initializer_expressions_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(
+                serde_json::json!({"allowConstantInitializerExpressions": true}),
+            ),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(options.allow_constant_initializer_expressions);
+    }
+
+    #[test]
     fn lsp_when_ed3_dialect_then_accepts_ltime() {
         use ironplc_parser::options::{CompilerOptions, Dialect};
 
