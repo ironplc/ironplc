@@ -136,10 +136,20 @@ features — they never disable features that a dialect already includes.
    Edition 2 keyword handling for the rest of your code. See
    :doc:`/reference/language/data-types/derived/reference-types`.
 
-``--allow-pointer-arithmetic``
+``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
    are permitted on references.
+
+``--allow-ref-stack-variables``
+   Allow ``REF()`` on stack-allocated variables (``VAR_TEMP`` and function
+   ``VAR_INPUT``/``VAR_OUTPUT``). Required for OSCAT patterns where the
+   reference does not escape the call.
+
+``--allow-ref-type-punning``
+   Allow assigning between ``REF_TO`` types of different base types (type
+   punning), such as reinterpreting the bits of a ``REAL`` through a
+   ``REF_TO DWORD``.
 
 ``--allow-int-to-bool-initializer``
    Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers
@@ -152,6 +162,12 @@ features — they never disable features that a dialect already includes.
    variable or type. This is a vendor extension supported by CODESYS,
    TwinCAT, and RuSTy. See
    :doc:`/reference/extension-library/functions/sizeof`.
+
+``--allow-system-uptime-global``
+   Expose ``__SYSTEM_UP_TIME`` (``TIME``) and ``__SYSTEM_UP_LTIME``
+   (``LTIME``) as implicit ``VAR_GLOBAL`` values holding the VM's monotonic
+   uptime. This is an IronPLC runtime convention enabled by
+   ``--dialect=rusty``.
 
 ``--allow-cross-family-widening``
    Allow implicit widening between bit-string and integer type families.

@@ -133,10 +133,19 @@ Options
    Edition 3. This is a vendor extension useful when you need references
    but want to keep Edition 2 keyword handling for the rest of your code.
 
-``--allow-pointer-arithmetic``
+``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
    are permitted on references.
+
+``--allow-ref-stack-variables``
+   Allow ``REF()`` on stack-allocated variables (``VAR_TEMP`` and function
+   ``VAR_INPUT``/``VAR_OUTPUT``). This is a vendor extension not part of the
+   IEC 61131-3 standard.
+
+``--allow-ref-type-punning``
+   Allow assigning between ``REF_TO`` types of different base types (type
+   punning). This is a vendor extension not part of the IEC 61131-3 standard.
 
 ``--allow-int-to-bool-initializer``
    Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers,
@@ -148,6 +157,12 @@ Options
    Allow the ``SIZEOF()`` operator that returns the size in bytes of a
    variable or type. This is a vendor extension supported by CODESYS,
    TwinCAT, and RuSTy.
+
+``--allow-system-uptime-global``
+   Expose ``__SYSTEM_UP_TIME`` (``TIME``) and ``__SYSTEM_UP_LTIME``
+   (``LTIME``) as implicit ``VAR_GLOBAL`` values holding the VM's monotonic
+   uptime. This is an IronPLC runtime convention enabled by
+   ``--dialect=rusty``.
 
 ``--allow-cross-family-widening``
    Allow implicit widening between bit-string and integer type families
