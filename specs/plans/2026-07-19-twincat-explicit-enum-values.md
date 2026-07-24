@@ -3,9 +3,12 @@
 ## Goal
 
 Survey item 1 from `twincat-status.md`'s "Next" list (11 files). Support
-CODESYS/TwinCAT enum declarations where members carry explicit integer
-values, and an optional underlying integer/bit-string base type after the
-value list:
+enum declarations where members carry explicit integer values (standard
+syntax as of IEC 61131-3:2013 Edition 3, and commonly used in CODESYS/
+TwinCAT code targeting earlier editions too), plus an optional
+underlying integer/bit-string base type after the value list (a
+CODESYS/TwinCAT extension beyond the standard, per Beckhoff's own docs
+-- see "Standard-vs-extension status" below):
 
 ```
 TYPE E_ModeLanguage : (Deutsch := 1, English := 2); END_TYPE
