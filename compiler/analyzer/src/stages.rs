@@ -359,4 +359,41 @@ END_FUNCTION_BLOCK";
         let src = read_shared_resource(name);
         parse_program(&src, &FileId::default(), &CompilerOptions::default()).unwrap()
     }
+
+    // ---------------------------------------------------------------------
+    // FB-instance call-style initializer.
+    // See specs/plans/2026-07-19-twincat-sized-string-and-inline-fb-ctor.md.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn analyze_when_fb_call_style_init_references_earlier_declared_fb_then_no_diagnostics() {
+        // End-to-end regression for the toposort edge-direction bug found
+        // while adding this feature: `comm : FB_Comm(retries := 3);`
+        // constructs InitialValueAssignmentKind::FunctionBlock directly at
+        // parse time (unlike a bare declaration, which defers to
+        // LateResolvedType). Before the xform_toposort_declarations.rs fix,
+        // this produced a spurious P2011 "Parent type is not declared"
+        // because the referenced type was ordered after its referencing
+        // POU instead of before it.
+        let program = "
+FUNCTION_BLOCK FB_Comm
+VAR_INPUT
+    retries : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm(retries := 3);
+END_VAR
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        assert!(
+            !context.has_diagnostics(),
+            "unexpected diagnostics: {:?}",
+            context.diagnostics()
+        );
+    }
 }

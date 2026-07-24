@@ -1912,6 +1912,7 @@ impl VarDecl {
                 FunctionBlockInitialValueAssignment {
                     type_name: TypeName::from(type_name),
                     init: vec![],
+                    call_params: None,
                 },
             ),
         }
@@ -2427,6 +2428,16 @@ pub struct FunctionBlockInitialValueAssignment {
     pub type_name: TypeName,
     // The initializer may be empty
     pub init: Vec<StructureElementInit>,
+    /// Present for the CODESYS/TwinCAT call-style instance initializer
+    /// (`name : FB_Type(args);`, no `:=`) -- `args` uses the same
+    /// positional-or-named shape as an ordinary FB call. `None` for the
+    /// standard `:= (member := value, ...)` form or no initializer at all.
+    /// Mutually exclusive with `init` being non-empty. Not yet wired into
+    /// codegen, matching `init`'s own pre-existing status (parsed and
+    /// stored, but instance field/input values are not yet applied from
+    /// either form).
+    #[recurse(ignore)]
+    pub call_params: Option<Vec<ParamAssignmentKind>>,
 }
 
 /// See section 2.4.3.2. #6
