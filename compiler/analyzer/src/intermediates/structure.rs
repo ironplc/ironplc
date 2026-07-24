@@ -131,6 +131,11 @@ fn field_has_default(
             // but they may reference a structure type with all defaults
             nested_structure_has_all_defaults(type_name, type_environment)
         }
+        // A constant-expression initializer is only ever produced by the
+        // parser when an explicit `:= expr` was present, so it always
+        // counts as having a default (regardless of whether the fold pass
+        // has run yet).
+        InitialValueAssignmentKind::SimpleExpr(_) => true,
     }
 }
 

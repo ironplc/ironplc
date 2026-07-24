@@ -694,6 +694,19 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    // CODESYS/TwinCAT vendor extension: constant-expression VAR initializer
+    // (e.g. `PI/180.0`), not yet folded to a literal.
+    fn visit_simple_expr_initializer(
+        &mut self,
+        node: &SimpleExprInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+        self.write_ws(":=");
+        self.visit_expr(&node.initial_value)?;
+
+        Ok(())
+    }
+
     // 2.4.3.1 and 2.4.3.2
     fn visit_string_initializer(
         &mut self,

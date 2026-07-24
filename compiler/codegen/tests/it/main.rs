@@ -65,6 +65,7 @@ mod end_to_end_bool;
 mod end_to_end_case;
 mod end_to_end_cmp;
 mod end_to_end_concat;
+mod end_to_end_constant_initializer_expressions;
 mod end_to_end_conv_bool_to_int;
 mod end_to_end_conv_int_narrowing;
 mod end_to_end_conv_int_to_bool;
