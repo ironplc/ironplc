@@ -1,0 +1,40 @@
+=====
+P4037
+=====
+
+.. problem-summary:: P4037
+
+This error occurs when a ``VAR`` initializer's constant expression
+(enabled by ``--allow-constant-initializer-expressions``) does not fully
+reduce to a constant value — for example, because it references a variable
+that is not declared with the ``CONSTANT`` qualifier, or an undeclared
+identifier.
+
+Example
+-------
+
+The following code will generate error P4037:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       scale : LREAL := 2.0;
+       d2r : LREAL := scale/180.0;
+   END_VAR
+   END_PROGRAM
+
+``scale`` is not a constant, so ``scale/180.0`` cannot be evaluated at
+compile time. To fix this error, declare the referenced variable as a
+constant:
+
+.. code-block::
+
+   PROGRAM main
+   VAR CONSTANT
+       scale : LREAL := 2.0;
+   END_VAR
+   VAR
+       d2r : LREAL := scale/180.0;
+   END_VAR
+   END_PROGRAM

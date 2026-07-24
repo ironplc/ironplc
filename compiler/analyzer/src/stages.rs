@@ -24,8 +24,9 @@ use crate::{
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
-    type_table, xform_fold_constant_expressions, xform_int_to_bool_initializer,
-    xform_named_to_positional_args, xform_resolve_constant_expressions, xform_resolve_expr_types,
+    type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
+    xform_int_to_bool_initializer, xform_named_to_positional_args,
+    xform_resolve_constant_expressions, xform_resolve_expr_types,
     xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
     xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
     xform_resolve_type_decl_environment, xform_toposort_declarations,
@@ -157,6 +158,19 @@ pub fn resolve_types(
                 diagnostics.extend(errs);
                 library = fallback;
             }
+        }
+    }
+
+    // Fold constant-expression VAR initializers (e.g. `scaled : LREAL := SCALE*4.0;`)
+    // back into ordinary literal initializers, or diagnose. Must run before
+    // any other pass touches `InitialValueAssignmentKind::SimpleExpr` — see
+    // specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
+    let fallback = library.clone();
+    match xform_fold_initializer_expressions::apply(library, options) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
         }
     }
 
@@ -358,5 +372,61 @@ END_FUNCTION_BLOCK";
     fn parse_shared_library(name: &'static str) -> Library {
         let src = read_shared_resource(name);
         parse_program(&src, &FileId::default(), &CompilerOptions::default()).unwrap()
+    }
+
+    // ---------------------------------------------------------------------
+    // Constant-expression VAR initializers.
+    // See specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
+    // ---------------------------------------------------------------------
+
+    fn opts_with_constant_initializer_expressions() -> CompilerOptions {
+        CompilerOptions {
+            allow_constant_initializer_expressions: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    #[test]
+    fn analyze_when_constant_initializer_expression_and_flag_enabled_then_resolves() {
+        let program = "
+VAR_GLOBAL CONSTANT
+    SCALE : LREAL := 2.5;
+END_VAR
+FUNCTION_BLOCK FB_Example
+VAR
+    scaled : LREAL := SCALE*4.0;
+END_VAR
+END_FUNCTION_BLOCK";
+        let lib = parse_program(
+            program,
+            &FileId::default(),
+            &opts_with_constant_initializer_expressions(),
+        )
+        .unwrap();
+        let (_library, context) =
+            analyze(&[&lib], &opts_with_constant_initializer_expressions()).unwrap();
+
+        assert!(
+            !context.has_diagnostics(),
+            "unexpected diagnostics: {:?}",
+            context.diagnostics()
+        );
+    }
+
+    #[test]
+    fn analyze_when_constant_initializer_expression_and_flag_disabled_then_diagnostics() {
+        let program = "
+VAR_GLOBAL CONSTANT
+    SCALE : LREAL := 2.5;
+END_VAR
+FUNCTION_BLOCK FB_Example
+VAR
+    scaled : LREAL := SCALE*4.0;
+END_VAR
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        assert!(context.has_diagnostics());
     }
 }

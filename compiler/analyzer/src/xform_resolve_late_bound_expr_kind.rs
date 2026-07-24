@@ -122,6 +122,9 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::LateResolvedType(type_name) => {
                 VariableType::LateResolvedType(type_name.clone())
             }
+            // Not yet folded to a literal (vendor extension, folded by a
+            // later pass); treat like `Simple` for type-inference purposes.
+            InitialValueAssignmentKind::SimpleExpr(_) => VariableType::Simple,
         };
         match &node.identifier {
             VariableIdentifier::Symbol(id) => {

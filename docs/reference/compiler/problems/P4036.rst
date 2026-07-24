@@ -1,0 +1,43 @@
+=====
+P4036
+=====
+
+.. problem-summary:: P4036
+
+This error occurs when a ``VAR`` initializer uses a constant expression
+(arithmetic between literals and/or references to declared ``CONSTANT``
+variables) instead of a bare literal, without the
+``--allow-constant-initializer-expressions`` compiler flag. The IEC 61131-3
+standard's initializer grammar only permits a single literal in this
+position. Constant expressions are a vendor extension.
+
+Example
+-------
+
+The following code will generate error P4036:
+
+.. code-block::
+
+   VAR_GLOBAL CONSTANT
+       PI : LREAL := 3.14159265358979;
+   END_VAR
+
+   PROGRAM main
+   VAR
+       d2r : LREAL := PI/180.0;
+   END_VAR
+   END_PROGRAM
+
+To fix this error, either use a literal value directly:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       d2r : LREAL := 0.017453292519943295;
+   END_VAR
+   END_PROGRAM
+
+Or enable the vendor extension with the
+``--allow-constant-initializer-expressions`` flag (also enabled by
+``--dialect=rusty`` and ``--dialect=codesys``).

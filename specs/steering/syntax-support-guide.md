@@ -164,6 +164,7 @@ Current flags in `CompilerOptions` (`parser/src/options.rs`):
 | `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
 | `allow_partial_access_syntax` | `--allow-partial-access-syntax` | IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) |
 | `allow_pragmas` | `--allow-pragmas` | Curly-brace pragmas (`{attribute 'qualified_only'}`) parsed and discarded like a comment |
+| `allow_constant_initializer_expressions` | `--allow-constant-initializer-expressions` | Constant expressions (not just bare literals) in `VAR` initializers, e.g. `SCALE*4.0` |
 
 ### Dialects
 

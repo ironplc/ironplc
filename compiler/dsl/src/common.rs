@@ -1995,6 +1995,9 @@ impl VarDecl {
             InitialValueAssignmentKind::LateResolvedType(type_name) => {
                 TypeReference::Named(type_name.clone())
             }
+            InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
+                TypeReference::Named(simple_expr_initializer.type_name.clone())
+            }
         }
     }
 }
@@ -2278,6 +2281,12 @@ pub enum InitialValueAssignmentKind {
     /// Type that is ambiguous until have discovered type
     /// definitions. Value is the name of the type.
     LateResolvedType(TypeName),
+    /// A constant-expression initializer not yet folded to a literal
+    /// (vendor extension — see `allow_constant_initializer_expressions`).
+    /// Always normalized to `Simple` by
+    /// `xform_fold_initializer_expressions` before any other pass runs;
+    /// no other code should ever match on this variant.
+    SimpleExpr(SimpleExprInitializer),
 }
 
 impl InitialValueAssignmentKind {
@@ -2354,6 +2363,20 @@ pub struct ReferenceInitializer {
 pub struct SimpleInitializer {
     pub type_name: TypeName,
     pub initial_value: Option<ConstantKind>,
+}
+
+/// A variable initializer expressed as a constant expression (e.g.
+/// `PI/180.0`) rather than a bare literal.
+///
+/// This is a vendor extension — the IEC 61131-3 standard's `constant()`
+/// grammar production only permits literals in this position. Parsed
+/// unconditionally; `xform_fold_initializer_expressions` folds it back to
+/// `SimpleInitializer` or emits a diagnostic, depending on
+/// `allow_constant_initializer_expressions`.
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct SimpleExprInitializer {
+    pub type_name: TypeName,
+    pub initial_value: Expr,
 }
 
 /// Provides the initialization of a string variable declaration.
