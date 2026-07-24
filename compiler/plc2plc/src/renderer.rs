@@ -309,6 +309,11 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_enumerated_specification_kind(&node.spec)?;
 
+        // CODESYS/TwinCAT enum base-type suffix, e.g. `(A, B) BYTE;`.
+        if let Some(underlying_type) = &node.underlying_type {
+            self.write_ws(&underlying_type.to_string());
+        }
+
         if let Some(default) = &node.default {
             self.write_ws(":=");
             self.visit_enumerated_value(default)?;
@@ -326,6 +331,35 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         visit_comma_separated!(self, node.values.iter(), EnumeratedValue);
 
         self.write_ws(")");
+        Ok(())
+    }
+
+    fn visit_enumerated_value(
+        &mut self,
+        node: &EnumeratedValue,
+    ) -> Result<Self::Value, Diagnostic> {
+        // Matches visit_structured_variable's pattern: a raw write around
+        // `#` since visit_id's write_ws would insert an unwanted space
+        // (this was a pre-existing bug -- COLOR#RED rendered as
+        // "COLOR RED", found while adding explicit_value rendering below).
+        match &node.type_name {
+            Some(type_name) => {
+                self.write_ws(type_name.name.original().as_str());
+                self.write("#");
+                self.write(node.value.original().as_str());
+            }
+            None => self.visit_id(&node.value)?,
+        }
+
+        // CODESYS/TwinCAT explicit per-member enum value, e.g.
+        // `Type_UNDEFINED := 0`. Only ever set on a member in an enum
+        // declaration's value list, never on a reference (default value,
+        // case label, expression).
+        if let Some(explicit_value) = &node.explicit_value {
+            self.write_ws(":=");
+            self.write_ws(&explicit_value.to_i64().to_string());
+        }
+
         Ok(())
     }
 

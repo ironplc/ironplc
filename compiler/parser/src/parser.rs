@@ -497,48 +497,53 @@ parser! {
     rule subrange() -> Subrange = start:signed_integer_ref() _ tok(TokenType::Range) _ end:signed_integer_ref() { Subrange{start, end} }
 
     rule enumerated_type_declaration__with_value() -> EnumerationDeclaration =
-      type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec_init:enumerated_spec_init__with_value() {
-        let spec = spec_init.0;
-        let init = spec_init.1;
-
+      type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec:enumerated_specification() _ underlying_type:enum_underlying_type()? _ tok(TokenType::Assignment) _ def:enumerated_value() {
         EnumerationDeclaration {
           type_name,
           spec_init: EnumeratedSpecificationInit {
             spec,
-            default: Some(init),
+            default: Some(def),
+            underlying_type,
           },
         }
       }
-      / type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec_init:enumerated_spec_init__with_values() {
-        let spec = spec_init.0;
-        let init = spec_init.1;
-
+      / type_name:enumerated_type_name() _ tok(TokenType::Colon) _ values:enumerated_specification__only_values() _ underlying_type:enum_underlying_type()? _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
         EnumerationDeclaration {
           type_name,
           spec_init: EnumeratedSpecificationInit {
-            spec,
-            default: init,
+            spec: EnumeratedSpecificationKind::values(values),
+            default,
+            underlying_type,
           },
         }
       }
     rule enumerated_spec_init__with_value() -> (EnumeratedSpecificationKind, EnumeratedValue) = spec:enumerated_specification() _ tok(TokenType::Assignment) _ def:enumerated_value() {
       (spec, def)
     }
-    rule enumerated_spec_init__with_values() -> (EnumeratedSpecificationKind, Option<EnumeratedValue>) = values:enumerated_specification__only_values() _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
-      (EnumeratedSpecificationKind::values(values), default)
-    }
     rule enumerated_spec_init() -> EnumeratedSpecificationInit = spec:enumerated_specification() _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
       EnumeratedSpecificationInit {
         spec,
         default,
+        underlying_type: None,
       }
     }
     rule enumerated_specification__only_values() -> Vec<EnumeratedValue>  =
-      tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { v }
+      tok(TokenType::LeftParen) _ v:enumerated_value_decl() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { v }
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
-      tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
+      tok(TokenType::LeftParen) _ v:enumerated_value_decl() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
       / name:enumerated_type_name() { SpecificationKind::Named(name) }
-    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() { EnumeratedValue {type_name, value} }
+    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() { EnumeratedValue {type_name, value, explicit_value: None} }
+    // CODESYS/TwinCAT (also standard as of IEC 61131-3:2013) explicit
+    // per-member enum value, e.g. `Type_UNDEFINED := 0, Type_ANY,
+    // Type_BOOL` -- only a member *declaration* can carry an explicit
+    // value; `enumerated_value()` itself (used for references: defaults,
+    // case labels, expressions) is unchanged.
+    rule enumerated_value_decl() -> EnumeratedValue = ev:enumerated_value() explicit:(_ tok(TokenType::Assignment) _ si:signed_integer() { si })? {
+      EnumeratedValue { explicit_value: explicit, ..ev }
+    }
+    // CODESYS/TwinCAT enum base-type suffix, e.g. `(A, B) BYTE;` --
+    // overrides the automatic count/value-based sizing.
+    rule enum_underlying_type() -> ElementaryTypeName = integer_type_name() / bit_string_type_name()
     rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ tok(TokenType::Colon) _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
         type_name,

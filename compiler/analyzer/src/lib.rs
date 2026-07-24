@@ -68,6 +68,7 @@ pub use function_environment::{
     FunctionEnvironment, FunctionEnvironmentBuilder, FunctionSignature,
 };
 pub use intermediate_type::IntermediateType;
+pub use intermediates::enumeration::resolve_ordinal_values;
 pub use semantic_context::{SemanticContext, SemanticContextBuilder};
 pub use type_attributes::TypeAttributes;
 pub use type_category::TypeCategory;
