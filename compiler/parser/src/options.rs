@@ -315,6 +315,11 @@ define_compiler_options! {
     "--allow-mixed-located-var-declarations",
     [Rusty, Codesys, TwinCat],
     allow_mixed_located_var_declarations,
+
+    "Allow constant expressions (not just bare literals) in VAR initializers, e.g. SCALE*4.0",
+    "--allow-constant-initializer-expressions",
+    [Rusty, Codesys],
+    allow_constant_initializer_expressions,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -421,6 +426,7 @@ mod tests {
                 "allow_pragmas",
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
+                "allow_constant_initializer_expressions",
             ],
         );
     }
@@ -452,6 +458,7 @@ mod tests {
                 "allow_pragmas",
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
+                "allow_constant_initializer_expressions",
             ],
         );
     }

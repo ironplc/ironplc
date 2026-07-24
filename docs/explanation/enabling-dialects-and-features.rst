@@ -236,6 +236,19 @@ features — they never disable features that a dialect already includes.
    syntax and always allowed. Enabled by ``--dialect=rusty``,
    ``--dialect=codesys``, and ``--dialect=twincat``.
 
+``--allow-constant-initializer-expressions``
+   Allow a ``VAR`` initializer to be a constant *expression* — arithmetic
+   between literals and/or references to declared ``CONSTANT`` variables
+   (e.g. ``scaled : LREAL := SCALE*4.0;``) — rather than only a bare
+   literal. The IEC 61131-3 standard's initializer grammar permits only
+   literals in this position; this vendor extension folds the expression
+   to a literal at compile time. Using this form without the flag produces
+   :doc:`P4037 </reference/compiler/problems/P4037>`; if the expression
+   does not fully reduce to a constant (e.g. it references a
+   non-``CONSTANT`` variable), it produces
+   :doc:`P4038 </reference/compiler/problems/P4038>`.
+   Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell

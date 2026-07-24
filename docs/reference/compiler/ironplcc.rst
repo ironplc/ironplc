@@ -197,6 +197,15 @@ Options
    this flag. Enabled by ``--dialect=rusty``, ``--dialect=codesys``, and
    ``--dialect=twincat``.
 
+``--allow-constant-initializer-expressions``
+   Allow a ``VAR`` initializer to be a constant expression (e.g.
+   ``scaled : LREAL := SCALE*4.0;``) rather than only a bare literal.
+   Folded to a literal at compile time; produces
+   :doc:`P4037 </reference/compiler/problems/P4037>` when used without this
+   flag, or :doc:`P4038 </reference/compiler/problems/P4038>` if the
+   expression does not fully reduce to a constant. Enabled by
+   ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Examples
 ========
 
