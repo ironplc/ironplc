@@ -2102,6 +2102,7 @@ impl VariableIdentifier {
             name,
             address_assignment: location,
             span: SourceSpan::default(),
+            in_mixed_var_block: false,
         })
     }
 
@@ -2148,6 +2149,15 @@ pub struct DirectVariableIdentifier {
     pub name: Option<Id>,
     pub address_assignment: AddressAssignment,
     pub span: SourceSpan,
+    /// `true` when this located variable was declared inside an otherwise
+    /// plain `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block (a CODESYS/TwinCAT vendor
+    /// extension — see `allow_mixed_located_var_declarations`), `false`
+    /// when declared in its own dedicated located/incomplete-located `VAR`
+    /// block (standard IEC 61131-3). The two produce an otherwise-identical
+    /// `DirectVariableIdentifier`, so this field is the only way to tell
+    /// them apart for semantic gating.
+    #[recurse(ignore)]
+    pub in_mixed_var_block: bool,
 }
 
 impl Located for DirectVariableIdentifier {

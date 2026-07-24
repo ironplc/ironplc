@@ -811,11 +811,26 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() /  fb_name_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() /  fb_name_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
+    // CODESYS/TwinCAT vendor extension: a located variable (complete or
+    // incomplete/wildcard address) declared inside an otherwise plain
+    // VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own
+    // dedicated located_var_declarations()/incompl_located_var_declarations()
+    // block. Singular (one name), matching the existing dedicated-block
+    // rules' shape — a shared address across multiple names wouldn't make
+    // sense. See allow_mixed_located_var_declarations.
+    rule located_var1_init_decl() -> Vec<UntypedVarDecl> = name:variable_name() _ loc:(location() / incompl_location()) _ tok(TokenType::Colon) _ init:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() {
+      vec![UntypedVarDecl {
+        name,
+        location: Some(loc),
+        initializer: init,
+      }]
+    }
     rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: init.clone(),
         }
@@ -826,6 +841,7 @@ parser! {
     rule array_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:array_spec_init() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::Array(init.clone()),
         }
@@ -835,6 +851,7 @@ parser! {
       names.into_iter().map(|name| {
         // TODO
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
         }
@@ -843,6 +860,7 @@ parser! {
     rule structured_var_init_decl__without_ambiguous() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure__without_ambiguous() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
         }
@@ -851,6 +869,7 @@ parser! {
     rule fb_name_decl() -> Vec<UntypedVarDecl> = names:fb_name_list() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ init:(tok(TokenType::Assignment) _ init:structure_initialization() { init })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: init.clone().unwrap_or_else(Vec::new) }),
         }
@@ -861,6 +880,7 @@ parser! {
     rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::Reference(ReferenceInitializer {
             target: ref_target.clone(),
@@ -893,6 +913,7 @@ parser! {
       // multiple variables have the same type declaration
       names.iter().map(|identifier| {
         UntypedVarDecl {
+          location: None,
           name: identifier.clone(),
           initializer: init.clone(),
         }
@@ -902,6 +923,7 @@ parser! {
       names.iter().map(|identifier| {
         let init = ArrayInitialValueAssignment { spec: spec.clone(), initial_values: vec![] };
         UntypedVarDecl {
+          location: None,
           name: identifier.clone(),
           initializer: InitialValueAssignmentKind::Array(init),
         }
@@ -911,6 +933,7 @@ parser! {
       names.iter().map(|identifier| {
         let init = StructureInitializationDeclaration { type_name: name.clone(), elements_init: vec![] };
         UntypedVarDecl {
+          location: None,
           name: identifier.clone(),
           initializer: InitialValueAssignmentKind::Structure(init),
 
@@ -1002,6 +1025,7 @@ parser! {
       names.into_iter().map(|name| {
         let span = name.span.clone();
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
         }
@@ -1018,6 +1042,7 @@ parser! {
     rule double_byte_string_var_declaration() -> Vec<UntypedVarDecl> =  names:var1_list() _ tok(TokenType::Colon) _ spec:double_byte_string_spec() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
         }

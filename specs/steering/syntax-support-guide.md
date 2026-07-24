@@ -164,6 +164,7 @@ Current flags in `CompilerOptions` (`parser/src/options.rs`):
 | `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
 | `allow_partial_access_syntax` | `--allow-partial-access-syntax` | IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) |
 | `allow_pragmas` | `--allow-pragmas` | Curly-brace pragmas (`{attribute 'qualified_only'}`) parsed and discarded like a comment |
+| `allow_mixed_located_var_declarations` | `--allow-mixed-located-var-declarations` | `AT`-located variable (e.g. `AT %I*`) mixed with plain variables in one `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block |
 
 ### Dialects
 

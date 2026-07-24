@@ -15,6 +15,10 @@ use dsl::{
 /// the specific type.
 pub struct UntypedVarDecl {
     pub name: Id,
+    /// Present when this declaration has an `AT` location clause inside an
+    /// otherwise plain `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block (CODESYS/TwinCAT
+    /// vendor extension — see `allow_mixed_located_var_declarations`).
+    pub location: Option<AddressAssignment>,
     pub initializer: InitialValueAssignmentKind,
 }
 
@@ -89,6 +93,7 @@ impl From<IncomplVarDecl> for VarDecl {
                 name: Some(val.name),
                 address_assignment: val.loc,
                 span: SourceSpan::default(),
+                in_mixed_var_block: false,
             }),
             var_type: VariableType::Var,
             qualifier: val.qualifier,
@@ -99,11 +104,67 @@ impl From<IncomplVarDecl> for VarDecl {
 
 impl UntypedVarDecl {
     pub fn into_var_decl(self, var_type: VariableType) -> VarDecl {
+        let identifier = match self.location {
+            // `in_mixed_var_block` starts `false` here -- whether this
+            // declaration is genuinely mixed with a plain sibling in the
+            // same block can only be known once the whole block's
+            // declarations are collected together; see
+            // `mark_mixed_located_var_block`, called by each block-level
+            // rule (var_declarations(), input_declarations(), etc.) right
+            // after building its Vec<VarDecl>.
+            Some(loc) => VariableIdentifier::Direct(DirectVariableIdentifier {
+                name: Some(self.name),
+                address_assignment: loc,
+                span: SourceSpan::default(),
+                in_mixed_var_block: false,
+            }),
+            None => VariableIdentifier::Symbol(self.name),
+        };
         VarDecl {
-            identifier: VariableIdentifier::Symbol(self.name),
+            identifier,
             var_type,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: self.initializer,
+        }
+    }
+}
+
+/// Marks located variables as `in_mixed_var_block` when the same block
+/// (the full set of `VarDecl`s produced by one
+/// `var_declarations()`/`input_declarations()`/etc. call) contains *both*
+/// a located variable and a plain (symbolic) one -- the CODESYS/TwinCAT
+/// vendor extension this module supports. A block containing *only*
+/// located variables produces exactly the same `VarDecl` shape the
+/// pre-existing, always-allowed `incompl_located_var_declarations()`/
+/// `located_var_declarations()` grammar rules already produce, so it must
+/// never be flagged, regardless of how it was parsed.
+pub fn mark_mixed_located_var_block(vars: Vec<VarDecl>) -> Vec<VarDecl> {
+    let mut vars = vars;
+    mark_mixed_located_var_block_in_place(&mut vars);
+    vars
+}
+
+/// Same as `mark_mixed_located_var_block`, but operates in place across a
+/// mutable slice -- used where the whole block's declarations are spread
+/// across several already-built `Vec<VarDecl>` groups (one per
+/// semicolon-separated line, e.g. `VAR_INPUT`'s per-line
+/// `VarDeclarations::Inputs` entries) that need to stay in their existing
+/// grouping rather than being flattened and rebuilt.
+pub fn mark_mixed_located_var_block_in_place(vars: &mut [VarDecl]) {
+    let has_symbol = vars
+        .iter()
+        .any(|v| matches!(v.identifier, VariableIdentifier::Symbol(_)));
+    let has_direct = vars
+        .iter()
+        .any(|v| matches!(v.identifier, VariableIdentifier::Direct(_)));
+
+    if !(has_symbol && has_direct) {
+        return;
+    }
+
+    for v in vars.iter_mut() {
+        if let VariableIdentifier::Direct(ref mut direct) = v.identifier {
+            direct.in_mixed_var_block = true;
         }
     }
 }
@@ -327,6 +388,33 @@ impl VarDeclarations {
             }
         }
 
+        // VAR_INPUT declarations are spread across one Vec<VarDecl> per
+        // semicolon-separated line (each its own `VarDeclarations::Inputs`
+        // entry here), so the mixed-block check must look across all of
+        // them together, not just within a single line -- see
+        // mark_mixed_located_var_block's doc comment.
+        let has_symbol = updated_decls.iter().any(|d| {
+            matches!(d, VarDeclarations::Inputs(vars) if vars
+                .iter()
+                .any(|v| matches!(v.identifier, VariableIdentifier::Symbol(_))))
+        });
+        let has_direct = updated_decls.iter().any(|d| {
+            matches!(d, VarDeclarations::Inputs(vars) if vars
+                .iter()
+                .any(|v| matches!(v.identifier, VariableIdentifier::Direct(_))))
+        });
+        if has_symbol && has_direct {
+            for d in updated_decls.iter_mut() {
+                if let VarDeclarations::Inputs(vars) = d {
+                    for v in vars.iter_mut() {
+                        if let VariableIdentifier::Direct(ref mut direct) = v.identifier {
+                            direct.in_mixed_var_block = true;
+                        }
+                    }
+                }
+            }
+        }
+
         updated_decls
     }
 
@@ -372,21 +460,20 @@ impl VarDeclarations {
     ) -> Vec<VarDecl> {
         let declarations = declarations.into_iter().flatten();
 
-        declarations
+        let vars: Vec<VarDecl> = declarations
             .into_iter()
             .map(|declaration| {
                 let qualifier = qualifier
                     .clone()
                     .unwrap_or(DeclarationQualifier::Unspecified);
 
-                VarDecl {
-                    identifier: VariableIdentifier::Symbol(declaration.name),
-                    var_type: var_type.clone(),
-                    qualifier,
-                    initializer: declaration.initializer,
-                }
+                let mut decl = declaration.into_var_decl(var_type.clone());
+                decl.qualifier = qualifier;
+                decl
             })
-            .collect()
+            .collect();
+
+        mark_mixed_located_var_block(vars)
     }
 }
 

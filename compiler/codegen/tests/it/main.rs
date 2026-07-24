@@ -123,6 +123,7 @@ mod end_to_end_min_float;
 mod end_to_end_min_lint;
 mod end_to_end_min_udint;
 mod end_to_end_min_ulint;
+mod end_to_end_mixed_located_var_declarations;
 mod end_to_end_mod;
 mod end_to_end_mul;
 mod end_to_end_mux;
