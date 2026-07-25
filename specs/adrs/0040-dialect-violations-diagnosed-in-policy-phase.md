@@ -47,13 +47,18 @@ for **structural extensions**, where the vendor grammar overlaps the standard
 grammar with nothing to demote — a constant *expression* where the standard
 allows only a literal initializer ([PR #1220]), or an `AT`-located variable
 inside an ordinary `VAR` block ([PR #1221]). For these, the TwinCAT series
-([#1199]) parsed permissively and carried the syntactic distinction downstream
-to the analyzer through an **AST provenance marker**
-(`InitialValueAssignmentKind::SimpleExpr`, `in_mixed_var_block`). Rejecting
-after parsing is fine; smuggling parse-path provenance through a marker field on
-the DSL type is the part that is new and uncomfortable — it smears the "is this
-legal in this dialect?" question across the parser, a marker on the AST, and an
-analyzer rule.
+([#1199]) parsed permissively and carried the distinction downstream. Two
+mechanisms appeared here, and rule 4 turns on telling them apart. One is a
+**faithful representation** of the source that a normalization pass folds away
+before any other stage reads it (`InitialValueAssignmentKind::SimpleExpr`, which
+holds the *actual* initializer expression the user wrote). The other is a
+**pure-provenance marker** that persists into the analyzer for a later policy
+check to read (`in_mixed_var_block`, a boolean recording only which parse path
+produced an otherwise-identical node). Rejecting after parsing is fine, and a
+faithful node folded away in one pass keeps the AST honest; smuggling parse-path
+provenance through a marker field that *persists* downstream is the part that is
+new and uncomfortable — it smears the "is this legal in this dialect?" question
+across the parser, a marker on the AST, and an analyzer rule.
 
 A related symptom compounds it. The parser itself emits exactly one problem
 code:
@@ -197,20 +202,43 @@ Use a **token rejection rule** only for syntax that *cannot* be confused with an
 identifier (so nothing legitimate is lost by rejecting it), and a **post-parse
 check** for structural cases, where there is no token to key on at all.
 
-### 4. Expose structure through AST accessors, rather than collapsing it or marking it
+### 4. Keep the AST faithful; folding a faithful node away is fine, a persistent provenance marker is not
 
-The provenance markers in the structural cases (`in_mixed_var_block`,
-`SimpleExpr`) trace back to an earlier decision to *collapse* distinct
-declaration shapes into one AST representation to keep code generation simple
-(the "keep analysis and generation simple" driver). Collapsing discards the
-distinction the policy check later needs, which then has to be re-introduced as
-a marker field — the collapse and the marker are two halves of the same mistake.
+Two shapes look alike — both add something to the DSL type for a structural
+feature — but only one is the anti-pattern, and the difference is what the added
+thing *carries* and *how long it lives*.
 
-The better shape is neither collapse-then-mark nor a runtime grammar guard: keep
-the AST faithful to the source and **offer functions on the AST that derive the
-properties each stage cares about.** For example, an accessor that reports
-whether a declaration is located, or whether a `VAR` block mixes located and
-plain declarations. Then:
+**Endorsed: a faithful representation normalized away before any other stage
+reads it.** `InitialValueAssignmentKind::SimpleExpr` holds the *actual*
+initializer expression the user wrote — it is honest to the source, not a flag
+recording a parse path. A single normalization pass
+(`xform_fold_initializer_expressions`) makes the policy decision with that
+faithful expression in hand, then folds the node to the ordinary `Simple`
+literal shape before semantic analysis or code generation ever sees it. No
+downstream stage branches on it, and the legality decision lives in exactly one
+place. This *is* the "derive the property each stage cares about" shape — the
+fold pass is simply the eager, run-once form of an accessor, and it reuses the
+existing `Fold`/visitor machinery rather than inventing a new traversal. Folding
+a faithful node to a canonical shape is not the "collapse" this rule warns
+against: the collapse below discards a distinction a *later* stage needs; this
+fold consumes the faithful form at the one point that needs it and leaves
+nothing downstream to recover.
+
+**The anti-pattern: a pure-provenance marker that persists for a later policy
+check to read.** `in_mixed_var_block` carries no source content; it exists only
+to record which parse path produced an otherwise-identical node, and it survives
+into the analyzer where a downstream rule reads it. It traces back to an earlier
+decision to *collapse* distinct declaration shapes into one AST representation to
+keep code generation simple (the "keep analysis and generation simple" driver).
+Collapsing discards the distinction the policy check later needs, which then has
+to be re-introduced as a marker field — the collapse and the marker are two
+halves of the same mistake.
+
+For that case the better shape is neither collapse-then-mark nor a runtime
+grammar guard: keep the AST faithful to the source and **offer functions on the
+AST that derive the properties each stage cares about.** For example, an
+accessor that reports whether a declaration is located, or whether a `VAR` block
+mixes located and plain declarations. Then:
 
 * analysis and code generation call the accessor and stay simple — they get the
   uniform view they wanted without the AST having to be lossy;
@@ -219,8 +247,13 @@ plain declarations. Then:
 * no provenance flag is threaded through the DSL, and the tree still describes
   the program as written.
 
-A dedicated marker field is the last resort — only when the distinction cannot
-be represented faithfully in the tree or derived from it by an accessor.
+The line between the two: **does the added field carry real source content and
+get folded away in one pass before anything else reads it (fine — a faithful
+representation with an eager normalization), or does it carry only parse-path
+provenance and persist for a downstream stage to read (avoid — derive it from
+the tree with an accessor instead)?** A persistent provenance marker is the last
+resort — only when the distinction cannot be represented faithfully in the tree
+or derived from it by an accessor.
 
 ## Consequences
 
@@ -236,12 +269,15 @@ be represented faithfully in the tree or derived from it by an accessor.
   construct we recognize" — instead of doubling as the catch-all for
   disabled-but-valid syntax.
 * Good, because the AST stays faithful to the source and stops accumulating
-  parse-provenance marker fields; analysis and codegen get their simple, uniform
-  view through accessors instead of through a lossy collapse.
+  persistent parse-provenance marker fields; analysis and codegen get their
+  simple, uniform view either through accessors on the faithful tree or through a
+  one-pass normalization that folds a faithful node to a canonical shape — not
+  through a lossy collapse plus a re-introduced marker.
 * Neutral, because a new structural feature still needs its own policy check and
-  its own `P####`; the work moves from "collapse + marker + analyzer rule" to
-  "AST accessor + policy check + problem code," which is comparable effort with a
-  better result.
+  its own `P####`; the work moves from "collapse + persistent marker + analyzer
+  rule" to either "AST accessor + policy check + problem code" or "faithful node
+  + one normalization pass + problem code" — comparable effort with a better
+  result.
 * Bad, because some context the parser had (the exact rule that matched) must be
   re-derived from the AST by an accessor. This is the cost of keeping the grammar
   option-free and the AST honest, and rule 4 bounds it: derive via an accessor
