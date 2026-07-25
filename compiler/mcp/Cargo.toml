@@ -20,7 +20,7 @@ ironplc-problems = { path = "../problems", version = "0.231.0" }
 ironplc-project = { path = "../project", version = "0.231.0" }
 ironplc-vm = { path = "../vm", version = "0.231.0", features = ["profiling"] }
 
-base64 = "0.22"
+base64 = "0.23"
 schemars = "1"
 
 rmcp = { version = "2.1", features = ["server", "transport-io"] }
