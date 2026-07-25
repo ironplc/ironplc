@@ -18,7 +18,7 @@ path = "tests/main.rs"
 trybuild = "1.0"
 
 [dependencies]
-syn = { version = "2.0", features = ["extra-traits", "derive"]}
+syn = { version = "3.0", features = ["extra-traits", "derive"]}
 quote = "1.0"
 proc-macro2 = "1.0"
 convert_case = "0.11.0"
