@@ -204,6 +204,15 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\nhostName : STRING(255);\nEND_VAR\nEND_PROGRAM",
     },
+    // A general expression (pointer deref + member access) as a struct/FB
+    // initializer value. The parser accepts it unconditionally; a semantic
+    // rule rejects it (P4043) when the flag is off. Requires allow_ref_to for
+    // the REF_TO deref in the value expression.
+    FlagFixture {
+        key: "allow_struct_initializer_expressions",
+        prereqs: &["allow_ref_to"],
+        source: "FUNCTION_BLOCK FB_Device\nVAR_INPUT\nDelta : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nTYPE MyStruct :\nSTRUCT\nx : INT;\nEND_STRUCT;\nEND_TYPE\nPROGRAM main\nVAR\npDevice : REF_TO FB_Device;\ns : MyStruct := (x := pDevice^.Delta);\nEND_VAR\nEND_PROGRAM",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.

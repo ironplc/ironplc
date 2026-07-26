@@ -1,0 +1,52 @@
+=====
+P4043
+=====
+
+.. problem-summary:: P4043
+
+This error occurs when a general (non-constant) expression is used as the
+value in a structured or call-style initializer's ``name := value`` pairs
+(e.g. ``tonDelta : TON := (PT := pDevice^.Delta);``) without the
+``--allow-struct-initializer-expressions`` compiler flag.
+
+The IEC 61131-3 standard grammar for a structured initializer value
+(Annex B) is
+``structure_element_initialization ::= structure_element_name ':=' (constant |
+enumerated_value | array_initialization | structure_initialization)``. A
+general expression -- and in particular a pointer dereference plus member
+access like ``pDevice^.Delta`` -- is not one of those productions, so
+accepting it is a vendor extension used by TwinCAT and CODESYS, where such a
+value is computed at instantiation time rather than being a compile-time
+constant.
+
+An ordinary constant, enumerated value, array initializer, or nested
+structure initializer is standard syntax and is always allowed.
+
+Example
+-------
+
+The following code will generate error P4043:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       pDevice : REF_TO FB_Device;
+       tonDelta : TON := (PT := pDevice^.Delta);
+   END_VAR
+   END_FUNCTION_BLOCK
+
+To fix this error, either use a constant value:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       tonDelta : TON := (PT := T#100MS);
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Or enable the vendor extension:
+
+.. |flag| replace:: ``--allow-struct-initializer-expressions``
+.. include:: /includes/enabled-by-flag.rst

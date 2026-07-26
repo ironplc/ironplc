@@ -405,6 +405,16 @@ fn compile_struct_field_init(
             // Nested structures and arrays in struct init are not yet supported.
             Ok(())
         }
+        StructInitialValueAssignmentKind::Expression(expr) => {
+            // A general (possibly non-constant) expression, e.g.
+            // `pDevice^.Delta` -- `ironplcc check` fully supports this;
+            // codegen does not yet implement evaluating it at instance
+            // construction time.
+            Err(Diagnostic::not_implemented(Label::span(
+                expr.span(),
+                "Expression-valued struct/FB-instance field initializer",
+            )))
+        }
     }
 }
 
