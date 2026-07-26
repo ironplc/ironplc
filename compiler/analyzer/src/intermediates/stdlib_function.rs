@@ -331,8 +331,8 @@ const STRING_TO_INT_TYPES: &[&str] = &["SINT", "INT", "DINT", "USINT", "UINT", "
 ///
 /// Covers all W32 numeric types: signed integers (SINT, INT, DINT),
 /// unsigned integers and bit-strings (USINT, UINT, UDINT, BYTE, WORD, DWORD),
-/// and REAL. Each type gets a *_TO_STRING function, and a subset gets
-/// STRING_TO_* functions.
+/// REAL, and BOOL. Each type gets a *_TO_STRING function, and a subset
+/// gets STRING_TO_* functions.
 fn get_string_conversion_functions() -> Vec<FunctionSignature> {
     let mut functions = Vec::new();
 
@@ -348,6 +348,12 @@ fn get_string_conversion_functions() -> Vec<FunctionSignature> {
 
     // REAL → STRING
     functions.push(build_conversion_function("REAL", "STRING"));
+
+    // BOOL → STRING ("TRUE"/"FALSE") -- standard IEC 61131-3 TO_STRING
+    // conversion, not a separate vendor library function, so it's
+    // unconditional like the rest of this group. Codegen does not yet
+    // implement it (see compile_call.rs's StringConversion::BoolToString).
+    functions.push(build_conversion_function("BOOL", "STRING"));
 
     // STRING → integer types
     for target in STRING_TO_INT_TYPES {
@@ -1045,6 +1051,55 @@ pub fn get_sizeof_function() -> FunctionSignature {
     )
 }
 
+// =============================================================================
+// ADR (Address Operator, Vendor Extension)
+// =============================================================================
+
+/// Returns the `ADR` function definition.
+///
+/// `ADR` is Beckhoff's own term for the "Address Operator": it returns the
+/// address of its argument. Beckhoff's docs document the return type as
+/// `PVOID`, or `DWORD`/`LWORD` depending on runtime architecture (`PVOID`
+/// is recommended for portability); IronPLC has no `PVOID` type today, so
+/// `DWORD` (the well-documented 32-bit fallback) is used instead -- a
+/// known simplification. It is registered conditionally based on the
+/// `allow_address_operator` compiler option. Codegen does not yet compute
+/// a real runtime address for it (see `compile_call.rs`).
+pub fn get_address_operator_function() -> FunctionSignature {
+    FunctionSignature::stdlib(
+        "ADR",
+        TypeName::from("DWORD"),
+        vec![input_param("IN", "ANY")],
+    )
+}
+
+// =============================================================================
+// Extended string functions (Beckhoff Tc2_Utilities library, Vendor Extension)
+// =============================================================================
+
+/// Returns the `LREAL_TO_FMTSTR` function definition.
+///
+/// `LREAL_TO_FMTSTR` is a Beckhoff `Tc2_Utilities` (`TcUtilities.Lib`)
+/// function that formats an `LREAL` as a `STRING` with a caller-controlled
+/// precision and optional rounding -- confirmed directly against Beckhoff's
+/// docs: `LREAL_TO_FMTSTR(in : LREAL, iPrecision : INT, bRound : BOOL) :
+/// STRING(510)`. It is registered conditionally based on the
+/// `allow_extended_string_functions` compiler option (room to add other
+/// `TcUtilities.Lib` string functions later without renaming). Codegen
+/// does not yet implement the real formatting/rounding semantics (see
+/// `compile_call.rs`).
+pub fn get_extended_string_functions() -> Vec<FunctionSignature> {
+    vec![FunctionSignature::stdlib(
+        "LREAL_TO_FMTSTR",
+        TypeName::from("STRING"),
+        vec![
+            input_param("IN", "LREAL"),
+            input_param("IPRECISION", "INT"),
+            input_param("BROUND", "BOOL"),
+        ],
+    )]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1453,5 +1508,61 @@ mod tests {
                 func.name.original()
             );
         }
+    }
+
+    #[test]
+    fn get_all_stdlib_functions_when_called_then_contains_bool_to_string() {
+        // BOOL_TO_STRING is a standard TO_STRING conversion, unconditional
+        // like REAL_TO_STRING -- not gated by any flag.
+        let functions = get_all_stdlib_functions();
+        let bool_to_string = functions
+            .iter()
+            .find(|f| f.name.original() == "BOOL_TO_STRING")
+            .expect("BOOL_TO_STRING should be an unconditional stdlib function");
+        assert_eq!(bool_to_string.parameters.len(), 1);
+        assert_eq!(
+            bool_to_string.parameters[0].param_type,
+            TypeName::from("BOOL")
+        );
+        assert_eq!(
+            bool_to_string.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("STRING")))
+        );
+    }
+
+    #[test]
+    fn get_address_operator_function_when_called_then_has_correct_signature() {
+        let adr = get_address_operator_function();
+        assert!(adr.is_stdlib());
+        assert_eq!(adr.parameters.len(), 1);
+        assert_eq!(adr.parameters[0].name.original(), "IN");
+        assert_eq!(adr.parameters[0].param_type, TypeName::from("ANY"));
+        assert_eq!(
+            adr.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("DWORD")))
+        );
+    }
+
+    #[test]
+    fn get_extended_string_functions_when_called_then_contains_lreal_to_fmtstr() {
+        let functions = get_extended_string_functions();
+        assert_eq!(functions.len(), 1);
+
+        let fmtstr = functions
+            .iter()
+            .find(|f| f.name.original() == "LREAL_TO_FMTSTR")
+            .unwrap();
+        assert!(fmtstr.is_stdlib());
+        assert_eq!(fmtstr.parameters.len(), 3);
+        assert_eq!(fmtstr.parameters[0].name.original(), "IN");
+        assert_eq!(fmtstr.parameters[0].param_type, TypeName::from("LREAL"));
+        assert_eq!(fmtstr.parameters[1].name.original(), "IPRECISION");
+        assert_eq!(fmtstr.parameters[1].param_type, TypeName::from("INT"));
+        assert_eq!(fmtstr.parameters[2].name.original(), "BROUND");
+        assert_eq!(fmtstr.parameters[2].param_type, TypeName::from("BOOL"));
+        assert_eq!(
+            fmtstr.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("STRING")))
+        );
     }
 }

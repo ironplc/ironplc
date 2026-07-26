@@ -109,6 +109,23 @@ pub fn resolve_types(
             .expect("SIZEOF should not conflict with stdlib");
     }
 
+    if options.allow_address_operator {
+        use crate::intermediates::stdlib_function::get_address_operator_function;
+        function_environment
+            .insert(get_address_operator_function())
+            .expect("ADR should not conflict with stdlib");
+    }
+
+    if options.allow_extended_string_functions {
+        use crate::intermediates::stdlib_function::get_extended_string_functions;
+        for sig in get_extended_string_functions() {
+            function_environment
+                .insert(sig)
+                .expect("LREAL_TO_FMTSTR should not conflict with stdlib");
+        }
+    }
+
+
     let mut symbol_environment = SymbolEnvironment::new();
 
     // Register implicit system globals when the uptime feature is enabled.

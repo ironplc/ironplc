@@ -166,11 +166,37 @@ clearly instead of producing wrong or silently-missing bytecode.
 
 - [x] Write plan (this document)
 - [x] Verify real signatures against Beckhoff docs and the private corpus
-- [ ] `BOOL_TO_STRING`: add to `get_string_conversion_functions()`
-- [ ] `BOOL_TO_STRING`: fix the codegen hazard (`StringConversion::BoolToString` -> `not_implemented`)
-- [ ] New flags: `allow_extended_string_functions`, `allow_address_operator`
-- [ ] `LREAL_TO_FMTSTR`, `ADR` stdlib registrations + `stages.rs` wiring
-- [ ] Codegen `not_implemented` arms for `adr`/`lreal_to_fmtstr`
-- [ ] Tests from Testing Strategy
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] `BOOL_TO_STRING`: add to `get_string_conversion_functions()`
+- [x] `BOOL_TO_STRING`: fix the codegen hazard (`StringConversion::BoolToString` -> `not_implemented`)
+- [x] New flags: `allow_extended_string_functions`, `allow_address_operator`
+- [x] `LREAL_TO_FMTSTR`, `ADR` stdlib registrations + `stages.rs` wiring
+- [x] Codegen `not_implemented` arms for `adr`/`lreal_to_fmtstr`
+- [x] Tests from Testing Strategy
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
+
+## Implementation Notes
+
+- **This branch (`twincat-dev`) predates upstream PR #1227's invariant-
+  style options tests** -- it still uses the older hardcoded-count style
+  (`from_dialect_when_rusty_then_all_vendor_flags_enabled_and_edition3_disabled`
+  etc. asserting each flag individually, plus
+  `feature_descriptors_when_called_then_contains_all_vendor_flags` and two
+  siblings asserting raw `FEATURE_DESCRIPTORS.len()`/per-dialect counts).
+  Adding two new flags required bumping four magic numbers across
+  `options.rs` (22->24 total/rusty, 21->23 codesys) plus
+  `compiler/mcp/src/tools/list_options.rs`'s own hardcoded count (22->24)
+  -- caught entirely by `cargo test --workspace` failures, not
+  anticipated in the original plan text.
+- **The `BoolToString` hazard fix works by intercepting the name inside
+  `parse_string_conversion` before generic `resolve_type_name`**: `BOOL`
+  and `DINT` resolve to the identical `VarTypeInfo` shape
+  `(OpWidth::W32, Signedness::Signed)`, so there's no way to distinguish
+  them *after* that resolution -- the check has to happen on the raw
+  `"BOOL_TO_STRING"` name string, before it's thrown away.
+- Confirmed via direct CLI runs (not just unit tests) that all three
+  functions: (a) resolve cleanly under `ironplcc check` when their flag
+  is set (`BOOL_TO_STRING` needs no flag at all), (b) `LREAL_TO_FMTSTR`/
+  `ADR` correctly still report `P4017` under the default dialect, and
+  (c) all three fail cleanly with `P9999` under `ironplcc compile`,
+  never a panic or silently wrong bytecode.
