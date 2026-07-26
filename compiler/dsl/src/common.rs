@@ -2324,6 +2324,10 @@ pub enum StructInitialValueAssignmentKind {
     EnumeratedValue(EnumeratedValue),
     Array(Vec<ArrayInitialElementKind>),
     Structure(Vec<StructureElementInit>),
+    /// A general expression value (e.g. `pDevice^.Delta`) -- used for
+    /// call-style FB-instance/struct initializers where the value is
+    /// computed at instantiation time, not a compile-time constant.
+    Expression(Expr),
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]

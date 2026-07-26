@@ -638,7 +638,15 @@ parser! {
     }
     rule structure_element_name() ->Id = identifier()
     rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
-    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)}) {
+    // `constant()`/`enumerated_value()` are grammatically a strict subset of
+    // `expression()` (e.g. a bare identifier is a valid, but truncated,
+    // match for `pDevice^.Delta`) -- the trailing lookahead requires them to
+    // consume the *entire* value (immediately followed by the list
+    // terminator) before winning the choice, so a genuinely richer
+    // expression like a dereference-then-member-access chain falls through
+    // to the `expression()` alternative instead of matching only its first
+    // identifier and leaving `^.Delta` unconsumed.
+    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(Expr::new(ex)) }) {
       StructureElementInit {
         name,
         init,

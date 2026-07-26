@@ -160,10 +160,41 @@ uninitialized field.
 
 - [x] Write plan (this document)
 - [x] Verify the real failing shape and trace the exact grammar rule
-- [ ] DSL: `StructInitialValueAssignmentKind::Expression(Expr)`
-- [ ] Grammar: `expression()` fallback in `structure_element_initialization()`
-- [ ] Codegen: `not_implemented` for the new variant
-- [ ] Check plc2plc renderer; add explicit case only if the generic visitor doesn't already cover it
-- [ ] Tests from Testing Strategy
+- [x] DSL: `StructInitialValueAssignmentKind::Expression(Expr)`
+- [x] Grammar: `expression()` fallback in `structure_element_initialization()`
+- [x] Codegen: `not_implemented` for the new variant
+- [x] Check plc2plc renderer; add explicit case only if the generic visitor doesn't already cover it
+- [x] Tests from Testing Strategy
 - [ ] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
+
+## Implementation Notes
+
+- **PEG ordered-choice hazard, found while implementing**: simply appending
+  `expression()` as a last alternative wasn't enough -- `constant()` and
+  `enumerated_value()` are both a strict grammatical *prefix* of
+  `expression()` (a bare identifier is a valid, but truncated, match for
+  `pDevice^.Delta`). PEG's `/` choice locks in the first alternative that
+  matches *at all*, not the one that lets the overall parse succeed, so
+  `enumerated_value()` matched just `pDevice` and left `^.Delta`
+  unconsumed, surfacing as a confusing "expected `,`/`)`, found `^`"
+  error from the *enclosing* rule rather than a grammar failure in the
+  choice itself. Fixed by adding a trailing lookahead
+  (`&(_ (tok(Comma) / tok(RightParen)))`) to the `constant()`/
+  `enumerated_value()` alternatives, requiring them to be immediately
+  followed by the list terminator to win the choice; a longer match falls
+  through to `expression()`. `array_initialization()`/
+  `structure_initialization()` didn't need this -- they're
+  bracket/paren-delimited, so they can't under-match the same way.
+- **`TON`'s call-style init doesn't reach `compile_struct_field_init` at
+  all**: the codegen test originally used the real motivating `TON := (PT
+  := pDevice^.Delta)` shape and unexpectedly *compiled successfully*
+  instead of returning `not_implemented`. Root-caused: `TON` is a
+  built-in/intrinsic FB type with its own special-cased instance codegen,
+  which doesn't route field initializers through the generic
+  struct-field-init path at all (a separate, pre-existing quirk, out of
+  scope here). Switched the codegen test to a plain user-defined `STRUCT`
+  field initializer, which does exercise the new code path and correctly
+  returns `P9999`. The parser/plc2plc tests keep the original `TON`
+  shape, since `ironplcc check`'s analysis path is unaffected by this
+  codegen-only quirk.
