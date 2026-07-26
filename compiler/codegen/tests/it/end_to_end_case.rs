@@ -131,3 +131,66 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32(), 3);
     assert_eq!(bufs.vars[1].as_i32(), 50);
 }
+
+#[test]
+fn end_to_end_when_case_label_is_hex_literal_then_matches_correct_arm() {
+    // Real motivating shape: a private test corpus file uses radix-prefixed
+    // bit-string literals (16#D012:) as CASE labels. See
+    // specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    let source = "
+PROGRAM main
+  VAR
+    x : DWORD;
+    y : DINT;
+  END_VAR
+  x := 16#D012;
+  CASE x OF
+    16#D012: y := 1;
+    2#1010: y := 2;
+  END_CASE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(bufs.vars[1].as_i32(), 1);
+}
+
+#[test]
+fn end_to_end_when_case_label_is_binary_literal_then_matches_correct_arm() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DWORD;
+    y : DINT;
+  END_VAR
+  x := 2#1010;
+  CASE x OF
+    16#D012: y := 1;
+    2#1010: y := 2;
+  END_CASE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(bufs.vars[1].as_i32(), 2);
+}
+
+#[test]
+fn end_to_end_when_case_label_is_hex_literal_and_no_match_then_no_arm_executes() {
+    let source = "
+PROGRAM main
+  VAR
+    x : DWORD;
+    y : DINT;
+  END_VAR
+  y := 99;
+  x := 1;
+  CASE x OF
+    16#D012: y := 1;
+  END_CASE;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+
+    assert_eq!(bufs.vars[1].as_i32(), 99);
+}

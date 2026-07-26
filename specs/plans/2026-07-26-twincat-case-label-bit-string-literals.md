@@ -118,10 +118,47 @@ the direct template.
 
 - [x] Write plan (this document)
 - [x] Verify the exact failure point and confirm it's grammar-only (lexer already tokenizes correctly)
-- [ ] DSL: `CaseSelectionKind::BitStringLiteral`
-- [ ] Grammar: `case_bit_string_literal()`, `case_list_element()` update
-- [ ] Codegen: `compile_case_selector` arm
-- [ ] Check plc2plc renderer; add explicit case only if the generic visitor doesn't already cover it
-- [ ] Tests from Testing Strategy
-- [ ] Run full CI pipeline (`cd compiler && just`)
+- [x] DSL: `CaseSelectionKind::BitStringLiteral`
+- [x] Grammar: `case_bit_string_literal()`, `case_list_element()` update
+- [x] Codegen: `compile_case_selector` arm
+- [x] Check plc2plc renderer (generic visitor already covers it -- no explicit override needed, see notes)
+- [x] Tests from Testing Strategy
+- [x] Run full CI pipeline (`cd compiler && just`)
 - [ ] Push branch to fork
+
+## Implementation Notes
+
+- **No new visitor/fold dispatch registration needed**: unlike
+  `SymbolicVariableKind::SelfRef`/`StmtKind::SelfInvocation`/
+  `MethodDeclaration` in earlier plans, `BitStringLiteral` is an
+  *already-dispatched* type (used elsewhere via
+  `ConstantKind::BitStringLiteral`) -- adding it as a new
+  `CaseSelectionKind` variant needed zero `dispatch!` changes in
+  `visitor.rs`/`fold.rs`. Confirmed by the build, not assumed.
+- **Renderer needed no explicit override either**, unlike every prior
+  plan in this series (`THIS`/`SUPER`, `METHOD`) -- `BitStringLiteral`
+  already has real content in every field (no `#[recurse(ignore)]`
+  leaf needing hand-written text), so the generic recursive visitor
+  correctly writes it via the same path already used for
+  `ConstantKind::BitStringLiteral`.
+- **Found and worked around a real, pre-existing round-trip gap while
+  writing the plc2plc test, not introduced by this change**:
+  `BitStringLiteral`'s `Display` already renders decimalized everywhere
+  in this codebase (confirmed: even an ordinary `x : DWORD := 16#D012;`
+  VAR initializer renders as `53266`, not the original hex spelling) --
+  and re-parsing that decimal text resolves to `SignedInteger`, not
+  `BitStringLiteral` again (same value, different variant), so a plain
+  `assert_eq!(original, reparsed)` fails. Not a regression from this
+  plan and explicitly out of scope to fix (would mean changing bit-string
+  literal rendering everywhere, not just `CASE` labels) -- worked around
+  with a render-*idempotency* assertion instead (parse -> render ->
+  reparse -> render again, same text), matching the pattern already
+  established for the analogous `REFERENCE TO`/`POINTER TO`
+  "normalizes to a different spelling" case in
+  specs/plans/2026-07-20-twincat-reference-to-no-explicit-deref.md.
+- **End-to-end codegen tests verify real execution correctness**, not
+  just successful compilation: matching on the correct hex/binary arm,
+  the correct binary arm, and confirming no arm executes on a
+  non-matching selector -- since this plan (unlike prior ones) claimed
+  *full*, not stubbed, codegen support, actual runtime behavior needed
+  checking, not just "doesn't error."
