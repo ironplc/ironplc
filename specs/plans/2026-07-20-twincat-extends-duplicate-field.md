@@ -43,7 +43,7 @@ of its own `variables` names collides (case-insensitively, via `Id`'s
 existing `PartialEq`) with any inherited field name. If so, flag a new
 problem.
 
-New problem code `P4039` (`ExtendsFieldNameDuplicated`), following the
+New problem code `P4044` (`ExtendsFieldNameDuplicated`), following the
 `P4011`/`P4014`/`P4019`-style "duplicated name" convention already used
 for other declaration-collision checks.
 
@@ -61,15 +61,15 @@ for other declaration-collision checks.
 
 | File | Change |
 |------|--------|
-| `compiler/problems/resources/problem-codes.csv` | New `P4039` |
-| `docs/reference/compiler/problems/P4039.rst` | New problem doc |
+| `compiler/problems/resources/problem-codes.csv` | New `P4044` |
+| `docs/reference/compiler/problems/P4044.rst` | New problem doc |
 | `compiler/analyzer/src/rule_extends_field_duplicated.rs` | New semantic rule |
 | `compiler/analyzer/src/stages.rs` | Register the new rule |
 
 ## Testing Strategy
 
 - Semantic tests: a derived FB redeclaring a base field (same type, and
-  a different type) both produce `P4039`; a derived FB with no field
+  a different type) both produce `P4044`; a derived FB with no field
   collisions is unaffected; a multi-level chain (`FB_C EXTENDS FB_B
   EXTENDS FB_A`) catches a collision against a grandparent's field, not
   just the immediate parent's.
@@ -81,7 +81,7 @@ for other declaration-collision checks.
 ## Tasks
 
 - [x] Write plan (this document)
-- [x] New `P4039` problem code + doc
+- [x] New `P4044` problem code + doc
 - [x] New semantic rule + registration
 - [x] Tests from Testing Strategy
 - [x] Run full CI pipeline (`cd compiler && just`)
@@ -97,6 +97,6 @@ for other declaration-collision checks.
   to reference `rule_extends_field_duplicated::apply` unqualified,
   matching every other `rule_*`/`xform_*` module already listed there.
 - Verified end-to-end via the CLI: the exact TcXaeShell repro now
-  produces `P4039` under `--dialect=codesys`, with a message identifying
+  produces `P4044` under `--dialect=codesys`, with a message identifying
   both the redeclaring field and that it collides with a base-class
   field.
