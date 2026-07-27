@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.231.0">
+<meta name="ironplc-version" content="0.232.0">
 </head>
   <body>
     
@@ -574,6 +574,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9014.html">V9014</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9016.html">V9016</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V9017.html">V9017</a></li>
 </ul>
 </li>
 </ul>
@@ -730,7 +731,10 @@ These are not part of the IEC 61131-3 standard but are supported by many
 PLC environments.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-missing-semicolon</span></code></dt><dd><p>Allow missing semicolons after keyword statements like <code class="docutils literal notranslate"><span class="pre">END_IF</span></code> and
-<code class="docutils literal notranslate"><span class="pre">END_STRUCT</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">END_STRUCT</span></code>. Also allows a <code class="docutils literal notranslate"><span class="pre">CASE</span></code> branch with no statements at
+all (a label that falls straight through to the next label, <code class="docutils literal notranslate"><span class="pre">ELSE</span></code>,
+or <code class="docutils literal notranslate"><span class="pre">END_CASE</span></code>) – strict IEC 61131-3 only allows this via an
+explicit empty statement (<code class="docutils literal notranslate"><span class="pre">5:</span> <span class="pre">;</span></code>); this fills in the dropped <code class="docutils literal notranslate"><span class="pre">;</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">--allow-top-level-var-global</span></code></dt><dd><p>Allow <code class="code docutils literal notranslate"><span class="pre">VAR_GLOBAL</span></code> declarations at the top level of a file,
 outside of a <code class="code docutils literal notranslate"><span class="pre">CONFIGURATION</span></code> block. See
@@ -777,6 +781,29 @@ TwinCAT, and RuSTy.</p>
 the short form <code class="docutils literal notranslate"><span class="pre">.n</span></code>. Enabled by <code class="docutils literal notranslate"><span class="pre">--dialect=iec61131-3-ed3</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code>. Byte/word/dword/lword partial access (<code class="docutils literal notranslate"><span class="pre">.%Bn</span></code>,
 <code class="docutils literal notranslate"><span class="pre">.%Wn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Dn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Ln</span></code>) is not yet supported.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-pragmas</span></code></dt><dd><p>Allow curly-brace pragmas such as <code class="docutils literal notranslate"><span class="pre">{attribute</span> <span class="pre">'qualified_only'}</span></code> and
+<code class="docutils literal notranslate"><span class="pre">{attribute</span> <span class="pre">'strict'}</span></code>. These are CODESYS-core syntax (documented by
+CODESYS itself, and inherited by any IDE built on the CODESYS V3 runtime,
+including Beckhoff TwinCAT and Schneider Electric Machine Expert). A
+pragma is parsed and discarded like a comment — its contents are not yet
+interpreted. Pragmas do not nest; an unclosed <code class="docutils literal notranslate"><span class="pre">{</span></code> still produces a parse
+error. Enabled by <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code> and <code class="docutils literal notranslate"><span class="pre">--dialect=codesys</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-short-circuit-operators</span></code></dt><dd><p>Allow the <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> short-circuit boolean operator, a
+Beckhoff/CODESYS extension. Unlike plain <code class="docutils literal notranslate"><span class="pre">AND</span></code> (which always
+evaluates both operands), <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> only evaluates its right
+operand when the left operand is <code class="docutils literal notranslate"><span class="pre">TRUE</span></code> — commonly used to guard a
+dereference (<code class="docutils literal notranslate"><span class="pre">ptr</span> <span class="pre">&lt;&gt;</span> <span class="pre">0</span> <span class="pre">AND_THEN</span> <span class="pre">ptr^</span> <span class="pre">=</span> <span class="pre">99</span></code>). <code class="docutils literal notranslate"><span class="pre">ironplcc</span> <span class="pre">check</span></code>
+fully supports <code class="docutils literal notranslate"><span class="pre">AND_THEN</span></code> (parsing, type-checking, and
+round-tripping through plc2plc with its spelling preserved — it is
+<em>not</em> normalized to <code class="docutils literal notranslate"><span class="pre">AND</span></code>, since the short-circuit behavior is a
+real, externally-visible difference in TwinCAT/CODESYS). Codegen
+(<code class="docutils literal notranslate"><span class="pre">ironplcc</span> <span class="pre">compile</span></code>) does not yet implement the short-circuit
+evaluation this operator requires and refuses to compile it
+(problem <a class="reference internal" href="../reference/compiler/problems/P9999.html"><span class="doc">P9999</span></a>) rather
+than silently emitting eager (behaviorally incorrect) bytecode.
+Enabled by <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code> and <code class="docutils literal notranslate"><span class="pre">--dialect=codesys</span></code>.</p>
 </dd>
 </dl>
 <p>Pass the flag when running <strong class="program">ironplcc</strong>:</p>

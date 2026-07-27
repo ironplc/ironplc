@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.231.0">
+<meta name="ironplc-version" content="0.232.0">
 </head>
   <body>
     
@@ -574,6 +574,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V9014.html">V9014</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V9015.html">V9015</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V9016.html">V9016</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../runtime/problems/V9017.html">V9017</a></li>
 </ul>
 </li>
 </ul>
@@ -785,6 +786,11 @@ extension supported by CODESYS, TwinCAT, and RuSTy.</p>
 for the short form <code class="docutils literal notranslate"><span class="pre">.n</span></code>. Enabled by <code class="docutils literal notranslate"><span class="pre">--dialect=iec61131-3-ed3</span></code> and
 <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code>. Byte/word/dword/lword partial access (<code class="docutils literal notranslate"><span class="pre">.%Bn</span></code>,
 <code class="docutils literal notranslate"><span class="pre">.%Wn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Dn</span></code>, <code class="docutils literal notranslate"><span class="pre">.%Ln</span></code>) is not yet supported.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--allow-pragmas</span></code></dt><dd><p>Allow curly-brace pragmas such as <code class="docutils literal notranslate"><span class="pre">{attribute</span> <span class="pre">'qualified_only'}</span></code>. This
+is CODESYS-core syntax, inherited by TwinCAT and other CODESYS-based
+IDEs. A pragma is parsed and discarded like a comment; its contents are
+not interpreted. Enabled by <code class="docutils literal notranslate"><span class="pre">--dialect=rusty</span></code> and <code class="docutils literal notranslate"><span class="pre">--dialect=codesys</span></code>.</p>
 </dd>
 </dl>
 </section>
