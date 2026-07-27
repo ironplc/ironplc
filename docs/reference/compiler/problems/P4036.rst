@@ -1,8 +1,8 @@
 =====
-P4039
+P4036
 =====
 
-.. problem-summary:: P4039
+.. problem-summary:: P4036
 
 This error occurs when a derived function block (using the
 CODESYS/TwinCAT ``EXTENDS`` vendor extension) redeclares a field that is
@@ -13,7 +13,7 @@ definition even when the redeclared field has a different type.
 Example
 -------
 
-The following code will generate error P4039:
+The following code will generate error P4036:
 
 .. code-block::
 
