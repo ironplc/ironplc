@@ -181,6 +181,14 @@ Options
    IDEs. A pragma is parsed and discarded like a comment; its contents are
    not interpreted. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
+``--allow-short-circuit-operators``
+   Allow the ``AND_THEN`` short-circuit boolean operator, a Beckhoff/CODESYS
+   extension that only evaluates its right operand when the left operand is
+   ``TRUE``. ``ironplcc check`` fully supports it; codegen
+   (``ironplcc compile``) does not yet implement short-circuit evaluation and
+   refuses to compile it. Enabled by ``--dialect=rusty`` and
+   ``--dialect=codesys``.
+
 Examples
 ========
 

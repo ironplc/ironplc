@@ -149,6 +149,11 @@ struct FileArgs {
     /// This is a vendor extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_pragmas: bool,
+
+    /// Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension).
+    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_short_circuit_operators: bool,
 }
 
 impl FileArgs {
@@ -171,6 +176,7 @@ impl FileArgs {
         options.allow_cross_family_widening |= self.allow_cross_family_widening;
         options.allow_partial_access_syntax |= self.allow_partial_access_syntax;
         options.allow_pragmas |= self.allow_pragmas;
+        options.allow_short_circuit_operators |= self.allow_short_circuit_operators;
         options
     }
 }

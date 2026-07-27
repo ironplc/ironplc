@@ -173,6 +173,7 @@ table is a convenience mirror, so consult the macro if the two ever disagree.
 | `allow_cross_family_widening` | `--allow-cross-family-widening` | Implicit widening between bit-string and integer families |
 | `allow_partial_access_syntax` | `--allow-partial-access-syntax` | IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) |
 | `allow_pragmas` | `--allow-pragmas` | Curly-brace pragmas (`{attribute 'qualified_only'}`) parsed and discarded like a comment |
+| `allow_short_circuit_operators` | `--allow-short-circuit-operators` | AND_THEN short-circuit boolean operator (Beckhoff/CODESYS) |
 
 ### Dialects
 

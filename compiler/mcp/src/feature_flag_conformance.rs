@@ -156,6 +156,13 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "{attribute 'qualified_only'}\nPROGRAM p\nEND_PROGRAM",
     },
+    // AND_THEN short-circuit operator. With the flag off, AND_THEN is demoted
+    // to an identifier and the expression fails to parse.
+    FlagFixture {
+        key: "allow_short_circuit_operators",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_Example\nVAR\na : BOOL;\nb : BOOL;\nresult : BOOL;\nEND_VAR\nresult := a AND_THEN b;\nEND_FUNCTION_BLOCK\nPROGRAM p\nEND_PROGRAM",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.

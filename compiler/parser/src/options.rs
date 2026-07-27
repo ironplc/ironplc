@@ -289,6 +289,11 @@ define_compiler_options! {
     "--allow-pragmas",
     [Rusty, Codesys],
     allow_pragmas,
+
+    "Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension)",
+    "--allow-short-circuit-operators",
+    [Rusty, Codesys],
+    allow_short_circuit_operators,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -393,6 +398,7 @@ mod tests {
                 "allow_cross_family_widening",
                 "allow_partial_access_syntax",
                 "allow_pragmas",
+                "allow_short_circuit_operators",
             ],
         );
     }
@@ -422,6 +428,7 @@ mod tests {
                 "allow_cross_family_widening",
                 "allow_partial_access_syntax",
                 "allow_pragmas",
+                "allow_short_circuit_operators",
             ],
         );
     }

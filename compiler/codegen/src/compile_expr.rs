@@ -102,7 +102,9 @@ pub(crate) fn storage_bits(expr: &Expr) -> Result<u8, Diagnostic> {
 pub(crate) fn condition_op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     match &expr.kind {
         ExprKind::Compare(compare) => match compare.op {
-            CompareOp::And | CompareOp::Or | CompareOp::Xor => condition_op_type(&compare.left),
+            CompareOp::And | CompareOp::Or | CompareOp::Xor | CompareOp::AndThen => {
+                condition_op_type(&compare.left)
+            }
             _ => {
                 // String comparisons take a dedicated path in compile_expr
                 // that emits an i32 boolean; the operand op_type is unused.
@@ -202,6 +204,22 @@ pub(crate) fn compile_expr(
                 CompareOp::And => emit_and(emitter, operand_op_type),
                 CompareOp::Or => emit_or(emitter, operand_op_type),
                 CompareOp::Xor => emit_xor(emitter, operand_op_type),
+                CompareOp::AndThen => {
+                    // AND_THEN requires short-circuit (conditional-branch)
+                    // codegen -- emitting eager bytecode here would be
+                    // silently wrong (exactly the null-deref crash
+                    // AND_THEN exists to prevent), so refuse explicitly
+                    // rather than miscompile. `ironplcc check` already
+                    // fully supports AND_THEN; only `ironplcc compile`
+                    // hits this.
+                    return Err(Diagnostic::not_implemented(Label::span(
+                        ironplc_dsl::core::SourceSpan::join(
+                            &compare.left.span(),
+                            &compare.right.span(),
+                        ),
+                        "AND_THEN short-circuit evaluation is not yet supported in codegen",
+                    )));
+                }
             }
             Ok(())
         }
@@ -1704,7 +1722,7 @@ fn compare_op_to_cmp_op(op: &CompareOp) -> Option<u8> {
         CompareOp::LtEq => Some(opcode::cmp_op::LE_S),
         CompareOp::Gt => Some(opcode::cmp_op::GT_S),
         CompareOp::GtEq => Some(opcode::cmp_op::GE_S),
-        CompareOp::And | CompareOp::Or | CompareOp::Xor => None,
+        CompareOp::And | CompareOp::Or | CompareOp::Xor | CompareOp::AndThen => None,
     }
 }
 
