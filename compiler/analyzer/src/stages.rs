@@ -125,7 +125,6 @@ pub fn resolve_types(
         }
     }
 
-
     let mut symbol_environment = SymbolEnvironment::new();
 
     // Register implicit system globals when the uptime feature is enabled.

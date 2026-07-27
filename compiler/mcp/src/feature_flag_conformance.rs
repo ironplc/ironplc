@@ -222,6 +222,20 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
     },
+    // ADR is only registered as a stdlib function when the flag is on; with
+    // it off, the call is to an undeclared function.
+    FlagFixture {
+        key: "allow_address_operator",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nx : INT;\na : DWORD;\nEND_VAR\na := ADR(x);\nEND_PROGRAM",
+    },
+    // LREAL_TO_FMTSTR is only registered as a stdlib function when the flag
+    // is on; with it off, the call is to an undeclared function.
+    FlagFixture {
+        key: "allow_extended_string_functions",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nx : LREAL;\ns : STRING;\nEND_VAR\ns := LREAL_TO_FMTSTR(x, 2, TRUE);\nEND_PROGRAM",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.

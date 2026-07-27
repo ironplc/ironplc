@@ -198,6 +198,18 @@ struct FileArgs {
     /// extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_oop_extensions: bool,
+
+    /// Register the ADR (Address Operator) as a built-in stdlib function
+    /// (Beckhoff/CODESYS extension). This is a vendor extension not part of
+    /// the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_address_operator: bool,
+
+    /// Register Beckhoff Tc2_Utilities library functions (LREAL_TO_FMTSTR)
+    /// as built-in stdlib functions. This is a vendor extension not part of
+    /// the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_extended_string_functions: bool,
 }
 
 impl FileArgs {
@@ -229,6 +241,8 @@ impl FileArgs {
         options.allow_paren_string_length |= self.allow_paren_string_length;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options.allow_oop_extensions |= self.allow_oop_extensions;
+        options.allow_address_operator |= self.allow_address_operator;
+        options.allow_extended_string_functions |= self.allow_extended_string_functions;
         options
     }
 }

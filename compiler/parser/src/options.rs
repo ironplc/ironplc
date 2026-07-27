@@ -578,6 +578,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn describe_dialects_when_called_then_contains_all_dialects() {
         let output = describe_dialects();
         assert!(output.contains("iec61131-3-ed2"));
