@@ -539,3 +539,4 @@ END_FUNCTION_BLOCK
             .expect("rendered output must parse under the same dialect");
         assert_eq!(library_original, library_rendered);
     }
+}
