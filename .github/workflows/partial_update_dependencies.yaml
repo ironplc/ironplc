@@ -11,9 +11,15 @@ on:
         type: string
         description: 'The name of the branch that will contain the updated dependencies'
 
-    secrets:
-      IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN:
-        required: true
+    # IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN is intentionally NOT declared as a
+    # `workflow_call` secret. It lives in the `production` environment, which
+    # the caller's job cannot scope to (a reusable-workflow call may not set
+    # `environment:`). The `update-dependencies` job below declares
+    # `environment: production` and reads the secret directly from that
+    # environment; the caller passes it through with `secrets: inherit`.
+    # Declaring it `required: true` here would fail the run ("token required but
+    # not present") because the caller can only forward an empty value.
+    # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
 
     outputs:
       commit-ref:

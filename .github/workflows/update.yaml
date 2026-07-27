@@ -43,8 +43,15 @@ jobs:
     with:
       dryrun: ${{ !!inputs.dryrun }}
       branch-name: ${{ format('feature/AUTO-UPDATE-{0}', needs.timestamp.outputs.yyyy-mm-dd-hh-mm-ss)  }}
-    secrets:
-      IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN: ${{ secrets.IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN }}
+    # IRONPLC_WORKFLOW_PUBLISH_ACCESS_TOKEN is a `production` environment
+    # secret. It cannot be passed explicitly here: a job that calls a
+    # reusable workflow may not declare `environment:`, so `${{ secrets.* }}`
+    # would resolve to an empty string and the callee's `required: true`
+    # check would fail with "token required but not present". Instead we
+    # `inherit`, and the callee's `update-dependencies` job (which declares
+    # `environment: production`) resolves the environment secret directly.
+    # See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+    secrets: inherit
 
   build-vscode-extension:
     name: Build Visual Studio Code Extension
