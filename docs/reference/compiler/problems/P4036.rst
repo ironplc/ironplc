@@ -44,4 +44,4 @@ To fix this error, either move the located variable into its own block:
 
 Or enable the vendor extension with the
 ``--allow-mixed-located-var-declarations`` flag (also enabled by
-``--dialect=rusty`` and ``--dialect=codesys``).
+``--dialect=rusty``, ``--dialect=codesys``, and ``--dialect=twincat``).

@@ -313,7 +313,7 @@ define_compiler_options! {
 
     "Allow AT-located variables (e.g. AT%I*) mixed with plain variables in the same VAR/VAR_INPUT/VAR_OUTPUT block",
     "--allow-mixed-located-var-declarations",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_mixed_located_var_declarations,
 }
 
@@ -483,6 +483,7 @@ mod tests {
                 "allow_partial_access_syntax",
                 "allow_pragmas",
                 "allow_short_circuit_operators",
+                "allow_mixed_located_var_declarations",
             ],
         );
     }

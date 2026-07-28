@@ -194,7 +194,8 @@ Options
    plain ``VAR``/``VAR_INPUT``/``VAR_OUTPUT`` block, instead of requiring
    its own dedicated block. Produces
    :doc:`P4036 </reference/compiler/problems/P4036>` when mixed without
-   this flag. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+   this flag. Enabled by ``--dialect=rusty``, ``--dialect=codesys``, and
+   ``--dialect=twincat``.
 
 Examples
 ========

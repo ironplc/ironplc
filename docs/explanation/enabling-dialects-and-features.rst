@@ -233,8 +233,8 @@ features — they never disable features that a dialect already includes.
    this flag, mixing produces problem
    :doc:`P4036 </reference/compiler/problems/P4036>`. A block containing
    *only* located variables is unaffected by this flag — it is standard
-   syntax and always allowed. Enabled by ``--dialect=rusty`` and
-   ``--dialect=codesys``.
+   syntax and always allowed. Enabled by ``--dialect=rusty``,
+   ``--dialect=codesys``, and ``--dialect=twincat``.
 
 Pass the flag when running :program:`ironplcc`:
 
