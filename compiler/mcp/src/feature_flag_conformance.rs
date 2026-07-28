@@ -169,6 +169,12 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Example\nVAR\na : BOOL;\nb : BOOL;\nresult : BOOL;\nEND_VAR\nresult := a AND_THEN b;\nEND_FUNCTION_BLOCK\nPROGRAM p\nEND_PROGRAM",
     },
+    // AT-located variable mixed with a plain variable in one VAR block (P4036).
+    FlagFixture {
+        key: "allow_mixed_located_var_declarations",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_Example\nVAR\ntempSensor AT%I* : INT;\nfbComm : BOOL;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM p\nEND_PROGRAM",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.

@@ -15,6 +15,10 @@ use dsl::{
 /// the specific type.
 pub struct UntypedVarDecl {
     pub name: Id,
+    /// Present when this declaration has an `AT` location clause inside an
+    /// otherwise plain `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block (CODESYS/TwinCAT
+    /// vendor extension — see `allow_mixed_located_var_declarations`).
+    pub location: Option<AddressAssignment>,
     pub initializer: InitialValueAssignmentKind,
 }
 
@@ -93,18 +97,58 @@ impl From<IncomplVarDecl> for VarDecl {
             var_type: VariableType::Var,
             qualifier: val.qualifier,
             initializer: init,
+            block: next_block_id(),
         }
     }
 }
 
 impl UntypedVarDecl {
     pub fn into_var_decl(self, var_type: VariableType) -> VarDecl {
+        let identifier = match self.location {
+            Some(loc) => VariableIdentifier::Direct(DirectVariableIdentifier {
+                name: Some(self.name),
+                address_assignment: loc,
+                span: SourceSpan::default(),
+            }),
+            None => VariableIdentifier::Symbol(self.name),
+        };
         VarDecl {
-            identifier: VariableIdentifier::Symbol(self.name),
+            identifier,
             var_type,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: self.initializer,
+            // A fresh id here; `set_block` (called by each block-level rule
+            // -- var_declarations(), input_declarations(), etc. -- right
+            // after building its Vec<VarDecl>) overwrites this with the one
+            // shared id for the whole block once all its declarations are
+            // collected together.
+            block: next_block_id(),
         }
+    }
+}
+
+/// Assigns the same fresh [`BlockId`] to every declaration in `vars`,
+/// recording that they all came from the same source
+/// `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block. This is a faithful structural fact
+/// (which block a declaration came from), not a policy conclusion about it
+/// -- whether that block turns out to mix located and plain declarations is
+/// for `mixed_located_var_decls` to derive later, from this identity.
+pub fn set_block(vars: Vec<VarDecl>) -> Vec<VarDecl> {
+    let mut vars = vars;
+    set_block_in_place(&mut vars);
+    vars
+}
+
+/// Same as `set_block`, but operates in place across a mutable slice --
+/// used where the whole block's declarations are spread across several
+/// already-built `Vec<VarDecl>` groups (one per semicolon-separated line,
+/// e.g. `VAR_INPUT`'s per-line `VarDeclarations::Inputs` entries) that need
+/// to stay in their existing grouping rather than being flattened and
+/// rebuilt.
+pub fn set_block_in_place(vars: &mut [VarDecl]) {
+    let block = next_block_id();
+    for v in vars.iter_mut() {
+        v.block = block;
     }
 }
 
@@ -327,6 +371,21 @@ impl VarDeclarations {
             }
         }
 
+        // VAR_INPUT declarations are spread across one Vec<VarDecl> per
+        // semicolon-separated line (each its own `VarDeclarations::Inputs`
+        // entry here), but they all came from the same source VAR_INPUT
+        // block -- see `set_block`'s doc comment. Assign one shared id
+        // across all of them so `mixed_located_var_decls` can later tell
+        // they belong together, however they're grouped now.
+        let block = next_block_id();
+        for d in updated_decls.iter_mut() {
+            if let VarDeclarations::Inputs(vars) = d {
+                for v in vars.iter_mut() {
+                    v.block = block;
+                }
+            }
+        }
+
         updated_decls
     }
 
@@ -372,21 +431,20 @@ impl VarDeclarations {
     ) -> Vec<VarDecl> {
         let declarations = declarations.into_iter().flatten();
 
-        declarations
+        let vars: Vec<VarDecl> = declarations
             .into_iter()
             .map(|declaration| {
                 let qualifier = qualifier
                     .clone()
                     .unwrap_or(DeclarationQualifier::Unspecified);
 
-                VarDecl {
-                    identifier: VariableIdentifier::Symbol(declaration.name),
-                    var_type: var_type.clone(),
-                    qualifier,
-                    initializer: declaration.initializer,
-                }
+                let mut decl = declaration.into_var_decl(var_type.clone());
+                decl.qualifier = qualifier;
+                decl
             })
-            .collect()
+            .collect();
+
+        set_block(vars)
     }
 }
 
