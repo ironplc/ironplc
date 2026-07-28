@@ -30,12 +30,13 @@ pub enum Dialect {
     Codesys,
     /// Beckhoff TwinCAT-compatible dialect: Edition 2 base plus the vendor
     /// extensions that TwinCAT accepts.  TwinCAT 3 is built on the CODESYS V3
-    /// runtime, so this is close to [`Dialect::Codesys`], but stricter on
-    /// references: TwinCAT's `REFERENCE TO` is a managed reference, so pointer
-    /// arithmetic (`allow_ref_arithmetic`) and type punning
-    /// (`allow_ref_type_punning`) are not enabled.  Like CODESYS, it does not
-    /// bind the implicit `__SYSTEM_UP_TIME` globals (an IronPLC runtime
-    /// convention).
+    /// runtime, so this is close to [`Dialect::Codesys`], but does not enable
+    /// the `REF_TO` / `REF()` / `NULL` reference extensions: TwinCAT spells
+    /// references and pointers `REFERENCE TO` / `POINTER TO` (with `ADR()`),
+    /// which IronPLC does not parse yet, so enabling the CODESYS `REF_TO`
+    /// syntax here would accept code TwinCAT itself rejects.  Like CODESYS, it
+    /// does not bind the implicit `__SYSTEM_UP_TIME` globals (an IronPLC
+    /// runtime convention).
     TwinCat,
 }
 
@@ -257,7 +258,7 @@ define_compiler_options! {
 
     "Allow REF_TO, REF(), and NULL without full Edition 3",
     "--allow-ref-to",
-    [Rusty, Codesys, TwinCat],
+    [Rusty, Codesys],
     allow_ref_to,
 
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
@@ -267,7 +268,7 @@ define_compiler_options! {
 
     "Allow REF() on stack-allocated variables (VAR_TEMP, FUNCTION VAR_INPUT/VAR_OUTPUT)",
     "--allow-ref-stack-variables",
-    [Rusty, Codesys, TwinCat],
+    [Rusty, Codesys],
     allow_ref_stack_variables,
 
     "Allow assigning between REF_TO types of different base types (type punning)",
@@ -449,11 +450,14 @@ mod tests {
     }
 
     /// The TwinCAT dialect is close to CODESYS (TwinCAT 3 runs on the CODESYS
-    /// V3 runtime) but stricter on references: TwinCAT's `REFERENCE TO` is a
-    /// managed reference with no pointer arithmetic and no type punning, so
-    /// `allow_ref_arithmetic` and `allow_ref_type_punning` are *not* enabled
-    /// (those remain CODESYS-only). Listed explicitly so an accidental
-    /// divergence from the intended set is caught.
+    /// V3 runtime) but does *not* enable the `REF_TO` reference extensions.
+    /// TwinCAT spells references and pointers `REFERENCE TO` / `POINTER TO`
+    /// (not the CODESYS `REF_TO` / `REF()` / `NULL`), and IronPLC does not
+    /// parse those yet, so none of `allow_ref_to`, `allow_ref_arithmetic`,
+    /// `allow_ref_stack_variables`, or `allow_ref_type_punning` are enabled --
+    /// enabling them would accept `REF_TO` code that TwinCAT itself rejects.
+    /// Listed explicitly so an accidental divergence from the intended set is
+    /// caught.
     #[test]
     fn twincat_dialect_enables_exactly_these_vendor_flags() {
         assert!(!CompilerOptions::from_dialect(Dialect::TwinCat).allow_iec_61131_3_2013);
@@ -466,8 +470,6 @@ mod tests {
                 "allow_constant_type_params",
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
-                "allow_ref_to",
-                "allow_ref_stack_variables",
                 "allow_int_to_bool_initializer",
                 "allow_sizeof",
                 "allow_cross_family_widening",

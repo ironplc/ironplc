@@ -17,18 +17,20 @@ dialect starts from the CODESYS flag set and diverges only where TwinCAT is
 stricter:
 
 - All flags that `codesys` enables, **except**:
-  - `allow_ref_arithmetic` and `allow_ref_type_punning` are **not** enabled.
-    TwinCAT's `REFERENCE TO` is a *managed* reference — it does not support
-    pointer arithmetic, and reference type punning is not a TwinCAT idiom.
-    (These stay CODESYS-only. Per maintainer review on PR #1250.)
+  - The entire `REF_TO` family — `allow_ref_to`, `allow_ref_arithmetic`,
+    `allow_ref_stack_variables`, and `allow_ref_type_punning` — is **not**
+    enabled. TwinCAT spells references and pointers `REFERENCE TO` /
+    `POINTER TO` (with `ADR()`), not the CODESYS/IEC `REF_TO` / `REF()` /
+    `NULL`. IronPLC does not parse `REFERENCE TO`/`POINTER TO` yet, and a
+    dialect must not enable syntax the target environment rejects, so no
+    `REF_TO` flags are turned on. (These stay CODESYS-only. Per maintainer
+    review on PR #1250.)
 - `allow_system_uptime_global` is **not** enabled, for the same reason it is
   omitted from `codesys`: the implicit `__SYSTEM_UP_TIME` / `__SYSTEM_UP_LTIME`
   globals are an IronPLC/RuSTy runtime convention, not a TwinCAT feature.
 
 Edition 2 stays as the base so identifiers like `LDT` remain usable, matching the
-`codesys` and `rusty` approach. Note that TwinCAT's own reference/pointer syntax
-(`REFERENCE TO`, `POINTER TO`) is not yet parsed; the `twincat` docs and tests
-therefore do not headline `REF_TO` (a CODESYS/IEC spelling TwinCAT does not use).
+`codesys` and `rusty` approach.
 
 ## File Map
 

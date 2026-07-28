@@ -936,9 +936,12 @@ mod test {
         assert!(options.allow_c_style_comments);
         assert!(options.allow_pragmas);
         assert!(options.allow_short_circuit_operators);
-        // TwinCAT's REFERENCE TO is a managed reference: no pointer arithmetic
-        // or type punning, unlike CODESYS.
+        // TwinCAT spells references/pointers REFERENCE TO / POINTER TO, not the
+        // CODESYS REF_TO / REF() / NULL, so none of the REF_TO-family flags are
+        // enabled.
+        assert!(!options.allow_ref_to);
         assert!(!options.allow_ref_arithmetic);
+        assert!(!options.allow_ref_stack_variables);
         assert!(!options.allow_ref_type_punning);
         // TwinCAT, like CODESYS, does not pre-bind the IronPLC uptime globals.
         assert!(!options.allow_system_uptime_global);
