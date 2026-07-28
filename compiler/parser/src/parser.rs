@@ -191,9 +191,13 @@ enum Element {
     Deref,
 }
 
+// Both variants are boxed to keep them the same (pointer) size: the
+// LocatedVarInit variant carries a full InitialValueAssignmentKind
+// initializer and is much larger inline than FunctionBlockInit, which
+// otherwise trips clippy::large_enum_variant.
 enum InstanceInitKind {
-    FunctionBlockInit(FunctionBlockInit),
-    LocatedVarInit(LocatedVarInit),
+    FunctionBlockInit(Box<FunctionBlockInit>),
+    LocatedVarInit(Box<LocatedVarInit>),
 }
 
 enum ProgramConfigurationKind {
@@ -1416,8 +1420,8 @@ parser! {
       if let Some(inits) = i {
         for init in inits {
           match init {
-              InstanceInitKind::FunctionBlockInit(fb_init) => fb_inits.push(fb_init),
-              InstanceInitKind::LocatedVarInit(located_var_init) => located_var_inits.push(located_var_init),
+              InstanceInitKind::FunctionBlockInit(fb_init) => fb_inits.push(*fb_init),
+              InstanceInitKind::LocatedVarInit(located_var_init) => located_var_inits.push(*located_var_init),
           }
         }
       }
@@ -1550,16 +1554,16 @@ parser! {
     rule instance_specific_initializations() -> Vec<InstanceInitKind> = tok(TokenType::VarConfig) _ init:semisep_oneplus(<instance_specific_init()>) _ tok(TokenType::EndVar) { init }
     rule instance_specific_init() -> InstanceInitKind = instance_specific_init__fb_init() / instance_specific_init__located()
     rule instance_specific_init__located() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_no_trailing(<identifier()>) _ address:location()? _ tok(TokenType::Colon) _ initializer:located_var_spec_init() {
-      InstanceInitKind::LocatedVarInit(LocatedVarInit {
+      InstanceInitKind::LocatedVarInit(Box::new(LocatedVarInit {
         resource_name,
         program_name,
         fb_path,
         address,
         initializer,
-      })
+      }))
     }
     rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_oneplus_no_trailing(<identifier()>) _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
-      InstanceInitKind::FunctionBlockInit(FunctionBlockInit {
+      InstanceInitKind::FunctionBlockInit(Box::new(FunctionBlockInit {
         resource_name,
         program_name,
         fb_path,
@@ -1567,7 +1571,7 @@ parser! {
         fb_name: Id::from(""),
         type_name,
         initializer,
-      })
+      }))
     }
 
     // B 2.1 Instruction List
