@@ -85,7 +85,7 @@ ironplc.dialect
 
 :Type: Enum
 :Default: ``iec61131-3-ed2``
-:Values: ``iec61131-3-ed2``, ``iec61131-3-ed3``, ``rusty``, ``codesys``
+:Values: ``iec61131-3-ed2``, ``iec61131-3-ed3``, ``rusty``, ``codesys``, ``twincat``
 
 Selects the language dialect preset. A dialect controls the IEC 61131-3 edition
 and a default set of vendor extensions.
@@ -96,6 +96,9 @@ and a default set of vendor extensions.
   RuSTy-based PLC environments.
 * ``codesys``: CODESYS-compatible — Edition 2 base with ``REF_TO`` and the
   vendor extensions that the CODESYS IDE accepts.
+* ``twincat``: TwinCAT-compatible — Edition 2 base with ``REF_TO`` and the
+  vendor extensions that Beckhoff TwinCAT accepts (the same set as
+  ``codesys``, since TwinCAT 3 runs on the CODESYS V3 runtime).
 
 This setting corresponds to the ``--dialect`` command-line option documented in
 :doc:`/reference/compiler/ironplcc`.
