@@ -47,6 +47,7 @@ impl clap::ValueEnum for ClapDialect {
             ClapDialect(Dialect::Iec61131_3Ed3),
             ClapDialect(Dialect::Rusty),
             ClapDialect(Dialect::Codesys),
+            ClapDialect(Dialect::TwinCat),
         ]
     }
 

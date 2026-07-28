@@ -186,6 +186,7 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 | IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
 | RuSTy | `rusty` | OFF | ON | all ON |
 | CODESYS | `codesys` | OFF | ON | all ON except `allow_system_uptime_global` |
+| TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`) — TwinCAT uses `REFERENCE TO`/`POINTER TO`, not yet parsed |
 
 ### Grouping Guidance
 
