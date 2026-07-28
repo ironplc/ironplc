@@ -527,6 +527,65 @@ mod tests {
     }
 
     #[test]
+    fn apply_when_self_reference_cycle_then_error_not_hang() {
+        // A constant whose initializer references itself (`A := A + 0.0`).
+        // This is the degenerate one-node cycle. `A` is never registered as
+        // a known constant (only bare-literal `Simple` initializers are), so
+        // the self-reference does not resolve, the expression does not fold,
+        // and a P4037 diagnostic is emitted. The test completing at all is
+        // the proof of termination -- there is no bounded recursion here
+        // because substitution can only ever replace a name with a literal,
+        // never with another name-bearing expression.
+        let lib = parse(
+            "
+            VAR_GLOBAL CONSTANT
+                A : LREAL := A+0.0;
+            END_VAR
+            PROGRAM main
+            VAR
+                x : LREAL := A+0.0;
+            END_VAR
+            END_PROGRAM
+        ",
+            &opts(),
+        );
+        let result = apply(lib, &opts());
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        // One diagnostic for A's own initializer, one for x referencing A.
+        assert_eq!(errors.len(), 2);
+        assert!(errors
+            .iter()
+            .all(|d| d.code == Problem::InitializerNotConstantExpression.code()));
+    }
+
+    #[test]
+    fn apply_when_three_node_cycle_then_error_not_hang() {
+        // A longer cycle A -> B -> C -> A. Same reasoning as the mutual
+        // (two-node) case: none of A, B, C is a bare literal, so none is
+        // registered, every initializer fails to fold, and each emits a
+        // diagnostic. Demonstrates termination is independent of cycle
+        // length -- the pass never chases references transitively.
+        let lib = parse(
+            "
+            VAR_GLOBAL CONSTANT
+                A : LREAL := B+0.0;
+                B : LREAL := C+0.0;
+                C : LREAL := A+0.0;
+            END_VAR
+        ",
+            &opts(),
+        );
+        let result = apply(lib, &opts());
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 3);
+        assert!(errors
+            .iter()
+            .all(|d| d.code == Problem::InitializerNotConstantExpression.code()));
+    }
+
+    #[test]
     fn apply_when_integer_arithmetic_then_folds_to_integer_literal() {
         let lib = parse(
             "PROGRAM main VAR x : DINT := 2+3; END_VAR END_PROGRAM",
