@@ -538,7 +538,12 @@ parser! {
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
       tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
       / name:enumerated_type_name() { SpecificationKind::Named(name) }
-    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() { EnumeratedValue {type_name, value} }
+    // Uses variable_identifier() rather than a bare identifier() so that
+    // reserved-but-commonly-used-as-a-name keywords (ON, STEP, R_EDGE,
+    // F_EDGE) are also valid enum member names, matching the same
+    // carve-out variable_identifier() already provides for VAR
+    // declarations (see #300, "Feature/reserved variables").
+    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value} }
     rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ tok(TokenType::Colon) _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
         type_name,
