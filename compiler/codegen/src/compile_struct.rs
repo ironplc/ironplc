@@ -394,7 +394,7 @@ fn compile_struct_field_init(
             compile_constant(emitter, ctx, constant, op_type)
         }
         StructInitialValueAssignmentKind::EnumeratedValue(ev) => {
-            // REQ-EN-050: Resolve enum value to ordinal and push as i32 constant.
+            // REQ-EN-codegen-050: Resolve enum value to ordinal and push as i32 constant.
             let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);

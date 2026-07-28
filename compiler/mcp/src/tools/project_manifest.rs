@@ -2,7 +2,7 @@
 //!
 //! Returns a flat summary of what is declared across the supplied sources:
 //! file names, Program / Function / Function Block names, and user-defined
-//! types grouped by kind. Implements REQ-TOL-200 and REQ-TOL-201.
+//! types grouped by kind. Implements REQ-TOL-mcp-200 and REQ-TOL-mcp-201.
 
 use ironplc_analyzer::{IntermediateType, SemanticContext};
 use ironplc_dsl::core::FileId;
@@ -86,7 +86,7 @@ pub fn build_response(
         .iter()
         .any(|d| d["severity"].as_str() == Some("error"));
 
-    // REQ-TOL-201: always attempt to populate a partial manifest. `semantic_context()`
+    // REQ-TOL-mcp-201: always attempt to populate a partial manifest. `semantic_context()`
     // is set by `MemoryBackedProject::semantic()` even when analysis fails, as long
     // as a context could be built from what the parser recognized.
     let context = match project.semantic_context() {
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn build_response_when_semantic_error_then_partial_manifest_preserved() {
-        // REQ-TOL-201: semantic failure must still return whatever the
+        // REQ-TOL-mcp-201: semantic failure must still return whatever the
         // analyzer recognized.
         let sources = vec![SourceInput {
             name: "main.st".into(),

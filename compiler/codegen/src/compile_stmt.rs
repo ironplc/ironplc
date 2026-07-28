@@ -659,7 +659,7 @@ fn compile_case(
     let end_label = emitter.create_label();
     // Enum selectors have a resolved type that is the enum name (e.g. "COLOR"),
     // which resolve_type_name doesn't handle. Fall back to W32/Signed (DINT)
-    // since all enums use DINT at codegen level (REQ-EN-003).
+    // since all enums use DINT at codegen level (REQ-EN-codegen-003).
     let op_type = op_type(&case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE);
 
     for group in &case_stmt.statement_groups {
@@ -764,7 +764,7 @@ fn compile_case_selector(
             Ok(())
         }
         CaseSelectionKind::EnumeratedValue(ev) => {
-            // REQ-EN-040: Load selector, load ordinal constant, compare with EQ_I32.
+            // REQ-EN-codegen-040: Load selector, load ordinal constant, compare with EQ_I32.
             compile_expr(emitter, ctx, selector_expr, op_type)?;
             let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);

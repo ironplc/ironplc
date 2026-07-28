@@ -1,0 +1,21 @@
+=====
+V9017
+=====
+
+.. problem-summary:: V9017
+
+The container's declared worst-case call depth
+(``FileHeader.max_call_depth``) is zero. ``VmReady::start`` rejects the
+container before any init code runs, so no PLC instructions execute.
+
+Every program needs at least one call frame for its entry function, so
+codegen always computes a depth of one or more (the longest path through
+``CALL`` and user-``FB_CALL`` edges, counting the entry frame). A declared
+depth of zero therefore means the field was never populated — a legacy or
+hand-built container.
+
+To resolve:
+
+* Recompile the program so codegen writes a valid ``max_call_depth``.
+* If you build containers by hand, set ``max_call_depth`` to the program's
+  true worst-case call depth (at least ``1``).

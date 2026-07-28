@@ -7,6 +7,10 @@ V4003
 A task exceeded the configured watchdog time limit (``max_scan_time``). This
 typically indicates an infinite loop or unexpectedly long computation.
 
+In the playground, this code is also reported when a scan takes longer than the
+configured step interval (a cycle overrun) — the same condition of a task not
+finishing within its allotted time.
+
 Example
 -------
 

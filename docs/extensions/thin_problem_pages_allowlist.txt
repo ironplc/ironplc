@@ -52,7 +52,6 @@ reference/compiler/problems/P9002
 reference/compiler/problems/P9998
 reference/runtime/problems/V4001
 reference/runtime/problems/V4002
-reference/runtime/problems/V4003
 reference/runtime/problems/V6001
 reference/runtime/problems/V6002
 reference/runtime/problems/V6003

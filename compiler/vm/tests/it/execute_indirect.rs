@@ -44,6 +44,7 @@ fn execute_when_load_indirect_valid_ref_then_loads_value() {
         )
         .init_function_id(ironplc_container::FunctionId::INIT)
         .entry_function_id(ironplc_container::FunctionId::SCAN)
+        .max_call_depth(1)
         .build();
     let mut b = crate::common::VmBuffers::from_container(&c);
     {
@@ -91,6 +92,7 @@ fn execute_when_store_indirect_valid_ref_then_stores_value() {
         )
         .init_function_id(ironplc_container::FunctionId::INIT)
         .entry_function_id(ironplc_container::FunctionId::SCAN)
+        .max_call_depth(1)
         .build();
     let mut b = crate::common::VmBuffers::from_container(&c);
     {
@@ -178,6 +180,7 @@ fn execute_when_store_then_load_indirect_then_roundtrips() {
         )
         .init_function_id(ironplc_container::FunctionId::INIT)
         .entry_function_id(ironplc_container::FunctionId::SCAN)
+        .max_call_depth(1)
         .build();
     let mut b = crate::common::VmBuffers::from_container(&c);
     {

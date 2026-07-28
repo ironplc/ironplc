@@ -37,10 +37,10 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
         }
     };
 
-    // Construct a fresh in-memory project (REQ-ARC-010)
+    // Construct a fresh in-memory project (REQ-ARC-mcp-010)
     let mut project = MemoryBackedProject::new(options);
 
-    // Load sources (REQ-ARC-011)
+    // Load sources (REQ-ARC-mcp-011)
     for src in sources {
         let file_id = FileId::from_string(&src.name);
         project.add_source(file_id, src.content.clone());

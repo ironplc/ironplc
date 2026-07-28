@@ -4,7 +4,6 @@ use crate::frame_stack::Frame;
 use crate::scheduler::{ProgramInstanceState, TaskState};
 use crate::value::Slot;
 use crate::variable_table::VariableScope;
-use crate::vm::MAX_CALL_DEPTH;
 
 /// Heap-allocated buffers that back a VM instance.
 ///
@@ -55,19 +54,11 @@ impl VmBuffers {
             ready: vec![0usize; task_count.max(1)],
             // Size the call-frame stack from the container's declared
             // worst-case depth. Codegen writes that depth from the
-            // static call graph; hand-built containers leave it at 0
-            // ("not computed"), in which case we fall back to
-            // `MAX_CALL_DEPTH` to preserve back-compat (the same
-            // sentinel `VmReady::start` uses to skip its
-            // `Trap::ProgramExceedsCallDepth` check).
-            frames: vec![
-                zero_frame;
-                if h.max_call_depth == 0 {
-                    MAX_CALL_DEPTH as usize
-                } else {
-                    h.max_call_depth as usize
-                }
-            ],
+            // static call graph and always declares at least one frame.
+            // A declared depth of 0 yields an empty buffer; such a
+            // container is rejected by `VmReady::start` with
+            // `Trap::ZeroCallDepth` before any code runs.
+            frames: vec![zero_frame; h.max_call_depth as usize],
         }
     }
 }

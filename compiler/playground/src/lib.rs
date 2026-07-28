@@ -189,6 +189,24 @@ fn diagnostic_info(diag: &Diagnostic, source: &str) -> DiagnosticInfo {
     }
 }
 
+/// A structured runtime error surfaced across the WASM boundary.
+///
+/// Carries a human-readable `message` and, for VM traps, the trap's stable
+/// v-code (e.g. `"V4001"`). Kept as a single object — rather than sibling
+/// `error`/`error_code` fields — so the front end can treat it uniformly with a
+/// compiler diagnostic (which likewise has a message and a code) and render
+/// both through one path. This shape is also the natural fit as the playground
+/// moves toward JSON-RPC.
+#[derive(Debug, Serialize, Deserialize)]
+struct RunError {
+    /// Human-readable message including task and instance context for traps.
+    message: String,
+    /// The trap's stable v-code (e.g. `"V4001"`). Absent for non-trap errors
+    /// such as a decode failure or a missing stepping session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
+}
+
 /// Result of executing bytecode.
 #[derive(Serialize, Deserialize)]
 struct RunResult {
@@ -197,7 +215,7 @@ struct RunResult {
     variables: Vec<VariableInfo>,
     scans_completed: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    error: Option<RunError>,
 }
 
 /// A variable value read from the VM after execution.
@@ -453,7 +471,7 @@ struct RunSourceResult {
     variables: Vec<VariableInfo>,
     scans_completed: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    error: Option<RunError>,
 }
 
 /// Result of a step-through operation (load or step).
@@ -466,7 +484,7 @@ struct StepResult {
     variables: Vec<VariableInfo>,
     total_scans: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    error: Option<RunError>,
 }
 
 /// Parse IEC 61131-3 source code and produce bytecode.
@@ -596,7 +614,7 @@ fn compile_inner(source: &str, dialect: &str, allows: &str) -> CompileResult {
 pub fn run(bytecode_base64: &str, scans: u32) -> String {
     let result = run_inner(bytecode_base64, scans);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"variables":[],"scans_completed":0,"error":"Serialization error: {e}"}}"#)
+        format!(r#"{{"ok":false,"variables":[],"scans_completed":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
     })
 }
 
@@ -608,7 +626,10 @@ fn run_inner(bytecode_base64: &str, scans: u32) -> RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(format!("Invalid base64: {e}")),
+                error: Some(RunError {
+                    message: format!("Invalid base64: {e}"),
+                    code: None,
+                }),
             };
         }
     };
@@ -624,7 +645,10 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(format!("Invalid bytecode container: {e}")),
+                error: Some(RunError {
+                    message: format!("Invalid bytecode container: {e}"),
+                    code: None,
+                }),
             };
         }
     };
@@ -638,10 +662,13 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(format!(
-                    "VM trap during init: {} (task {}, instance {})",
-                    ctx.trap, ctx.task_id, ctx.instance_id
-                )),
+                error: Some(RunError {
+                    message: format!(
+                        "VM trap during init: {} (task {}, instance {})",
+                        ctx.trap, ctx.task_id, ctx.instance_id
+                    ),
+                    code: Some(ctx.trap.v_code().to_string()),
+                }),
             };
         }
     };
@@ -668,12 +695,15 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 ok: false,
                 variables,
                 scans_completed: round as u64,
-                error: Some(format!(
-                    "VM trap: {} (task {}, instance {})",
-                    faulted.trap(),
-                    faulted.task_id(),
-                    faulted.instance_id()
-                )),
+                error: Some(RunError {
+                    message: format!(
+                        "VM trap: {} (task {}, instance {})",
+                        faulted.trap(),
+                        faulted.task_id(),
+                        faulted.instance_id()
+                    ),
+                    code: Some(faulted.trap().v_code().to_string()),
+                }),
             };
         }
     }
@@ -699,7 +729,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 pub fn run_source(source: &str, scans: u32, dialect: &str, allows: &str) -> String {
     let result = run_source_inner(source, scans, dialect, allows);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"scans_completed":0,"error":"Serialization error: {e}"}}"#)
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"scans_completed":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
     })
 }
 
@@ -810,7 +840,7 @@ fn format_value(
 pub fn load_program(source: &str, cycle_time_us: u32, dialect: &str, allows: &str) -> String {
     let result = load_program_inner(source, cycle_time_us, dialect, allows);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
     })
 }
 
@@ -837,7 +867,10 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
                 diagnostics: vec![],
                 variables: vec![],
                 total_scans: 0,
-                error: Some(format!("Failed to load bytecode: {e}")),
+                error: Some(RunError {
+                    message: format!("Failed to load bytecode: {e}"),
+                    code: None,
+                }),
             };
         }
     };
@@ -856,7 +889,10 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
                 diagnostics: vec![],
                 variables: vec![],
                 total_scans: 0,
-                error: Some(format!("VM init trap: {}", ctx.trap)),
+                error: Some(RunError {
+                    message: format!("VM init trap: {}", ctx.trap),
+                    code: Some(ctx.trap.v_code().to_string()),
+                }),
             };
         }
     }
@@ -889,7 +925,7 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
 pub fn step(scans: u32) -> String {
     let result = step_inner(scans);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
     })
 }
 
@@ -904,7 +940,10 @@ fn step_inner(scans: u32) -> StepResult {
                     diagnostics: vec![],
                     variables: vec![],
                     total_scans: 0,
-                    error: Some("No program loaded. Call load_program first.".to_string()),
+                    error: Some(RunError {
+                        message: "No program loaded. Call load_program first.".to_string(),
+                        code: None,
+                    }),
                 };
             }
         };
@@ -915,7 +954,10 @@ fn step_inner(scans: u32) -> StepResult {
                 diagnostics: vec![],
                 variables: vec![],
                 total_scans: 0,
-                error: Some("Session is faulted. Call reset_session to start over.".to_string()),
+                error: Some(RunError {
+                    message: "Session is faulted. Call reset_session to start over.".to_string(),
+                    code: None,
+                }),
             };
         }
 
@@ -927,7 +969,10 @@ fn step_inner(scans: u32) -> StepResult {
                     diagnostics: vec![],
                     variables: vec![],
                     total_scans: 0,
-                    error: Some(format!("Failed to load bytecode: {e}")),
+                    error: Some(RunError {
+                        message: format!("Failed to load bytecode: {e}"),
+                        code: None,
+                    }),
                 };
             }
         };
@@ -962,7 +1007,8 @@ fn step_inner(scans: u32) -> StepResult {
 /// (including initial values) persist across calls. The VM's internal scan
 /// counter is the source of truth for total cycles executed.
 ///
-/// Returns `(variables, total_scan_count, error)`.
+/// Returns `(variables, total_scan_count, error)`, where `error` carries the
+/// message and the trap's v-code when execution stopped on a trap.
 fn run_vm_step(
     container: &Container,
     var_buf: &mut Vec<Slot>,
@@ -970,7 +1016,7 @@ fn run_vm_step(
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
-) -> (Vec<VariableInfo>, u64, Option<String>) {
+) -> (Vec<VariableInfo>, u64, Option<RunError>) {
     let mut bufs = VmBuffers::from_container(container);
     // Swap the session's persistent buffers into VmBuffers so the VM
     // operates on them directly, avoiding a copy.
@@ -994,7 +1040,7 @@ fn run_vm_scans(
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
-) -> (Vec<VariableInfo>, u64, Option<String>) {
+) -> (Vec<VariableInfo>, u64, Option<RunError>) {
     let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
     for _ in 0..scans {
@@ -1015,12 +1061,15 @@ fn run_vm_scans(
                 &string_layouts,
             );
             let faulted = running.fault(ctx);
-            let error = format!(
-                "VM trap: {} (task {}, instance {})",
-                faulted.trap(),
-                faulted.task_id(),
-                faulted.instance_id()
-            );
+            let error = RunError {
+                message: format!(
+                    "VM trap: {} (task {}, instance {})",
+                    faulted.trap(),
+                    faulted.task_id(),
+                    faulted.instance_id()
+                ),
+                code: Some(faulted.trap().v_code().to_string()),
+            };
             return (variables, total_scans, Some(error));
         }
     }
@@ -1112,6 +1161,33 @@ END_PROGRAM
         assert_eq!(result.scans_completed, 1);
         assert!(!result.variables.is_empty());
         assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
+    }
+
+    #[test]
+    fn run_when_program_traps_then_error_has_v_code() {
+        // Divide-by-zero traps with v-code V4001. The structured code must
+        // survive the WASM boundary in the error object's `code` member, not be
+        // flattened into the message.
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  y := 0;
+  x := 1 / y;
+END_PROGRAM
+";
+        let compile_result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
+        let bytecode = compile_result.bytecode.unwrap();
+
+        let json = run(&bytecode, 1);
+        let result: RunResult = serde_json::from_str(&json).unwrap();
+        assert!(!result.ok);
+        let error = result.error.expect("expected a runtime error");
+        assert_eq!(error.code.as_deref(), Some("V4001"));
+        // The JSON payload carries the code as a member of the error object.
+        assert!(json.contains("\"code\":\"V4001\""));
     }
 
     #[test]
@@ -1247,7 +1323,7 @@ END_PROGRAM
         reset_session();
         let result: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!result.ok);
-        assert!(result.error.unwrap().contains("No program loaded"));
+        assert!(result.error.unwrap().message.contains("No program loaded"));
     }
 
     #[test]
@@ -1329,12 +1405,12 @@ END_PROGRAM
         // First step should fault (divide by zero)
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!r1.ok);
-        assert!(r1.error.as_ref().unwrap().contains("VM trap"));
+        assert!(r1.error.as_ref().unwrap().message.contains("VM trap"));
 
         // Subsequent step should report faulted session
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!r2.ok);
-        assert!(r2.error.unwrap().contains("faulted"));
+        assert!(r2.error.unwrap().message.contains("faulted"));
     }
 
     #[test]
@@ -1355,7 +1431,7 @@ END_PROGRAM
         // After reset, step should fail with no session
         let result: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!result.ok);
-        assert!(result.error.unwrap().contains("No program loaded"));
+        assert!(result.error.unwrap().message.contains("No program loaded"));
     }
 
     #[test]

@@ -2,6 +2,7 @@ import uPlot from "./uPlot.esm.js";
 import type {
   Diagnostic,
   DialectOption,
+  RunError,
   RunResult,
   Variable,
   WorkerRequest,
@@ -139,12 +140,34 @@ let currentIntervalMs = 500;
 // reflects what actually produced the diagnostics, even if the user keeps
 // typing afterwards.
 let lastCompiledSource = "";
+// Context of the most recent non-user runtime stop (cycle overrun or VM trap),
+// captured so a later "Submit Code" click can include the timing and interval
+// that produced it. Null when the last stop was not a runtime error.
+let lastRuntimeReport:
+  | { intervalMs: number; elapsedMs: number; cycleCount: number }
+  | null = null;
 
 // The "P9xxx" codes are compiler errors (unimplemented capabilities and
 // internal errors) that we can only fix once we can see the program that
 // triggered them, so every P9 code gets the "Submit Code" affordance.
 function isReportable(code: string): boolean {
   return /^P9\d{3}$/.test(code);
+}
+
+// A runtime stop for a reason other than the user pressing Stop — any VM
+// problem code (V####), including the watchdog/time-limit code a cycle overrun
+// reports as — also gets the "Submit Code" affordance: we can only understand
+// why a program stopped (especially overruns on seemingly simple programs) once
+// we can see the program and the interval it ran with.
+function isRuntimeReportable(code: string): boolean {
+  return /^V\d{4}$/.test(code);
+}
+
+// Distinguish a compiler report (P9xxx) from a runtime report (VM trap or cycle
+// overrun) so the panel copy, submitted payload, and GitHub issue frame it
+// correctly. A reportable set that contains no compiler code is a runtime stop.
+function reportKind(reportable: Diagnostic[]): "compiler" | "runtime" {
+  return reportable.some((d) => isReportable(d.code)) ? "compiler" : "runtime";
 }
 
 // Cap the source we transmit so a pathological paste can't bloat an event.
@@ -206,6 +229,35 @@ function markModified(): void {
   if (programModifiedRegistered) return;
   programModifiedRegistered = true;
   registerSuper({ program_modified: true });
+}
+
+// A runtime failure (a VM trap, or an infrastructure error like a decode
+// failure) carries the same message/code shape as a compiler diagnostic, so
+// present it as one. Runtime errors have no source location, so the line/column
+// fields are 0 — renderDiagnostics omits the location line when they are.
+function runErrorToDiagnostic(error: RunError): Diagnostic {
+  return {
+    code: error.code ?? "",
+    message: error.message,
+    start_line: 0,
+    start_column: 0,
+  };
+}
+
+// A cycle overrun is detected in the front end (not the VM) and has no source
+// location, but it is the same condition as the VM's watchdog trap — a task
+// exceeding its time budget — so report it under that code (V4003). Rendering it
+// as a diagnostic shares the compiler/VM-trap path (including the link to the
+// V4003 docs) and qualifies it for the "Submit Code" panel via isRuntimeReportable.
+const CYCLE_OVERRUN_CODE = "V4003";
+
+function overrunDiagnostic(message: string): Diagnostic {
+  return {
+    code: CYCLE_OVERRUN_CODE,
+    message,
+    start_line: 0,
+    start_column: 0,
+  };
 }
 
 function extractErrorCodes(diagnostics: Diagnostic[] | undefined): string[] {
@@ -563,29 +615,48 @@ function startStepLoop(): void {
 
     const result = JSON.parse(msg.json) as RunResult;
     if (!result.ok) {
-      const diagnostics = result.diagnostics || [];
+      // Compiler diagnostics and a runtime fault share one representation, so
+      // fold a runtime error into the diagnostics list and render both alike.
+      const compileDiagnostics = result.diagnostics || [];
+      const isRuntimeError = compileDiagnostics.length === 0 && !!result.error;
+      const diagnostics = result.error
+        ? [...compileDiagnostics, runErrorToDiagnostic(result.error)]
+        : compileDiagnostics;
       captureRunStopped("error", extractErrorCodes(diagnostics));
       stopExecution();
-      if (diagnostics.length > 0) {
-        renderDiagnostics(diagnostics);
-        activateTab("diagnostics");
-        statusEl.textContent = `${diagnostics.length} error(s)`;
-      } else if (result.error) {
+      if (isRuntimeError) {
+        // A trap can leave meaningful variable state; show it alongside.
         renderVariables(result.variables || []);
-        diagnosticsPanel.innerHTML = `<p class="error-message">${escapeHtml(result.error)}</p>`;
-        statusEl.textContent = "Runtime error";
-        activateTab("diagnostics");
+        // Record the run context so a Submit Code click can attach it.
+        lastRuntimeReport = { intervalMs, elapsedMs: elapsed, cycleCount };
       }
+      renderDiagnostics(diagnostics);
+      activateTab("diagnostics");
+      statusEl.textContent = isRuntimeError
+        ? "Runtime error"
+        : `${diagnostics.length} error(s)`;
       return;
     }
 
     // Check for cycle overrun against the configured step interval
     if (elapsed > intervalMs) {
-      captureRunStopped("error", ["CYCLE_OVERRUN"]);
+      captureRunStopped("error", [CYCLE_OVERRUN_CODE]);
       stopExecution();
-      statusEl.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but step interval is ${intervalMs}ms`;
-      diagnosticsPanel.innerHTML = `<p class="error-message">Cycle overrun: program execution took ${elapsed.toFixed(0)}ms but the step interval is ${intervalMs}ms. Reduce program complexity or increase the interval.</p>`;
+      // Record the run context so a Submit Code click can attach the interval
+      // and measured execution time that produced the overrun.
+      lastRuntimeReport = {
+        intervalMs,
+        elapsedMs: elapsed,
+        cycleCount: result.total_scans,
+      };
+      const message =
+        `Cycle overrun: program execution took ${elapsed.toFixed(0)}ms but the ` +
+        `step interval is ${intervalMs}ms. Reduce program complexity or increase the interval.`;
+      // Render through the shared diagnostics path so the overrun offers the
+      // same "Submit Code" affordance as a VM trap.
+      renderDiagnostics([overrunDiagnostic(message)]);
       activateTab("diagnostics");
+      statusEl.textContent = `Cycle overrun: execution took ${elapsed.toFixed(0)}ms but step interval is ${intervalMs}ms`;
       return;
     }
 
@@ -640,6 +711,8 @@ function resetTransportButtons(): void {
 startBtn.addEventListener("click", async () => {
   const source = editor.value;
   lastCompiledSource = source;
+  // A fresh run supersedes any prior runtime-stop context.
+  lastRuntimeReport = null;
   const intervalMs = getIntervalMs();
   const cycleTimeUs = intervalMs * 1000;
   const programLines = source.split("\n").length;
@@ -678,13 +751,15 @@ startBtn.addEventListener("click", async () => {
 
   const loadResult = JSON.parse(loadMsg.json) as RunResult;
   if (!loadResult.ok) {
-    const diagnostics = loadResult.diagnostics || [];
+    // Fold a load-time runtime error (e.g. an init-time VM trap) into the
+    // diagnostics list so it renders through the same path as compiler errors.
+    const diagnostics = loadResult.error
+      ? [...(loadResult.diagnostics || []), runErrorToDiagnostic(loadResult.error)]
+      : loadResult.diagnostics || [];
     if (diagnostics.length > 0) {
       renderDiagnostics(diagnostics);
       activateTab("diagnostics");
       statusEl.textContent = `${diagnostics.length} error(s)`;
-    } else if (loadResult.error) {
-      statusEl.textContent = loadResult.error;
     }
     capture("compile_finished", {
       success: false,
@@ -907,12 +982,24 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
   let html = "";
   for (const d of diagnostics) {
     html += '<div class="diagnostic-item">';
-    const code = escapeHtml(d.code);
-    if (/^P\d{4}$/.test(d.code)) {
-      const url = `https://www.ironplc.com/reference/compiler/problems/${d.code}.html?version=${encodeURIComponent(compilerVersion)}`;
-      html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
-    } else {
-      html += `<span class="diagnostic-code">${code}</span>`;
+    // Infrastructure errors (e.g. a decode failure) carry no code; skip the
+    // code chip rather than render an empty one.
+    if (d.code) {
+      const code = escapeHtml(d.code);
+      // P#### are compiler problems and V#### are runtime (VM) problems; each
+      // has a documentation page under a different section of the reference
+      // site. Codes outside these families render as plain, unlinked chips.
+      const section = /^P\d{4}$/.test(d.code)
+        ? "compiler"
+        : /^V\d{4}$/.test(d.code)
+          ? "runtime"
+          : null;
+      if (section) {
+        const url = `https://www.ironplc.com/reference/${section}/problems/${d.code}.html?version=${encodeURIComponent(compilerVersion)}`;
+        html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
+      } else {
+        html += `<span class="diagnostic-code">${code}</span>`;
+      }
     }
     let message = escapeHtml(d.message);
     if (d.label) {
@@ -928,7 +1015,9 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
     html += "</div>";
   }
 
-  const reportable = diagnostics.filter((d) => isReportable(d.code));
+  const reportable = diagnostics.filter(
+    (d) => isReportable(d.code) || isRuntimeReportable(d.code),
+  );
   if (reportable.length > 0) {
     html += reportPanelHtml(reportable);
   }
@@ -960,9 +1049,13 @@ const REPORT_CONSENT_HTML =
 
 function reportPanelHtml(reportable: Diagnostic[]): string {
   const codes = extractErrorCodes(reportable).join(", ");
+  const title =
+    reportKind(reportable) === "runtime"
+      ? `The program stopped unexpectedly (${escapeHtml(codes)}). Send us the program so we can look into it.`
+      : `${escapeHtml(codes)}: the compiler can’t handle this yet. Send us the program so we can fix it.`;
   return (
     '<div class="report-panel" data-testid="report-panel">' +
-    `<p class="report-title">${escapeHtml(codes)}: the compiler can’t handle this yet. Send us the program so we can fix it.</p>` +
+    `<p class="report-title">${title}</p>` +
     `<p class="report-consent">${REPORT_CONSENT_HTML}</p>` +
     '<div class="report-actions">' +
     '<button type="button" class="submit-code-btn" data-testid="submit-code-btn">Submit Code</button>' +
@@ -983,7 +1076,7 @@ function wireReportPanel(reportable: Diagnostic[]): void {
     if (panel) {
       panel.innerHTML =
         '<p class="report-confirmation" data-testid="report-confirmation">' +
-        "✓ Thank you — your code was submitted. We’ll use it to add support." +
+        "✓ Thank you — your code was submitted. We’ll take a look." +
         "</p>";
     }
   });
@@ -992,7 +1085,9 @@ function wireReportPanel(reportable: Diagnostic[]): void {
 function submitCodeReport(reportable: Diagnostic[]): void {
   const source = lastCompiledSource;
   const truncated = source.length > MAX_REPORT_SOURCE_CHARS;
-  capture("todo_report_submitted", {
+  const kind = reportKind(reportable);
+  const props: Record<string, unknown> = {
+    report_kind: kind,
     error_codes: extractErrorCodes(reportable),
     error_count: reportable.length,
     program: truncated ? source.slice(0, MAX_REPORT_SOURCE_CHARS) : source,
@@ -1005,7 +1100,16 @@ function submitCodeReport(reportable: Diagnostic[]): void {
     dialect: getDialect(),
     allows: getAllows(),
     compiler_version: compilerVersion,
-  });
+  };
+  // For a runtime stop, the interval and measured execution time are the key
+  // signal (e.g. whether a "simple" program really overran, or the messaging
+  // overhead did), so attach the run context recorded when it stopped.
+  if (kind === "runtime" && lastRuntimeReport) {
+    props.interval_ms = lastRuntimeReport.intervalMs;
+    props.elapsed_ms = lastRuntimeReport.elapsedMs;
+    props.cycle_count = lastRuntimeReport.cycleCount;
+  }
+  capture("report_submitted", props);
 }
 
 // Build a prefilled "new issue" URL. We include the source inline when it fits
@@ -1014,16 +1118,41 @@ function submitCodeReport(reportable: Diagnostic[]): void {
 function buildGithubIssueUrl(reportable: Diagnostic[]): string {
   const source = lastCompiledSource;
   const codes = extractErrorCodes(reportable);
-  const primaryCode = codes[0] || "P9999";
-  const locations = extractErrorLocations(reportable);
-  const locationList = locations.map((l) => `- ${l}`).join("\n");
-  const header =
-    `**What happened**\nThe playground reported ${codes.join(", ")} ` +
-    "(a compiler error) for this program.\n\n" +
-    (locationList ? `**Compiler locations**\n${locationList}\n\n` : "") +
+  const config =
     `**Compiler version:** ${compilerVersion || "unknown"}\n` +
     `**Dialect:** ${getDialect() || "default"}\n` +
     (getAllows() ? `**Allows:** ${getAllows()}\n` : "");
+
+  let header: string;
+  let label: string;
+  let title: string;
+  if (reportKind(reportable) === "runtime") {
+    const primaryCode = codes[0] || "runtime-error";
+    const timing = lastRuntimeReport
+      ? `**Step interval:** ${lastRuntimeReport.intervalMs}ms\n` +
+        `**Measured execution:** ${Math.round(lastRuntimeReport.elapsedMs)}ms\n`
+      : "";
+    header =
+      `**What happened**\nThe playground run stopped with ${codes.join(", ")} ` +
+      "(a runtime error) for this program.\n\n" +
+      config +
+      timing;
+    // GitHub silently drops labels that don't exist in the repo; this label
+    // must be created for the filter to apply.
+    label = "playground-runtime";
+    title = `${primaryCode} - Playground runtime report`;
+  } else {
+    const primaryCode = codes[0] || "P9999";
+    const locations = extractErrorLocations(reportable);
+    const locationList = locations.map((l) => `- ${l}`).join("\n");
+    header =
+      `**What happened**\nThe playground reported ${codes.join(", ")} ` +
+      "(a compiler error) for this program.\n\n" +
+      (locationList ? `**Compiler locations**\n${locationList}\n\n` : "") +
+      config;
+    label = primaryCode;
+    title = `${primaryCode} - Compiler problem report`;
+  }
 
   const withProgram =
     header + `\n**Program**\n\`\`\`iecst\n${source}\n\`\`\`\n`;
@@ -1032,7 +1161,7 @@ function buildGithubIssueUrl(reportable: Diagnostic[]): string {
     "\n**Program**\nThe program is too large to prefill here — please " +
     "attach the source file to this issue.\n";
 
-  const base = `${GITHUB_NEW_ISSUE_URL}?labels=${encodeURIComponent(primaryCode)}&title=${encodeURIComponent(`${primaryCode} - Compiler problem report`)}`;
+  const base = `${GITHUB_NEW_ISSUE_URL}?labels=${encodeURIComponent(label)}&title=${encodeURIComponent(title)}`;
   const candidate = `${base}&body=${encodeURIComponent(withProgram)}`;
   if (candidate.length <= MAX_GITHUB_URL_CHARS) {
     return candidate;

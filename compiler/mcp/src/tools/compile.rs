@@ -97,10 +97,10 @@ pub fn build_response(
         }
     };
 
-    // Construct a fresh in-memory project (REQ-ARC-010)
+    // Construct a fresh in-memory project (REQ-ARC-mcp-010)
     let mut project = MemoryBackedProject::new(compiler_options);
 
-    // Load sources (REQ-ARC-011)
+    // Load sources (REQ-ARC-mcp-011)
     for src in sources {
         project.add_source(FileId::from_string(&src.name), src.content.clone());
     }
@@ -202,7 +202,7 @@ pub fn build_response(
         None
     };
 
-    // Build the fully-qualified variable symbol map (REQ-ARC-070) the
+    // Build the fully-qualified variable symbol map (REQ-ARC-mcp-070) the
     // `run` tool will use to resolve names like `Main.Counter` to
     // VarIndex values.
     let symbols = crate::runner::build_symbol_map(context, &container);

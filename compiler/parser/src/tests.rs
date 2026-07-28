@@ -23,7 +23,7 @@ mod test {
     use rstest::rstest;
     use time::Duration;
 
-    use crate::options::CompilerOptions;
+    use crate::options::{CompilerOptions, Dialect};
     use crate::parse_program;
 
     pub fn parse_resource(name: &'static str) -> Result<Library, Diagnostic> {
@@ -196,7 +196,7 @@ mod test {
 
         let err = res.unwrap_err();
         assert_eq!("Syntax error".to_owned(), err.description());
-        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | '\\n' (new line) | (identifier). Found text '&' that matched token 'AND' | '&'".to_owned(), err.primary.message);
+        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | '\\n' (new line) | '{ ... }' (pragma) | (identifier). Found text '&' that matched token 'AND' | '&'".to_owned(), err.primary.message);
     }
 
     #[test]
@@ -209,7 +209,7 @@ mod test {
 
         let err = res.unwrap_err();
         assert_eq!("Syntax error".to_owned(), err.description());
-        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | 'CONFIGURATION' | 'FUNCTION' | 'FUNCTION_BLOCK' | 'PROGRAM' | 'TYPE' | 'VAR_GLOBAL' | '\\n' (new line). Found text 'ACTION' that matched token 'ACTION'".to_owned(), err.primary.message);
+        assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | 'CONFIGURATION' | 'FUNCTION' | 'FUNCTION_BLOCK' | 'PROGRAM' | 'TYPE' | 'VAR_GLOBAL' | '\\n' (new line) | '{ ... }' (pragma). Found text 'ACTION' that matched token 'ACTION'".to_owned(), err.primary.message);
     }
 
     #[test]
@@ -2368,6 +2368,264 @@ END_PROGRAM
         assert!(
             result.is_ok(),
             "parse failed for {literal}: {:?}",
+            result.err()
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // TwinCAT/Siemens `{ ... }` pragma skipping.
+    // See specs/plans/2026-07-18-twincat-pragma-skipping.md.
+    // ---------------------------------------------------------------------
+
+    fn enum_with_pragma_header() -> String {
+        "
+        {attribute 'qualified_only'}
+        {attribute 'strict'}
+        TYPE E_Color :
+            (Red, Green, Blue);
+        END_TYPE"
+            .to_owned()
+    }
+
+    #[test]
+    fn parse_program_when_pragma_header_and_codesys_dialect_then_ok() {
+        let source = enum_with_pragma_header();
+        let options = CompilerOptions::from_dialect(Dialect::Codesys);
+
+        let result = parse_program(&source, &FileId::default(), &options);
+
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_program_when_pragma_header_and_default_dialect_then_err() {
+        let source = enum_with_pragma_header();
+
+        let result = parse_program(&source, &FileId::default(), &CompilerOptions::default());
+
+        assert!(
+            result.is_err(),
+            "pragmas should still be unrecognized syntax without allow_pragmas"
+        );
+    }
+
+    #[test]
+    fn parse_program_when_pragma_between_declarations_then_ok() {
+        let source = "
+        TYPE E_Color :
+            (Red, Green, Blue);
+        END_TYPE
+        {attribute 'qualified_only'}
+        FUNCTION_BLOCK FB_Example
+        VAR
+            x : INT;
+        END_VAR
+        END_FUNCTION_BLOCK";
+        let options = CompilerOptions::from_dialect(Dialect::Codesys);
+
+        let result = parse_program(source, &FileId::default(), &options);
+
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_program_when_unclosed_pragma_and_codesys_dialect_then_err() {
+        let source = "
+        {attribute 'qualified_only'
+        TYPE E_Color :
+            (Red, Green, Blue);
+        END_TYPE";
+        let options = CompilerOptions::from_dialect(Dialect::Codesys);
+
+        let result = parse_program(source, &FileId::default(), &options);
+
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------
+    // CASE branch with no statements.
+    // See specs/plans/2026-07-20-twincat-empty-case-branch.md.
+    // -----------------------------------------------------------------
+
+    fn extract_case(library: &Library) -> Case {
+        let element = library
+            .elements
+            .iter()
+            .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
+            .expect("expected a FunctionBlockDeclaration");
+        let fb = cast!(element, LibraryElementKind::FunctionBlockDeclaration);
+        let stmts = cast!(&fb.body, FunctionBlockBodyKind::Statements);
+        cast!(&stmts.body[0], StmtKind::Case).clone()
+    }
+
+    #[test]
+    fn parse_when_case_branch_empty_and_followed_by_another_label_then_ok() {
+        // An empty CASE branch isn't strict IEC 61131-3 (the standard only
+        // allows an explicit empty statement, `5: ;`) -- this is the
+        // `--allow-missing-semicolon` vendor extension filling in the
+        // dropped `;`, so it must be gated behind that flag.
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+CASE x OF
+    1: y := 1;
+    5: (* no statement here, falls through to nothing *)
+    10: y := 3;
+END_CASE;
+END_FUNCTION_BLOCK";
+        let library = parse_program(source, &FileId::default(), &with_missing_semicolon_flag())
+            .expect("empty CASE branch followed by another label must parse");
+        let case = extract_case(&library);
+        assert_eq!(case.statement_groups.len(), 3);
+        assert!(case.statement_groups[1].statements.is_empty());
+    }
+
+    #[test]
+    fn parse_when_case_branch_empty_and_last_before_end_case_then_ok() {
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+CASE x OF
+    1: y := 1;
+    5: (* no statement here *)
+END_CASE;
+END_FUNCTION_BLOCK";
+        let library = parse_program(source, &FileId::default(), &with_missing_semicolon_flag())
+            .expect("empty CASE branch as the last one must parse");
+        let case = extract_case(&library);
+        assert_eq!(case.statement_groups.len(), 2);
+        assert!(case.statement_groups[1].statements.is_empty());
+    }
+
+    #[test]
+    fn parse_when_case_branch_empty_and_flag_not_set_then_err() {
+        // Strict IEC 61131-3 (the default dialect) must still reject this --
+        // only `--allow-missing-semicolon` fills in the dropped `;`.
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+CASE x OF
+    1: y := 1;
+    5: (* no statement here *)
+END_CASE;
+END_FUNCTION_BLOCK";
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_when_case_branch_has_statement_then_regression_ok() {
+        // Regression: an ordinary populated CASE branch must be unaffected.
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+CASE x OF
+    1: y := 1;
+    5: y := 2;
+END_CASE;
+END_FUNCTION_BLOCK";
+        let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
+            .expect("populated CASE branch must still parse");
+        let case = extract_case(&library);
+        assert_eq!(case.statement_groups.len(), 2);
+        assert_eq!(case.statement_groups[1].statements.len(), 1);
+    }
+
+    // -----------------------------------------------------------------
+    // AND_THEN short-circuit boolean operator.
+    // See specs/plans/2026-07-20-twincat-and-then-operator.md.
+    // -----------------------------------------------------------------
+
+    fn opts_with_short_circuit_operators() -> CompilerOptions {
+        CompilerOptions {
+            allow_short_circuit_operators: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    fn extract_assignment_value(library: &Library) -> Expr {
+        let element = library
+            .elements
+            .iter()
+            .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
+            .expect("expected a FunctionBlockDeclaration");
+        let fb = cast!(element, LibraryElementKind::FunctionBlockDeclaration);
+        let stmts = cast!(&fb.body, FunctionBlockBodyKind::Statements);
+        let assignment = cast!(&stmts.body[0], StmtKind::Assignment);
+        assignment.value.clone()
+    }
+
+    #[test]
+    fn parse_when_and_then_then_ok_and_compare_op_and_then() {
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    a : BOOL;
+    b : BOOL;
+    result : BOOL;
+END_VAR
+result := a AND_THEN b;
+END_FUNCTION_BLOCK";
+        let library = parse_program(
+            source,
+            &FileId::default(),
+            &opts_with_short_circuit_operators(),
+        )
+        .unwrap();
+        let value = extract_assignment_value(&library);
+        let compare = cast!(&value.kind, ExprKind::Compare);
+        assert_eq!(compare.op, CompareOp::AndThen);
+    }
+
+    #[test]
+    fn parse_when_and_then_real_world_shape_then_ok() {
+        // The real motivating shape: guarding a dereference behind a
+        // null-pointer check.
+        let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    ptr : REF_TO INT;
+    result : BOOL;
+END_VAR
+result := ptr <> 0 AND_THEN ptr^ = 99;
+END_FUNCTION_BLOCK";
+        let options = CompilerOptions {
+            allow_short_circuit_operators: true,
+            allow_ref_to: true,
+            ..CompilerOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_when_and_then_and_disabled_then_parses_as_identifiers() {
+        // AND_THEN demotes to an ordinary identifier when the flag is
+        // off, matching the pattern used for every other vendor-extension
+        // keyword.
+        let source = "
+FUNCTION_BLOCK FB_ALL_AND_THEN_AS_VAR
+VAR
+    AND_THEN : INT;
+END_VAR
+AND_THEN := 1;
+END_FUNCTION_BLOCK";
+        let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
+        assert!(
+            result.is_ok(),
+            "AND_THEN must remain a valid identifier in standard mode: {:?}",
             result.err()
         );
     }

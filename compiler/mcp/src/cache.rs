@@ -5,7 +5,7 @@
 //! `compile → run` can hand off bytecode without routing it through the
 //! LLM context.
 //!
-//! See REQ-ARC-070 through REQ-ARC-073 in `specs/design/mcp-server.md`.
+//! See REQ-ARC-mcp-070 through REQ-ARC-mcp-073 in `specs/design/mcp-server.md`.
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
@@ -66,7 +66,7 @@ pub struct ResolvedVar {
     /// IEC type tag (from `ironplc_container::debug_section::iec_type_tag`).
     pub iec_type_tag: u8,
     /// Variable section encoding (from `debug_section::var_section`),
-    /// used to enforce REQ-TOL-042 stimulus eligibility in a follow-up.
+    /// used to enforce REQ-TOL-mcp-042 stimulus eligibility in a follow-up.
     pub var_section: u8,
     /// Hardware address, if direct-mapped (e.g. "%IX0.0").
     pub address: Option<String>,
@@ -79,13 +79,13 @@ pub struct ResolvedVar {
 
 /// Symbol table used by the `run` tool to map fully-qualified names to
 /// VM variable indices. Built by `compile` and stored alongside the
-/// container bytes per REQ-ARC-070.
+/// container bytes per REQ-ARC-mcp-070.
 #[derive(Clone, Debug, Default)]
 pub struct VariableSymbolMap {
     /// Canonical qualified name → resolved variable.
     by_qualified: HashMap<String, ResolvedVar>,
     /// Bare variable name → every resolution sharing that suffix.
-    /// Used for the REQ-ARC-020 bare-name fallback lookup.
+    /// Used for the REQ-ARC-mcp-020 bare-name fallback lookup.
     by_bare: HashMap<String, Vec<ResolvedVar>>,
 }
 

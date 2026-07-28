@@ -103,6 +103,11 @@ struct FileArgs {
     #[arg(long)]
     allow_ref_to: bool,
 
+    /// Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types.
+    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_ref_arithmetic: bool,
+
     /// Allow REF() on stack-allocated variables (VAR_TEMP, FUNCTION VAR_INPUT/VAR_OUTPUT).
     /// Required for OSCAT type-punning patterns where the reference doesn't escape.
     #[arg(long)]
@@ -139,6 +144,16 @@ struct FileArgs {
     /// `--dialect=rusty`.
     #[arg(long)]
     allow_partial_access_syntax: bool,
+
+    /// Allow curly-brace pragmas ({attribute 'name'}) as opaque, skipped trivia.
+    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_pragmas: bool,
+
+    /// Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension).
+    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_short_circuit_operators: bool,
 }
 
 impl FileArgs {
@@ -152,6 +167,7 @@ impl FileArgs {
         options.allow_time_as_function_name |= self.allow_time_as_function_name;
         options.allow_c_style_comments |= self.allow_c_style_comments;
         options.allow_ref_to |= self.allow_ref_to;
+        options.allow_ref_arithmetic |= self.allow_ref_arithmetic;
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
         options.allow_int_to_bool_initializer |= self.allow_int_to_bool_initializer;
@@ -159,6 +175,8 @@ impl FileArgs {
         options.allow_system_uptime_global |= self.allow_system_uptime_global;
         options.allow_cross_family_widening |= self.allow_cross_family_widening;
         options.allow_partial_access_syntax |= self.allow_partial_access_syntax;
+        options.allow_pragmas |= self.allow_pragmas;
+        options.allow_short_circuit_operators |= self.allow_short_circuit_operators;
         options
     }
 }
@@ -258,5 +276,36 @@ mod tests {
         let clap_variants: Vec<Dialect> =
             ClapDialect::value_variants().iter().map(|c| c.0).collect();
         assert_eq!(clap_variants.as_slice(), Dialect::ALL);
+    }
+
+    /// Guards the hand-maintained `FileArgs` flag list against drifting out of
+    /// sync with the compiler's `FEATURE_DESCRIPTORS`: every vendor flag must be
+    /// reachable via its `--allow-*` CLI form and wired through to
+    /// `CompilerOptions`. clap needs a static field per arg, so the list cannot
+    /// be derived — but this test makes an omission fail CI instead of shipping.
+    #[test]
+    fn file_args_when_each_vendor_flag_cli_form_passed_then_option_enabled() {
+        #[derive(Parser)]
+        struct TestCli {
+            #[command(flatten)]
+            file_args: FileArgs,
+        }
+
+        for fd in CompilerOptions::FEATURE_DESCRIPTORS {
+            let cli = TestCli::try_parse_from(["ironplcc", fd.cli_flag]).unwrap_or_else(|e| {
+                panic!(
+                    "CLI does not accept `{}` (for CompilerOptions.{}): {e}",
+                    fd.cli_flag, fd.option_key
+                )
+            });
+            let options = cli.file_args.compiler_options();
+            assert_eq!(
+                options.get_flag_by_key(fd.option_key),
+                Some(true),
+                "`{}` parsed but did not enable CompilerOptions.{}",
+                fd.cli_flag,
+                fd.option_key
+            );
+        }
     }
 }
