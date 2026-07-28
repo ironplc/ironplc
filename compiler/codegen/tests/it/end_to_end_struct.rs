@@ -57,8 +57,12 @@ e2e_i32!(
 // Regression test: global struct with STRING field previously failed with
 // P9999 "Structure contains unsupported field types".
 // data1 is var 0 (global), x is var 1.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_global_struct_with_string_field_then_compiles_and_runs,
+    CompilerOptions {
+        allow_top_level_var_global: true,
+        ..CompilerOptions::default()
+    },
     "TYPE MY_DATA : STRUCT NAME : STRING[30]; VALUE : INT; END_STRUCT; END_TYPE VAR_GLOBAL data1 : MY_DATA; END_VAR PROGRAM main VAR x : INT; END_VAR x := 1; END_PROGRAM",
     &[(1, 1)],
 );
@@ -223,7 +227,13 @@ PROGRAM main
     r := lang.NAMES[2, 2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions {
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        },
+    );
 
     // Global struct 'lang' is var 0 (globals come first), scratch is var 1.
     // Program var 'r' is var 2.
@@ -363,8 +373,12 @@ e2e_f32!(
 // the "missing resolved_type" branch when a 2-D STRING array field was
 // compared inside an IF.
 // Global DATA is var 0, scratch is var 1, r_match is var 2, r_mismatch is var 3.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_struct_2d_string_array_field_compared_then_matches,
+    CompilerOptions {
+        allow_top_level_var_global: true,
+        ..CompilerOptions::default()
+    },
     "TYPE MY_DATA : STRUCT DIRS : ARRAY[0..2, 0..15] OF STRING[3]; END_STRUCT; END_TYPE VAR_GLOBAL DATA : MY_DATA; END_VAR FUNCTION FOO : INT VAR_INPUT DIR : STRING[3]; END_VAR VAR i : INT; j : INT; END_VAR FOO := 0; IF DATA.DIRS[i, j] = DIR THEN FOO := 1; END_IF; END_FUNCTION PROGRAM main VAR r_match : INT; r_mismatch : INT; END_VAR DATA.DIRS[0, 0] := 'N'; r_match := FOO(DIR := 'N'); r_mismatch := FOO(DIR := 'S'); END_PROGRAM",
     &[(2, 1), (3, 0)],
 );
