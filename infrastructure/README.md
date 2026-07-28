@@ -5,6 +5,7 @@ Terraform that provisions:
 - 14 GitHub workflow labels (`status/*`, `review/*`, `flag/*`) — `main.tf`.
 - The PostHog **"IronPLC — Adoption & Success"** product-analytics dashboard
   and its insights — `posthog.tf`.
+- The PostHog project's **Authorized URLs** (`app_urls`) — `posthog.tf`.
 
 This directory does **not** deploy app code.
 
@@ -103,6 +104,23 @@ the `error_codes` property, never the program source.
 Install-adoption tiles (`install_completed`, `release_downloads`, Open VSX)
 are left as commented stubs at the bottom of `posthog.tf`; they light up once
 the collectors that emit those events exist.
+
+## PostHog Authorized URLs
+
+`posthog.tf` also manages the project's **Authorized URLs** via a
+`posthog_project_settings` resource (`app_urls`). These are the domains that
+load PostHog and emit events — shown in PostHog as "Web analytics domains" and
+used to gate the toolbar. Two domains are authorized:
+
+- `https://www.ironplc.com` — the docs/marketing site (`$pageview`).
+- `https://playground.ironplc.com` — the playground (custom events; also the
+  origin when embedded as an iframe in the docs).
+
+Wildcards are not permitted, so each origin is listed explicitly. Setting
+these clears PostHog's "No authorized URLs" health warning. Writing project
+settings may need a settings/`project:write` scope on the personal API key in
+addition to `insight:write` + `dashboard:write`; if `apply` returns 403, add
+that scope in PostHog → Settings → Personal API keys.
 
 Each insight's `query_json` is the raw PostHog query node. Exact field values
 (boolean property filters, `breakdownFilter` shape, display enums) can vary by

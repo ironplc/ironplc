@@ -38,6 +38,26 @@ locals {
   ph_tags      = ["managed-by-terraform", "adoption-success"]
 }
 
+# ---------------------------------------------------------------------------
+# Project settings — Authorized URLs (PostHog "Web analytics domains").
+#
+# These are the domains that load PostHog and emit events: the docs/marketing
+# site (captures $pageview) and the playground (custom product events; also the
+# origin when embedded as an iframe inside the docs). Setting them clears
+# PostHog's "No authorized URLs" health warning and scopes the toolbar / web
+# analytics to our domains. Wildcards are NOT permitted; list each origin
+# explicitly. Order is preserved by the provider, so keep the list stable to
+# avoid no-op diffs.
+#
+# project_id is inherited from the provider block (main.tf); no extra wiring.
+# ---------------------------------------------------------------------------
+resource "posthog_project_settings" "ironplc" {
+  app_urls = [
+    "https://www.ironplc.com",
+    "https://playground.ironplc.com",
+  ]
+}
+
 resource "posthog_dashboard" "adoption" {
   name        = "IronPLC — Adoption & Success"
   description = "Acquisition → interest → activation → retention, plus product-health tiles. Managed by Terraform (infrastructure/posthog.tf)."
