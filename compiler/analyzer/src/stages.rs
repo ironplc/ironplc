@@ -385,6 +385,9 @@ END_FUNCTION_BLOCK";
     fn opts_with_constant_initializer_expressions() -> CompilerOptions {
         CompilerOptions {
             allow_constant_initializer_expressions: true,
+            // Constants are only collected from true top-level VAR_GLOBAL
+            // declarations, which since #1251 (P4028) require this flag.
+            allow_top_level_var_global: true,
             ..CompilerOptions::default()
         }
     }
