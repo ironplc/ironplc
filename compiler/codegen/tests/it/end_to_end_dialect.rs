@@ -140,6 +140,63 @@ END_PROGRAM
 }
 
 #[test]
+fn end_to_end_when_twincat_dialect_then_ldt_usable_as_variable_name() {
+    // The TwinCAT dialect uses an Edition 2 base, so LDT remains usable as
+    // an identifier.
+    let source = "
+PROGRAM main
+VAR
+    LDT : DINT := 42;
+    result : DINT;
+END_VAR
+    result := LDT;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::TwinCat));
+    // TwinCAT does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
+    // user variables start at index 0: LDT=0, result=1.
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_twincat_dialect_then_pragmas_are_skipped() {
+    // Curly-brace pragmas ({attribute '...'}) appear in virtually every
+    // TwinCAT source file. The TwinCAT dialect skips them as opaque trivia so
+    // the surrounding code compiles and runs unchanged.
+    let source = "
+{attribute 'qualified_only'}
+PROGRAM main
+VAR
+    x : DINT := 99;
+    result : DINT;
+END_VAR
+    result := x;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::TwinCat));
+    // var layout: x=0, result=1
+    assert_eq!(bufs.vars[1].as_i32(), 99);
+}
+
+#[test]
+fn end_to_end_when_twincat_dialect_then_sizeof_and_c_style_comments_work() {
+    // TwinCAT supports SIZEOF() and C-style comments.
+    let source = "
+PROGRAM main
+VAR
+    x : DINT;        // C-style line comment
+    result : DINT;
+END_VAR
+    /* block comment */
+    result := SIZEOF(x);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::TwinCat));
+    // var layout: x=0, result=1
+    assert_eq!(bufs.vars[1].as_i32(), 4);
+}
+
+#[test]
 fn end_to_end_when_rusty_dialect_then_oscat_style_struct_with_ldt_member_access() {
     // Full OSCAT scenario: struct with LDT as member name, function that reads
     // the member, and a program that writes and reads through the struct.
