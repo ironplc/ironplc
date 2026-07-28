@@ -168,6 +168,16 @@ instead.
 Real to integer is never implicit. Use explicit conversion functions such as
 ``REAL_TO_INT``.
 
+Real widening
+~~~~~~~~~~~~~
+
+A ``REAL`` value (from a variable, field, or return value, not just a bare
+literal) can implicitly widen to ``LREAL``. This is always lossless: every
+32-bit ``REAL`` value is exactly representable in 64-bit ``LREAL``.
+
+The reverse direction, ``LREAL`` to ``REAL``, is never implicit because it can
+lose precision. Use an explicit conversion such as ``LREAL_TO_REAL(x)``.
+
 Bit-string widening
 ~~~~~~~~~~~~~~~~~~~
 
@@ -215,6 +225,7 @@ Widening chains
 - **Bit-string:** ``BYTE`` |rarr| ``WORD`` |rarr| ``DWORD`` |rarr| ``LWORD``
 - **Integer to REAL (lossless):** ``SINT``, ``INT``, ``USINT``, ``UINT`` |rarr| ``REAL``
 - **Integer to LREAL (lossless):** all integer types |rarr| ``LREAL``
+- **Real (lossless):** ``REAL`` |rarr| ``LREAL``
 
 .. |rarr| unicode:: U+2192
 

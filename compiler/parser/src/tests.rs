@@ -711,6 +711,29 @@ END_FUNCTION";
     }
 
     #[test]
+    fn parse_when_enumerated_value_is_reserved_keyword_then_parses() {
+        // enumerated_value() used to require a bare identifier(), which
+        // rejects ON/STEP/R_EDGE/F_EDGE (reserved tokens) even though
+        // variable_identifier() already carves out exactly this set for
+        // VAR declarations (see #300, "Feature/reserved variables") --
+        // real-world enums commonly use these as ordinary member names
+        // (e.g. `(off, on)` for a blink state).
+        let source = "TYPE E_Test : (on, off, step, r_edge, f_edge, normal_value); END_TYPE";
+        let library = parse_text(source);
+        let decl = cast!(
+            &library.elements[0],
+            LibraryElementKind::DataTypeDeclaration
+        );
+        let enumeration = cast!(decl, DataTypeDeclarationKind::Enumeration);
+        let inline = cast!(&enumeration.spec_init.spec, SpecificationKind::Inline);
+        let values: Vec<&String> = inline.values.iter().map(|v| v.value.original()).collect();
+        assert_eq!(
+            values,
+            vec!["on", "off", "step", "r_edge", "f_edge", "normal_value"]
+        );
+    }
+
+    #[test]
     fn parse_when_function_with_any_num_return_type_then_parses() {
         let lib = parse_text(
             "FUNCTION ABS : ANY_NUM
