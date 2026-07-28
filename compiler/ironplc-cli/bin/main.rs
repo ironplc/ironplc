@@ -155,6 +155,12 @@ struct FileArgs {
     /// This is a vendor extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_short_circuit_operators: bool,
+
+    /// Allow an AT-located variable inside an otherwise plain
+    /// VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own dedicated
+    /// block. This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_mixed_located_var_declarations: bool,
 }
 
 impl FileArgs {
@@ -178,6 +184,7 @@ impl FileArgs {
         options.allow_partial_access_syntax |= self.allow_partial_access_syntax;
         options.allow_pragmas |= self.allow_pragmas;
         options.allow_short_circuit_operators |= self.allow_short_circuit_operators;
+        options.allow_mixed_located_var_declarations |= self.allow_mixed_located_var_declarations;
         options
     }
 }

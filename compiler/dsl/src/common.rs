@@ -1851,10 +1851,29 @@ pub struct ProgramAccessDecl {
     pub direction: Option<Direction>,
 }
 
+/// Identifies which source `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block a
+/// [`VarDecl`] was declared in. Two declarations sharing the same `BlockId`
+/// came from the same block in the source text -- this is the only way to
+/// tell once declarations from different blocks are flattened together into
+/// one `Vec<VarDecl>` (e.g. `FunctionBlockDeclaration::variables`).
+///
+/// Declarations built by anything other than the parser's per-block grouping
+/// logic (helper constructors, tests, other transform passes) each get their
+/// own fresh id via [`next_block_id`], so they can never be mistaken for
+/// sharing a block with an unrelated declaration.
+pub type BlockId = usize;
+
+/// Returns a fresh [`BlockId`], globally unique for the process's lifetime.
+pub fn next_block_id() -> BlockId {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
 /// Variable declaration.
 ///
 /// See section 2.4.3.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, Recurse)]
 pub struct VarDecl {
     // Not all variable types have a "name", so the name is part of the type.
     pub identifier: VariableIdentifier,
@@ -1863,6 +1882,23 @@ pub struct VarDecl {
     #[recurse(ignore)]
     pub qualifier: DeclarationQualifier,
     pub initializer: InitialValueAssignmentKind,
+    /// Which source block this declaration came from -- see [`BlockId`].
+    /// Deliberately excluded from `PartialEq` (see the manual impl below):
+    /// it is assigned from a process-global counter, so two declarations
+    /// that are otherwise identical (e.g. an expected AST built by hand in
+    /// a test, or the same source parsed twice) would only match by
+    /// coincidence if this field were compared.
+    #[recurse(ignore)]
+    pub block: BlockId,
+}
+
+impl PartialEq for VarDecl {
+    fn eq(&self, other: &Self) -> bool {
+        self.identifier == other.identifier
+            && self.var_type == other.var_type
+            && self.qualifier == other.qualifier
+            && self.initializer == other.initializer
+    }
 }
 
 impl Located for VarDecl {
@@ -1882,6 +1918,7 @@ impl VarDecl {
             initializer: InitialValueAssignmentKind::simple_uninitialized(TypeName::from(
                 type_name,
             )),
+            block: next_block_id(),
         }
     }
 
@@ -1896,6 +1933,7 @@ impl VarDecl {
                 initial_value: None,
                 keyword_span: SourceSpan::default(),
             }),
+            block: next_block_id(),
         }
     }
 
@@ -1912,6 +1950,7 @@ impl VarDecl {
                     initial_value: None,
                 },
             ),
+            block: next_block_id(),
         }
     }
 
@@ -1932,6 +1971,7 @@ impl VarDecl {
                     }),
                 },
             ),
+            block: next_block_id(),
         }
     }
 
@@ -1948,6 +1988,7 @@ impl VarDecl {
                     init: vec![],
                 },
             ),
+            block: next_block_id(),
         }
     }
 
@@ -1963,6 +2004,7 @@ impl VarDecl {
                     elements_init: vec![],
                 },
             ),
+            block: next_block_id(),
         }
     }
 
@@ -1977,6 +2019,7 @@ impl VarDecl {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::LateResolvedType(TypeName::from(type_name)),
+            block: next_block_id(),
         }
     }
 
@@ -2031,6 +2074,41 @@ impl VarDecl {
             }
         }
     }
+}
+
+/// Declarations that are `AT`-located but share a `BlockId` with at least
+/// one plain (symbolic) declaration -- derived from block identity, not
+/// stored. This is the CODESYS/TwinCAT vendor extension gated by
+/// `--allow-mixed-located-var-declarations`: standard IEC 61131-3 requires
+/// located variables to live in their own dedicated block, separate from
+/// ordinary symbolic ones.
+///
+/// `variables` is typically a whole POU's flattened declaration list (e.g.
+/// `FunctionBlockDeclaration::variables`), which may span several source
+/// blocks -- grouping by [`BlockId`] recovers which declarations came from
+/// the same block despite the flattening.
+pub fn mixed_located_var_decls(variables: &[VarDecl]) -> impl Iterator<Item = &VarDecl> {
+    let mixed_blocks: std::collections::HashSet<BlockId> = variables
+        .iter()
+        .fold(
+            std::collections::HashMap::<BlockId, (bool, bool)>::new(),
+            |mut acc, v| {
+                let (has_symbol, has_direct) = acc.entry(v.block).or_default();
+                match &v.identifier {
+                    VariableIdentifier::Symbol(_) => *has_symbol = true,
+                    VariableIdentifier::Direct(_) => *has_direct = true,
+                }
+                acc
+            },
+        )
+        .into_iter()
+        .filter_map(|(block, (has_symbol, has_direct))| (has_symbol && has_direct).then_some(block))
+        .collect();
+
+    variables
+        .iter()
+        .filter(move |v| matches!(v.identifier, VariableIdentifier::Direct(_)))
+        .filter(move |v| mixed_blocks.contains(&v.block))
 }
 
 /// Keywords for declarations.
@@ -2685,6 +2763,75 @@ impl Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn located(name: &str, block: BlockId) -> VarDecl {
+        VarDecl {
+            identifier: VariableIdentifier::Direct(DirectVariableIdentifier {
+                name: Some(Id::from(name)),
+                address_assignment: AddressAssignment {
+                    location: LocationPrefix::I,
+                    size: SizePrefix::Nil,
+                    address: vec![0],
+                    position: SourceSpan::default(),
+                },
+                span: SourceSpan::default(),
+            }),
+            var_type: VariableType::Var,
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignmentKind::None(SourceSpan::default()),
+            block,
+        }
+    }
+
+    fn symbol(name: &str, block: BlockId) -> VarDecl {
+        let mut decl = VarDecl::simple(name, "INT");
+        decl.block = block;
+        decl
+    }
+
+    #[test]
+    fn mixed_located_var_decls_when_block_has_only_direct_then_none_returned() {
+        let block = next_block_id();
+        let vars = vec![located("a", block), located("b", block)];
+        assert_eq!(mixed_located_var_decls(&vars).count(), 0);
+    }
+
+    #[test]
+    fn mixed_located_var_decls_when_block_has_only_symbol_then_none_returned() {
+        let block = next_block_id();
+        let vars = vec![symbol("a", block), symbol("b", block)];
+        assert_eq!(mixed_located_var_decls(&vars).count(), 0);
+    }
+
+    #[test]
+    fn mixed_located_var_decls_when_block_has_both_then_direct_ones_returned() {
+        let block = next_block_id();
+        let vars = vec![located("a", block), symbol("b", block)];
+        let mixed: Vec<&VarDecl> = mixed_located_var_decls(&vars).collect();
+        assert_eq!(mixed.len(), 1);
+        assert_eq!(mixed[0].identifier.symbolic_id(), Some(&Id::from("a")));
+    }
+
+    #[test]
+    fn mixed_located_var_decls_when_direct_and_symbol_in_different_blocks_then_none_returned() {
+        // Same slice, but the located and symbolic declarations came from
+        // two different source blocks -- must not be flagged as mixed.
+        let block_a = next_block_id();
+        let block_b = next_block_id();
+        let vars = vec![located("a", block_a), symbol("b", block_b)];
+        assert_eq!(mixed_located_var_decls(&vars).count(), 0);
+    }
+
+    #[test]
+    fn var_decl_partial_eq_ignores_block() {
+        // `block` is process-global-counter-derived provenance, not
+        // semantic content -- two otherwise-identical declarations must
+        // compare equal even with different `block` values.
+        let a = symbol("x", next_block_id());
+        let b = symbol("x", next_block_id());
+        assert_ne!(a.block, b.block);
+        assert_eq!(a, b);
+    }
 
     #[test]
     fn test_constant_kind_partial_eq_and_clone() {
