@@ -914,6 +914,40 @@ mod test {
     }
 
     #[test]
+    fn extract_compiler_options_when_twincat_dialect() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"dialect": "twincat"})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_c_style_comments);
+        assert!(options.allow_pragmas);
+        assert!(options.allow_short_circuit_operators);
+        // TwinCAT spells references/pointers REFERENCE TO / POINTER TO, not the
+        // CODESYS REF_TO / REF() / NULL, so none of the REF_TO-family flags are
+        // enabled.
+        assert!(!options.allow_ref_to);
+        assert!(!options.allow_ref_arithmetic);
+        assert!(!options.allow_ref_stack_variables);
+        assert!(!options.allow_ref_type_punning);
+        // TwinCAT, like CODESYS, does not pre-bind the IronPLC uptime globals.
+        assert!(!options.allow_system_uptime_global);
+    }
+
+    #[test]
     fn extract_compiler_options_when_no_options_then_uses_default() {
         #[allow(deprecated)]
         let params = InitializeParams {
