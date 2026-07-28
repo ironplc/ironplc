@@ -8,7 +8,6 @@ pub mod options;
 mod parser;
 mod preprocessor;
 mod rule_no_empty_var_blocks;
-mod rule_no_top_level_var_global;
 mod rule_token_no_c_style_comment;
 mod rule_token_no_partial_access_syntax;
 mod vars;
@@ -72,7 +71,6 @@ fn check_tokens(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<D
     let rules: Vec<fn(&[Token], &CompilerOptions) -> Result<(), Vec<Diagnostic>>> = vec![
         rule_token_no_c_style_comment::apply,
         rule_no_empty_var_blocks::apply,
-        rule_no_top_level_var_global::apply,
         rule_token_no_partial_access_syntax::apply,
     ];
 

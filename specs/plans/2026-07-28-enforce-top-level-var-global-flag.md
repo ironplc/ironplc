@@ -11,31 +11,25 @@ nowhere. See ironplc/ironplc#1233.
 
 ## Approach
 
-Add a token-level validation rule following the established pattern in
-`parser/src/rule_no_empty_var_blocks.rs` and
-`parser/src/rule_token_no_c_style_comment.rs`. The rule runs in
-`check_tokens()` during `tokenize_program()`.
-
-A `VAR_GLOBAL` is "top level" when it appears outside any
-`CONFIGURATION`/`RESOURCE` block — the only two places the standard permits
-`VAR_GLOBAL`. Track block-nesting depth over the token stream:
-
-- Increment depth on `CONFIGURATION` / `RESOURCE`.
-- Decrement on `END_CONFIGURATION` / `END_RESOURCE`.
-- A `VAR_GLOBAL` keyword seen at depth `0` is top-level → emit P4028 when
-  `allow_top_level_var_global` is `false`.
-
-This unambiguously matches the grammar, where a top-level `VAR_GLOBAL`
-parses to `LibraryElementKind::GlobalVarDeclarations` while config/resource
-globals are absorbed into the `ConfigurationDeclaration`.
+Add a semantic (AST-level) rule in the analyzer, alongside the other
+flag-gated rules (`rule_ref_to`, `xform_int_to_bool_initializer`, …). The
+parser already represents a top-level `VAR_GLOBAL` block as a distinct
+`LibraryElementKind::GlobalVarDeclarations` element, while config/resource
+globals are absorbed into the `ConfigurationDeclaration`. So the rule is
+simply: iterate `library.elements` and emit P4028 for each
+`GlobalVarDeclarations` when `allow_top_level_var_global` is `false` — no
+token depth-tracking needed. (An earlier draft used a token-level rule with
+manual CONFIGURATION/RESOURCE nesting tracking; the AST check is
+considerably less code for the same behavior — see PR #1251 review.)
 
 ## Changes
 
-1. `compiler/parser/src/rule_no_top_level_var_global.rs` — new rule module
-   with the depth-tracking logic and unit tests.
-2. `compiler/parser/src/lib.rs` — register the module and add it to the
-   `check_tokens()` rule list.
-3. `compiler/mcp/src/feature_flag_conformance.rs` — move
+1. `compiler/analyzer/src/rule_no_top_level_var_global.rs` — new semantic
+   rule module with unit tests.
+2. `compiler/analyzer/src/lib.rs` — declare the module.
+3. `compiler/analyzer/src/stages.rs` — register the rule in the `semantic`
+   stage's rule list.
+4. `compiler/mcp/src/feature_flag_conformance.rs` — move
    `allow_top_level_var_global` from `UNENFORCED` to `FLAG_FIXTURES` with a
    source snippet (rejected off, accepted on), per the file's own comment.
 
