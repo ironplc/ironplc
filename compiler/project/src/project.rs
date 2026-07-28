@@ -33,7 +33,24 @@ fn run_semantic_analysis(
     let mut all_libraries = vec![];
     let mut all_diagnostics: Vec<Diagnostic> = vec![];
 
-    for source in source_project.sources_mut() {
+    // Sources are backed by a HashMap, so iteration order is randomized
+    // per-process by its hasher's random seed. Merging them in that order
+    // made the combined Library's declaration order -- and therefore
+    // semantic analysis's outcome for a given multi-file project -- vary
+    // from run to run of the identical binary and identical input. Sort by
+    // FileId first so the merged order (and every downstream result) is
+    // deterministic.
+    // Sources are backed by a HashMap, so iteration order is randomized
+    // per-process by its hasher's random seed. Merging them in that order
+    // made the combined Library's declaration order -- and therefore
+    // semantic analysis's outcome for a given multi-file project -- vary
+    // from run to run of the identical binary and identical input. Sort by
+    // FileId first so the merged order (and every downstream result) is
+    // deterministic.
+    let mut sources = source_project.sources_mut();
+    sources.sort_by_key(|source| source.file_id().to_string());
+
+    for source in sources {
         match source.library() {
             Ok(library) => {
                 all_libraries.push(library);
@@ -394,6 +411,70 @@ mod test {
 
         assert!(result.is_err());
         assert!(project.semantic_context().is_some());
+    }
+
+    // Regression test for a real non-determinism bug (see the GitHub issue
+    // this fixes): sources used to be merged in HashMap iteration order,
+    // which is randomized per-process, so the same multi-file project could
+    // produce different (spuriously failing) semantic analysis results on
+    // different runs of the identical binary. Sources are now sorted by
+    // FileId before merging, so the combined library's element order --
+    // and therefore the analysis result -- no longer depends on either
+    // insertion order or hash-seed randomness.
+    #[test]
+    fn run_semantic_analysis_when_sources_inserted_out_of_order_then_merges_in_sorted_order() {
+        use ironplc_dsl::common::LibraryElementKind;
+        use ironplc_sources::SourceProject;
+
+        fn element_names(source_project: &mut SourceProject) -> Vec<String> {
+            let (_, _, library) =
+                super::run_semantic_analysis(source_project, &CompilerOptions::default());
+            let library = library.expect("valid project must produce a merged library");
+            library
+                .elements
+                .iter()
+                .map(|element| match element {
+                    LibraryElementKind::FunctionBlockDeclaration(fb) => fb.name.to_string(),
+                    other => panic!("unexpected element: {other:?}"),
+                })
+                .collect()
+        }
+
+        // Two otherwise-identical projects, differing only in the order the
+        // same three files were inserted. Independent declarations (no
+        // reference between them) have no required relative order, but the
+        // merge must still be a deterministic function of FileId, not of
+        // insertion order or (pre-fix) HashMap hash-seed randomness -- so
+        // both must produce the exact same result.
+        let mut forward = SourceProject::new();
+        forward.add_source(
+            FileId::from_string("a_file.st"),
+            "FUNCTION_BLOCK FB_A\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+        forward.add_source(
+            FileId::from_string("m_file.st"),
+            "FUNCTION_BLOCK FB_M\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+        forward.add_source(
+            FileId::from_string("z_file.st"),
+            "FUNCTION_BLOCK FB_Z\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+
+        let mut reverse = SourceProject::new();
+        reverse.add_source(
+            FileId::from_string("z_file.st"),
+            "FUNCTION_BLOCK FB_Z\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+        reverse.add_source(
+            FileId::from_string("m_file.st"),
+            "FUNCTION_BLOCK FB_M\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+        reverse.add_source(
+            FileId::from_string("a_file.st"),
+            "FUNCTION_BLOCK FB_A\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+
+        assert_eq!(element_names(&mut forward), element_names(&mut reverse));
     }
 
     #[test]
