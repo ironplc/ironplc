@@ -43,13 +43,14 @@ Supported Dialects
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
-   runtime, so this enables the same feature set as the ``codesys`` dialect:
-   an Edition 2 base (so identifiers like
+   runtime, so it uses an Edition 2 base (identifiers like
    :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
-   preserved),
-   :doc:`REF_TO </reference/language/data-types/derived/reference-types>`
-   support, and the shared CODESYS/TwinCAT vendor extensions. As with
-   ``codesys``, the implicit
+   preserved) and enables the vendor extensions TwinCAT shares with CODESYS,
+   such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
+   short-circuit operator. It is stricter than ``codesys`` on references:
+   TwinCAT's ``REFERENCE TO`` is a managed reference, so pointer arithmetic
+   and reference type punning are not enabled. As with ``codesys``, the
+   implicit
    :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound, since they are an IronPLC runtime convention
    rather than a TwinCAT feature.

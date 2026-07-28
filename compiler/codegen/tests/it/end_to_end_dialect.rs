@@ -159,21 +159,23 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_twincat_dialect_then_ref_to_works() {
-    // The TwinCAT dialect enables REF_TO.
+fn end_to_end_when_twincat_dialect_then_pragmas_are_skipped() {
+    // Curly-brace pragmas ({attribute '...'}) appear in virtually every
+    // TwinCAT source file. The TwinCAT dialect skips them as opaque trivia so
+    // the surrounding code compiles and runs unchanged.
     let source = "
+{attribute 'qualified_only'}
 PROGRAM main
 VAR
-    counter : DINT := 99;
-    r : REF_TO DINT := REF(counter);
+    x : DINT := 99;
     result : DINT;
 END_VAR
-    result := r^;
+    result := x;
 END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::TwinCat));
-    // var layout: counter=0, r=1, result=2
-    assert_eq!(bufs.vars[2].as_i32(), 99);
+    // var layout: x=0, result=1
+    assert_eq!(bufs.vars[1].as_i32(), 99);
 }
 
 #[test]

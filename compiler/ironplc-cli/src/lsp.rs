@@ -914,7 +914,7 @@ mod test {
     }
 
     #[test]
-    fn extract_compiler_options_when_twincat_dialect_then_enables_ref_to_without_uptime_global() {
+    fn extract_compiler_options_when_twincat_dialect() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
@@ -933,10 +933,13 @@ mod test {
 
         let options = super::extract_compiler_options(&params);
         assert!(!options.allow_iec_61131_3_2013);
-        assert!(options.allow_ref_to);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_pragmas);
         assert!(options.allow_short_circuit_operators);
+        // TwinCAT's REFERENCE TO is a managed reference: no pointer arithmetic
+        // or type punning, unlike CODESYS.
+        assert!(!options.allow_ref_arithmetic);
+        assert!(!options.allow_ref_type_punning);
         // TwinCAT, like CODESYS, does not pre-bind the IronPLC uptime globals.
         assert!(!options.allow_system_uptime_global);
     }

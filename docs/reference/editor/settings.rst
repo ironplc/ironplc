@@ -96,9 +96,10 @@ and a default set of vendor extensions.
   RuSTy-based PLC environments.
 * ``codesys``: CODESYS-compatible — Edition 2 base with ``REF_TO`` and the
   vendor extensions that the CODESYS IDE accepts.
-* ``twincat``: TwinCAT-compatible — Edition 2 base with ``REF_TO`` and the
-  vendor extensions that Beckhoff TwinCAT accepts (the same set as
-  ``codesys``, since TwinCAT 3 runs on the CODESYS V3 runtime).
+* ``twincat``: TwinCAT-compatible — Edition 2 base with the vendor extensions
+  Beckhoff TwinCAT shares with CODESYS. Stricter than ``codesys`` on
+  references (TwinCAT's ``REFERENCE TO`` is a managed reference, so pointer
+  arithmetic and reference type punning are not enabled).
 
 This setting corresponds to the ``--dialect`` command-line option documented in
 :doc:`/reference/compiler/ironplcc`.

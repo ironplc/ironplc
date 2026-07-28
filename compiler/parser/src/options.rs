@@ -28,11 +28,14 @@ pub enum Dialect {
     /// implicit `__SYSTEM_UP_TIME` globals, which are an IronPLC runtime
     /// convention rather than a CODESYS feature.
     Codesys,
-    /// Beckhoff TwinCAT-compatible dialect: Edition 2 base plus `REF_TO`
-    /// support and the vendor extensions that TwinCAT accepts.  TwinCAT 3 is
-    /// built on the CODESYS V3 runtime, so this enables the same flag set as
-    /// [`Dialect::Codesys`], including not binding the implicit
-    /// `__SYSTEM_UP_TIME` globals (an IronPLC runtime convention).
+    /// Beckhoff TwinCAT-compatible dialect: Edition 2 base plus the vendor
+    /// extensions that TwinCAT accepts.  TwinCAT 3 is built on the CODESYS V3
+    /// runtime, so this is close to [`Dialect::Codesys`], but stricter on
+    /// references: TwinCAT's `REFERENCE TO` is a managed reference, so pointer
+    /// arithmetic (`allow_ref_arithmetic`) and type punning
+    /// (`allow_ref_type_punning`) are not enabled.  Like CODESYS, it does not
+    /// bind the implicit `__SYSTEM_UP_TIME` globals (an IronPLC runtime
+    /// convention).
     TwinCat,
 }
 
@@ -71,7 +74,7 @@ impl Dialect {
                 "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS vendor extensions."
             }
             Dialect::TwinCat => {
-                "TwinCAT-compatible: Edition 2 base with REF_TO and TwinCAT vendor extensions."
+                "TwinCAT-compatible: Edition 2 base with the vendor extensions TwinCAT accepts."
             }
         }
     }
@@ -259,7 +262,7 @@ define_compiler_options! {
 
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
     "--allow-ref-arithmetic",
-    [Rusty, Codesys, TwinCat],
+    [Rusty, Codesys],
     allow_ref_arithmetic,
 
     "Allow REF() on stack-allocated variables (VAR_TEMP, FUNCTION VAR_INPUT/VAR_OUTPUT)",
@@ -269,7 +272,7 @@ define_compiler_options! {
 
     "Allow assigning between REF_TO types of different base types (type punning)",
     "--allow-ref-type-punning",
-    [Rusty, Codesys, TwinCat],
+    [Rusty, Codesys],
     allow_ref_type_punning,
 
     "Allow integer literals (0/1) as BOOL variable initializers",
@@ -445,9 +448,11 @@ mod tests {
         );
     }
 
-    /// The TwinCAT dialect matches CODESYS: TwinCAT 3 runs on the CODESYS V3
-    /// runtime, so it accepts the same vendor extensions and likewise does not
-    /// bind the `__SYSTEM_UP_TIME` globals. Listed explicitly so an accidental
+    /// The TwinCAT dialect is close to CODESYS (TwinCAT 3 runs on the CODESYS
+    /// V3 runtime) but stricter on references: TwinCAT's `REFERENCE TO` is a
+    /// managed reference with no pointer arithmetic and no type punning, so
+    /// `allow_ref_arithmetic` and `allow_ref_type_punning` are *not* enabled
+    /// (those remain CODESYS-only). Listed explicitly so an accidental
     /// divergence from the intended set is caught.
     #[test]
     fn twincat_dialect_enables_exactly_these_vendor_flags() {
@@ -462,9 +467,7 @@ mod tests {
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
                 "allow_ref_to",
-                "allow_ref_arithmetic",
                 "allow_ref_stack_variables",
-                "allow_ref_type_punning",
                 "allow_int_to_bool_initializer",
                 "allow_sizeof",
                 "allow_cross_family_widening",
