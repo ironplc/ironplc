@@ -181,7 +181,7 @@ build a collection of variables to process in a loop, even when the variables
 themselves are not in an array.
 
 .. playground::
-   :dialect: 2013
+   :dialect: iec61131-3-ed3
 
    PROGRAM main
      VAR

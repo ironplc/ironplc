@@ -3,21 +3,46 @@
 # Please see the documentation for all configuration options:
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
+# All ecosystems run Saturday at 06:00 UTC, a few hours after the bulk
+# update workflow (update.yaml, Saturday 02:00 UTC) so Dependabot only
+# opens PRs for anything the bulk update could not handle.
+
 version: 2
 updates:
   - package-ecosystem: "npm" # See documentation for possible values
     directory: "/integrations/vscode" # Location of package manifests
     schedule:
       interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    ignore:
+      # typescript-eslint (via @typescript-eslint/typescript-estree) pins its
+      # peer dependency to `typescript >=4.8.4 <6.1.0`, so no released version
+      # supports the TypeScript 7 native rewrite. Bumping typescript to a new
+      # major here breaks `npm install`, `tsc`, and eslint until the
+      # typescript-eslint ecosystem adds support. Re-enable major bumps once it
+      # does. See PR #1159.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm" # See documentation for possible values
     directory: "/playground" # Location of package manifests
     schedule:
       interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
   - package-ecosystem: "cargo" # See documentation for possible values
     directory: "/compiler" # Location of package manifests
     schedule:
       interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/docs" # Location of package manifests
     schedule:
       interval: "weekly"
+      day: "saturday"
+      time: "06:00"
+      timezone: "Etc/UTC"

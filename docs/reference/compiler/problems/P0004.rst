@@ -39,6 +39,10 @@ To fix this error, you have two options:
    Counter := Counter + 1;
    END_FUNCTION_BLOCK
 
-**Option 2: Enable C-style comments with command line option**
+**Option 2: Choose a dialect that supports C-style comments**
 
-If you prefer to use C-style comments, you can enable them with the ``--allow-c-style-comments`` command line option when running the compiler.
+If you prefer to use C-style comments, select a dialect that supports them.
+The ``rusty`` and ``codesys`` dialects both enable C-style comments (choose one
+from the dialect selector in the playground, or pass ``--dialect rusty`` on the
+command line). You can also enable just this feature with the
+``--allow-c-style-comments`` command line option.

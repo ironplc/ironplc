@@ -4,7 +4,19 @@
 // dispatches into the WASM crate and posts back WorkerResponse. The WASM crate
 // returns JSON strings that app.ts parses into RunResult / LoadResult.
 
-export type Dialect = "" | "2003" | "2013";
+// A dialect name (matching the compiler's `Dialect::cli_name`), or "" to use
+// the playground default. The authoritative list of dialects comes from the
+// WASM `dialects()` export (see DialectOption), so no enumeration is duplicated
+// here — this alias just documents the contract.
+export type Dialect = string;
+
+// One selectable dialect, produced by the WASM `dialects()` export and used to
+// build the dialect picker so it never drifts from the compiler.
+export interface DialectOption {
+  value: string;
+  label: string;
+  is_default: boolean;
+}
 
 export interface CompileRequest {
   id: number;
@@ -61,6 +73,7 @@ export type WorkerRequest =
 export interface ReadyMessage {
   type: "ready";
   version: string;
+  dialects: DialectOption[];
 }
 
 export interface ErrorMessage {
@@ -89,8 +102,14 @@ export interface Diagnostic {
   code: string;
   message: string;
   label?: string;
+  /** Guidance on how to resolve the problem (e.g. "use `(* *)` comments"). */
+  help?: string[];
   start_line: number;
   start_column: number;
+  /** Compiler source file that produced the diagnostic (P9999/P9998 family). */
+  compiler_file?: string;
+  /** Compiler source line paired with `compiler_file`. */
+  compiler_line?: number;
 }
 
 export interface RunResultOk {
@@ -99,10 +118,21 @@ export interface RunResultOk {
   variables: Variable[];
 }
 
+/**
+ * A structured runtime error. Shares its `message`/`code` shape with
+ * {@link Diagnostic} so the front end can render runtime failures and compiler
+ * diagnostics through a single path.
+ */
+export interface RunError {
+  message: string;
+  /** The faulting trap's stable v-code (e.g. "V4001"). Absent for non-trap errors. */
+  code?: string;
+}
+
 export interface RunResultErr {
   ok: false;
   diagnostics?: Diagnostic[];
-  error?: string;
+  error?: RunError;
   variables?: Variable[];
 }
 

@@ -32,6 +32,7 @@ fn steel_thread_when_full_round_trip_then_x_is_10_y_is_42() {
         .add_function(ironplc_container::FunctionId::new(1), &bytecode, 2, 2, 0) // scan: program body
         .init_function_id(ironplc_container::FunctionId::new(0))
         .entry_function_id(ironplc_container::FunctionId::new(1))
+        .max_call_depth(1)
         .build();
 
     // 2. Serialize to bytes.

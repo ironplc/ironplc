@@ -133,10 +133,19 @@ Options
    Edition 3. This is a vendor extension useful when you need references
    but want to keep Edition 2 keyword handling for the rest of your code.
 
-``--allow-pointer-arithmetic``
+``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
    are permitted on references.
+
+``--allow-ref-stack-variables``
+   Allow ``REF()`` on stack-allocated variables (``VAR_TEMP`` and function
+   ``VAR_INPUT``/``VAR_OUTPUT``). This is a vendor extension not part of the
+   IEC 61131-3 standard.
+
+``--allow-ref-type-punning``
+   Allow assigning between ``REF_TO`` types of different base types (type
+   punning). This is a vendor extension not part of the IEC 61131-3 standard.
 
 ``--allow-int-to-bool-initializer``
    Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers,
@@ -149,6 +158,12 @@ Options
    variable or type. This is a vendor extension supported by CODESYS,
    TwinCAT, and RuSTy.
 
+``--allow-system-uptime-global``
+   Expose ``__SYSTEM_UP_TIME`` (``TIME``) and ``__SYSTEM_UP_LTIME``
+   (``LTIME``) as implicit ``VAR_GLOBAL`` values holding the VM's monotonic
+   uptime. This is an IronPLC runtime convention enabled by
+   ``--dialect=rusty``.
+
 ``--allow-cross-family-widening``
    Allow implicit widening between bit-string and integer type families
    (e.g. ``BYTE`` to ``INT``, literal ``0`` to ``BYTE``). This is a vendor
@@ -159,6 +174,20 @@ Options
    for the short form ``.n``. Enabled by ``--dialect=iec61131-3-ed3`` and
    ``--dialect=rusty``. Byte/word/dword/lword partial access (``.%Bn``,
    ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
+
+``--allow-pragmas``
+   Allow curly-brace pragmas such as ``{attribute 'qualified_only'}``. This
+   is CODESYS-core syntax, inherited by TwinCAT and other CODESYS-based
+   IDEs. A pragma is parsed and discarded like a comment; its contents are
+   not interpreted. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+
+``--allow-short-circuit-operators``
+   Allow the ``AND_THEN`` short-circuit boolean operator, a Beckhoff/CODESYS
+   extension that only evaluates its right operand when the left operand is
+   ``TRUE``. ``ironplcc check`` fully supports it; codegen
+   (``ironplcc compile``) does not yet implement short-circuit evaluation and
+   refuses to compile it. Enabled by ``--dialect=rusty`` and
+   ``--dialect=codesys``.
 
 Examples
 ========

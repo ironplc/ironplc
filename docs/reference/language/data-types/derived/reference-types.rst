@@ -78,7 +78,7 @@ Example
 -------
 
 .. playground::
-   :dialect: 2013
+   :dialect: iec61131-3-ed3
 
    PROGRAM main
      VAR

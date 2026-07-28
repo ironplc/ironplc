@@ -13,7 +13,6 @@ use ironplc_dsl::configuration::{
 };
 use ironplc_dsl::core::{FileId, SourceSpan};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_problems::Problem;
 use ironplc_project::project::{MemoryBackedProject, Project};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -98,10 +97,10 @@ pub fn build_response(
         }
     };
 
-    // Construct a fresh in-memory project (REQ-ARC-010)
+    // Construct a fresh in-memory project (REQ-ARC-mcp-010)
     let mut project = MemoryBackedProject::new(compiler_options);
 
-    // Load sources (REQ-ARC-011)
+    // Load sources (REQ-ARC-mcp-011)
     for src in sources {
         project.add_source(FileId::from_string(&src.name), src.content.clone());
     }
@@ -160,13 +159,10 @@ pub fn build_response(
     // Serialize container to bytes
     let mut bytes = Vec::new();
     if let Err(e) = container.write_to(&mut bytes) {
-        let err = Diagnostic::problem(
-            Problem::InternalError,
-            Label::span(
-                SourceSpan::default(),
-                format!("Failed to serialize container: {e}"),
-            ),
-        );
+        let err = Diagnostic::internal_error_at(Label::span(
+            SourceSpan::default(),
+            format!("Failed to serialize container: {e}"),
+        ));
         diagnostics.push(serialize_diagnostic(&err));
         return CompileResponse {
             ok: false,
@@ -206,7 +202,7 @@ pub fn build_response(
         None
     };
 
-    // Build the fully-qualified variable symbol map (REQ-ARC-070) the
+    // Build the fully-qualified variable symbol map (REQ-ARC-mcp-070) the
     // `run` tool will use to resolve names like `Main.Counter` to
     // VarIndex values.
     let symbols = crate::runner::build_symbol_map(context, &container);
@@ -218,15 +214,12 @@ pub fn build_response(
         match guard.insert(cached) {
             Ok(id) => id,
             Err(InsertError::TooLarge { size, max }) => {
-                let err = Diagnostic::problem(
-                    Problem::InternalError,
-                    Label::span(
-                        SourceSpan::default(),
-                        format!(
-                            "Compiled container ({size} bytes) exceeds cache byte budget ({max} bytes)"
-                        ),
+                let err = Diagnostic::internal_error_at(Label::span(
+                    SourceSpan::default(),
+                    format!(
+                        "Compiled container ({size} bytes) exceeds cache byte budget ({max} bytes)"
                     ),
-                );
+                ));
                 diagnostics.push(serialize_diagnostic(&err));
                 return CompileResponse {
                     ok: false,

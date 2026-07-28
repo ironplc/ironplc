@@ -624,7 +624,7 @@ impl Located for TypeName {
 
 impl fmt::Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{}", &self.name))
+        write!(f, "{}", self.name)
     }
 }
 

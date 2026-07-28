@@ -149,20 +149,31 @@ pub fn insert_keyword_statement_terminators(
 
 **Always check existing flags first**. Group related extensions under one flag when they represent the same vendor behavior.
 
-Current flags in `CompilerOptions` (`parser/src/options.rs`):
+Current flags in `CompilerOptions` (`parser/src/options.rs`). The authoritative
+list is the `define_compiler_options!` macro invocation (exposed at runtime via
+`CompilerOptions::FEATURE_DESCRIPTORS` and the `ironplcc dialects` command); this
+table is a convenience mirror, so consult the macro if the two ever disagree.
 
 | Flag | CLI | Purpose |
 |------|-----|---------|
 | `allow_iec_61131_3_2013` | Set by `--dialect` | Enables Edition 3 keywords (set by `iec61131-3-ed3` dialect) |
 | `allow_c_style_comments` | `--allow-c-style-comments` | Permits `//` and `/* */` comments |
+| `allow_missing_semicolon` | `--allow-missing-semicolon` | Inserts semicolons after END_IF etc. |
+| `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
 | `allow_constant_type_params` | `--allow-constant-type-params` | Constants in type params (e.g., `STRING[MY_CONST]`) |
 | `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) |
-| `allow_missing_semicolon` | `--allow-missing-semicolon` | Inserts semicolons after END_IF etc. |
-| `allow_ref_to` | `--allow-ref-to` | REF_TO/REF/NULL syntax without full Edition 3 |
-| `allow_sizeof` | `--allow-sizeof` | SIZEOF() operator (returns size in bytes) |
 | `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) |
-| `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
+| `allow_ref_to` | `--allow-ref-to` | REF_TO/REF/NULL syntax without full Edition 3 |
+| `allow_ref_arithmetic` | `--allow-ref-arithmetic` | Arithmetic (`+`, `-`) and ordering comparisons on REF_TO types |
+| `allow_ref_stack_variables` | `--allow-ref-stack-variables` | REF() on stack-allocated vars (VAR_TEMP, function VAR_INPUT/VAR_OUTPUT) |
+| `allow_ref_type_punning` | `--allow-ref-type-punning` | Assigning between REF_TO types of different base types |
+| `allow_int_to_bool_initializer` | `--allow-int-to-bool-initializer` | Integer literals `0`/`1` as BOOL initializers |
+| `allow_sizeof` | `--allow-sizeof` | SIZEOF() operator (returns size in bytes) |
+| `allow_system_uptime_global` | `--allow-system-uptime-global` | Exposes `__SYSTEM_UP_TIME`/`__SYSTEM_UP_LTIME` implicit globals |
+| `allow_cross_family_widening` | `--allow-cross-family-widening` | Implicit widening between bit-string and integer families |
 | `allow_partial_access_syntax` | `--allow-partial-access-syntax` | IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) |
+| `allow_pragmas` | `--allow-pragmas` | Curly-brace pragmas (`{attribute 'qualified_only'}`) parsed and discarded like a comment |
+| `allow_short_circuit_operators` | `--allow-short-circuit-operators` | AND_THEN short-circuit boolean operator (Beckhoff/CODESYS) |
 
 ### Dialects
 

@@ -39,6 +39,9 @@ fn call_container(
     builder
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        // Deepest test nests SCAN -> outer -> inner (3 frames); 4 leaves
+        // headroom and keeps every call test within the frame buffer.
+        .max_call_depth(4)
         .build()
 }
 

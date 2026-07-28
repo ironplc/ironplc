@@ -9,7 +9,7 @@ on:
       model:
         required: false
         type: string
-        default: "llama3.2:3b"
+        default: "qwen2.5:1.5b"
         description: 'Ollama model used for the real-agent end-to-end test'
   # Allow running manually against any branch from the Actions tab. The bulk of
   # the test lives in the justfile, so this exercises branch changes directly.
@@ -23,7 +23,7 @@ on:
       model:
         required: false
         type: string
-        default: "llama3.2:3b"
+        default: "qwen2.5:1.5b"
         description: 'Ollama model used for the real-agent end-to-end test'
 
 permissions:

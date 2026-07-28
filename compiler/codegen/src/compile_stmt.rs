@@ -155,16 +155,13 @@ fn compile_statement(
                             .get(&field_name)
                             .copied()
                             .ok_or_else(|| {
-                                Diagnostic::problem(
-                                    Problem::NotImplemented,
-                                    Label::span(
-                                        structured.field.span(),
-                                        format!(
-                                            "Unknown field '{}' on function block '{}'",
-                                            structured.field, named.name
-                                        ),
+                                Diagnostic::not_implemented(Label::span(
+                                    structured.field.span(),
+                                    format!(
+                                        "Unknown field '{}' on function block '{}'",
+                                        structured.field, named.name
                                     ),
-                                )
+                                ))
                             })?;
                         let var_index = fb_info.var_index;
                         let type_id = fb_info.type_id;
@@ -192,13 +189,10 @@ fn compile_statement(
                     ironplc_analyzer::intermediate_type::IntermediateType::String { .. }
                 ) {
                     let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
-                        Diagnostic::problem(
-                            Problem::NotImplemented,
-                            Label::span(
-                                structured.span(),
-                                format!("Variable '{}' is not a structure", root_name),
-                            ),
-                        )
+                        Diagnostic::not_implemented(Label::span(
+                            structured.span(),
+                            format!("Variable '{}' is not a structure", root_name),
+                        ))
                     })?;
                     let byte_offset = struct_info.data_offset + slot_offset.raw() * 8;
                     compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
@@ -665,7 +659,7 @@ fn compile_case(
     let end_label = emitter.create_label();
     // Enum selectors have a resolved type that is the enum name (e.g. "COLOR"),
     // which resolve_type_name doesn't handle. Fall back to W32/Signed (DINT)
-    // since all enums use DINT at codegen level (REQ-EN-003).
+    // since all enums use DINT at codegen level (REQ-EN-codegen-003).
     let op_type = op_type(&case_stmt.selector).unwrap_or(crate::compile::DEFAULT_OP_TYPE);
 
     for group in &case_stmt.statement_groups {
@@ -770,7 +764,7 @@ fn compile_case_selector(
             Ok(())
         }
         CaseSelectionKind::EnumeratedValue(ev) => {
-            // REQ-EN-040: Load selector, load ordinal constant, compare with EQ_I32.
+            // REQ-EN-codegen-040: Load selector, load ordinal constant, compare with EQ_I32.
             compile_expr(emitter, ctx, selector_expr, op_type)?;
             let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?;
             let pool_index = ctx.add_i32_constant(ordinal);
@@ -1118,13 +1112,10 @@ fn compile_for(
         Some(step_expr) => match try_constant_sign(step_expr) {
             Some(sign) => sign,
             None => {
-                return Err(Diagnostic::problem(
-                    Problem::NotImplemented,
-                    Label::span(
-                        for_stmt.control.span(),
-                        "FOR loop step must be a constant expression",
-                    ),
-                ))
+                return Err(Diagnostic::not_implemented(Label::span(
+                    for_stmt.control.span(),
+                    "FOR loop step must be a constant expression",
+                )))
             }
         },
     };

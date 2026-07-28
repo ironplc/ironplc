@@ -116,6 +116,19 @@ pub fn compile(
 ) -> Result<(), String> {
     let mut project = create_project(paths, compiler_options, suppress_output)?;
 
+    // Refuse to write the container over a loaded source file. `File::create`
+    // truncates immediately, so this must run before any output is opened to
+    // avoid replacing a source with container bytes.
+    if output_conflicts_with_source(&project, output) {
+        let diagnostics = diagnostic(
+            Problem::OutputPathConflictsWithInput,
+            output,
+            String::from("Choose an output path that is not an input source file"),
+        );
+        handle_diagnostics(&diagnostics, Some(&project), suppress_output);
+        return Err(String::from("Output path conflicts with an input file"));
+    }
+
     // Parse all sources and merge into a single library
     let mut combined = Library::new();
     for src in project.sources_mut() {
@@ -201,17 +214,12 @@ fn create_project(
     let mut had_error = false;
 
     for path in paths {
-        match enumerate_files(path) {
-            Ok(mut paths) => files.append(&mut paths),
-            Err(err) => {
-                handle_diagnostics(&err, None, suppress_output);
-                had_error = true;
-            }
+        let (mut resolved, diagnostics) = enumerate_files(path);
+        files.append(&mut resolved);
+        if !diagnostics.is_empty() {
+            handle_diagnostics(&diagnostics, None, suppress_output);
+            had_error = true;
         }
-    }
-
-    if had_error {
-        return Err(String::from("Error enumerating files"));
     }
 
     // Create the project
@@ -230,7 +238,11 @@ fn create_project(
 
     if !errors.is_empty() {
         handle_diagnostics(&errors, Some(&project), suppress_output);
-        return Err(String::from("Error reading source files"));
+        had_error = true;
+    }
+
+    if had_error {
+        return Err(String::from("Error enumerating or reading source files"));
     }
 
     Ok(project)
@@ -241,34 +253,55 @@ fn create_project(
 /// If the path is a file, then returns the file. If the path is a directory,
 /// then uses project discovery to detect the project structure and return
 /// the appropriate set of files.
-fn enumerate_files(path: &PathBuf) -> Result<Vec<PathBuf>, Vec<Diagnostic>> {
+///
+/// Discovery problems that shouldn't stop the rest of the project from
+/// being enumerated (e.g. a `.plcproj` `<Compile Include="...">` entry
+/// that doesn't resolve to a real file) are returned alongside whatever
+/// files DID resolve, rather than aborting enumeration entirely -- but
+/// they are still genuine errors: the caller must still fail the overall
+/// command if this returns any diagnostics.
+fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<Diagnostic>) {
     // Get the canonical path so that error messages are unambiguous
-    let path = canonicalize(path).map_err(|e| {
-        diagnostic(
-            Problem::CannotCanonicalizePath,
-            path,
-            format!("{}, {}", path.display(), e),
-        )
-    })?;
+    let path = match canonicalize(path) {
+        Ok(path) => path,
+        Err(e) => {
+            return (
+                vec![],
+                diagnostic(
+                    Problem::CannotCanonicalizePath,
+                    path,
+                    format!("{}, {}", path.display(), e),
+                ),
+            );
+        }
+    };
 
     // Determine what kind of path we have.
-    let metadata = metadata(&path)
-        .map_err(|e| diagnostic(Problem::CannotReadMetadata, &path, e.to_string()))?;
+    let metadata = match metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(e) => {
+            return (
+                vec![],
+                diagnostic(Problem::CannotReadMetadata, &path, e.to_string()),
+            );
+        }
+    };
     if metadata.is_dir() {
-        let project = ironplc_sources::discovery::discover(&path).map_err(|e| vec![e])?;
-        return Ok(project.files);
+        return match ironplc_sources::discovery::discover(&path) {
+            Ok(project) => (project.files, project.errors),
+            Err(e) => (vec![], vec![e]),
+        };
     }
     if metadata.is_file() {
-        return Ok(vec![path.to_path_buf()]);
+        return (vec![path.to_path_buf()], vec![]);
     }
     if metadata.is_symlink() {
-        return Err(diagnostic(
-            Problem::SymlinkUnsupported,
-            &path,
-            String::from(""),
-        ));
+        return (
+            vec![],
+            diagnostic(Problem::SymlinkUnsupported, &path, String::from("")),
+        );
     }
-    Ok(vec![])
+    (vec![], vec![])
 }
 
 /// Converts an IronPLC diagnostic into the
@@ -349,6 +382,7 @@ fn map_diagnostic(
         .with_code(diagnostic.code.clone())
         .with_message(description)
         .with_labels(labels)
+        .with_notes(diagnostic.help().to_vec())
 }
 
 fn map_label(
@@ -362,6 +396,22 @@ fn map_label(
     };
     let id = file_to_id.get(&label.file_id);
     CodeSpanLabel::new(style, *id.unwrap_or(&0), range).with_message(&label.message)
+}
+
+/// Returns `true` when `output` refers to the same file as any loaded source.
+///
+/// Paths are canonicalized before comparison so relative-vs-absolute
+/// differences and symbolic links resolve to the same target. When `output`
+/// does not yet exist its canonicalization fails, so there is no conflict.
+fn output_conflicts_with_source(project: &FileBackedProject, output: &Path) -> bool {
+    let Ok(output) = canonicalize(output) else {
+        return false;
+    };
+    project.sources().iter().any(|source| {
+        canonicalize(PathBuf::from(source.file_id().to_string()))
+            .map(|resolved| resolved == output)
+            .unwrap_or(false)
+    })
 }
 
 fn diagnostic(problem: Problem, path: &Path, message: String) -> Vec<Diagnostic> {
@@ -398,6 +448,51 @@ mod tests {
         let paths = vec![resource_path("set")];
         let result = check(&paths, CompilerOptions::default(), true);
         assert!(result.is_ok())
+    }
+
+    #[test]
+    fn check_when_plcproj_references_missing_file_then_error() {
+        // Maintainer feedback on the PR that introduced discovery
+        // continuing past one bad `.plcproj` entry: the missing
+        // reference itself must still fail the overall command, even
+        // though discovery no longer aborts because of it.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MISSING.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().to_path_buf()];
+        let result = check(&paths, CompilerOptions::default(), true);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn check_when_plcproj_has_valid_and_missing_entries_then_error_but_valid_file_still_checked() {
+        // The valid entry must still be loaded and checked (and would
+        // surface its own diagnostics if invalid) even though the
+        // command as a whole fails because of the missing entry.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("A.st"), "PROGRAM A END_PROGRAM").unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.st" />
+    <Compile Include="MISSING.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().to_path_buf()];
+        let result = check(&paths, CompilerOptions::default(), true);
+        assert!(result.is_err())
     }
 
     #[test]

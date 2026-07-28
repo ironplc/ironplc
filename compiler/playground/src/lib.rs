@@ -45,23 +45,33 @@ thread_local! {
     static SESSION: RefCell<Option<VmSession>> = const { RefCell::new(None) };
 }
 
+/// Resolve a playground dialect string to a [`Dialect`].
+///
+/// Accepts the canonical [`Dialect::cli_name`] values (`"iec61131-3-ed2"`,
+/// `"iec61131-3-ed3"`, `"rusty"`, `"codesys"`).
+///
+/// The empty string (and any unrecognized value) resolves to the RuSTy
+/// dialect, which enables all vendor extensions. This keeps the many existing
+/// documentation embeds that omit a dialect working, since they rely on the
+/// lenient default to explore non-standard features without toggling flags.
+fn dialect_from(dialect: &str) -> Dialect {
+    if dialect.is_empty() {
+        return Dialect::Rusty;
+    }
+    dialect.parse().unwrap_or(Dialect::Rusty)
+}
+
 /// Build [`CompilerOptions`] from a dialect string and an optional list of
 /// `--allow-*` feature flags layered on top.
 ///
-/// `"2013"` selects the IEC 61131-3 Edition 3 dialect.
-/// Any other value (including empty) uses the RuSTy dialect, which enables
-/// all vendor extensions so playground users can explore non-standard
-/// features without toggling flags.
+/// The dialect string is resolved by [`dialect_from`]; see that function for
+/// the accepted values and the lenient default.
 ///
 /// `allows` is a comma-separated list of feature short names — the part
 /// after `--allow-` in the CLI flag, e.g. `"sizeof,c-style-comments"`.
 /// Unknown names are ignored.
 fn compiler_options_from(dialect: &str, allows: &str) -> CompilerOptions {
-    let mut options = if dialect == "2013" {
-        CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
-    } else {
-        CompilerOptions::from_dialect(Dialect::Rusty)
-    };
+    let mut options = CompilerOptions::from_dialect(dialect_from(dialect));
     for name in allows.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         let cli_flag = format!("--allow-{name}");
         if let Some(fd) = CompilerOptions::FEATURE_DESCRIPTORS
@@ -88,6 +98,35 @@ pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// A selectable dialect for the playground dialect picker.
+#[derive(Serialize, Deserialize)]
+struct DialectOption {
+    /// Canonical dialect name (matches [`Dialect::cli_name`]), passed back to
+    /// the compile/run entry points.
+    value: String,
+    /// Human-readable label for display in the picker.
+    label: String,
+    /// Whether this is the default selection.
+    is_default: bool,
+}
+
+/// Return the selectable dialects as a JSON array so the UI builds its dialect
+/// picker from the compiler's own [`Dialect`] list. This keeps the picker from
+/// drifting out of sync with the dialects the compiler actually supports.
+#[wasm_bindgen]
+pub fn dialects() -> String {
+    let default = Dialect::default();
+    let options: Vec<DialectOption> = Dialect::ALL
+        .iter()
+        .map(|d| DialectOption {
+            value: d.cli_name().to_string(),
+            label: d.display_name().to_string(),
+            is_default: *d == default,
+        })
+        .collect();
+    serde_json::to_string(&options).unwrap_or_else(|_| "[]".to_string())
+}
+
 /// Result of a compilation attempt.
 #[derive(Serialize, Deserialize)]
 struct CompileResult {
@@ -108,10 +147,27 @@ struct DiagnosticInfo {
     message: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     label: String,
+    /// Guidance on how to resolve the problem (e.g. "use `(* *)` comments").
+    /// Empty when the diagnostic carries no help notes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    help: Vec<String>,
     start_line: u32,
     start_column: u32,
     end_line: u32,
     end_column: u32,
+    /// The compiler source file that produced this diagnostic (e.g. the
+    /// `file!()` recorded by `Diagnostic::todo`). Present for the P9999/P9998
+    /// families; empty otherwise. This is the compiler's own location, never
+    /// the user's program, so it is safe to report automatically.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    compiler_file: String,
+    /// The compiler source line paired with `compiler_file`. Zero when absent.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    compiler_line: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// Build a [`DiagnosticInfo`] from a compiler diagnostic, computing 1-based
@@ -123,11 +179,32 @@ fn diagnostic_info(diag: &Diagnostic, source: &str) -> DiagnosticInfo {
         code: diag.code.clone(),
         message: diag.description(),
         label: diag.primary.message.clone(),
+        help: diag.help().to_vec(),
         start_line: start.line + 1,
         start_column: start.column + 1,
         end_line: end.line + 1,
         end_column: end.column + 1,
+        compiler_file: diag.source_file.clone().unwrap_or_default(),
+        compiler_line: diag.source_line.unwrap_or(0),
     }
+}
+
+/// A structured runtime error surfaced across the WASM boundary.
+///
+/// Carries a human-readable `message` and, for VM traps, the trap's stable
+/// v-code (e.g. `"V4001"`). Kept as a single object — rather than sibling
+/// `error`/`error_code` fields — so the front end can treat it uniformly with a
+/// compiler diagnostic (which likewise has a message and a code) and render
+/// both through one path. This shape is also the natural fit as the playground
+/// moves toward JSON-RPC.
+#[derive(Debug, Serialize, Deserialize)]
+struct RunError {
+    /// Human-readable message including task and instance context for traps.
+    message: String,
+    /// The trap's stable v-code (e.g. `"V4001"`). Absent for non-trap errors
+    /// such as a decode failure or a missing stepping session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
 }
 
 /// Result of executing bytecode.
@@ -138,7 +215,7 @@ struct RunResult {
     variables: Vec<VariableInfo>,
     scans_completed: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    error: Option<RunError>,
 }
 
 /// A variable value read from the VM after execution.
@@ -394,7 +471,7 @@ struct RunSourceResult {
     variables: Vec<VariableInfo>,
     scans_completed: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    error: Option<RunError>,
 }
 
 /// Result of a step-through operation (load or step).
@@ -407,7 +484,7 @@ struct StepResult {
     variables: Vec<VariableInfo>,
     total_scans: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    error: Option<RunError>,
 }
 
 /// Parse IEC 61131-3 source code and produce bytecode.
@@ -509,10 +586,13 @@ fn compile_inner(source: &str, dialect: &str, allows: &str) -> CompileResult {
                 code: "INTERNAL".to_string(),
                 message: format!("Failed to serialize bytecode: {e}"),
                 label: String::new(),
+                help: Vec::new(),
                 start_line: 1,
                 start_column: 1,
                 end_line: 1,
                 end_column: 1,
+                compiler_file: String::new(),
+                compiler_line: 0,
             }],
         };
     }
@@ -534,7 +614,7 @@ fn compile_inner(source: &str, dialect: &str, allows: &str) -> CompileResult {
 pub fn run(bytecode_base64: &str, scans: u32) -> String {
     let result = run_inner(bytecode_base64, scans);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"variables":[],"scans_completed":0,"error":"Serialization error: {e}"}}"#)
+        format!(r#"{{"ok":false,"variables":[],"scans_completed":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
     })
 }
 
@@ -546,7 +626,10 @@ fn run_inner(bytecode_base64: &str, scans: u32) -> RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(format!("Invalid base64: {e}")),
+                error: Some(RunError {
+                    message: format!("Invalid base64: {e}"),
+                    code: None,
+                }),
             };
         }
     };
@@ -562,7 +645,10 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(format!("Invalid bytecode container: {e}")),
+                error: Some(RunError {
+                    message: format!("Invalid bytecode container: {e}"),
+                    code: None,
+                }),
             };
         }
     };
@@ -576,10 +662,13 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(format!(
-                    "VM trap during init: {} (task {}, instance {})",
-                    ctx.trap, ctx.task_id, ctx.instance_id
-                )),
+                error: Some(RunError {
+                    message: format!(
+                        "VM trap during init: {} (task {}, instance {})",
+                        ctx.trap, ctx.task_id, ctx.instance_id
+                    ),
+                    code: Some(ctx.trap.v_code().to_string()),
+                }),
             };
         }
     };
@@ -606,12 +695,15 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 ok: false,
                 variables,
                 scans_completed: round as u64,
-                error: Some(format!(
-                    "VM trap: {} (task {}, instance {})",
-                    faulted.trap(),
-                    faulted.task_id(),
-                    faulted.instance_id()
-                )),
+                error: Some(RunError {
+                    message: format!(
+                        "VM trap: {} (task {}, instance {})",
+                        faulted.trap(),
+                        faulted.task_id(),
+                        faulted.instance_id()
+                    ),
+                    code: Some(faulted.trap().v_code().to_string()),
+                }),
             };
         }
     }
@@ -637,7 +729,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
 pub fn run_source(source: &str, scans: u32, dialect: &str, allows: &str) -> String {
     let result = run_source_inner(source, scans, dialect, allows);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"scans_completed":0,"error":"Serialization error: {e}"}}"#)
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"scans_completed":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
     })
 }
 
@@ -748,7 +840,7 @@ fn format_value(
 pub fn load_program(source: &str, cycle_time_us: u32, dialect: &str, allows: &str) -> String {
     let result = load_program_inner(source, cycle_time_us, dialect, allows);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
     })
 }
 
@@ -775,7 +867,10 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
                 diagnostics: vec![],
                 variables: vec![],
                 total_scans: 0,
-                error: Some(format!("Failed to load bytecode: {e}")),
+                error: Some(RunError {
+                    message: format!("Failed to load bytecode: {e}"),
+                    code: None,
+                }),
             };
         }
     };
@@ -794,7 +889,10 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
                 diagnostics: vec![],
                 variables: vec![],
                 total_scans: 0,
-                error: Some(format!("VM init trap: {}", ctx.trap)),
+                error: Some(RunError {
+                    message: format!("VM init trap: {}", ctx.trap),
+                    code: Some(ctx.trap.v_code().to_string()),
+                }),
             };
         }
     }
@@ -827,7 +925,7 @@ fn load_program_inner(source: &str, cycle_time_us: u32, dialect: &str, allows: &
 pub fn step(scans: u32) -> String {
     let result = step_inner(scans);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":"Serialization error: {e}"}}"#)
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
     })
 }
 
@@ -842,7 +940,10 @@ fn step_inner(scans: u32) -> StepResult {
                     diagnostics: vec![],
                     variables: vec![],
                     total_scans: 0,
-                    error: Some("No program loaded. Call load_program first.".to_string()),
+                    error: Some(RunError {
+                        message: "No program loaded. Call load_program first.".to_string(),
+                        code: None,
+                    }),
                 };
             }
         };
@@ -853,7 +954,10 @@ fn step_inner(scans: u32) -> StepResult {
                 diagnostics: vec![],
                 variables: vec![],
                 total_scans: 0,
-                error: Some("Session is faulted. Call reset_session to start over.".to_string()),
+                error: Some(RunError {
+                    message: "Session is faulted. Call reset_session to start over.".to_string(),
+                    code: None,
+                }),
             };
         }
 
@@ -865,7 +969,10 @@ fn step_inner(scans: u32) -> StepResult {
                     diagnostics: vec![],
                     variables: vec![],
                     total_scans: 0,
-                    error: Some(format!("Failed to load bytecode: {e}")),
+                    error: Some(RunError {
+                        message: format!("Failed to load bytecode: {e}"),
+                        code: None,
+                    }),
                 };
             }
         };
@@ -900,7 +1007,8 @@ fn step_inner(scans: u32) -> StepResult {
 /// (including initial values) persist across calls. The VM's internal scan
 /// counter is the source of truth for total cycles executed.
 ///
-/// Returns `(variables, total_scan_count, error)`.
+/// Returns `(variables, total_scan_count, error)`, where `error` carries the
+/// message and the trap's v-code when execution stopped on a trap.
 fn run_vm_step(
     container: &Container,
     var_buf: &mut Vec<Slot>,
@@ -908,7 +1016,7 @@ fn run_vm_step(
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
-) -> (Vec<VariableInfo>, u64, Option<String>) {
+) -> (Vec<VariableInfo>, u64, Option<RunError>) {
     let mut bufs = VmBuffers::from_container(container);
     // Swap the session's persistent buffers into VmBuffers so the VM
     // operates on them directly, avoiding a copy.
@@ -932,7 +1040,7 @@ fn run_vm_scans(
     base_scan_count: u64,
     scans: u32,
     cycle_time_us: u64,
-) -> (Vec<VariableInfo>, u64, Option<String>) {
+) -> (Vec<VariableInfo>, u64, Option<RunError>) {
     let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
     for _ in 0..scans {
@@ -953,12 +1061,15 @@ fn run_vm_scans(
                 &string_layouts,
             );
             let faulted = running.fault(ctx);
-            let error = format!(
-                "VM trap: {} (task {}, instance {})",
-                faulted.trap(),
-                faulted.task_id(),
-                faulted.instance_id()
-            );
+            let error = RunError {
+                message: format!(
+                    "VM trap: {} (task {}, instance {})",
+                    faulted.trap(),
+                    faulted.task_id(),
+                    faulted.instance_id()
+                ),
+                code: Some(faulted.trap().v_code().to_string()),
+            };
             return (variables, total_scans, Some(error));
         }
     }
@@ -1050,6 +1161,33 @@ END_PROGRAM
         assert_eq!(result.scans_completed, 1);
         assert!(!result.variables.is_empty());
         assert_eq!(result.variables[2].value, "42"); // indices 0-1 are system globals
+    }
+
+    #[test]
+    fn run_when_program_traps_then_error_has_v_code() {
+        // Divide-by-zero traps with v-code V4001. The structured code must
+        // survive the WASM boundary in the error object's `code` member, not be
+        // flattened into the message.
+        let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  y := 0;
+  x := 1 / y;
+END_PROGRAM
+";
+        let compile_result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
+        let bytecode = compile_result.bytecode.unwrap();
+
+        let json = run(&bytecode, 1);
+        let result: RunResult = serde_json::from_str(&json).unwrap();
+        assert!(!result.ok);
+        let error = result.error.expect("expected a runtime error");
+        assert_eq!(error.code.as_deref(), Some("V4001"));
+        // The JSON payload carries the code as a member of the error object.
+        assert!(json.contains("\"code\":\"V4001\""));
     }
 
     #[test]
@@ -1185,7 +1323,7 @@ END_PROGRAM
         reset_session();
         let result: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!result.ok);
-        assert!(result.error.unwrap().contains("No program loaded"));
+        assert!(result.error.unwrap().message.contains("No program loaded"));
     }
 
     #[test]
@@ -1267,12 +1405,12 @@ END_PROGRAM
         // First step should fault (divide by zero)
         let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!r1.ok);
-        assert!(r1.error.as_ref().unwrap().contains("VM trap"));
+        assert!(r1.error.as_ref().unwrap().message.contains("VM trap"));
 
         // Subsequent step should report faulted session
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!r2.ok);
-        assert!(r2.error.unwrap().contains("faulted"));
+        assert!(r2.error.unwrap().message.contains("faulted"));
     }
 
     #[test]
@@ -1293,7 +1431,7 @@ END_PROGRAM
         // After reset, step should fail with no session
         let result: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!result.ok);
-        assert!(result.error.unwrap().contains("No program loaded"));
+        assert!(result.error.unwrap().message.contains("No program loaded"));
     }
 
     #[test]
@@ -1456,6 +1594,34 @@ END_PROGRAM
         let result: RunSourceResult = serde_json::from_str(&run_source(source, 1, "", "")).unwrap();
         assert!(result.ok, "Expected ok but got error: {:?}", result.error);
         assert_eq!(result.variables[2].value, "16#42"); // indices 0-1 are system globals
+    }
+
+    #[test]
+    fn compile_when_p9999_then_diagnostic_has_compiler_file_and_line() {
+        // A direct hardware-address write is not supported by codegen and
+        // produces P9999. The diagnostic must carry the compiler file/line so
+        // the playground can report the location without the program source.
+        let source = "
+PROGRAM main
+  VAR
+    x : BOOL;
+  END_VAR
+  %QX0.0 := TRUE;
+END_PROGRAM
+";
+        let result: CompileResult = serde_json::from_str(&compile(source, "", "")).unwrap();
+        assert!(!result.ok);
+        let diag = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "P9999")
+            .expect("expected a P9999 diagnostic");
+        assert!(
+            diag.compiler_file.ends_with(".rs"),
+            "expected a compiler .rs file, got {:?}",
+            diag.compiler_file
+        );
+        assert!(diag.compiler_line > 0, "expected a non-zero compiler line");
     }
 
     #[test]
@@ -1670,7 +1836,8 @@ PROGRAM main
   duration := LTIME#100ms;
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source, "2013", "")).unwrap();
+        let result: CompileResult =
+            serde_json::from_str(&compile(source, "iec61131-3-ed3", "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}",
@@ -1706,7 +1873,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let result: StepResult =
-            serde_json::from_str(&load_program(source, 100_000, "2013", "")).unwrap();
+            serde_json::from_str(&load_program(source, 100_000, "iec61131-3-ed3", "")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got error: {:?}, diagnostics: {:?}",
@@ -1729,7 +1896,8 @@ PROGRAM main
   s := SIZEOF(x);
 END_PROGRAM
 ";
-        let result: CompileResult = serde_json::from_str(&compile(source, "2013", "")).unwrap();
+        let result: CompileResult =
+            serde_json::from_str(&compile(source, "iec61131-3-ed3", "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
     }
@@ -1746,7 +1914,7 @@ PROGRAM main
 END_PROGRAM
 ";
         let result: CompileResult =
-            serde_json::from_str(&compile(source, "2013", "sizeof")).unwrap();
+            serde_json::from_str(&compile(source, "iec61131-3-ed3", "sizeof")).unwrap();
         assert!(
             result.ok,
             "Expected ok but got diagnostics: {:?}",
@@ -1766,7 +1934,8 @@ PROGRAM main
 END_PROGRAM
 ";
         let result: CompileResult =
-            serde_json::from_str(&compile(source, "2013", "not-a-real-flag,sizeof")).unwrap();
+            serde_json::from_str(&compile(source, "iec61131-3-ed3", "not-a-real-flag,sizeof"))
+                .unwrap();
         assert!(result.ok);
     }
 
@@ -1783,8 +1952,80 @@ PROGRAM main
   x := 1;
 END_PROGRAM
 ";
+        let result: CompileResult = serde_json::from_str(&compile(
+            source,
+            "iec61131-3-ed3",
+            " sizeof , c-style-comments ",
+        ))
+        .unwrap();
+        assert!(result.ok, "Expected ok but got: {:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn dialect_from_when_canonical_names_then_resolves() {
+        assert_eq!(dialect_from("iec61131-3-ed2"), Dialect::Iec61131_3Ed2);
+        assert_eq!(dialect_from("iec61131-3-ed3"), Dialect::Iec61131_3Ed3);
+        assert_eq!(dialect_from("rusty"), Dialect::Rusty);
+        assert_eq!(dialect_from("codesys"), Dialect::Codesys);
+    }
+
+    #[test]
+    fn dialect_from_when_empty_or_unknown_then_defaults_to_rusty() {
+        assert_eq!(dialect_from(""), Dialect::Rusty);
+        assert_eq!(dialect_from("not-a-dialect"), Dialect::Rusty);
+        // Year-based aliases are no longer recognized.
+        assert_eq!(dialect_from("2013"), Dialect::Rusty);
+    }
+
+    #[test]
+    fn dialects_when_called_then_lists_all_dialects_with_one_default() {
+        let options: Vec<DialectOption> = serde_json::from_str(&dialects()).unwrap();
+        assert_eq!(options.len(), Dialect::ALL.len());
+        // Every listed value round-trips back to a real dialect.
+        for opt in &options {
+            assert!(opt.value.parse::<Dialect>().is_ok());
+            assert!(!opt.label.is_empty());
+        }
+        // Exactly one default, and it is the compiler's default dialect.
+        let defaults: Vec<&DialectOption> = options.iter().filter(|o| o.is_default).collect();
+        assert_eq!(defaults.len(), 1);
+        assert_eq!(defaults[0].value, Dialect::default().cli_name());
+    }
+
+    #[test]
+    fn compile_when_ed2_and_cstyle_comment_then_error_carries_help() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  // C-style comment
+  x := 1;
+END_PROGRAM
+";
         let result: CompileResult =
-            serde_json::from_str(&compile(source, "2013", " sizeof , c-style-comments ")).unwrap();
+            serde_json::from_str(&compile(source, "iec61131-3-ed2", "")).unwrap();
+        assert!(!result.ok);
+        let cstyle = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "P0004")
+            .expect("expected a P0004 diagnostic");
+        assert!(!cstyle.help.is_empty());
+    }
+
+    #[test]
+    fn compile_when_codesys_and_cstyle_comment_then_ok() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  // C-style comment
+  x := 1;
+END_PROGRAM
+";
+        let result: CompileResult = serde_json::from_str(&compile(source, "codesys", "")).unwrap();
         assert!(result.ok, "Expected ok but got: {:?}", result.diagnostics);
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Returns every variable the caller can drive (`inputs`) and every variable
 //! the caller can observe (`outputs`) across the supplied sources. Implements
-//! REQ-TOL-210, REQ-TOL-211, and REQ-TOL-212.
+//! REQ-TOL-mcp-210, REQ-TOL-mcp-211, and REQ-TOL-mcp-212.
 
 use ironplc_analyzer::symbol_environment::{ScopeKind, SymbolInfo, SymbolKind};
 use ironplc_analyzer::SemanticContext;
@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use super::common::{parse_options, serialize_diagnostics, validate_sources, SourceInput};
 
-/// A single input or output entry (REQ-TOL-212).
+/// A single input or output entry (REQ-TOL-mcp-212).
 #[derive(Debug, Clone, Serialize)]
 pub struct IoEntry {
     pub name: String,
@@ -93,7 +93,7 @@ pub fn build_response(
 }
 
 /// Walks Programs and Globals, classifying each variable into inputs and/or
-/// outputs per REQ-TOL-210 and REQ-TOL-211.
+/// outputs per REQ-TOL-mcp-210 and REQ-TOL-mcp-211.
 fn collect_io(context: &SemanticContext) -> (Vec<IoEntry>, Vec<IoEntry>) {
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
@@ -138,13 +138,13 @@ fn classify(
     let is_hw_output = addr.is_some_and(|a| a.starts_with("%Q"));
     let is_hw_memory = addr.is_some_and(|a| a.starts_with("%M"));
 
-    // REQ-TOL-210: inputs.
+    // REQ-TOL-mcp-210: inputs.
     let is_input = (is_program_scope && matches!(direction, "In" | "InOut"))
         || direction == "External"
         || (is_global_scope && addr.is_none())
         || is_hw_input;
 
-    // REQ-TOL-211: outputs.
+    // REQ-TOL-mcp-211: outputs.
     let is_output = (is_program_scope && matches!(direction, "Out" | "InOut"))
         || (is_global_scope && addr.is_none())
         || is_hw_output;
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn build_response_when_variable_has_memory_address_then_in_neither() {
-        // REQ-TOL-211: %M* variables are neither inputs nor outputs.
+        // REQ-TOL-mcp-211: %M* variables are neither inputs nor outputs.
         let resp = build("PROGRAM p\nVAR counter AT %MX0.0 : BOOL; END_VAR\nEND_PROGRAM");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(

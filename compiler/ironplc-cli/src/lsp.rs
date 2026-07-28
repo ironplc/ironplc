@@ -36,6 +36,26 @@ pub fn start() -> Result<(), String> {
     result
 }
 
+/// Converts a snake_case option key to the lowerCamelCase form used in LSP
+/// `initializationOptions` (e.g. `allow_ref_to` -> `allowRefTo`,
+/// `allow_c_style_comments` -> `allowCStyleComments`). Option keys are ASCII
+/// snake_case, so ASCII-only casing is sufficient.
+fn to_lower_camel_case(snake: &str) -> String {
+    let mut out = String::with_capacity(snake.len());
+    let mut capitalize = false;
+    for ch in snake.chars() {
+        if ch == '_' {
+            capitalize = true;
+        } else if capitalize {
+            out.push(ch.to_ascii_uppercase());
+            capitalize = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// Extract parse options from LSP initialization options.
 ///
 /// Reads `"dialect"` to select the base preset, then overlays individual
@@ -56,22 +76,17 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
 
         let mut options = CompilerOptions::from_dialect(dialect);
 
-        // Individual flags override (can only enable, never disable).
-        let flag = |key: &str| opts.get(key).and_then(|v| v.as_bool()).unwrap_or(false);
-        options.allow_missing_semicolon |= flag("allowMissingSemicolon");
-        options.allow_empty_var_blocks |= flag("allowEmptyVarBlocks");
-        options.allow_time_as_function_name |= flag("allowTimeAsFunctionName");
-        options.allow_c_style_comments |= flag("allowCStyleComments");
-        options.allow_top_level_var_global |= flag("allowTopLevelVarGlobal");
-        options.allow_constant_type_params |= flag("allowConstantTypeParams");
-        options.allow_ref_to |= flag("allowRefTo");
-        options.allow_ref_stack_variables |= flag("allowRefStackVariables");
-        options.allow_ref_type_punning |= flag("allowRefTypePunning");
-        options.allow_int_to_bool_initializer |= flag("allowIntToBoolInitializer");
-        options.allow_sizeof |= flag("allowSizeof");
-        options.allow_system_uptime_global |= flag("allowSystemUptimeGlobal");
-        options.allow_cross_family_widening |= flag("allowCrossFamilyWidening");
-        options.allow_partial_access_syntax |= flag("allowPartialAccessSyntax");
+        // Overlay individual vendor flags (can only enable, never disable). The
+        // LSP option key is the lowerCamelCase form of each descriptor's
+        // `option_key` (e.g. `allow_ref_to` -> `allowRefTo`). Deriving from
+        // `FEATURE_DESCRIPTORS` keeps this in lockstep with the compiler: a new
+        // flag is wired in automatically, with no hand-maintained list to drift.
+        for fd in CompilerOptions::FEATURE_DESCRIPTORS {
+            let key = to_lower_camel_case(fd.option_key);
+            if opts.get(&key).and_then(|v| v.as_bool()).unwrap_or(false) {
+                options.set_flag_by_key(fd.option_key, true);
+            }
+        }
         options
     } else {
         CompilerOptions::default()
@@ -118,9 +133,7 @@ fn start_with_connection(
     match initialize_params.workspace_folders {
         Some(folders) => {
             debug!("Initialize server with workspace folders {folders:?}");
-            if let Some(folder) = folders.first() {
-                server.project.initialize(folder);
-            }
+            server.project.initialize_many(&folders);
         }
         None => {
             debug!("Initialize server without a workspace folder");
@@ -661,8 +674,14 @@ mod test {
         fn receive_response<T: DeserializeOwned>(&mut self, request_id: RequestId) -> T {
             self.receive();
             let response = self.responses.get(&request_id).expect("No request");
-            let value = response.result.clone().unwrap();
-            serde_json::from_value::<T>(value).unwrap()
+            // `response_result` is `Ok(value)` for a successful response and
+            // `Err(..)` for a failure, so `expect` asserts success here.
+            let result = response
+                .response_result
+                .as_ref()
+                .expect("Expected successful response")
+                .clone();
+            serde_json::from_value::<T>(result).unwrap()
         }
 
         fn receive_notification<T: DeserializeOwned>(&mut self) -> T {
@@ -747,6 +766,55 @@ mod test {
 
         assert_eq!(result["header"]["numFunctions"], 1);
         assert_eq!(result["constants"][0]["value"], "42");
+    }
+
+    /// Builds `InitializeParams` carrying the given `initializationOptions`.
+    #[allow(deprecated)]
+    fn params_with_init_options(init: serde_json::Value) -> InitializeParams {
+        InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(init),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        }
+    }
+
+    /// Guards the LSP option surface against drifting out of sync with the
+    /// compiler: every vendor flag must be enablable via its lowerCamelCase
+    /// `initializationOptions` key. `extract_compiler_options` derives these
+    /// from `FEATURE_DESCRIPTORS`, so this also pins the snake -> camelCase
+    /// contract the VS Code extension relies on.
+    #[test]
+    fn extract_compiler_options_when_each_vendor_flag_key_set_then_flag_enabled() {
+        for fd in ironplc_parser::options::CompilerOptions::FEATURE_DESCRIPTORS {
+            let key = super::to_lower_camel_case(fd.option_key);
+            let params = params_with_init_options(serde_json::json!({ key.clone(): true }));
+            let options = super::extract_compiler_options(&params);
+            assert_eq!(
+                options.get_flag_by_key(fd.option_key),
+                Some(true),
+                "LSP key `{key}` did not enable CompilerOptions.{}",
+                fd.option_key
+            );
+        }
+    }
+
+    #[test]
+    fn to_lower_camel_case_when_multi_segment_then_camel_cased() {
+        assert_eq!(super::to_lower_camel_case("allow_ref_to"), "allowRefTo");
+        assert_eq!(
+            super::to_lower_camel_case("allow_c_style_comments"),
+            "allowCStyleComments"
+        );
+        assert_eq!(super::to_lower_camel_case("allow_sizeof"), "allowSizeof");
     }
 
     #[test]
@@ -931,6 +999,28 @@ mod test {
 
         let options = super::extract_compiler_options(&params);
         assert!(options.allow_sizeof);
+    }
+
+    #[test]
+    fn extract_compiler_options_when_allow_pragmas_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowPragmas": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(options.allow_pragmas);
     }
 
     #[test]

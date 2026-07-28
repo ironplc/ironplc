@@ -14,7 +14,6 @@ use ironplc_dsl::common::{
 };
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
-use ironplc_problems::Problem;
 
 use ironplc_analyzer::intermediate_type::IntermediateType;
 use ironplc_analyzer::TypeEnvironment;
@@ -90,10 +89,10 @@ pub(crate) fn assign_variables(
                         .data_region_offset
                         .checked_add(total_bytes)
                         .ok_or_else(|| {
-                            Diagnostic::problem(
-                                Problem::NotImplemented,
-                                Label::span(string_init.span(), "Data region overflow"),
-                            )
+                            Diagnostic::not_implemented(Label::span(
+                                string_init.span(),
+                                "Data region overflow",
+                            ))
                         })?;
 
                     if max_length > ctx.max_string_capacity {
@@ -130,10 +129,10 @@ pub(crate) fn assign_variables(
                             .data_region_offset
                             .checked_add(instance_size)
                             .ok_or_else(|| {
-                                Diagnostic::problem(
-                                    Problem::NotImplemented,
-                                    Label::span(decl.identifier.span(), "Data region overflow"),
-                                )
+                                Diagnostic::not_implemented(Label::span(
+                                    decl.identifier.span(),
+                                    "Data region overflow",
+                                ))
                             })?;
 
                         ctx.fb_instances.insert(
@@ -153,10 +152,10 @@ pub(crate) fn assign_variables(
                             .data_region_offset
                             .checked_add(instance_size)
                             .ok_or_else(|| {
-                                Diagnostic::problem(
-                                    Problem::NotImplemented,
-                                    Label::span(decl.identifier.span(), "Data region overflow"),
-                                )
+                                Diagnostic::not_implemented(Label::span(
+                                    decl.identifier.span(),
+                                    "Data region overflow",
+                                ))
                             })?;
 
                         ctx.fb_instances.insert(
@@ -182,10 +181,10 @@ pub(crate) fn assign_variables(
                         SpecificationKind::Named(type_name) => {
                             let array_type =
                                 types.resolve_array_type(type_name).ok_or_else(|| {
-                                    Diagnostic::problem(
-                                        Problem::NotImplemented,
-                                        Label::span(type_name.span(), "Unknown array type"),
-                                    )
+                                    Diagnostic::not_implemented(Label::span(
+                                        type_name.span(),
+                                        "Unknown array type",
+                                    ))
                                 })?;
                             let IntermediateType::Array {
                                 element_type,
@@ -235,10 +234,10 @@ pub(crate) fn assign_variables(
                     (iec_type_tag::OTHER, type_name_str)
                 }
                 InitialValueAssignmentKind::EnumeratedType(enum_init) => {
-                    // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-010.
+                    // Enum variables use DINT (W32/Signed/32-bit) per REQ-EN-codegen-010.
                     let type_info = crate::compile_enum::enum_var_type_info();
                     ctx.var_types.insert(id.clone(), type_info);
-                    // Debug tag is DINT per REQ-EN-012; type_name is the
+                    // Debug tag is DINT per REQ-EN-codegen-012; type_name is the
                     // user-defined enum name (e.g. "COLOR").
                     let name = enum_init.type_name.to_string().to_uppercase();
                     (iec_type_tag::DINT, name)
@@ -593,13 +592,13 @@ pub(crate) fn emit_initial_values(
                     }
                 }
                 InitialValueAssignmentKind::EnumeratedType(enum_init) => {
-                    // Emit LOAD_CONST_I32(ordinal) + STORE_VAR_I32 per REQ-EN-020.
+                    // Emit LOAD_CONST_I32(ordinal) + STORE_VAR_I32 per REQ-EN-codegen-020.
                     let var_index = ctx.var_index(id)?;
                     let op_type = DEFAULT_OP_TYPE;
                     let ordinal = if let Some(ev) = &enum_init.initial_value {
                         crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?
                     } else {
-                        // No explicit init: use type declaration default (REQ-EN-021/022).
+                        // No explicit init: use type declaration default (REQ-EN-codegen-021/022).
                         let type_upper = enum_init.type_name.to_string().to_uppercase();
                         crate::compile_enum::resolve_enum_default_ordinal(
                             &ctx.enum_map,
@@ -746,7 +745,7 @@ pub(crate) fn emit_function_local_prologue(
                     emitter.emit_store_var_i64(var_index);
                 }
                 InitialValueAssignmentKind::EnumeratedType(enum_init) => {
-                    // Re-initialize enum locals per REQ-EN-023.
+                    // Re-initialize enum locals per REQ-EN-codegen-023.
                     let ordinal = if let Some(ev) = &enum_init.initial_value {
                         crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, ev)?
                     } else {

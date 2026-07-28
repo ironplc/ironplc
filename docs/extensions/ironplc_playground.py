@@ -39,7 +39,9 @@ playground (no iframe, no tabs)::
        END_PROGRAM
 
 Options (all directives):
-    :dialect: Force the playground dialect (e.g. ``2013`` for IEC 61131-3:2013).
+    :dialect: Force the playground dialect (e.g. ``iec61131-3-ed3`` for
+              IEC 61131-3 Edition 3, or ``rusty`` / ``codesys`` for the
+              vendor-compatible dialects).
     :allows:  Comma-separated list of ``--allow-*`` feature flags to enable on
               top of the dialect (e.g. ``sizeof,c-style-comments``). The short
               name is the part after ``--allow-``.

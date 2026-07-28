@@ -33,7 +33,24 @@ fn run_semantic_analysis(
     let mut all_libraries = vec![];
     let mut all_diagnostics: Vec<Diagnostic> = vec![];
 
-    for source in source_project.sources_mut() {
+    // Sources are backed by a HashMap, so iteration order is randomized
+    // per-process by its hasher's random seed. Merging them in that order
+    // made the combined Library's declaration order -- and therefore
+    // semantic analysis's outcome for a given multi-file project -- vary
+    // from run to run of the identical binary and identical input. Sort by
+    // FileId first so the merged order (and every downstream result) is
+    // deterministic.
+    // Sources are backed by a HashMap, so iteration order is randomized
+    // per-process by its hasher's random seed. Merging them in that order
+    // made the combined Library's declaration order -- and therefore
+    // semantic analysis's outcome for a given multi-file project -- vary
+    // from run to run of the identical binary and identical input. Sort by
+    // FileId first so the merged order (and every downstream result) is
+    // deterministic.
+    let mut sources = source_project.sources_mut();
+    sources.sort_by_key(|source| source.file_id().to_string());
+
+    for source in sources {
         match source.library() {
             Ok(library) => {
                 all_libraries.push(library);
@@ -72,6 +89,28 @@ fn run_semantic_analysis(
 pub trait Project {
     /// Initialize
     fn initialize(&mut self, dir: &Path) -> Vec<Diagnostic>;
+
+    /// Initialize from multiple directories, merging all discovered files
+    /// into one compilation unit (unlike calling `initialize` once per
+    /// directory, which would discard the previous directory's files).
+    ///
+    /// Default implementation delegates to `initialize` for a single
+    /// directory, or does nothing for zero directories -- sufficient for
+    /// implementors (e.g. `MemoryBackedProject`) that don't have a
+    /// meaningful multi-directory story.
+    fn initialize_many(&mut self, dirs: &[&Path]) -> Vec<Diagnostic> {
+        match dirs {
+            [] => vec![],
+            [dir] => self.initialize(dir),
+            _ => vec![Diagnostic::problem(
+                Problem::NoContent,
+                Label::span(
+                    SourceSpan::default(),
+                    "This project implementation does not support multiple directories",
+                ),
+            )],
+        }
+    }
 
     /// Updates the text for a document.
     fn change_text_document(&mut self, file_id: &FileId, content: String);
@@ -160,6 +199,12 @@ impl Project for FileBackedProject {
     /// Create a new project from the files in the specified directory.
     fn initialize(&mut self, dir: &Path) -> Vec<Diagnostic> {
         self.source_project.initialize_from_directory(dir)
+    }
+
+    /// Create a new project from the files in multiple directories,
+    /// merged into one compilation unit.
+    fn initialize_many(&mut self, dirs: &[&Path]) -> Vec<Diagnostic> {
+        self.source_project.initialize_from_directories(dirs)
     }
 
     fn change_text_document(&mut self, file_id: &FileId, content: String) {
@@ -368,6 +413,70 @@ mod test {
         assert!(project.semantic_context().is_some());
     }
 
+    // Regression test for a real non-determinism bug (see the GitHub issue
+    // this fixes): sources used to be merged in HashMap iteration order,
+    // which is randomized per-process, so the same multi-file project could
+    // produce different (spuriously failing) semantic analysis results on
+    // different runs of the identical binary. Sources are now sorted by
+    // FileId before merging, so the combined library's element order --
+    // and therefore the analysis result -- no longer depends on either
+    // insertion order or hash-seed randomness.
+    #[test]
+    fn run_semantic_analysis_when_sources_inserted_out_of_order_then_merges_in_sorted_order() {
+        use ironplc_dsl::common::LibraryElementKind;
+        use ironplc_sources::SourceProject;
+
+        fn element_names(source_project: &mut SourceProject) -> Vec<String> {
+            let (_, _, library) =
+                super::run_semantic_analysis(source_project, &CompilerOptions::default());
+            let library = library.expect("valid project must produce a merged library");
+            library
+                .elements
+                .iter()
+                .map(|element| match element {
+                    LibraryElementKind::FunctionBlockDeclaration(fb) => fb.name.to_string(),
+                    other => panic!("unexpected element: {other:?}"),
+                })
+                .collect()
+        }
+
+        // Two otherwise-identical projects, differing only in the order the
+        // same three files were inserted. Independent declarations (no
+        // reference between them) have no required relative order, but the
+        // merge must still be a deterministic function of FileId, not of
+        // insertion order or (pre-fix) HashMap hash-seed randomness -- so
+        // both must produce the exact same result.
+        let mut forward = SourceProject::new();
+        forward.add_source(
+            FileId::from_string("a_file.st"),
+            "FUNCTION_BLOCK FB_A\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+        forward.add_source(
+            FileId::from_string("m_file.st"),
+            "FUNCTION_BLOCK FB_M\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+        forward.add_source(
+            FileId::from_string("z_file.st"),
+            "FUNCTION_BLOCK FB_Z\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+
+        let mut reverse = SourceProject::new();
+        reverse.add_source(
+            FileId::from_string("z_file.st"),
+            "FUNCTION_BLOCK FB_Z\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+        reverse.add_source(
+            FileId::from_string("m_file.st"),
+            "FUNCTION_BLOCK FB_M\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+        reverse.add_source(
+            FileId::from_string("a_file.st"),
+            "FUNCTION_BLOCK FB_A\nEND_FUNCTION_BLOCK".to_owned(),
+        );
+
+        assert_eq!(element_names(&mut forward), element_names(&mut reverse));
+    }
+
     #[test]
     fn xml_file_returns_empty_library() {
         let mut project = FileBackedProject::default();
@@ -491,6 +600,47 @@ END_CONFIGURATION
     fn memory_initialize_when_called_then_returns_error() {
         let mut project = MemoryBackedProject::new(CompilerOptions::default());
         let diagnostics = project.initialize(Path::new("/some/dir"));
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    // -----------------------------------------------------------------
+    // Multi-directory initialization.
+    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn file_backed_initialize_many_when_two_directories_then_merges_both() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir1 = TempDir::new().unwrap();
+        fs::write(dir1.path().join("a.st"), "PROGRAM A\nEND_PROGRAM").unwrap();
+
+        let dir2 = TempDir::new().unwrap();
+        fs::write(dir2.path().join("b.st"), "PROGRAM B\nEND_PROGRAM").unwrap();
+
+        let mut project = FileBackedProject::default();
+        let diagnostics = project.initialize_many(&[dir1.path(), dir2.path()]);
+
+        assert!(diagnostics.is_empty());
+        assert_eq!(project.sources().len(), 2);
+    }
+
+    #[test]
+    fn file_backed_initialize_many_when_zero_directories_then_no_op() {
+        let mut project = FileBackedProject::default();
+        let diagnostics = project.initialize_many(&[]);
+
+        assert!(diagnostics.is_empty());
+        assert_eq!(project.sources().len(), 0);
+    }
+
+    #[test]
+    fn memory_initialize_many_when_multiple_directories_then_returns_error() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        let diagnostics =
+            project.initialize_many(&[Path::new("/some/dir"), Path::new("/other/dir")]);
 
         assert!(!diagnostics.is_empty());
     }
