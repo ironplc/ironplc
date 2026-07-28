@@ -189,6 +189,13 @@ Options
    refuses to compile it. Enabled by ``--dialect=rusty`` and
    ``--dialect=codesys``.
 
+``--allow-mixed-located-var-declarations``
+   Allow an ``AT``-located variable (e.g. ``AT %I*``) inside an otherwise
+   plain ``VAR``/``VAR_INPUT``/``VAR_OUTPUT`` block, instead of requiring
+   its own dedicated block. Produces
+   :doc:`P4036 </reference/compiler/problems/P4036>` when mixed without
+   this flag. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Examples
 ========
 

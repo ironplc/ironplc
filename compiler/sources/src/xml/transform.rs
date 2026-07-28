@@ -5,8 +5,8 @@
 
 use ironplc_dsl::{
     common::{
-        ArrayDeclaration, ArrayElementType, ArraySubranges, Boolean, BooleanLiteral, ConstantKind,
-        DataTypeDeclarationKind, DeclarationQualifier, ElementaryTypeName,
+        next_block_id, ArrayDeclaration, ArrayElementType, ArraySubranges, Boolean, BooleanLiteral,
+        ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, ElementaryTypeName,
         EnumeratedSpecificationInit, EnumeratedSpecificationValues, EnumeratedValue,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
         FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind, Integer, Library,
@@ -602,6 +602,7 @@ fn transform_variable(
         var_type,
         qualifier,
         initializer,
+        block: next_block_id(),
     })
 }
 
