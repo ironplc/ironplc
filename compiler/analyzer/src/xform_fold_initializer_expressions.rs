@@ -42,8 +42,8 @@ use ironplc_dsl::textual::*;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
+use crate::constant_folding::{try_fold_binary, try_fold_unary};
 use crate::scoped_table::{ScopedTable, Value};
-use crate::xform_fold_constant_expressions::{try_fold_binary, try_fold_unary};
 
 impl Value for ConstantKind {}
 

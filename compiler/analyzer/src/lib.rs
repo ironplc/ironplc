@@ -13,6 +13,7 @@ fn init_test_logger() {
         .try_init();
 }
 
+mod constant_folding;
 mod function_environment;
 pub mod intermediate_type;
 mod result;
