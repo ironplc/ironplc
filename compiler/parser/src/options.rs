@@ -28,6 +28,16 @@ pub enum Dialect {
     /// implicit `__SYSTEM_UP_TIME` globals, which are an IronPLC runtime
     /// convention rather than a CODESYS feature.
     Codesys,
+    /// Beckhoff TwinCAT-compatible dialect: Edition 2 base plus the vendor
+    /// extensions that TwinCAT accepts.  TwinCAT 3 is built on the CODESYS V3
+    /// runtime, so this is close to [`Dialect::Codesys`], but does not enable
+    /// the `REF_TO` / `REF()` / `NULL` reference extensions: TwinCAT spells
+    /// references and pointers `REFERENCE TO` / `POINTER TO` (with `ADR()`),
+    /// which IronPLC does not parse yet, so enabling the CODESYS `REF_TO`
+    /// syntax here would accept code TwinCAT itself rejects.  Like CODESYS, it
+    /// does not bind the implicit `__SYSTEM_UP_TIME` globals (an IronPLC
+    /// runtime convention).
+    TwinCat,
 }
 
 impl Dialect {
@@ -37,6 +47,7 @@ impl Dialect {
         Dialect::Iec61131_3Ed3,
         Dialect::Rusty,
         Dialect::Codesys,
+        Dialect::TwinCat,
     ];
 
     /// A short human-readable name suitable for display in UIs and tool output.
@@ -46,6 +57,7 @@ impl Dialect {
             Dialect::Iec61131_3Ed3 => "IEC 61131-3 Ed. 3",
             Dialect::Rusty => "RuSTy-compatible",
             Dialect::Codesys => "CODESYS-compatible",
+            Dialect::TwinCat => "TwinCAT-compatible",
         }
     }
 
@@ -62,6 +74,9 @@ impl Dialect {
             Dialect::Codesys => {
                 "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS vendor extensions."
             }
+            Dialect::TwinCat => {
+                "TwinCAT-compatible: Edition 2 base with the vendor extensions TwinCAT accepts."
+            }
         }
     }
 
@@ -72,6 +87,7 @@ impl Dialect {
             Dialect::Iec61131_3Ed3 => "iec61131-3-ed3",
             Dialect::Rusty => "rusty",
             Dialect::Codesys => "codesys",
+            Dialect::TwinCat => "twincat",
         }
     }
 }
@@ -212,32 +228,32 @@ macro_rules! define_compiler_options {
 define_compiler_options! {
     "Allow C-style comments (// and /* */)",
     "--allow-c-style-comments",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_c_style_comments,
 
     "Allow missing semicolons after keyword statements like END_IF and END_STRUCT",
     "--allow-missing-semicolon",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_missing_semicolon,
 
     "Allow VAR_GLOBAL declarations at the top level outside CONFIGURATION",
     "--allow-top-level-var-global",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_top_level_var_global,
 
     "Allow constant references in type parameters (e.g. STRING[MY_CONST])",
     "--allow-constant-type-params",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_constant_type_params,
 
     "Allow empty variable blocks (VAR END_VAR)",
     "--allow-empty-var-blocks",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_empty_var_blocks,
 
     "Allow TIME as a function name (OSCAT compatibility)",
     "--allow-time-as-function-name",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_time_as_function_name,
 
     "Allow REF_TO, REF(), and NULL without full Edition 3",
@@ -262,12 +278,12 @@ define_compiler_options! {
 
     "Allow integer literals (0/1) as BOOL variable initializers",
     "--allow-int-to-bool-initializer",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_int_to_bool_initializer,
 
     "Allow SIZEOF() operator (returns size in bytes of a variable or type)",
     "--allow-sizeof",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_sizeof,
 
     "Expose __SYSTEM_UP_TIME and __SYSTEM_UP_LTIME as implicit VAR_GLOBALs (runtime monotonic uptime)",
@@ -277,22 +293,22 @@ define_compiler_options! {
 
     "Allow implicit widening between bit-string and integer type families (BYTE->INT, literal->BYTE)",
     "--allow-cross-family-widening",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_cross_family_widening,
 
     "Allow IEC 61131-3:2013 partial-access bit syntax (.%Xn) as an alias for .n",
     "--allow-partial-access-syntax",
-    [Rusty, Iec61131_3Ed3, Codesys],
+    [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_partial_access_syntax,
 
     "Allow curly-brace pragmas ({attribute 'name'}) as opaque, skipped trivia",
     "--allow-pragmas",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_pragmas,
 
     "Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension)",
     "--allow-short-circuit-operators",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_short_circuit_operators,
 }
 
@@ -433,6 +449,37 @@ mod tests {
         );
     }
 
+    /// The TwinCAT dialect is close to CODESYS (TwinCAT 3 runs on the CODESYS
+    /// V3 runtime) but does *not* enable the `REF_TO` reference extensions.
+    /// TwinCAT spells references and pointers `REFERENCE TO` / `POINTER TO`
+    /// (not the CODESYS `REF_TO` / `REF()` / `NULL`), and IronPLC does not
+    /// parse those yet, so none of `allow_ref_to`, `allow_ref_arithmetic`,
+    /// `allow_ref_stack_variables`, or `allow_ref_type_punning` are enabled --
+    /// enabling them would accept `REF_TO` code that TwinCAT itself rejects.
+    /// Listed explicitly so an accidental divergence from the intended set is
+    /// caught.
+    #[test]
+    fn twincat_dialect_enables_exactly_these_vendor_flags() {
+        assert!(!CompilerOptions::from_dialect(Dialect::TwinCat).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(
+            Dialect::TwinCat,
+            &[
+                "allow_c_style_comments",
+                "allow_missing_semicolon",
+                "allow_top_level_var_global",
+                "allow_constant_type_params",
+                "allow_empty_var_blocks",
+                "allow_time_as_function_name",
+                "allow_int_to_bool_initializer",
+                "allow_sizeof",
+                "allow_cross_family_widening",
+                "allow_partial_access_syntax",
+                "allow_pragmas",
+                "allow_short_circuit_operators",
+            ],
+        );
+    }
+
     /// REQ-PAB-051: The `rusty` dialect preset enables partial-access syntax.
     #[test]
     fn options_spec_req_pab_051_rusty_dialect_enables_partial_access_syntax() {
@@ -471,6 +518,7 @@ mod tests {
         assert!(output.contains("iec61131-3-ed3"));
         assert!(output.contains("rusty"));
         assert!(output.contains("codesys"));
+        assert!(output.contains("twincat"));
     }
 
     #[test]
@@ -496,11 +544,17 @@ mod tests {
     }
 
     #[test]
+    fn dialect_display_when_twincat_then_cli_name() {
+        assert_eq!(format!("{}", Dialect::TwinCat), "twincat");
+    }
+
+    #[test]
     fn dialect_from_str_when_known_name_then_returns_variant() {
         assert_eq!("iec61131-3-ed2".parse(), Ok(Dialect::Iec61131_3Ed2));
         assert_eq!("iec61131-3-ed3".parse(), Ok(Dialect::Iec61131_3Ed3));
         assert_eq!("rusty".parse(), Ok(Dialect::Rusty));
         assert_eq!("codesys".parse(), Ok(Dialect::Codesys));
+        assert_eq!("twincat".parse(), Ok(Dialect::TwinCat));
     }
 
     #[test]

@@ -41,6 +41,21 @@ Supported Dialects
    globals are not pre-bound under this dialect, since they are an IronPLC
    runtime convention rather than a CODESYS feature.
 
+**twincat**
+   Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
+   runtime, so it uses an Edition 2 base (identifiers like
+   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
+   preserved) and enables the vendor extensions TwinCAT shares with CODESYS,
+   such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
+   short-circuit operator. Unlike ``codesys``, it does **not** enable the
+   ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
+   references and pointers ``REFERENCE TO`` / ``POINTER TO`` (with ``ADR()``),
+   which IronPLC does not parse yet, so enabling ``REF_TO`` would accept code
+   that TwinCAT itself rejects. As with ``codesys``, the implicit
+   :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
+   globals are not pre-bound, since they are an IronPLC runtime convention
+   rather than a TwinCAT feature.
+
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
 
@@ -136,10 +151,20 @@ features — they never disable features that a dialect already includes.
    Edition 2 keyword handling for the rest of your code. See
    :doc:`/reference/language/data-types/derived/reference-types`.
 
-``--allow-pointer-arithmetic``
+``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``
    are permitted on references.
+
+``--allow-ref-stack-variables``
+   Allow ``REF()`` on stack-allocated variables (``VAR_TEMP`` and function
+   ``VAR_INPUT``/``VAR_OUTPUT``). Required for OSCAT patterns where the
+   reference does not escape the call.
+
+``--allow-ref-type-punning``
+   Allow assigning between ``REF_TO`` types of different base types (type
+   punning), such as reinterpreting the bits of a ``REAL`` through a
+   ``REF_TO DWORD``.
 
 ``--allow-int-to-bool-initializer``
    Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers
@@ -152,6 +177,12 @@ features — they never disable features that a dialect already includes.
    variable or type. This is a vendor extension supported by CODESYS,
    TwinCAT, and RuSTy. See
    :doc:`/reference/extension-library/functions/sizeof`.
+
+``--allow-system-uptime-global``
+   Expose ``__SYSTEM_UP_TIME`` (``TIME``) and ``__SYSTEM_UP_LTIME``
+   (``LTIME``) as implicit ``VAR_GLOBAL`` values holding the VM's monotonic
+   uptime. This is an IronPLC runtime convention enabled by
+   ``--dialect=rusty``.
 
 ``--allow-cross-family-widening``
    Allow implicit widening between bit-string and integer type families.

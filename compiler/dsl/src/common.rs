@@ -866,6 +866,7 @@ impl ElementaryTypeName {
     /// - Unsigned integer chain: USINT → UINT → UDINT → ULINT
     /// - Cross-sign: unsigned n-bit → signed m-bit where m > n
     /// - Integer → REAL (lossless only): src ≤ 16 bits → REAL, any → LREAL
+    /// - REAL → LREAL (lossless: 32-bit float → 64-bit float)
     /// - Bit-string chain: BYTE → WORD → DWORD → LWORD (BOOL excluded)
     ///
     /// Not allowed: signed → unsigned, narrowing, cross-family (bit-string ↔ integer).
@@ -896,6 +897,9 @@ impl ElementaryTypeName {
                     src_bits <= 16 // Only ≤16-bit integers → REAL
                 }
             }
+            // REAL → LREAL widening (lossless: 32-bit float safely widens to
+            // 64-bit float). LREAL → REAL is narrowing and NOT allowed here.
+            (Real, Real) => tgt_bits > src_bits,
             // Bit-string widening within ANY_BIT family
             (BitString, BitString) => tgt_bits > src_bits,
             // Everything else (cross-family, Real→Int, etc.): not standard
@@ -3419,6 +3423,23 @@ mod tests {
     #[test]
     fn can_widen_to_when_lreal_to_dint_then_false() {
         assert!(!ElementaryTypeName::LREAL.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    // REAL <-> LREAL: widening allowed, narrowing not
+
+    #[test]
+    fn can_widen_to_when_real_to_lreal_then_true() {
+        assert!(ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::LREAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_lreal_to_real_then_false() {
+        assert!(!ElementaryTypeName::LREAL.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_real_to_real_then_false() {
+        assert!(!ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::REAL));
     }
 
     // Bit-string widening within ANY_BIT

@@ -532,7 +532,12 @@ parser! {
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
       tok(TokenType::LeftParen) _ v:enumerated_value_decl() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
       / name:enumerated_type_name() { SpecificationKind::Named(name) }
-    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() { EnumeratedValue {type_name, value, explicit_value: None} }
+    // Uses variable_identifier() rather than a bare identifier() so that
+    // reserved-but-commonly-used-as-a-name keywords (ON, STEP, R_EDGE,
+    // F_EDGE) are also valid enum member names, matching the same
+    // carve-out variable_identifier() already provides for VAR
+    // declarations (see #300, "Feature/reserved variables").
+    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, explicit_value: None} }
     // CODESYS/TwinCAT (also standard as of IEC 61131-3:2013) explicit
     // per-member enum value, e.g. `Type_UNDEFINED := 0, Type_ANY,
     // Type_BOOL` -- only a member *declaration* can carry an explicit

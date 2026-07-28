@@ -21,13 +21,20 @@ def validate_flags(app, config):
     options_path = srcdir / '..' / 'compiler' / 'parser' / 'src' / 'options.rs'
     options_text = options_path.read_text()
 
-    # Extract "allow_*" field names
-    fields = re.findall(r'pub (allow_\w+): bool', options_text)
-    # Edition flag is set by --dialect, not --allow-*
-    fields = [f for f in fields if f != 'allow_iec_61131_3_2013']
-
-    # Convert to CLI form: allow_foo_bar -> --allow-foo-bar
-    cli_flags = {f: '--' + f.replace('_', '-') for f in fields}
+    # Extract the --allow-* CLI flag string literals declared in the
+    # define_compiler_options! macro (e.g. "--allow-c-style-comments").
+    #
+    # These literals are the FeatureDescriptor.cli_flag values and are the
+    # source of truth. An earlier version of this guard matched
+    # `pub (allow_\w+): bool` field declarations, but that regex silently
+    # stopped matching — and so validated nothing — once the flags moved into
+    # the macro (the fields are generated, not written literally). Matching the
+    # CLI-flag literals is robust to that macro expansion.
+    cli_flags = sorted(set(re.findall(r'"(--allow-[a-z0-9-]+)"', options_text)))
+    if not cli_flags:
+        print('ironplc_flags: no --allow-* flags found in options.rs; the '
+              'source-of-truth format may have changed.')
+        exit(1)
 
     # Verify each flag appears in both doc files
     doc_files = [
@@ -38,9 +45,9 @@ def validate_flags(app, config):
     for doc_rel in doc_files:
         doc_path = srcdir / doc_rel
         doc_text = doc_path.read_text()
-        for field, cli_flag in cli_flags.items():
+        for cli_flag in cli_flags:
             if cli_flag not in doc_text:
-                missing.append(f'{cli_flag} (from CompilerOptions.{field}) missing in {doc_rel}')
+                missing.append(f'{cli_flag} missing in {doc_rel}')
 
     if missing:
         for m in missing:
