@@ -61,9 +61,8 @@ struct FlagFixture {
 /// tracked by an issue. When enforcement lands, add a fixture to
 /// [`FLAG_FIXTURES`] and remove the entry here.
 ///
-/// - `allow_top_level_var_global`  → ironplc/ironplc#1233
 /// - `allow_constant_type_params`  → ironplc/ironplc#1234
-const UNENFORCED: &[&str] = &["allow_top_level_var_global", "allow_constant_type_params"];
+const UNENFORCED: &[&str] = &["allow_constant_type_params"];
 
 /// One fixture per *enforced* vendor-extension flag. Order mirrors
 /// `FEATURE_DESCRIPTORS` for readability; the suite does not depend on ordering.
@@ -87,6 +86,13 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         key: "allow_empty_var_blocks",
         prereqs: &[],
         source: "PROGRAM main\nVAR\nEND_VAR\nEND_PROGRAM",
+    },
+    // A VAR_GLOBAL block at the top level (outside CONFIGURATION) is rejected
+    // with P4028 unless the flag is on.
+    FlagFixture {
+        key: "allow_top_level_var_global",
+        prereqs: &[],
+        source: "VAR_GLOBAL CONSTANT\nX : INT := 250;\nEND_VAR\nPROGRAM p\nEND_PROGRAM",
     },
     // TIME is a type keyword; using it as a function name needs the flag.
     FlagFixture {
