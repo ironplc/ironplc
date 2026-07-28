@@ -134,6 +134,7 @@ fn transform_enum_decl(
         .map(|v| EnumeratedValue {
             type_name: Some(type_name.clone()),
             value: make_id(&v.name, file_id),
+            explicit_value: None,
         })
         .collect();
 
@@ -145,6 +146,7 @@ fn transform_enum_decl(
             spec_init: EnumeratedSpecificationInit {
                 spec,
                 default: None,
+                underlying_type: None,
             },
         },
     ))

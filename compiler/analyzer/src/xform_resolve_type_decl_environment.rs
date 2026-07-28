@@ -59,6 +59,7 @@ impl TypeEnvironment {
                         spec_init: EnumeratedSpecificationInit {
                             spec: SpecificationKind::Named(node.base_type_name),
                             default: None,
+                            underlying_type: None,
                         },
                     }),
                 ),
@@ -164,7 +165,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 self.insert_type(&node.type_name, string::from(string_initializer))?;
             }
             InitialValueAssignmentKind::EnumeratedValues(enumerated_values_initializer) => {
-                let attributes = enumeration::try_from_values(enumerated_values_initializer)?;
+                let attributes = enumeration::try_from_values(enumerated_values_initializer, None)?;
                 self.insert_type(&node.type_name, attributes)?;
             }
             InitialValueAssignmentKind::EnumeratedType(_enumerated_initial_value_assignment) => {
@@ -249,7 +250,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 self.insert_alias(&node.type_name, base_type_name)?;
             }
             SpecificationKind::Inline(spec_values) => {
-                let attributes = enumeration::try_from_values(spec_values)?;
+                let attributes = enumeration::try_from_values(
+                    spec_values,
+                    node.spec_init.underlying_type.clone(),
+                )?;
                 self.insert_type(&node.type_name, attributes)?;
             }
         }
@@ -528,6 +532,7 @@ END_TYPE
                         spec_init: EnumeratedSpecificationInit {
                             spec: SpecificationKind::Named(TypeName::from("LEVEL")),
                             default: None,
+                            underlying_type: None,
                         },
                     },
                 )),
