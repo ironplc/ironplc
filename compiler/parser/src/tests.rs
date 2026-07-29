@@ -1348,6 +1348,160 @@ END_PROGRAM";
         result.unwrap()
     }
 
+    fn parse_text_reference_to(source: &str) -> Library {
+        let options = CompilerOptions {
+            allow_reference_to: true,
+            ..CompilerOptions::default()
+        };
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+        result.unwrap()
+    }
+
+    /// The single (non-FB-call) statement in a program body.
+    fn only_statement(lib: &Library) -> &StmtKind {
+        let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+        let stmts = cast!(&prog.body, FunctionBlockBodyKind::Statements);
+        assert_eq!(stmts.body.len(), 1, "expected exactly one statement");
+        &stmts.body[0]
+    }
+
+    // --- REF= disambiguation against other uses of `=` -----------------------
+
+    /// A variable *named* `REF` assigned with `:=` is a normal assignment, not a
+    /// `REF=` binding — even with `--allow-reference-to` active.
+    #[test]
+    fn ref_bind_when_variable_named_ref_assigned_then_normal_assignment() {
+        let lib = parse_text_reference_to(
+            "PROGRAM main
+VAR
+    REF : INT;
+END_VAR
+    REF := 5;
+END_PROGRAM",
+        );
+        let assignment = cast!(only_statement(&lib), StmtKind::Assignment);
+        assert!(
+            !assignment.ref_bind,
+            "must not be treated as a REF= binding"
+        );
+        assert_eq!(assignment.target.to_string(), "REF");
+    }
+
+    /// An `=` equality comparison in a condition still parses (the REF= rule
+    /// only fires on `REF` immediately followed by `=`).
+    #[test]
+    fn ref_bind_when_equality_in_condition_then_parses_as_comparison() {
+        let lib = parse_text_reference_to(
+            "PROGRAM main
+VAR
+    a : INT;
+    b : INT;
+    c : INT;
+END_VAR
+    IF a = b THEN
+        c := 1;
+    END_IF;
+END_PROGRAM",
+        );
+        // The single top-level statement is the IF, not an assignment.
+        cast!(only_statement(&lib), StmtKind::If);
+    }
+
+    /// An `=` comparison on the right-hand side of `:=` still parses as a normal
+    /// assignment whose value is the comparison.
+    #[test]
+    fn ref_bind_when_equality_in_rhs_then_normal_assignment() {
+        let lib = parse_text_reference_to(
+            "PROGRAM main
+VAR
+    a : INT;
+    c : INT;
+    result : BOOL;
+END_VAR
+    result := a = c;
+END_PROGRAM",
+        );
+        let assignment = cast!(only_statement(&lib), StmtKind::Assignment);
+        assert!(!assignment.ref_bind);
+    }
+
+    /// `REF=` binds when `REF` is the keyword token (both `--allow-ref-to` and
+    /// `--allow-reference-to` active, e.g. the `codesys` dialect).
+    #[test]
+    fn ref_bind_when_ref_is_keyword_token_then_binds() {
+        let options = CompilerOptions {
+            allow_ref_to: true,
+            allow_reference_to: true,
+            ..CompilerOptions::default()
+        };
+        let source = "PROGRAM main
+VAR
+    x : INT;
+    r : REFERENCE TO INT;
+END_VAR
+    r REF= x;
+END_PROGRAM";
+        let lib = parse_program(source, &FileId::default(), &options).unwrap();
+        let assignment = cast!(only_statement(&lib), StmtKind::Assignment);
+        assert!(assignment.ref_bind);
+        let referent = cast!(&assignment.value.kind, ExprKind::Ref);
+        assert_eq!(referent.to_string(), "x");
+    }
+
+    /// The `REF=` operator is case-insensitive (`ref=` binds too).
+    #[test]
+    fn ref_bind_when_lowercase_operator_then_binds() {
+        let lib = parse_text_reference_to(
+            "PROGRAM main
+VAR
+    x : INT;
+    r : REFERENCE TO INT;
+END_VAR
+    r ref= x;
+END_PROGRAM",
+        );
+        let assignment = cast!(only_statement(&lib), StmtKind::Assignment);
+        assert!(assignment.ref_bind);
+    }
+
+    /// The right-hand side of `REF=` must be a variable (address-of), matching
+    /// `REF()` semantics — a literal is rejected rather than silently accepted.
+    #[test]
+    fn ref_bind_when_rhs_is_literal_then_error() {
+        let options = CompilerOptions {
+            allow_reference_to: true,
+            ..CompilerOptions::default()
+        };
+        let source = "PROGRAM main
+VAR
+    r : REFERENCE TO INT;
+END_VAR
+    r REF= 5;
+END_PROGRAM";
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_err(), "REF= to a literal must be rejected");
+    }
+
+    /// A referent *named* `REF` can be bound: `x REF= REF` binds `x` to the
+    /// variable `REF`.
+    #[test]
+    fn ref_bind_when_referent_named_ref_then_binds() {
+        let lib = parse_text_reference_to(
+            "PROGRAM main
+VAR
+    REF : INT;
+    x : REFERENCE TO INT;
+END_VAR
+    x REF= REF;
+END_PROGRAM",
+        );
+        let assignment = cast!(only_statement(&lib), StmtKind::Assignment);
+        assert!(assignment.ref_bind);
+        let referent = cast!(&assignment.value.kind, ExprKind::Ref);
+        assert_eq!(referent.to_string(), "REF");
+    }
+
     #[test]
     fn parse_when_ref_to_int_type_decl_then_ok() {
         let lib = parse_text_edition3("TYPE IntRef : REF_TO INT; END_TYPE");
