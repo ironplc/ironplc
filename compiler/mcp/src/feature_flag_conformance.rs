@@ -175,6 +175,15 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Example\nVAR\ntempSensor AT%I* : INT;\nfbComm : BOOL;\nEND_VAR\nEND_FUNCTION_BLOCK\nPROGRAM p\nEND_PROGRAM",
     },
+    // A VAR initializer that is a constant expression (not a bare literal).
+    // The parser accepts this unconditionally; the flag gates a later
+    // semantic fold pass (P4037 when off, even though the expression is
+    // foldable).
+    FlagFixture {
+        key: "allow_constant_initializer_expressions",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nd2r : LREAL := 4.25/180.0;\nEND_VAR\nEND_PROGRAM",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.

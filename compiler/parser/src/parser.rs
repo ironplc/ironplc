@@ -36,6 +36,84 @@ use ironplc_dsl::time::*;
 // Don't use std::time::Duration because it does not allow negative values.
 use time::{Date, Month, PrimitiveDateTime, Time};
 
+/// Negates a literal constant, for the small set of literal kinds that
+/// `constant()` itself already supports with a leading sign (integer, real,
+/// duration). Used to collapse `ExprKind::UnaryOp(Neg, Const(c))` — the
+/// shape produced when a negative literal reaches the parser through
+/// `expression()`'s unary-operator handling rather than directly through
+/// `constant()` — back to the same `Const` shape `constant()` alone would
+/// have produced, so that e.g. `x : INT := -123;` continues to parse as a
+/// plain literal and does not require `allow_constant_initializer_expressions`.
+/// Returns `Err(c)` (giving the original value back) for literal kinds that
+/// have no natural negation (e.g. booleans, strings), which fall through to
+/// `SimpleExpr` instead.
+fn negate_literal_constant(c: ConstantKind) -> Result<ConstantKind, ConstantKind> {
+    match c {
+        ConstantKind::IntegerLiteral(mut lit) => {
+            lit.value.is_neg = !lit.value.is_neg;
+            Ok(ConstantKind::IntegerLiteral(lit))
+        }
+        ConstantKind::RealLiteral(mut lit) => {
+            lit.value = -lit.value;
+            Ok(ConstantKind::RealLiteral(lit))
+        }
+        ConstantKind::Duration(mut lit) => {
+            lit.interval = -lit.interval;
+            Ok(ConstantKind::Duration(lit))
+        }
+        other => Err(other),
+    }
+}
+
+/// Collapses an initializer expression to `Simple` when it is exactly a
+/// literal (optionally with one leading unary minus, e.g. `-123`), and
+/// otherwise wraps it as `SimpleExpr` (the constant-expression vendor
+/// extension, folded by `xform_fold_initializer_expressions`).
+fn resolve_initializer_expr(type_name: TypeName, e: ExprKind) -> InitialValueAssignmentKind {
+    match e {
+        ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
+            type_name,
+            initial_value: Some(c),
+        }),
+        ExprKind::UnaryOp(u) if u.op == UnaryOp::Neg => {
+            let UnaryExpr { op, term } = *u;
+            let resolved_type = term.resolved_type.clone();
+            match term.kind {
+                ExprKind::Const(c) => match negate_literal_constant(c) {
+                    Ok(negated) => InitialValueAssignmentKind::Simple(SimpleInitializer {
+                        type_name,
+                        initial_value: Some(negated),
+                    }),
+                    Err(c) => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
+                        type_name,
+                        initial_value: Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr {
+                            op,
+                            term: Expr {
+                                kind: ExprKind::Const(c),
+                                resolved_type,
+                            },
+                        }))),
+                    }),
+                },
+                other => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
+                    type_name,
+                    initial_value: Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr {
+                        op,
+                        term: Expr {
+                            kind: other,
+                            resolved_type,
+                        },
+                    }))),
+                }),
+            }
+        }
+        other => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
+            type_name,
+            initial_value: Expr::new(other),
+        }),
+    }
+}
+
 /// Parses a IEC 61131-3 library into object form.
 pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diagnostic> {
     plc_parser::library(&SliceByRef(&tokens[..])).map_err(|e| {
@@ -113,9 +191,13 @@ enum Element {
     Deref,
 }
 
+// Both variants are boxed to keep them the same (pointer) size: the
+// LocatedVarInit variant carries a full InitialValueAssignmentKind
+// initializer and is much larger inline than FunctionBlockInit, which
+// otherwise trips clippy::large_enum_variant.
 enum InstanceInitKind {
-    FunctionBlockInit(FunctionBlockInit),
-    LocatedVarInit(LocatedVarInit),
+    FunctionBlockInit(Box<FunctionBlockInit>),
+    LocatedVarInit(Box<LocatedVarInit>),
 }
 
 enum ProgramConfigurationKind {
@@ -466,10 +548,22 @@ parser! {
         spec_and_init,
       }
     }
-    rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ constant:(tok(TokenType::Assignment) _ c:constant() { c })? {
+    rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {
+      // A bare literal parses as ExprKind::Const via expression() too (it's
+      // one of its own alternatives), so this single rule handles both the
+      // standard literal-only case and the constant-expression vendor
+      // extension (e.g. PI/180.0) without ambiguity — trying constant()
+      // first and falling back to expression() doesn't work here because
+      // constant() greedily matches a leading literal and stops, without
+      // backtracking, leaving a trailing operator unconsumed. See
+      // allow_constant_initializer_expressions and
+      // xform_fold_initializer_expressions, which folds SimpleExpr back to
+      // Simple or diagnoses it.
+      resolve_initializer_expr(type_name, e)
+    } / type_name:simple_specification() {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
-        initial_value: constant,
+        initial_value: None,
       })
     }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
@@ -662,13 +756,27 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ c:constant() {
-      // A simple_specification with a constant is unambiguous because the constant is
-      // not a valid identifier.
-      InitialValueAssignmentKind::Simple(SimpleInitializer {
-        type_name: s,
-        initial_value: Some(c),
-      })
+    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {?
+      // A bare literal parses as ExprKind::Const via expression() too (it's
+      // one of its own alternatives), so this handles both the standard
+      // literal-only case and the constant-expression vendor extension
+      // (e.g. PI/180.0) — see allow_constant_initializer_expressions and
+      // xform_fold_initializer_expressions, which folds SimpleExpr back to
+      // Simple or diagnoses it.
+      //
+      // A bare identifier (no operators) is rejected here (backtracking to
+      // the enumerated_specification alternative below) because `simple
+      //_specification` also matches an enum type name, and `identifier :=
+      // identifier` is inherently ambiguous between "simple type with a
+      // constant-expression initializer referencing a variable" and "enum
+      // type with an enum value default" — the latter interpretation must
+      // still win, matching pre-existing disambiguation behavior.
+      match e {
+        ExprKind::Variable(_) | ExprKind::LateBound(_) => {
+          Err("ambiguous with enumerated value initializer")
+        }
+        other => Ok(resolve_initializer_expr(s, other)),
+      }
     } / spec:enumerated_specification() _ tok(TokenType::Assignment) _ init:enumerated_value() {
       // An enumerated_specification defined with a value is unambiguous the value
       // is not a valid constant.
@@ -1312,8 +1420,8 @@ parser! {
       if let Some(inits) = i {
         for init in inits {
           match init {
-              InstanceInitKind::FunctionBlockInit(fb_init) => fb_inits.push(fb_init),
-              InstanceInitKind::LocatedVarInit(located_var_init) => located_var_inits.push(located_var_init),
+              InstanceInitKind::FunctionBlockInit(fb_init) => fb_inits.push(*fb_init),
+              InstanceInitKind::LocatedVarInit(located_var_init) => located_var_inits.push(*located_var_init),
           }
         }
       }
@@ -1446,16 +1554,16 @@ parser! {
     rule instance_specific_initializations() -> Vec<InstanceInitKind> = tok(TokenType::VarConfig) _ init:semisep_oneplus(<instance_specific_init()>) _ tok(TokenType::EndVar) { init }
     rule instance_specific_init() -> InstanceInitKind = instance_specific_init__fb_init() / instance_specific_init__located()
     rule instance_specific_init__located() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_no_trailing(<identifier()>) _ address:location()? _ tok(TokenType::Colon) _ initializer:located_var_spec_init() {
-      InstanceInitKind::LocatedVarInit(LocatedVarInit {
+      InstanceInitKind::LocatedVarInit(Box::new(LocatedVarInit {
         resource_name,
         program_name,
         fb_path,
         address,
         initializer,
-      })
+      }))
     }
     rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_oneplus_no_trailing(<identifier()>) _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
-      InstanceInitKind::FunctionBlockInit(FunctionBlockInit {
+      InstanceInitKind::FunctionBlockInit(Box::new(FunctionBlockInit {
         resource_name,
         program_name,
         fb_path,
@@ -1463,7 +1571,7 @@ parser! {
         fb_name: Id::from(""),
         type_name,
         initializer,
-      })
+      }))
     }
 
     // B 2.1 Instruction List

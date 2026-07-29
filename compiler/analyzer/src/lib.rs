@@ -13,6 +13,7 @@ fn init_test_logger() {
         .try_init();
 }
 
+mod constant_folding;
 mod function_environment;
 pub mod intermediate_type;
 mod result;
@@ -49,6 +50,7 @@ mod type_category;
 mod type_environment;
 mod type_table;
 mod xform_fold_constant_expressions;
+mod xform_fold_initializer_expressions;
 mod xform_int_to_bool_initializer;
 mod xform_named_to_positional_args;
 mod xform_resolve_constant_expressions;

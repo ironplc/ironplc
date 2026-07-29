@@ -175,6 +175,7 @@ table is a convenience mirror, so consult the macro if the two ever disagree.
 | `allow_pragmas` | `--allow-pragmas` | Curly-brace pragmas (`{attribute 'qualified_only'}`) parsed and discarded like a comment |
 | `allow_short_circuit_operators` | `--allow-short-circuit-operators` | AND_THEN short-circuit boolean operator (Beckhoff/CODESYS) |
 | `allow_mixed_located_var_declarations` | `--allow-mixed-located-var-declarations` | `AT`-located variable (e.g. `AT %I*`) mixed with plain variables in one `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block |
+| `allow_constant_initializer_expressions` | `--allow-constant-initializer-expressions` | Constant expressions (not just bare literals) in `VAR` initializers, e.g. `SCALE*4.0` |
 
 ### Dialects
 

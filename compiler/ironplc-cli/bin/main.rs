@@ -161,6 +161,12 @@ struct FileArgs {
     /// block. This is a vendor extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_mixed_located_var_declarations: bool,
+
+    /// Allow a VAR initializer to be a constant expression (e.g. SCALE*4.0)
+    /// rather than only a bare literal. This is a vendor extension not part
+    /// of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_constant_initializer_expressions: bool,
 }
 
 impl FileArgs {
@@ -185,6 +191,8 @@ impl FileArgs {
         options.allow_pragmas |= self.allow_pragmas;
         options.allow_short_circuit_operators |= self.allow_short_circuit_operators;
         options.allow_mixed_located_var_declarations |= self.allow_mixed_located_var_declarations;
+        options.allow_constant_initializer_expressions |=
+            self.allow_constant_initializer_expressions;
         options
     }
 }
