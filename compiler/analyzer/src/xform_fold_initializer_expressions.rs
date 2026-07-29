@@ -42,7 +42,7 @@ use ironplc_dsl::textual::*;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
-use crate::constant_folding::{try_fold_binary, try_fold_unary};
+use crate::constant_folding::{fold_error_to_diagnostic, try_fold_binary, try_fold_unary};
 use crate::scoped_table::{ScopedTable, Value};
 
 impl Value for ConstantKind {}
@@ -136,27 +136,41 @@ fn register_constants(
 /// `ConstantKind` values (see `register_constants`), never an expression
 /// referencing another name, so a substituted value is always terminal --
 /// there is nothing left to look up again.
-fn substitute_and_fold(expr: Expr, constants: &mut ScopedTable<Id, ConstantKind>) -> Expr {
+///
+/// Returns `Err` if a sub-expression is a genuine constant expression
+/// (both operands known) whose operation has no defined result (division
+/// by zero, overflow) -- distinct from simply not folding, which leaves
+/// the node as an unfolded `BinaryOp`/`UnaryOp` for `normalize` to report
+/// as "not a constant expression".
+fn substitute_and_fold(
+    expr: Expr,
+    constants: &mut ScopedTable<Id, ConstantKind>,
+) -> Result<Expr, Diagnostic> {
+    let span = expr.span();
     let kind = match expr.kind {
         ExprKind::BinaryOp(binary) => {
-            let left = substitute_and_fold(binary.left, constants);
-            let right = substitute_and_fold(binary.right, constants);
+            let left = substitute_and_fold(binary.left, constants)?;
+            let right = substitute_and_fold(binary.right, constants)?;
             let binary = BinaryExpr {
                 op: binary.op,
                 left,
                 right,
             };
-            try_fold_binary(&binary).unwrap_or(ExprKind::BinaryOp(Box::new(binary)))
+            try_fold_binary(&binary)
+                .map_err(|e| fold_error_to_diagnostic(e, span))?
+                .unwrap_or(ExprKind::BinaryOp(Box::new(binary)))
         }
         ExprKind::UnaryOp(unary) => {
-            let term = substitute_and_fold(unary.term, constants);
+            let term = substitute_and_fold(unary.term, constants)?;
             let unary = UnaryExpr { op: unary.op, term };
             try_fold_unary(&unary).unwrap_or(ExprKind::UnaryOp(Box::new(unary)))
         }
         ExprKind::Expression(inner) => {
-            ExprKind::Expression(Box::new(substitute_and_fold(*inner, constants)))
+            ExprKind::Expression(Box::new(substitute_and_fold(*inner, constants)?))
         }
-        ExprKind::Deref(inner) => ExprKind::Deref(Box::new(substitute_and_fold(*inner, constants))),
+        ExprKind::Deref(inner) => {
+            ExprKind::Deref(Box::new(substitute_and_fold(*inner, constants)?))
+        }
         ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
             match constants.find(&named.name) {
                 Some(value) => ExprKind::Const(value.clone()),
@@ -174,10 +188,10 @@ fn substitute_and_fold(expr: Expr, constants: &mut ScopedTable<Id, ConstantKind>
         other => other,
     };
 
-    Expr {
+    Ok(Expr {
         kind,
         resolved_type: expr.resolved_type,
-    }
+    })
 }
 
 struct InitializerFolder<'a> {
@@ -205,22 +219,31 @@ impl InitializerFolder<'_> {
             });
         }
 
-        let folded = substitute_and_fold(se.initial_value, &mut self.constants);
-        match folded.kind {
-            ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
-                type_name: se.type_name,
-                initial_value: Some(c),
-            }),
-            _ => {
-                self.diagnostics.push(
-                    Diagnostic::problem(
-                        Problem::InitializerNotConstantExpression,
-                        Label::span(folded.span(), "Initializer expression"),
-                    )
-                    .with_context("type", &se.type_name.to_string()),
-                );
+        let type_name = se.type_name;
+        match substitute_and_fold(se.initial_value, &mut self.constants) {
+            Ok(folded) => match folded.kind {
+                ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
+                    type_name,
+                    initial_value: Some(c),
+                }),
+                _ => {
+                    self.diagnostics.push(
+                        Diagnostic::problem(
+                            Problem::InitializerNotConstantExpression,
+                            Label::span(folded.span(), "Initializer expression"),
+                        )
+                        .with_context("type", &type_name.to_string()),
+                    );
+                    InitialValueAssignmentKind::Simple(SimpleInitializer {
+                        type_name,
+                        initial_value: None,
+                    })
+                }
+            },
+            Err(diag) => {
+                self.diagnostics.push(diag);
                 InitialValueAssignmentKind::Simple(SimpleInitializer {
-                    type_name: se.type_name,
+                    type_name,
                     initial_value: None,
                 })
             }
@@ -599,5 +622,36 @@ mod tests {
             ConstantKind::IntegerLiteral
         );
         assert_eq!(lit.value.value.value, 5);
+    }
+
+    #[test]
+    fn apply_when_initializer_divides_by_zero_then_division_by_zero_error_not_misleading_p4038() {
+        // 1.0/0.0 is a genuine constant expression (both operands known);
+        // it must be reported as "division by zero", not misdiagnosed as
+        // "not a constant expression" (P4038 / InitializerNotConstantExpression).
+        let lib = parse(
+            "PROGRAM main VAR x : LREAL := 1.0/0.0; END_VAR END_PROGRAM",
+            &opts(),
+        );
+        let result = apply(lib, &opts());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionDivisionByZero.code()));
+    }
+
+    #[test]
+    fn apply_when_initializer_int_overflows_then_overflow_error_not_misleading_p4038() {
+        let lib = parse(
+            "PROGRAM main VAR x : LINT := 170141183460469231731687303715884105727 * 2; END_VAR END_PROGRAM",
+            &opts(),
+        );
+        let result = apply(lib, &opts());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionOverflow.code()));
     }
 }
