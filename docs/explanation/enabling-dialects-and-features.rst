@@ -49,9 +49,10 @@ Supported Dialects
    such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
    short-circuit operator. Unlike ``codesys``, it does **not** enable the
    ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
-   references and pointers ``REFERENCE TO`` / ``POINTER TO`` (with ``ADR()``),
-   which IronPLC does not parse yet, so enabling ``REF_TO`` would accept code
-   that TwinCAT itself rejects. As with ``codesys``, the implicit
+   references ``REFERENCE TO`` (bound with ``REF=``), which this dialect
+   enables instead via ``--allow-reference-to``. (Pointer types —
+   ``POINTER TO`` with ``ADR()`` — are not parsed yet.) As with ``codesys``,
+   the implicit
    :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound, since they are an IronPLC runtime convention
    rather than a TwinCAT feature.
@@ -149,6 +150,16 @@ features — they never disable features that a dialect already includes.
    Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
    Edition 3. This is useful when you need references but want to keep
    Edition 2 keyword handling for the rest of your code. See
+   :doc:`/reference/language/data-types/derived/reference-types`.
+
+``--allow-reference-to``
+   Allow the Beckhoff TwinCAT / CODESYS ``REFERENCE TO`` reference type and the
+   ``REF=`` binding operator. This is the TwinCAT/CODESYS-facing alternative to
+   ``--allow-ref-to``: the two describe the same underlying reference but with
+   different surface syntax. ``REFERENCE TO`` is bundled by the ``twincat`` and
+   ``codesys`` dialects. The compiler does not restrict flag combinations, so
+   ``--allow-ref-to`` and ``--allow-reference-to`` may be set at once, though no
+   single real dialect bundles both. See
    :doc:`/reference/language/data-types/derived/reference-types`.
 
 ``--allow-ref-arithmetic``
