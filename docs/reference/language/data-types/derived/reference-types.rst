@@ -19,7 +19,7 @@ variable.
    Beckhoff TwinCAT and CODESYS spell references ``REFERENCE TO`` and bind them
    with the ``REF=`` operator (``r REF= x;``) rather than ``REF_TO`` and
    ``r := REF(x);``. Enable this variant with ``--allow-reference-to`` or the
-   ``codesys`` dialect. It describes the same underlying reference and, in this
+   ``twincat`` or ``codesys`` dialect. It describes the same underlying reference and, in this
    release, is read and written through the same explicit ``^`` operator:
 
    .. code-block::

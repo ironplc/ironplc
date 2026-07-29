@@ -263,7 +263,7 @@ define_compiler_options! {
 
     "Allow Beckhoff TwinCAT/CODESYS REFERENCE TO reference types and the REF= binding operator",
     "--allow-reference-to",
-    [Codesys],
+    [Codesys, TwinCat],
     allow_reference_to,
 
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
@@ -471,13 +471,13 @@ mod tests {
 
     /// The TwinCAT dialect is close to CODESYS (TwinCAT 3 runs on the CODESYS
     /// V3 runtime) but does *not* enable the `REF_TO` reference extensions.
-    /// TwinCAT spells references and pointers `REFERENCE TO` / `POINTER TO`
-    /// (not the CODESYS `REF_TO` / `REF()` / `NULL`), and IronPLC does not
-    /// parse those yet, so none of `allow_ref_to`, `allow_ref_arithmetic`,
-    /// `allow_ref_stack_variables`, or `allow_ref_type_punning` are enabled --
-    /// enabling them would accept `REF_TO` code that TwinCAT itself rejects.
-    /// Listed explicitly so an accidental divergence from the intended set is
-    /// caught.
+    /// TwinCAT spells references `REFERENCE TO` (not the CODESYS `REF_TO` /
+    /// `REF()` / `NULL`), so it enables `allow_reference_to` instead, and none
+    /// of `allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`,
+    /// or `allow_ref_type_punning` are enabled -- enabling those would accept
+    /// `REF_TO` code that TwinCAT itself rejects. (Pointer types `POINTER TO`
+    /// with `ADR()` are not parsed yet.) Listed explicitly so an accidental
+    /// divergence from the intended set is caught.
     #[test]
     fn twincat_dialect_enables_exactly_these_vendor_flags() {
         assert!(!CompilerOptions::from_dialect(Dialect::TwinCat).allow_iec_61131_3_2013);
@@ -490,6 +490,7 @@ mod tests {
                 "allow_constant_type_params",
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
+                "allow_reference_to",
                 "allow_int_to_bool_initializer",
                 "allow_sizeof",
                 "allow_cross_family_widening",

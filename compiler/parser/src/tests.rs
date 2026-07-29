@@ -1465,6 +1465,25 @@ END_PROGRAM",
         assert!(assignment.ref_bind);
     }
 
+    /// A space between `REF` and `=` is not the binding operator: `REF` and `=`
+    /// must be adjacent, so `x REF = y` is rejected.
+    #[test]
+    fn ref_bind_when_space_between_ref_and_equals_then_error() {
+        let options = CompilerOptions {
+            allow_reference_to: true,
+            ..CompilerOptions::default()
+        };
+        let source = "PROGRAM main
+VAR
+    x : REFERENCE TO INT;
+    y : INT;
+END_VAR
+    x REF = y;
+END_PROGRAM";
+        let result = parse_program(source, &FileId::default(), &options);
+        assert!(result.is_err(), "REF = with a space must be rejected");
+    }
+
     /// The right-hand side of `REF=` must be a variable (address-of), matching
     /// `REF()` semantics — a literal is rejected rather than silently accepted.
     #[test]

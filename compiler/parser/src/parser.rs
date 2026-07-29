@@ -1016,13 +1016,17 @@ parser! {
       tok(TokenType::RefTo) { RefSyntax::RefTo }
       / tok(TokenType::Reference) _ tok(TokenType::To) { RefSyntax::ReferenceTo }
     // Matches the TwinCAT/CODESYS `REF=` binding operator, returning the `=`
-    // token (used for the assignment span). `REF` may be the `Ref` keyword
-    // token (when `--allow-ref-to`/Edition 3 is also active) or a demoted
-    // identifier `REF` (when only `--allow-reference-to` is set); both are
-    // accepted, case-insensitively.
+    // token (used for the assignment span). The `=` must immediately follow
+    // `REF` with no intervening whitespace (no `_`), so `REF =` is not a binding
+    // operator. `REF` may be the `Ref` keyword token (when `--allow-ref-to`/
+    // Edition 3 is also active) or a demoted identifier `REF` (when only
+    // `--allow-reference-to` is set). Matching is case-insensitive to stay
+    // consistent with the rest of the lexer: the `Ref` keyword is itself lexed
+    // case-insensitively, so `ref=` behaves the same as `REF=`, exactly as IEC
+    // 61131-3 (a case-insensitive language) treats every other keyword.
     rule ref_bind_op() -> &'input Token =
-      tok(TokenType::Ref) _ eq:tok(TokenType::Equal) { eq }
-      / [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("REF")] _ eq:tok(TokenType::Equal) { eq }
+      tok(TokenType::Ref) eq:tok(TokenType::Equal) { eq }
+      / [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("REF")] eq:tok(TokenType::Equal) { eq }
     rule ref_initial_value() -> ReferenceInitialValue =
       t:tok(TokenType::Null) { ReferenceInitialValue::Null(t.span.clone()) }
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }

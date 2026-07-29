@@ -49,9 +49,10 @@ Supported Dialects
    such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
    short-circuit operator. Unlike ``codesys``, it does **not** enable the
    ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
-   references and pointers ``REFERENCE TO`` / ``POINTER TO`` (with ``ADR()``),
-   which IronPLC does not parse yet, so enabling ``REF_TO`` would accept code
-   that TwinCAT itself rejects. As with ``codesys``, the implicit
+   references ``REFERENCE TO`` (bound with ``REF=``), which this dialect
+   enables instead via ``--allow-reference-to``. (Pointer types —
+   ``POINTER TO`` with ``ADR()`` — are not parsed yet.) As with ``codesys``,
+   the implicit
    :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound, since they are an IronPLC runtime convention
    rather than a TwinCAT feature.
