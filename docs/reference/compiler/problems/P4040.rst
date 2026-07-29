@@ -10,6 +10,16 @@ for constant folding. Both operands are genuine compile-time constants --
 the expression is not rejected because it "isn't constant"
 (see :doc:`P4038 <P4038>`), but because evaluating it is not possible.
 
+The compiler folds constant integer arithmetic (``+``, ``-``, ``*``,
+``/``, ``MOD``, ``**``) at compile time so that later analysis and code
+generation see a plain literal rather than an expression tree. This
+folding is checked: if the result of an operation cannot be represented,
+the compiler reports P4040 instead of silently producing a wrapped or
+truncated value that would not match what the target hardware computes
+at runtime. Reporting the failure at compile time is preferable to
+letting an overflow surface later as a wrong runtime value with no
+obvious cause.
+
 Example
 -------
 
@@ -32,3 +42,28 @@ To fix this error, use operand values that don't overflow:
        x : LINT := 1000 * 1000;
    END_VAR
    END_PROGRAM
+
+The same check applies to a constant expression anywhere in a program,
+not just a ``VAR`` initializer -- for example, in an assignment
+statement:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       y : LINT;
+   END_VAR
+   y := 100000000000000000000 * 100000000000000000000;  (* Error *)
+   END_PROGRAM
+
+If the values genuinely need to exceed what a single constant
+expression can represent, split the computation across multiple typed
+variables so each intermediate step stays within range, or compute the
+value at runtime instead of as a compile-time constant.
+
+See Also
+--------
+
+- :doc:`P4038` -- initializer expression does not reduce to a constant value
+- :doc:`P4039` -- constant expression divides or takes the modulo of a value by zero
+- :doc:`/reference/language/data-types/index` -- integer type ranges

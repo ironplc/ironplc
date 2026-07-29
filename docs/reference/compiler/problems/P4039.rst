@@ -49,3 +49,10 @@ bodies, not just ``VAR`` initializers:
    END_VAR
    y := 5 / 0;
    END_PROGRAM
+
+See Also
+--------
+
+- :doc:`P4038` -- initializer expression does not reduce to a constant value
+- :doc:`P4040` -- constant integer expression overflows its evaluation range
+- :doc:`/reference/language/data-types/index` -- integer and real type ranges
