@@ -164,6 +164,7 @@ table is a convenience mirror, so consult the macro if the two ever disagree.
 | `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) |
 | `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) |
 | `allow_ref_to` | `--allow-ref-to` | REF_TO/REF/NULL syntax without full Edition 3 |
+| `allow_reference_to` | `--allow-reference-to` | TwinCAT/CODESYS `REFERENCE TO` reference types and the `REF=` binding operator (alternative to `--allow-ref-to`; enabled by the `twincat` and `codesys` dialects) |
 | `allow_ref_arithmetic` | `--allow-ref-arithmetic` | Arithmetic (`+`, `-`) and ordering comparisons on REF_TO types |
 | `allow_ref_stack_variables` | `--allow-ref-stack-variables` | REF() on stack-allocated vars (VAR_TEMP, function VAR_INPUT/VAR_OUTPUT) |
 | `allow_ref_type_punning` | `--allow-ref-type-punning` | Assigning between REF_TO types of different base types |
@@ -187,7 +188,7 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 | IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
 | RuSTy | `rusty` | OFF | ON | all ON |
 | CODESYS | `codesys` | OFF | ON | all ON except `allow_system_uptime_global` |
-| TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`) — TwinCAT uses `REFERENCE TO`/`POINTER TO`, not yet parsed |
+| TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`), plus `allow_reference_to` — TwinCAT uses `REFERENCE TO` (parsed) / `POINTER TO` (not yet parsed) |
 
 ### Grouping Guidance
 
