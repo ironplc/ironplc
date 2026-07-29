@@ -90,6 +90,84 @@ END_PROGRAM
 }
 
 #[test]
+fn end_to_end_when_reference_to_read_without_caret_then_auto_dereferences() {
+    // TwinCAT `REFERENCE TO` auto-dereferences: a bare read reads through it.
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 42;
+    r : REFERENCE TO INT;
+    y : INT;
+  END_VAR
+  r REF= x;
+  y := r;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &reference_to_options());
+    // vars: x=0, r=1, y=2
+    assert_eq!(bufs.vars[2].as_i32(), 42);
+}
+
+#[test]
+fn end_to_end_when_reference_to_written_without_caret_then_auto_dereferences() {
+    // A bare write stores through the reference to the referent.
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 1;
+    r : REFERENCE TO INT;
+  END_VAR
+  r REF= x;
+  r := 99;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &reference_to_options());
+    assert_eq!(bufs.vars[0].as_i32(), 99);
+}
+
+#[test]
+fn end_to_end_when_two_references_alias_then_writes_are_observed() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 10;
+    r1 : REFERENCE TO INT;
+    r2 : REFERENCE TO INT;
+    y : INT;
+  END_VAR
+  r1 REF= x;
+  r2 REF= x;
+  r1 := 55;
+  y := r2;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &reference_to_options());
+    // vars: x=0, r1=1, r2=2, y=3
+    assert_eq!(bufs.vars[3].as_i32(), 55);
+}
+
+#[test]
+fn end_to_end_when_isvalidref_then_reflects_binding_state() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 5;
+    r : REFERENCE TO INT;
+    before : BOOL;
+    after : BOOL;
+  END_VAR
+  before := __ISVALIDREF(r);
+  r REF= x;
+  after := __ISVALIDREF(r);
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &reference_to_options());
+    // vars: x=0, r=1, before=2, after=3
+    assert_eq!(bufs.vars[2].as_i32(), 0, "unbound reference is not valid");
+    assert_eq!(bufs.vars[3].as_i32(), 1, "bound reference is valid");
+}
+
+#[test]
 fn end_to_end_when_unbound_reference_to_dereferenced_then_traps() {
     let source = "
 PROGRAM main

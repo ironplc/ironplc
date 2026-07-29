@@ -26,7 +26,7 @@ use crate::{
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
-    xform_int_to_bool_initializer, xform_named_to_positional_args,
+    xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_named_to_positional_args,
     xform_resolve_constant_expressions, xform_resolve_expr_types,
     xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
     xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
@@ -159,6 +159,22 @@ pub fn resolve_types(
                 diagnostics.extend(errs);
                 library = fallback;
             }
+        }
+    }
+
+    // Give TwinCAT `REFERENCE TO` variables their auto-dereferencing semantics
+    // (bare reads/writes go through the reference) and lower `__ISVALIDREF`.
+    // Runs after late-bound expression resolution (so bare identifiers are
+    // already `ExprKind::Variable`) but before symbol/function resolution (so
+    // `__ISVALIDREF` is lowered before it would be flagged as undeclared) and
+    // before the reference semantic rules. See
+    // specs/design/reference-to-twincat.md (PR 2).
+    let fallback = library.clone();
+    match xform_insert_implicit_deref::apply(library, options) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
         }
     }
 
