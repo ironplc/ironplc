@@ -126,7 +126,10 @@ END_PROGRAM";
         .collect();
     assert_eq!(assignments.len(), 2, "expected two assignments");
     // `r REF= x` rebinds the reference itself and must not be auto-dereferenced.
-    assert!(assignments[0].ref_bind, "first assignment is a REF= binding");
+    assert!(
+        assignments[0].ref_bind,
+        "first assignment is a REF= binding"
+    );
     assert!(
         !assignments[0].deref,
         "REF= binding target must not be auto-dereferenced"
