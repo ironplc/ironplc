@@ -51,11 +51,12 @@ pub(crate) enum FoldError {
   PR #1220 review discussion, so this belongs there too), mapping to two
   new problem codes.
 
-New problem codes (next available: P4042):
+New problem codes (next available on `origin/main`: P4039 -- the numbers
+from earlier local work were renumbered when #1253/#1254 merged):
 
-- `P4042 ConstantExpressionDivisionByZero` -- constant division or modulo
+- `P4039 ConstantExpressionDivisionByZero` -- constant division or modulo
   by zero (covers both integer and real).
-- `P4043 ConstantExpressionOverflow` -- constant integer arithmetic
+- `P4040 ConstantExpressionOverflow` -- constant integer arithmetic
   overflows its evaluation range.
 
 ## Call sites

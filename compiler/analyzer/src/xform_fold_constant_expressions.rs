@@ -20,11 +20,12 @@
 //! x := 5;
 //! ```
 use ironplc_dsl::common::*;
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
 
-use crate::constant_folding::{try_fold_binary, try_fold_unary};
+use crate::constant_folding::{fold_error_to_diagnostic, try_fold_binary, try_fold_unary};
 
 pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     let mut folder = ConstantFolder;
@@ -39,7 +40,9 @@ impl Fold<Diagnostic> for ConstantFolder {
         let node = Expr::recurse_fold(node, self)?;
 
         let folded_kind = match &node.kind {
-            ExprKind::BinaryOp(binary) => try_fold_binary(binary),
+            ExprKind::BinaryOp(binary) => {
+                try_fold_binary(binary).map_err(|e| fold_error_to_diagnostic(e, node.span()))?
+            }
             ExprKind::UnaryOp(unary) => try_fold_unary(unary),
             _ => None,
         };
@@ -60,6 +63,7 @@ mod tests {
     use crate::constant_folding::integer_value;
     use crate::test_helpers::parse_and_resolve_types;
     use ironplc_dsl::visitor::Visitor;
+    use ironplc_problems::Problem;
 
     fn apply_fold(program: &str) -> Library {
         let library = parse_and_resolve_types(program);
@@ -167,11 +171,65 @@ mod tests {
     }
 
     #[test]
-    fn fold_expr_when_div_by_zero_then_no_fold() {
-        let lib = apply_fold("PROGRAM main VAR x : INT; END_VAR x := 10 / 0; END_PROGRAM");
+    fn fold_expr_when_int_div_by_zero_then_error() {
+        let library =
+            parse_and_resolve_types("PROGRAM main VAR x : INT; END_VAR x := 10 / 0; END_PROGRAM");
+        let result = apply(library);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionDivisionByZero.code()));
+    }
+
+    #[test]
+    fn fold_expr_when_int_mod_by_zero_then_error() {
+        let library =
+            parse_and_resolve_types("PROGRAM main VAR x : INT; END_VAR x := 10 MOD 0; END_PROGRAM");
+        let result = apply(library);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionDivisionByZero.code()));
+    }
+
+    #[test]
+    fn fold_expr_when_real_div_by_zero_then_error() {
+        let library = parse_and_resolve_types(
+            "PROGRAM main VAR x : LREAL; END_VAR x := 1.0 / 0.0; END_PROGRAM",
+        );
+        let result = apply(library);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionDivisionByZero.code()));
+    }
+
+    #[test]
+    fn fold_expr_when_int_overflow_then_error() {
+        let library = parse_and_resolve_types(
+            "PROGRAM main VAR x : LINT; END_VAR x := 170141183460469231731687303715884105727 * 2; END_PROGRAM",
+        );
+        let result = apply(library);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionOverflow.code()));
+    }
+
+    #[test]
+    fn fold_expr_when_negative_integer_exponent_then_no_fold_no_error() {
+        // Negative integer exponentiation is not meaningful for integers;
+        // it stays unfolded and is not reported as an overflow.
+        let library =
+            parse_and_resolve_types("PROGRAM main VAR x : INT; END_VAR x := 2 ** -1; END_PROGRAM");
+        let lib = apply(library).unwrap();
         let exprs = collect_exprs(&lib);
         let has_binary = exprs.iter().any(|e| matches!(e, ExprKind::BinaryOp(_)));
-        assert!(has_binary, "Division by zero should not be folded");
+        assert!(has_binary, "Negative exponent should not be folded");
     }
 
     // --- Nested constant folding ---

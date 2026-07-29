@@ -1,0 +1,51 @@
+=====
+P4039
+=====
+
+.. problem-summary:: P4039
+
+This error occurs when a constant expression divides or takes the modulo
+of a value by zero. This applies both to plain constant expressions in
+statement bodies and to constant expressions used as a ``VAR``
+initializer (enabled by ``--allow-constant-initializer-expressions``).
+
+The expression is a genuine constant expression -- both operands are
+known at compile time -- but the operation itself has no defined result,
+so it is reported distinctly from :doc:`P4038 <P4038>` ("does not reduce
+to a constant value"), which covers expressions that reference something
+that is not constant at all.
+
+Example
+-------
+
+The following code will generate error P4039:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : LREAL := 1.0 / 0.0;
+   END_VAR
+   END_PROGRAM
+
+To fix this error, ensure the divisor is not zero:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : LREAL := 1.0 / 2.0;
+   END_VAR
+   END_PROGRAM
+
+This also applies to integer division and modulo, and in statement
+bodies, not just ``VAR`` initializers:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       y : DINT;
+   END_VAR
+   y := 5 / 0;
+   END_PROGRAM
