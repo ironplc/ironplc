@@ -14,6 +14,7 @@ mod vars;
 mod xform_assign_file_id;
 mod xform_collapse_pragmas;
 mod xform_demote_edition3_keywords;
+mod xform_demote_reference_keyword;
 mod xform_demote_short_circuit_operators;
 mod xform_demote_time_keyword;
 mod xform_tokens;
@@ -30,6 +31,14 @@ use xform_tokens::insert_keyword_statement_terminators;
 
 #[cfg(test)]
 mod tests;
+
+// Spec conformance testing infrastructure (test-only).
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;
 pub mod token;
 
 /// Tokenize a IEC 61131 program.
@@ -55,6 +64,7 @@ pub fn tokenize_program(
     let tokens = xform_collapse_pragmas::apply(tokens, options);
     let mut tokens = insert_keyword_statement_terminators(tokens, file_id, options);
     xform_demote_edition3_keywords::apply(&mut tokens, options);
+    xform_demote_reference_keyword::apply(&mut tokens, options);
     xform_demote_time_keyword::apply(&mut tokens, options);
     xform_demote_short_circuit_operators::apply(&mut tokens, options);
     let result = check_tokens(&tokens, options);

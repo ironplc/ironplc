@@ -38,6 +38,19 @@ mod test {
     }
 
     #[test]
+    fn write_to_string_when_reference_to_then_round_trips() {
+        let source = read_shared_resource("reference_to.st");
+        let options = CompilerOptions {
+            allow_reference_to: true,
+            ..CompilerOptions::default()
+        };
+        let library = parse_program(&source, &FileId::default(), &options).unwrap();
+        let rendered = write_to_string(&library).unwrap();
+        let expected = read_resource("reference_to_rendered.st");
+        assert_eq!(rendered, expected);
+    }
+
+    #[test]
     fn write_to_string_arrays() {
         let rendered = parse_and_render_resource("array.st");
         let expected = read_resource("array_rendered.st");
