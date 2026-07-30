@@ -19,20 +19,17 @@
 //! that flag and nothing else — the strongest form of "this example is
 //! supported, this other code is not".
 //!
-//! A few flags are declared and surfaced by `list_options` but are not yet
-//! enforced by the compiler — the construct they gate compiles whether the flag
-//! is on or off, so no off-rejects/on-accepts fixture can exist. Those are
-//! listed in [`UNENFORCED`], each tracked by an issue. The gap lives in the
-//! issue tracker, not in a special test expectation.
+//! Every feature flag must have a fixture — there is no escape hatch for
+//! "declared but not yet enforced". A flag that is surfaced by `list_options`
+//! but gates no behavior is a dead flag, and the suite fails until it either
+//! gains a fixture (enforcement lands) or is removed.
 //!
-//! Two meta-tests keep the tables honest and decoupled:
-//! - [`every_feature_flag_has_a_fixture_or_is_tracked_unenforced`] fails when a
-//!   new flag is added without either a fixture or an `UNENFORCED` entry (the
-//!   reminder lives in the suite, not a reviewer's head), mirroring
-//!   `spec_conformance::all_spec_requirements_have_tests`.
-//! - [`fixture_and_unenforced_tables_are_consistent`] fails when an entry names
-//!   a flag that does not exist, or when a flag is listed as both fixtured and
-//!   unenforced (e.g. enforcement was added but `UNENFORCED` was not updated).
+//! Two meta-tests keep the table honest and decoupled:
+//! - [`every_feature_flag_has_a_fixture`] fails when a new flag is added without
+//!   a fixture (the reminder lives in the suite, not a reviewer's head),
+//!   mirroring `spec_conformance::all_spec_requirements_have_tests`.
+//! - [`fixture_keys_name_real_flags`] fails when a fixture entry names a flag or
+//!   prerequisite that does not exist (typo or removed flag).
 //!
 //! Adding a flag therefore means adding *your own* fixture row (cohesion), not
 //! editing a shared count or a neighbor's assertions (coupling).
@@ -55,16 +52,7 @@ struct FlagFixture {
     source: &'static str,
 }
 
-/// Vendor flags that are declared and surfaced by `list_options` but that the
-/// compiler does not yet enforce: the construct they gate compiles whether the
-/// flag is on or off, so no off-rejects/on-accepts fixture can exist. Each is
-/// tracked by an issue. When enforcement lands, add a fixture to
-/// [`FLAG_FIXTURES`] and remove the entry here.
-///
-/// (none currently)
-const UNENFORCED: &[&str] = &[];
-
-/// One fixture per *enforced* vendor-extension flag. Order mirrors
+/// One fixture per vendor-extension flag. Order mirrors
 /// `FEATURE_DESCRIPTORS` for readability; the suite does not depend on ordering.
 /// Snippets are adapted from the compiler's own positive/negative tests (parser
 /// and analyzer) so they exercise the real enforcement path.
@@ -216,29 +204,26 @@ fn ed2_with(flags: &[&str]) -> serde_json::Value {
     serde_json::Value::Object(map)
 }
 
-/// Completeness: every feature flag must have a behavioral fixture, or be listed
-/// in `UNENFORCED`. Adding a flag with neither fails here rather than passing
-/// silently.
+/// Completeness: every feature flag must have a behavioral fixture. Adding a
+/// flag without one fails here rather than passing silently — there is no
+/// "not yet enforced" escape hatch.
 #[test]
-fn every_feature_flag_has_a_fixture_or_is_tracked_unenforced() {
+fn every_feature_flag_has_a_fixture() {
     for fd in CompilerOptions::FEATURE_DESCRIPTORS {
         let has_fixture = FLAG_FIXTURES.iter().any(|f| f.key == fd.option_key);
-        let is_unenforced = UNENFORCED.contains(&fd.option_key);
         assert!(
-            has_fixture || is_unenforced,
+            has_fixture,
             "feature flag `{}` has no behavioral fixture. Add a source snippet to FLAG_FIXTURES \
-             that is rejected with the flag off and accepted with it on. If the flag is declared \
-             but not yet enforced, add it to UNENFORCED with a tracking issue instead.",
+             that is rejected with the flag off and accepted with it on. Every flag must gate \
+             real behavior; a flag that gates nothing is a dead flag and must be removed instead.",
             fd.option_key
         );
     }
 }
 
-/// Consistency guard for both tables: every key/prereq must name a real flag,
-/// and a flag must not be both fixtured and listed as unenforced (which happens
-/// if enforcement is added but `UNENFORCED` is not updated).
+/// Consistency guard: every fixture key and prerequisite must name a real flag.
 #[test]
-fn fixture_and_unenforced_tables_are_consistent() {
+fn fixture_keys_name_real_flags() {
     let is_flag = |key: &str| {
         CompilerOptions::FEATURE_DESCRIPTORS
             .iter()
@@ -259,18 +244,6 @@ fn fixture_and_unenforced_tables_are_consistent() {
                 prereq
             );
         }
-    }
-
-    for key in UNENFORCED {
-        assert!(
-            is_flag(key),
-            "UNENFORCED lists `{key}`, which matches no FEATURE_DESCRIPTOR (typo or removed flag?)"
-        );
-        assert!(
-            !FLAG_FIXTURES.iter().any(|f| f.key == *key),
-            "`{key}` is listed in UNENFORCED but also has a behavioral fixture. If it is now \
-             enforced, remove it from UNENFORCED; otherwise remove the fixture."
-        );
     }
 }
 
