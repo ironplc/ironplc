@@ -338,4 +338,75 @@ mod tests {
             );
         }
     }
+
+    /// Guards the hand-maintained VS Code `ironplc.dialect` settings schema
+    /// against drifting out of sync with `Dialect::ALL`. JSON cannot read the
+    /// Rust enum, so this test parses `integrations/vscode/package.json` and
+    /// compares its dialect picker back to the source of truth: the `enum`
+    /// array must match the `cli_name()` list in order, the three parallel
+    /// label/description arrays must stay index-aligned (same length), and
+    /// every dialect must be mentioned in the `markdownDescription`. Adding a
+    /// `Dialect` variant without updating the extension fails here.
+    #[test]
+    fn vscode_dialect_setting_when_compared_then_matches_dialect_all() {
+        let package_json_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../integrations/vscode/package.json"
+        );
+        let text = std::fs::read_to_string(package_json_path).unwrap_or_else(|e| {
+            panic!("failed to read {package_json_path}: {e}");
+        });
+        let package: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|e| {
+            panic!("failed to parse {package_json_path} as JSON: {e}");
+        });
+
+        let dialect = &package["contributes"]["configuration"]["properties"]["ironplc.dialect"];
+        assert!(
+            dialect.is_object(),
+            "ironplc.dialect setting not found in {package_json_path}"
+        );
+
+        let expected_names: Vec<&str> = Dialect::ALL.iter().map(|d| d.cli_name()).collect();
+
+        // The `enum` array must list exactly the dialect cli_names, in order.
+        let enum_values: Vec<&str> = dialect["enum"]
+            .as_array()
+            .expect("ironplc.dialect.enum must be an array")
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .expect("ironplc.dialect.enum entries must be strings")
+            })
+            .collect();
+        assert_eq!(
+            enum_values, expected_names,
+            "ironplc.dialect.enum in package.json does not match Dialect::ALL cli_names"
+        );
+
+        // The parallel label/description arrays must stay index-aligned with
+        // `enum`, so a new dialect cannot leave one array short.
+        for key in ["enumItemLabels", "enumDescriptions"] {
+            let len = dialect[key]
+                .as_array()
+                .unwrap_or_else(|| panic!("ironplc.dialect.{key} must be an array"))
+                .len();
+            assert_eq!(
+                len,
+                expected_names.len(),
+                "ironplc.dialect.{key} has {len} entries but there are {} dialects",
+                expected_names.len()
+            );
+        }
+
+        // The prose description must mention every dialect by cli_name.
+        let markdown = dialect["markdownDescription"]
+            .as_str()
+            .expect("ironplc.dialect.markdownDescription must be a string");
+        for name in &expected_names {
+            assert!(
+                markdown.contains(name),
+                "ironplc.dialect.markdownDescription does not mention `{name}`"
+            );
+        }
+    }
 }
