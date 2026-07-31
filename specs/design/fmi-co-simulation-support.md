@@ -56,10 +56,12 @@ points**:
 | `valve AT %QX0.0 : BOOL;` | `valve` | `output` (you read it after a step) |
 | tunable setpoints (see [Open Questions](#open-questions)) | as declared | `parameter` |
 
-Internal program state (`%M`, plain locals) is **not** part of the interface by
-default — the interaction pattern is I/O in, I/O out, not poking internal
-variables. Read-only observability of internal state is a possible add-on
-([Q1](#open-questions)).
+Internal **memory** state (`%M`) is exposed as **read-only** FMI `local`
+variables: the master can *read* them (via `fmi3Get*`) for observability/logging,
+but cannot *write* them — FMI only allows the master to `Set` `input`s and
+`parameter`s, never `local`s. So the interaction pattern stays I/O in, I/O out;
+`%M` is visible but not drivable. Whether *plain* internal locals (non-`%M`) are
+also exposed this way is the remaining open item ([Q1](#open-questions)).
 
 **How time works.** A PLC executes on a fixed **scan cycle** (e.g. every 10 ms).
 The FMU advertises that period to the master via FMI 3.0's
@@ -87,8 +89,9 @@ is compiled, tell us — that changes the packaging plan.
 
 **What we would want from you.** (1) Which FMI 3.0 master(s) must the first
 release interoperate with, so we target the right conformance suite
-([Q2](#open-questions))? (2) Do your scenarios need read-only visibility into
-internal PLC state, or is I/O-only sufficient ([Q1](#open-questions))? (3) Do you
+([Q2](#open-questions))? (2) `%M` memory is exposed read-only for observability;
+do your scenarios also need visibility into *plain* internal locals, or is
+I/O + `%M` sufficient ([Q1](#open-questions))? (3) Do you
 ever step FMUs at a rate other than their native period, and does your master
 honor `fixedInternalStepSize`/early-return ([Q3](#open-questions))? (4) Same-host
 execution acceptable ([Q6](#open-questions))?
@@ -173,9 +176,10 @@ These were open questions in revision 1; review resolved them.
 
 - **FMI 3.0 only.** FMI 2.0 is not a supported target (it would narrow 64-bit
   IEC types). The type table and API names below are 3.0.
-- **The interface is I/O.** Located `%I` → FMU `input`, `%Q` → FMU `output`.
-  Internal/`%M` state is not the interaction pattern; exposing it read-only is an
-  optional add-on, not v1 baseline.
+- **The interface is I/O; `%M` is read-only-visible.** Located `%I` → FMU
+  `input`, `%Q` → FMU `output`. `%M` memory is exposed as read-only FMI `local`
+  variables — the master can read them but cannot write them (FMI only lets the
+  master `Set` `input`s/`parameter`s). The master never drives internal state.
 - **Build the process image.** IronPLC implements the `%I`/`%Q`/`%M` regions and
   wires the `INPUT_FREEZE`/`OUTPUT_FLUSH` phases, rather than mapping I/O straight
   to flat variable slots. This is what makes the I/O semantics real.
@@ -231,7 +235,8 @@ FMI variables:
 | `AT %I…` (input) | `input` | Master writes before `DoStep` |
 | `AT %Q…` (output) | `output` | Master reads after `DoStep` |
 | tunable parameter (marked; [Q5](#open-questions)) | `parameter` | Master writes at init |
-| `AT %M…`, plain `VAR` | not exported by default | optional read-only `local` ([Q1](#open-questions)) |
+| `AT %M…` | `local` | read-only: master `Get`s, cannot `Set` |
+| plain `VAR` (non-located) | not exported by default | optional read-only `local` ([Q1](#open-questions)) |
 
 The input/output causality is not inferred heuristically — it comes
 straight from the `%I`/`%Q` region the variable is located in. Before a step the
@@ -442,11 +447,11 @@ once the open questions are resolved.
 
 Please answer inline as PR feedback.
 
-- **Q1 — Internal-state observability / debugger-style capabilities.** Beyond
-  I/O, should the FMU optionally expose internal state (`%M`, selected locals) as
-  read-only FMI `local` variables for observability during co-simulation? Does
-  OIP need any debugger-style capability through the FMI boundary, or is
-  strict I/O-in/I/O-out the whole v1 scope?
+- **Q1 — Scope of read-only observability.** `%M` memory is now exposed as
+  read-only FMI `local` variables (decided). Should the FMU *also* expose
+  **plain, non-located** internal locals the same way (readable, never writable),
+  or is `%M` + I/O the whole v1 surface? And does OIP need any richer
+  debugger-style capability through the FMI boundary beyond read-only `Get`?
 
 - **Q2 — Conformance target.** Which FMI 3.0 master(s) must the first release
   interoperate with (OMSimulator, FMPy, a specific OIP tool)? This pins the
