@@ -501,12 +501,16 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         &mut self,
         init: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
-        // Current context has a reference to this function block
+        // Current context has a reference to this function block. The
+        // referenced type must be ordered before the containing POU (same
+        // convention as the Structure/LateResolvedType arms in
+        // visit_initial_value_assignment_kind below), so the edge points
+        // from the referenced type to the containing POU, not the reverse.
         match &self.current_from {
             Some(from) => {
                 let from = self.declarations.add_node(from);
                 let to = self.declarations.add_node(&init.type_name.name);
-                self.declarations.graph.add_edge(from, to, ());
+                self.declarations.graph.add_edge(to, from, ());
             }
             None => return Err(Diagnostic::todo(file!(), line!())),
         }
@@ -527,10 +531,12 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                     InitialValueAssignmentKind::EnumeratedValues(_) => {}
                     InitialValueAssignmentKind::EnumeratedType(_) => {}
                     InitialValueAssignmentKind::FunctionBlock(fb) => {
-                        // We only care about these because these may be references to a function block
+                        // Same ordering convention as the Structure/LateResolvedType
+                        // arms below: the referenced type must come before the
+                        // containing POU.
                         let from = self.declarations.add_node(from);
                         let to = self.declarations.add_node(&fb.type_name.name);
-                        self.declarations.graph.add_edge(from, to, ());
+                        self.declarations.graph.add_edge(to, from, ());
                     }
                     InitialValueAssignmentKind::Subrange(_) => {}
                     InitialValueAssignmentKind::Structure(struct_init) => {
@@ -611,6 +617,68 @@ mod tests {
         let library = parse_only(program);
         let (library, _reachable) = apply(library).unwrap();
 
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("Callee"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("Caller"));
+    }
+
+    #[test]
+    fn apply_when_eager_function_block_initializer_forward_reference_then_referenced_type_ordered_first(
+    ) {
+        // Regression for a dependency-graph edge-direction bug: the
+        // FunctionBlock arms (both this dedicated visitor and the inline
+        // arm in visit_initial_value_assignment_kind) previously added the
+        // edge in the opposite direction to the Structure/LateResolvedType
+        // arms, ordering a referenced type *after* its referencing POU and
+        // producing a spurious P2011 "Parent type is not declared"
+        // downstream.
+        //
+        // A bare `CalleeInstance : Callee;` declaration parses to
+        // LateResolvedType (the correct arm, already covered above), so it
+        // does not exercise this. An *eager* InitialValueAssignmentKind::
+        // FunctionBlock initializer is what the CODESYS/TwinCAT call-style
+        // instance initializer (`name : FB_Type(args);`) constructs at
+        // parse time -- but that grammar lands in a separate PR. To keep
+        // this regression independent of it, construct the eager
+        // FunctionBlock initializer directly on the parsed AST.
+        let mut library = parse_only(
+            "
+        FUNCTION_BLOCK Caller
+            VAR
+                CalleeInstance : Callee;
+            END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Callee
+            VAR
+               IN1: BOOL;
+            END_VAR
+        END_FUNCTION_BLOCK",
+        );
+
+        // Rewrite Caller's forward reference to Callee into the eager
+        // FunctionBlock form. Caller is declared first, so the referenced
+        // type Callee must be reordered before it.
+        for element in library.elements.iter_mut() {
+            if let LibraryElementKind::FunctionBlockDeclaration(fb) = element {
+                if fb.name == TypeName::from("Caller") {
+                    fb.variables[0].initializer = InitialValueAssignmentKind::FunctionBlock(
+                        FunctionBlockInitialValueAssignment {
+                            type_name: TypeName::from("Callee"),
+                            init: vec![],
+                        },
+                    );
+                }
+            }
+        }
+
+        let (library, _reachable) = apply(library).unwrap();
+
+        // Callee (the referenced type) must come before Caller.
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
         assert_eq!(decl.name, TypeName::from("Callee"));
