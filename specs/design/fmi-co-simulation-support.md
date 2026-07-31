@@ -80,12 +80,14 @@ loss (this is the main reason for targeting 3.0 rather than 2.0). `BOOL→Boolea
 `REAL→Float32`, `LREAL→Float64`, `STRING→String`, and `TIME`/date-time values as
 **integer** counts (see [Type Mapping](#type-mapping)).
 
-**Platform constraint.** For v1, **the FMU must run on the same OS/CPU it was
-compiled for** — IronPLC compiles the shared library for one host triple.
-Cross-platform FMUs (multiple binaries in one `.fmu`) would need a
-cross-compilation/installer story we are deferring ([Q6](#open-questions)). If
-your OIP scenarios run FMUs on a different machine/OS than where the PLC program
-is compiled, tell us — that changes the packaging plan.
+**Platform constraint.** IronPLC ships the runtime (`ironplc-fmi`) **only for the
+target hardware** — the platform the PLC program is built for. The FMU's shared
+library therefore matches that one platform, so **the co-simulation must run on
+that same platform**. If your OIP scenarios run the master on a different OS/CPU
+than the PLC's target hardware, the FMU binary won't match and we'd need a
+cross-compilation/installer story. We're treating this as an **open question and
+want your input** ([Q9](#open-questions), related [Q6](#open-questions)): tell us
+what platform(s) your co-simulation host runs on.
 
 **What we would want from you.** (1) Which FMI 3.0 master(s) must the first
 release interoperate with, so we target the right conformance suite
@@ -93,13 +95,16 @@ release interoperate with, so we target the right conformance suite
 do your scenarios also need visibility into *plain* internal locals, or is
 I/O + `%M` sufficient ([Q1](#open-questions))? (3) Do you
 ever step FMUs at a rate other than their native period, and does your master
-honor `fixedInternalStepSize`/early-return ([Q3](#open-questions))? (4) Same-host
-execution acceptable ([Q6](#open-questions))?
+honor `fixedInternalStepSize`/early-return ([Q3](#open-questions))? (4) What
+platform does your co-simulation host run on — is it the same as the PLC's target
+hardware ([Q9](#open-questions))?
 
 **Known v1 limitations.** Single program / single scan task (multi-task programs
 deferred, [Q4](#open-questions)); FMI **Co-Simulation** only (not Model
-Exchange); no importing of external FMUs into a PLC program; same-host binary
-only.
+Exchange); no importing of external FMUs into a PLC program; the FMU binary is
+built for the target hardware, so the co-simulation runs on that platform
+([Q9](#open-questions)); calendar date/time types await a storage ADR before they
+can appear in an FMU interface ([Q8](#open-questions)).
 
 ## Background
 
@@ -264,8 +269,37 @@ narrowing (the reason FMI 2.0 is rejected):
 | `REAL` / `LREAL` | `Float32` / `Float64` |
 | `STRING` / `WSTRING` | `String` |
 | enumerations | `Enumeration` (or the underlying `Int*`) |
-| `TIME` / `LTIME` | **integer** count (`Int64`; unit = the IEC tick, e.g. ms/ns) |
-| `DATE` / `TOD` / `DT` and `L*` variants | **integer** count (`Int64`; documented epoch/resolution) |
+| date/time types | integer — see the [dedicated table](#dateduration-types) below |
+
+#### Date/duration types
+
+Every IEC date and duration type is exported as an **integer** (never `Float`),
+so no precision is lost and the master reads an exact count. Each variable's
+`modelDescription.xml` entry carries a `unit`/annotation naming the tick and base
+so the master can interpret the integer. The eight IEC date/time type tags
+(`compiler/container/src/debug_section.rs:51-58`) map as follows:
+
+| IEC type | Meaning | FMI 3.0 type | Encoding (unit · base) | Status |
+|----------|---------|--------------|------------------------|--------|
+| `TIME` | duration | `Int32` | signed **milliseconds** | **Settled** — ADR-0021 (32-bit, ms) |
+| `LTIME` | duration | `Int64` | signed **milliseconds** | **Settled** — ADR-0021 (64-bit, ms) |
+| `DATE` | calendar date | `Int32` | **days** since 1970-01-01 | Proposed — needs storage ADR |
+| `LDATE` | calendar date | `Int64` | **nanoseconds** since 1970-01-01 00:00:00 | Proposed — needs storage ADR |
+| `TIME_OF_DAY` (`TOD`) | time within a day | `Int32` | **milliseconds** since 00:00:00 | Proposed — needs storage ADR |
+| `LTOD` | time within a day | `Int64` | **nanoseconds** since 00:00:00 | Proposed — needs storage ADR |
+| `DATE_AND_TIME` (`DT`) | timestamp | `Int64` | **milliseconds** since 1970-01-01 00:00:00 | Proposed — needs storage ADR |
+| `LDT` | timestamp | `Int64` | **nanoseconds** since 1970-01-01 00:00:00 | Proposed — needs storage ADR |
+
+`TIME`/`LTIME` are firm: ADR-0021 fixes their width and millisecond unit, and the
+VM already stores and formats them that way. The six calendar types
+(`DATE`/`LDATE`/`TOD`/`LTOD`/`DT`/`LDT`) are currently **recognized as type tags
+but their in-memory representation is not yet finalized** — debug formatting
+implements only `TIME`/`LTIME` today. The encodings above are a concrete proposal
+that FMI export needs, but they must be pinned by a storage ADR before export can
+emit them; that ADR is a prerequisite tracked as [Q8](#open-questions). Until it
+lands, an FMU whose interface uses a calendar type is rejected at
+`compile --format fmu` with a clear "type not yet supported for FMI export"
+error rather than emitting an unspecified encoding.
 
 The exact unit/epoch for the time and date types is recorded in the
 `modelDescription.xml` variable's unit annotation so the master interprets the
@@ -480,3 +514,18 @@ Please answer inline as PR feedback.
   `fmi-export` + `cargo-fmi` for generating the FMI 3.0 ABI and model description
   from a container-driven variable set (vs. a hand-written shim)? Any constraint
   on adding that dependency (license, maturity, supply-chain review)?
+
+- **Q8 — Calendar date/time storage ADR.** `TIME`/`LTIME` are pinned by ADR-0021
+  (`Int32`/`Int64` milliseconds). The six calendar types
+  (`DATE`/`LDATE`/`TOD`/`LTOD`/`DT`/`LDT`) are recognized as type tags but have no
+  finalized in-memory representation. The [date/duration table](#dateduration-types)
+  proposes concrete integer encodings (unit + base); do they look right, and can
+  we land a storage ADR to make them real? Until then, FMI export rejects
+  interfaces that use a calendar type.
+
+- **Q9 — Target-hardware runtime vs. co-simulation host.** IronPLC ships
+  `ironplc-fmi` built for the PLC's **target hardware**, so the FMU binary matches
+  that platform and the co-simulation must run there. What platform(s) does your
+  OIP co-simulation host actually run on? If it differs from the target hardware,
+  we need a cross-build/installer approach (this is the concrete, OIP-facing form
+  of [Q6](#open-questions)).
