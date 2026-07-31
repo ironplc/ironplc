@@ -211,6 +211,14 @@ Options
    expression does not fully reduce to a constant. Enabled by
    ``--dialect=rusty`` and ``--dialect=codesys``.
 
+``--allow-bit-string-case-labels``
+   Allow a hex, binary, or octal bit-string literal (e.g. ``16#D012``,
+   ``2#1010``) as a ``CASE`` label. The IEC 61131-3 standard permits only a
+   subrange, decimal integer, or enumerated value here. Produces
+   :doc:`P4041 </reference/compiler/problems/P4041>` when used without this
+   flag. Enabled by ``--dialect=rusty``, ``--dialect=codesys``, and
+   ``--dialect=twincat``.
+
 Examples
 ========
 

@@ -325,6 +325,11 @@ define_compiler_options! {
     "--allow-constant-initializer-expressions",
     [Rusty, Codesys],
     allow_constant_initializer_expressions,
+
+    "Allow hex/binary/octal bit-string literals (16#D012, 2#1010) as CASE labels",
+    "--allow-bit-string-case-labels",
+    [Rusty, Codesys, TwinCat],
+    allow_bit_string_case_labels,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -432,6 +437,7 @@ mod tests {
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
                 "allow_constant_initializer_expressions",
+                "allow_bit_string_case_labels",
             ],
         );
     }
@@ -465,6 +471,7 @@ mod tests {
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
                 "allow_constant_initializer_expressions",
+                "allow_bit_string_case_labels",
             ],
         );
     }
@@ -498,6 +505,7 @@ mod tests {
                 "allow_pragmas",
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
+                "allow_bit_string_case_labels",
             ],
         );
     }
