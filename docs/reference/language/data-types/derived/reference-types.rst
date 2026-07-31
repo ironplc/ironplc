@@ -19,15 +19,19 @@ variable.
    Beckhoff TwinCAT and CODESYS spell references ``REFERENCE TO`` and bind them
    with the ``REF=`` operator (``r REF= x;``) rather than ``REF_TO`` and
    ``r := REF(x);``. Enable this variant with ``--allow-reference-to`` or the
-   ``twincat`` or ``codesys`` dialect. It describes the same underlying reference and, in this
-   release, is read and written through the same explicit ``^`` operator:
+   ``twincat`` or ``codesys`` dialect. It describes the same underlying reference,
+   but — unlike ``REF_TO`` — a ``REFERENCE TO`` variable *auto-dereferences*: a
+   bare use reads through the reference and a bare ``:=`` writes through it, with
+   no ``^`` needed. Only the binding operator ``REF=`` and ``__ISVALIDREF(r)``
+   act on the reference itself:
 
    .. code-block::
 
       r : REFERENCE TO INT;
-      r REF= counter;    (* bind the reference *)
-      value := r^;       (* read through the reference *)
-      r^ := 99;          (* write through the reference *)
+      r REF= counter;         (* bind the reference *)
+      value := r;             (* read through the reference (implicit deref) *)
+      r := 99;                (* write through the reference (implicit deref) *)
+      valid := __ISVALIDREF(r);  (* TRUE once bound, FALSE while unbound *)
 
 .. list-table::
    :widths: 30 70
@@ -133,5 +137,6 @@ Related Problem Codes
 See Also
 --------
 
+- :doc:`/reference/extension-library/functions/isvalidref` — ``__ISVALIDREF``, the TwinCAT/CODESYS reference-validity builtin
 - :doc:`/reference/language/edition-support` — edition flags
 - :doc:`/reference/language/variables/scope` — variable scope keywords
