@@ -137,5 +137,6 @@ Related Problem Codes
 See Also
 --------
 
+- :doc:`/reference/extension-library/functions/isvalidref` — ``__ISVALIDREF``, the TwinCAT/CODESYS reference-validity builtin
 - :doc:`/reference/language/edition-support` — edition flags
 - :doc:`/reference/language/variables/scope` — variable scope keywords
