@@ -32,7 +32,7 @@ is the correct interaction pattern for co-simulation — the simulation drives t
 PLC's sensors and reads its actuators, exactly as physical hardware would.
 Delivering this cleanly depends on one piece of IronPLC that is specified but
 not yet built: the **process image** (the `%I`/`%Q`/`%M` regions). This design
-commits to building it (referred to below as **Path B**).
+commits to building it.
 
 ## For the Open Industry Project Maintainer
 
@@ -137,7 +137,8 @@ clock-injected VM so well.
 - **[Runtime Execution Model](runtime-execution-model.md)** — VM lifecycle, the
   `INPUT_FREEZE → EXECUTE → OUTPUT_FLUSH → IDLE` scan cycle, the process image,
   and the `simulated` clock source. FMI export realizes the "I/O driver" that
-  spec leaves out of scope, and Path B implements the process image it defines.
+  spec leaves out of scope, and this design implements the process image it
+  defines.
 - **[IEC 61131-3 Task Support](61131-task-support.md)** — the task table,
   cyclic/freewheeling scheduling, and the externally-driven `run_round` model.
 - **[Bytecode Container Format](bytecode-container-format.md)** and
@@ -175,10 +176,9 @@ These were open questions in revision 1; review resolved them.
 - **The interface is I/O.** Located `%I` → FMU `input`, `%Q` → FMU `output`.
   Internal/`%M` state is not the interaction pattern; exposing it read-only is an
   optional add-on, not v1 baseline.
-- **Build the process image (Path B).** IronPLC implements the `%I`/`%Q`/`%M`
-  regions and wires the `INPUT_FREEZE`/`OUTPUT_FLUSH` phases, rather than the
-  minimal "map straight to flat variable slots" shortcut. This is what makes the
-  I/O semantics real.
+- **Build the process image.** IronPLC implements the `%I`/`%Q`/`%M` regions and
+  wires the `INPUT_FREEZE`/`OUTPUT_FLUSH` phases, rather than mapping I/O straight
+  to flat variable slots. This is what makes the I/O semantics real.
 - **`modelDescription.xml` does not depend on the debug section.** The exported
   interface derives from **located-variable information** that must be present in
   the container as a first-class, non-strippable artifact. Concretely: the debug
@@ -233,7 +233,7 @@ FMI variables:
 | tunable parameter (marked; [Q5](#open-questions)) | `parameter` | Master writes at init |
 | `AT %M…`, plain `VAR` | not exported by default | optional read-only `local` ([Q1](#open-questions)) |
 
-Under Path B the input/output causality is not inferred heuristically — it comes
+The input/output causality is not inferred heuristically — it comes
 straight from the `%I`/`%Q` region the variable is located in. Before a step the
 shim writes FMU inputs into the `%I` image; after the step it reads FMU outputs
 from the `%Q` image.
@@ -278,7 +278,8 @@ is optional and strippable. Two coupled changes:
    section). It is the single source of truth for both the process-image layout
    and the FMU interface. *(Note: `input_image_offset`/`output_image_offset`
    already exist in the task table but are hardcoded to `0`,
-   `compiler/container/src/builder.rs:342-343`; Path B populates them.)*
+   `compiler/container/src/builder.rs:342-343`; the process image populates
+   them.)*
 2. **The debug info gains a second emit format: the model description.** The same
    metadata the debug tooling already understands is rendered, via a second
    output format, into `modelDescription.xml`. One canonical description of the
@@ -347,13 +348,13 @@ new; maturity, license, and how cleanly its model abstraction accepts a
 spike before we commit ([Q7](#open-questions)). If it doesn't fit, the fallback
 is a hand-written shim — larger, but well-understood.
 
-## Process Image (Path B)
+## Process Image
 
-This is the substrate the interface rides on, and the review's chosen direction.
-Per the runtime model it is specified but unimplemented today: no
-`LOAD_INPUT`/`STORE_OUTPUT` opcodes exist, the `INPUT_FREEZE`/`OUTPUT_FLUSH`
-phases are `// Stub` no-ops (`compiler/vm/src/vm.rs:357,410`), and the image
-offsets are hardcoded to `0`. Path B:
+This is the substrate the interface rides on. Per the runtime model it is
+specified but unimplemented today: no `LOAD_INPUT`/`STORE_OUTPUT` opcodes exist,
+the `INPUT_FREEZE`/`OUTPUT_FLUSH` phases are `// Stub` no-ops
+(`compiler/vm/src/vm.rs:357,410`), and the image offsets are hardcoded to `0`.
+The work:
 
 1. Allocates the `%I`/`%Q`/`%M` regions and populates `input_image_offset` /
    `output_image_offset` from the interface section.
@@ -365,8 +366,9 @@ offsets are hardcoded to `0`. Path B:
 
 The FMU then writes the `%I` image before `DoStep` and reads the `%Q` image
 after — giving hardware-accurate "inputs frozen for the whole scan, outputs
-staged atomically" semantics. Path B is independently valuable to IronPLC (it is
-real I/O), which is why it is core here rather than an optional add-on.
+staged atomically" semantics. The process image is independently valuable to
+IronPLC (it is real I/O), which is why it is core here rather than an optional
+add-on.
 
 ## Lifecycle Mapping
 
@@ -409,7 +411,7 @@ once the open questions are resolved.
 1. **Typed variable access.** Widen `VmRunning` setters (today `write_variable`
    only accepts `i32`, `compiler/vm/src/vm.rs:603`) to mirror the read side —
    BOOL, all integer widths, `Float32`, `Float64`. Pure addition to the safe VM.
-2. **Process image (Path B).** Regions, located-access opcodes, and the
+2. **Process image.** Regions, located-access opcodes, and the
    `INPUT_FREEZE`/`OUTPUT_FLUSH` wiring. Standalone I/O value for IronPLC.
 3. **Interface section + `modelDescription.xml` generation.** The non-strippable
    located-variable metadata and the debug info's second emit format.
