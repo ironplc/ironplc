@@ -48,3 +48,35 @@ fn write_to_string_when_array_of_string_with_size_then_renders_size() {
     let expected = read_resource("array_of_string_rendered.st");
     assert_eq!(rendered, expected);
 }
+
+// ---------------------------------------------------------------------
+// CODESYS/TwinCAT FB-instance call-style initializer.
+// See specs/plans/2026-07-31-twincat-inline-fb-call-style-initializer.md.
+// ---------------------------------------------------------------------
+
+#[test]
+fn write_to_string_when_fb_instance_call_style_init_then_round_trips() {
+    let source = "
+FUNCTION_BLOCK FB_Comm
+VAR_INPUT
+    retries : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm(retries := 3, THIS);
+END_VAR
+END_FUNCTION_BLOCK
+";
+    let library_original =
+        parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+    let rendered = write_to_string(&library_original).unwrap();
+
+    assert!(rendered.contains("FB_Comm ( retries := 3 , THIS )"));
+
+    let library_rendered =
+        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
+            .expect("rendered output must parse");
+    assert_eq!(library_original, library_rendered);
+}
