@@ -1779,7 +1779,21 @@ parser! {
       }
     }
     rule case_list() -> Vec<CaseSelectionKind> = cases_list:case_list_element() ++ (_ tok(TokenType::Comma) _) { cases_list }
-    rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)}
+    rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)} / bsl:case_bit_string_literal() {CaseSelectionKind::BitStringLiteral(bsl)}
+    // A radix-prefixed bit-string literal used as a CASE label (e.g.
+    // `16#D012:`, `2#1010:`) -- a real grammar gap, not a stdlib gap.
+    // Deliberately narrower than the general bit_string_literal() rule,
+    // which also falls back to a bare decimal integer() -- including
+    // that fallback here would create a PEG ordering hazard with
+    // signed_integer() (a plain "5:" label could start matching as a
+    // BitStringLiteral instead of a SignedInteger). Radix-prefixed
+    // literals are already lexically distinct tokens from plain decimal
+    // digits, so this alternative can only ever fire for the genuinely
+    // new shape. See
+    // specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    rule case_bit_string_literal() -> BitStringLiteral = value:(bi:binary_integer() { bi } / oi:octal_integer() { oi } / hi:hex_integer() { hi }) {
+      BitStringLiteral { value, data_type: None }
+    }
 
     // B.3.2.4 Iteration statements
     rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement()

@@ -696,6 +696,7 @@ fn compile_case(
 /// - `SignedInteger`: `selector == value`
 /// - `Subrange`: `(selector >= start) AND (selector <= end)`
 /// - `EnumeratedValue`: not yet supported (returns todo diagnostic)
+/// - `BitStringLiteral`: `selector == value` (same shape as `SignedInteger`)
 fn compile_case_selector(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -770,6 +771,43 @@ fn compile_case_selector(
             let pool_index = ctx.add_i32_constant(ordinal);
             emitter.emit_load_const_i32(pool_index);
             emitter.emit_eq_i32();
+            Ok(())
+        }
+        CaseSelectionKind::BitStringLiteral(lit) => {
+            // A radix-prefixed literal (16#D012:, 2#1010:) used as a CASE
+            // label -- selector == value, same shape as SignedInteger,
+            // reusing the same u32/u64 narrowing already used for
+            // ConstantKind::BitStringLiteral in compile_expr.rs.
+            compile_expr(emitter, ctx, selector_expr, op_type)?;
+            let span = lit.value.span();
+            match op_type.0 {
+                OpWidth::W32 => {
+                    let value = u32::try_from(lit.value.value).map_err(|_| {
+                        Diagnostic::problem(
+                            Problem::ConstantOverflow,
+                            Label::span(span.clone(), "Bit string literal"),
+                        )
+                        .with_context("value", &lit.value.value.to_string())
+                    })? as i32;
+                    let pool_index = ctx.add_i32_constant(value);
+                    emitter.emit_load_const_i32(pool_index);
+                    emitter.emit_eq_i32();
+                }
+                OpWidth::W64 => {
+                    let value = u64::try_from(lit.value.value).map_err(|_| {
+                        Diagnostic::problem(
+                            Problem::ConstantOverflow,
+                            Label::span(span.clone(), "Bit string literal"),
+                        )
+                        .with_context("value", &lit.value.value.to_string())
+                    })? as i64;
+                    let pool_index = ctx.add_i64_constant(value);
+                    emitter.emit_load_const_i64(pool_index);
+                    emitter.emit_eq_i64();
+                }
+                // CASE with float types is not meaningful in IEC 61131-3.
+                _ => return Err(Diagnostic::todo(file!(), line!())),
+            }
             Ok(())
         }
     }

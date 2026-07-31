@@ -173,6 +173,12 @@ struct FileArgs {
     /// of the IEC 61131-3 standard.
     #[arg(long)]
     allow_constant_initializer_expressions: bool,
+
+    /// Allow hex/binary/octal bit-string literals (e.g. 16#D012, 2#1010) as
+    /// CASE labels. This is a vendor extension not part of the IEC 61131-3
+    /// standard.
+    #[arg(long)]
+    allow_bit_string_case_labels: bool,
 }
 
 impl FileArgs {
@@ -200,6 +206,7 @@ impl FileArgs {
         options.allow_mixed_located_var_declarations |= self.allow_mixed_located_var_declarations;
         options.allow_constant_initializer_expressions |=
             self.allow_constant_initializer_expressions;
+        options.allow_bit_string_case_labels |= self.allow_bit_string_case_labels;
         options
     }
 }

@@ -260,6 +260,17 @@ features — they never disable features that a dialect already includes.
    :doc:`P4038 </reference/compiler/problems/P4038>`.
    Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
+``--allow-bit-string-case-labels``
+   Allow a hex, binary, or octal bit-string literal (e.g. ``16#D012``,
+   ``2#1010``, ``8#17``) as a ``CASE`` label. The IEC 61131-3 standard
+   grammar for a case label permits only a subrange, a *decimal*
+   ``signed_integer``, or an enumerated value; radix-prefixed literals are
+   separate productions the standard does not include here. Real
+   TwinCAT/CODESYS code uses them. Without this flag, such a label produces
+   :doc:`P4041 </reference/compiler/problems/P4041>`. A plain decimal label
+   (``5:``) is standard syntax and is always allowed. Enabled by
+   ``--dialect=rusty``, ``--dialect=codesys``, and ``--dialect=twincat``.
+
 Pass the flag when running :program:`ironplcc`:
 
 .. code-block:: shell
