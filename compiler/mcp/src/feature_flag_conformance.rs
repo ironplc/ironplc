@@ -188,6 +188,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\nd2r : LREAL := 4.25/180.0;\nEND_VAR\nEND_PROGRAM",
     },
+    // A hex/binary/octal bit-string literal used as a CASE label. The parser
+    // accepts it unconditionally; the flag gates a semantic rule (P4041 when
+    // off).
+    FlagFixture {
+        key: "allow_bit_string_case_labels",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nx : DINT;\ny : DINT;\nEND_VAR\nCASE x OF\n16#D012: y := 1;\nEND_CASE;\nEND_PROGRAM",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.
