@@ -311,11 +311,12 @@ The four things co-simulation needs already exist in the VM.
 3. **Per-instance buffers — clean multi-instantiation.**
    `VmBuffers::from_container` allocates per-instance state over a read-only
    shared `Container`; multiple FMU instances are independent.
-4. **Interface metadata partly exists.** The debug section already records
-   per-variable `var_section`, `iec_type_tag`, name, and type
-   (`compiler/container/src/debug_section.rs:11-30`) — but it is strippable, so
-   the exported interface must be promoted to a non-strippable artifact
-   ([below](#interface-metadata-in-the-container)).
+4. **Interface metadata already exists at compile time.** The compiler knows each
+   located variable's `var_section`, `iec_type_tag`, name, and type (the debug
+   section records the same, `compiler/container/src/debug_section.rs:11-30`) — so
+   the model description is emitted at compile time without relying on the
+   strippable debug section
+   ([below](#interface-metadata-generated-at-compile-time)).
 
 ## The Interface: Mapping PLC I/O to FMI Variables
 
