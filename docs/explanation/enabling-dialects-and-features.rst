@@ -16,6 +16,8 @@ Supported Dialects
    Strict IEC 61131-3:2003 (Edition 2). No vendor extensions are enabled.
    This is the default when no dialect is specified.
 
+   **Enables:** nothing beyond strict IEC 61131-3 (no vendor extensions).
+
 **iec61131-3-ed3**
    Strict IEC 61131-3:2013 (Edition 3). Enables Edition 3 keywords
    including :doc:`LTIME </reference/language/data-types/elementary/ltime>`,
@@ -26,10 +28,25 @@ Supported Dialects
    :doc:`REF </reference/language/data-types/derived/reference-types>`, and
    :doc:`NULL </reference/language/data-types/derived/reference-types>`. No vendor extensions.
 
+   **Enables:** Edition 3 keywords, plus ``--allow-partial-access-syntax``.
+
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
    names like :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` remain available as identifiers) and enables
    :doc:`REF_TO </reference/language/data-types/derived/reference-types>` support plus all vendor extensions.
+
+   **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
+   ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
+   ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
+   ``--allow-ref-to``, ``--allow-ref-arithmetic``,
+   ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
+   ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
+   ``--allow-system-uptime-global``, ``--allow-cross-family-widening``,
+   ``--allow-partial-access-syntax``, ``--allow-pragmas``,
+   ``--allow-short-circuit-operators``,
+   ``--allow-mixed-located-var-declarations``,
+   ``--allow-constant-initializer-expressions``, and
+   ``--allow-bit-string-case-labels``.
 
 **codesys**
    CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
@@ -40,6 +57,18 @@ Supported Dialects
    implicit :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound under this dialect, since they are an IronPLC
    runtime convention rather than a CODESYS feature.
+
+   **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
+   ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
+   ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
+   ``--allow-ref-to``, ``--allow-reference-to``, ``--allow-ref-arithmetic``,
+   ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
+   ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
+   ``--allow-cross-family-widening``, ``--allow-partial-access-syntax``,
+   ``--allow-pragmas``, ``--allow-short-circuit-operators``,
+   ``--allow-mixed-located-var-declarations``,
+   ``--allow-constant-initializer-expressions``, and
+   ``--allow-bit-string-case-labels``.
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
@@ -56,6 +85,16 @@ Supported Dialects
    :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound, since they are an IronPLC runtime convention
    rather than a TwinCAT feature.
+
+   **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
+   ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
+   ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
+   ``--allow-reference-to``, ``--allow-int-to-bool-initializer``,
+   ``--allow-sizeof``, ``--allow-cross-family-widening``,
+   ``--allow-partial-access-syntax``, ``--allow-pragmas``,
+   ``--allow-short-circuit-operators``,
+   ``--allow-mixed-located-var-declarations``, and
+   ``--allow-bit-string-case-labels``.
 
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
@@ -113,7 +152,8 @@ Enabling Specific Features
 
 Individual ``--allow-*`` flags can be combined with any dialect to enable
 additional features on top of the dialect's defaults. Flags can only enable
-features — they never disable features that a dialect already includes.
+features — they never disable features that a dialect already includes. To see
+which flags a dialect already enables by default, see `Supported Dialects`_.
 
 ``--allow-c-style-comments``
    Allow C-style comments (``//`` line comments and ``/* */`` block comments).
@@ -156,10 +196,8 @@ features — they never disable features that a dialect already includes.
    Allow the Beckhoff TwinCAT / CODESYS ``REFERENCE TO`` reference type and the
    ``REF=`` binding operator. This is the TwinCAT/CODESYS-facing alternative to
    ``--allow-ref-to``: the two describe the same underlying reference but with
-   different surface syntax. ``REFERENCE TO`` is bundled by the ``twincat`` and
-   ``codesys`` dialects. The compiler does not restrict flag combinations, so
-   ``--allow-ref-to`` and ``--allow-reference-to`` may be set at once, though no
-   single real dialect bundles both. See
+   different surface syntax. The compiler does not restrict flag combinations, so
+   ``--allow-ref-to`` and ``--allow-reference-to`` may be set at once. See
    :doc:`/reference/language/data-types/derived/reference-types`.
 
 ``--allow-ref-arithmetic``
@@ -192,8 +230,7 @@ features — they never disable features that a dialect already includes.
 ``--allow-system-uptime-global``
    Expose ``__SYSTEM_UP_TIME`` (``TIME``) and ``__SYSTEM_UP_LTIME``
    (``LTIME``) as implicit ``VAR_GLOBAL`` values holding the VM's monotonic
-   uptime. This is an IronPLC runtime convention enabled by
-   ``--dialect=rusty``.
+   uptime. This is an IronPLC runtime convention.
 
 ``--allow-cross-family-widening``
    Allow implicit widening between bit-string and integer type families.
@@ -205,8 +242,7 @@ features — they never disable features that a dialect already includes.
 ``--allow-partial-access-syntax``
    Allow IEC 61131-3:2013 partial-access bit syntax ``.%Xn`` (e.g.,
    ``myByte.%X3`` to access bit 3 of a ``BYTE``). Semantically equivalent to
-   the short form ``.n``. Enabled by ``--dialect=iec61131-3-ed3`` and
-   ``--dialect=rusty``. Byte/word/dword/lword partial access (``.%Bn``,
+   the short form ``.n``. Byte/word/dword/lword partial access (``.%Bn``,
    ``.%Wn``, ``.%Dn``, ``.%Ln``) is not yet supported.
 
 ``--allow-pragmas``
@@ -216,7 +252,7 @@ features — they never disable features that a dialect already includes.
    including Beckhoff TwinCAT and Schneider Electric Machine Expert). A
    pragma is parsed and discarded like a comment — its contents are not yet
    interpreted. Pragmas do not nest; an unclosed ``{`` still produces a parse
-   error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+   error.
 
 ``--allow-short-circuit-operators``
    Allow the ``AND_THEN`` short-circuit boolean operator, a
@@ -232,7 +268,6 @@ features — they never disable features that a dialect already includes.
    evaluation this operator requires and refuses to compile it
    (problem :doc:`P9999 </reference/compiler/problems/P9999>`) rather
    than silently emitting eager (behaviorally incorrect) bytecode.
-   Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
 ``--allow-mixed-located-var-declarations``
    Allow an ``AT``-located variable (complete address like ``AT %IX0.0``,
@@ -244,8 +279,7 @@ features — they never disable features that a dialect already includes.
    this flag, mixing produces problem
    :doc:`P4036 </reference/compiler/problems/P4036>`. A block containing
    *only* located variables is unaffected by this flag — it is standard
-   syntax and always allowed. Enabled by ``--dialect=rusty``,
-   ``--dialect=codesys``, and ``--dialect=twincat``.
+   syntax and always allowed.
 
 ``--allow-constant-initializer-expressions``
    Allow a ``VAR`` initializer to be a constant *expression* — arithmetic
@@ -258,7 +292,6 @@ features — they never disable features that a dialect already includes.
    does not fully reduce to a constant (e.g. it references a
    non-``CONSTANT`` variable), it produces
    :doc:`P4038 </reference/compiler/problems/P4038>`.
-   Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
 ``--allow-bit-string-case-labels``
    Allow a hex, binary, or octal bit-string literal (e.g. ``16#D012``,
@@ -268,8 +301,7 @@ features — they never disable features that a dialect already includes.
    separate productions the standard does not include here. Real
    TwinCAT/CODESYS code uses them. Without this flag, such a label produces
    :doc:`P4041 </reference/compiler/problems/P4041>`. A plain decimal label
-   (``5:``) is standard syntax and is always allowed. Enabled by
-   ``--dialect=rusty``, ``--dialect=codesys``, and ``--dialect=twincat``.
+   (``5:``) is standard syntax and is always allowed.
 
 Pass the flag when running :program:`ironplcc`:
 
