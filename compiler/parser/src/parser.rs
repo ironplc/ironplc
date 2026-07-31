@@ -1172,7 +1172,7 @@ parser! {
         }
       }).collect()
     }
-    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
+    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:string_length_spec()? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::String,
@@ -1189,7 +1189,7 @@ parser! {
         }
       }).collect()
     }
-    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
+    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:string_length_spec()? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::WString,
@@ -1197,6 +1197,14 @@ parser! {
         keyword_span: start.span.clone(),
       }
     }
+    // CODESYS/TwinCAT accept STRING(n)/WSTRING(n) with parentheses as an
+    // alternate delimiter to the standard STRING[n]/WSTRING[n] brackets --
+    // same precedent as string_type_declaration__parenthesis() for TYPE
+    // alias declarations, which already accepts this unconditionally (no
+    // dialect flag: a delimiter choice, not a new keyword).
+    rule string_length_spec() -> IntegerRef =
+      tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) { i }
+      / tok(TokenType::LeftParen) _ i:integer_ref() _ tok(TokenType::RightParen) { i }
     rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
       let declarations = declarations.into_iter().map(|decl| {
         let qualifier = qualifier
@@ -1227,8 +1235,8 @@ parser! {
       sr:subrange_specification__with_range() { VariableSpecificationKind::Subrange(sr) }
       / e:enumerated_specification() { VariableSpecificationKind::Enumerated(e) }
       / a:array_specification() { VariableSpecificationKind::Array(a) }
-      / tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) }
       / id:type_name() { VariableSpecificationKind::Ambiguous(id) }
 
@@ -1237,8 +1245,8 @@ parser! {
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
     rule function_return_type() -> FunctionReturnType =
-      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { FunctionReturnType::Named(et.into()) }
       / dt:derived_type_name() { FunctionReturnType::Named(dt) }
     rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:function_return_type() _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ] } / temp:temp_var_decls() { vec![ temp ] }) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {

@@ -48,3 +48,28 @@ fn write_to_string_when_array_of_string_with_size_then_renders_size() {
     let expected = read_resource("array_of_string_rendered.st");
     assert_eq!(rendered, expected);
 }
+
+#[test]
+fn write_to_string_when_string_parenthesis_length_then_normalizes_to_brackets() {
+    let source = "
+FUNCTION_BLOCK FB_Example
+VAR
+    hostName : STRING(255);
+END_VAR
+END_FUNCTION_BLOCK
+";
+    let library_original =
+        parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+    let rendered = write_to_string(&library_original).unwrap();
+
+    // The renderer always normalizes to the bracket form -- there's no
+    // bracket/paren marker stored in the DSL, matching how
+    // StringSpecification/StringInitializer already only store
+    // length: Option<IntegerRef> with no delimiter distinction.
+    assert!(rendered.contains("STRING [ 255 ]"));
+
+    let library_rendered =
+        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
+            .expect("rendered output must parse");
+    assert_eq!(library_original, library_rendered);
+}

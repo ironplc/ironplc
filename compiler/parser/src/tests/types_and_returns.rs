@@ -143,6 +143,102 @@ fn parse_when_function_with_wstring_length_return_type_then_parses() {
 }
 
 #[test]
+fn parse_when_function_with_string_paren_length_return_type_then_parses() {
+    // CODESYS/TwinCAT accept STRING(n) with parentheses as an
+    // alternate delimiter to the standard STRING[n] brackets --
+    // unconditional, no dialect flag (matches the existing
+    // string_type_declaration__parenthesis() precedent for TYPE alias
+    // declarations).
+    let lib = parse_text(
+        "FUNCTION my_func : STRING(255)
+            VAR_INPUT
+                x : INT;
+            END_VAR
+            my_func := 'hello';
+            END_FUNCTION",
+    );
+
+    assert_eq!(lib.elements.len(), 1);
+    let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
+    let spec = cast!(&func.return_type, FunctionReturnType::String);
+    assert_eq!(spec.width, dsl::common::StringType::String);
+    assert!(spec.length.is_some());
+}
+
+#[test]
+fn parse_when_function_with_wstring_paren_length_return_type_then_parses() {
+    let lib = parse_text(
+        "FUNCTION my_func : WSTRING(100)
+            VAR_INPUT
+                x : INT;
+            END_VAR
+            my_func := 'hello';
+            END_FUNCTION",
+    );
+
+    assert_eq!(lib.elements.len(), 1);
+    let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
+    let spec = cast!(&func.return_type, FunctionReturnType::WString);
+    assert_eq!(spec.width, dsl::common::StringType::WString);
+    assert!(spec.length.is_some());
+}
+
+#[test]
+fn parse_when_var_with_string_paren_length_then_parses() {
+    let lib = parse_text(
+        "PROGRAM main
+VAR
+    hostName : STRING(255);
+END_VAR
+END_PROGRAM",
+    );
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let spec = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::String
+    );
+    assert_eq!(spec.width, dsl::common::StringType::String);
+    assert!(spec.length.is_some());
+}
+
+#[test]
+fn parse_when_var_with_wstring_paren_length_then_parses() {
+    let lib = parse_text(
+        "PROGRAM main
+VAR
+    wideName : WSTRING(100);
+END_VAR
+END_PROGRAM",
+    );
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let spec = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::String
+    );
+    assert_eq!(spec.width, dsl::common::StringType::WString);
+    assert!(spec.length.is_some());
+}
+
+#[test]
+fn parse_when_var_with_string_bracket_length_then_parses() {
+    // Regression: the standard bracket form must still parse unchanged.
+    let lib = parse_text(
+        "PROGRAM main
+VAR
+    hostName : STRING[255];
+END_VAR
+END_PROGRAM",
+    );
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let spec = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::String
+    );
+    assert_eq!(spec.width, dsl::common::StringType::String);
+    assert!(spec.length.is_some());
+}
+
+#[test]
 fn parse_when_function_with_bare_string_return_type_then_parses() {
     let lib = parse_text(
         "FUNCTION my_func : STRING
