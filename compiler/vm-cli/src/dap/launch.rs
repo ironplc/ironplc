@@ -192,6 +192,7 @@ mod tests {
         let container = ContainerBuilder::new()
             .num_variables(1)
             .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0)
+            .max_call_depth(1)
             .add_var_name(a_var_name())
             .build();
         assert!(check_preconditions(&container).is_ok());
@@ -203,6 +204,7 @@ mod tests {
         let container = ContainerBuilder::new()
             .num_variables(1)
             .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0)
+            .max_call_depth(1)
             .build();
         let err = check_preconditions(&container).unwrap_err();
         assert!(matches!(err, LaunchError::NoDebugInfo));
@@ -217,6 +219,7 @@ mod tests {
         let container = ContainerBuilder::new()
             .num_variables(1)
             .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0)
+            .max_call_depth(1)
             .add_var_name(a_var_name())
             .add_task(a_task(TaskId::new(0)))
             .add_task(a_task(TaskId::new(1)))
@@ -236,6 +239,7 @@ mod tests {
         let container = ContainerBuilder::new()
             .num_variables(1)
             .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0)
+            .max_call_depth(1)
             .add_var_name(a_var_name())
             .build();
         let mut bufs = VmBuffers::from_container(&container);
@@ -257,6 +261,7 @@ mod tests {
             .add_i32_constant(10)
             .add_i32_constant(0)
             .add_function(FunctionId::new(0), &bytecode, 2, 1, 0)
+            .max_call_depth(1)
             .add_var_name(a_var_name())
             .build();
         let mut bufs = VmBuffers::from_container(&container);

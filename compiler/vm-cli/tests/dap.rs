@@ -73,6 +73,7 @@ fn single_instance_debug_container() -> NamedTempFile {
     let container = ContainerBuilder::new()
         .num_variables(1)
         .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0)
+        .max_call_depth(1)
         .add_var_name(a_var_name())
         .build();
     write_container(&container)
@@ -83,6 +84,7 @@ fn no_debug_container() -> NamedTempFile {
     let container = ContainerBuilder::new()
         .num_variables(1)
         .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0)
+        .max_call_depth(1)
         .build();
     write_container(&container)
 }
@@ -92,6 +94,7 @@ fn multi_instance_container() -> NamedTempFile {
     let container = ContainerBuilder::new()
         .num_variables(1)
         .add_function(FunctionId::new(0), &[0x8C], 0, 1, 0)
+        .max_call_depth(1)
         .add_var_name(a_var_name())
         .add_task(a_task(TaskId::new(0)))
         .add_task(a_task(TaskId::new(1)))
