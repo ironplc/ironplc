@@ -88,7 +88,7 @@ library therefore matches that one platform, so **the co-simulation must run on
 that same platform**. If your OIP scenarios run the master on a different OS/CPU
 than the PLC's target hardware, the FMU binary won't match and we'd need a
 cross-compilation/installer story. We're treating this as an **open question and
-want your input** ([Q7](#open-questions)): tell us
+want your input** ([Q6](#open-questions)): tell us
 what platform(s) your co-simulation host runs on.
 
 **What we would want from you.** (1) Which FMI 3.0 master(s) must the first
@@ -99,14 +99,20 @@ out of scope for now ([Q4](#open-questions))? (3) Do you
 ever step FMUs at a rate other than their native period, and does your master
 honor `fixedInternalStepSize`/early-return ([Q2](#open-questions))? (4) What
 platform does your co-simulation host run on — is it the same as the PLC's target
-hardware ([Q7](#open-questions))?
+hardware ([Q6](#open-questions))?
+
+**Automated testing.** FMU export is covered by an **automated CI integration
+test**: it compiles a PLC program to an FMU, loads it in a reference FMI 3.0
+importer (e.g. FMPy or the rust-fmi importer), runs a multi-step scenario, and
+asserts inputs→outputs — so exports can't silently regress
+(see [Implementation Phases](#implementation-phases), phase 6).
 
 **Known v1 limitations.** Single program / single scan task (multi-task programs
 deferred, [Q3](#open-questions)); FMI **Co-Simulation** only (not Model
 Exchange); no importing of external FMUs into a PLC program; the FMU binary is
 built for the target hardware, so the co-simulation runs on that platform
-([Q7](#open-questions)); calendar date/time types await a storage ADR before they
-can appear in an FMU interface ([Q6](#open-questions)).
+([Q6](#open-questions)); calendar date/time types await a storage ADR before they
+can appear in an FMU interface ([Q5](#open-questions)).
 
 ## Background
 
@@ -196,7 +202,7 @@ compile time from the located-variable (IOM) info, and zips both together with t
 **prebuilt** `ironplc-fmi` runtime for the target platform. The result is a
 single self-contained `my-project.fmu` (see [Packaging](#packaging-ironplcc-compile---format-fmu)).
 Because the runtime binary is built for the PLC's target hardware, the FMU runs
-on that platform ([Q7](#open-questions)).
+on that platform ([Q6](#open-questions)).
 
 ### 3. Use it in a co-simulation master (generic FMI 3.0)
 
@@ -237,7 +243,7 @@ the scenario as a component and wire the pins." The **exact** OIP integration
 surface — the scenario/config format (e.g. an OSP-style `SystemStructure` file),
 how components are registered, and any OIP-specific connection metadata — depends
 on OIP's tooling and is the one piece this design cannot specify from the IronPLC
-side. That is [Q8](#open-questions), for the OIP maintainer.
+side. That is [Q7](#open-questions), for the OIP maintainer.
 
 ## Design Goals
 
@@ -385,7 +391,7 @@ VM already stores and formats them that way. The six calendar types
 but their in-memory representation is not yet finalized** — debug formatting
 implements only `TIME`/`LTIME` today. The encodings above are a concrete proposal
 that FMI export needs, but they must be pinned by a storage ADR before export can
-emit them; that ADR is a prerequisite tracked as [Q6](#open-questions). Until it
+emit them; that ADR is a prerequisite tracked as [Q5](#open-questions). Until it
 lands, an FMU whose interface uses a calendar type is rejected at
 `compile --format fmu` with a clear "type not yet supported for FMI export"
 error rather than emitting an unspecified encoding.
@@ -478,7 +484,7 @@ IronPLC located-variable (IOM) info and let `fmi-export` emit the ABI, rather th
 hand-rolling `fmi3*` exports. **Caveat:** rust-fmi's export path is relatively
 new; maturity, license, and how cleanly its model abstraction accepts a
 *container-driven* (rather than compile-time-struct) variable set need a short
-spike before we commit ([Q5](#open-questions)). If it doesn't fit, the fallback
+spike before we commit. If it doesn't fit, the fallback
 is a hand-written shim — larger, but well-understood.
 
 ## Process Image
@@ -535,7 +541,7 @@ The compile step **does not build `ironplc-fmi`** — that library is a versione
 artifact shipped with the IronPLC distribution and simply copied into the
 archive. Because only the host platform's binary is included, the resulting FMU
 runs on the same OS/CPU it was compiled on (the v1 same-host constraint;
-cross-platform is [Q7](#open-questions)).
+cross-platform is [Q6](#open-questions)).
 
 ## Implementation Phases
 
@@ -594,12 +600,7 @@ Please answer inline as PR feedback.
   are they marked in source (a pragma/attribute), given that `%M`/globals are not
   the interface? Or are parameters out of scope for v1 (I/O only)?
 
-- **Q5 — `fmi-export` reuse.** Approve a short spike to evaluate rust-fmi's
-  `fmi-export` + `cargo-fmi` for generating the FMI 3.0 ABI and model description
-  from a container-driven variable set (vs. a hand-written shim)? Any constraint
-  on adding that dependency (license, maturity, supply-chain review)?
-
-- **Q6 — Calendar date/time storage ADR.** `TIME`/`LTIME` are pinned by ADR-0021
+- **Q5 — Calendar date/time storage ADR.** `TIME`/`LTIME` are pinned by ADR-0021
   (`Int32`/`Int64` milliseconds). The six calendar types
   (`DATE`/`LDATE`/`TOD`/`LTOD`/`DT`/`LDT`) are recognized as type tags but have no
   finalized in-memory representation. The [date/duration table](#dateduration-types)
@@ -607,13 +608,13 @@ Please answer inline as PR feedback.
   we land a storage ADR to make them real? Until then, FMI export rejects
   interfaces that use a calendar type.
 
-- **Q7 — Target-hardware runtime vs. co-simulation host.** IronPLC ships
+- **Q6 — Target-hardware runtime vs. co-simulation host.** IronPLC ships
   `ironplc-fmi` built for the PLC's **target hardware**, so the FMU binary matches
   that platform and the co-simulation must run there. What platform(s) does your
   OIP co-simulation host actually run on? If it differs from the target hardware,
   we need a cross-build/installer approach.
 
-- **Q8 — OIP integration surface.** The FMU is a standard FMI 3.0 CS component,
+- **Q7 — OIP integration surface.** The FMU is a standard FMI 3.0 CS component,
   so it should drop into an OIP scenario like any other FMU. What is OIP's actual
   integration format — the scenario/config file (an OSP-style `SystemStructure`
   XML? something else?), how components are registered, and any OIP-specific
