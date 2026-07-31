@@ -128,7 +128,7 @@ pub fn resolve_types(
     // Resolve constant references in type parameters (STRING lengths, array bounds).
     // Must run before toposort so that concrete integer values are available.
     let fallback = library.clone();
-    match xform_resolve_constant_expressions::apply(library) {
+    match xform_resolve_constant_expressions::apply(library, options) {
         Ok(result) => library = result,
         Err(errs) => {
             diagnostics.extend(errs);
