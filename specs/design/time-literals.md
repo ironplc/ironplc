@@ -86,7 +86,7 @@ Unit suffix case-insensitivity (REQ-TL-011) applies in both editions.
 
 ## 7. Test Mapping
 
-Parser tests link to requirements via the existing `{area}_spec_req_{id}_{description}` naming convention (see [spec-conformance-testing.md](spec-conformance-testing.md)). Tests live in `compiler/parser/src/tests.rs`.
+Parser tests link to requirements via the existing `{area}_spec_req_{id}_{description}` naming convention (see [spec-conformance-testing.md](spec-conformance-testing.md)). Tests live in `compiler/parser/src/tests/`.
 
 | Requirement | Test function |
 |---|---|
@@ -99,7 +99,7 @@ Parser tests link to requirements via the existing `{area}_spec_req_{id}_{descri
 | REQ-TL-022 | `duration_spec_req_tl_022_compound_with_underscore` (ignored — see Future Work) |
 | REQ-TL-023 | `duration_spec_req_tl_023_negative_duration` |
 
-REQ-TL-001 and REQ-TL-020 are covered by existing parser tests for basic duration literals and fixed-point durations (e.g., `parse_program_when_fixed_point_duration_then_ok` in `compiler/parser/src/tests.rs`). REQ-TL-003 is covered by existing LTIME gating tests for [ADR-0022](../adrs/0022-edition-3-compiler-flag.md). REQ-TL-030 is an invariant verified in codegen and DSL tests rather than parser tests.
+REQ-TL-001 and REQ-TL-020 are covered by existing parser tests for basic duration literals and fixed-point durations (e.g., `parse_program_when_fixed_point_duration_then_ok` in `compiler/parser/src/tests/`). REQ-TL-003 is covered by existing LTIME gating tests for [ADR-0022](../adrs/0022-edition-3-compiler-flag.md). REQ-TL-030 is an invariant verified in codegen and DSL tests rather than parser tests.
 
 ## 8. Implementation
 
