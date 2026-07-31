@@ -60,8 +60,10 @@ Internal **memory** state (`%M`) is exposed as **read-only** FMI `local`
 variables: the master can *read* them (via `fmi3Get*`) for observability/logging,
 but cannot *write* them — FMI only allows the master to `Set` `input`s and
 `parameter`s, never `local`s. So the interaction pattern stays I/O in, I/O out;
-`%M` is visible but not drivable. Whether *plain* internal locals (non-`%M`) are
-also exposed this way is the remaining open item ([Q1](#open-questions)).
+`%M` is visible but not drivable. **Other internal variables (plain, non-located
+locals) are not exposed in v1** — `%M` is the only internal state on the
+interface. A follow-up version could expose selected locals the same read-only
+way if a use case appears ([Q1](#open-questions)).
 
 **How time works.** A PLC executes on a fixed **scan cycle** (e.g. every 10 ms).
 The FMU advertises that period to the master via FMI 3.0's
@@ -91,9 +93,9 @@ what platform(s) your co-simulation host runs on.
 
 **What we would want from you.** (1) Which FMI 3.0 master(s) must the first
 release interoperate with, so we target the right conformance suite
-([Q2](#open-questions))? (2) `%M` memory is exposed read-only for observability;
-do your scenarios also need visibility into *plain* internal locals, or is
-I/O + `%M` sufficient ([Q1](#open-questions))? (3) Do you
+([Q2](#open-questions))? (2) v1 exposes I/O plus read-only `%M`; do any scenarios
+need tunable `parameter`s (setpoints/limits) set at initialization, or is that
+out of scope for now ([Q5](#open-questions))? (3) Do you
 ever step FMUs at a rate other than their native period, and does your master
 honor `fixedInternalStepSize`/early-return ([Q3](#open-questions))? (4) What
 platform does your co-simulation host run on — is it the same as the PLC's target
@@ -156,6 +158,87 @@ clock-injected VM so well.
 - **[No-std VM](no-std-vm.md)** / **ADR-0010** — the commitment that the VM core
   stays `unsafe`-free and embeddable, which dictates where the FMI C ABI lives.
 
+## User Experience
+
+End to end, from writing a program to running it in a co-simulation.
+
+### 1. Author the program with located I/O
+
+The engineer writes ordinary Structured Text and declares the points that should
+be visible to the simulation as **located variables**. There is nothing
+FMI-specific in the source — the same program runs on hardware.
+
+```iecst
+PROGRAM main
+  VAR
+    tank_level  AT %IW0  : INT;   (* sensor  → becomes FMU input  *)
+    pump_on     AT %QX0.0 : BOOL;  (* actuator → becomes FMU output *)
+    high_mark   AT %MW10 : INT;   (* internal → read-only FMU local *)
+  END_VAR
+  pump_on := tank_level < high_mark;
+END_PROGRAM
+```
+
+The `%I`/`%Q`/`%M` declarations are the entire contract: `%I`→input, `%Q`→output,
+`%M`→read-only local. No annotations, no separate interface file.
+
+### 2. Build the FMU
+
+One command, an output format of the existing compiler:
+
+```console
+$ ironplcc compile --format fmu ./my-project
+  → my-project.fmu
+```
+
+The compiler produces the `.iplc` container, generates `modelDescription.xml`
+from the located-variable interface section, and zips both together with the
+**prebuilt** `ironplc-fmi` runtime for the target platform. The result is a
+single self-contained `my-project.fmu` (see [Packaging](#packaging-ironplcc-compile---format-fmu)).
+Because the runtime binary is built for the PLC's target hardware, the FMU runs
+on that platform ([Q9](#open-questions)).
+
+### 3. Use it in a co-simulation master (generic FMI 3.0)
+
+`my-project.fmu` is a standard FMI 3.0 CS FMU. Any conformant master loads it —
+no IronPLC tooling required. For example, with FMPy in Python:
+
+```python
+from fmpy import simulate_fmu
+# Drive tank_level from a plant model / signal, read pump_on back.
+result = simulate_fmu('my-project.fmu',
+                      start_time=0.0, stop_time=10.0,
+                      output=['pump_on'])
+```
+
+In a graphical master (OMSimulator, OSP/libcosim), the FMU appears as a block
+with `tank_level` as an input pin and `pump_on` as an output pin; the user wires
+those to the rest of the scenario and presses run. The master calls
+`Set`(inputs) → `DoStep`(scan period) → `Get`(outputs) each cycle.
+
+### 4. Integrate with the Open Industry Project
+
+The closed loop is the point: the PLC FMU controls a **plant/process model** FMU.
+The user connects the PLC's `%I` inputs to the plant model's outputs (sensors)
+and the PLC's `%Q` outputs to the plant model's inputs (actuators), forming a
+control loop the OIP scenario runs forward in time:
+
+```
+        ┌────────────────┐   pump_on (%Q) ──▶ actuator   ┌─────────────────┐
+        │  IronPLC FMU   │                                │  Plant/Process  │
+        │  (controller)  │   tank_level (%I) ◀── sensor   │   model (FMU)   │
+        └────────────────┘                                └─────────────────┘
+                     ▲                                             ▲
+                     └───────────── OIP master steps both ─────────┘
+```
+
+Because the FMU is standards-conformant, integrating with OIP is "drop it into
+the scenario as a component and wire the pins." The **exact** OIP integration
+surface — the scenario/config format (e.g. an OSP-style `SystemStructure` file),
+how components are registered, and any OIP-specific connection metadata — depends
+on OIP's tooling and is the one piece this design cannot specify from the IronPLC
+side. That is [Q10](#open-questions), for the OIP maintainer.
+
 ## Design Goals
 
 1. **A standards-conformant FMI 3.0 CS FMU** — a compiled IronPLC program
@@ -185,6 +268,9 @@ These were open questions in revision 1; review resolved them.
   `input`, `%Q` → FMU `output`. `%M` memory is exposed as read-only FMI `local`
   variables — the master can read them but cannot write them (FMI only lets the
   master `Set` `input`s/`parameter`s). The master never drives internal state.
+- **No other internal variables in v1.** Plain, non-located locals are not
+  exposed on the FMU interface; `%M` is the only internal state surfaced. A later
+  version may add opt-in read-only exposure of selected locals.
 - **Build the process image.** IronPLC implements the `%I`/`%Q`/`%M` regions and
   wires the `INPUT_FREEZE`/`OUTPUT_FLUSH` phases, rather than mapping I/O straight
   to flat variable slots. This is what makes the I/O semantics real.
@@ -481,11 +567,12 @@ once the open questions are resolved.
 
 Please answer inline as PR feedback.
 
-- **Q1 — Scope of read-only observability.** `%M` memory is now exposed as
-  read-only FMI `local` variables (decided). Should the FMU *also* expose
-  **plain, non-located** internal locals the same way (readable, never writable),
-  or is `%M` + I/O the whole v1 surface? And does OIP need any richer
-  debugger-style capability through the FMI boundary beyond read-only `Get`?
+- **Q1 — Debugger-style capabilities (future).** v1 is settled: interface = I/O,
+  plus read-only `%M`; plain non-located locals are not exposed (deferred to a
+  possible follow-up). The remaining open question is only forward-looking — does
+  OIP foresee needing any richer debugger-style capability through the FMI
+  boundary (e.g. exposing selected locals, or breakpoint/step control), so we
+  leave room for it in the interface-section format now?
 
 - **Q2 — Conformance target.** Which FMI 3.0 master(s) must the first release
   interoperate with (OMSimulator, FMPy, a specific OIP tool)? This pins the
@@ -529,3 +616,11 @@ Please answer inline as PR feedback.
   OIP co-simulation host actually run on? If it differs from the target hardware,
   we need a cross-build/installer approach (this is the concrete, OIP-facing form
   of [Q6](#open-questions)).
+
+- **Q10 — OIP integration surface.** The FMU is a standard FMI 3.0 CS component,
+  so it should drop into an OIP scenario like any other FMU. What is OIP's actual
+  integration format — the scenario/config file (an OSP-style `SystemStructure`
+  XML? something else?), how components are registered, and any OIP-specific
+  connection or metadata requirements? This is the one part of the
+  [User Experience](#user-experience) we can't specify from the IronPLC side and
+  would document once you confirm it.
