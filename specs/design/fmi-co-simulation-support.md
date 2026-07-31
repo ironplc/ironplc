@@ -63,7 +63,7 @@ but cannot *write* them — FMI only allows the master to `Set` `input`s and
 `%M` is visible but not drivable. **Other internal variables (plain, non-located
 locals) are not exposed in v1** — `%M` is the only internal state on the
 interface. A follow-up version could expose selected locals the same read-only
-way if a use case appears ([Q1](#open-questions)).
+way if a use case appears.
 
 **How time works.** A PLC executes on a fixed **scan cycle** (e.g. every 10 ms).
 The FMU advertises that period to the master via FMI 3.0's
@@ -88,25 +88,25 @@ library therefore matches that one platform, so **the co-simulation must run on
 that same platform**. If your OIP scenarios run the master on a different OS/CPU
 than the PLC's target hardware, the FMU binary won't match and we'd need a
 cross-compilation/installer story. We're treating this as an **open question and
-want your input** ([Q9](#open-questions), related [Q6](#open-questions)): tell us
+want your input** ([Q7](#open-questions)): tell us
 what platform(s) your co-simulation host runs on.
 
 **What we would want from you.** (1) Which FMI 3.0 master(s) must the first
 release interoperate with, so we target the right conformance suite
-([Q2](#open-questions))? (2) v1 exposes I/O plus read-only `%M`; do any scenarios
+([Q1](#open-questions))? (2) v1 exposes I/O plus read-only `%M`; do any scenarios
 need tunable `parameter`s (setpoints/limits) set at initialization, or is that
-out of scope for now ([Q5](#open-questions))? (3) Do you
+out of scope for now ([Q4](#open-questions))? (3) Do you
 ever step FMUs at a rate other than their native period, and does your master
-honor `fixedInternalStepSize`/early-return ([Q3](#open-questions))? (4) What
+honor `fixedInternalStepSize`/early-return ([Q2](#open-questions))? (4) What
 platform does your co-simulation host run on — is it the same as the PLC's target
-hardware ([Q9](#open-questions))?
+hardware ([Q7](#open-questions))?
 
 **Known v1 limitations.** Single program / single scan task (multi-task programs
-deferred, [Q4](#open-questions)); FMI **Co-Simulation** only (not Model
+deferred, [Q3](#open-questions)); FMI **Co-Simulation** only (not Model
 Exchange); no importing of external FMUs into a PLC program; the FMU binary is
 built for the target hardware, so the co-simulation runs on that platform
-([Q9](#open-questions)); calendar date/time types await a storage ADR before they
-can appear in an FMU interface ([Q8](#open-questions)).
+([Q7](#open-questions)); calendar date/time types await a storage ADR before they
+can appear in an FMU interface ([Q6](#open-questions)).
 
 ## Background
 
@@ -151,10 +151,10 @@ clock-injected VM so well.
   defines.
 - **[IEC 61131-3 Task Support](61131-task-support.md)** — the task table,
   cyclic/freewheeling scheduling, and the externally-driven `run_round` model.
-- **[Bytecode Container Format](bytecode-container-format.md)** and
-  **[Debug Info in the iplc Container](debug-info-in-iplc-container.md)** — where
-  the exported-interface metadata must live (a non-strippable section; see
-  [Interface Metadata](#interface-metadata-in-the-container)).
+- **[Bytecode Container Format](bytecode-container-format.md)** — the compiled
+  container. FMI export needs **no format change now**: the model description is
+  generated at compile time (see
+  [Interface Metadata](#interface-metadata-generated-at-compile-time)).
 - **[No-std VM](no-std-vm.md)** / **ADR-0010** — the commitment that the VM core
   stays `unsafe`-free and embeddable, which dictates where the FMI C ABI lives.
 
@@ -191,12 +191,12 @@ $ ironplcc compile --format fmu ./my-project
   → my-project.fmu
 ```
 
-The compiler produces the `.iplc` container, generates `modelDescription.xml`
-from the located-variable interface section, and zips both together with the
+The compiler produces the `.iplc` container, generates `modelDescription.xml` at
+compile time from the located-variable (IOM) info, and zips both together with the
 **prebuilt** `ironplc-fmi` runtime for the target platform. The result is a
 single self-contained `my-project.fmu` (see [Packaging](#packaging-ironplcc-compile---format-fmu)).
 Because the runtime binary is built for the PLC's target hardware, the FMU runs
-on that platform ([Q9](#open-questions)).
+on that platform ([Q7](#open-questions)).
 
 ### 3. Use it in a co-simulation master (generic FMI 3.0)
 
@@ -237,7 +237,7 @@ the scenario as a component and wire the pins." The **exact** OIP integration
 surface — the scenario/config format (e.g. an OSP-style `SystemStructure` file),
 how components are registered, and any OIP-specific connection metadata — depends
 on OIP's tooling and is the one piece this design cannot specify from the IronPLC
-side. That is [Q10](#open-questions), for the OIP maintainer.
+side. That is [Q8](#open-questions), for the OIP maintainer.
 
 ## Design Goals
 
@@ -274,10 +274,11 @@ These were open questions in revision 1; review resolved them.
 - **Build the process image.** IronPLC implements the `%I`/`%Q`/`%M` regions and
   wires the `INPUT_FREEZE`/`OUTPUT_FLUSH` phases, rather than mapping I/O straight
   to flat variable slots. This is what makes the I/O semantics real.
-- **`modelDescription.xml` does not depend on the debug section.** The exported
-  interface derives from **located-variable information** that must be present in
-  the container as a first-class, non-strippable artifact. Concretely: the debug
-  info gains a second emit format whose product is the model description.
+- **`modelDescription.xml` is generated at compile time — no format change now.**
+  The compiler emits the model description directly from the located-variable
+  (IOM) information it already has, so the FMI path needs neither the strippable
+  debug section nor a new FMI-specific container section. The runtime's IOM layout
+  is supplied by the process-image work already planned.
 - **Packaging is `ironplcc compile` with an output-format flag**, not a `just`
   recipe and not a new subcommand.
 - **The `.fmu` build does not compile `ironplc-fmi`.** That shared library is a
@@ -325,9 +326,9 @@ FMI variables:
 |------------|-------------------|------------------------------|
 | `AT %I…` (input) | `input` | Master writes before `DoStep` |
 | `AT %Q…` (output) | `output` | Master reads after `DoStep` |
-| tunable parameter (marked; [Q5](#open-questions)) | `parameter` | Master writes at init |
+| tunable parameter (marked; [Q4](#open-questions)) | `parameter` | Master writes at init |
 | `AT %M…` | `local` | read-only: master `Get`s, cannot `Set` |
-| plain `VAR` (non-located) | not exported by default | optional read-only `local` ([Q1](#open-questions)) |
+| plain `VAR` (non-located) | not exported | deferred to a follow-up version |
 
 The input/output causality is not inferred heuristically — it comes
 straight from the `%I`/`%Q` region the variable is located in. Before a step the
@@ -335,10 +336,11 @@ shim writes FMU inputs into the `%I` image; after the step it reads FMU outputs
 from the `%Q` image.
 
 **Value references.** Each exported I/O variable gets a stable FMI
-`valueReference` (an opaque `uint32`) assigned at compile time and recorded in
-the interface section (next). The shim maps `valueReference → (region, offset,
-width)` in the process image. Because the interface section is generated from
-located variables, value references are stable across recompiles that don't
+`valueReference` (an opaque `uint32`) assigned by the compiler and written into
+`modelDescription.xml` (see [next section](#interface-metadata-generated-at-compile-time)).
+The shim maps `valueReference → (region, offset, width)` in the process image.
+Because references are derived from the located variables, they are stable across
+recompiles that don't
 change the I/O map.
 
 ### Type Mapping
@@ -382,7 +384,7 @@ VM already stores and formats them that way. The six calendar types
 but their in-memory representation is not yet finalized** — debug formatting
 implements only `TIME`/`LTIME` today. The encodings above are a concrete proposal
 that FMI export needs, but they must be pinned by a storage ADR before export can
-emit them; that ADR is a prerequisite tracked as [Q8](#open-questions). Until it
+emit them; that ADR is a prerequisite tracked as [Q6](#open-questions). Until it
 lands, an FMU whose interface uses a calendar type is rejected at
 `compile --format fmu` with a clear "type not yet supported for FMI export"
 error rather than emitting an unspecified encoding.
@@ -391,28 +393,33 @@ The exact unit/epoch for the time and date types is recorded in the
 `modelDescription.xml` variable's unit annotation so the master interprets the
 integer correctly.
 
-## Interface Metadata in the Container
+## Interface Metadata (generated at compile time)
 
-`modelDescription.xml` must be generatable **without** the debug section, which
-is optional and strippable. Two coupled changes:
+`modelDescription.xml` is generated at **compile time**, while the compiler still
+has the full located-variable (IOM) information from the source. This means **no
+container-format change is needed now** to support FMI export — the model
+description is a compile output, produced directly from what the compiler already
+computes, not reconstructed later from a new container section.
 
-1. **Located-variable information becomes a first-class container artifact.**
-   The compiler records, for each located variable, its `{name, region (I/Q/M),
-   size, address, iec_type, valueReference, start value}`. This is a small,
-   non-strippable **interface section** (or an always-emitted subset of the debug
-   section). It is the single source of truth for both the process-image layout
-   and the FMU interface. *(Note: `input_image_offset`/`output_image_offset`
-   already exist in the task table but are hardcoded to `0`,
-   `compiler/container/src/builder.rs:342-343`; the process image populates
-   them.)*
-2. **The debug info gains a second emit format: the model description.** The same
-   metadata the debug tooling already understands is rendered, via a second
-   output format, into `modelDescription.xml`. One canonical description of the
-   variables, two serializations (debug section for tooling; model description
-   for FMI).
+1. **The compiler emits the model description directly.** During
+   `ironplcc compile --format fmu`, the compiler already knows every located
+   variable's `{name, region (I/Q/M), size, address, iec_type, start value}` and
+   assigns each a stable `valueReference`. It writes these straight into
+   `modelDescription.xml`. Nothing has to be read back out of the compiled
+   container, so the (optional, strippable) debug section is never on the FMI
+   path.
+2. **The runtime's IOM layout comes from the process-image work, not a new FMI
+   section.** The VM still needs the `%I`/`%Q`/`%M` layout at run time, but that
+   is exactly what the [process image](#process-image) already builds — the task
+   table's `input_image_offset`/`output_image_offset` (today hardcoded to `0`,
+   `compiler/container/src/builder.rs:342-343`) plus the located-variable
+   placement it requires. Those **IOM points** are the durable, non-strippable
+   truth in the container; FMI export does not add anything FMI-specific to the
+   format.
 
-This directly answers the review point that the model description must not depend
-on debug info and that we "need to build something" for located variables.
+Net: FMI export rides on information the compiler already has, emitted at compile
+time, plus the process-image work already planned. We are **not** changing the
+container format for FMI now.
 
 ## Time and Stepping
 
@@ -441,7 +448,7 @@ Reconciling them is the crux, and FMI 3.0 gives us the mechanisms.
 
 The precise policy (fixed-only vs variable-with-substepping, and whether the task
 period is fixed by the program or overridable at instantiation) is
-[Q3](#open-questions). Determinism holds in all cases because the VM consumes the
+[Q2](#open-questions). Determinism holds in all cases because the VM consumes the
 injected clock.
 
 ## The FMI Shim and Crate Reuse
@@ -466,11 +473,11 @@ the FMI 3.0 C API implementation, type-safe variable handling, and the
 `modelDescription.xml` from a Rust struct — i.e. exactly the boilerplate we would
 otherwise hand-write, and it hides the `extern "C"` FFI from the user. This is a
 strong reuse candidate: `ironplc-fmi` could define its FMU model in terms of the
-IronPLC interface section and let `fmi-export` emit the ABI, rather than
+IronPLC located-variable (IOM) info and let `fmi-export` emit the ABI, rather than
 hand-rolling `fmi3*` exports. **Caveat:** rust-fmi's export path is relatively
 new; maturity, license, and how cleanly its model abstraction accepts a
 *container-driven* (rather than compile-time-struct) variable set need a short
-spike before we commit ([Q7](#open-questions)). If it doesn't fit, the fallback
+spike before we commit ([Q5](#open-questions)). If it doesn't fit, the fallback
 is a hand-written shim — larger, but well-understood.
 
 ## Process Image
@@ -482,7 +489,7 @@ the `INPUT_FREEZE`/`OUTPUT_FLUSH` phases are `// Stub` no-ops
 The work:
 
 1. Allocates the `%I`/`%Q`/`%M` regions and populates `input_image_offset` /
-   `output_image_offset` from the interface section.
+   `output_image_offset` from the located-variable (IOM) layout.
 2. Adds `LOAD_INPUT`/`STORE_OUTPUT`/`LOAD_MEMORY`/`STORE_MEMORY` opcodes (or
    routes located access through the images) and compiles located variables to
    them instead of flat slots.
@@ -516,8 +523,9 @@ tool. `compile` already exists and emits the `.iplc` container; an
 output-format flag adds the FMU packaging path:
 
 1. Compile the project to the `.iplc` container (existing behavior).
-2. Generate `modelDescription.xml` from the interface section (the debug info's
-   second emit format).
+2. Generate `modelDescription.xml` at compile time from the located-variable
+   (IOM) information (no container-format change; see
+   [Interface Metadata](#interface-metadata-generated-at-compile-time)).
 3. Zip together: `modelDescription.xml`, the `.iplc` container under
    `resources/`, and the **prebuilt** `ironplc-fmi` shared library for the host
    platform under `binaries/<platform>/`.
@@ -526,7 +534,7 @@ The compile step **does not build `ironplc-fmi`** — that library is a versione
 artifact shipped with the IronPLC distribution and simply copied into the
 archive. Because only the host platform's binary is included, the resulting FMU
 runs on the same OS/CPU it was compiled on (the v1 same-host constraint;
-cross-platform is [Q6](#open-questions)).
+cross-platform is [Q7](#open-questions)).
 
 ## Implementation Phases
 
@@ -559,7 +567,7 @@ once the open questions are resolved.
 - **FMI clocks / event mode / hybrid co-simulation** beyond fixed/variable
   communication steps.
 - **Multi-task programs** as a single FMU — v1 targets a single program / single
-  scan task ([Q4](#open-questions)).
+  scan task ([Q3](#open-questions)).
 - Real-time / hardware-in-the-loop execution — co-simulation here is
   logical-time, master-driven.
 
@@ -567,42 +575,30 @@ once the open questions are resolved.
 
 Please answer inline as PR feedback.
 
-- **Q1 — Debugger-style capabilities (future).** v1 is settled: interface = I/O,
-  plus read-only `%M`; plain non-located locals are not exposed (deferred to a
-  possible follow-up). The remaining open question is only forward-looking — does
-  OIP foresee needing any richer debugger-style capability through the FMI
-  boundary (e.g. exposing selected locals, or breakpoint/step control), so we
-  leave room for it in the interface-section format now?
-
-- **Q2 — Conformance target.** Which FMI 3.0 master(s) must the first release
+- **Q1 — Conformance target.** Which FMI 3.0 master(s) must the first release
   interoperate with (OMSimulator, FMPy, a specific OIP tool)? This pins the
   conformance/integration-test target in phases 5–6.
 
-- **Q3 — Step-size policy.** Advertise `canHandleVariableCommunicationStepSize =
+- **Q2 — Step-size policy.** Advertise `canHandleVariableCommunicationStepSize =
   false` (master must step at the scan period — simplest, most PLC-faithful), or
   `true` with internal sub-stepping? And is the scan/task period fixed by the
   program, or overridable by the master at instantiation?
 
-- **Q4 — Multi-task programs.** Confirm v1 is single-program/single-scan-task.
+- **Q3 — Multi-task programs.** Confirm v1 is single-program/single-scan-task.
   For a future multi-task program, is the FMU one unit that internally steps all
   tasks within a `DoStep`, or is that a later design?
 
-- **Q5 — Parameters.** Should any non-I/O values be exportable as tunable FMI
+- **Q4 — Parameters.** Should any non-I/O values be exportable as tunable FMI
   `parameter`s (set at initialization) — e.g. setpoints/limits — and if so, how
   are they marked in source (a pragma/attribute), given that `%M`/globals are not
   the interface? Or are parameters out of scope for v1 (I/O only)?
 
-- **Q6 — Cross-platform packaging.** Is same-host execution acceptable for v1
-  (FMU runs where it was compiled)? If OIP needs an FMU compiled on one machine
-  to run on another OS/CPU, we need a cross-compilation/installer approach —
-  worth scoping now?
-
-- **Q7 — `fmi-export` reuse.** Approve a short spike to evaluate rust-fmi's
+- **Q5 — `fmi-export` reuse.** Approve a short spike to evaluate rust-fmi's
   `fmi-export` + `cargo-fmi` for generating the FMI 3.0 ABI and model description
   from a container-driven variable set (vs. a hand-written shim)? Any constraint
   on adding that dependency (license, maturity, supply-chain review)?
 
-- **Q8 — Calendar date/time storage ADR.** `TIME`/`LTIME` are pinned by ADR-0021
+- **Q6 — Calendar date/time storage ADR.** `TIME`/`LTIME` are pinned by ADR-0021
   (`Int32`/`Int64` milliseconds). The six calendar types
   (`DATE`/`LDATE`/`TOD`/`LTOD`/`DT`/`LDT`) are recognized as type tags but have no
   finalized in-memory representation. The [date/duration table](#dateduration-types)
@@ -610,14 +606,13 @@ Please answer inline as PR feedback.
   we land a storage ADR to make them real? Until then, FMI export rejects
   interfaces that use a calendar type.
 
-- **Q9 — Target-hardware runtime vs. co-simulation host.** IronPLC ships
+- **Q7 — Target-hardware runtime vs. co-simulation host.** IronPLC ships
   `ironplc-fmi` built for the PLC's **target hardware**, so the FMU binary matches
   that platform and the co-simulation must run there. What platform(s) does your
   OIP co-simulation host actually run on? If it differs from the target hardware,
-  we need a cross-build/installer approach (this is the concrete, OIP-facing form
-  of [Q6](#open-questions)).
+  we need a cross-build/installer approach.
 
-- **Q10 — OIP integration surface.** The FMU is a standard FMI 3.0 CS component,
+- **Q8 — OIP integration surface.** The FMU is a standard FMI 3.0 CS component,
   so it should drop into an OIP scenario like any other FMU. What is OIP's actual
   integration format — the scenario/config file (an OSP-style `SystemStructure`
   XML? something else?), how components are registered, and any OIP-specific
