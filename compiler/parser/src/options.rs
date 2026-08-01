@@ -330,6 +330,11 @@ define_compiler_options! {
     "--allow-bit-string-case-labels",
     [Rusty, Codesys, TwinCat],
     allow_bit_string_case_labels,
+
+    "Allow STRING(n)/WSTRING(n) parenthesis length delimiter in addition to the standard STRING[n]/WSTRING[n] brackets",
+    "--allow-paren-string-length",
+    [Rusty, Codesys, TwinCat],
+    allow_paren_string_length,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -438,6 +443,7 @@ mod tests {
                 "allow_mixed_located_var_declarations",
                 "allow_constant_initializer_expressions",
                 "allow_bit_string_case_labels",
+                "allow_paren_string_length",
             ],
         );
     }
@@ -472,6 +478,7 @@ mod tests {
                 "allow_mixed_located_var_declarations",
                 "allow_constant_initializer_expressions",
                 "allow_bit_string_case_labels",
+                "allow_paren_string_length",
             ],
         );
     }
@@ -506,6 +513,7 @@ mod tests {
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
                 "allow_bit_string_case_labels",
+                "allow_paren_string_length",
             ],
         );
     }

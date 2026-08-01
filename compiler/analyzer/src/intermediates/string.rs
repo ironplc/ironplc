@@ -14,7 +14,7 @@ fn char_width_for(width: &StringType) -> CharWidth {
 }
 
 pub fn from(initializer: &StringInitializer) -> TypeAttributes {
-    // String type with specific length: MY_STRING : STRING(10);
+    // String type with specific length: MY_STRING : STRING[10];
     TypeAttributes::new(
         initializer.span(),
         IntermediateType::String {
@@ -78,7 +78,7 @@ END_TYPE
     fn apply_when_wstring_type_declaration_then_creates_string_type() {
         let program = "
 TYPE
-MY_WSTR : WSTRING(100) := \"hello\";
+MY_WSTR : WSTRING[100] := \"hello\";
 END_TYPE
         ";
         let input =
@@ -104,7 +104,7 @@ END_TYPE
     fn apply_when_string_type_declaration_then_creates_string_type() {
         let program = "
 TYPE
-MY_STRING : STRING(50) := 'hello';
+MY_STRING : STRING[50] := 'hello';
 END_TYPE
         ";
         let input =

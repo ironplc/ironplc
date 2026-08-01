@@ -586,7 +586,7 @@ END_TYPE
     fn apply_when_array_element_is_string_type_then_ok() {
         let program = "
 TYPE
-  STRING10 : STRING(10);
+  STRING10 : STRING[10];
 END_TYPE
 
 TYPE
