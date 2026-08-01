@@ -11,6 +11,27 @@
 
 mod common;
 
+/// Spec-conformance requirements generated from `specs/design/runtime-execution-model.md`.
+/// Referenced by `#[spec_test(REQ_RT_vm_NNN)]`. See `vm/build.rs`. Every item the
+/// build script emits carries its own targeted `#[allow(dead_code)]`, so no
+/// module-level blanket allow is needed.
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+
+/// Meta-test: every `REQ-RT-vm-NNN` requirement in
+/// `specs/design/runtime-execution-model.md` has a `#[spec_test(...)]`
+/// somewhere in this crate's `src/` or `tests/`. The build script populates
+/// `UNTESTED` from the files it scans.
+#[test]
+fn all_spec_requirements_have_tests() {
+    assert!(
+        spec_requirements::UNTESTED.is_empty(),
+        "Requirements in spec with no conformance test: {:?}",
+        spec_requirements::UNTESTED
+    );
+}
+
 mod debug_engine;
 mod execute_add_i32;
 mod execute_arith_f32;
