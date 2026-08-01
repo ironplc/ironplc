@@ -12,7 +12,7 @@ The IEC 61131-3 standard grammar (Annex B) declares a string length only
 with square brackets --
 ``single_byte_string_spec ::= 'STRING' ['[' unsigned_int ']'] ...`` (and the
 corresponding ``'WSTRING' ['[' unsigned_int ']']``). The parenthesis form is
-a vendor extension accepted by CODESYS and TwinCAT.
+a vendor extension.
 
 A bracketed length (``STRING[255]``) is standard syntax and is always
 allowed.
