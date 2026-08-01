@@ -2,9 +2,9 @@
 //! delimiter unless the `allow_paren_string_length` flag is set.
 //!
 //! IEC 61131-3 (Annex B) declares a string length only with square brackets
-//! (`STRING [ n ]`). The parenthesis form is a CODESYS/TwinCAT vendor
-//! extension, accepted under `--allow-paren-string-length` (implied by the
-//! `rusty`, `codesys`, and `twincat` dialects).
+//! (`STRING [ n ]`). The parenthesis form is a vendor extension, accepted
+//! under `--allow-paren-string-length`; which dialects enable it is defined
+//! by the dialect mapping in `options.rs`, not restated here.
 //!
 //! The grammar accepts the parenthesis form unconditionally (see
 //! `string_length_spec()` and `string_type_declaration__parenthesis()`), so
