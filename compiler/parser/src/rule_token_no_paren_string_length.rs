@@ -12,6 +12,15 @@
 //! keyword followed (ignoring trivia) by `(` is unambiguously a length
 //! delimiter -- neither keyword is callable and typed string literals use
 //! `STRING#`, so no standard construct places `(` directly after the keyword.
+//!
+//! The set of tokens skipped here must match the grammar's whitespace rule
+//! `_ = (whitespace() / comment() / pragma())*` exactly, or the gate would
+//! under-enforce: e.g. `STRING {attribute 'x'} (255)` parses (the grammar's
+//! `_` skips the collapsed `Pragma` token) and must be rejected the same way
+//! a plain `STRING (255)` is. `Pragma` tokens only exist when `allow_pragmas`
+//! is set (`xform_collapse_pragmas` runs before this check); otherwise the
+//! braces surface as their own tokens and never sit between the keyword and
+//! `(`.
 
 use dsl::diagnostic::{Diagnostic, Label};
 
@@ -23,7 +32,7 @@ use crate::{
 fn is_trivia(t: &TokenType) -> bool {
     matches!(
         t,
-        TokenType::Whitespace | TokenType::Newline | TokenType::Comment
+        TokenType::Whitespace | TokenType::Newline | TokenType::Comment | TokenType::Pragma
     )
 }
 
@@ -125,11 +134,53 @@ mod test {
     }
 
     #[test]
-    fn apply_when_string_paren_length_with_trivia_and_flag_off_then_error() {
+    fn apply_when_string_paren_length_with_whitespace_and_flag_off_then_error() {
         // Whitespace between the keyword and `(` must not hide the delimiter.
         let tokens = vec![
             mk_token(TokenType::String, "STRING"),
             mk_token(TokenType::Whitespace, " "),
+            mk_token(TokenType::LeftParen, "("),
+            mk_token(TokenType::Digits, "255"),
+            mk_token(TokenType::RightParen, ")"),
+        ];
+        let result = apply(&tokens, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_string_paren_length_with_newline_and_flag_off_then_error() {
+        let tokens = vec![
+            mk_token(TokenType::String, "STRING"),
+            mk_token(TokenType::Newline, "\n"),
+            mk_token(TokenType::LeftParen, "("),
+            mk_token(TokenType::Digits, "255"),
+            mk_token(TokenType::RightParen, ")"),
+        ];
+        let result = apply(&tokens, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_string_paren_length_with_comment_and_flag_off_then_error() {
+        let tokens = vec![
+            mk_token(TokenType::String, "STRING"),
+            mk_token(TokenType::Comment, "(* n *)"),
+            mk_token(TokenType::LeftParen, "("),
+            mk_token(TokenType::Digits, "255"),
+            mk_token(TokenType::RightParen, ")"),
+        ];
+        let result = apply(&tokens, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_string_paren_length_with_pragma_and_flag_off_then_error() {
+        // The grammar's `_` also skips collapsed Pragma tokens, so the gate
+        // must too -- otherwise a pragma between the keyword and `(` would let
+        // the paren form through unflagged.
+        let tokens = vec![
+            mk_token(TokenType::String, "STRING"),
+            mk_token(TokenType::Pragma, "{attribute 'x'}"),
             mk_token(TokenType::LeftParen, "("),
             mk_token(TokenType::Digits, "255"),
             mk_token(TokenType::RightParen, ")"),

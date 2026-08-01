@@ -297,6 +297,55 @@ END_PROGRAM",
 }
 
 #[test]
+fn parse_when_var_with_string_paren_length_and_pragma_between_then_parses() {
+    // The grammar's whitespace rule skips a collapsed pragma between the
+    // STRING keyword and its length, so with both allow_pragmas and
+    // allow_paren_string_length on this parses end-to-end.
+    let options = CompilerOptions {
+        allow_pragmas: true,
+        allow_paren_string_length: true,
+        ..CompilerOptions::default()
+    };
+    let result = parse_program(
+        "PROGRAM main
+VAR
+    hostName : STRING {attribute 'x'} (255);
+END_VAR
+END_PROGRAM",
+        &FileId::default(),
+        &options,
+    );
+    let lib = result.expect("should parse");
+    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
+    let spec = cast!(
+        &prog.variables[0].initializer,
+        InitialValueAssignmentKind::String
+    );
+    assert!(spec.length.is_some());
+}
+
+#[test]
+fn parse_when_var_with_string_paren_length_and_pragma_between_but_flag_off_then_rejected() {
+    // Same pragma-separated paren form, but with allow_paren_string_length
+    // off: the pragma must not let it slip past the gate (P4042). Guards the
+    // gate's trivia set staying in sync with the grammar's `_` rule.
+    let options = CompilerOptions {
+        allow_pragmas: true,
+        ..CompilerOptions::default()
+    };
+    let result = parse_program(
+        "PROGRAM main
+VAR
+    hostName : STRING {attribute 'x'} (255);
+END_VAR
+END_PROGRAM",
+        &FileId::default(),
+        &options,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
 fn parse_when_function_with_bare_string_return_type_then_parses() {
     let lib = parse_text(
         "FUNCTION my_func : STRING
