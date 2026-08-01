@@ -10,7 +10,7 @@ Returns the size in bytes of a variable or type.
    * - **IEC 61131-3**
      - Not part of the standard (vendor extension)
    * - **Support**
-     - Supported (requires ``--allow-sizeof`` or ``--dialect rusty``)
+     - Supported (requires ``--allow-sizeof``)
 
 Signatures
 ----------
@@ -57,14 +57,8 @@ Enabling
 
    ironplcc check --allow-sizeof main.st
 
-Or use the RuSTy dialect which enables all vendor extensions:
-
-.. code-block:: shell
-
-   ironplcc check --dialect rusty main.st
-
-See :doc:`/explanation/enabling-dialects-and-features` for more information
-about dialects and feature flags.
+.. |flag| replace:: ``--allow-sizeof``
+.. include:: /includes/enabled-by-flag.rst
 
 Example
 -------

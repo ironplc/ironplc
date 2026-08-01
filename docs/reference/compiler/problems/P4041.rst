@@ -48,6 +48,7 @@ To fix this error, either use a decimal label:
    END_CASE;
    END_FUNCTION_BLOCK
 
-Or enable the vendor extension with the ``--allow-bit-string-case-labels``
-flag (also enabled by ``--dialect=rusty``, ``--dialect=codesys``, and
-``--dialect=twincat``).
+Or enable the vendor extension:
+
+.. |flag| replace:: ``--allow-bit-string-case-labels``
+.. include:: /includes/enabled-by-flag.rst
