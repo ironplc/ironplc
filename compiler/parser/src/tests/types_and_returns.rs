@@ -257,6 +257,46 @@ END_PROGRAM",
 }
 
 #[test]
+fn parse_when_var_with_string_mixed_bracket_paren_delimiters_then_rejected() {
+    // A mismatched delimiter pair (`[` ... `)`) is not a valid length spec
+    // under either form. Uses the flag ON so the failure is attributable to
+    // the delimiter mismatch, not the vendor-extension gate.
+    let options = CompilerOptions {
+        allow_paren_string_length: true,
+        ..CompilerOptions::default()
+    };
+    let result = parse_program(
+        "PROGRAM main
+VAR
+    hostName : STRING[20);
+END_VAR
+END_PROGRAM",
+        &FileId::default(),
+        &options,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn parse_when_var_with_string_mixed_paren_bracket_delimiters_then_rejected() {
+    // The other mismatched pair (`(` ... `]`). Flag ON, same reasoning.
+    let options = CompilerOptions {
+        allow_paren_string_length: true,
+        ..CompilerOptions::default()
+    };
+    let result = parse_program(
+        "PROGRAM main
+VAR
+    hostName : STRING(20];
+END_VAR
+END_PROGRAM",
+        &FileId::default(),
+        &options,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
 fn parse_when_function_with_bare_string_return_type_then_parses() {
     let lib = parse_text(
         "FUNCTION my_func : STRING
