@@ -78,6 +78,18 @@ pub(crate) fn parse_text_reference_to(source: &str) -> Library {
     result.unwrap()
 }
 
+/// Parse with `allow_paren_string_length` enabled (the STRING(n)/WSTRING(n)
+/// vendor delimiter). The default (strict IEC 61131-3) dialect rejects it.
+pub(crate) fn parse_text_paren_string_length(source: &str) -> Library {
+    let options = CompilerOptions {
+        allow_paren_string_length: true,
+        ..CompilerOptions::default()
+    };
+    let result = parse_program(source, &FileId::default(), &options);
+    assert!(result.is_ok(), "Parse failed: {:?}", result.err());
+    result.unwrap()
+}
+
 /// The single (non-FB-call) statement in a program body.
 pub(crate) fn only_statement(lib: &Library) -> &StmtKind {
     let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);

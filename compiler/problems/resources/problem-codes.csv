@@ -86,6 +86,7 @@ P4038,InitializerNotConstantExpression,Variable initializer expression does not 
 P4039,ConstantExpressionDivisionByZero,Constant expression divides or takes the modulo of a value by zero
 P4040,ConstantExpressionOverflow,Constant integer expression overflows its evaluation range
 P4041,BitStringCaseLabelNotAllowed,Hex/binary/octal bit-string literal as a CASE label requires --allow-bit-string-case-labels flag
+P4042,ParenStringLengthNotAllowed,STRING(n)/WSTRING(n) parenthesis length delimiter requires --allow-paren-string-length flag
 P6001,CannotCanonicalizePath,Unable to canonicalize the path
 P6002,CannotReadMetadata,Unable to read metadata for the path
 P6003,CannotReadDirectory,Unable to read directory

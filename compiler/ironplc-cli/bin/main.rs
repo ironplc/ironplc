@@ -179,6 +179,12 @@ struct FileArgs {
     /// standard.
     #[arg(long)]
     allow_bit_string_case_labels: bool,
+
+    /// Allow the STRING(n)/WSTRING(n) parenthesis length delimiter instead of
+    /// the standard STRING[n]/WSTRING[n] brackets. This is a vendor extension
+    /// (CODESYS/TwinCAT) not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_paren_string_length: bool,
 }
 
 impl FileArgs {
@@ -207,6 +213,7 @@ impl FileArgs {
         options.allow_constant_initializer_expressions |=
             self.allow_constant_initializer_expressions;
         options.allow_bit_string_case_labels |= self.allow_bit_string_case_labels;
+        options.allow_paren_string_length |= self.allow_paren_string_length;
         options
     }
 }

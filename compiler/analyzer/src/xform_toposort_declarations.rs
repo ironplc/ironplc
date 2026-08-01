@@ -715,7 +715,7 @@ END_TYPE";
         let program = "
 TYPE
 TYPE_NAME_ALIAS : TYPE_NAME;
-TYPE_NAME : STRING(5);
+TYPE_NAME : STRING[5];
 END_TYPE";
 
         let library = parse_only(program);

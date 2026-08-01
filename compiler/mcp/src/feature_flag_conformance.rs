@@ -196,6 +196,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : DINT;\ny : DINT;\nEND_VAR\nCASE x OF\n16#D012: y := 1;\nEND_CASE;\nEND_PROGRAM",
     },
+    // The STRING(n) parenthesis length delimiter. The grammar accepts it
+    // unconditionally; a token-stream rule rejects it (P4042) when the flag
+    // is off. The standard STRING[n] bracket form is always accepted.
+    FlagFixture {
+        key: "allow_paren_string_length",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nhostName : STRING(255);\nEND_VAR\nEND_PROGRAM",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.

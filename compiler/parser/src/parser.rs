@@ -1198,10 +1198,11 @@ parser! {
       }
     }
     // CODESYS/TwinCAT accept STRING(n)/WSTRING(n) with parentheses as an
-    // alternate delimiter to the standard STRING[n]/WSTRING[n] brackets --
-    // same precedent as string_type_declaration__parenthesis() for TYPE
-    // alias declarations, which already accepts this unconditionally (no
-    // dialect flag: a delimiter choice, not a new keyword).
+    // alternate delimiter to the standard STRING[n]/WSTRING[n] brackets.
+    // The parenthesis form is a vendor extension (not standard IEC
+    // 61131-3), so the grammar accepts it permissively here and
+    // rule_token_no_paren_string_length rejects it (P4042) unless
+    // allow_paren_string_length is set.
     rule string_length_spec() -> IntegerRef =
       tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) { i }
       / tok(TokenType::LeftParen) _ i:integer_ref() _ tok(TokenType::RightParen) { i }

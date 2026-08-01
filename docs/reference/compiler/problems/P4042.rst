@@ -1,0 +1,45 @@
+=====
+P4042
+=====
+
+.. problem-summary:: P4042
+
+This error occurs when a string type's maximum length is delimited with
+parentheses (``STRING(n)`` / ``WSTRING(n)``) instead of the standard square
+brackets, without the ``--allow-paren-string-length`` compiler flag.
+
+The IEC 61131-3 standard grammar (Annex B) declares a string length only
+with square brackets --
+``single_byte_string_spec ::= 'STRING' ['[' unsigned_int ']'] ...`` (and the
+corresponding ``'WSTRING' ['[' unsigned_int ']']``). The parenthesis form is
+a vendor extension accepted by CODESYS and TwinCAT.
+
+A bracketed length (``STRING[255]``) is standard syntax and is always
+allowed.
+
+Example
+-------
+
+The following code will generate error P4042:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       hostName : STRING(255);
+   END_VAR
+   END_FUNCTION_BLOCK
+
+To fix this error, either use the standard bracket form:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       hostName : STRING[255];
+   END_VAR
+   END_FUNCTION_BLOCK
+
+Or enable the vendor extension with the ``--allow-paren-string-length``
+flag (also enabled by ``--dialect=rusty``, ``--dialect=codesys``, and
+``--dialect=twincat``).

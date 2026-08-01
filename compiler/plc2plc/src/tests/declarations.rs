@@ -58,14 +58,21 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 ";
-    let library_original =
-        parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
+    // The parenthesis length form is a vendor extension, so it only parses
+    // with allow_paren_string_length enabled.
+    let paren_options = CompilerOptions {
+        allow_paren_string_length: true,
+        ..CompilerOptions::default()
+    };
+    let library_original = parse_program(source, &FileId::default(), &paren_options).unwrap();
     let rendered = write_to_string(&library_original).unwrap();
 
     // The renderer always normalizes to the bracket form -- there's no
     // bracket/paren marker stored in the DSL, matching how
     // StringSpecification/StringInitializer already only store
-    // length: Option<IntegerRef> with no delimiter distinction.
+    // length: Option<IntegerRef> with no delimiter distinction. The
+    // normalized output therefore parses under any dialect, including the
+    // strict default.
     assert!(rendered.contains("STRING [ 255 ]"));
 
     let library_rendered =
