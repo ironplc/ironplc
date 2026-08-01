@@ -42,6 +42,7 @@ To fix this error, either move the located variable into its own block:
    END_VAR
    END_FUNCTION_BLOCK
 
-Or enable the vendor extension with the
-``--allow-mixed-located-var-declarations`` flag (also enabled by
-``--dialect=rusty``, ``--dialect=codesys``, and ``--dialect=twincat``).
+Or enable the vendor extension:
+
+.. |flag| replace:: ``--allow-mixed-located-var-declarations``
+.. include:: /includes/enabled-by-flag.rst

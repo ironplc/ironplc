@@ -11,15 +11,15 @@ variable.
 .. tip::
 
    References can also be enabled without full Edition 3 by passing
-   ``--allow-ref-to`` or by selecting the ``rusty`` dialect.
+   ``--allow-ref-to``, or by selecting a dialect that includes it.
    See :doc:`/explanation/enabling-dialects-and-features`.
 
 .. note::
 
    Beckhoff TwinCAT and CODESYS spell references ``REFERENCE TO`` and bind them
    with the ``REF=`` operator (``r REF= x;``) rather than ``REF_TO`` and
-   ``r := REF(x);``. Enable this variant with ``--allow-reference-to`` or the
-   ``twincat`` or ``codesys`` dialect. It describes the same underlying reference,
+   ``r := REF(x);``. Enable this variant with ``--allow-reference-to``, or a
+   dialect that includes it. It describes the same underlying reference,
    but — unlike ``REF_TO`` — a ``REFERENCE TO`` variable *auto-dereferences*: a
    bare use reads through the reference and a bare ``:=`` writes through it, with
    no ``^`` needed. Only the binding operator ``REF=`` and ``__ISVALIDREF(r)``

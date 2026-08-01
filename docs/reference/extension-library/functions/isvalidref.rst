@@ -11,7 +11,7 @@ target.
    * - **IEC 61131-3**
      - Not part of the standard (Beckhoff TwinCAT / CODESYS extension)
    * - **Support**
-     - Supported (requires ``--allow-reference-to`` or ``--dialect twincat`` / ``--dialect codesys``)
+     - Supported (requires ``--allow-reference-to``)
 
 Signatures
 ----------
@@ -58,14 +58,8 @@ Enabling
 
    ironplcc check --allow-reference-to main.st
 
-Or use a dialect that enables ``REFERENCE TO`` support:
-
-.. code-block:: shell
-
-   ironplcc check --dialect twincat main.st
-
-See :doc:`/explanation/enabling-dialects-and-features` for more information
-about dialects and feature flags.
+.. |flag| replace:: ``--allow-reference-to``
+.. include:: /includes/enabled-by-flag.rst
 
 Example
 -------

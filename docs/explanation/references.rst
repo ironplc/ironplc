@@ -8,10 +8,9 @@ list, see the :doc:`/reference/language/data-types/derived/reference-types`.
 
 .. note::
 
-   References require enabling through a dialect or flag. You can select a
-   dialect that includes references (``--dialect iec61131-3-ed3`` or
-   ``--dialect rusty``) or enable references directly with ``--allow-ref-to``.
-   See :doc:`enabling-dialects-and-features` for details.
+   References require enabling through a dialect or flag. Enable them directly
+   with ``--allow-ref-to``, or select a dialect that includes them. See
+   :doc:`enabling-dialects-and-features` for details.
 
 --------------------------------------
 What Is a Reference?
