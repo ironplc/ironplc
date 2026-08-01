@@ -1,0 +1,47 @@
+=====
+P9004
+=====
+
+.. problem-summary:: P9004
+
+The CODESYS/TwinCAT call-style function-block instance initializer
+(``name : FB_Type(args)`` -- an argument list directly after the type name,
+with no ``:=``) is recognized by the parser but is not yet supported in code
+generation.
+
+In CODESYS these arguments are passed to the function block's constructor
+(the ``FB_init`` method). The compiler parses and preserves this construct
+so that source files using it are not rejected outright, but it cannot yet
+generate code that applies the arguments, so it reports this problem instead
+of silently ignoring them.
+
+Example
+-------
+
+The following code will generate error P9004:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Comm
+   VAR_INPUT
+       retries : INT;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       comm : FB_Comm(retries := 3);
+   END_VAR
+   END_FUNCTION_BLOCK
+
+To avoid this error, declare the instance without a call-style initializer
+and assign its inputs in the function block body instead:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       comm : FB_Comm;
+   END_VAR
+       comm.retries := 3;
+   END_FUNCTION_BLOCK

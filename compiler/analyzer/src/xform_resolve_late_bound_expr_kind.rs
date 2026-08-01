@@ -115,6 +115,7 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::EnumeratedValues(_) => VariableType::EnumeratedValues,
             InitialValueAssignmentKind::EnumeratedType(_) => VariableType::EnumeratedType,
             InitialValueAssignmentKind::FunctionBlock(_) => VariableType::FunctionBlock,
+            InitialValueAssignmentKind::FunctionBlockCall(_) => VariableType::FunctionBlock,
             InitialValueAssignmentKind::Subrange(_) => VariableType::Subrange,
             InitialValueAssignmentKind::Structure(_) => VariableType::Structure,
             InitialValueAssignmentKind::Array(_) => VariableType::Array,

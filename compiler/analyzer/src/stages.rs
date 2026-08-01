@@ -15,7 +15,8 @@ use crate::{
     ironplc_dsl::common::Library,
     result::SemanticResult,
     rule_bit_access_range, rule_case_bit_string_label, rule_decl_struct_element_unique_names,
-    rule_decl_subrange_limits, rule_enumeration_values_unique, rule_function_block_invocation,
+    rule_decl_subrange_limits, rule_enumeration_values_unique,
+    rule_function_block_call_unsupported, rule_function_block_invocation,
     rule_function_call_declared, rule_function_call_type_check,
     rule_mixed_located_var_declarations, rule_no_top_level_var_global, rule_pou_hierarchy,
     rule_program_task_definition_exists, rule_ref_to, rule_stdlib_type_redefinition,
@@ -294,6 +295,7 @@ pub(crate) fn semantic(
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
+        rule_function_block_call_unsupported::apply,
         rule_function_block_invocation::apply,
         rule_function_call_declared::apply,
         rule_function_call_type_check::apply,
@@ -452,5 +454,50 @@ END_FUNCTION_BLOCK";
         let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
 
         assert!(context.has_diagnostics());
+    }
+
+    // ---------------------------------------------------------------------
+    // FB-instance call-style initializer (distinct node).
+    // See specs/plans/2026-08-01-fb-call-style-initializer-distinct-node.md.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn analyze_when_fb_call_style_init_references_earlier_declared_fb_then_only_p9004() {
+        // End-to-end: the call-style initializer references an earlier-declared
+        // FB. It must produce exactly the "not yet supported in codegen"
+        // diagnostic (P9004) from the deferring rule -- and crucially NOT a
+        // spurious P2011 "Parent type is not declared", which would appear if
+        // the new FunctionBlockCall node were not wired into toposort/type
+        // resolution like the FunctionBlock node.
+        use ironplc_problems::Problem;
+
+        let program = "
+FUNCTION_BLOCK FB_Comm
+VAR_INPUT
+    retries : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm(retries := 3);
+END_VAR
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        let codes: Vec<&str> = context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert!(
+            codes.contains(&Problem::FunctionBlockCallInitUnsupported.code()),
+            "expected P9004, got: {codes:?}"
+        );
+        assert!(
+            !codes.contains(&Problem::ParentTypeNotDeclared.code()),
+            "unexpected spurious P2011: {codes:?}"
+        );
     }
 }

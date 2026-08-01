@@ -185,6 +185,22 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 }
                 self.insert_alias(&node.type_name, &fb_init.type_name)?;
             }
+            InitialValueAssignmentKind::FunctionBlockCall(fb_call) => {
+                // The call-style FB initializer (`X : FB(args)`) is only
+                // produced by the parser for VAR declarations, not type
+                // declarations, so this arm is effectively unreachable here.
+                // Handle it like the FunctionBlock alias arm for robustness:
+                // treat it as an alias to the referenced FB type, ignoring
+                // the (codegen-unsupported) constructor arguments.
+                if self.get(&fb_call.type_name).is_none() {
+                    return Err(Diagnostic::problem(
+                        Problem::ParentTypeNotDeclared,
+                        Label::span(node.type_name.span(), "Function block type alias"),
+                    )
+                    .with_secondary(Label::span(fb_call.type_name.span(), "Base type")));
+                }
+                self.insert_alias(&node.type_name, &fb_call.type_name)?;
+            }
             InitialValueAssignmentKind::Subrange(spec) => {
                 // Handle subrange specifications like: TYPE MY_RANGE : INT (1..100); END_TYPE
                 let result = subrange::try_from(&node.type_name, spec, self)?;

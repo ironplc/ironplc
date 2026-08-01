@@ -930,7 +930,7 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() / fb_call_style_var_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
     // CODESYS/TwinCAT vendor extension: a located variable (complete or
     // incomplete/wildcard address) declared inside an otherwise plain
     // VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own
@@ -986,6 +986,32 @@ parser! {
       }).collect()
     }
     rule fb_name() -> Id = i:identifier() { i }
+    // CODESYS/TwinCAT FB instance declaration with a call-style
+    // initialization parameter list (`FB_Type(args)`, no `:=`), using the
+    // same positional-or-named shape as an ordinary FB call -- e.g.
+    // `comm : FB_Comm(retries := 3, THIS);`. In CODESYS these arguments are
+    // passed to the function block's constructor (FB_init method), which is
+    // a distinct construct from the `:= (member := value)` member-init form
+    // -- hence a distinct AST node (InitialValueAssignmentKind::
+    // FunctionBlockCall), not a flag on FunctionBlockInitialValueAssignment.
+    //
+    // Requires the parens unconditionally (not optional) so this rule can
+    // never match a bare "name : Type;" declaration -- that continues to
+    // flow through the existing late-bound-resolution fallback unchanged. No
+    // ordering hazard: every earlier alternative in var_init_decl() requires
+    // its own mandatory leading token (ARRAY, REF_TO, STRING/WSTRING, or a
+    // literal `:=`) and fails outright (not a partial match) on a bare type
+    // name followed by `(`.
+    rule fb_call_style_var_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ params:fb_call_style_init_params() {
+      names.into_iter().map(|name| {
+        UntypedVarDecl {
+          location: None,
+          name,
+          initializer: InitialValueAssignmentKind::FunctionBlockCall(FunctionBlockCallInitializer { type_name: type_name.clone(), params: params.clone() }),
+        }
+      }).collect()
+    }
+    rule fb_call_style_init_params() -> Vec<ParamAssignmentKind> = tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { params }
     rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ syntax:ref_to_keyword() _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
