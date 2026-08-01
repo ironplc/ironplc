@@ -45,8 +45,9 @@ Supported Dialects
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
-   ``--allow-constant-initializer-expressions``, and
-   ``--allow-bit-string-case-labels``.
+   ``--allow-constant-initializer-expressions``,
+   ``--allow-bit-string-case-labels``, and
+   ``--allow-paren-string-length``.
 
 **codesys**
    CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
@@ -67,8 +68,9 @@ Supported Dialects
    ``--allow-cross-family-widening``, ``--allow-partial-access-syntax``,
    ``--allow-pragmas``, ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
-   ``--allow-constant-initializer-expressions``, and
-   ``--allow-bit-string-case-labels``.
+   ``--allow-constant-initializer-expressions``,
+   ``--allow-bit-string-case-labels``, and
+   ``--allow-paren-string-length``.
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
@@ -93,8 +95,9 @@ Supported Dialects
    ``--allow-sizeof``, ``--allow-cross-family-widening``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
-   ``--allow-mixed-located-var-declarations``, and
-   ``--allow-bit-string-case-labels``.
+   ``--allow-mixed-located-var-declarations``,
+   ``--allow-bit-string-case-labels``, and
+   ``--allow-paren-string-length``.
 
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
@@ -302,6 +305,17 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    TwinCAT/CODESYS code uses them. Without this flag, such a label produces
    :doc:`P4041 </reference/compiler/problems/P4041>`. A plain decimal label
    (``5:``) is standard syntax and is always allowed.
+
+``--allow-paren-string-length``
+   Allow a string type's maximum length to be delimited with parentheses
+   (``STRING(255)``, ``WSTRING(100)``) in addition to the standard square
+   brackets (``STRING[255]``). The IEC 61131-3 standard grammar declares a
+   string length only with brackets; the parenthesis form is a vendor
+   extension. Without this flag, the parenthesis form produces
+   :doc:`P4042 </reference/compiler/problems/P4042>`. The bracket form is
+   standard syntax and is always allowed, and the delimiters must match
+   (``STRING[255)`` is always a syntax error). The renderer normalizes the
+   parenthesis form to brackets.
 
 Pass the flag when running :program:`ironplcc`:
 

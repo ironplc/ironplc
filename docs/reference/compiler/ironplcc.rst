@@ -213,6 +213,14 @@ Options
    :doc:`P4041 </reference/compiler/problems/P4041>` when used without this
    flag.
 
+``--allow-paren-string-length``
+   Allow a string type's maximum length to be delimited with parentheses
+   (``STRING(255)``, ``WSTRING(100)``) in addition to the standard square
+   brackets. The IEC 61131-3 standard declares a string length only with
+   brackets; the parenthesis form is a vendor extension. Produces
+   :doc:`P4042 </reference/compiler/problems/P4042>` when used without this
+   flag.
+
 Examples
 ========
 

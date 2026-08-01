@@ -180,9 +180,9 @@ struct FileArgs {
     #[arg(long)]
     allow_bit_string_case_labels: bool,
 
-    /// Allow the STRING(n)/WSTRING(n) parenthesis length delimiter instead of
-    /// the standard STRING[n]/WSTRING[n] brackets. This is a vendor extension
-    /// (CODESYS/TwinCAT) not part of the IEC 61131-3 standard.
+    /// Allow the STRING(n)/WSTRING(n) parenthesis length delimiter in addition
+    /// to the standard STRING[n]/WSTRING[n] brackets. This is a vendor
+    /// extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_paren_string_length: bool,
 }
