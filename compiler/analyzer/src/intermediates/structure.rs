@@ -94,7 +94,8 @@ fn field_has_default(
         InitialValueAssignmentKind::EnumeratedType(enum_type_init) => {
             enum_type_init.initial_value.is_some()
         }
-        InitialValueAssignmentKind::FunctionBlock(_) => {
+        InitialValueAssignmentKind::FunctionBlock(_)
+        | InitialValueAssignmentKind::FunctionBlockCall(_) => {
             // Function block fields can have their inputs initialized,
             // but function blocks themselves don't have "defaults" in the
             // same sense - they always need to be instantiated.
