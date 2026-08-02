@@ -13,7 +13,7 @@ compile:
   cargo build
 
 test:
-  cargo test --quiet --all-targets
+  cargo test --quiet --all-targets --features ironplc-vm-cli/dap
 
 # Run tests and produce coverage report
 coverage:
