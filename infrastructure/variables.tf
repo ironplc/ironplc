@@ -30,3 +30,26 @@ variable "posthog_host" {
   type        = string
   default     = "https://us.posthog.com"
 }
+
+variable "posthog_proxy_domain" {
+  description = <<-EOT
+    Custom domain for PostHog's managed reverse proxy (see proxy.tf).
+    Routing analytics through a first-party subdomain is what stops ad
+    blockers dropping events. Pick a NEUTRAL name: filter lists (EasyPrivacy,
+    uBlock) block hostnames containing "analytics", "track", "telemetry",
+    "posthog", "stats", so a name like analytics.ironplc.com would defeat the
+    purpose. Default "hog.ironplc.com" is safe.
+  EOT
+  type        = string
+  default     = "hog.ironplc.com"
+}
+
+variable "posthog_organization_id" {
+  description = <<-EOT
+    Organization that owns the managed reverse-proxy record. Accepts a UUID,
+    an org slug, or "@current" for the API key's organization. The proxy
+    record is org-scoped (unlike the project-scoped dashboard/insights).
+  EOT
+  type        = string
+  default     = "@current"
+}
