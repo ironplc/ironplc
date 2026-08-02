@@ -221,6 +221,17 @@ Options
    :doc:`P4042 </reference/compiler/problems/P4042>` when used without this
    flag.
 
+``--allow-struct-initializer-expressions``
+   Allow a general (non-constant) expression — such as a pointer
+   dereference plus member access (``pDevice^.Delta``) — as the value in a
+   structured or call-style initializer's ``name := value`` pairs (e.g.
+   ``tonDelta : TON := (PT := pDevice^.Delta);``). The IEC 61131-3 standard
+   permits only a constant, enumerated value, array initializer, or nested
+   structure initializer here; this vendor extension accepts a value
+   computed at instantiation time. Produces
+   :doc:`P4043 </reference/compiler/problems/P4043>` when used without this
+   flag.
+
 Examples
 ========
 

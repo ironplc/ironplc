@@ -191,6 +191,8 @@ pub trait Fold<E> {
     // 2.4.3.2
     dispatch!(FunctionBlockInitialValueAssignment);
 
+    dispatch!(FunctionBlockCallInitializer);
+
     // 2.4.3.2.
     dispatch!(ArrayInitialValueAssignment);
 

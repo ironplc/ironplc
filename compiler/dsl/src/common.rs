@@ -911,8 +911,21 @@ impl ElementaryTypeName {
     /// cross-family rules (requires `--allow-cross-family-widening`).
     ///
     /// Allowed: bit-string → integer where target is strictly wider.
-    /// Not allowed: integer → bit-string (always requires explicit conversion).
+    /// Not allowed (in general): integer → bit-string, or equal-width
+    /// bit-string ↔ integer -- both always require an explicit conversion.
+    ///
+    /// One verified exception: `UDINT` ↔ `DWORD` (32-bit), both
+    /// directions, despite being equal width. Beckhoff's own
+    /// documentation states no implicit conversion exists between
+    /// bit-string and integer types even at equal width, but this was
+    /// confirmed permissive against a real TcXaeShell build (see
+    /// `specs/plans/twincat-status.md`, "Resolved: UDINT → DWORD implicit
+    /// conversion"). Scoped to exactly this pair -- other same-width
+    /// bit-string/unsigned-integer pairs (`BYTE`↔`USINT`, `WORD`↔`UINT`,
+    /// `LWORD`↔`ULINT`) and signed integers are not verified and must not
+    /// be assumed to behave the same.
     pub fn can_widen_cross_family_to(&self, target: &ElementaryTypeName) -> bool {
+        use ElementaryTypeName::{DWORD, UDINT};
         use TypeFamily::*;
         let Some((src_family, src_bits)) = self.type_properties() else {
             return false;
@@ -921,6 +934,11 @@ impl ElementaryTypeName {
             return false;
         };
         match (&src_family, &tgt_family) {
+            (BitString, UnsignedInteger) | (UnsignedInteger, BitString)
+                if matches!(self, DWORD | UDINT) && matches!(target, DWORD | UDINT) =>
+            {
+                true
+            }
             (BitString, SignedInteger | UnsignedInteger) => tgt_bits > src_bits,
             _ => false,
         }
@@ -2078,6 +2096,9 @@ impl VarDecl {
             InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
                 TypeReference::Named(function_block_initial_value_assignment.type_name.clone())
             }
+            InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
+                TypeReference::Named(function_block_call_initializer.type_name.clone())
+            }
             InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
                 match subrange_specification_kind {
                     SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
@@ -2410,6 +2431,13 @@ pub enum InitialValueAssignmentKind {
     EnumeratedValues(EnumeratedValuesInitializer),
     EnumeratedType(EnumeratedInitialValueAssignment),
     FunctionBlock(FunctionBlockInitialValueAssignment),
+    /// The CODESYS/TwinCAT call-style function-block instance initializer
+    /// (`name : FB_Type(args)`, no `:=`), which passes an argument list to
+    /// the function block's constructor (`FB_init` method in CODESYS).
+    /// This is a distinct construct from [`Self::FunctionBlock`], whose
+    /// `init` sets the instance's own member values -- see
+    /// [`FunctionBlockCallInitializer`].
+    FunctionBlockCall(FunctionBlockCallInitializer),
     Subrange(SubrangeSpecificationKind),
     Structure(StructureInitializationDeclaration),
     Array(ArrayInitialValueAssignment),
@@ -2470,6 +2498,10 @@ pub enum StructInitialValueAssignmentKind {
     EnumeratedValue(EnumeratedValue),
     Array(Vec<ArrayInitialElementKind>),
     Structure(Vec<StructureElementInit>),
+    /// A general expression value (e.g. `pDevice^.Delta`) -- used for
+    /// call-style FB-instance/struct initializers where the value is
+    /// computed at instantiation time, not a compile-time constant.
+    Expression(Expr),
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
@@ -2592,6 +2624,28 @@ pub struct FunctionBlockInitialValueAssignment {
     pub type_name: TypeName,
     // The initializer may be empty
     pub init: Vec<StructureElementInit>,
+}
+
+/// The CODESYS/TwinCAT call-style function-block instance initializer:
+/// `name : FB_Type(args)`, with no `:=`. The argument list uses the same
+/// positional-or-named shape as an ordinary function-block call
+/// (`param_assignment`), because in CODESYS these arguments are passed to
+/// the function block's constructor (`FB_init` method).
+///
+/// This is deliberately a separate node from
+/// [`FunctionBlockInitialValueAssignment`] (whose `init` sets the
+/// instance's own member values via the `:= (member := value, ...)` form):
+/// the two are different constructs that target different things, so
+/// keeping them as distinct AST nodes prevents them from being conflated
+/// at code generation.
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct FunctionBlockCallInitializer {
+    /// The function-block type being instantiated. As with
+    /// [`FunctionBlockInitialValueAssignment::type_name`], this names a
+    /// type, not an identifier.
+    pub type_name: TypeName,
+    /// The constructor argument list. May be empty (`FB_Type()`).
+    pub params: Vec<ParamAssignmentKind>,
 }
 
 /// See section 2.4.3.2. #6
@@ -3734,5 +3788,42 @@ mod tests {
     fn can_widen_cross_family_to_when_int_to_byte_then_false() {
         // Integer → bit-string: never allowed
         assert!(!ElementaryTypeName::INT.can_widen_cross_family_to(&ElementaryTypeName::BYTE));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_udint_to_dword_then_true() {
+        // Verified permissive against real TcXaeShell despite equal width
+        // and despite Beckhoff's own docs -- see twincat-status.md.
+        assert!(ElementaryTypeName::UDINT.can_widen_cross_family_to(&ElementaryTypeName::DWORD));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_dword_to_udint_then_true() {
+        assert!(ElementaryTypeName::DWORD.can_widen_cross_family_to(&ElementaryTypeName::UDINT));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_dint_to_dword_then_false() {
+        // Signed integer, equal width -- not verified, must stay rejected.
+        assert!(!ElementaryTypeName::DINT.can_widen_cross_family_to(&ElementaryTypeName::DWORD));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_dword_to_dint_then_false() {
+        assert!(!ElementaryTypeName::DWORD.can_widen_cross_family_to(&ElementaryTypeName::DINT));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_word_to_uint_then_false() {
+        // Different pair, same width class -- not verified, must stay
+        // rejected. The UDINT<->DWORD exception is scoped to that exact
+        // pair, not generalized to every equal-width bit-string/unsigned-
+        // integer pair.
+        assert!(!ElementaryTypeName::WORD.can_widen_cross_family_to(&ElementaryTypeName::UINT));
+    }
+
+    #[test]
+    fn can_widen_cross_family_to_when_uint_to_word_then_false() {
+        assert!(!ElementaryTypeName::UINT.can_widen_cross_family_to(&ElementaryTypeName::WORD));
     }
 }

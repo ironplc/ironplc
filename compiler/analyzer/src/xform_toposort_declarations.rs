@@ -538,6 +538,17 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         let to = self.declarations.add_node(&fb.type_name.name);
                         self.declarations.graph.add_edge(to, from, ());
                     }
+                    InitialValueAssignmentKind::FunctionBlockCall(fbc) => {
+                        // The call-style FB instance initializer references
+                        // an FB type just like the FunctionBlock arm above,
+                        // so it needs the same referenced-type-before-POU
+                        // dependency edge -- otherwise a forward reference
+                        // (a POU instantiating a later-declared FB) surfaces
+                        // as a spurious P2011.
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&fbc.type_name.name);
+                        self.declarations.graph.add_edge(to, from, ());
+                    }
                     InitialValueAssignmentKind::Subrange(_) => {}
                     InitialValueAssignmentKind::Structure(struct_init) => {
                         // Track dependency on the nested structure type
@@ -679,6 +690,38 @@ mod tests {
         let (library, _reachable) = apply(library).unwrap();
 
         // Callee (the referenced type) must come before Caller.
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("Callee"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("Caller"));
+    }
+
+    #[test]
+    fn apply_when_function_block_call_style_init_then_referenced_type_ordered_first() {
+        // The call-style FB instance initializer (`name : FB_Type(args)`)
+        // parses to InitialValueAssignmentKind::FunctionBlockCall, a distinct
+        // node that must get the same referenced-type-before-POU dependency
+        // edge as the FunctionBlock arm. Caller is declared first but
+        // references Callee, so Callee must be reordered before it.
+        let program = "
+        FUNCTION_BLOCK Caller
+            VAR
+                CalleeInstance : Callee(IN1 := TRUE);
+            END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Callee
+            VAR_INPUT
+               IN1: BOOL;
+            END_VAR
+        END_FUNCTION_BLOCK";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
         let decl = library.elements.first().unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
         assert_eq!(decl.name, TypeName::from("Callee"));

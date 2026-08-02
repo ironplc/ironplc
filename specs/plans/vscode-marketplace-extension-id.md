@@ -18,13 +18,21 @@ across them.
 
 ## Decision
 
-- **Open VSX** keeps `ironplc.ironplc` (unchanged) — protects existing users.
-- **Marketplace** publishes as `ironplc.ironplc-vscode` — same publisher and
-  same `displayName` ("IronPLC"), only the machine `name` differs. The differing
-  internal ID is invisible in the store UI.
+- **Open VSX** keeps `ironplc.ironplc` and `displayName` "IronPLC" (unchanged) —
+  protects existing users.
+- **Marketplace** publishes as `ironplc.ironplc-vscode` with `displayName`
+  "IronPLC IDE" — same publisher (`ironplc`); the machine `name` differs because
+  `ironplc.ironplc` is retired, and the `displayName` differs because the
+  Marketplace still reserves the bare "IronPLC" display name from the removed
+  listing and rejects a new upload with it as already in use. Adding a neutral
+  qualifier ("IDE" — deliberately not tied to Structured Text or IEC 61131-3, so
+  the name still fits if other languages/standards are added later) follows the
+  common `<Brand> <Descriptor>` convention used by peer PLC extensions on the
+  Marketplace. The differing internal ID is invisible in the store UI.
 
-Only the `name` field changes for the Marketplace build. Command IDs, language
-IDs, and activation events are literal strings unaffected by `name`.
+Only the `name` and `displayName` fields change for the Marketplace build.
+Command IDs, language IDs, and activation events are literal strings unaffected
+by `name`.
 
 ## Rollout
 
@@ -42,10 +50,12 @@ manually tested. This plan is delivered in two stages.
    prerequisite for the new ID to report its version correctly.
 
 2. **Add a `package-marketplace` justfile recipe** that overrides `name` to
-   `ironplc-vscode` and packages a VSIX with extension ID `ironplc.ironplc-vscode`.
-   Run `just package-marketplace <file>.vsix` locally to build a VSIX for manual
-   install (`code --install-extension <file>.vsix`) or a manual `vsce publish`
-   test. The Open VSX / GitHub-release VSIX is unchanged (`name: ironplc`).
+   `ironplc-vscode` and `displayName` to "IronPLC IDE", then packages a VSIX with
+   extension ID `ironplc.ironplc-vscode`. Run `just package-marketplace
+   <file>.vsix` locally to build a VSIX for manual install (`code
+   --install-extension <file>.vsix`) or a manual `vsce publish` test. The Open
+   VSX / GitHub-release VSIX is unchanged (`name: ironplc`, `displayName:
+   IronPLC`).
 
 ### Stage 1.5 — package and upload the Marketplace VSIX in CI, no publish (this change)
 

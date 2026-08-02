@@ -1658,6 +1658,83 @@ END_PROGRAM";
     }
 
     #[test]
+    fn apply_when_dword_target_assigned_udint_var_with_flag_then_ok() {
+        // Verified permissive against real TcXaeShell despite equal width
+        // -- see twincat-status.md, "Resolved: UDINT -> DWORD implicit
+        // conversion".
+        let program = "
+PROGRAM main
+VAR
+    dwFromUdint : DWORD;
+    udValue : UDINT;
+END_VAR
+    dwFromUdint := udValue;
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let opts = CompilerOptions {
+            allow_cross_family_widening: true,
+            ..CompilerOptions::default()
+        };
+        let result = apply(&library, &context, &opts);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_udint_target_assigned_dword_var_with_flag_then_ok() {
+        let program = "
+PROGRAM main
+VAR
+    udFromDword : UDINT;
+    dwValue : DWORD;
+END_VAR
+    udFromDword := dwValue;
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let opts = CompilerOptions {
+            allow_cross_family_widening: true,
+            ..CompilerOptions::default()
+        };
+        let result = apply(&library, &context, &opts);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_dword_target_assigned_udint_var_without_flag_then_error() {
+        let program = "
+PROGRAM main
+VAR
+    dwFromUdint : DWORD;
+    udValue : UDINT;
+END_VAR
+    dwFromUdint := udValue;
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_when_dword_target_assigned_dint_var_with_flag_then_error() {
+        // Signed integer, equal width -- not part of the verified
+        // exception, must stay rejected even with the flag on.
+        let program = "
+PROGRAM main
+VAR
+    dwFromDint : DWORD;
+    diValue : DINT;
+END_VAR
+    dwFromDint := diValue;
+END_PROGRAM";
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let opts = CompilerOptions {
+            allow_cross_family_widening: true,
+            ..CompilerOptions::default()
+        };
+        let result = apply(&library, &context, &opts);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn apply_when_ltime_target_assigned_time_var_then_ok() {
         // Temporal short/long widths are treated as one family.
         let program = "

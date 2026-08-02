@@ -133,6 +133,7 @@ impl ExprTypeResolver<'_> {
             InitialValueAssignmentKind::EnumeratedValues(_) => return,
             InitialValueAssignmentKind::EnumeratedType(e) => e.type_name.clone(),
             InitialValueAssignmentKind::FunctionBlock(fb) => fb.type_name.clone(),
+            InitialValueAssignmentKind::FunctionBlockCall(fbc) => fbc.type_name.clone(),
             InitialValueAssignmentKind::Subrange(spec) => match spec {
                 SpecificationKind::Named(tn) => tn.clone(),
                 SpecificationKind::Inline(sr) => TypeName::from(&sr.type_name.to_string()),

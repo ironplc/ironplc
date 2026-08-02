@@ -46,8 +46,8 @@ Supported Dialects
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
-   ``--allow-bit-string-case-labels``, and
-   ``--allow-paren-string-length``.
+   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``, and
+   ``--allow-struct-initializer-expressions``.
 
 **codesys**
    CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
@@ -69,8 +69,8 @@ Supported Dialects
    ``--allow-pragmas``, ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
-   ``--allow-bit-string-case-labels``, and
-   ``--allow-paren-string-length``.
+   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``, and
+   ``--allow-struct-initializer-expressions``.
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
@@ -96,8 +96,8 @@ Supported Dialects
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
-   ``--allow-bit-string-case-labels``, and
-   ``--allow-paren-string-length``.
+   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``, and
+   ``--allow-struct-initializer-expressions``.
 
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
@@ -316,6 +316,18 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    standard syntax and is always allowed, and the delimiters must match
    (``STRING[255)`` is always a syntax error). The renderer normalizes the
    parenthesis form to brackets.
+
+``--allow-struct-initializer-expressions``
+   Allow a general (non-constant) expression — such as a pointer
+   dereference plus member access (``pDevice^.Delta``) — as the value in a
+   structured or call-style initializer's ``name := value`` pairs (e.g.
+   ``tonDelta : TON := (PT := pDevice^.Delta);``). The IEC 61131-3 standard
+   grammar for a structured initializer value permits only a constant,
+   enumerated value, array initializer, or nested structure initializer;
+   a value computed at instantiation time is a vendor extension used by
+   TwinCAT/CODESYS. Without this flag, such a value produces
+   :doc:`P4043 </reference/compiler/problems/P4043>`. A constant value is
+   standard syntax and is always allowed.
 
 Pass the flag when running :program:`ironplcc`:
 
