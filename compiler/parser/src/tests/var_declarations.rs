@@ -168,3 +168,125 @@ END_PROGRAM",
         VariableIdentifier::Direct(_)
     ));
 }
+
+// ---------------------------------------------------------------------
+// CODESYS/TwinCAT FB-instance call-style initializer (distinct node).
+// See specs/plans/2026-08-01-fb-call-style-initializer-distinct-node.md.
+// ---------------------------------------------------------------------
+
+#[test]
+fn parse_when_fb_call_style_init_named_and_positional_then_parses_call_node() {
+    // Both named (retries := 3) and positional (THIS) arguments in the same
+    // call-style initializer, parsed into the distinct FunctionBlockCall node.
+    let source = "
+FUNCTION_BLOCK FB_Comm
+VAR_INPUT
+    retries : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm(retries := 3, THIS);
+END_VAR
+END_FUNCTION_BLOCK";
+    let library = parse_text(source);
+
+    let fb = cast!(
+        &library.elements[1],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    assert_eq!(fb.variables.len(), 1);
+    let fb_call = cast!(
+        &fb.variables[0].initializer,
+        InitialValueAssignmentKind::FunctionBlockCall
+    );
+    assert_eq!(fb_call.type_name.to_string(), "FB_Comm");
+    assert_eq!(fb_call.params.len(), 2);
+    assert!(matches!(
+        fb_call.params[0],
+        ParamAssignmentKind::NamedInput(_)
+    ));
+    assert!(matches!(
+        fb_call.params[1],
+        ParamAssignmentKind::PositionalInput(_)
+    ));
+}
+
+#[test]
+fn parse_when_fb_call_style_init_empty_parens_then_parses_call_node() {
+    let source = "
+FUNCTION_BLOCK FB_Comm
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm();
+END_VAR
+END_FUNCTION_BLOCK";
+    let library = parse_text(source);
+
+    let fb = cast!(
+        &library.elements[1],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    let fb_call = cast!(
+        &fb.variables[0].initializer,
+        InitialValueAssignmentKind::FunctionBlockCall
+    );
+    assert!(fb_call.params.is_empty());
+}
+
+#[test]
+fn parse_when_fb_bare_decl_then_not_call_node() {
+    // Regression: a bare FB instance declaration (no initializer) flows
+    // through late-bound resolution, not the call-style rule.
+    let source = "
+FUNCTION_BLOCK FB_Comm
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm;
+END_VAR
+END_FUNCTION_BLOCK";
+    let library = parse_text(source);
+
+    let fb = cast!(
+        &library.elements[1],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    assert!(matches!(
+        &fb.variables[0].initializer,
+        InitialValueAssignmentKind::LateResolvedType(_)
+    ));
+}
+
+#[test]
+fn parse_when_fb_struct_init_then_not_call_node() {
+    // Regression: the standard `:= (member := value)` form must still parse
+    // and must NOT become a FunctionBlockCall node.
+    let source = "
+FUNCTION_BLOCK FB_Comm
+VAR_INPUT
+    retries : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm := (retries := 3);
+END_VAR
+END_FUNCTION_BLOCK";
+    let library = parse_text(source);
+
+    let fb = cast!(
+        &library.elements[1],
+        LibraryElementKind::FunctionBlockDeclaration
+    );
+    assert_eq!(fb.variables.len(), 1);
+    assert!(!matches!(
+        &fb.variables[0].initializer,
+        InitialValueAssignmentKind::FunctionBlockCall(_)
+    ));
+}
