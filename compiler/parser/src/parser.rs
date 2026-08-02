@@ -291,7 +291,7 @@ parser! {
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule semisep_or_empty<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v} / { vec![] }
-    rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
+    rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) {v}
 
 
     pub rule library() -> Vec<LibraryElementKind> = traced(<library__impl()>)
@@ -743,7 +743,15 @@ parser! {
     }
     rule structure_element_name() ->Id = identifier()
     rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
-    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)}) {
+    // `constant()`/`enumerated_value()` are grammatically a strict subset of
+    // `expression()` (e.g. a bare identifier is a valid, but truncated,
+    // match for `pDevice^.Delta`) -- the trailing lookahead requires them to
+    // consume the *entire* value (immediately followed by the list
+    // terminator) before winning the choice, so a genuinely richer
+    // expression like a dereference-then-member-access chain falls through
+    // to the `expression()` alternative instead of matching only its first
+    // identifier and leaving `^.Delta` unconsumed.
+    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(Expr::new(ex)) }) {
       StructureElementInit {
         name,
         init,
@@ -930,7 +938,7 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() /  fb_name_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() / fb_call_style_var_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
     // CODESYS/TwinCAT vendor extension: a located variable (complete or
     // incomplete/wildcard address) declared inside an otherwise plain
     // VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own
@@ -985,17 +993,33 @@ parser! {
         }
       }).collect()
     }
-    rule fb_name_decl() -> Vec<UntypedVarDecl> = names:fb_name_list() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ init:(tok(TokenType::Assignment) _ init:structure_initialization() { init })? {
+    rule fb_name() -> Id = i:identifier() { i }
+    // CODESYS/TwinCAT FB instance declaration with a call-style
+    // initialization parameter list (`FB_Type(args)`, no `:=`), using the
+    // same positional-or-named shape as an ordinary FB call -- e.g.
+    // `comm : FB_Comm(retries := 3, THIS);`. In CODESYS these arguments are
+    // passed to the function block's constructor (FB_init method), which is
+    // a distinct construct from the `:= (member := value)` member-init form
+    // -- hence a distinct AST node (InitialValueAssignmentKind::
+    // FunctionBlockCall), not a flag on FunctionBlockInitialValueAssignment.
+    //
+    // Requires the parens unconditionally (not optional) so this rule can
+    // never match a bare "name : Type;" declaration -- that continues to
+    // flow through the existing late-bound-resolution fallback unchanged. No
+    // ordering hazard: every earlier alternative in var_init_decl() requires
+    // its own mandatory leading token (ARRAY, REF_TO, STRING/WSTRING, or a
+    // literal `:=`) and fails outright (not a partial match) on a bare type
+    // name followed by `(`.
+    rule fb_call_style_var_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ params:fb_call_style_init_params() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
           location: None,
           name,
-          initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: init.clone().unwrap_or_else(Vec::new) }),
+          initializer: InitialValueAssignmentKind::FunctionBlockCall(FunctionBlockCallInitializer { type_name: type_name.clone(), params: params.clone() }),
         }
       }).collect()
     }
-    rule fb_name_list() -> Vec<Id> = commasep_oneplus(<fb_name()>)
-    rule fb_name() -> Id = i:identifier() { i }
+    rule fb_call_style_init_params() -> Vec<ParamAssignmentKind> = tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { params }
     rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ syntax:ref_to_keyword() _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
@@ -1044,7 +1068,7 @@ parser! {
     pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ declarations:semisep_or_empty(<var_declaration()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::InOut,  None)
     }
-    rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl() / fb_name_decl()
+    rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl()
     rule temp_var_decl() -> Vec<UntypedVarDecl> = string_var_declaration() / var1_declaration() / array_var_declaration() / structured_var_declaration()
     rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(spec)} ) {
       // TODO this could eventually cause duplicated definitions because
@@ -1172,7 +1196,7 @@ parser! {
         }
       }).collect()
     }
-    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
+    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:string_length_spec()? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::String,
@@ -1189,7 +1213,7 @@ parser! {
         }
       }).collect()
     }
-    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
+    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:string_length_spec()? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::WString,
@@ -1197,6 +1221,15 @@ parser! {
         keyword_span: start.span.clone(),
       }
     }
+    // CODESYS/TwinCAT accept STRING(n)/WSTRING(n) with parentheses as an
+    // alternate delimiter to the standard STRING[n]/WSTRING[n] brackets.
+    // The parenthesis form is a vendor extension (not standard IEC
+    // 61131-3), so the grammar accepts it permissively here and
+    // rule_token_no_paren_string_length rejects it (P4042) unless
+    // allow_paren_string_length is set.
+    rule string_length_spec() -> IntegerRef =
+      tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) { i }
+      / tok(TokenType::LeftParen) _ i:integer_ref() _ tok(TokenType::RightParen) { i }
     rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
       let declarations = declarations.into_iter().map(|decl| {
         let qualifier = qualifier
@@ -1227,8 +1260,8 @@ parser! {
       sr:subrange_specification__with_range() { VariableSpecificationKind::Subrange(sr) }
       / e:enumerated_specification() { VariableSpecificationKind::Enumerated(e) }
       / a:array_specification() { VariableSpecificationKind::Array(a) }
-      / tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) }
       / id:type_name() { VariableSpecificationKind::Ambiguous(id) }
 
@@ -1237,8 +1270,8 @@ parser! {
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
     rule function_return_type() -> FunctionReturnType =
-      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { FunctionReturnType::Named(et.into()) }
       / dt:derived_type_name() { FunctionReturnType::Named(dt) }
     rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:function_return_type() _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ] } / temp:temp_var_decls() { vec![ temp ] }) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
@@ -1779,7 +1812,21 @@ parser! {
       }
     }
     rule case_list() -> Vec<CaseSelectionKind> = cases_list:case_list_element() ++ (_ tok(TokenType::Comma) _) { cases_list }
-    rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)}
+    rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)} / bsl:case_bit_string_literal() {CaseSelectionKind::BitStringLiteral(bsl)}
+    // A radix-prefixed bit-string literal used as a CASE label (e.g.
+    // `16#D012:`, `2#1010:`) -- a real grammar gap, not a stdlib gap.
+    // Deliberately narrower than the general bit_string_literal() rule,
+    // which also falls back to a bare decimal integer() -- including
+    // that fallback here would create a PEG ordering hazard with
+    // signed_integer() (a plain "5:" label could start matching as a
+    // BitStringLiteral instead of a SignedInteger). Radix-prefixed
+    // literals are already lexically distinct tokens from plain decimal
+    // digits, so this alternative can only ever fire for the genuinely
+    // new shape. See
+    // specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    rule case_bit_string_literal() -> BitStringLiteral = value:(bi:binary_integer() { bi } / oi:octal_integer() { oi } / hi:hex_integer() { hi }) {
+      BitStringLiteral { value, data_type: None }
+    }
 
     // B.3.2.4 Iteration statements
     rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement()

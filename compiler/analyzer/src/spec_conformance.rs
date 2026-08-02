@@ -9,7 +9,9 @@
 //!
 //! See `specs/design/reference-to-twincat.md`.
 
+use ironplc_dsl::common::{FunctionBlockBodyKind, Library, LibraryElementKind};
 use ironplc_dsl::core::FileId;
+use ironplc_dsl::textual::{Assignment, StmtKind};
 use ironplc_parser::options::CompilerOptions;
 use ironplc_parser::parse_program;
 use ironplc_problems::Problem;
@@ -80,5 +82,102 @@ END_PROGRAM";
             .iter()
             .any(|c| c.as_str() == Problem::ReferenceTypeMismatch.code()),
         "expected P2032 (ReferenceTypeMismatch), got {codes:?}"
+    );
+}
+
+/// Returns the statements of the (single) PROGRAM in a library.
+fn program_statements(lib: &Library) -> Vec<StmtKind> {
+    for element in &lib.elements {
+        if let LibraryElementKind::ProgramDeclaration(prog) = element {
+            let FunctionBlockBodyKind::Statements(stmts) = &prog.body else {
+                panic!("program body is not a statement list");
+            };
+            return stmts.body.clone();
+        }
+    }
+    panic!("no program declaration found");
+}
+
+/// REQ-RTO-analyzer-502: The target of a `REF=` binding is not auto-dereferenced
+/// — the implicit-dereference transform leaves the binding assignment untouched
+/// (`deref` stays false), while a bare `:=` write to the same variable does get
+/// the dereferencing store (`deref` becomes true).
+#[spec_test(REQ_RTO_analyzer_502)]
+fn analyzer_spec_req_rto_502_ref_assign_target_is_not_dereferenced() {
+    let source = "PROGRAM Main
+VAR
+    x : INT;
+    r : REFERENCE TO INT;
+END_VAR
+    r REF= x;
+    r := 5;
+END_PROGRAM";
+    let library =
+        parse_program(source, &FileId::default(), &reference_to_options()).expect("program parses");
+    let folded = crate::xform_insert_implicit_deref::apply(library, &reference_to_options())
+        .expect("transform succeeds");
+    let statements = program_statements(&folded);
+    let assignments: Vec<&Assignment> = statements
+        .iter()
+        .filter_map(|s| match s {
+            StmtKind::Assignment(a) => Some(a),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(assignments.len(), 2, "expected two assignments");
+    // `r REF= x` rebinds the reference itself and must not be auto-dereferenced.
+    assert!(
+        assignments[0].ref_bind,
+        "first assignment is a REF= binding"
+    );
+    assert!(
+        !assignments[0].deref,
+        "REF= binding target must not be auto-dereferenced"
+    );
+    // `r := 5` is a bare write and must store through the reference.
+    assert!(!assignments[1].ref_bind);
+    assert!(
+        assignments[1].deref,
+        "bare write to a REFERENCE TO variable must be auto-dereferenced"
+    );
+}
+
+/// REQ-RTO-analyzer-505: `__ISVALIDREF` is recognized (and lowered) only when
+/// `allow_reference_to` is set. With the flag off it stays an ordinary
+/// identifier and the call is reported as an undeclared function.
+#[spec_test(REQ_RTO_analyzer_505)]
+fn analyzer_spec_req_rto_505_isvalidref_recognized_only_with_flag() {
+    // Flag off: __ISVALIDREF is not a builtin, so the call is undeclared.
+    let source_off = "PROGRAM Main
+VAR
+    x : INT;
+    b : BOOL;
+END_VAR
+    b := __ISVALIDREF(x);
+END_PROGRAM";
+    let codes = analyze_codes(source_off, &CompilerOptions::default());
+    assert!(
+        codes
+            .iter()
+            .any(|c| c.as_str() == Problem::FunctionCallUndeclared.code()),
+        "without the flag __ISVALIDREF must be an undeclared function, got {codes:?}"
+    );
+
+    // Flag on: __ISVALIDREF is lowered to `r <> NULL`, so it is not undeclared.
+    let source_on = "PROGRAM Main
+VAR
+    x : INT;
+    r : REFERENCE TO INT;
+    b : BOOL;
+END_VAR
+    r REF= x;
+    b := __ISVALIDREF(r);
+END_PROGRAM";
+    let codes = analyze_codes(source_on, &reference_to_options());
+    assert!(
+        !codes
+            .iter()
+            .any(|c| c.as_str() == Problem::FunctionCallUndeclared.code()),
+        "with the flag __ISVALIDREF must be recognized (lowered), got {codes:?}"
     );
 }

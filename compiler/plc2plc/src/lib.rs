@@ -7,6 +7,7 @@ use ironplc_dsl::{common::Library, diagnostic::Diagnostic};
 use renderer::apply;
 
 mod renderer;
+#[cfg(test)]
 mod tests;
 
 // Spec conformance testing infrastructure (test-only).

@@ -325,6 +325,21 @@ define_compiler_options! {
     "--allow-constant-initializer-expressions",
     [Rusty, Codesys],
     allow_constant_initializer_expressions,
+
+    "Allow hex/binary/octal bit-string literals (16#D012, 2#1010) as CASE labels",
+    "--allow-bit-string-case-labels",
+    [Rusty, Codesys, TwinCat],
+    allow_bit_string_case_labels,
+
+    "Allow STRING(n)/WSTRING(n) parenthesis length delimiter in addition to the standard STRING[n]/WSTRING[n] brackets",
+    "--allow-paren-string-length",
+    [Rusty, Codesys, TwinCat],
+    allow_paren_string_length,
+
+    "Allow general (non-constant) expressions as struct/FB-instance initializer values, e.g. (PT := pDevice^.Delta)",
+    "--allow-struct-initializer-expressions",
+    [Rusty, Codesys, TwinCat],
+    allow_struct_initializer_expressions,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -432,6 +447,9 @@ mod tests {
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
                 "allow_constant_initializer_expressions",
+                "allow_bit_string_case_labels",
+                "allow_paren_string_length",
+                "allow_struct_initializer_expressions",
             ],
         );
     }
@@ -465,6 +483,9 @@ mod tests {
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
                 "allow_constant_initializer_expressions",
+                "allow_bit_string_case_labels",
+                "allow_paren_string_length",
+                "allow_struct_initializer_expressions",
             ],
         );
     }
@@ -498,6 +519,9 @@ mod tests {
                 "allow_pragmas",
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
+                "allow_bit_string_case_labels",
+                "allow_paren_string_length",
+                "allow_struct_initializer_expressions",
             ],
         );
     }

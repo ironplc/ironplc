@@ -10,7 +10,7 @@ Implicit global variables that expose the VM's monotonic uptime counter.
    * - **IEC 61131-3**
      - Not part of the standard (vendor extension)
    * - **Support**
-     - Supported (requires ``--allow-system-uptime-global`` or ``--dialect rusty``)
+     - Supported (requires ``--allow-system-uptime-global``)
 
 Variables
 ---------
@@ -62,14 +62,8 @@ System uptime variables are a vendor extension and must be explicitly enabled:
 
    ironplcc check --allow-system-uptime-global main.st
 
-Or use the RuSTy dialect which enables all vendor extensions:
-
-.. code-block:: shell
-
-   ironplcc check --dialect rusty main.st
-
-See :doc:`/explanation/enabling-dialects-and-features` for more information
-about dialects and feature flags.
+.. |flag| replace:: ``--allow-system-uptime-global``
+.. include:: /includes/enabled-by-flag.rst
 
 Usage
 -----

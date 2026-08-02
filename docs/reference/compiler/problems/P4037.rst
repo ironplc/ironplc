@@ -38,6 +38,7 @@ To fix this error, either use a literal value directly:
    END_VAR
    END_PROGRAM
 
-Or enable the vendor extension with the
-``--allow-constant-initializer-expressions`` flag (also enabled by
-``--dialect=rusty`` and ``--dialect=codesys``).
+Or enable the vendor extension:
+
+.. |flag| replace:: ``--allow-constant-initializer-expressions``
+.. include:: /includes/enabled-by-flag.rst

@@ -12,9 +12,10 @@
 use std::collections::HashMap;
 
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::Located;
+use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
+use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
 
 /// Stored information about an integer constant.
@@ -30,11 +31,17 @@ struct ConstantInfo {
 /// Global constants are collected upfront and available everywhere. POU-local
 /// constants (VAR CONSTANT inside FUNCTION, FUNCTION_BLOCK, or PROGRAM) are
 /// scoped — they are only visible within their declaring POU.
-pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
+///
+/// Using a constant reference in a type parameter is a vendor extension. When
+/// `options.allow_constant_type_params` is false (strict IEC 61131-3), any such
+/// reference is rejected with [`Problem::ConstantTypeParamNotAllowed`] instead
+/// of being resolved.
+pub fn apply(lib: Library, options: &CompilerOptions) -> Result<Library, Vec<Diagnostic>> {
     let constants = collect_constants(&lib);
 
     let mut resolver = ConstantResolver {
         constants,
+        allow_constant_type_params: options.allow_constant_type_params,
         diagnostics: vec![],
     };
 
@@ -121,7 +128,33 @@ fn extract_integer_value(init: &InitialValueAssignmentKind) -> Option<u128> {
 
 struct ConstantResolver {
     constants: HashMap<String, ConstantInfo>,
+    /// Whether the `--allow-constant-type-params` vendor extension is enabled.
+    /// When false, a constant reference in a type parameter is rejected outright
+    /// (P4029) rather than resolved.
+    allow_constant_type_params: bool,
     diagnostics: Vec<Diagnostic>,
+}
+
+impl ConstantResolver {
+    /// Records a P4029 diagnostic for a constant reference that appears in a type
+    /// parameter while the vendor extension is disabled. Returns `true` when the
+    /// reference was rejected (flag off), so callers skip resolution.
+    fn reject_if_not_allowed(&mut self, id: &Id) -> bool {
+        if self.allow_constant_type_params {
+            return false;
+        }
+        self.diagnostics.push(
+            Diagnostic::problem(
+                Problem::ConstantTypeParamNotAllowed,
+                Label::span(id.span(), format!("Constant '{id}' used in type parameter")),
+            )
+            .with_help(
+                "Use an integer literal in the type parameter, or enable the \
+                 --allow-constant-type-params vendor extension.",
+            ),
+        );
+        true
+    }
 }
 
 impl<E> Fold<E> for ConstantResolver {
@@ -129,6 +162,9 @@ impl<E> Fold<E> for ConstantResolver {
         match node {
             IntegerRef::Literal(_) => Ok(node),
             IntegerRef::Constant(ref id) => {
+                if self.reject_if_not_allowed(id) {
+                    return Ok(node);
+                }
                 let name = id.to_string().to_uppercase();
                 match self.constants.get(&name) {
                     Some(info) => Ok(IntegerRef::Literal(Integer {
@@ -152,6 +188,9 @@ impl<E> Fold<E> for ConstantResolver {
         match node {
             SignedIntegerRef::Literal(_) => Ok(node),
             SignedIntegerRef::Constant(ref id) => {
+                if self.reject_if_not_allowed(id) {
+                    return Ok(node);
+                }
                 let name = id.to_string().to_uppercase();
                 match self.constants.get(&name) {
                     Some(info) => Ok(SignedIntegerRef::Literal(SignedInteger {
@@ -227,6 +266,15 @@ mod tests {
         .unwrap()
     }
 
+    /// Options with the constant-type-params vendor extension enabled, so the
+    /// transform resolves references instead of rejecting them (P4029).
+    fn enabled() -> CompilerOptions {
+        CompilerOptions {
+            allow_constant_type_params: true,
+            ..CompilerOptions::default()
+        }
+    }
+
     /// Find the first VarDecl with the given name from a POU.
     fn find_var_decl<'a>(lib: &'a Library, var_name: &str) -> &'a VarDecl {
         for element in &lib.elements {
@@ -279,7 +327,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib).unwrap();
+        let lib = apply(lib, &enabled()).unwrap();
         let var = find_var_decl(&lib, "STR");
         assert_eq!(get_string_length(var), 250);
     }
@@ -299,7 +347,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib).unwrap();
+        let lib = apply(lib, &enabled()).unwrap();
         let var = find_var_decl(&lib, "ARR");
         let subranges = get_array_subranges(var);
         assert_eq!(subranges.len(), 1);
@@ -322,7 +370,7 @@ mod tests {
         ",
         );
 
-        let result = apply(lib);
+        let result = apply(lib, &enabled());
         assert!(result.is_err());
     }
 
@@ -338,7 +386,7 @@ mod tests {
         ",
         );
 
-        let result = apply(lib);
+        let result = apply(lib, &enabled());
         assert!(result.is_err());
     }
 
@@ -359,7 +407,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib).unwrap();
+        let lib = apply(lib, &enabled()).unwrap();
         assert_eq!(get_string_length(find_var_decl(&lib, "STR")), 100);
 
         let subranges = get_array_subranges(find_var_decl(&lib, "ARR"));
@@ -381,7 +429,7 @@ mod tests {
         ",
         );
 
-        let result = apply(lib);
+        let result = apply(lib, &enabled());
         assert!(result.is_err());
     }
 
@@ -397,7 +445,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib).unwrap();
+        let lib = apply(lib, &enabled()).unwrap();
         let var = find_var_decl(&lib, "STR");
         assert_eq!(get_string_length(var), 50);
     }
@@ -417,7 +465,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib).unwrap();
+        let lib = apply(lib, &enabled()).unwrap();
         let var = find_var_decl(&lib, "fifo");
         let subranges = get_array_subranges(var);
         assert_eq!(subranges.len(), 1);
@@ -441,7 +489,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib).unwrap();
+        let lib = apply(lib, &enabled()).unwrap();
         let var = find_var_decl(&lib, "STR");
         assert_eq!(get_string_length(var), 80);
     }
@@ -461,7 +509,7 @@ mod tests {
         ",
         );
 
-        let lib = apply(lib).unwrap();
+        let lib = apply(lib, &enabled()).unwrap();
         let var = find_var_decl(&lib, "buf");
         let subranges = get_array_subranges(var);
         assert_eq!(subranges.len(), 1);
@@ -486,7 +534,7 @@ mod tests {
         ",
         );
 
-        let result = apply(lib);
+        let result = apply(lib, &enabled());
         assert!(result.is_err());
     }
 
@@ -503,7 +551,120 @@ mod tests {
         ",
         );
 
-        let result = apply(lib);
+        let result = apply(lib, &enabled());
         assert!(result.is_err());
+    }
+
+    // ---------------------------------------------------------------------
+    // Enforcement of the `--allow-constant-type-params` vendor extension.
+    // See ironplc/ironplc#1234.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn apply_when_constant_in_string_length_and_flag_disabled_then_error() {
+        let lib = parse(
+            "
+            VAR_GLOBAL CONSTANT
+                STRING_LENGTH : INT := 250;
+            END_VAR
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                STR : STRING[STRING_LENGTH];
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let diagnostics = apply(lib, &CompilerOptions::default()).unwrap_err();
+
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::ConstantTypeParamNotAllowed.code()
+        );
+    }
+
+    #[test]
+    fn apply_when_constant_in_array_bounds_and_flag_disabled_then_error() {
+        let lib = parse(
+            "
+            VAR_GLOBAL CONSTANT
+                ARRAY_SIZE : INT := 10;
+            END_VAR
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                ARR : ARRAY[1..ARRAY_SIZE] OF INT;
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let diagnostics = apply(lib, &CompilerOptions::default()).unwrap_err();
+
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::ConstantTypeParamNotAllowed.code()
+        );
+    }
+
+    #[test]
+    fn apply_when_constant_type_param_rejected_then_diagnostic_has_help() {
+        let lib = parse(
+            "
+            VAR_GLOBAL CONSTANT
+                STRING_LENGTH : INT := 250;
+            END_VAR
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                STR : STRING[STRING_LENGTH];
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let diagnostics = apply(lib, &CompilerOptions::default()).unwrap_err();
+
+        assert!(!diagnostics[0].help().is_empty());
+    }
+
+    #[test]
+    fn apply_when_flag_disabled_then_undefined_constant_still_reported_as_type_param() {
+        // With the flag off, even an *undefined* constant reference is rejected
+        // as a type-parameter violation (P4029), not P4030 — the construct is
+        // disallowed before resolution is attempted.
+        let lib = parse(
+            "
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                STR : STRING[UNDEFINED_CONST];
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let diagnostics = apply(lib, &CompilerOptions::default()).unwrap_err();
+
+        assert_eq!(
+            diagnostics[0].code,
+            Problem::ConstantTypeParamNotAllowed.code()
+        );
+    }
+
+    #[test]
+    fn apply_when_literal_type_param_and_flag_disabled_then_ok() {
+        // A plain integer literal in a type parameter is standard IEC and must
+        // remain accepted regardless of the flag.
+        let lib = parse(
+            "
+            FUNCTION_BLOCK fb1
+            VAR_INPUT
+                STR : STRING[50];
+            END_VAR
+            END_FUNCTION_BLOCK
+        ",
+        );
+
+        let result = apply(lib, &CompilerOptions::default());
+
+        assert!(result.is_ok());
     }
 }

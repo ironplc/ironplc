@@ -17,9 +17,11 @@ ironplc-container = { path = "../container", version = "0.232.0" }
 [dev-dependencies]
 ironplc-vm = { path = ".", features = ["test-support"] }
 proptest = "1"
+spec_test_macro = { path = "../spec_test_macro" }
 
 [build-dependencies]
 csv = "1"
+ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 
 # All integration tests live in a single binary so compile/link work (and
 # llvm-cov instrumentation) is amortized across the whole suite instead of

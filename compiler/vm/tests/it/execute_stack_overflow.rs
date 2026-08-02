@@ -3,6 +3,7 @@
 use ironplc_container::opcode;
 use ironplc_container::{ContainerBuilder, FunctionId};
 use ironplc_vm::error::Trap;
+use spec_test_macro::spec_test;
 
 #[test]
 fn execute_when_stack_overflow_then_traps() {
@@ -52,11 +53,16 @@ fn execute_when_stack_underflow_then_traps() {
     crate::common::assert_trap(&mut vm, Trap::StackUnderflow);
 }
 
-#[test]
-fn execute_when_call_recursion_exceeds_max_depth_then_traps_call_stack_overflow() {
-    // SCAN unconditionally calls itself. Without a depth guard this would
-    // exhaust the Rust thread stack and abort the process; with the guard
-    // it must trap cleanly as Trap::CallStackOverflow.
+/// Builds a container whose SCAN function unconditionally calls itself and
+/// declares the given per-program `max_call_depth`, then asserts that running
+/// it traps cleanly with `Trap::CallStackOverflow`.
+///
+/// The frame buffer is sized from the container's `max_call_depth`
+/// (`VmBuffers::from_container`), so unbounded self-recursion fills exactly
+/// that many frames and the next CALL traps. Because the bound comes from the
+/// container header — not a VM-wide constant — a small declared depth traps
+/// after only a few frames, which is what makes this a per-program contract.
+fn assert_self_recursion_traps_at_depth(max_call_depth: u16) {
     let init_bytecode: Vec<u8> = vec![opcode::RET_VOID];
     let scan_id = FunctionId::SCAN.to_le_bytes();
     #[rustfmt::skip]
@@ -64,19 +70,30 @@ fn execute_when_call_recursion_exceeds_max_depth_then_traps_call_stack_overflow(
         opcode::CALL, scan_id[0], scan_id[1], 0x00, 0x00, // CALL SCAN, var_offset=0
         opcode::RET_VOID,
     ];
-    // The frame buffer holds 4 frames; unbounded self-recursion fills it
-    // and the 5th CALL traps Trap::CallStackOverflow.
     let c = ContainerBuilder::new()
         .num_variables(1)
         .add_function(FunctionId::INIT, &init_bytecode, 0, 1, 0)
         .add_function(FunctionId::SCAN, &bytecode, 4, 1, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
-        .max_call_depth(4)
+        .max_call_depth(max_call_depth)
         .build();
     let mut b = crate::common::VmBuffers::from_container(&c);
     let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
     crate::common::assert_trap(&mut vm, Trap::CallStackOverflow);
+}
+
+/// REQ-RT-vm-001: a CALL that would push a frame beyond the container's
+/// declared `max_call_depth` traps with `CALL_DEPTH_EXCEEDED`
+/// (`Trap::CallStackOverflow`). Parameterised over several declared depths so
+/// the test binds to the per-program contract rather than a hardcoded value:
+/// a small declared depth (2) traps after only a few frames — impossible if
+/// the guard were still the old VM-wide `MAX_CALL_DEPTH = 32` constant.
+#[spec_test(REQ_RT_vm_001)]
+fn vm_spec_req_rt_vm_001_call_recursion_exceeds_declared_depth_then_traps() {
+    for max_call_depth in [2, 4, 8, 32] {
+        assert_self_recursion_traps_at_depth(max_call_depth);
+    }
 }
 
 #[test]

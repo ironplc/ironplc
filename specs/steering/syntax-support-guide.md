@@ -15,13 +15,35 @@ When adding new syntax, ensure every applicable item is complete:
 - [ ] **Analyzer**: Add semantic validation in `analyzer/`
 - [ ] **Codegen**: Add bytecode emission in `codegen/`
 - [ ] **plc2plc renderer**: Update `plc2plc/src/renderer.rs` to render the new syntax
-- [ ] **plc2plc round-trip test**: Parse → render → compare against expected output
+- [ ] **plc2plc round-trip test**: Parse → render → compare against expected output (in a focused file under `plc2plc/src/tests/` — see [Test File Organization](#test-file-organization-avoid-merge-conflicts))
 - [ ] **End-to-end execution test**: Parse → compile → run → verify variable values
 - [ ] **Non-standard gating**: If not standard IEC 61131-3, gate behind `--allow-x` flag
 - [ ] **LSP integration**: If a new `--allow-x` flag, add to LSP `extract_compiler_options`
 - [ ] **Documentation**: If a new `--allow-x` flag, update `docs/explanation/enabling-dialects-and-features.rst`, `docs/reference/compiler/ironplcc.rst`, and the flag table in this file
 
 Not every syntax change requires all items. A new operator might not need new tokens. A token-level fix might not need codegen changes. Use judgment, but **always** include both round-trip and execution tests when the syntax produces executable code.
+
+## Test File Organization (avoid merge conflicts)
+
+Tests are split into **small, feature-focused files** so that two feature
+branches almost never edit the same lines. Adding tests for a feature area
+should mean **a new file plus one `mod` line**, never appending to a large
+shared file.
+
+- **Parser** — `parser/src/tests/`: one file per feature area
+  (`case.rs`, `enums.rs`, `reference_to.rs`, `duration.rs`, …). Shared
+  imports and helpers live in `tests/common.rs`; each file starts with
+  `use super::common::*;`. Register new files with a `mod` line in
+  `tests/mod.rs` (kept sorted).
+- **plc2plc** — `plc2plc/src/tests/`: same structure.
+- **codegen** — `codegen/tests/it/`: one file per feature
+  (`end_to_end_case.rs`, `compile_add.rs`, …), registered with a `mod` line
+  in `tests/it/main.rs`.
+
+Prefer a **new** file for a new sub-feature over appending to an existing
+one: appending puts every branch's new tests on the same trailing lines,
+which is exactly what causes the recurring conflicts. Only add to an
+existing file when the new tests genuinely extend that same narrow feature.
 
 ## Lexer and Token Patterns
 
@@ -177,6 +199,8 @@ table is a convenience mirror, so consult the macro if the two ever disagree.
 | `allow_short_circuit_operators` | `--allow-short-circuit-operators` | AND_THEN short-circuit boolean operator (Beckhoff/CODESYS) |
 | `allow_mixed_located_var_declarations` | `--allow-mixed-located-var-declarations` | `AT`-located variable (e.g. `AT %I*`) mixed with plain variables in one `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block |
 | `allow_constant_initializer_expressions` | `--allow-constant-initializer-expressions` | Constant expressions (not just bare literals) in `VAR` initializers, e.g. `SCALE*4.0` |
+| `allow_bit_string_case_labels` | `--allow-bit-string-case-labels` | Hex/binary/octal bit-string literals (`16#D012`, `2#1010`) as `CASE` labels (TwinCAT/CODESYS) |
+| `allow_paren_string_length` | `--allow-paren-string-length` | `STRING(n)`/`WSTRING(n)` parenthesis length delimiter in addition to the standard `STRING[n]` brackets (gated by P4042; matched delimiters required) |
 
 ### Dialects
 
@@ -274,12 +298,12 @@ The test pattern parses an `.st` source file, renders it back to text via the `p
 |------|-------|
 | Shared input `.st` files | `compiler/resources/test/` |
 | Expected rendered output | `compiler/plc2plc/resources/test/` |
-| Test code | `compiler/plc2plc/src/tests.rs` |
+| Test code | `compiler/plc2plc/src/tests/` (one focused file per feature; helpers in `tests/common.rs`) |
 | Renderer implementation | `compiler/plc2plc/src/renderer.rs` |
 
 ### Test Pattern
 
-From `plc2plc/src/tests.rs`:
+From `plc2plc/src/tests/common.rs`:
 
 ```rust
 fn parse_and_render_resource(name: &'static str) -> String {
@@ -300,7 +324,7 @@ fn write_to_string_my_feature() {
 
 1. **Create the input file**: Add `compiler/resources/test/my_feature.st` with valid IEC 61131-3 source that uses the new syntax
 2. **Create the expected output file**: Add `compiler/plc2plc/resources/test/my_feature_rendered.st` with the expected rendered output
-3. **Add the test**: Add a test function in `plc2plc/src/tests.rs` following the pattern above
+3. **Add the test**: Add a test function to the matching focused file under `plc2plc/src/tests/` (or create a new file plus a `mod` line in `tests/mod.rs`), following the pattern above
 4. **Update the renderer**: If the new syntax requires new AST nodes, update `plc2plc/src/renderer.rs` to render them
 
 For non-standard syntax that requires a parse option:
@@ -538,7 +562,7 @@ Update `plc2plc/src/renderer.rs` to render the new AST nodes.
 
 1. Create `compiler/resources/test/repeat_limit.st`
 2. Create `compiler/plc2plc/resources/test/repeat_limit_rendered.st`
-3. Add test in `plc2plc/src/tests.rs`
+3. Add test in the matching focused file under `plc2plc/src/tests/`
 
 #### Step 10: Add Execution Test
 

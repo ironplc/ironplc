@@ -40,9 +40,12 @@ The feature is delivered in two phases, one PR each:
   the whole existing `REF_TO` analyzer/codegen/VM backend. Access in this phase
   is via the existing explicit `^` operator (enough to prove end-to-end
   execution). Requirements `0xx`–`4xx` and `6xx`.
-- **PR 2 — Implicit dereference & TwinCAT-faithful semantics.** An analyzer
-  transform that makes bare uses of a `REFERENCE`-typed variable behave as an
-  automatic dereference, plus `__ISVALIDREF`. Requirements `5xx`.
+- **PR 2 — Implicit dereference & TwinCAT-faithful semantics (this phase).** An
+  analyzer transform (`xform_insert_implicit_deref`) that makes bare uses of a
+  `REFERENCE`-typed variable behave as an automatic dereference — a bare read
+  reads *through* the reference and a bare `:=` write stores *through* it, with
+  no explicit `^` — plus `__ISVALIDREF` (gated behind `--allow-reference-to`).
+  Requirements `5xx`.
 
 ## Gating & coexistence
 
@@ -177,6 +180,41 @@ variable stores to the referenced variable.
 **REQ-RTO-plc2plc-602** A `RefTo`-tagged declaration still renders as `REF_TO`
 (regression).
 
+### Implicit dereference & validity — PR 2 (analyzer, codegen)
+
+The `xform_insert_implicit_deref` analyzer transform runs after late-bound
+resolution and before both the reference semantic rules (`rule_ref_to`) and
+codegen. It keys on each variable's `RefSyntax` tag, so only `REFERENCE TO`
+variables are affected; `REF_TO`/`POINTER TO` keep explicit-`^` semantics.
+
+**REQ-RTO-codegen-500** A bare read of a `REFERENCE TO`-declared variable
+(`y := r;`, no `^`) reads the referenced value — the transform wraps the read
+in an implicit dereference, so it behaves exactly as `y := r^;` would.
+
+**REQ-RTO-codegen-501** A bare write to a `REFERENCE TO`-declared variable
+(`r := v;`, no `^`) stores to the referenced variable — the transform marks the
+assignment as a dereferencing store, so it behaves exactly as `r^ := v;` would.
+
+**REQ-RTO-analyzer-502** The target of a `REF=` binding is *not* auto-dereferenced
+— `r REF= x;` rebinds the reference itself, so the implicit-dereference transform
+leaves the binding assignment (and its `REF()` value) untouched.
+
+**REQ-RTO-codegen-503** `__ISVALIDREF(r)` is `FALSE` for an unbound
+`REFERENCE TO` variable and `TRUE` once it has been bound with `REF=` — it lowers
+to `r <> NULL` against the reference value itself (not its dereference).
+
+**REQ-RTO-codegen-504** Two `REFERENCE TO` variables bound to the same target
+observe each other's writes through bare (implicitly-dereferenced) access.
+
+**REQ-RTO-analyzer-505** `__ISVALIDREF` is recognized as a builtin only when
+`allow_reference_to` is set; with the flag off it stays an ordinary identifier
+and an `__ISVALIDREF(...)` call is reported as an undeclared function.
+
+**REQ-RTO-codegen-510** Arithmetic on a bare `REFERENCE TO` operand
+(`y := r + 1;`) uses the dereferenced value and is *not* rejected as
+arithmetic-on-a-reference (P2033), because the transform has already replaced the
+bare operand with its dereference.
+
 ---
 
 ## Requirements traceability
@@ -204,11 +242,20 @@ variable stores to the referenced variable.
 | **REQ-RTO-plc2plc-600** | `REFERENCE TO` declaration renders | `plc2plc_spec_req_rto_600_*` | plc2plc |
 | **REQ-RTO-plc2plc-601** | `REF=` binding renders | `plc2plc_spec_req_rto_601_*` | plc2plc |
 | **REQ-RTO-plc2plc-602** | `REF_TO` still renders (regression) | `plc2plc_spec_req_rto_602_*` | plc2plc |
+| **REQ-RTO-codegen-500** | A bare read auto-dereferences | `codegen_spec_req_rto_500_*` | codegen |
+| **REQ-RTO-codegen-501** | A bare write auto-dereferences | `codegen_spec_req_rto_501_*` | codegen |
+| **REQ-RTO-analyzer-502** | The target of `REF=` is not auto-dereferenced | `analyzer_spec_req_rto_502_*` | analyzer |
+| **REQ-RTO-codegen-503** | `__ISVALIDREF` reflects binding state | `codegen_spec_req_rto_503_*` | codegen |
+| **REQ-RTO-codegen-504** | Aliasing observed through implicit deref | `codegen_spec_req_rto_504_*` | codegen |
+| **REQ-RTO-analyzer-505** | `__ISVALIDREF` recognized only when flag set | `analyzer_spec_req_rto_505_*` | analyzer |
+| **REQ-RTO-codegen-510** | Arithmetic on a bare reference uses the deref value | `codegen_spec_req_rto_510_*` | codegen |
 
 ## Out of scope (this document)
 
-- Implicit dereference and `__ISVALIDREF` — PR 2, requirements `5xx` (added to
-  this document in that phase).
 - `POINTER TO` and the `ADR()`/`^` pointer model.
 - `S=` / `R=` extended assignment operators.
 - TwinCAT OOP features (methods, properties, interfaces).
+- Implicit dereference of `REFERENCE TO` **array elements** and
+  `TYPE`-alias-declared reference variables — PR 2's transform keys on a direct
+  `VAR ... : REFERENCE TO ...;` declaration (matching the tagging scope of PR 1's
+  `ReferenceInitializer`); those two forms keep explicit-`^` access.

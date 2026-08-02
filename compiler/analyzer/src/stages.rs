@@ -14,11 +14,13 @@ use crate::{
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
-    rule_bit_access_range, rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
-    rule_enumeration_values_unique, rule_function_block_invocation, rule_function_call_declared,
-    rule_function_call_type_check, rule_mixed_located_var_declarations,
-    rule_no_top_level_var_global, rule_pou_hierarchy, rule_program_task_definition_exists,
-    rule_ref_to, rule_stdlib_type_redefinition, rule_string_encoding_compat,
+    rule_bit_access_range, rule_case_bit_string_label, rule_decl_struct_element_unique_names,
+    rule_decl_subrange_limits, rule_enumeration_values_unique,
+    rule_function_block_call_unsupported, rule_function_block_invocation,
+    rule_function_call_declared, rule_function_call_type_check,
+    rule_mixed_located_var_declarations, rule_no_top_level_var_global, rule_pou_hierarchy,
+    rule_program_task_definition_exists, rule_ref_to, rule_stdlib_type_redefinition,
+    rule_string_encoding_compat, rule_struct_initializer_expression_allowed,
     rule_task_names_unique, rule_unsupported_stdlib_type, rule_use_declared_enumerated_value,
     rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
@@ -26,7 +28,7 @@ use crate::{
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
-    xform_int_to_bool_initializer, xform_named_to_positional_args,
+    xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_named_to_positional_args,
     xform_resolve_constant_expressions, xform_resolve_expr_types,
     xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
     xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
@@ -128,7 +130,7 @@ pub fn resolve_types(
     // Resolve constant references in type parameters (STRING lengths, array bounds).
     // Must run before toposort so that concrete integer values are available.
     let fallback = library.clone();
-    match xform_resolve_constant_expressions::apply(library) {
+    match xform_resolve_constant_expressions::apply(library, options) {
         Ok(result) => library = result,
         Err(errs) => {
             diagnostics.extend(errs);
@@ -159,6 +161,22 @@ pub fn resolve_types(
                 diagnostics.extend(errs);
                 library = fallback;
             }
+        }
+    }
+
+    // Give TwinCAT `REFERENCE TO` variables their auto-dereferencing semantics
+    // (bare reads/writes go through the reference) and lower `__ISVALIDREF`.
+    // Runs after late-bound expression resolution (so bare identifiers are
+    // already `ExprKind::Variable`) but before symbol/function resolution (so
+    // `__ISVALIDREF` is lowered before it would be flagged as undeclared) and
+    // before the reference semantic rules. See
+    // specs/design/reference-to-twincat.md (PR 2).
+    let fallback = library.clone();
+    match xform_insert_implicit_deref::apply(library, options) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
         }
     }
 
@@ -277,6 +295,7 @@ pub(crate) fn semantic(
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
+        rule_function_block_call_unsupported::apply,
         rule_function_block_invocation::apply,
         rule_function_call_declared::apply,
         rule_function_call_type_check::apply,
@@ -285,6 +304,7 @@ pub(crate) fn semantic(
         rule_task_names_unique::apply,
         rule_stdlib_type_redefinition::apply,
         rule_string_encoding_compat::apply,
+        rule_struct_initializer_expression_allowed::apply,
         rule_use_declared_enumerated_value::apply,
         rule_use_declared_symbolic_var::apply,
         rule_unsupported_stdlib_type::apply,
@@ -295,6 +315,7 @@ pub(crate) fn semantic(
         rule_mixed_located_var_declarations::apply,
         rule_pou_hierarchy::apply,
         rule_bit_access_range::apply,
+        rule_case_bit_string_label::apply,
         rule_ref_to::apply,
     ];
 
@@ -434,5 +455,50 @@ END_FUNCTION_BLOCK";
         let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
 
         assert!(context.has_diagnostics());
+    }
+
+    // ---------------------------------------------------------------------
+    // FB-instance call-style initializer (distinct node).
+    // See specs/plans/2026-08-01-fb-call-style-initializer-distinct-node.md.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn analyze_when_fb_call_style_init_references_earlier_declared_fb_then_only_not_implemented() {
+        // End-to-end: the call-style initializer references an earlier-declared
+        // FB. It must produce exactly the "not yet supported" diagnostic
+        // (P9999 NotImplemented) from the deferring rule -- and crucially NOT
+        // a spurious P2011 "Parent type is not declared", which would appear
+        // if the new FunctionBlockCall node were not wired into toposort/type
+        // resolution like the FunctionBlock node.
+        use ironplc_problems::Problem;
+
+        let program = "
+FUNCTION_BLOCK FB_Comm
+VAR_INPUT
+    retries : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm(retries := 3);
+END_VAR
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        let codes: Vec<&str> = context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert!(codes.contains(&"P9999"), "expected P9999, got: {codes:?}");
+        assert!(
+            !codes.contains(&Problem::ParentTypeNotDeclared.code()),
+            "unexpected spurious P2011: {codes:?}"
+        );
     }
 }

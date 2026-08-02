@@ -798,3 +798,108 @@ END_PROGRAM
     // vars: val=0, refs=1, result=2
     assert_eq!(bufs.vars[2].as_i32(), 77);
 }
+
+/// REQ-RTO-codegen-500: A bare read of a `REFERENCE TO` variable (no `^`)
+/// auto-dereferences and yields the referenced value.
+#[spec_test(REQ_RTO_codegen_500)]
+fn codegen_spec_req_rto_500_bare_read_auto_dereferences() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 42;
+    r : REFERENCE TO INT;
+    y : INT;
+  END_VAR
+  r REF= x;
+  y := r;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    // vars: x=0, r=1, y=2. Bare `y := r` must read *through* r (== x).
+    assert_eq!(bufs.vars[2].as_i32(), 42);
+}
+
+/// REQ-RTO-codegen-501: A bare write to a `REFERENCE TO` variable (no `^`)
+/// auto-dereferences and stores to the referenced variable.
+#[spec_test(REQ_RTO_codegen_501)]
+fn codegen_spec_req_rto_501_bare_write_auto_dereferences() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 1;
+    r : REFERENCE TO INT;
+  END_VAR
+  r REF= x;
+  r := 99;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    // Bare `r := 99` must store *through* r, updating x (var 0).
+    assert_eq!(bufs.vars[0].as_i32(), 99);
+}
+
+/// REQ-RTO-codegen-503: `__ISVALIDREF(r)` is FALSE for an unbound reference and
+/// TRUE once it has been bound with `REF=`.
+#[spec_test(REQ_RTO_codegen_503)]
+fn codegen_spec_req_rto_503_isvalidref_reflects_binding() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 5;
+    r : REFERENCE TO INT;
+    before : BOOL;
+    after : BOOL;
+  END_VAR
+  before := __ISVALIDREF(r);
+  r REF= x;
+  after := __ISVALIDREF(r);
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    // vars: x=0, r=1, before=2, after=3.
+    assert_eq!(bufs.vars[2].as_i32(), 0, "unbound reference is not valid");
+    assert_eq!(bufs.vars[3].as_i32(), 1, "bound reference is valid");
+}
+
+/// REQ-RTO-codegen-504: Two `REFERENCE TO` variables bound to the same target
+/// observe each other's writes through bare (auto-dereferenced) access.
+#[spec_test(REQ_RTO_codegen_504)]
+fn codegen_spec_req_rto_504_aliasing_observed_through_implicit_deref() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 10;
+    r1 : REFERENCE TO INT;
+    r2 : REFERENCE TO INT;
+    y : INT;
+  END_VAR
+  r1 REF= x;
+  r2 REF= x;
+  r1 := 55;
+  y := r2;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    // vars: x=0, r1=1, r2=2, y=3. Writing through r1 is observed through r2.
+    assert_eq!(bufs.vars[3].as_i32(), 55);
+}
+
+/// REQ-RTO-codegen-510: Arithmetic on a bare `REFERENCE TO` operand uses the
+/// dereferenced value (`r + 2` computes `r^ + 2`).
+#[spec_test(REQ_RTO_codegen_510)]
+fn codegen_spec_req_rto_510_arithmetic_on_reference_uses_deref_value() {
+    let source = "
+PROGRAM main
+  VAR
+    x : INT := 40;
+    r : REFERENCE TO INT;
+    y : INT;
+  END_VAR
+  r REF= x;
+  y := r + 2;
+END_PROGRAM
+";
+    let (_c, bufs) = compile_and_run_with(source, &reference_to_options());
+    // vars: x=0, r=1, y=2. `r + 2` must use r's dereferenced value (40 + 2).
+    assert_eq!(bufs.vars[2].as_i32(), 42);
+}

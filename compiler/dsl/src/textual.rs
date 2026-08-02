@@ -2,8 +2,8 @@
 //!
 //! See section 3.
 use crate::common::{
-    AddressAssignment, ConstantKind, EnumeratedValue, Integer, IntegerLiteral, SignedInteger,
-    Subrange, TypeName,
+    AddressAssignment, BitStringLiteral, ConstantKind, EnumeratedValue, Integer, IntegerLiteral,
+    SignedInteger, Subrange, TypeName,
 };
 use crate::core::{Id, Located, SourceSpan};
 use std::fmt;
@@ -906,6 +906,10 @@ pub enum CaseSelectionKind {
     Subrange(Subrange),
     SignedInteger(SignedInteger),
     EnumeratedValue(EnumeratedValue),
+    /// A radix-prefixed bit-string literal used as a `CASE` label (e.g.
+    /// `16#D012:`, `2#1010:`). See
+    /// specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    BitStringLiteral(BitStringLiteral),
 }
 
 /// The for loop statement.
