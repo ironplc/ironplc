@@ -12,8 +12,12 @@ setup:
 compile:
   cargo build
 
+# Run the test suite. Excludes benchmarks (which `--all-targets` would run as
+# tests, since st_benchmark uses `harness = false`); benches are compile-checked
+# by `just lint` and run via `just bench`. Mirrors the targets `just coverage`
+# exercises.
 test:
-  cargo test --quiet --all-targets
+  cargo test --quiet --workspace --features ironplc-vm-cli/dap
 
 # Run tests and produce coverage report
 coverage:
