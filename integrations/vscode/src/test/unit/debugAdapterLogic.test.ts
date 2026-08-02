@@ -5,7 +5,9 @@ import {
   buildDebugCompileArgs,
   containerOutputPath,
   findDapServerPath,
+  isDebuggableProgram,
   isSourceProgram,
+  programKind,
   resolveProgramPath,
   scanCountMessage,
 } from '../../debugAdapterLogic';
@@ -40,6 +42,39 @@ suite('isSourceProgram', () => {
 
   test('isSourceProgram_when_no_extension_then_false', () => {
     assert.strictEqual(isSourceProgram('/work/main'), false);
+  });
+});
+
+suite('programKind', () => {
+  test('programKind_when_source_extension_then_source', () => {
+    assert.strictEqual(programKind('/work/main.st'), 'source');
+  });
+
+  test('programKind_when_iplc_then_container', () => {
+    assert.strictEqual(programKind('/work/main.iplc'), 'container');
+  });
+
+  test('programKind_when_json_then_unknown', () => {
+    // Regression: a launch.json path must not be treated as a container.
+    assert.strictEqual(programKind('/work/.vscode/launch.json'), 'unknown');
+  });
+
+  test('programKind_when_no_extension_then_unknown', () => {
+    assert.strictEqual(programKind('/work/main'), 'unknown');
+  });
+});
+
+suite('isDebuggableProgram', () => {
+  test('isDebuggableProgram_when_source_then_true', () => {
+    assert.strictEqual(isDebuggableProgram('/work/main.st'), true);
+  });
+
+  test('isDebuggableProgram_when_container_then_true', () => {
+    assert.strictEqual(isDebuggableProgram('/work/main.iplc'), true);
+  });
+
+  test('isDebuggableProgram_when_launch_json_then_false', () => {
+    assert.strictEqual(isDebuggableProgram('/work/.vscode/launch.json'), false);
   });
 });
 

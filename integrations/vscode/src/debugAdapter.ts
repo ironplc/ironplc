@@ -8,7 +8,8 @@ import {
   buildDebugCompileArgs,
   containerOutputPath,
   findDapServerPath,
-  isSourceProgram,
+  isDebuggableProgram,
+  programKind,
   resolveProgramPath,
 } from './debugAdapterLogic';
 
@@ -41,11 +42,15 @@ implements vscode.DebugConfigurationProvider {
       config.name = 'IronPLC: Debug Active File';
     }
 
-    const activeEditorPath = vscode.window.activeTextEditor?.document.uri.fsPath;
-    const program = resolveProgramPath(config.program, activeEditorPath);
+    // Fall back to the active editor only when it is itself a debuggable file,
+    // so pressing Run from the launch.json editor does not pick launch.json as
+    // the program. A literal "${file}" is kept as-is for VS Code to substitute.
+    const active = vscode.window.activeTextEditor?.document.uri.fsPath;
+    const activeDebuggable = active && isDebuggableProgram(active) ? active : undefined;
+    const program = resolveProgramPath(config.program, activeDebuggable);
     if (!program) {
       return vscode.window
-        .showErrorMessage('IronPLC: no program to debug. Open a Structured Text file or set "program" in launch.json.')
+        .showErrorMessage('IronPLC: no program to debug. Open a Structured Text file, or set "program" to a .st or .iplc path in launch.json.')
         .then(() => undefined);
     }
     config.program = program;
@@ -61,9 +66,18 @@ implements vscode.DebugConfigurationProvider {
       return undefined;
     }
 
-    // Already a compiled container: launch it as-is.
-    if (!isSourceProgram(program)) {
-      return config;
+    switch (programKind(program)) {
+      case 'container':
+        // Already a compiled `.iplc`: launch it as-is.
+        return config;
+      case 'unknown':
+        // Not a source file or a container. Reject with a clear message rather
+        // than handing it to the server, which would fail with an opaque
+        // "invalid magic number".
+        await vscode.window.showErrorMessage(`IronPLC: "${program}" is not a Structured Text source (.st) or a compiled .iplc container. Set "program" in launch.json to a source or container path.`);
+        return undefined;
+      case 'source':
+        break;
     }
 
     const output = containerOutputPath(program, os.tmpdir());

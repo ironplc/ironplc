@@ -44,13 +44,41 @@ export const SOURCE_EXTENSIONS: string[] = [
 export const CONTAINER_EXTENSION = '.iplc';
 
 /**
+ * How a launch `program` path should be handled:
+ * - `source`: a Structured Text source that must be compiled to a container;
+ * - `container`: an already-compiled `.iplc` that launches directly;
+ * - `unknown`: neither — must be rejected rather than handed to the server,
+ *   which would fail with an opaque "invalid magic number".
+ */
+export type ProgramKind = 'source' | 'container' | 'unknown';
+
+/** Classifies a launch `program` path by its extension. */
+export function programKind(program: string): ProgramKind {
+  const ext = path.extname(program).toLowerCase();
+  if (SOURCE_EXTENSIONS.includes(ext)) {
+    return 'source';
+  }
+  if (ext === CONTAINER_EXTENSION) {
+    return 'container';
+  }
+  return 'unknown';
+}
+
+/**
  * True when `program` is a source file that must be compiled to an `.iplc`
- * container before debugging; false when it is already a container (or has no
- * recognized extension, in which case it is passed through unchanged).
+ * container before debugging.
  */
 export function isSourceProgram(program: string): boolean {
-  const ext = path.extname(program).toLowerCase();
-  return SOURCE_EXTENSIONS.includes(ext);
+  return programKind(program) === 'source';
+}
+
+/**
+ * True when `program` can be debugged: a source file (compiled first) or an
+ * already-compiled `.iplc` container. Anything else must be rejected before it
+ * reaches the DAP server.
+ */
+export function isDebuggableProgram(program: string): boolean {
+  return programKind(program) !== 'unknown';
 }
 
 /**
