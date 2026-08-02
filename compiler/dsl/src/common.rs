@@ -2615,8 +2615,7 @@ pub struct FunctionBlockInitialValueAssignment {
 /// instance's own member values via the `:= (member := value, ...)` form):
 /// the two are different constructs that target different things, so
 /// keeping them as distinct AST nodes prevents them from being conflated
-/// at code generation. Not yet supported in codegen -- flagged by
-/// `rule_function_block_call_unsupported` (P9004).
+/// at code generation.
 #[derive(Clone, PartialEq, Debug, Recurse)]
 pub struct FunctionBlockCallInitializer {
     /// The function-block type being instantiated. As with

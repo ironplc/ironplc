@@ -7,7 +7,8 @@
 //! rejected outright. In CODESYS the arguments are passed to the function
 //! block's constructor (the `FB_init` method), which the compiler does not
 //! yet model. Rather than silently discard the arguments, this rule emits a
-//! clear diagnostic (P9004) until code generation supports the construct.
+//! P9999 (`NotImplemented`) diagnostic until code generation supports the
+//! construct.
 //!
 //! This mirrors [`crate::rule_unsupported_stdlib_type`] (P9001), which flags
 //! recognized-but-unimplemented standard library types.
@@ -27,7 +28,6 @@ use ironplc_dsl::{
     diagnostic::{Diagnostic, Label},
     visitor::Visitor,
 };
-use ironplc_problems::Problem;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
 use ironplc_parser::options::CompilerOptions;
@@ -59,13 +59,11 @@ impl Visitor<Diagnostic> for RuleFunctionBlockCallUnsupported {
         &mut self,
         node: &FunctionBlockCallInitializer,
     ) -> Result<(), Diagnostic> {
-        self.diagnostics.push(Diagnostic::problem(
-            Problem::FunctionBlockCallInitUnsupported,
-            Label::span(
+        self.diagnostics
+            .push(Diagnostic::not_implemented(Label::span(
                 node.type_name.span(),
                 "Call-style function block initializer",
-            ),
-        ));
+            )));
         node.recurse_visit(self)
     }
 }
@@ -78,7 +76,7 @@ mod tests {
     use crate::test_helpers::parse_and_resolve_types;
 
     #[test]
-    fn apply_when_fb_call_style_init_then_reports_p9004() {
+    fn apply_when_fb_call_style_init_then_reports_not_implemented() {
         let program = "
 FUNCTION_BLOCK FB_Comm
 VAR_INPUT
@@ -98,10 +96,10 @@ END_FUNCTION_BLOCK";
 
         let diagnostics = result.expect_err("call-style initializer must be flagged");
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionBlockCallInitUnsupported.code()
-        );
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!(diagnostics[0].code, "P9999");
     }
 
     #[test]

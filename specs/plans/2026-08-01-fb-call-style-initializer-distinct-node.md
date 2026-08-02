@@ -56,11 +56,13 @@ member-init field is added deliberately then — not as a hidden flag now.
 method today, and applying constructor arguments is a larger feature.
 Rather than silently ignore the arguments (as the existing member-init form
 is silently ignored today), the call form is parsed and stored, then a
-dedicated semantic rule emits a documented diagnostic (**P9004**,
-"recognized but not yet supported in code generation"). This mirrors the
-existing `rule_unsupported_stdlib_type` / P9001 pattern. When real `FB_init`
-codegen lands, the rule is deleted and a codegen arm fills in — a one-place
-change.
+dedicated semantic rule emits the existing **P9999** (`NotImplemented`)
+diagnostic — constructed via `Diagnostic::not_implemented`, which carries
+the IEC 61131-3 source span while recording the compiler call site. This
+mirrors the existing `rule_unsupported_stdlib_type` / P9001 pattern (no new
+problem code is minted; P9004 is reserved for the planned general
+`UnsupportedExtension` framework). When real `FB_init` codegen lands, the
+rule is deleted and a codegen arm fills in — a one-place change.
 
 ## DSL
 
@@ -90,14 +92,15 @@ fold method; the `Recurse` derive on the enum generates the dispatch arm).
 { type_name, params })` directly — no `Option`. Uses `var1_list()` and
 requires the parens unconditionally (so a bare `name : Type;` still flows
 through the late-bound path, and the `:=` member form is untouched). Added
-to `var_init_decl()`'s ordered choice after `fb_name_decl()`.
+to `var_init_decl()`'s ordered choice after `ref_to_var_init_decl()`. (The
+old dead `fb_name_decl()` rule was removed from the grammar in #1275.)
 
 ## Analyzer
 
 `FunctionBlockCall` references an FB type, so it must participate in the same
 type-reference machinery as `FunctionBlock` (otherwise a call-style program
 gets spurious P2011 / unknown-type errors *in addition to* the intended
-P9004):
+P9999):
 
 - `xform_toposort_declarations` — add the referenced-type-before-POU edge
   (same as the `FunctionBlock` arms Agent 2 fixed in #1269).
@@ -108,24 +111,25 @@ P9004):
   `rule_var_decl_const_not_fb`, `rule_var_decl_const_initialized`) — same
   treatment.
 
-New `rule_function_block_call_unsupported` emits P9004 on every
-`FunctionBlockCall` node; registered in `stages.rs::semantic()`.
+New `rule_function_block_call_unsupported` emits P9999 (`NotImplemented`) on
+every `FunctionBlockCall` node; registered in `stages.rs::semantic()`.
 
 ## Codegen / plc2plc / MCP
 
-- `codegen/compile_setup.rs` — dedicated `FunctionBlockCall` arm. (It never
-  reaches successful codegen because P9004 fails analysis first, but the arm
-  must exist for exhaustiveness; lay the instance out like `FunctionBlock`
-  so debug/type queries stay consistent.)
+- `codegen/compile_setup.rs` — the `FunctionBlockCall` node never reaches
+  successful codegen because the P9999 rule fails analysis first, and the
+  existing matches use wildcard arms, so no dedicated codegen arm is added
+  (consistent with the "deferred" intent).
 - `plc2plc/renderer.rs` — `visit_function_block_call_initializer` renders
   `Type ( params )`.
-- `mcp/pou_lineage.rs`, `mcp/pou_scope.rs` — handle the new node for type
-  lineage/scope where they already special-case `FunctionBlock`.
+- `mcp/pou_lineage.rs` — records the FB-type lineage edge for the call form.
 
 ## Problem code
 
-- `problems/resources/problem-codes.csv`: `P9004,FunctionBlockCallInitUnsupported,...`
-- `docs/reference/compiler/problems/P9004.rst` (index.rst is auto-generated).
+No new problem code is minted. The deferring rule reuses the existing
+**P9999** (`NotImplemented`) via `Diagnostic::not_implemented`. (P9004 is
+reserved for the planned general `UnsupportedExtension` framework — see
+`specs/design/beckhoff-twincat-dialect.md`.)
 
 ## Testing
 
@@ -134,18 +138,18 @@ New `rule_function_block_call_unsupported` emits P9004 on every
   `LateResolvedType` (regression); `:= (member := value)` still parses
   (regression).
 - plc2plc: call form round-trips (`FB_Comm ( retries := 3 , THIS )`).
-- Deferring rule: call form yields exactly P9004.
+- Deferring rule: call form yields exactly P9999.
 - Analyzer end-to-end: a call form referencing an earlier-declared FB yields
-  P9004 and **not** P2011 (proves toposort/resolution handle the node).
+  P9999 and **not** P2011 (proves toposort/resolution handle the node).
 - Toposort: referenced type ordered before the referencing POU.
 
 ## Tasks
 
 - [x] Plan (this document)
-- [ ] DSL node + variant + dispatch
-- [ ] Parser rule
-- [ ] Analyzer xform/rule match sites
-- [ ] Deferring rule + P9004 + docs
-- [ ] Codegen + plc2plc + MCP
-- [ ] Tests
-- [ ] Full CI (`cd compiler && just`) + PR
+- [x] DSL node + variant + dispatch
+- [x] Parser rule
+- [x] Analyzer xform/rule match sites
+- [x] Deferring rule (P9999 `NotImplemented`)
+- [x] plc2plc + MCP
+- [x] Tests
+- [x] Full CI (`cd compiler && just`) + PR

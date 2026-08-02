@@ -462,12 +462,12 @@ END_FUNCTION_BLOCK";
     // ---------------------------------------------------------------------
 
     #[test]
-    fn analyze_when_fb_call_style_init_references_earlier_declared_fb_then_only_p9004() {
+    fn analyze_when_fb_call_style_init_references_earlier_declared_fb_then_only_not_implemented() {
         // End-to-end: the call-style initializer references an earlier-declared
-        // FB. It must produce exactly the "not yet supported in codegen"
-        // diagnostic (P9004) from the deferring rule -- and crucially NOT a
-        // spurious P2011 "Parent type is not declared", which would appear if
-        // the new FunctionBlockCall node were not wired into toposort/type
+        // FB. It must produce exactly the "not yet supported" diagnostic
+        // (P9999 NotImplemented) from the deferring rule -- and crucially NOT
+        // a spurious P2011 "Parent type is not declared", which would appear
+        // if the new FunctionBlockCall node were not wired into toposort/type
         // resolution like the FunctionBlock node.
         use ironplc_problems::Problem;
 
@@ -491,10 +491,10 @@ END_FUNCTION_BLOCK";
             .iter()
             .map(|d| d.code.as_str())
             .collect();
-        assert!(
-            codes.contains(&Problem::FunctionBlockCallInitUnsupported.code()),
-            "expected P9004, got: {codes:?}"
-        );
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert!(codes.contains(&"P9999"), "expected P9999, got: {codes:?}");
         assert!(
             !codes.contains(&Problem::ParentTypeNotDeclared.code()),
             "unexpected spurious P2011: {codes:?}"
