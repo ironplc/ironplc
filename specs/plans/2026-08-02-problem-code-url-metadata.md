@@ -76,9 +76,14 @@ Code.
 6. **`docs/_static/posthog-init.js`** — add `custom_campaign_params: ['channel',
    'version']` so PostHog captures the two plain params as event properties.
 
-`section_for_code` is duplicated in `cli.rs` and `explain_diagnostic.rs` (a
-four-arm match in two different crates); the LSP path keeps its hardcoded
-`compiler` section (its diagnostics are P-codes) to avoid widening scope.
+The section mapping lives once, as `ironplc_dsl::diagnostic::docs_section`
+(`P→compiler`, `V→runtime`, `E→editor`, else `unknown`), shared by `cli.rs` and
+`explain_diagnostic.rs`. It returns `unknown` rather than defaulting to a real
+section, so a new code family produces an honest 404 instead of a wrong page,
+and a docs-tree-walking test (`docs_section_covers_every_documented_code`, mirrored
+in the TS `problemUrls` suite) fails if any documented code's prefix is left
+unmapped. The LSP path keeps its hardcoded `compiler` section (its diagnostics
+are P-codes) to avoid widening scope.
 
 ## Tests
 

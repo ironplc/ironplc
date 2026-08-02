@@ -5,11 +5,13 @@
 // need the editor host).
 
 /**
- * The www.ironplc.com reference section a problem code documents into.
+ * The www.ironplc.com reference section a problem code documents into:
+ * `P####` → compiler, `V####` → runtime, `E####` → editor.
  *
- * `E####` are editor problems, `P####` compiler problems, and `V####` runtime
- * (VM) problems. Anything else falls back to `editor` (the extension only
- * raises E-codes today).
+ * Returns `'unknown'` for any unrecognized prefix rather than guessing a
+ * section, so a new code family produces an honest 404 instead of a
+ * confidently-wrong link. The `sectionForCode maps every documented code`
+ * test walks the docs tree and fails if a documented prefix is left unmapped.
  */
 function sectionForCode(code: string): string {
   switch (code.charAt(0)) {
@@ -17,8 +19,10 @@ function sectionForCode(code: string): string {
       return 'compiler';
     case 'V':
       return 'runtime';
-    default:
+    case 'E':
       return 'editor';
+    default:
+      return 'unknown';
   }
 }
 

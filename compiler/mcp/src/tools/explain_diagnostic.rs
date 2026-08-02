@@ -34,38 +34,26 @@ pub struct ExplainDiagnosticResponse {
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggested_fix: Option<String>,
-    /// Link to the full documentation page for this problem code, tagged so
-    /// PostHog can attribute a follow-through to the MCP channel. Present only
-    /// for known codes.
+    /// URL of the full documentation page for this problem code, so the client
+    /// (or the human behind it) can open the complete write-up. Present only for
+    /// known codes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub doc_url: Option<String>,
     pub diagnostics: Vec<serde_json::Value>,
 }
 
-/// Maps a problem code to its documentation section on www.ironplc.com.
+/// Builds the documentation URL for a problem code, tagged with the channel it
+/// was surfaced through.
 ///
-/// `P####` are compiler problems, `V####` runtime (VM) problems, and `E####`
-/// editor problems; each lives under a different reference section. Anything
-/// else falls back to `compiler`.
-fn section_for_code(code: &str) -> &'static str {
-    match code.chars().next() {
-        Some('V') => "runtime",
-        Some('E') => "editor",
-        _ => "compiler",
-    }
-}
-
-/// Builds the documentation URL for a problem code, tagged so PostHog can
-/// attribute the arrival to the MCP channel.
-///
-/// `channel=mcp` identifies the channel and `version` stays for the out-of-date
-/// banner in docs/_static/version-check.js; PostHog captures both as breakdown
-/// dimensions via `custom_campaign_params` in docs/_static/posthog-init.js.
+/// `channel=mcp` marks the origin and `version` carries the client version
+/// (which the out-of-date banner in docs/_static/version-check.js reads). Both
+/// let us see where and on which version people reach these pages; the URL is a
+/// working docs link regardless.
 fn problem_help_url(code: &str) -> String {
     let version = env!("CARGO_PKG_VERSION");
     format!(
         "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&channel=mcp",
-        section = section_for_code(code),
+        section = ironplc_dsl::diagnostic::docs_section(code),
     )
 }
 
@@ -291,13 +279,6 @@ mod tests {
         assert!(url.contains("/reference/compiler/problems/P0001.html"));
         assert!(url.contains("?version="));
         assert!(url.contains("&channel=mcp"));
-    }
-
-    #[test]
-    fn section_for_code_when_prefix_then_maps_to_reference_section() {
-        assert_eq!(section_for_code("P0001"), "compiler");
-        assert_eq!(section_for_code("V6008"), "runtime");
-        assert_eq!(section_for_code("E0001"), "editor");
     }
 
     #[test]

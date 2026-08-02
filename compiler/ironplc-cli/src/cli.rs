@@ -357,32 +357,20 @@ fn handle_diagnostics(
     }
 }
 
-/// Maps a problem code to its documentation section on www.ironplc.com.
+/// Builds the documentation URL for a diagnostic, tagged with the channel it
+/// was surfaced through.
 ///
-/// `P####` are compiler problems, `V####` runtime (VM) problems, and `E####`
-/// editor problems; each lives under a different reference section. Anything
-/// else falls back to `compiler`.
-fn section_for_code(code: &str) -> &'static str {
-    match code.chars().next() {
-        Some('V') => "runtime",
-        Some('E') => "editor",
-        _ => "compiler",
-    }
-}
-
-/// Builds the documentation URL for a diagnostic, tagged so PostHog can
-/// attribute the arrival to the CLI.
-///
-/// `channel=cli` identifies the channel and `version` stays for the out-of-date
-/// banner in docs/_static/version-check.js; PostHog captures both as breakdown
-/// dimensions via `custom_campaign_params` in docs/_static/posthog-init.js.
-/// `file`/`line` (the Rust source location that raised the diagnostic) are
-/// appended when present so a maintainer can see what a remote user hit.
+/// The URL is a working docs link regardless; `channel=cli` marks the origin
+/// and `version` carries the client version (which the out-of-date banner in
+/// docs/_static/version-check.js reads), so we can also see where and on which
+/// version people reach these pages. `file`/`line` (the Rust source location
+/// that raised the diagnostic) are appended when present so a maintainer can see
+/// what a remote user hit.
 fn problem_help_url(diagnostic: &Diagnostic) -> String {
     let version = env!("CARGO_PKG_VERSION");
     let mut url = format!(
         "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&channel=cli",
-        section = section_for_code(&diagnostic.code),
+        section = ironplc_dsl::diagnostic::docs_section(&diagnostic.code),
         code = diagnostic.code,
     );
     if let Some(ref file) = diagnostic.source_file {
@@ -497,13 +485,6 @@ mod tests {
         assert!(url.contains("&channel=cli"));
         assert!(url.contains("&file=compiler/analyzer/src/rule_example.rs"));
         assert!(url.contains("&line=42"));
-    }
-
-    #[test]
-    fn section_for_code_when_prefix_then_maps_to_reference_section() {
-        assert_eq!(super::section_for_code("P0001"), "compiler");
-        assert_eq!(super::section_for_code("V6008"), "runtime");
-        assert_eq!(super::section_for_code("E0001"), "editor");
     }
 
     #[test]
