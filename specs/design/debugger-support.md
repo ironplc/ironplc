@@ -847,6 +847,21 @@ For PLC-specific debugging, users need scan-level control:
 | **Pause Between Scans** | Always pause after OUTPUT_FLUSH, before the next INPUT_FREEZE |
 | **Run to Scan N** | Continue until `scan_count` reaches a target value |
 
+> **Status — continuous run loop deferred (Phase 4c).** The Phase 4 DAP server
+> ships a *single-scan* run loop: on `RoundOutcome::Completed` it emits
+> `terminated` (see the scaffold plan's pseudocode and `dap/server.rs`). A real
+> debugger must instead keep scanning — loop back on `Completed` to run the next
+> scan, so breakpoints fire every cycle and variables evolve across cycles —
+> bounded by the launch `scanLimit` (runaway prevention) and honoring
+> `stopOnEntry`. Because the v1 DAP loop is single-threaded (see §Single-threaded
+> DAP loop), a free-running program with no breakpoint is stopped by `disconnect`
+> (the adapter process is terminated), not by a mid-scan `pause`; interactive
+> `pause`-while-running remains the Phase 6 cut. This continuous-loop work is a
+> tracked server follow-up (Phase 4c) and is **not** part of Phase 5 (VS Code
+> integration). The custom `ironplc/stepScan` / `ironplc/scanCount` handlers land
+> with it; until then the Phase 5 toolbar buttons are wired but answered
+> `requestNotApplicable`.
+
 A new `VmRunning::run_round_debug` method drives a single round under a `DebuggerHook`. v1 supports a single program instance only (see §Multi-instance: not supported in v1), so the `instances_for_task` loop is collapsed to "the one instance":
 
 ```rust
