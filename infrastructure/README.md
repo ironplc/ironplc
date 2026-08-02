@@ -5,6 +5,8 @@ Terraform that provisions:
 - 14 GitHub workflow labels (`status/*`, `review/*`, `flag/*`) — `main.tf`.
 - The PostHog **"IronPLC — Adoption & Success"** product-analytics dashboard
   and its insights — `posthog.tf`.
+- The PostHog **"IronPLC — Problem-code reach"** dashboard and its insights —
+  `posthog-problem-code.tf`.
 - The PostHog project's **Authorized URLs** (`app_urls`) — `posthog.tf`.
 
 This directory does **not** deploy app code.
@@ -61,7 +63,7 @@ Then run the plan + apply from your laptop — it executes remotely in
 HCP, output streams back to your terminal:
 
 ```bash
-terraform plan      # 14 labels + 1 dashboard + its insights the first time
+terraform plan      # 14 labels + 2 dashboards + their insights the first time
 terraform apply
 ```
 
@@ -104,6 +106,16 @@ the `error_codes` property, never the program source.
 Install-adoption tiles (`install_completed`, `release_downloads`, Open VSX)
 are left as commented stubs at the bottom of `posthog.tf`; they light up once
 the collectors that emit those events exist.
+
+`posthog-problem-code.tf` defines the **"IronPLC — Problem-code reach"**
+dashboard. Problem-code documentation links carry UTM metadata added by every
+client (`utm_source` = playground / cli / extension / mcp, `utm_medium` =
+`problem-code`, `utm_campaign` = the client version), so these tiles re-cut the
+docs `$pageview` stream to show *from where* and *on which version* people reach
+problem-code docs — a channel-adoption signal that needs no new telemetry.
+Tiles: total arrivals, reach by channel, channel trend, top problem codes,
+version freshness, and referrers. This dashboard's insights only appear once a
+release ships the client-side URL changes (the docs `$pageview` already flows).
 
 ## PostHog Authorized URLs
 

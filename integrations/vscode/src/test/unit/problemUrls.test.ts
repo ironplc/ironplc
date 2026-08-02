@@ -1,8 +1,29 @@
 import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
+import { problemHelpUrl } from '../../problemUrl';
 
 suite('problemUrls', () => {
+  test('problemHelpUrl_when_editor_code_then_tagged_for_extension', () => {
+    const url = problemHelpUrl('E0001', '0.1.2');
+    assert.ok(url.startsWith('https://www.ironplc.com/reference/editor/problems/E0001.html?'));
+    assert.ok(url.includes('version=0.1.2'));
+    assert.ok(url.includes('utm_source=extension'));
+    assert.ok(url.includes('utm_medium=problem-code'));
+    assert.ok(url.includes('utm_campaign=0.1.2'));
+  });
+
+  test('problemHelpUrl_when_compiler_or_runtime_code_then_section_matches_prefix', () => {
+    assert.ok(problemHelpUrl('P0001', '1.0.0').includes('/reference/compiler/problems/P0001.html'));
+    assert.ok(problemHelpUrl('V6008', '1.0.0').includes('/reference/runtime/problems/V6008.html'));
+  });
+
+  test('problemHelpUrl_when_version_has_special_chars_then_encoded', () => {
+    const url = problemHelpUrl('E0001', '1.0.0 beta');
+    assert.ok(url.includes('version=1.0.0%20beta'));
+    assert.ok(url.includes('utm_campaign=1.0.0%20beta'));
+  });
+
   test('openProblemInBrowser_when_url_path_then_docs_directory_exists', () => {
     // From out/test/unit/ -> repo root is 5 levels up (out/test/unit -> out/test -> out -> vscode -> integrations -> root)
     const repoRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');

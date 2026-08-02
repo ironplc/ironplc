@@ -34,7 +34,40 @@ pub struct ExplainDiagnosticResponse {
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggested_fix: Option<String>,
+    /// Link to the full documentation page for this problem code, tagged so
+    /// PostHog can attribute a follow-through to the MCP channel. Present only
+    /// for known codes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc_url: Option<String>,
     pub diagnostics: Vec<serde_json::Value>,
+}
+
+/// Maps a problem code to its documentation section on www.ironplc.com.
+///
+/// `P####` are compiler problems, `V####` runtime (VM) problems, and `E####`
+/// editor problems; each lives under a different reference section. Anything
+/// else falls back to `compiler`.
+fn section_for_code(code: &str) -> &'static str {
+    match code.chars().next() {
+        Some('V') => "runtime",
+        Some('E') => "editor",
+        _ => "compiler",
+    }
+}
+
+/// Builds the documentation URL for a problem code, tagged so PostHog can
+/// attribute the arrival to the MCP channel.
+///
+/// `utm_source=mcp` identifies the channel, `utm_medium` separates
+/// diagnostic-link traffic from organic docs navigation, and `utm_campaign`
+/// mirrors the version so PostHog captures it as a native breakdown dimension.
+/// `version` stays for the out-of-date banner in docs/_static/version-check.js.
+fn problem_help_url(code: &str) -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    format!(
+        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&utm_source=mcp&utm_medium=problem-code&utm_campaign={version}",
+        section = section_for_code(code),
+    )
 }
 
 /// Builds the explain_diagnostic response.
@@ -45,12 +78,13 @@ pub fn build_response(code: &str) -> ExplainDiagnosticResponse {
         Some((rst_content, title)) => {
             let (description, suggested_fix) = parse_rst(rst_content);
             ExplainDiagnosticResponse {
+                doc_url: Some(problem_help_url(&normalized)),
                 ok: true,
                 found: true,
-                code: normalized,
                 title: Some(title.to_string()),
                 description: Some(description),
                 suggested_fix,
+                code: normalized,
                 diagnostics: vec![],
             }
         }
@@ -69,6 +103,7 @@ pub fn build_response(code: &str) -> ExplainDiagnosticResponse {
                 title: None,
                 description: None,
                 suggested_fix: None,
+                doc_url: None,
                 diagnostics: serialize_diagnostics(&[err]),
             }
         }
@@ -246,7 +281,26 @@ mod tests {
         assert_eq!(resp.code, "P9876");
         assert!(resp.title.is_none());
         assert!(resp.description.is_none());
+        assert!(resp.doc_url.is_none());
         assert!(!resp.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn build_response_when_known_code_then_doc_url_tagged_for_mcp() {
+        let resp = build_response("P0001");
+        let url = resp.doc_url.expect("known code should have a doc_url");
+        assert!(url.contains("/reference/compiler/problems/P0001.html"));
+        assert!(url.contains("?version="));
+        assert!(url.contains("&utm_source=mcp"));
+        assert!(url.contains("&utm_medium=problem-code"));
+        assert!(url.contains("&utm_campaign="));
+    }
+
+    #[test]
+    fn section_for_code_when_prefix_then_maps_to_reference_section() {
+        assert_eq!(section_for_code("P0001"), "compiler");
+        assert_eq!(section_for_code("V6008"), "runtime");
+        assert_eq!(section_for_code("E0001"), "editor");
     }
 
     #[test]

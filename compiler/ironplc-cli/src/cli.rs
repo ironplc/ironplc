@@ -357,6 +357,45 @@ fn handle_diagnostics(
     }
 }
 
+/// Maps a problem code to its documentation section on www.ironplc.com.
+///
+/// `P####` are compiler problems, `V####` runtime (VM) problems, and `E####`
+/// editor problems; each lives under a different reference section. Anything
+/// else falls back to `compiler`.
+fn section_for_code(code: &str) -> &'static str {
+    match code.chars().next() {
+        Some('V') => "runtime",
+        Some('E') => "editor",
+        _ => "compiler",
+    }
+}
+
+/// Builds the documentation URL for a diagnostic, tagged so PostHog can
+/// attribute the arrival to the CLI.
+///
+/// `utm_source=cli` identifies the channel, `utm_medium` separates
+/// diagnostic-link traffic from organic docs navigation, and `utm_campaign`
+/// mirrors the version so PostHog captures it as a native breakdown dimension.
+/// `version` stays for the out-of-date banner in
+/// docs/_static/version-check.js. `file`/`line` (the Rust source location that
+/// raised the diagnostic) are appended when present so a maintainer can see
+/// what a remote user hit.
+fn problem_help_url(diagnostic: &Diagnostic) -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    let mut url = format!(
+        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&utm_source=cli&utm_medium=problem-code&utm_campaign={version}",
+        section = section_for_code(&diagnostic.code),
+        code = diagnostic.code,
+    );
+    if let Some(ref file) = diagnostic.source_file {
+        url.push_str(&format!("&file={file}"));
+    }
+    if let Some(line) = diagnostic.source_line {
+        url.push_str(&format!("&line={line}"));
+    }
+    url
+}
+
 fn map_diagnostic(
     diagnostic: &Diagnostic,
     file_to_id: &HashMap<&FileId, usize>,
@@ -378,11 +417,17 @@ fn map_diagnostic(
             .map(|lbl| map_label(lbl, LabelStyle::Secondary, file_to_id)),
     );
 
+    // Existing help notes, then a trailing link to the problem-code docs so a
+    // CLI user can follow the same reference page the editor and playground link
+    // to (and so that follow-through is attributable to the CLI in analytics).
+    let mut notes = diagnostic.help().to_vec();
+    notes.push(format!("Learn more: {}", problem_help_url(diagnostic)));
+
     CodeSpanDiagnostic::new(Severity::Error)
         .with_code(diagnostic.code.clone())
         .with_message(description)
         .with_labels(labels)
-        .with_notes(diagnostic.help().to_vec())
+        .with_notes(notes)
 }
 
 fn map_label(
@@ -434,6 +479,35 @@ mod tests {
         let paths = vec![shared_resource_path("first_steps_semantic_error.st")];
         let result = check(&paths, CompilerOptions::default(), true);
         assert!(result.is_err())
+    }
+
+    #[test]
+    fn problem_help_url_when_diagnostic_then_url_tagged_for_cli() {
+        use ironplc_dsl::core::SourceSpan;
+        use ironplc_dsl::diagnostic::{Diagnostic, Label};
+        use ironplc_problems::Problem;
+
+        let diag = Diagnostic::problem(
+            Problem::SyntaxError,
+            Label::span(SourceSpan::default(), "some error".to_string()),
+        )
+        .with_source("compiler/analyzer/src/rule_example.rs", 42);
+
+        let url = super::problem_help_url(&diag);
+        assert!(url.contains("/reference/compiler/problems/"));
+        assert!(url.contains("?version="));
+        assert!(url.contains("&utm_source=cli"));
+        assert!(url.contains("&utm_medium=problem-code"));
+        assert!(url.contains("&utm_campaign="));
+        assert!(url.contains("&file=compiler/analyzer/src/rule_example.rs"));
+        assert!(url.contains("&line=42"));
+    }
+
+    #[test]
+    fn section_for_code_when_prefix_then_maps_to_reference_section() {
+        assert_eq!(super::section_for_code("P0001"), "compiler");
+        assert_eq!(super::section_for_code("V6008"), "runtime");
+        assert_eq!(super::section_for_code("E0001"), "editor");
     }
 
     #[test]
