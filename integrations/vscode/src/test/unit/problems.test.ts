@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import * as path from 'path';
+import * as fs from 'fs';
 import { ProblemCode, PROBLEM_MESSAGES, formatProblem } from '../../problems';
 
 suite('ProblemCode', () => {
@@ -8,10 +10,28 @@ suite('ProblemCode', () => {
     assert.strictEqual(ProblemCode.DisassemblyFailed, 'E0003');
   });
 
+  test('ProblemCode_when_debug_codes_accessed_then_returns_expected_codes', () => {
+    assert.strictEqual(ProblemCode.DebugNoProgram, 'E0004');
+    assert.strictEqual(ProblemCode.DebugProgramNotDebuggable, 'E0005');
+    assert.strictEqual(ProblemCode.DebugCompileFailed, 'E0006');
+    assert.strictEqual(ProblemCode.DebugServerNotFound, 'E0007');
+  });
+
   test('PROBLEM_MESSAGES_when_accessed_then_has_entry_for_each_code', () => {
-    assert.ok(PROBLEM_MESSAGES[ProblemCode.NoCompiler]);
-    assert.ok(PROBLEM_MESSAGES[ProblemCode.ViewerCompilerNotFound]);
-    assert.ok(PROBLEM_MESSAGES[ProblemCode.DisassemblyFailed]);
+    for (const code of Object.values(ProblemCode)) {
+      assert.ok(PROBLEM_MESSAGES[code], `missing message for ${code}`);
+    }
+  });
+
+  test('ProblemCode_when_each_code_then_has_documentation_page', () => {
+    // Every code the extension can raise must have an "Open Online Help" target.
+    // From out/test/unit/ -> repo root is 5 levels up.
+    const repoRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
+    const docsDir = path.join(repoRoot, 'docs', 'reference', 'editor', 'problems');
+    for (const code of Object.values(ProblemCode)) {
+      const page = path.join(docsDir, `${code}.rst`);
+      assert.ok(fs.existsSync(page), `missing documentation page ${page}`);
+    }
   });
 });
 
@@ -34,5 +54,15 @@ suite('formatProblem', () => {
   test('formatProblem_when_disassembly_failed_with_error_then_includes_error_message', () => {
     const result = formatProblem(ProblemCode.DisassemblyFailed, 'connection lost');
     assert.strictEqual(result, 'E0003 - Failed to disassemble .iplc bytecode file. connection lost');
+  });
+
+  test('formatProblem_when_debug_compile_failed_then_includes_code_and_detail', () => {
+    const result = formatProblem(ProblemCode.DebugCompileFailed, 'main.st: P0001 undeclared X.');
+    assert.strictEqual(result, 'E0006 - Failed to compile the program for debugging. main.st: P0001 undeclared X.');
+  });
+
+  test('formatProblem_when_debug_server_not_found_then_includes_code', () => {
+    const result = formatProblem(ProblemCode.DebugServerNotFound);
+    assert.strictEqual(result, 'E0007 - IronPLC debug server (ironplcdap) not found');
   });
 });

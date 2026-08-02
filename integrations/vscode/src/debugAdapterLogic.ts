@@ -26,22 +26,33 @@ export interface DapDiscoveryResult {
   source: string;
 }
 
-/**
- * Source file extensions the debugger must compile to an `.iplc` container
- * before launching. A `.iplc` program is already compiled and launches
- * directly. Matched case-insensitively so the TwinCAT extensions (`.TcPOU`,
- * …) resolve regardless of how the path is cased on disk.
- */
-export const SOURCE_EXTENSIONS: string[] = [
-  '.st',
-  '.iec',
-  '.tcpou',
-  '.tcgvl',
-  '.tcdut',
-];
-
 /** The compiled-container extension the DAP server's `launch` expects. */
 export const CONTAINER_EXTENSION = '.iplc';
+
+/** A subset of a VS Code `contributes.languages` entry. */
+export interface LanguageContribution {
+  extensions?: string[];
+}
+
+/**
+ * The set of source file extensions the debugger must compile before launching,
+ * derived from the extension's own `contributes.languages` declarations. This
+ * is the single source of truth: every language the extension registers (ST,
+ * the TwinCAT dialects, and any future OOP/dialect additions) contributes its
+ * extensions here automatically, so there is no hand-maintained copy to drift.
+ * Extensions are lowercased for case-insensitive matching (e.g. `.TcPOU`).
+ */
+export function sourceExtensionsFromLanguages(
+  languages: readonly LanguageContribution[],
+): string[] {
+  const extensions = new Set<string>();
+  for (const language of languages) {
+    for (const ext of language.extensions ?? []) {
+      extensions.add(ext.toLowerCase());
+    }
+  }
+  return [...extensions];
+}
 
 /**
  * How a launch `program` path should be handled:
@@ -52,10 +63,13 @@ export const CONTAINER_EXTENSION = '.iplc';
  */
 export type ProgramKind = 'source' | 'container' | 'unknown';
 
-/** Classifies a launch `program` path by its extension. */
-export function programKind(program: string): ProgramKind {
+/**
+ * Classifies a launch `program` path by its extension. `sourceExtensions` is
+ * the debugger's source-extension set (see [`sourceExtensionsFromLanguages`]).
+ */
+export function programKind(program: string, sourceExtensions: readonly string[]): ProgramKind {
   const ext = path.extname(program).toLowerCase();
-  if (SOURCE_EXTENSIONS.includes(ext)) {
+  if (sourceExtensions.includes(ext)) {
     return 'source';
   }
   if (ext === CONTAINER_EXTENSION) {
@@ -68,8 +82,8 @@ export function programKind(program: string): ProgramKind {
  * True when `program` is a source file that must be compiled to an `.iplc`
  * container before debugging.
  */
-export function isSourceProgram(program: string): boolean {
-  return programKind(program) === 'source';
+export function isSourceProgram(program: string, sourceExtensions: readonly string[]): boolean {
+  return programKind(program, sourceExtensions) === 'source';
 }
 
 /**
@@ -77,8 +91,8 @@ export function isSourceProgram(program: string): boolean {
  * already-compiled `.iplc` container. Anything else must be rejected before it
  * reaches the DAP server.
  */
-export function isDebuggableProgram(program: string): boolean {
-  return programKind(program) !== 'unknown';
+export function isDebuggableProgram(program: string, sourceExtensions: readonly string[]): boolean {
+  return programKind(program, sourceExtensions) !== 'unknown';
 }
 
 /**
@@ -147,15 +161,6 @@ export function resolveProgramPath(
     return configProgram;
   }
   return activeEditorPath;
-}
-
-/**
- * Arguments for compiling `program` to the `output` container with `ironplcc`.
- * The compiler always emits a debug section, which the DAP `launch`
- * precondition requires (`compiler/vm-cli/src/dap/launch.rs`).
- */
-export function buildDebugCompileArgs(program: string, output: string): string[] {
-  return ['compile', program, '-o', output];
 }
 
 /**

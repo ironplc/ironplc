@@ -5,7 +5,6 @@ import { execFile } from 'child_process';
 import {
   DapEnvironment,
   DapDiscoveryResult,
-  buildDebugCompileArgs,
   containerOutputPath,
   findDapServerPath,
   firstLine,
@@ -13,6 +12,7 @@ import {
   programKind,
   resolveProgramPath,
 } from './debugAdapterLogic';
+import { compileArgs } from './taskProviderLogic';
 import { ProblemCode } from './problems';
 
 /** The debug type used in `launch.json` and the `debuggers` contribution. */
@@ -53,6 +53,7 @@ implements vscode.DebugConfigurationProvider {
     private readonly compilerPath: string,
     private readonly reportProblem: ReportProblem,
     private readonly log: vscode.OutputChannel,
+    private readonly sourceExtensions: readonly string[],
   ) {}
 
   resolveDebugConfiguration(
@@ -70,7 +71,7 @@ implements vscode.DebugConfigurationProvider {
     // so pressing Run from the launch.json editor does not pick launch.json as
     // the program. A literal "${file}" is kept as-is for VS Code to substitute.
     const active = vscode.window.activeTextEditor?.document.uri.fsPath;
-    const activeDebuggable = active && isDebuggableProgram(active) ? active : undefined;
+    const activeDebuggable = active && isDebuggableProgram(active, this.sourceExtensions) ? active : undefined;
     const program = resolveProgramPath(config.program, activeDebuggable);
     if (!program) {
       this.reportProblem(ProblemCode.DebugNoProgram, 'Open a Structured Text file, or set "program" to a .st or .iplc path in launch.json.');
@@ -89,7 +90,7 @@ implements vscode.DebugConfigurationProvider {
       return undefined;
     }
 
-    switch (programKind(program)) {
+    switch (programKind(program, this.sourceExtensions)) {
       case 'container':
         // Already a compiled `.iplc`: launch it as-is.
         this.log.appendLine(`Launching compiled container: ${program}`);
@@ -124,7 +125,7 @@ implements vscode.DebugConfigurationProvider {
 
   /** Runs `ironplcc compile` and captures its exit code and output. */
   private compile(program: string, output: string): Promise<CompileResult> {
-    const args = buildDebugCompileArgs(program, output);
+    const args = compileArgs(program, output);
     this.log.appendLine(`$ ${this.compilerPath} ${args.join(' ')}`);
     return new Promise((resolve) => {
       execFile(this.compilerPath, args, (error, stdout, stderr) => {

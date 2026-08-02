@@ -19,6 +19,7 @@ import {
   IronplcDebugConfigurationProvider,
 } from './debugAdapter';
 import { registerCustomRequests } from './customRequests';
+import { sourceExtensionsFromLanguages } from './debugAdapterLogic';
 
 /**
  * Reactive code lens provider for PROGRAM declarations. Shows "Run Program"
@@ -299,10 +300,15 @@ function registerDebugSupport(context: vscode.ExtensionContext, compilerPath: st
   const log = vscode.window.createOutputChannel('IronPLC Debug');
   context.subscriptions.push(log);
 
+  // Single source of truth for the source extensions: the extension's own
+  // `contributes.languages` declarations, so new dialects need no code change.
+  const languages = context.extension.packageJSON?.contributes?.languages ?? [];
+  const sourceExtensions = sourceExtensionsFromLanguages(languages);
+
   context.subscriptions.push(
     vscode.debug.registerDebugConfigurationProvider(
       IRONPLC_DEBUG_TYPE,
-      new IronplcDebugConfigurationProvider(compilerPath, showProblem, log),
+      new IronplcDebugConfigurationProvider(compilerPath, showProblem, log, sourceExtensions),
     ),
   );
 

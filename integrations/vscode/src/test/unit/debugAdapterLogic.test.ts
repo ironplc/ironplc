@@ -2,7 +2,6 @@ import * as assert from 'assert';
 import * as path from 'path';
 import {
   DapEnvironment,
-  buildDebugCompileArgs,
   containerOutputPath,
   findDapServerPath,
   firstLine,
@@ -11,7 +10,11 @@ import {
   programKind,
   resolveProgramPath,
   scanCountMessage,
+  sourceExtensionsFromLanguages,
 } from '../../debugAdapterLogic';
+
+/** The source extensions the extension currently contributes, lowercased. */
+const SRC = ['.st', '.iec', '.tcpou', '.tcgvl', '.tcdut'];
 
 function createDapEnv(overrides?: Partial<DapEnvironment>): DapEnvironment {
   return {
@@ -23,59 +26,83 @@ function createDapEnv(overrides?: Partial<DapEnvironment>): DapEnvironment {
   };
 }
 
+suite('sourceExtensionsFromLanguages', () => {
+  test('sourceExtensionsFromLanguages_when_languages_then_flattens_and_lowercases', () => {
+    const result = sourceExtensionsFromLanguages([
+      { extensions: ['.st', '.iec'] },
+      { extensions: ['.TcPOU'] },
+      { extensions: [] },
+      {},
+    ]);
+    assert.deepStrictEqual(result.sort(), ['.iec', '.st', '.tcpou']);
+  });
+
+  test('sourceExtensionsFromLanguages_when_duplicate_extensions_then_deduplicated', () => {
+    const result = sourceExtensionsFromLanguages([
+      { extensions: ['.st'] },
+      { extensions: ['.ST'] },
+    ]);
+    assert.deepStrictEqual(result, ['.st']);
+  });
+
+  test('sourceExtensionsFromLanguages_when_empty_then_empty', () => {
+    assert.deepStrictEqual(sourceExtensionsFromLanguages([]), []);
+  });
+});
+
 suite('isSourceProgram', () => {
   test('isSourceProgram_when_st_extension_then_true', () => {
-    assert.strictEqual(isSourceProgram('/work/main.st'), true);
+    assert.strictEqual(isSourceProgram('/work/main.st', SRC), true);
   });
 
   test('isSourceProgram_when_iec_extension_then_true', () => {
-    assert.strictEqual(isSourceProgram('/work/main.iec'), true);
+    assert.strictEqual(isSourceProgram('/work/main.iec', SRC), true);
   });
 
   test('isSourceProgram_when_twincat_extension_uppercase_then_true', () => {
     // Matched case-insensitively so the on-disk casing of .TcPOU does not matter.
-    assert.strictEqual(isSourceProgram('/work/Main.TcPOU'), true);
+    assert.strictEqual(isSourceProgram('/work/Main.TcPOU', SRC), true);
   });
 
   test('isSourceProgram_when_iplc_container_then_false', () => {
-    assert.strictEqual(isSourceProgram('/work/main.iplc'), false);
+    assert.strictEqual(isSourceProgram('/work/main.iplc', SRC), false);
   });
 
   test('isSourceProgram_when_no_extension_then_false', () => {
-    assert.strictEqual(isSourceProgram('/work/main'), false);
+    assert.strictEqual(isSourceProgram('/work/main', SRC), false);
   });
 });
 
 suite('programKind', () => {
   test('programKind_when_source_extension_then_source', () => {
-    assert.strictEqual(programKind('/work/main.st'), 'source');
+    assert.strictEqual(programKind('/work/main.st', SRC), 'source');
   });
 
   test('programKind_when_iplc_then_container', () => {
-    assert.strictEqual(programKind('/work/main.iplc'), 'container');
+    assert.strictEqual(programKind('/work/main.iplc', SRC), 'container');
   });
 
   test('programKind_when_json_then_unknown', () => {
     // Regression: a launch.json path must not be treated as a container.
-    assert.strictEqual(programKind('/work/.vscode/launch.json'), 'unknown');
+    assert.strictEqual(programKind('/work/.vscode/launch.json', SRC), 'unknown');
   });
 
   test('programKind_when_no_extension_then_unknown', () => {
-    assert.strictEqual(programKind('/work/main'), 'unknown');
+    assert.strictEqual(programKind('/work/main', SRC), 'unknown');
   });
 });
 
 suite('isDebuggableProgram', () => {
   test('isDebuggableProgram_when_source_then_true', () => {
-    assert.strictEqual(isDebuggableProgram('/work/main.st'), true);
+    assert.strictEqual(isDebuggableProgram('/work/main.st', SRC), true);
   });
 
   test('isDebuggableProgram_when_container_then_true', () => {
-    assert.strictEqual(isDebuggableProgram('/work/main.iplc'), true);
+    assert.strictEqual(isDebuggableProgram('/work/main.iplc', SRC), true);
   });
 
   test('isDebuggableProgram_when_launch_json_then_false', () => {
-    assert.strictEqual(isDebuggableProgram('/work/.vscode/launch.json'), false);
+    assert.strictEqual(isDebuggableProgram('/work/.vscode/launch.json', SRC), false);
   });
 });
 
@@ -182,13 +209,6 @@ suite('resolveProgramPath', () => {
 
   test('resolveProgramPath_when_neither_set_then_undefined', () => {
     assert.strictEqual(resolveProgramPath(undefined, undefined), undefined);
-  });
-});
-
-suite('buildDebugCompileArgs', () => {
-  test('buildDebugCompileArgs_when_program_and_output_then_compile_args', () => {
-    const args = buildDebugCompileArgs('/work/main.st', '/tmp/main.iplc');
-    assert.deepStrictEqual(args, ['compile', '/work/main.st', '-o', '/tmp/main.iplc']);
   });
 });
 
