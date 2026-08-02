@@ -146,3 +146,36 @@ the "recoverable_xforms" may have different reasons for its current
   `xform_fold_initializer_expressions`) -- start with the ones already
   confirmed or directly adjacent, expand only if the audit surfaces
   more.
+
+## Audit results (implementation notes)
+
+Every pass in scope was checked for the "accumulate diagnostics on
+`self`, then convert a non-empty list into a hard `Err` that discards
+an already-successful fold result" shape:
+
+- `xform_resolve_late_bound_type_initializer` -- **confirmed and
+  fixed**. This is the pass described above.
+- `xform_resolve_late_bound_expr_kind` -- same shape, but its
+  `diagnostics` field was never actually written to by any code path
+  (dead accumulator); fixing it was a zero-risk cleanup, not a
+  behavior change. **Fixed** alongside the confirmed instance, since
+  both live in `resolve_types()`'s `recoverable_xforms` list and share
+  one signature.
+- `xform_resolve_type_decl_environment` -- does **not** have this
+  shape. It uses a single `?`-propagated `Diagnostic` (via the `Fold`
+  trait's error type), so it already stops at the first bad
+  declaration; it doesn't accumulate-then-discard. Left unchanged.
+- `xform_resolve_constant_expressions`, `xform_fold_initializer_expressions`,
+  `xform_named_to_positional_args` -- **same accumulate-then-discard
+  shape confirmed**, but *not* fixed in this change. Unlike the type
+  initializer's `LateResolvedType` fallback, the "leave it unresolved"
+  fallback value in each of these (e.g. `IntegerRef::Constant` left
+  unresolved, a named arg left as `NamedInput`) has not been verified
+  safe for every downstream consumer to see un-normalized. Applying
+  the same fix here needs a pass-specific check of what downstream
+  code does when it receives that fallback value, which is follow-up
+  work.
+- `xform_int_to_bool_initializer`, `xform_resolve_symbol_and_function_environment`
+  -- do not have this shape (no diagnostics accumulator to discard, or
+  the pass never mutates the library on the discarded path). Left
+  unchanged.

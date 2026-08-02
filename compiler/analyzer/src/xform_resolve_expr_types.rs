@@ -599,8 +599,9 @@ mod tests {
             .unwrap();
         let library =
             xform_resolve_type_decl_environment::apply(library, &mut type_environment).unwrap();
-        let library =
-            xform_resolve_late_bound_expr_kind::apply(library, &mut type_environment).unwrap();
+        let library = xform_resolve_late_bound_expr_kind::apply(library, &mut type_environment)
+            .unwrap()
+            .0;
         let mut function_environment = FunctionEnvironmentBuilder::new()
             .with_stdlib_functions()
             .build();
