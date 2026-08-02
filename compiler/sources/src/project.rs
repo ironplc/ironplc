@@ -83,9 +83,33 @@ impl SourceProject {
     /// the appropriate set of files. Falls back to enumerating all
     /// supported files when no specific project is detected.
     pub fn initialize_from_directory(&mut self, dir: &Path) -> Vec<Diagnostic> {
-        info!("Initializing project from directory: {}", dir.display());
-
         self.sources.clear();
+        self.discover_and_add(dir)
+    }
+
+    /// Initialize project from multiple directories using project
+    /// discovery, merging all discovered files into one compilation unit.
+    ///
+    /// Unlike calling `initialize_from_directory` once per directory,
+    /// this does not clear sources between directories -- each directory
+    /// is discovered independently and its files are merged into the same
+    /// project. A directory that fails discovery contributes one
+    /// diagnostic but does not prevent the other directories from
+    /// loading.
+    pub fn initialize_from_directories(&mut self, dirs: &[&Path]) -> Vec<Diagnostic> {
+        self.sources.clear();
+        let mut errors = vec![];
+        for dir in dirs {
+            errors.extend(self.discover_and_add(dir));
+        }
+        errors
+    }
+
+    /// Discovers the project rooted at `dir` and adds every discovered
+    /// file to `self.sources`. Does not clear existing sources first --
+    /// callers control whether/when to clear.
+    fn discover_and_add(&mut self, dir: &Path) -> Vec<Diagnostic> {
+        info!("Initializing project from directory: {}", dir.display());
 
         let discovered = match crate::discovery::discover(dir) {
             Ok(project) => project,
@@ -301,6 +325,70 @@ mod tests {
 
         assert!(errors.is_empty());
         assert!(project.is_empty());
+    }
+
+    // -----------------------------------------------------------------
+    // Multi-directory initialization.
+    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn initialize_from_directories_when_two_directories_then_merges_both() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir1 = TempDir::new().unwrap();
+        fs::write(dir1.path().join("a.st"), "PROGRAM A\nEND_PROGRAM").unwrap();
+
+        let dir2 = TempDir::new().unwrap();
+        fs::write(dir2.path().join("b.st"), "PROGRAM B\nEND_PROGRAM").unwrap();
+
+        let mut project = SourceProject::new();
+        let errors = project.initialize_from_directories(&[dir1.path(), dir2.path()]);
+
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+        assert_eq!(project.len(), 2);
+    }
+
+    #[test]
+    fn initialize_from_directories_clears_existing_sources_once_not_per_directory() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir1 = TempDir::new().unwrap();
+        fs::write(dir1.path().join("a.st"), "PROGRAM A\nEND_PROGRAM").unwrap();
+
+        let dir2 = TempDir::new().unwrap();
+        fs::write(dir2.path().join("b.st"), "PROGRAM B\nEND_PROGRAM").unwrap();
+
+        let mut project = SourceProject::new();
+        project.add_source(FileId::from_string("old.st"), "old content".to_string());
+
+        let errors = project.initialize_from_directories(&[dir1.path(), dir2.path()]);
+
+        assert!(errors.is_empty());
+        // Old, pre-existing source is gone, but both new directories'
+        // files are present -- proving the second directory's discovery
+        // didn't wipe out the first directory's files.
+        assert!(project.get_source(&FileId::from_string("old.st")).is_none());
+        assert_eq!(project.len(), 2);
+    }
+
+    #[test]
+    fn initialize_from_directories_when_one_directory_fails_then_other_still_loads() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir1 = TempDir::new().unwrap();
+        fs::write(dir1.path().join("a.st"), "PROGRAM A\nEND_PROGRAM").unwrap();
+
+        let nonexistent = std::path::PathBuf::from("/nonexistent/does/not/exist");
+
+        let mut project = SourceProject::new();
+        let errors = project.initialize_from_directories(&[dir1.path(), &nonexistent]);
+
+        assert_eq!(errors.len(), 1);
+        assert_eq!(project.len(), 1);
     }
 
     #[test]

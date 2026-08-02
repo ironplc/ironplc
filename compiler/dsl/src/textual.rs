@@ -2,8 +2,8 @@
 //!
 //! See section 3.
 use crate::common::{
-    AddressAssignment, ConstantKind, EnumeratedValue, Integer, IntegerLiteral, SignedInteger,
-    Subrange, TypeName,
+    AddressAssignment, BitStringLiteral, ConstantKind, EnumeratedValue, Integer, IntegerLiteral,
+    SignedInteger, Subrange, TypeName,
 };
 use crate::core::{Id, Located, SourceSpan};
 use std::fmt;
@@ -607,6 +607,11 @@ pub enum CompareOp {
     Or,
     Xor,
     And,
+    /// CODESYS/TwinCAT short-circuit `AND` (Beckhoff/CODESYS extension).
+    /// Kept as a distinct variant from `And` (not normalized) since the
+    /// short-circuit vs. eager evaluation distinction is real and
+    /// externally-visible in TwinCAT/CODESYS itself.
+    AndThen,
     Eq,
     Ne,
     Lt,
@@ -621,6 +626,7 @@ impl fmt::Display for CompareOp {
             CompareOp::Or => "OR",
             CompareOp::Xor => "XOR",
             CompareOp::And => "AND",
+            CompareOp::AndThen => "AND_THEN",
             CompareOp::Eq => "=",
             CompareOp::Ne => "<>",
             CompareOp::Lt => "<",
@@ -781,6 +787,7 @@ impl StmtKind {
         StmtKind::Assignment(Assignment {
             target,
             deref: false,
+            ref_bind: false,
             value: Expr::new(value),
             span: SourceSpan::default(),
         })
@@ -790,6 +797,7 @@ impl StmtKind {
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
             deref: false,
+            ref_bind: false,
             value: Expr::new(ExprKind::LateBound(LateBound {
                 value: Id::from(src),
             })),
@@ -807,6 +815,7 @@ impl StmtKind {
         StmtKind::Assignment(Assignment {
             target: Variable::named(target),
             deref: false,
+            ref_bind: false,
             value: Expr::new(ExprKind::Variable(variable)),
             span: SourceSpan::default(),
         })
@@ -821,6 +830,13 @@ pub struct Assignment {
     pub target: Variable,
     #[recurse(ignore)]
     pub deref: bool,
+    /// `true` when the assignment was written with the TwinCAT/CODESYS `REF=`
+    /// reference-binding operator rather than `:=`. The value is an
+    /// `ExprKind::Ref` either way (so the backend is identical to `r := REF(x)`);
+    /// this flag only lets the renderer reproduce the original `REF=` surface
+    /// syntax. See `specs/design/reference-to-twincat.md`.
+    #[recurse(ignore)]
+    pub ref_bind: bool,
     pub value: Expr,
     pub span: SourceSpan,
 }
@@ -890,6 +906,10 @@ pub enum CaseSelectionKind {
     Subrange(Subrange),
     SignedInteger(SignedInteger),
     EnumeratedValue(EnumeratedValue),
+    /// A radix-prefixed bit-string literal used as a `CASE` label (e.g.
+    /// `16#D012:`, `2#1010:`). See
+    /// specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    BitStringLiteral(BitStringLiteral),
 }
 
 /// The for loop statement.

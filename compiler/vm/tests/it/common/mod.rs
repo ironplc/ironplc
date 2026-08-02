@@ -20,6 +20,7 @@ pub fn single_function_container(bytecode: &[u8], num_vars: u16, constants: &[i3
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0) // scan: test bytecode
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 
@@ -39,6 +40,7 @@ pub fn single_function_container_f32(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 
@@ -58,6 +60,7 @@ pub fn single_function_container_f64(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 
@@ -77,6 +80,7 @@ pub fn single_function_container_i64(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 
@@ -100,6 +104,7 @@ pub fn single_function_container_i32_i64(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 
@@ -123,6 +128,7 @@ pub fn single_function_container_i32_f32(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 
@@ -146,6 +152,7 @@ pub fn single_function_container_i32_f64(
         .add_function(FunctionId::SCAN, bytecode, 16, num_vars, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 
@@ -189,6 +196,7 @@ pub fn timer_test_container(pt_ms: i32, fb_type_id: u16) -> Container {
         .add_function(FunctionId::SCAN, &bytecode, 16, 4, 0)
         .init_function_id(FunctionId::INIT)
         .entry_function_id(FunctionId::SCAN)
+        .max_call_depth(1)
         .build()
 }
 

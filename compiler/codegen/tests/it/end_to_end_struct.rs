@@ -1,7 +1,7 @@
 //! End-to-end integration tests for structure field read support.
 //! Compiles ST programs with struct field access and runs them through the VM.
 
-use crate::common::parse_and_run;
+use crate::common::{parse_and_run, try_parse_and_compile};
 use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
@@ -57,8 +57,12 @@ e2e_i32!(
 // Regression test: global struct with STRING field previously failed with
 // P9999 "Structure contains unsupported field types".
 // data1 is var 0 (global), x is var 1.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_global_struct_with_string_field_then_compiles_and_runs,
+    CompilerOptions {
+        allow_top_level_var_global: true,
+        ..CompilerOptions::default()
+    },
     "TYPE MY_DATA : STRUCT NAME : STRING[30]; VALUE : INT; END_STRUCT; END_TYPE VAR_GLOBAL data1 : MY_DATA; END_VAR PROGRAM main VAR x : INT; END_VAR x := 1; END_PROGRAM",
     &[(1, 1)],
 );
@@ -223,7 +227,13 @@ PROGRAM main
     r := lang.NAMES[2, 2];
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+    let (_c, bufs) = parse_and_run(
+        source,
+        &CompilerOptions {
+            allow_top_level_var_global: true,
+            ..CompilerOptions::default()
+        },
+    );
 
     // Global struct 'lang' is var 0 (globals come first), scratch is var 1.
     // Program var 'r' is var 2.
@@ -363,8 +373,12 @@ e2e_f32!(
 // the "missing resolved_type" branch when a 2-D STRING array field was
 // compared inside an IF.
 // Global DATA is var 0, scratch is var 1, r_match is var 2, r_mismatch is var 3.
-e2e_i32!(
+e2e_i32_with!(
     end_to_end_when_struct_2d_string_array_field_compared_then_matches,
+    CompilerOptions {
+        allow_top_level_var_global: true,
+        ..CompilerOptions::default()
+    },
     "TYPE MY_DATA : STRUCT DIRS : ARRAY[0..2, 0..15] OF STRING[3]; END_STRUCT; END_TYPE VAR_GLOBAL DATA : MY_DATA; END_VAR FUNCTION FOO : INT VAR_INPUT DIR : STRING[3]; END_VAR VAR i : INT; j : INT; END_VAR FOO := 0; IF DATA.DIRS[i, j] = DIR THEN FOO := 1; END_IF; END_FUNCTION PROGRAM main VAR r_match : INT; r_mismatch : INT; END_VAR DATA.DIRS[0, 0] := 'N'; r_match := FOO(DIR := 'N'); r_mismatch := FOO(DIR := 'S'); END_PROGRAM",
     &[(2, 1), (3, 0)],
 );
@@ -567,4 +581,50 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32(), 0);
     assert_eq!(bufs.vars[2].as_i32(), 0);
     assert_eq!(bufs.vars[3].as_i32(), 0);
+}
+
+#[test]
+fn end_to_end_when_struct_init_value_is_expression_then_returns_not_implemented() {
+    // A struct/FB-instance field initializer whose value is a general
+    // (possibly non-constant) expression -- e.g. a pointer dereference
+    // plus member access -- fully parses and analyzes, but codegen does
+    // not yet implement evaluating it at instance construction time.
+    // `ironplcc check` already fully supports this; only codegen refuses.
+    // See specs/plans/2026-07-26-twincat-struct-init-expression-value.md.
+    let source = "
+FUNCTION_BLOCK FB_Device
+VAR_INPUT
+    Delta : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+TYPE MyStruct :
+STRUCT
+    x : INT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    pDevice : REF_TO FB_Device;
+    s : MyStruct := (x := pDevice^.Delta);
+END_VAR
+END_PROGRAM
+";
+    // `allow_struct_initializer_expressions` lets analysis accept the
+    // expression-valued initializer so the test reaches codegen; codegen is
+    // what returns `not_implemented` (P9999). Without the flag, analysis
+    // would reject it earlier with P4043.
+    let options = CompilerOptions {
+        allow_ref_to: true,
+        allow_struct_initializer_expressions: true,
+        ..CompilerOptions::default()
+    };
+    let result = try_parse_and_compile(source, &options);
+
+    assert!(
+        result.is_err(),
+        "expected compilation to fail for an expression-valued struct init"
+    );
+    assert_eq!(result.unwrap_err().code, "P9999");
 }

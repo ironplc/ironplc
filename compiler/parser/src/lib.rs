@@ -9,10 +9,14 @@ mod parser;
 mod preprocessor;
 mod rule_no_empty_var_blocks;
 mod rule_token_no_c_style_comment;
+mod rule_token_no_paren_string_length;
 mod rule_token_no_partial_access_syntax;
 mod vars;
 mod xform_assign_file_id;
+mod xform_collapse_pragmas;
 mod xform_demote_edition3_keywords;
+mod xform_demote_reference_keyword;
+mod xform_demote_short_circuit_operators;
 mod xform_demote_time_keyword;
 mod xform_tokens;
 
@@ -28,6 +32,14 @@ use xform_tokens::insert_keyword_statement_terminators;
 
 #[cfg(test)]
 mod tests;
+
+// Spec conformance testing infrastructure (test-only).
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;
 pub mod token;
 
 /// Tokenize a IEC 61131 program.
@@ -50,9 +62,12 @@ pub fn tokenize_program(
     let source = preprocess(source);
     let (tokens, mut errors) = tokenize(&source, file_id, line_offset, col_offset);
 
+    let tokens = xform_collapse_pragmas::apply(tokens, options);
     let mut tokens = insert_keyword_statement_terminators(tokens, file_id, options);
     xform_demote_edition3_keywords::apply(&mut tokens, options);
+    xform_demote_reference_keyword::apply(&mut tokens, options);
     xform_demote_time_keyword::apply(&mut tokens, options);
+    xform_demote_short_circuit_operators::apply(&mut tokens, options);
     let result = check_tokens(&tokens, options);
     match result {
         Ok(_) => {}
@@ -68,6 +83,7 @@ fn check_tokens(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<D
         rule_token_no_c_style_comment::apply,
         rule_no_empty_var_blocks::apply,
         rule_token_no_partial_access_syntax::apply,
+        rule_token_no_paren_string_length::apply,
     ];
 
     let mut errors = vec![];

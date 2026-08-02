@@ -133,6 +133,7 @@ impl ExprTypeResolver<'_> {
             InitialValueAssignmentKind::EnumeratedValues(_) => return,
             InitialValueAssignmentKind::EnumeratedType(e) => e.type_name.clone(),
             InitialValueAssignmentKind::FunctionBlock(fb) => fb.type_name.clone(),
+            InitialValueAssignmentKind::FunctionBlockCall(fbc) => fbc.type_name.clone(),
             InitialValueAssignmentKind::Subrange(spec) => match spec {
                 SpecificationKind::Named(tn) => tn.clone(),
                 SpecificationKind::Inline(sr) => TypeName::from(&sr.type_name.to_string()),
@@ -147,6 +148,7 @@ impl ExprTypeResolver<'_> {
                 None => return, // Inline array targets don't have a single type name
             },
             InitialValueAssignmentKind::LateResolvedType(tn) => tn.clone(),
+            InitialValueAssignmentKind::SimpleExpr(se) => se.type_name.clone(),
         };
 
         match &node.identifier {
@@ -241,7 +243,7 @@ impl ExprTypeResolver<'_> {
             }
             ExprKind::UnaryOp(op) => op.term.resolved_type.clone(),
             ExprKind::Compare(compare) => match compare.op {
-                CompareOp::And | CompareOp::Or | CompareOp::Xor => {
+                CompareOp::And | CompareOp::Or | CompareOp::Xor | CompareOp::AndThen => {
                     // Bitwise/logical operators preserve operand type.
                     // When one operand is generic (e.g. ANY_INT literal)
                     // and the other is concrete (e.g. DWORD variable), use
@@ -878,6 +880,32 @@ END_PROGRAM";
         let types = collect_assignment_types(&result);
         // First assignment: GET_CHAR_BYTE := pt^[pos] — should resolve to BYTE
         assert_type_eq(&types[0], "BYTE");
+    }
+
+    // -----------------------------------------------------------------
+    // AND_THEN short-circuit boolean operator.
+    // See specs/plans/2026-07-20-twincat-and-then-operator.md.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn apply_when_and_then_used_then_resolves_like_and() {
+        let options = CompilerOptions {
+            allow_short_circuit_operators: true,
+            ..CompilerOptions::default()
+        };
+        let program = "
+FUNCTION_BLOCK FB_Example
+VAR
+    a : BOOL;
+    b : BOOL;
+    result : BOOL;
+END_VAR
+    result := a AND_THEN b;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass_with_options(program, &options);
+        let types = collect_assignment_types(&result);
+        assert_type_eq(&types[0], "BOOL");
     }
 
     /// Parameterized tests for the "single assignment, resolves to type T" shape.

@@ -736,6 +736,59 @@ END_PROGRAM";
     }
 
     #[test]
+    fn apply_when_typed_real_var_arg_to_lreal_param_then_ok() {
+        // REAL -> LREAL is lossless, standard widening (unlike the bare
+        // literal case above, this argument is a typed REAL variable, not
+        // an untyped ANY_REAL literal -- a separate code path through
+        // ElementaryTypeName::can_widen_to()).
+        let program = "
+FUNCTION DBL : LREAL
+VAR_INPUT
+    x : LREAL;
+END_VAR
+    DBL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    input : REAL;
+    result : LREAL;
+END_VAR
+    result := DBL(input);
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apply_when_typed_lreal_var_arg_to_real_param_then_error() {
+        // The reverse direction (LREAL -> REAL) is narrowing and must
+        // remain an error -- guards against accidentally allowing both
+        // directions.
+        let program = "
+FUNCTION SNGL : REAL
+VAR_INPUT
+    x : REAL;
+END_VAR
+    SNGL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    input : LREAL;
+    result : REAL;
+END_VAR
+    result := SNGL(input);
+END_PROGRAM";
+
+        let (library, context) = parse_and_resolve_types_with_context(program);
+        let result = apply(&library, &context, &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn apply_when_typed_dint_literal_arg_to_int_param_then_error() {
         let program = "
 FUNCTION ADD_ONE : INT

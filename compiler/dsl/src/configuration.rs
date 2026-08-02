@@ -210,6 +210,7 @@ pub struct LocatedVarInit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::next_block_id;
     use crate::common::VariableIdentifier;
     use crate::common::VariableType;
     use crate::core::{Id, SourceSpan};
@@ -220,6 +221,7 @@ mod tests {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::None(SourceSpan::default()),
+            block: next_block_id(),
         }
     }
 

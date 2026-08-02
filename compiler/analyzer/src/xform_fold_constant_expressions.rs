@@ -20,10 +20,12 @@
 //! x := 5;
 //! ```
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::SourceSpan;
+use ironplc_dsl::core::Located;
 use ironplc_dsl::diagnostic::Diagnostic;
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
+
+use crate::constant_folding::{fold_error_to_diagnostic, try_fold_binary, try_fold_unary};
 
 pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
     let mut folder = ConstantFolder;
@@ -32,159 +34,15 @@ pub fn apply(lib: Library) -> Result<Library, Vec<Diagnostic>> {
 
 struct ConstantFolder;
 
-/// Extracts the value of an integer literal as an i128.
-fn integer_value(lit: &IntegerLiteral) -> i128 {
-    let unsigned = lit.value.value.value as i128;
-    if lit.value.is_neg {
-        -unsigned
-    } else {
-        unsigned
-    }
-}
-
-/// Builds a `ConstantKind::IntegerLiteral` from an i128 result value.
-fn make_integer_constant(value: i128) -> ConstantKind {
-    let (unsigned, is_neg) = if value < 0 {
-        ((-value) as u128, true)
-    } else {
-        (value as u128, false)
-    };
-    ConstantKind::IntegerLiteral(IntegerLiteral {
-        value: SignedInteger {
-            value: Integer {
-                span: SourceSpan::default(),
-                value: unsigned,
-            },
-            is_neg,
-        },
-        data_type: None,
-    })
-}
-
-/// Builds a `ConstantKind::RealLiteral` from an f64 result value.
-fn make_real_constant(value: f64) -> ConstantKind {
-    ConstantKind::RealLiteral(RealLiteral {
-        value,
-        data_type: None,
-    })
-}
-
-/// Attempts to fold a binary expression on two integer constants.
-fn fold_integer_binary(op: &Operator, left: i128, right: i128) -> Option<i128> {
-    match op {
-        Operator::Add => left.checked_add(right),
-        Operator::Sub => left.checked_sub(right),
-        Operator::Mul => left.checked_mul(right),
-        Operator::Div => {
-            if right == 0 {
-                None
-            } else {
-                left.checked_div(right)
-            }
-        }
-        Operator::Mod => {
-            if right == 0 {
-                None
-            } else {
-                left.checked_rem(right)
-            }
-        }
-        Operator::Pow => {
-            if right < 0 {
-                // Integer exponentiation with negative exponent is not meaningful.
-                None
-            } else {
-                let exp = right as u32;
-                left.checked_pow(exp)
-            }
-        }
-    }
-}
-
-/// Attempts to fold a binary expression on two real constants.
-fn fold_real_binary(op: &Operator, left: f64, right: f64) -> f64 {
-    match op {
-        Operator::Add => left + right,
-        Operator::Sub => left - right,
-        Operator::Mul => left * right,
-        Operator::Div => left / right,
-        Operator::Mod => left % right,
-        Operator::Pow => left.powf(right),
-    }
-}
-
-/// Extracts a constant as an f64, converting integers to float if needed.
-fn const_as_f64(kind: &ExprKind) -> Option<f64> {
-    match kind {
-        ExprKind::Const(ConstantKind::RealLiteral(lit)) => Some(lit.value),
-        ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => Some(integer_value(lit) as f64),
-        _ => None,
-    }
-}
-
-/// Tries to fold a `BinaryExpr` whose operands are both constants.
-/// Returns `Some(folded_kind)` if folding succeeded, `None` otherwise.
-fn try_fold_binary(binary: &BinaryExpr) -> Option<ExprKind> {
-    match (&binary.left.kind, &binary.right.kind) {
-        (
-            ExprKind::Const(ConstantKind::IntegerLiteral(left)),
-            ExprKind::Const(ConstantKind::IntegerLiteral(right)),
-        ) => {
-            let lv = integer_value(left);
-            let rv = integer_value(right);
-            let result = fold_integer_binary(&binary.op, lv, rv)?;
-            Some(ExprKind::Const(make_integer_constant(result)))
-        }
-        (
-            ExprKind::Const(ConstantKind::RealLiteral(left)),
-            ExprKind::Const(ConstantKind::RealLiteral(right)),
-        ) => {
-            let result = fold_real_binary(&binary.op, left.value, right.value);
-            Some(ExprKind::Const(make_real_constant(result)))
-        }
-        // Mixed integer + real: promote the integer to f64 and fold as real.
-        (
-            ExprKind::Const(ConstantKind::IntegerLiteral(_)),
-            ExprKind::Const(ConstantKind::RealLiteral(_)),
-        )
-        | (
-            ExprKind::Const(ConstantKind::RealLiteral(_)),
-            ExprKind::Const(ConstantKind::IntegerLiteral(_)),
-        ) => {
-            let lv = const_as_f64(&binary.left.kind)?;
-            let rv = const_as_f64(&binary.right.kind)?;
-            let result = fold_real_binary(&binary.op, lv, rv);
-            Some(ExprKind::Const(make_real_constant(result)))
-        }
-        _ => None,
-    }
-}
-
-/// Tries to fold a `UnaryExpr` whose operand is a constant.
-/// Returns `Some(folded_kind)` if folding succeeded, `None` otherwise.
-fn try_fold_unary(unary: &UnaryExpr) -> Option<ExprKind> {
-    match unary.op {
-        UnaryOp::Neg => match &unary.term.kind {
-            ExprKind::Const(ConstantKind::IntegerLiteral(lit)) => {
-                let value = integer_value(lit);
-                Some(ExprKind::Const(make_integer_constant(-value)))
-            }
-            ExprKind::Const(ConstantKind::RealLiteral(lit)) => {
-                Some(ExprKind::Const(make_real_constant(-lit.value)))
-            }
-            _ => None,
-        },
-        UnaryOp::Not => None,
-    }
-}
-
 impl Fold<Diagnostic> for ConstantFolder {
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, Diagnostic> {
         // Recurse into children first (bottom-up folding).
         let node = Expr::recurse_fold(node, self)?;
 
         let folded_kind = match &node.kind {
-            ExprKind::BinaryOp(binary) => try_fold_binary(binary),
+            ExprKind::BinaryOp(binary) => {
+                try_fold_binary(binary).map_err(|e| fold_error_to_diagnostic(e, node.span()))?
+            }
             ExprKind::UnaryOp(unary) => try_fold_unary(unary),
             _ => None,
         };
@@ -202,8 +60,10 @@ impl Fold<Diagnostic> for ConstantFolder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constant_folding::integer_value;
     use crate::test_helpers::parse_and_resolve_types;
     use ironplc_dsl::visitor::Visitor;
+    use ironplc_problems::Problem;
 
     fn apply_fold(program: &str) -> Library {
         let library = parse_and_resolve_types(program);
@@ -311,11 +171,65 @@ mod tests {
     }
 
     #[test]
-    fn fold_expr_when_div_by_zero_then_no_fold() {
-        let lib = apply_fold("PROGRAM main VAR x : INT; END_VAR x := 10 / 0; END_PROGRAM");
+    fn fold_expr_when_int_div_by_zero_then_error() {
+        let library =
+            parse_and_resolve_types("PROGRAM main VAR x : INT; END_VAR x := 10 / 0; END_PROGRAM");
+        let result = apply(library);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionDivisionByZero.code()));
+    }
+
+    #[test]
+    fn fold_expr_when_int_mod_by_zero_then_error() {
+        let library =
+            parse_and_resolve_types("PROGRAM main VAR x : INT; END_VAR x := 10 MOD 0; END_PROGRAM");
+        let result = apply(library);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionDivisionByZero.code()));
+    }
+
+    #[test]
+    fn fold_expr_when_real_div_by_zero_then_error() {
+        let library = parse_and_resolve_types(
+            "PROGRAM main VAR x : LREAL; END_VAR x := 1.0 / 0.0; END_PROGRAM",
+        );
+        let result = apply(library);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionDivisionByZero.code()));
+    }
+
+    #[test]
+    fn fold_expr_when_int_overflow_then_error() {
+        let library = parse_and_resolve_types(
+            "PROGRAM main VAR x : LINT; END_VAR x := 170141183460469231731687303715884105727 * 2; END_PROGRAM",
+        );
+        let result = apply(library);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .iter()
+            .all(|d| d.code == Problem::ConstantExpressionOverflow.code()));
+    }
+
+    #[test]
+    fn fold_expr_when_negative_integer_exponent_then_no_fold_no_error() {
+        // Negative integer exponentiation is not meaningful for integers;
+        // it stays unfolded and is not reported as an overflow.
+        let library =
+            parse_and_resolve_types("PROGRAM main VAR x : INT; END_VAR x := 2 ** -1; END_PROGRAM");
+        let lib = apply(library).unwrap();
         let exprs = collect_exprs(&lib);
         let has_binary = exprs.iter().any(|e| matches!(e, ExprKind::BinaryOp(_)));
-        assert!(has_binary, "Division by zero should not be folded");
+        assert!(has_binary, "Negative exponent should not be folded");
     }
 
     // --- Nested constant folding ---

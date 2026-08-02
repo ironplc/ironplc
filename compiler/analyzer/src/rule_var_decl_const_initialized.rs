@@ -127,7 +127,8 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                         ),
                     }
                 }
-                InitialValueAssignmentKind::FunctionBlock(_) => {
+                InitialValueAssignmentKind::FunctionBlock(_)
+                | InitialValueAssignmentKind::FunctionBlockCall(_) => {
                     // Function blocks cannot be CONSTANT - this is handled by
                     // rule_var_decl_const_not_fb, so skip initialization checking here.
                 }
@@ -163,6 +164,12 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                 }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
                     return Err(Diagnostic::internal_error(file!(), line!()))
+                }
+                InitialValueAssignmentKind::SimpleExpr(_) => {
+                    // Always normalized to `Simple` by
+                    // xform_fold_initializer_expressions before semantic
+                    // rules run; reaching here indicates a compiler bug.
+                    return Err(Diagnostic::internal_error(file!(), line!()));
                 }
             },
             // Do not care about the following qualifiers

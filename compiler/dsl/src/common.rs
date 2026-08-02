@@ -301,6 +301,18 @@ impl SignedInteger {
             is_neg: true,
         })
     }
+
+    /// The signed numeric value, saturating at `i64::MIN`/`i64::MAX` if
+    /// the underlying magnitude doesn't fit (values of this magnitude
+    /// aren't realistic for an enum's explicit ordinal value).
+    pub fn to_i64(&self) -> i64 {
+        let magnitude = i64::try_from(self.value.value).unwrap_or(i64::MAX);
+        if self.is_neg {
+            -magnitude
+        } else {
+            magnitude
+        }
+    }
 }
 
 /// An integer value that may be either a literal or a reference to a named constant.
@@ -854,6 +866,7 @@ impl ElementaryTypeName {
     /// - Unsigned integer chain: USINT → UINT → UDINT → ULINT
     /// - Cross-sign: unsigned n-bit → signed m-bit where m > n
     /// - Integer → REAL (lossless only): src ≤ 16 bits → REAL, any → LREAL
+    /// - REAL → LREAL (lossless: 32-bit float → 64-bit float)
     /// - Bit-string chain: BYTE → WORD → DWORD → LWORD (BOOL excluded)
     ///
     /// Not allowed: signed → unsigned, narrowing, cross-family (bit-string ↔ integer).
@@ -884,6 +897,9 @@ impl ElementaryTypeName {
                     src_bits <= 16 // Only ≤16-bit integers → REAL
                 }
             }
+            // REAL → LREAL widening (lossless: 32-bit float safely widens to
+            // 64-bit float). LREAL → REAL is narrowing and NOT allowed here.
+            (Real, Real) => tgt_bits > src_bits,
             // Bit-string widening within ANY_BIT family
             (BitString, BitString) => tgt_bits > src_bits,
             // Everything else (cross-family, Real→Int, etc.): not standard
@@ -1324,13 +1340,36 @@ impl ReferenceTarget {
     }
 }
 
-/// Reference type declaration (REF_TO).
+/// The surface syntax that produced a reference declaration or initializer.
 ///
-/// See IEC 61131-3 Edition 3, section 2.3.3.1.
+/// References share a single backend (a variable-table index), but two
+/// keywords produce them: the IEC 61131-3 `REF_TO` and the Beckhoff
+/// TwinCAT / CODESYS `REFERENCE TO`. This tag records which one appeared in
+/// the source so the renderer can reproduce it and so per-declaration
+/// dereference behavior can be keyed on it. See
+/// `specs/design/reference-to-twincat.md`.
+///
+/// This is a leaf tag, always carried behind a `#[recurse(ignore)]` field, so
+/// it deliberately does not derive `Recurse`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RefSyntax {
+    /// IEC 61131-3 Edition 3 `REF_TO`.
+    RefTo,
+    /// Beckhoff TwinCAT / CODESYS `REFERENCE TO`.
+    ReferenceTo,
+}
+
+/// Reference type declaration (`REF_TO` or `REFERENCE TO`).
+///
+/// See IEC 61131-3 Edition 3, section 2.3.3.1, and
+/// `specs/design/reference-to-twincat.md`.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ReferenceDeclaration {
     pub type_name: TypeName,
     pub target: ReferenceTarget,
+    /// The surface keyword that produced this declaration.
+    #[recurse(ignore)]
+    pub syntax: RefSyntax,
 }
 
 /// See section 2.3.3.1.
@@ -1348,6 +1387,12 @@ pub struct EnumerationDeclaration {
 pub struct EnumeratedSpecificationInit {
     pub spec: EnumeratedSpecificationKind,
     pub default: Option<EnumeratedValue>,
+    /// Present for the CODESYS/TwinCAT base-type suffix (`(A, B) BYTE;`)
+    /// -- overrides the automatic count/value-based sizing in
+    /// `enumeration.rs`'s `try_from_values`. `None` uses the existing
+    /// automatic sizing.
+    #[recurse(ignore)]
+    pub underlying_type: Option<ElementaryTypeName>,
 }
 
 impl EnumeratedSpecificationInit {
@@ -1357,6 +1402,7 @@ impl EnumeratedSpecificationInit {
                 values: values.into_iter().map(EnumeratedValue::new).collect(),
             }),
             default: Some(EnumeratedValue::new(default)),
+            underlying_type: None,
         }
     }
 }
@@ -1374,6 +1420,7 @@ impl EnumeratedSpecificationKind {
             .map(|v| EnumeratedValue {
                 type_name: None,
                 value: Id::from(v),
+                explicit_value: None,
             })
             .collect();
         SpecificationKind::Inline(EnumeratedSpecificationValues { values })
@@ -1433,6 +1480,14 @@ impl HasEnumeratedValues for EnumeratedSpecificationValues {
 pub struct EnumeratedValue {
     pub type_name: Option<TypeName>,
     pub value: Id,
+    /// Present when this member's value was assigned explicitly
+    /// (`member := 5`) in an enum *declaration's* value list -- a
+    /// CODESYS/TwinCAT extension (also standard as of IEC 61131-3:2013).
+    /// `None` in every other context `EnumeratedValue` is used in
+    /// (references, default values, case labels) -- only the
+    /// declaration-list grammar path sets this.
+    #[recurse(ignore)]
+    pub explicit_value: Option<SignedInteger>,
 }
 
 impl EnumeratedValue {
@@ -1440,6 +1495,7 @@ impl EnumeratedValue {
         EnumeratedValue {
             type_name: None,
             value: Id::from(value),
+            explicit_value: None,
         }
     }
 }
@@ -1787,9 +1843,11 @@ impl ArrayElementType {
 pub struct ArraySubranges {
     pub ranges: Vec<Subrange>,
     pub type_name: ArrayElementType,
-    /// Whether the element type is wrapped in REF_TO (Edition 3).
+    /// The reference syntax of the element type, if any. `None` for a
+    /// non-reference element; `Some(_)` when the element is wrapped in a
+    /// reference keyword (`REF_TO` or `REFERENCE TO`), tagged with which one.
     #[recurse(ignore)]
-    pub ref_to: bool,
+    pub ref_to: Option<RefSyntax>,
 }
 
 /// Subrange of an array.
@@ -1818,10 +1876,29 @@ pub struct ProgramAccessDecl {
     pub direction: Option<Direction>,
 }
 
+/// Identifies which source `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block a
+/// [`VarDecl`] was declared in. Two declarations sharing the same `BlockId`
+/// came from the same block in the source text -- this is the only way to
+/// tell once declarations from different blocks are flattened together into
+/// one `Vec<VarDecl>` (e.g. `FunctionBlockDeclaration::variables`).
+///
+/// Declarations built by anything other than the parser's per-block grouping
+/// logic (helper constructors, tests, other transform passes) each get their
+/// own fresh id via [`next_block_id`], so they can never be mistaken for
+/// sharing a block with an unrelated declaration.
+pub type BlockId = usize;
+
+/// Returns a fresh [`BlockId`], globally unique for the process's lifetime.
+pub fn next_block_id() -> BlockId {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
 /// Variable declaration.
 ///
 /// See section 2.4.3.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, Recurse)]
 pub struct VarDecl {
     // Not all variable types have a "name", so the name is part of the type.
     pub identifier: VariableIdentifier,
@@ -1830,6 +1907,23 @@ pub struct VarDecl {
     #[recurse(ignore)]
     pub qualifier: DeclarationQualifier,
     pub initializer: InitialValueAssignmentKind,
+    /// Which source block this declaration came from -- see [`BlockId`].
+    /// Deliberately excluded from `PartialEq` (see the manual impl below):
+    /// it is assigned from a process-global counter, so two declarations
+    /// that are otherwise identical (e.g. an expected AST built by hand in
+    /// a test, or the same source parsed twice) would only match by
+    /// coincidence if this field were compared.
+    #[recurse(ignore)]
+    pub block: BlockId,
+}
+
+impl PartialEq for VarDecl {
+    fn eq(&self, other: &Self) -> bool {
+        self.identifier == other.identifier
+            && self.var_type == other.var_type
+            && self.qualifier == other.qualifier
+            && self.initializer == other.initializer
+    }
 }
 
 impl Located for VarDecl {
@@ -1849,6 +1943,7 @@ impl VarDecl {
             initializer: InitialValueAssignmentKind::simple_uninitialized(TypeName::from(
                 type_name,
             )),
+            block: next_block_id(),
         }
     }
 
@@ -1863,6 +1958,7 @@ impl VarDecl {
                 initial_value: None,
                 keyword_span: SourceSpan::default(),
             }),
+            block: next_block_id(),
         }
     }
 
@@ -1879,6 +1975,7 @@ impl VarDecl {
                     initial_value: None,
                 },
             ),
+            block: next_block_id(),
         }
     }
 
@@ -1895,9 +1992,11 @@ impl VarDecl {
                     initial_value: Some(EnumeratedValue {
                         type_name: None,
                         value: Id::from(initial_value),
+                        explicit_value: None,
                     }),
                 },
             ),
+            block: next_block_id(),
         }
     }
 
@@ -1914,6 +2013,7 @@ impl VarDecl {
                     init: vec![],
                 },
             ),
+            block: next_block_id(),
         }
     }
 
@@ -1929,6 +2029,7 @@ impl VarDecl {
                     elements_init: vec![],
                 },
             ),
+            block: next_block_id(),
         }
     }
 
@@ -1943,6 +2044,7 @@ impl VarDecl {
             var_type: VariableType::Var,
             qualifier: DeclarationQualifier::Unspecified,
             initializer: InitialValueAssignmentKind::LateResolvedType(TypeName::from(type_name)),
+            block: next_block_id(),
         }
     }
 
@@ -1976,6 +2078,9 @@ impl VarDecl {
             InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
                 TypeReference::Named(function_block_initial_value_assignment.type_name.clone())
             }
+            InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
+                TypeReference::Named(function_block_call_initializer.type_name.clone())
+            }
             InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
                 match subrange_specification_kind {
                     SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
@@ -1995,8 +2100,46 @@ impl VarDecl {
             InitialValueAssignmentKind::LateResolvedType(type_name) => {
                 TypeReference::Named(type_name.clone())
             }
+            InitialValueAssignmentKind::SimpleExpr(simple_expr_initializer) => {
+                TypeReference::Named(simple_expr_initializer.type_name.clone())
+            }
         }
     }
+}
+
+/// Declarations that are `AT`-located but share a `BlockId` with at least
+/// one plain (symbolic) declaration -- derived from block identity, not
+/// stored. This is the CODESYS/TwinCAT vendor extension gated by
+/// `--allow-mixed-located-var-declarations`: standard IEC 61131-3 requires
+/// located variables to live in their own dedicated block, separate from
+/// ordinary symbolic ones.
+///
+/// `variables` is typically a whole POU's flattened declaration list (e.g.
+/// `FunctionBlockDeclaration::variables`), which may span several source
+/// blocks -- grouping by [`BlockId`] recovers which declarations came from
+/// the same block despite the flattening.
+pub fn mixed_located_var_decls(variables: &[VarDecl]) -> impl Iterator<Item = &VarDecl> {
+    let mixed_blocks: std::collections::HashSet<BlockId> = variables
+        .iter()
+        .fold(
+            std::collections::HashMap::<BlockId, (bool, bool)>::new(),
+            |mut acc, v| {
+                let (has_symbol, has_direct) = acc.entry(v.block).or_default();
+                match &v.identifier {
+                    VariableIdentifier::Symbol(_) => *has_symbol = true,
+                    VariableIdentifier::Direct(_) => *has_direct = true,
+                }
+                acc
+            },
+        )
+        .into_iter()
+        .filter_map(|(block, (has_symbol, has_direct))| (has_symbol && has_direct).then_some(block))
+        .collect();
+
+    variables
+        .iter()
+        .filter(move |v| matches!(v.identifier, VariableIdentifier::Direct(_)))
+        .filter(move |v| mixed_blocks.contains(&v.block))
 }
 
 /// Keywords for declarations.
@@ -2270,6 +2413,13 @@ pub enum InitialValueAssignmentKind {
     EnumeratedValues(EnumeratedValuesInitializer),
     EnumeratedType(EnumeratedInitialValueAssignment),
     FunctionBlock(FunctionBlockInitialValueAssignment),
+    /// The CODESYS/TwinCAT call-style function-block instance initializer
+    /// (`name : FB_Type(args)`, no `:=`), which passes an argument list to
+    /// the function block's constructor (`FB_init` method in CODESYS).
+    /// This is a distinct construct from [`Self::FunctionBlock`], whose
+    /// `init` sets the instance's own member values -- see
+    /// [`FunctionBlockCallInitializer`].
+    FunctionBlockCall(FunctionBlockCallInitializer),
     Subrange(SubrangeSpecificationKind),
     Structure(StructureInitializationDeclaration),
     Array(ArrayInitialValueAssignment),
@@ -2278,6 +2428,12 @@ pub enum InitialValueAssignmentKind {
     /// Type that is ambiguous until have discovered type
     /// definitions. Value is the name of the type.
     LateResolvedType(TypeName),
+    /// A constant-expression initializer not yet folded to a literal
+    /// (vendor extension — see `allow_constant_initializer_expressions`).
+    /// Always normalized to `Simple` by
+    /// `xform_fold_initializer_expressions` before any other pass runs;
+    /// no other code should ever match on this variant.
+    SimpleExpr(SimpleExprInitializer),
 }
 
 impl InitialValueAssignmentKind {
@@ -2324,6 +2480,10 @@ pub enum StructInitialValueAssignmentKind {
     EnumeratedValue(EnumeratedValue),
     Array(Vec<ArrayInitialElementKind>),
     Structure(Vec<StructureElementInit>),
+    /// A general expression value (e.g. `pDevice^.Delta`) -- used for
+    /// call-style FB-instance/struct initializers where the value is
+    /// computed at instantiation time, not a compile-time constant.
+    Expression(Expr),
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
@@ -2341,19 +2501,38 @@ pub enum ReferenceInitialValue {
     Ref(Variable),
 }
 
-/// Initializer for a reference variable declaration (REF_TO).
+/// Initializer for a reference variable declaration (`REF_TO` or
+/// `REFERENCE TO`).
 ///
-/// See IEC 61131-3 Edition 3, section 2.4.3.2.
+/// See IEC 61131-3 Edition 3, section 2.4.3.2, and
+/// `specs/design/reference-to-twincat.md`.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub struct ReferenceInitializer {
     pub target: ReferenceTarget,
     pub initial_value: Option<ReferenceInitialValue>,
+    /// The surface keyword that produced this initializer.
+    #[recurse(ignore)]
+    pub syntax: RefSyntax,
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
 pub struct SimpleInitializer {
     pub type_name: TypeName,
     pub initial_value: Option<ConstantKind>,
+}
+
+/// A variable initializer expressed as a constant expression (e.g.
+/// `PI/180.0`) rather than a bare literal.
+///
+/// This is a vendor extension — the IEC 61131-3 standard's `constant()`
+/// grammar production only permits literals in this position. Parsed
+/// unconditionally; `xform_fold_initializer_expressions` folds it back to
+/// `SimpleInitializer` or emits a diagnostic, depending on
+/// `allow_constant_initializer_expressions`.
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct SimpleExprInitializer {
+    pub type_name: TypeName,
+    pub initial_value: Expr,
 }
 
 /// Provides the initialization of a string variable declaration.
@@ -2427,6 +2606,28 @@ pub struct FunctionBlockInitialValueAssignment {
     pub type_name: TypeName,
     // The initializer may be empty
     pub init: Vec<StructureElementInit>,
+}
+
+/// The CODESYS/TwinCAT call-style function-block instance initializer:
+/// `name : FB_Type(args)`, with no `:=`. The argument list uses the same
+/// positional-or-named shape as an ordinary function-block call
+/// (`param_assignment`), because in CODESYS these arguments are passed to
+/// the function block's constructor (`FB_init` method).
+///
+/// This is deliberately a separate node from
+/// [`FunctionBlockInitialValueAssignment`] (whose `init` sets the
+/// instance's own member values via the `:= (member := value, ...)` form):
+/// the two are different constructs that target different things, so
+/// keeping them as distinct AST nodes prevents them from being conflated
+/// at code generation.
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct FunctionBlockCallInitializer {
+    /// The function-block type being instantiated. As with
+    /// [`FunctionBlockInitialValueAssignment::type_name`], this names a
+    /// type, not an identifier.
+    pub type_name: TypeName,
+    /// The constructor argument list. May be empty (`FB_Type()`).
+    pub params: Vec<ParamAssignmentKind>,
 }
 
 /// See section 2.4.3.2. #6
@@ -2651,6 +2852,75 @@ impl Library {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn located(name: &str, block: BlockId) -> VarDecl {
+        VarDecl {
+            identifier: VariableIdentifier::Direct(DirectVariableIdentifier {
+                name: Some(Id::from(name)),
+                address_assignment: AddressAssignment {
+                    location: LocationPrefix::I,
+                    size: SizePrefix::Nil,
+                    address: vec![0],
+                    position: SourceSpan::default(),
+                },
+                span: SourceSpan::default(),
+            }),
+            var_type: VariableType::Var,
+            qualifier: DeclarationQualifier::Unspecified,
+            initializer: InitialValueAssignmentKind::None(SourceSpan::default()),
+            block,
+        }
+    }
+
+    fn symbol(name: &str, block: BlockId) -> VarDecl {
+        let mut decl = VarDecl::simple(name, "INT");
+        decl.block = block;
+        decl
+    }
+
+    #[test]
+    fn mixed_located_var_decls_when_block_has_only_direct_then_none_returned() {
+        let block = next_block_id();
+        let vars = vec![located("a", block), located("b", block)];
+        assert_eq!(mixed_located_var_decls(&vars).count(), 0);
+    }
+
+    #[test]
+    fn mixed_located_var_decls_when_block_has_only_symbol_then_none_returned() {
+        let block = next_block_id();
+        let vars = vec![symbol("a", block), symbol("b", block)];
+        assert_eq!(mixed_located_var_decls(&vars).count(), 0);
+    }
+
+    #[test]
+    fn mixed_located_var_decls_when_block_has_both_then_direct_ones_returned() {
+        let block = next_block_id();
+        let vars = vec![located("a", block), symbol("b", block)];
+        let mixed: Vec<&VarDecl> = mixed_located_var_decls(&vars).collect();
+        assert_eq!(mixed.len(), 1);
+        assert_eq!(mixed[0].identifier.symbolic_id(), Some(&Id::from("a")));
+    }
+
+    #[test]
+    fn mixed_located_var_decls_when_direct_and_symbol_in_different_blocks_then_none_returned() {
+        // Same slice, but the located and symbolic declarations came from
+        // two different source blocks -- must not be flagged as mixed.
+        let block_a = next_block_id();
+        let block_b = next_block_id();
+        let vars = vec![located("a", block_a), symbol("b", block_b)];
+        assert_eq!(mixed_located_var_decls(&vars).count(), 0);
+    }
+
+    #[test]
+    fn var_decl_partial_eq_ignores_block() {
+        // `block` is process-global-counter-derived provenance, not
+        // semantic content -- two otherwise-identical declarations must
+        // compare equal even with different `block` values.
+        let a = symbol("x", next_block_id());
+        let b = symbol("x", next_block_id());
+        assert_ne!(a.block, b.block);
+        assert_eq!(a, b);
+    }
 
     #[test]
     fn test_constant_kind_partial_eq_and_clone() {
@@ -3389,6 +3659,23 @@ mod tests {
     #[test]
     fn can_widen_to_when_lreal_to_dint_then_false() {
         assert!(!ElementaryTypeName::LREAL.can_widen_to(&ElementaryTypeName::DINT));
+    }
+
+    // REAL <-> LREAL: widening allowed, narrowing not
+
+    #[test]
+    fn can_widen_to_when_real_to_lreal_then_true() {
+        assert!(ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::LREAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_lreal_to_real_then_false() {
+        assert!(!ElementaryTypeName::LREAL.can_widen_to(&ElementaryTypeName::REAL));
+    }
+
+    #[test]
+    fn can_widen_to_when_real_to_real_then_false() {
+        assert!(!ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::REAL));
     }
 
     // Bit-string widening within ANY_BIT

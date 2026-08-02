@@ -1,7 +1,7 @@
 //! The `pou_scope` MCP tool.
 //!
 //! Returns every variable visible to a single named POU. Implements
-//! REQ-TOL-220 and REQ-TOL-221.
+//! REQ-TOL-mcp-220 and REQ-TOL-mcp-221.
 
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
@@ -107,7 +107,7 @@ pub fn build_response(
         }
     };
 
-    // REQ-TOL-221: resolve against Programs, then Functions, then FBs.
+    // REQ-TOL-mcp-221: resolve against Programs, then Functions, then FBs.
     let variables = match resolve_pou(library, pou_name) {
         Some(vars) => vars,
         None => {
@@ -134,7 +134,7 @@ pub fn build_response(
 fn resolve_pou(library: &Library, pou_name: &str) -> Option<Vec<VariableEntry>> {
     let lower = pou_name.to_lowercase();
 
-    // Programs first (REQ-TOL-221).
+    // Programs first (REQ-TOL-mcp-221).
     for element in &library.elements {
         if let LibraryElementKind::ProgramDeclaration(p) = element {
             if p.name.to_string().to_lowercase() == lower {
@@ -198,7 +198,7 @@ fn render_type_name(t: &TypeReference) -> String {
     }
 }
 
-/// Maps `VariableType` to the short direction tag required by REQ-TOL-220.
+/// Maps `VariableType` to the short direction tag required by REQ-TOL-mcp-220.
 fn direction_of(vt: &VariableType) -> String {
     match vt {
         VariableType::Input => "In".into(),
@@ -215,7 +215,7 @@ fn direction_of(vt: &VariableType) -> String {
 ///
 /// Returns a display string when the initializer carries a primitive value
 /// (integer/real/bool/string literal, enum value, or `NULL` reference);
-/// returns `None` otherwise. Per REQ-TOL-220 the rendering is for display
+/// returns `None` otherwise. Per REQ-TOL-mcp-220 the rendering is for display
 /// only and is not guaranteed to be a parseable expression.
 fn render_initial_value(init: &InitialValueAssignmentKind) -> Option<String> {
     match init {
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn build_response_when_program_and_fb_same_name_then_program_wins() {
-        // REQ-TOL-221: Programs resolve before function blocks.
+        // REQ-TOL-mcp-221: Programs resolve before function blocks.
         let resp = build(
             "FUNCTION_BLOCK Motor\nVAR fb_var : INT; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Motor\nVAR prog_var : INT; END_VAR\nEND_PROGRAM",
             "Motor",

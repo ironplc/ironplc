@@ -398,16 +398,16 @@ A trap is an unrecoverable error detected during the EXECUTE phase. The VM canno
 
 ### Trap Sources
 
-| Trap code | Source | Description |
-|-----------|--------|-------------|
-| DIVIDE_BY_ZERO | DIV_I32, DIV_U32, DIV_I64, DIV_U64, MOD_I32, MOD_U32, MOD_I64, MOD_U64 | Integer division or modulo with zero divisor |
-| OVERFLOW | ADD_*, SUB_*, MUL_*, NEG_*, NARROW_*, F*_TO_I*, F*_TO_U* | Overflow under the `fault` overflow policy (ADR-0002) |
-| ARRAY_OUT_OF_BOUNDS | LOAD_ARRAY, STORE_ARRAY | Array index outside declared bounds |
-| STACK_OVERFLOW | any instruction | Operand stack depth exceeds `max_stack_depth` |
-| CALL_DEPTH_EXCEEDED | CALL, FB_CALL | Call stack depth exceeds `max_call_depth` |
-| STRING_POOL_EXHAUSTED | BUILTIN (string), LOAD_CONST_STR, LOAD_CONST_WSTR | Temporary string buffer pool has no free slots |
-| WATCHDOG_EXPIRED | (external) | EXECUTE phase exceeded `max_scan_time` |
-| INVALID_INSTRUCTION | any | Undefined opcode encountered at runtime (should never happen if verifier ran, but defense-in-depth) |
+| Requirement | Trap code | Source | Description |
+|-------------|-----------|--------|-------------|
+| | DIVIDE_BY_ZERO | DIV_I32, DIV_U32, DIV_I64, DIV_U64, MOD_I32, MOD_U32, MOD_I64, MOD_U64 | Integer division or modulo with zero divisor |
+| | OVERFLOW | ADD_*, SUB_*, MUL_*, NEG_*, NARROW_*, F*_TO_I*, F*_TO_U* | Overflow under the `fault` overflow policy (ADR-0002) |
+| | ARRAY_OUT_OF_BOUNDS | LOAD_ARRAY, STORE_ARRAY | Array index outside declared bounds |
+| | STACK_OVERFLOW | any instruction | Operand stack depth exceeds `max_stack_depth` |
+| **REQ-RT-vm-001** | CALL_DEPTH_EXCEEDED | CALL, FB_CALL | A CALL or FB_CALL that would push a call frame beyond the container's per-program `max_call_depth` traps with `CALL_DEPTH_EXCEEDED`. The limit is the container's declared depth, not a VM-wide constant. |
+| | STRING_POOL_EXHAUSTED | BUILTIN (string), LOAD_CONST_STR, LOAD_CONST_WSTR | Temporary string buffer pool has no free slots |
+| | WATCHDOG_EXPIRED | (external) | EXECUTE phase exceeded `max_scan_time` |
+| | INVALID_INSTRUCTION | any | Undefined opcode encountered at runtime (should never happen if verifier ran, but defense-in-depth) |
 
 ### Trap Sequence
 

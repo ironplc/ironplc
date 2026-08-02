@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{bc, parse_and_compile};
+use crate::common::{bc, parse_and_compile, try_parse_and_compile};
 
 #[test]
 fn compile_when_and_expression_then_produces_bool_and_bytecode() {
@@ -153,6 +153,33 @@ END_PROGRAM
             bc::ret_void(),
         ]
     );
+}
+
+#[test]
+fn compile_when_and_then_expression_then_returns_not_implemented() {
+    // AND_THEN needs short-circuit (conditional-branch) codegen that
+    // doesn't exist yet -- rather than silently emit eager (behaviorally
+    // wrong) bytecode, compilation must fail clearly. `ironplcc check`
+    // already fully supports AND_THEN; only codegen refuses.
+    // See specs/plans/2026-07-20-twincat-and-then-operator.md.
+    let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  x := 10;
+  y := x > 0 AND_THEN x < 10;
+END_PROGRAM
+";
+    let options = CompilerOptions {
+        allow_short_circuit_operators: true,
+        ..CompilerOptions::default()
+    };
+    let result = try_parse_and_compile(source, &options);
+
+    assert!(result.is_err(), "expected compilation to fail for AND_THEN");
+    assert_eq!(result.unwrap_err().code, "P9999");
 }
 
 #[test]

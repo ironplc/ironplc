@@ -47,6 +47,7 @@ impl clap::ValueEnum for ClapDialect {
             ClapDialect(Dialect::Iec61131_3Ed3),
             ClapDialect(Dialect::Rusty),
             ClapDialect(Dialect::Codesys),
+            ClapDialect(Dialect::TwinCat),
         ]
     }
 
@@ -103,6 +104,17 @@ struct FileArgs {
     #[arg(long)]
     allow_ref_to: bool,
 
+    /// Allow the Beckhoff TwinCAT/CODESYS `REFERENCE TO` reference type and the
+    /// `REF=` binding operator. This is a vendor extension, an alternative to
+    /// `--allow-ref-to`; the `twincat` and `codesys` dialects enable it.
+    #[arg(long)]
+    allow_reference_to: bool,
+
+    /// Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types.
+    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_ref_arithmetic: bool,
+
     /// Allow REF() on stack-allocated variables (VAR_TEMP, FUNCTION VAR_INPUT/VAR_OUTPUT).
     /// Required for OSCAT type-punning patterns where the reference doesn't escape.
     #[arg(long)]
@@ -139,6 +151,47 @@ struct FileArgs {
     /// `--dialect=rusty`.
     #[arg(long)]
     allow_partial_access_syntax: bool,
+
+    /// Allow curly-brace pragmas ({attribute 'name'}) as opaque, skipped trivia.
+    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_pragmas: bool,
+
+    /// Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension).
+    /// This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_short_circuit_operators: bool,
+
+    /// Allow an AT-located variable inside an otherwise plain
+    /// VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own dedicated
+    /// block. This is a vendor extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_mixed_located_var_declarations: bool,
+
+    /// Allow a VAR initializer to be a constant expression (e.g. SCALE*4.0)
+    /// rather than only a bare literal. This is a vendor extension not part
+    /// of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_constant_initializer_expressions: bool,
+
+    /// Allow hex/binary/octal bit-string literals (e.g. 16#D012, 2#1010) as
+    /// CASE labels. This is a vendor extension not part of the IEC 61131-3
+    /// standard.
+    #[arg(long)]
+    allow_bit_string_case_labels: bool,
+
+    /// Allow the STRING(n)/WSTRING(n) parenthesis length delimiter in addition
+    /// to the standard STRING[n]/WSTRING[n] brackets. This is a vendor
+    /// extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_paren_string_length: bool,
+
+    /// Allow a general (non-constant) expression as the value in a
+    /// structured/call-style initializer's `name := value` pairs (e.g.
+    /// `tonDelta : TON := (PT := pDevice^.Delta);`). This is a vendor
+    /// extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_struct_initializer_expressions: bool,
 }
 
 impl FileArgs {
@@ -152,6 +205,8 @@ impl FileArgs {
         options.allow_time_as_function_name |= self.allow_time_as_function_name;
         options.allow_c_style_comments |= self.allow_c_style_comments;
         options.allow_ref_to |= self.allow_ref_to;
+        options.allow_reference_to |= self.allow_reference_to;
+        options.allow_ref_arithmetic |= self.allow_ref_arithmetic;
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
         options.allow_int_to_bool_initializer |= self.allow_int_to_bool_initializer;
@@ -159,6 +214,14 @@ impl FileArgs {
         options.allow_system_uptime_global |= self.allow_system_uptime_global;
         options.allow_cross_family_widening |= self.allow_cross_family_widening;
         options.allow_partial_access_syntax |= self.allow_partial_access_syntax;
+        options.allow_pragmas |= self.allow_pragmas;
+        options.allow_short_circuit_operators |= self.allow_short_circuit_operators;
+        options.allow_mixed_located_var_declarations |= self.allow_mixed_located_var_declarations;
+        options.allow_constant_initializer_expressions |=
+            self.allow_constant_initializer_expressions;
+        options.allow_bit_string_case_labels |= self.allow_bit_string_case_labels;
+        options.allow_paren_string_length |= self.allow_paren_string_length;
+        options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options
     }
 }
@@ -258,5 +321,107 @@ mod tests {
         let clap_variants: Vec<Dialect> =
             ClapDialect::value_variants().iter().map(|c| c.0).collect();
         assert_eq!(clap_variants.as_slice(), Dialect::ALL);
+    }
+
+    /// Guards the hand-maintained `FileArgs` flag list against drifting out of
+    /// sync with the compiler's `FEATURE_DESCRIPTORS`: every vendor flag must be
+    /// reachable via its `--allow-*` CLI form and wired through to
+    /// `CompilerOptions`. clap needs a static field per arg, so the list cannot
+    /// be derived — but this test makes an omission fail CI instead of shipping.
+    #[test]
+    fn file_args_when_each_vendor_flag_cli_form_passed_then_option_enabled() {
+        #[derive(Parser)]
+        struct TestCli {
+            #[command(flatten)]
+            file_args: FileArgs,
+        }
+
+        for fd in CompilerOptions::FEATURE_DESCRIPTORS {
+            let cli = TestCli::try_parse_from(["ironplcc", fd.cli_flag]).unwrap_or_else(|e| {
+                panic!(
+                    "CLI does not accept `{}` (for CompilerOptions.{}): {e}",
+                    fd.cli_flag, fd.option_key
+                )
+            });
+            let options = cli.file_args.compiler_options();
+            assert_eq!(
+                options.get_flag_by_key(fd.option_key),
+                Some(true),
+                "`{}` parsed but did not enable CompilerOptions.{}",
+                fd.cli_flag,
+                fd.option_key
+            );
+        }
+    }
+
+    /// Guards the hand-maintained VS Code `ironplc.dialect` settings schema
+    /// against drifting out of sync with `Dialect::ALL`. JSON cannot read the
+    /// Rust enum, so this test parses `integrations/vscode/package.json` and
+    /// compares its dialect picker back to the source of truth: the `enum`
+    /// array must match the `cli_name()` list in order, the three parallel
+    /// label/description arrays must stay index-aligned (same length), and
+    /// every dialect must be mentioned in the `markdownDescription`. Adding a
+    /// `Dialect` variant without updating the extension fails here.
+    #[test]
+    fn vscode_dialect_setting_when_compared_then_matches_dialect_all() {
+        let package_json_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../integrations/vscode/package.json"
+        );
+        let text = std::fs::read_to_string(package_json_path).unwrap_or_else(|e| {
+            panic!("failed to read {package_json_path}: {e}");
+        });
+        let package: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|e| {
+            panic!("failed to parse {package_json_path} as JSON: {e}");
+        });
+
+        let dialect = &package["contributes"]["configuration"]["properties"]["ironplc.dialect"];
+        assert!(
+            dialect.is_object(),
+            "ironplc.dialect setting not found in {package_json_path}"
+        );
+
+        let expected_names: Vec<&str> = Dialect::ALL.iter().map(|d| d.cli_name()).collect();
+
+        // The `enum` array must list exactly the dialect cli_names, in order.
+        let enum_values: Vec<&str> = dialect["enum"]
+            .as_array()
+            .expect("ironplc.dialect.enum must be an array")
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .expect("ironplc.dialect.enum entries must be strings")
+            })
+            .collect();
+        assert_eq!(
+            enum_values, expected_names,
+            "ironplc.dialect.enum in package.json does not match Dialect::ALL cli_names"
+        );
+
+        // The parallel label/description arrays must stay index-aligned with
+        // `enum`, so a new dialect cannot leave one array short.
+        for key in ["enumItemLabels", "enumDescriptions"] {
+            let len = dialect[key]
+                .as_array()
+                .unwrap_or_else(|| panic!("ironplc.dialect.{key} must be an array"))
+                .len();
+            assert_eq!(
+                len,
+                expected_names.len(),
+                "ironplc.dialect.{key} has {len} entries but there are {} dialects",
+                expected_names.len()
+            );
+        }
+
+        // The prose description must mention every dialect by cli_name.
+        let markdown = dialect["markdownDescription"]
+            .as_str()
+            .expect("ironplc.dialect.markdownDescription must be a string");
+        for name in &expected_names {
+            assert!(
+                markdown.contains(name),
+                "ironplc.dialect.markdownDescription does not mention `{name}`"
+            );
+        }
     }
 }

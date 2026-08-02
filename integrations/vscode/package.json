@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IEC 61131-3 Structured Text language support with real-time error checking, syntax highlighting, and build tools for PLC programs.",
-  "version": "0.230.0",
+  "version": "0.232.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -99,26 +99,29 @@
           "editPresentation": "singlelineText"
         },
         "ironplc.dialect": {
-          "markdownDescription": "Language dialect preset. Controls IEC edition and vendor extensions.\n\n- `iec61131-3-ed2`: Strict IEC 61131-3:2003 (Edition 2)\n- `iec61131-3-ed3`: IEC 61131-3:2013 (Edition 3) with `LTIME`, `REF_TO`, etc.\n- `rusty`: RuSTy-compatible — Edition 2 base with `REF_TO` and all vendor extensions\n- `codesys`: CODESYS-compatible — Edition 2 base with `REF_TO` and CODESYS vendor extensions",
+          "markdownDescription": "Language dialect preset. Controls IEC edition and vendor extensions.\n\n- `iec61131-3-ed2`: Strict IEC 61131-3:2003 (Edition 2)\n- `iec61131-3-ed3`: IEC 61131-3:2013 (Edition 3) with `LTIME`, `REF_TO`, etc.\n- `rusty`: RuSTy-compatible — Edition 2 base with `REF_TO` and all vendor extensions\n- `codesys`: CODESYS-compatible — Edition 2 base with `REF_TO` and CODESYS vendor extensions\n- `twincat`: TwinCAT-compatible — Edition 2 base with the vendor extensions TwinCAT shares with CODESYS (no `REF_TO`; TwinCAT uses `REFERENCE TO`/`POINTER TO`)",
           "type": "string",
           "default": "iec61131-3-ed2",
           "enum": [
             "iec61131-3-ed2",
             "iec61131-3-ed3",
             "rusty",
-            "codesys"
+            "codesys",
+            "twincat"
           ],
           "enumItemLabels": [
             "IEC 61131-3:2003 (Edition 2)",
             "IEC 61131-3:2013 (Edition 3)",
             "RuSTy-compatible",
-            "CODESYS-compatible"
+            "CODESYS-compatible",
+            "TwinCAT-compatible"
           ],
           "enumDescriptions": [
             "IEC 61131-3:2003 (Edition 2)",
             "IEC 61131-3:2013 (Edition 3)",
             "RuSTy-compatible",
-            "CODESYS-compatible"
+            "CODESYS-compatible",
+            "TwinCAT-compatible"
           ]
         }
       }

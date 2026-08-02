@@ -28,6 +28,16 @@ pub enum Dialect {
     /// implicit `__SYSTEM_UP_TIME` globals, which are an IronPLC runtime
     /// convention rather than a CODESYS feature.
     Codesys,
+    /// Beckhoff TwinCAT-compatible dialect: Edition 2 base plus the vendor
+    /// extensions that TwinCAT accepts.  TwinCAT 3 is built on the CODESYS V3
+    /// runtime, so this is close to [`Dialect::Codesys`], but does not enable
+    /// the `REF_TO` / `REF()` / `NULL` reference extensions: TwinCAT spells
+    /// references and pointers `REFERENCE TO` / `POINTER TO` (with `ADR()`),
+    /// which IronPLC does not parse yet, so enabling the CODESYS `REF_TO`
+    /// syntax here would accept code TwinCAT itself rejects.  Like CODESYS, it
+    /// does not bind the implicit `__SYSTEM_UP_TIME` globals (an IronPLC
+    /// runtime convention).
+    TwinCat,
 }
 
 impl Dialect {
@@ -37,6 +47,7 @@ impl Dialect {
         Dialect::Iec61131_3Ed3,
         Dialect::Rusty,
         Dialect::Codesys,
+        Dialect::TwinCat,
     ];
 
     /// A short human-readable name suitable for display in UIs and tool output.
@@ -46,6 +57,7 @@ impl Dialect {
             Dialect::Iec61131_3Ed3 => "IEC 61131-3 Ed. 3",
             Dialect::Rusty => "RuSTy-compatible",
             Dialect::Codesys => "CODESYS-compatible",
+            Dialect::TwinCat => "TwinCAT-compatible",
         }
     }
 
@@ -62,6 +74,9 @@ impl Dialect {
             Dialect::Codesys => {
                 "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS vendor extensions."
             }
+            Dialect::TwinCat => {
+                "TwinCAT-compatible: Edition 2 base with the vendor extensions TwinCAT accepts."
+            }
         }
     }
 
@@ -72,6 +87,7 @@ impl Dialect {
             Dialect::Iec61131_3Ed3 => "iec61131-3-ed3",
             Dialect::Rusty => "rusty",
             Dialect::Codesys => "codesys",
+            Dialect::TwinCat => "twincat",
         }
     }
 }
@@ -192,6 +208,19 @@ macro_rules! define_compiler_options {
                     _ => false,
                 }
             }
+
+            /// Get a vendor-extension feature flag by its `option_key` (the
+            /// field name from [`FeatureDescriptor`]).
+            ///
+            /// Returns `None` if the key does not match a known flag.
+            pub fn get_flag_by_key(&self, key: &str) -> Option<bool> {
+                match key {
+                    $(
+                        stringify!($vendor_field) => Some(self.$vendor_field),
+                    )*
+                    _ => None,
+                }
+            }
         }
     };
 }
@@ -199,38 +228,43 @@ macro_rules! define_compiler_options {
 define_compiler_options! {
     "Allow C-style comments (// and /* */)",
     "--allow-c-style-comments",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_c_style_comments,
 
     "Allow missing semicolons after keyword statements like END_IF and END_STRUCT",
     "--allow-missing-semicolon",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_missing_semicolon,
 
     "Allow VAR_GLOBAL declarations at the top level outside CONFIGURATION",
     "--allow-top-level-var-global",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_top_level_var_global,
 
     "Allow constant references in type parameters (e.g. STRING[MY_CONST])",
     "--allow-constant-type-params",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_constant_type_params,
 
     "Allow empty variable blocks (VAR END_VAR)",
     "--allow-empty-var-blocks",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_empty_var_blocks,
 
     "Allow TIME as a function name (OSCAT compatibility)",
     "--allow-time-as-function-name",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_time_as_function_name,
 
     "Allow REF_TO, REF(), and NULL without full Edition 3",
     "--allow-ref-to",
     [Rusty, Codesys],
     allow_ref_to,
+
+    "Allow Beckhoff TwinCAT/CODESYS REFERENCE TO reference types and the REF= binding operator",
+    "--allow-reference-to",
+    [Codesys, TwinCat],
+    allow_reference_to,
 
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
     "--allow-ref-arithmetic",
@@ -249,12 +283,12 @@ define_compiler_options! {
 
     "Allow integer literals (0/1) as BOOL variable initializers",
     "--allow-int-to-bool-initializer",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_int_to_bool_initializer,
 
     "Allow SIZEOF() operator (returns size in bytes of a variable or type)",
     "--allow-sizeof",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_sizeof,
 
     "Expose __SYSTEM_UP_TIME and __SYSTEM_UP_LTIME as implicit VAR_GLOBALs (runtime monotonic uptime)",
@@ -264,13 +298,48 @@ define_compiler_options! {
 
     "Allow implicit widening between bit-string and integer type families (BYTE->INT, literal->BYTE)",
     "--allow-cross-family-widening",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_cross_family_widening,
 
     "Allow IEC 61131-3:2013 partial-access bit syntax (.%Xn) as an alias for .n",
     "--allow-partial-access-syntax",
-    [Rusty, Iec61131_3Ed3, Codesys],
+    [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_partial_access_syntax,
+
+    "Allow curly-brace pragmas ({attribute 'name'}) as opaque, skipped trivia",
+    "--allow-pragmas",
+    [Rusty, Codesys, TwinCat],
+    allow_pragmas,
+
+    "Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension)",
+    "--allow-short-circuit-operators",
+    [Rusty, Codesys, TwinCat],
+    allow_short_circuit_operators,
+
+    "Allow AT-located variables (e.g. AT%I*) mixed with plain variables in the same VAR/VAR_INPUT/VAR_OUTPUT block",
+    "--allow-mixed-located-var-declarations",
+    [Rusty, Codesys, TwinCat],
+    allow_mixed_located_var_declarations,
+
+    "Allow constant expressions (not just bare literals) in VAR initializers, e.g. SCALE*4.0",
+    "--allow-constant-initializer-expressions",
+    [Rusty, Codesys],
+    allow_constant_initializer_expressions,
+
+    "Allow hex/binary/octal bit-string literals (16#D012, 2#1010) as CASE labels",
+    "--allow-bit-string-case-labels",
+    [Rusty, Codesys, TwinCat],
+    allow_bit_string_case_labels,
+
+    "Allow STRING(n)/WSTRING(n) parenthesis length delimiter in addition to the standard STRING[n]/WSTRING[n] brackets",
+    "--allow-paren-string-length",
+    [Rusty, Codesys, TwinCat],
+    allow_paren_string_length,
+
+    "Allow general (non-constant) expressions as struct/FB-instance initializer values, e.g. (PT := pDevice^.Delta)",
+    "--allow-struct-initializer-expressions",
+    [Rusty, Codesys, TwinCat],
+    allow_struct_initializer_expressions,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -307,95 +376,154 @@ pub fn describe_dialects() -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn from_dialect_when_ed2_then_all_flags_false() {
-        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2);
-
-        assert!(!options.allow_iec_61131_3_2013);
-        assert!(!options.allow_c_style_comments);
-        assert!(!options.allow_missing_semicolon);
-        assert!(!options.allow_top_level_var_global);
-        assert!(!options.allow_constant_type_params);
-        assert!(!options.allow_empty_var_blocks);
-        assert!(!options.allow_time_as_function_name);
-        assert!(!options.allow_ref_to);
-        assert!(!options.allow_ref_arithmetic);
-        assert!(!options.allow_ref_stack_variables);
-        assert!(!options.allow_ref_type_punning);
-        assert!(!options.allow_int_to_bool_initializer);
-        assert!(!options.allow_sizeof);
-        assert!(!options.allow_system_uptime_global);
-        assert!(!options.allow_cross_family_widening);
-        assert!(!options.allow_partial_access_syntax);
+    /// Collect the vendor-flag `option_key`s that `from_dialect(dialect)`
+    /// turns on, sorted for order-independent comparison.
+    fn enabled_vendor_flags(dialect: Dialect) -> Vec<&'static str> {
+        let options = CompilerOptions::from_dialect(dialect);
+        let mut enabled: Vec<&'static str> = CompilerOptions::FEATURE_DESCRIPTORS
+            .iter()
+            .filter(|f| options.get_flag_by_key(f.option_key) == Some(true))
+            .map(|f| f.option_key)
+            .collect();
+        enabled.sort_unstable();
+        enabled
     }
 
-    #[test]
-    fn from_dialect_when_ed3_then_edition3_enabled_and_vendor_flags_false() {
-        let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
-
-        assert!(options.allow_iec_61131_3_2013);
-        assert!(!options.allow_c_style_comments);
-        assert!(!options.allow_missing_semicolon);
-        assert!(!options.allow_top_level_var_global);
-        assert!(!options.allow_constant_type_params);
-        assert!(!options.allow_empty_var_blocks);
-        assert!(!options.allow_time_as_function_name);
-        assert!(!options.allow_ref_to);
-        assert!(!options.allow_ref_arithmetic);
-        assert!(!options.allow_ref_stack_variables);
-        assert!(!options.allow_ref_type_punning);
-        assert!(!options.allow_int_to_bool_initializer);
-        assert!(!options.allow_sizeof);
-        assert!(!options.allow_system_uptime_global);
-        assert!(!options.allow_cross_family_widening);
-        // Edition 3 standardized partial-access syntax (.%Xn).
-        assert!(options.allow_partial_access_syntax);
+    /// Assert that a dialect enables *exactly* the given set of vendor flags --
+    /// no more, no less. This is the guard against a newly added option
+    /// silently leaking into a dialect it should not belong to: adding an
+    /// option to a dialect's macro tags forces a matching update here, and an
+    /// accidental extra tag makes that dialect's expected set mismatch.
+    fn assert_enabled_vendor_flags(dialect: Dialect, expected: &[&str]) {
+        let mut expected_sorted = expected.to_vec();
+        expected_sorted.sort_unstable();
+        assert_eq!(
+            enabled_vendor_flags(dialect),
+            expected_sorted,
+            "dialect {dialect} does not enable exactly the expected vendor flags"
+        );
     }
 
+    /// IEC 61131-3 Ed. 2 (the default) enables no vendor extensions at all.
     #[test]
-    fn from_dialect_when_rusty_then_all_vendor_flags_enabled_and_edition3_disabled() {
-        let options = CompilerOptions::from_dialect(Dialect::Rusty);
-
-        assert!(!options.allow_iec_61131_3_2013);
-        assert!(options.allow_c_style_comments);
-        assert!(options.allow_missing_semicolon);
-        assert!(options.allow_top_level_var_global);
-        assert!(options.allow_constant_type_params);
-        assert!(options.allow_empty_var_blocks);
-        assert!(options.allow_time_as_function_name);
-        assert!(options.allow_ref_to);
-        assert!(options.allow_ref_arithmetic);
-        assert!(options.allow_ref_stack_variables);
-        assert!(options.allow_ref_type_punning);
-        assert!(options.allow_int_to_bool_initializer);
-        assert!(options.allow_sizeof);
-        assert!(options.allow_system_uptime_global);
-        assert!(options.allow_cross_family_widening);
-        assert!(options.allow_partial_access_syntax);
+    fn ed2_dialect_enables_no_vendor_flags() {
+        assert!(!CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(Dialect::Iec61131_3Ed2, &[]);
     }
 
+    /// IEC 61131-3 Ed. 3 turns on the Edition-3 keyword set and, among vendor
+    /// extensions, only partial-access syntax (standardized in Edition 3).
     #[test]
-    fn from_dialect_when_codesys_then_all_vendor_flags_except_system_uptime_enabled() {
-        let options = CompilerOptions::from_dialect(Dialect::Codesys);
+    fn ed3_dialect_enables_only_partial_access_syntax() {
+        assert!(CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(Dialect::Iec61131_3Ed3, &["allow_partial_access_syntax"]);
+    }
 
-        assert!(!options.allow_iec_61131_3_2013);
-        assert!(options.allow_c_style_comments);
-        assert!(options.allow_missing_semicolon);
-        assert!(options.allow_top_level_var_global);
-        assert!(options.allow_constant_type_params);
-        assert!(options.allow_empty_var_blocks);
-        assert!(options.allow_time_as_function_name);
-        assert!(options.allow_ref_to);
-        assert!(options.allow_ref_arithmetic);
-        assert!(options.allow_ref_stack_variables);
-        assert!(options.allow_ref_type_punning);
-        assert!(options.allow_int_to_bool_initializer);
-        assert!(options.allow_sizeof);
-        // __SYSTEM_UP_TIME globals are an IronPLC/RuSTy runtime convention,
-        // not a CODESYS feature.
-        assert!(!options.allow_system_uptime_global);
-        assert!(options.allow_cross_family_widening);
-        assert!(options.allow_partial_access_syntax);
+    /// The RuSTy dialect stays on the Edition-2 keyword base and enables every
+    /// vendor extension. Listed explicitly (not derived) so a new option that
+    /// is meant to be Rusty-only, or accidentally left off Rusty, is caught.
+    #[test]
+    fn rusty_dialect_enables_exactly_these_vendor_flags() {
+        assert!(!CompilerOptions::from_dialect(Dialect::Rusty).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(
+            Dialect::Rusty,
+            &[
+                "allow_c_style_comments",
+                "allow_missing_semicolon",
+                "allow_top_level_var_global",
+                "allow_constant_type_params",
+                "allow_empty_var_blocks",
+                "allow_time_as_function_name",
+                "allow_ref_to",
+                "allow_ref_arithmetic",
+                "allow_ref_stack_variables",
+                "allow_ref_type_punning",
+                "allow_int_to_bool_initializer",
+                "allow_sizeof",
+                "allow_system_uptime_global",
+                "allow_cross_family_widening",
+                "allow_partial_access_syntax",
+                "allow_pragmas",
+                "allow_short_circuit_operators",
+                "allow_mixed_located_var_declarations",
+                "allow_constant_initializer_expressions",
+                "allow_bit_string_case_labels",
+                "allow_paren_string_length",
+                "allow_struct_initializer_expressions",
+            ],
+        );
+    }
+
+    /// The CODESYS dialect matches RuSTy except it does *not* bind the
+    /// `__SYSTEM_UP_TIME` globals (`allow_system_uptime_global`), which are an
+    /// IronPLC/RuSTy runtime convention rather than a CODESYS feature. Listed
+    /// explicitly so that omission is asserted rather than assumed.
+    #[test]
+    fn codesys_dialect_enables_exactly_these_vendor_flags() {
+        assert!(!CompilerOptions::from_dialect(Dialect::Codesys).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(
+            Dialect::Codesys,
+            &[
+                "allow_c_style_comments",
+                "allow_missing_semicolon",
+                "allow_top_level_var_global",
+                "allow_constant_type_params",
+                "allow_empty_var_blocks",
+                "allow_time_as_function_name",
+                "allow_ref_to",
+                "allow_reference_to",
+                "allow_ref_arithmetic",
+                "allow_ref_stack_variables",
+                "allow_ref_type_punning",
+                "allow_int_to_bool_initializer",
+                "allow_sizeof",
+                "allow_cross_family_widening",
+                "allow_partial_access_syntax",
+                "allow_pragmas",
+                "allow_short_circuit_operators",
+                "allow_mixed_located_var_declarations",
+                "allow_constant_initializer_expressions",
+                "allow_bit_string_case_labels",
+                "allow_paren_string_length",
+                "allow_struct_initializer_expressions",
+            ],
+        );
+    }
+
+    /// The TwinCAT dialect is close to CODESYS (TwinCAT 3 runs on the CODESYS
+    /// V3 runtime) but does *not* enable the `REF_TO` reference extensions.
+    /// TwinCAT spells references `REFERENCE TO` (not the CODESYS `REF_TO` /
+    /// `REF()` / `NULL`), so it enables `allow_reference_to` instead, and none
+    /// of `allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`,
+    /// or `allow_ref_type_punning` are enabled -- enabling those would accept
+    /// `REF_TO` code that TwinCAT itself rejects. (Pointer types `POINTER TO`
+    /// with `ADR()` are not parsed yet.) Listed explicitly so an accidental
+    /// divergence from the intended set is caught.
+    #[test]
+    fn twincat_dialect_enables_exactly_these_vendor_flags() {
+        assert!(!CompilerOptions::from_dialect(Dialect::TwinCat).allow_iec_61131_3_2013);
+        assert_enabled_vendor_flags(
+            Dialect::TwinCat,
+            &[
+                "allow_c_style_comments",
+                "allow_missing_semicolon",
+                "allow_top_level_var_global",
+                "allow_constant_type_params",
+                "allow_empty_var_blocks",
+                "allow_time_as_function_name",
+                "allow_reference_to",
+                "allow_int_to_bool_initializer",
+                "allow_sizeof",
+                "allow_cross_family_widening",
+                "allow_partial_access_syntax",
+                "allow_pragmas",
+                "allow_short_circuit_operators",
+                "allow_mixed_located_var_declarations",
+                "allow_bit_string_case_labels",
+                "allow_paren_string_length",
+                "allow_struct_initializer_expressions",
+            ],
+        );
     }
 
     /// REQ-PAB-051: The `rusty` dialect preset enables partial-access syntax.
@@ -421,33 +549,12 @@ mod tests {
     }
 
     #[test]
-    fn feature_descriptors_when_called_then_contains_all_vendor_flags() {
-        assert_eq!(CompilerOptions::FEATURE_DESCRIPTORS.len(), 15);
+    fn feature_descriptors_when_called_then_non_empty_and_stably_ordered() {
+        assert!(!CompilerOptions::FEATURE_DESCRIPTORS.is_empty());
         assert_eq!(
             CompilerOptions::FEATURE_DESCRIPTORS[0].cli_flag,
             "--allow-c-style-comments"
         );
-    }
-
-    #[test]
-    fn feature_descriptors_when_rusty_then_all_features_listed() {
-        let rusty_features: Vec<&str> = CompilerOptions::FEATURE_DESCRIPTORS
-            .iter()
-            .filter(|f| f.dialects.contains(&Dialect::Rusty))
-            .map(|f| f.cli_flag)
-            .collect();
-        assert_eq!(rusty_features.len(), 15);
-    }
-
-    #[test]
-    fn feature_descriptors_when_codesys_then_omits_only_system_uptime_global() {
-        let codesys_features: Vec<&str> = CompilerOptions::FEATURE_DESCRIPTORS
-            .iter()
-            .filter(|f| f.dialects.contains(&Dialect::Codesys))
-            .map(|f| f.cli_flag)
-            .collect();
-        assert_eq!(codesys_features.len(), 14);
-        assert!(!codesys_features.contains(&"--allow-system-uptime-global"));
     }
 
     #[test]
@@ -457,6 +564,7 @@ mod tests {
         assert!(output.contains("iec61131-3-ed3"));
         assert!(output.contains("rusty"));
         assert!(output.contains("codesys"));
+        assert!(output.contains("twincat"));
     }
 
     #[test]
@@ -482,11 +590,17 @@ mod tests {
     }
 
     #[test]
+    fn dialect_display_when_twincat_then_cli_name() {
+        assert_eq!(format!("{}", Dialect::TwinCat), "twincat");
+    }
+
+    #[test]
     fn dialect_from_str_when_known_name_then_returns_variant() {
         assert_eq!("iec61131-3-ed2".parse(), Ok(Dialect::Iec61131_3Ed2));
         assert_eq!("iec61131-3-ed3".parse(), Ok(Dialect::Iec61131_3Ed3));
         assert_eq!("rusty".parse(), Ok(Dialect::Rusty));
         assert_eq!("codesys".parse(), Ok(Dialect::Codesys));
+        assert_eq!("twincat".parse(), Ok(Dialect::TwinCat));
     }
 
     #[test]

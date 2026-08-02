@@ -975,7 +975,7 @@ END_FUNCTION_BLOCK
 }
 ```
 
-This test lives in `compiler/parser/src/tests.rs` alongside the other parser tests. It must be added **before** any `TokenType` variants for dialect keywords are created, and must continue to pass after they are added.
+This test lives in `compiler/parser/src/tests/` alongside the other parser tests. It must be added **before** any `TokenType` variants for dialect keywords are created, and must continue to pass after they are added.
 
 ### Regression tests
 

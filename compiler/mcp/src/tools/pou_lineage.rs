@@ -1,14 +1,14 @@
 //! The `pou_lineage` MCP tool.
 //!
 //! Returns the upstream (dependencies) and downstream (dependents) of a
-//! named POU, derived from the library's call graph. Implements REQ-TOL-230
-//! and REQ-TOL-231.
+//! named POU, derived from the library's call graph. Implements REQ-TOL-mcp-230
+//! and REQ-TOL-mcp-231.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use ironplc_dsl::common::{
-    FunctionBlockDeclaration, FunctionBlockInitialValueAssignment, FunctionDeclaration, Library,
-    LibraryElementKind, ProgramDeclaration, VarDecl,
+    FunctionBlockCallInitializer, FunctionBlockDeclaration, FunctionBlockInitialValueAssignment,
+    FunctionDeclaration, Library, LibraryElementKind, ProgramDeclaration, VarDecl,
 };
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::Diagnostic;
@@ -271,10 +271,19 @@ fn record_function_block(graph: &mut PouGraph, fb: &FunctionBlockDeclaration) {
 
 fn record_variables(graph: &mut PouGraph, caller: &str, variables: &[VarDecl]) {
     for v in variables {
-        if let ironplc_dsl::common::InitialValueAssignmentKind::FunctionBlock(
-            FunctionBlockInitialValueAssignment { type_name, .. },
-        ) = &v.initializer
-        {
+        // Both the member-init form (`X : FB := (...)`) and the call-style
+        // form (`X : FB(...)`) declare an instance of an FB type, so both
+        // create a lineage edge to that type.
+        let fb_type_name = match &v.initializer {
+            ironplc_dsl::common::InitialValueAssignmentKind::FunctionBlock(
+                FunctionBlockInitialValueAssignment { type_name, .. },
+            ) => Some(type_name),
+            ironplc_dsl::common::InitialValueAssignmentKind::FunctionBlockCall(
+                FunctionBlockCallInitializer { type_name, .. },
+            ) => Some(type_name),
+            _ => None,
+        };
+        if let Some(type_name) = fb_type_name {
             graph.add_edge(caller, &type_name.to_string());
         }
     }

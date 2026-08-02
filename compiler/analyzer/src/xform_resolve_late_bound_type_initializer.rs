@@ -224,6 +224,10 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                             InitialValueAssignmentKind::Reference(ReferenceInitializer {
                                 target: ref_target.clone(),
                                 initial_value: None,
+                                // Resolved from a named reference-type alias; the
+                                // original surface keyword is not preserved through
+                                // the alias and is not rendered for a named target.
+                                syntax: RefSyntax::RefTo,
                             }),
                         ),
                         TypeDefinitionKind::Subrange => Ok(InitialValueAssignmentKind::Subrange(
@@ -381,6 +385,7 @@ END_FUNCTION_BLOCK
                                 "val1", "val2", "val3",
                             ]),
                             default: None,
+                            underlying_type: None,
                         },
                     },
                 )),

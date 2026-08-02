@@ -126,7 +126,7 @@ Mechanical migration — no behavior change.
 | `compiler/dsl/src/fold.rs` | Add `fold_expr` method, update `fold_expr_kind` callers |
 | `compiler/dsl/src/visitor.rs` | Add `visit_expr` method |
 | `compiler/parser/src/parser.rs` | Wrap every `ExprKind` construction in `Expr::new(...)` |
-| `compiler/parser/src/tests.rs` | Update test assertions |
+| `compiler/parser/src/tests/` | Update test assertions |
 | `compiler/codegen/src/compile.rs` | Access `.kind` when matching, pass `Expr` through |
 | `compiler/analyzer/src/xform_resolve_late_bound_expr_kind.rs` | Update Fold to handle `Expr` wrapper |
 | `compiler/plc2plc/src/renderer.rs` | Access `.kind` when rendering |

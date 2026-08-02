@@ -87,6 +87,18 @@ impl LibraryRenderer {
         self.buffer.push('\n');
     }
 
+    /// Writes the reference-type keyword for the given surface syntax:
+    /// `REF_TO` for IEC, `REFERENCE TO` for the TwinCAT/CODESYS variant.
+    fn write_ref_keyword(&mut self, syntax: &RefSyntax) {
+        match syntax {
+            RefSyntax::RefTo => self.write_ws("REF_TO"),
+            RefSyntax::ReferenceTo => {
+                self.write_ws("REFERENCE");
+                self.write_ws("TO");
+            }
+        }
+    }
+
     fn indent(&mut self) {
         self.indents += 1;
     }
@@ -309,6 +321,11 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_enumerated_specification_kind(&node.spec)?;
 
+        // CODESYS/TwinCAT enum base-type suffix, e.g. `(A, B) BYTE;`.
+        if let Some(underlying_type) = &node.underlying_type {
+            self.write_ws(&underlying_type.to_string());
+        }
+
         if let Some(default) = &node.default {
             self.write_ws(":=");
             self.visit_enumerated_value(default)?;
@@ -326,6 +343,35 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         visit_comma_separated!(self, node.values.iter(), EnumeratedValue);
 
         self.write_ws(")");
+        Ok(())
+    }
+
+    fn visit_enumerated_value(
+        &mut self,
+        node: &EnumeratedValue,
+    ) -> Result<Self::Value, Diagnostic> {
+        // Matches visit_structured_variable's pattern: a raw write around
+        // `#` since visit_id's write_ws would insert an unwanted space
+        // (this was a pre-existing bug -- COLOR#RED rendered as
+        // "COLOR RED", found while adding explicit_value rendering below).
+        match &node.type_name {
+            Some(type_name) => {
+                self.write_ws(type_name.name.original().as_str());
+                self.write("#");
+                self.write(node.value.original().as_str());
+            }
+            None => self.visit_id(&node.value)?,
+        }
+
+        // CODESYS/TwinCAT explicit per-member enum value, e.g.
+        // `Type_UNDEFINED := 0`. Only ever set on a member in an enum
+        // declaration's value list, never on a reference (default value,
+        // case label, expression).
+        if let Some(explicit_value) = &node.explicit_value {
+            self.write_ws(":=");
+            self.write_ws(&explicit_value.to_i64().to_string());
+        }
+
         Ok(())
     }
 
@@ -493,8 +539,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("]");
         self.write_ws("OF");
 
-        if node.ref_to {
-            self.write_ws("REF_TO");
+        if let Some(syntax) = &node.ref_to {
+            self.write_ref_keyword(syntax);
         }
 
         match &node.type_name {
@@ -694,6 +740,19 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    // CODESYS/TwinCAT vendor extension: constant-expression VAR initializer
+    // (e.g. `PI/180.0`), not yet folded to a literal.
+    fn visit_simple_expr_initializer(
+        &mut self,
+        node: &SimpleExprInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+        self.write_ws(":=");
+        self.visit_expr(&node.initial_value)?;
+
+        Ok(())
+    }
+
     // 2.4.3.1 and 2.4.3.2
     fn visit_string_initializer(
         &mut self,
@@ -753,6 +812,20 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &FunctionBlockInitialValueAssignment,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_type_name(&node.type_name)
+    }
+
+    // CODESYS/TwinCAT call-style FB instance initializer:
+    // `name : FB_Type(args)`. Render the type name followed by the
+    // parenthesized constructor argument list.
+    fn visit_function_block_call_initializer(
+        &mut self,
+        node: &FunctionBlockCallInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+        self.write_ws("(");
+        visit_comma_separated!(self, node.params.iter(), ParamAssignmentKind);
+        self.write_ws(")");
+        Ok(())
     }
 
     // 2.4.3.2
@@ -1205,6 +1278,19 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &dsl::textual::Assignment,
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_variable(&node.target)?;
+        if node.ref_bind {
+            // Reproduce the TwinCAT/CODESYS `REF=` binding. The value is always
+            // an `ExprKind::Ref(referent)`; render `target REF= referent`.
+            self.write_ws("REF=");
+            if let dsl::textual::ExprKind::Ref(referent) = &node.value.kind {
+                self.visit_variable(referent)?;
+            } else {
+                self.visit_expr(&node.value)?;
+            }
+            self.write_ws(";");
+            self.newline();
+            return Ok(());
+        }
         if node.deref {
             self.write("^");
         }
@@ -1227,6 +1313,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             dsl::textual::CompareOp::Or => "OR",
             dsl::textual::CompareOp::Xor => "XOR",
             dsl::textual::CompareOp::And => "AND",
+            dsl::textual::CompareOp::AndThen => "AND_THEN",
             dsl::textual::CompareOp::Eq => "=",
             dsl::textual::CompareOp::Ne => "<>",
             dsl::textual::CompareOp::Lt => "<",
@@ -1503,7 +1590,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_type_name(&node.type_name)?;
         self.write_ws(":");
-        self.write_ws("REF_TO");
+        self.write_ref_keyword(&node.syntax);
         self.visit_reference_target(&node.target)
     }
 
@@ -1511,7 +1598,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         &mut self,
         node: &ReferenceInitializer,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("REF_TO");
+        self.write_ref_keyword(&node.syntax);
         self.visit_reference_target(&node.target)?;
 
         if let Some(init) = &node.initial_value {

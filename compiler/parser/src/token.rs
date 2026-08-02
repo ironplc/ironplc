@@ -86,6 +86,10 @@ pub enum TokenType {
     LeftBrace,
     #[token("}")]
     RightBrace,
+    // Not produced directly by the lexer. Populated only by
+    // `xform_collapse_pragmas` when the `allow_pragmas` dialect flag is set,
+    // by collapsing a `LeftBrace ..= RightBrace` token run into one token.
+    Pragma,
     #[token("[")]
     LeftBracket,
     #[token("]")]
@@ -338,6 +342,10 @@ pub enum TokenType {
     Ref,
     #[token("NULL", ignore(case))]
     Null,
+    // Beckhoff TwinCAT / CODESYS `REFERENCE TO` reference types
+    // (`--allow-reference-to`). Longest-match keeps this distinct from `REF`.
+    #[token("REFERENCE", ignore(case))]
+    Reference,
 
     #[token("DATE", ignore(case))]
     Date,
@@ -428,6 +436,11 @@ pub enum TokenType {
     #[token("AND", ignore(case))]
     #[token("&")]
     And,
+    // CODESYS/TwinCAT short-circuit boolean operator (Beckhoff/CODESYS
+    // origin). Demoted to Identifier unless `allow_short_circuit_operators`
+    // is set -- see xform_demote_short_circuit_operators.rs.
+    #[token("AND_THEN", ignore(case))]
+    AndThen,
     #[token("=")]
     Equal,
     #[token("<>")]
@@ -474,6 +487,7 @@ impl TokenType {
             TokenType::RightParen => "')'",
             TokenType::LeftBrace => "'{'",
             TokenType::RightBrace => "'}'",
+            TokenType::Pragma => "'{ ... }' (pragma)",
             TokenType::LeftBracket => "'['",
             TokenType::RightBracket => "']'",
             TokenType::Comma => "','",
@@ -576,6 +590,7 @@ impl TokenType {
             TokenType::RefTo => "'REF_TO'",
             TokenType::Ref => "'REF'",
             TokenType::Null => "'NULL'",
+            TokenType::Reference => "'REFERENCE'",
             TokenType::Date => "'DATE' | 'D'",
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",
@@ -608,6 +623,7 @@ impl TokenType {
             TokenType::Or => "'OR'",
             TokenType::Xor => "'XOR'",
             TokenType::And => "'AND' | '&'",
+            TokenType::AndThen => "'AND_THEN'",
             TokenType::Equal => "'='",
             TokenType::NotEqual => "'<>'",
             TokenType::Less => "'<'",
@@ -687,6 +703,7 @@ mod tests {
             (RightParen, ")"),
             (LeftBrace, "{"),
             (RightBrace, "}"),
+            (Pragma, "{attribute 'qualified_only'}"),
             (LeftBracket, "["),
             (RightBracket, "]"),
             (Comma, ","),
@@ -814,6 +831,7 @@ mod tests {
             (Or, "OR"),
             (Xor, "XOR"),
             (And, "AND"),
+            (AndThen, "AND_THEN"),
             (Equal, "="),
             (NotEqual, "<>"),
             (Less, "<"),

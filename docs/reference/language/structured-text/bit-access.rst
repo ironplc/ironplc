@@ -100,8 +100,7 @@ Edition 3 Partial-Access Syntax
 IEC 61131-3:2013 adds the explicit form ``variable.%Xn`` for bit access.
 Semantically it is identical to the ``.n`` short form — IronPLC lowers both
 to the same representation. The Edition 3 form is gated behind
-``--allow-partial-access-syntax`` and is enabled by default under
-``--dialect=iec61131-3-ed3`` and ``--dialect=rusty``.
+``--allow-partial-access-syntax``.
 
 Using ``.%Xn`` without the flag raises
 :doc:`P4033 </reference/compiler/problems/P4033>`.

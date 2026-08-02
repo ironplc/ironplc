@@ -364,7 +364,7 @@ pub(crate) fn array_spec_from_inline(
     Ok(ArraySpec {
         dimensions,
         element_type_name: Id::from(&subranges.type_name.to_type_name().to_string()),
-        ref_to: subranges.ref_to,
+        ref_to: subranges.ref_to.is_some(),
         string_max_len,
         string_char_width,
     })

@@ -3,7 +3,7 @@
 //! This module owns everything that touches the IronPLC VM: it builds the
 //! symbol map from a freshly-compiled container, converts raw VM variable
 //! slots into JSON values, and drives the execution loop under the resource
-//! limits specified in the design doc (REQ-ARC-030..035).
+//! limits specified in the design doc (REQ-ARC-mcp-030..035).
 //!
 //! The module is deliberately independent of the MCP transport so that the
 //! unit tests can exercise it without spawning a JSON-RPC client.
@@ -11,9 +11,9 @@
 //! # Fuel limit caveat
 //!
 //! The VM does not currently expose a per-instruction fuel budget. This
-//! module approximates `max_fuel` (REQ-ARC-030) by checking
+//! module approximates `max_fuel` (REQ-ARC-mcp-030) by checking
 //! `InstructionProfile::total()` between task-cycle rounds — the same
-//! granularity the spec permits for `max_wall_clock_ms` (REQ-ARC-035).
+//! granularity the spec permits for `max_wall_clock_ms` (REQ-ARC-mcp-035).
 //! A follow-up VM change (`Vm::set_fuel_budget` + `Trap::OutOfFuel`) will
 //! replace this with strict per-opcode enforcement.
 
@@ -29,7 +29,7 @@ use serde_json::Value;
 use crate::cache::{CachedContainer, ResolvedVar, VariableSymbolMap};
 
 /// Resource limits enforced on a single `run` invocation.
-/// Defaults mirror REQ-ARC-030.
+/// Defaults mirror REQ-ARC-mcp-030.
 #[derive(Clone, Copy, Debug)]
 pub struct EffectiveLimits {
     pub max_duration_ms: u64,
@@ -40,7 +40,7 @@ pub struct EffectiveLimits {
 }
 
 impl EffectiveLimits {
-    /// Server defaults (REQ-ARC-030).
+    /// Server defaults (REQ-ARC-mcp-030).
     pub const DEFAULTS: Self = Self {
         max_duration_ms: 60_000,
         max_fuel: 50_000_000,
@@ -51,7 +51,7 @@ impl EffectiveLimits {
 }
 
 /// Builds the `VariableSymbolMap` that the `run` tool uses to resolve
-/// fully-qualified variable names (REQ-ARC-020, REQ-ARC-070).
+/// fully-qualified variable names (REQ-ARC-mcp-020, REQ-ARC-mcp-070).
 ///
 /// The container's debug section owns `VarIndex` + `iec_type_tag`, keyed
 /// by bare variable name. The analyzer's `SemanticContext` owns the scope
@@ -122,7 +122,7 @@ fn index_debug_entries_by_name(debug: &DebugSection) -> HashMap<&str, Vec<&VarNa
     by_bare
 }
 
-/// Converts a raw 64-bit VM slot to a typed JSON value per REQ-TOL-043.
+/// Converts a raw 64-bit VM slot to a typed JSON value per REQ-TOL-mcp-043.
 ///
 /// MVP: covers every numeric and time tag. Returns `null` for types whose
 /// JSON encoding (strings, dates, enums, arrays, structs) is deferred to
@@ -188,7 +188,7 @@ pub struct RunOutcome {
     pub error_message: Option<String>,
 }
 
-/// Why the run stopped (REQ-TOL-047).
+/// Why the run stopped (REQ-TOL-mcp-047).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerminatedReason {
     Completed,
@@ -256,7 +256,7 @@ pub fn execute(
     let mut truncated = false;
 
     let terminated_reason = loop {
-        // Between-rounds limit gates (REQ-ARC-032/035).
+        // Between-rounds limit gates (REQ-ARC-mcp-032/035).
         if simulated_us / 1_000 >= limits.max_duration_ms {
             break TerminatedReason::Duration;
         }

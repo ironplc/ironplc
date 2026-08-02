@@ -115,6 +115,7 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::EnumeratedValues(_) => VariableType::EnumeratedValues,
             InitialValueAssignmentKind::EnumeratedType(_) => VariableType::EnumeratedType,
             InitialValueAssignmentKind::FunctionBlock(_) => VariableType::FunctionBlock,
+            InitialValueAssignmentKind::FunctionBlockCall(_) => VariableType::FunctionBlock,
             InitialValueAssignmentKind::Subrange(_) => VariableType::Subrange,
             InitialValueAssignmentKind::Structure(_) => VariableType::Structure,
             InitialValueAssignmentKind::Array(_) => VariableType::Array,
@@ -122,6 +123,9 @@ impl DeclarationResolver<'_> {
             InitialValueAssignmentKind::LateResolvedType(type_name) => {
                 VariableType::LateResolvedType(type_name.clone())
             }
+            // Not yet folded to a literal (vendor extension, folded by a
+            // later pass); treat like `Simple` for type-inference purposes.
+            InitialValueAssignmentKind::SimpleExpr(_) => VariableType::Simple,
         };
         match &node.identifier {
             VariableIdentifier::Symbol(id) => {
@@ -149,6 +153,7 @@ impl DeclarationResolver<'_> {
             ExprKind::EnumeratedValue(EnumeratedValue {
                 type_name: None,
                 value,
+                explicit_value: None,
             })
         } else {
             ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(
@@ -289,11 +294,13 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                     Ok(ExprKind::EnumeratedValue(EnumeratedValue {
                         type_name: None,
                         value: node.value,
+                        explicit_value: None,
                     }))
                 }
                 VariableType::EnumeratedType => Ok(ExprKind::EnumeratedValue(EnumeratedValue {
                     type_name: None,
                     value: node.value,
+                    explicit_value: None,
                 })),
                 VariableType::FunctionBlock => {
                     // Function block variables are parsed as LateResolvedType, not FunctionBlock.
@@ -312,6 +319,7 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                         Ok(ExprKind::EnumeratedValue(EnumeratedValue {
                             type_name: None,
                             value: node.value,
+                            explicit_value: None,
                         }))
                     } else {
                         // Not an enumeration (or type not found), check enum values

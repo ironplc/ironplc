@@ -1,5 +1,19 @@
 # Design: Spec Conformance Testing
 
+> **Status: partially superseded.** The single-crate ownership model described
+> below (one design doc bound to exactly one crate, unslugged IDs like
+> `**REQ-CF-001**`) has been replaced. Every requirement ID now carries a
+> **mandatory crate slug** — `**REQ-<AREA>-<crate-slug>-<NNN>**` — and one
+> design doc may distribute its requirements across several crates. The
+> unslugged form is rejected at build time. See
+> [cross-crate-spec-conformance.md](./cross-crate-spec-conformance.md) and
+> [ADR-0037](../adrs/0037-mandatory-crate-slug-in-requirement-ids.md) for the
+> current grammar and ownership rules. The mechanism described here (build-time
+> validity and completeness guarantees, the `#[spec_test]` macro, the
+> `all_spec_requirements_have_tests` meta-test) is otherwise unchanged; only the
+> ID grammar and the single-crate ownership assumption are superseded. The
+> examples below use the old unslugged IDs for historical continuity.
+
 ## Overview
 
 This design describes how IronPLC links design specifications to conformance

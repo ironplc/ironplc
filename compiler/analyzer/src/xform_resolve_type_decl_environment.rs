@@ -59,6 +59,7 @@ impl TypeEnvironment {
                         spec_init: EnumeratedSpecificationInit {
                             spec: SpecificationKind::Named(node.base_type_name),
                             default: None,
+                            underlying_type: None,
                         },
                     }),
                 ),
@@ -92,6 +93,8 @@ impl TypeEnvironment {
                             target: ironplc_dsl::common::ReferenceTarget::Named(
                                 node.base_type_name,
                             ),
+                            // Resolved alias; original surface keyword not preserved.
+                            syntax: ironplc_dsl::common::RefSyntax::RefTo,
                         },
                     ))
                 }
@@ -164,7 +167,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 self.insert_type(&node.type_name, string::from(string_initializer))?;
             }
             InitialValueAssignmentKind::EnumeratedValues(enumerated_values_initializer) => {
-                let attributes = enumeration::try_from_values(enumerated_values_initializer)?;
+                let attributes = enumeration::try_from_values(enumerated_values_initializer, None)?;
                 self.insert_type(&node.type_name, attributes)?;
             }
             InitialValueAssignmentKind::EnumeratedType(_enumerated_initial_value_assignment) => {
@@ -181,6 +184,22 @@ impl Fold<Diagnostic> for TypeEnvironment {
                     .with_secondary(Label::span(fb_init.type_name.span(), "Base type")));
                 }
                 self.insert_alias(&node.type_name, &fb_init.type_name)?;
+            }
+            InitialValueAssignmentKind::FunctionBlockCall(fb_call) => {
+                // The call-style FB initializer (`X : FB(args)`) is only
+                // produced by the parser for VAR declarations, not type
+                // declarations, so this arm is effectively unreachable here.
+                // Handle it like the FunctionBlock alias arm for robustness:
+                // treat it as an alias to the referenced FB type, ignoring
+                // the (codegen-unsupported) constructor arguments.
+                if self.get(&fb_call.type_name).is_none() {
+                    return Err(Diagnostic::problem(
+                        Problem::ParentTypeNotDeclared,
+                        Label::span(node.type_name.span(), "Function block type alias"),
+                    )
+                    .with_secondary(Label::span(fb_call.type_name.span(), "Base type")));
+                }
+                self.insert_alias(&node.type_name, &fb_call.type_name)?;
             }
             InitialValueAssignmentKind::Subrange(spec) => {
                 // Handle subrange specifications like: TYPE MY_RANGE : INT (1..100); END_TYPE
@@ -224,6 +243,12 @@ impl Fold<Diagnostic> for TypeEnvironment {
             InitialValueAssignmentKind::LateResolvedType(_type_name) => {
                 return Err(Diagnostic::internal_error(file!(), line!()));
             }
+            InitialValueAssignmentKind::SimpleExpr(_) => {
+                // Constant-expression initializers are a VAR-declaration
+                // vendor extension; they never appear in a TYPE alias's
+                // spec_and_init (that grammar path is unchanged).
+                return Err(Diagnostic::internal_error(file!(), line!()));
+            }
         }
 
         Ok(node)
@@ -249,7 +274,10 @@ impl Fold<Diagnostic> for TypeEnvironment {
                 self.insert_alias(&node.type_name, base_type_name)?;
             }
             SpecificationKind::Inline(spec_values) => {
-                let attributes = enumeration::try_from_values(spec_values)?;
+                let attributes = enumeration::try_from_values(
+                    spec_values,
+                    node.spec_init.underlying_type.clone(),
+                )?;
                 self.insert_type(&node.type_name, attributes)?;
             }
         }
@@ -528,6 +556,7 @@ END_TYPE
                         spec_init: EnumeratedSpecificationInit {
                             spec: SpecificationKind::Named(TypeName::from("LEVEL")),
                             default: None,
+                            underlying_type: None,
                         },
                     },
                 )),
@@ -573,7 +602,7 @@ END_TYPE
     fn apply_when_array_element_is_string_type_then_ok() {
         let program = "
 TYPE
-  STRING10 : STRING(10);
+  STRING10 : STRING[10];
 END_TYPE
 
 TYPE

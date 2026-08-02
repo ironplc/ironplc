@@ -36,6 +36,84 @@ use ironplc_dsl::time::*;
 // Don't use std::time::Duration because it does not allow negative values.
 use time::{Date, Month, PrimitiveDateTime, Time};
 
+/// Negates a literal constant, for the small set of literal kinds that
+/// `constant()` itself already supports with a leading sign (integer, real,
+/// duration). Used to collapse `ExprKind::UnaryOp(Neg, Const(c))` — the
+/// shape produced when a negative literal reaches the parser through
+/// `expression()`'s unary-operator handling rather than directly through
+/// `constant()` — back to the same `Const` shape `constant()` alone would
+/// have produced, so that e.g. `x : INT := -123;` continues to parse as a
+/// plain literal and does not require `allow_constant_initializer_expressions`.
+/// Returns `Err(c)` (giving the original value back) for literal kinds that
+/// have no natural negation (e.g. booleans, strings), which fall through to
+/// `SimpleExpr` instead.
+fn negate_literal_constant(c: ConstantKind) -> Result<ConstantKind, ConstantKind> {
+    match c {
+        ConstantKind::IntegerLiteral(mut lit) => {
+            lit.value.is_neg = !lit.value.is_neg;
+            Ok(ConstantKind::IntegerLiteral(lit))
+        }
+        ConstantKind::RealLiteral(mut lit) => {
+            lit.value = -lit.value;
+            Ok(ConstantKind::RealLiteral(lit))
+        }
+        ConstantKind::Duration(mut lit) => {
+            lit.interval = -lit.interval;
+            Ok(ConstantKind::Duration(lit))
+        }
+        other => Err(other),
+    }
+}
+
+/// Collapses an initializer expression to `Simple` when it is exactly a
+/// literal (optionally with one leading unary minus, e.g. `-123`), and
+/// otherwise wraps it as `SimpleExpr` (the constant-expression vendor
+/// extension, folded by `xform_fold_initializer_expressions`).
+fn resolve_initializer_expr(type_name: TypeName, e: ExprKind) -> InitialValueAssignmentKind {
+    match e {
+        ExprKind::Const(c) => InitialValueAssignmentKind::Simple(SimpleInitializer {
+            type_name,
+            initial_value: Some(c),
+        }),
+        ExprKind::UnaryOp(u) if u.op == UnaryOp::Neg => {
+            let UnaryExpr { op, term } = *u;
+            let resolved_type = term.resolved_type.clone();
+            match term.kind {
+                ExprKind::Const(c) => match negate_literal_constant(c) {
+                    Ok(negated) => InitialValueAssignmentKind::Simple(SimpleInitializer {
+                        type_name,
+                        initial_value: Some(negated),
+                    }),
+                    Err(c) => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
+                        type_name,
+                        initial_value: Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr {
+                            op,
+                            term: Expr {
+                                kind: ExprKind::Const(c),
+                                resolved_type,
+                            },
+                        }))),
+                    }),
+                },
+                other => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
+                    type_name,
+                    initial_value: Expr::new(ExprKind::UnaryOp(Box::new(UnaryExpr {
+                        op,
+                        term: Expr {
+                            kind: other,
+                            resolved_type,
+                        },
+                    }))),
+                }),
+            }
+        }
+        other => InitialValueAssignmentKind::SimpleExpr(SimpleExprInitializer {
+            type_name,
+            initial_value: Expr::new(other),
+        }),
+    }
+}
+
 /// Parses a IEC 61131-3 library into object form.
 pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diagnostic> {
     plc_parser::library(&SliceByRef(&tokens[..])).map_err(|e| {
@@ -113,9 +191,13 @@ enum Element {
     Deref,
 }
 
+// Both variants are boxed to keep them the same (pointer) size: the
+// LocatedVarInit variant carries a full InitialValueAssignmentKind
+// initializer and is much larger inline than FunctionBlockInit, which
+// otherwise trips clippy::large_enum_variant.
 enum InstanceInitKind {
-    FunctionBlockInit(FunctionBlockInit),
-    LocatedVarInit(LocatedVarInit),
+    FunctionBlockInit(Box<FunctionBlockInit>),
+    LocatedVarInit(Box<LocatedVarInit>),
 }
 
 enum ProgramConfigurationKind {
@@ -199,7 +281,8 @@ parser! {
     rule whitespace() -> () = tok(TokenType::Whitespace) {} / tok(TokenType::Newline) {}
 
     rule comment() -> () = tok(TokenType::Comment) ()
-    rule _ = (whitespace() / comment())*
+    rule pragma() -> () = tok(TokenType::Pragma) ()
+    rule _ = (whitespace() / comment() / pragma())*
 
     // Lists of separated items with required ending separator
     rule periodsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) _ period() {v}
@@ -208,7 +291,7 @@ parser! {
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule semisep_or_empty<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v} / { vec![] }
-    rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
+    rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) {v}
 
 
     pub rule library() -> Vec<LibraryElementKind> = traced(<library__impl()>)
@@ -439,10 +522,11 @@ parser! {
       / structure_type_declaration__with_constant()
       / enumerated:enumerated_type_declaration__with_value() { DataTypeDeclarationKind::Enumeration(enumerated) }
       / simple:simple_type_declaration__with_constant() { DataTypeDeclarationKind::Simple(simple )}
-      / type_name:type_name() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() {
+      / type_name:type_name() _ tok(TokenType::Colon) _ syntax:ref_to_keyword() _ ref_target:ref_to_target() {
         DataTypeDeclarationKind::Reference(ReferenceDeclaration {
           type_name,
           target: ref_target,
+          syntax,
         })
       }
       // The remaining are structure, enumerated and simple without an initializer
@@ -465,10 +549,22 @@ parser! {
         spec_and_init,
       }
     }
-    rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ constant:(tok(TokenType::Assignment) _ c:constant() { c })? {
+    rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {
+      // A bare literal parses as ExprKind::Const via expression() too (it's
+      // one of its own alternatives), so this single rule handles both the
+      // standard literal-only case and the constant-expression vendor
+      // extension (e.g. PI/180.0) without ambiguity — trying constant()
+      // first and falling back to expression() doesn't work here because
+      // constant() greedily matches a leading literal and stops, without
+      // backtracking, leaving a trailing operator unconsumed. See
+      // allow_constant_initializer_expressions and
+      // xform_fold_initializer_expressions, which folds SimpleExpr back to
+      // Simple or diagnoses it.
+      resolve_initializer_expr(type_name, e)
+    } / type_name:simple_specification() {
       InitialValueAssignmentKind::Simple(SimpleInitializer {
         type_name,
-        initial_value: constant,
+        initial_value: None,
       })
     }
     // For simple types, they are inherently unambiguous because simple types are keywords (e.g. INT)
@@ -496,48 +592,58 @@ parser! {
     rule subrange() -> Subrange = start:signed_integer_ref() _ tok(TokenType::Range) _ end:signed_integer_ref() { Subrange{start, end} }
 
     rule enumerated_type_declaration__with_value() -> EnumerationDeclaration =
-      type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec_init:enumerated_spec_init__with_value() {
-        let spec = spec_init.0;
-        let init = spec_init.1;
-
+      type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec:enumerated_specification() _ underlying_type:enum_underlying_type()? _ tok(TokenType::Assignment) _ def:enumerated_value() {
         EnumerationDeclaration {
           type_name,
           spec_init: EnumeratedSpecificationInit {
             spec,
-            default: Some(init),
+            default: Some(def),
+            underlying_type,
           },
         }
       }
-      / type_name:enumerated_type_name() _ tok(TokenType::Colon) _ spec_init:enumerated_spec_init__with_values() {
-        let spec = spec_init.0;
-        let init = spec_init.1;
-
+      / type_name:enumerated_type_name() _ tok(TokenType::Colon) _ values:enumerated_specification__only_values() _ underlying_type:enum_underlying_type()? _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
         EnumerationDeclaration {
           type_name,
           spec_init: EnumeratedSpecificationInit {
-            spec,
-            default: init,
+            spec: EnumeratedSpecificationKind::values(values),
+            default,
+            underlying_type,
           },
         }
       }
     rule enumerated_spec_init__with_value() -> (EnumeratedSpecificationKind, EnumeratedValue) = spec:enumerated_specification() _ tok(TokenType::Assignment) _ def:enumerated_value() {
       (spec, def)
     }
-    rule enumerated_spec_init__with_values() -> (EnumeratedSpecificationKind, Option<EnumeratedValue>) = values:enumerated_specification__only_values() _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
-      (EnumeratedSpecificationKind::values(values), default)
-    }
     rule enumerated_spec_init() -> EnumeratedSpecificationInit = spec:enumerated_specification() _ default:(tok(TokenType::Assignment) _ d:enumerated_value() { d })? {
       EnumeratedSpecificationInit {
         spec,
         default,
+        underlying_type: None,
       }
     }
     rule enumerated_specification__only_values() -> Vec<EnumeratedValue>  =
-      tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { v }
+      tok(TokenType::LeftParen) _ v:enumerated_value_decl() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { v }
     rule enumerated_specification() -> EnumeratedSpecificationKind  =
-      tok(TokenType::LeftParen) _ v:enumerated_value() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
+      tok(TokenType::LeftParen) _ v:enumerated_value_decl() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { EnumeratedSpecificationKind::values(v) }
       / name:enumerated_type_name() { SpecificationKind::Named(name) }
-    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:identifier() { EnumeratedValue {type_name, value} }
+    // Uses variable_identifier() rather than a bare identifier() so that
+    // reserved-but-commonly-used-as-a-name keywords (ON, STEP, R_EDGE,
+    // F_EDGE) are also valid enum member names, matching the same
+    // carve-out variable_identifier() already provides for VAR
+    // declarations (see #300, "Feature/reserved variables").
+    rule enumerated_value() -> EnumeratedValue = type_name:(name:enumerated_type_name() tok(TokenType::Hash) { name })? value:variable_identifier() { EnumeratedValue {type_name, value, explicit_value: None} }
+    // CODESYS/TwinCAT (also standard as of IEC 61131-3:2013) explicit
+    // per-member enum value, e.g. `Type_UNDEFINED := 0, Type_ANY,
+    // Type_BOOL` -- only a member *declaration* can carry an explicit
+    // value; `enumerated_value()` itself (used for references: defaults,
+    // case labels, expressions) is unchanged.
+    rule enumerated_value_decl() -> EnumeratedValue = ev:enumerated_value() explicit:(_ tok(TokenType::Assignment) _ si:signed_integer() { si })? {
+      EnumeratedValue { explicit_value: explicit, ..ev }
+    }
+    // CODESYS/TwinCAT enum base-type suffix, e.g. `(A, B) BYTE;` --
+    // overrides the automatic count/value-based sizing.
+    rule enum_underlying_type() -> ElementaryTypeName = integer_type_name() / bit_string_type_name()
     rule array_type_declaration() -> ArrayDeclaration = type_name:array_type_name() _ tok(TokenType::Colon) _ spec_and_init:array_spec_init() {
       ArrayDeclaration {
         type_name,
@@ -551,8 +657,8 @@ parser! {
         initial_values: init.unwrap_or_default()
       }
     }
-    rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:tok(TokenType::RefTo)? _ type_name:array_element_type() {
-      SpecificationKind::Inline(ArraySubranges { ranges, type_name, ref_to: ref_to.is_some() } )
+    rule array_specification() -> ArraySpecificationKind = tok(TokenType::Array) _ tok(TokenType::LeftBracket) _ ranges:subrange() ** (_ tok(TokenType::Comma) _ ) _ tok(TokenType::RightBracket) _ tok(TokenType::Of) _ ref_to:ref_to_keyword()? _ type_name:array_element_type() {
+      SpecificationKind::Inline(ArraySubranges { ranges, type_name, ref_to } )
     }
     rule array_element_type() -> ArrayElementType =
       tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() _ tok(TokenType::RightBracket) { l })? { ArrayElementType::String(StringSpecification { width: StringType::String, length, keyword_span: tok.span.clone() }) }
@@ -637,7 +743,15 @@ parser! {
     }
     rule structure_element_name() ->Id = identifier()
     rule structure_initialization() -> Vec<StructureElementInit> = tok(TokenType::LeftParen) _ elems:structure_element_initialization() ++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { elems }
-    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)}) {
+    // `constant()`/`enumerated_value()` are grammatically a strict subset of
+    // `expression()` (e.g. a bare identifier is a valid, but truncated,
+    // match for `pDevice^.Delta`) -- the trailing lookahead requires them to
+    // consume the *entire* value (immediately followed by the list
+    // terminator) before winning the choice, so a genuinely richer
+    // expression like a dereference-then-member-access chain falls through
+    // to the `expression()` alternative instead of matching only its first
+    // identifier and leaving `^.Delta` unconsumed.
+    rule structure_element_initialization() -> StructureElementInit = name:structure_element_name() _ tok(TokenType::Assignment) _ init:(c:constant() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::Constant(c) } / ev:enumerated_value() &(_ (tok(TokenType::Comma) / tok(TokenType::RightParen))) { StructInitialValueAssignmentKind::EnumeratedValue(ev) } / ai:array_initialization() { StructInitialValueAssignmentKind::Array(ai) } / si:structure_initialization() {StructInitialValueAssignmentKind::Structure(si)} / ex:expression() { StructInitialValueAssignmentKind::Expression(Expr::new(ex)) }) {
       StructureElementInit {
         name,
         init,
@@ -651,13 +765,27 @@ parser! {
     //
     // There is still value in trying to disambiguate early because it allows us to use
     // the parser definitions.
-    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ c:constant() {
-      // A simple_specification with a constant is unambiguous because the constant is
-      // not a valid identifier.
-      InitialValueAssignmentKind::Simple(SimpleInitializer {
-        type_name: s,
-        initial_value: Some(c),
-      })
+    rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {?
+      // A bare literal parses as ExprKind::Const via expression() too (it's
+      // one of its own alternatives), so this handles both the standard
+      // literal-only case and the constant-expression vendor extension
+      // (e.g. PI/180.0) — see allow_constant_initializer_expressions and
+      // xform_fold_initializer_expressions, which folds SimpleExpr back to
+      // Simple or diagnoses it.
+      //
+      // A bare identifier (no operators) is rejected here (backtracking to
+      // the enumerated_specification alternative below) because `simple
+      //_specification` also matches an enum type name, and `identifier :=
+      // identifier` is inherently ambiguous between "simple type with a
+      // constant-expression initializer referencing a variable" and "enum
+      // type with an enum value default" — the latter interpretation must
+      // still win, matching pre-existing disambiguation behavior.
+      match e {
+        ExprKind::Variable(_) | ExprKind::LateBound(_) => {
+          Err("ambiguous with enumerated value initializer")
+        }
+        other => Ok(resolve_initializer_expr(s, other)),
+      }
     } / spec:enumerated_specification() _ tok(TokenType::Assignment) _ init:enumerated_value() {
       // An enumerated_specification defined with a value is unambiguous the value
       // is not a valid constant.
@@ -810,11 +938,26 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() /  fb_name_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() / fb_call_style_var_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
+    // CODESYS/TwinCAT vendor extension: a located variable (complete or
+    // incomplete/wildcard address) declared inside an otherwise plain
+    // VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own
+    // dedicated located_var_declarations()/incompl_located_var_declarations()
+    // block. Singular (one name), matching the existing dedicated-block
+    // rules' shape — a shared address across multiple names wouldn't make
+    // sense. See allow_mixed_located_var_declarations.
+    rule located_var1_init_decl() -> Vec<UntypedVarDecl> = name:variable_name() _ loc:(location() / incompl_location()) _ tok(TokenType::Colon) _ init:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() {
+      vec![UntypedVarDecl {
+        name,
+        location: Some(loc),
+        initializer: init,
+      }]
+    }
     rule var1_init_decl__with_ambiguous_struct() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(a:simple_or_enumerated_or_subrange_ambiguous_struct_spec_init()) {
       // Each of the names variables has is initialized in the same way. Here we flatten initialization
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: init.clone(),
         }
@@ -825,6 +968,7 @@ parser! {
     rule array_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:array_spec_init() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::Array(init.clone()),
         }
@@ -834,6 +978,7 @@ parser! {
       names.into_iter().map(|name| {
         // TODO
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
         }
@@ -842,32 +987,70 @@ parser! {
     rule structured_var_init_decl__without_ambiguous() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init_struct:initialized_structure__without_ambiguous() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::Structure(init_struct.clone()),
         }
       }).collect()
     }
-    rule fb_name_decl() -> Vec<UntypedVarDecl> = names:fb_name_list() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ init:(tok(TokenType::Assignment) _ init:structure_initialization() { init })? {
+    rule fb_name() -> Id = i:identifier() { i }
+    // CODESYS/TwinCAT FB instance declaration with a call-style
+    // initialization parameter list (`FB_Type(args)`, no `:=`), using the
+    // same positional-or-named shape as an ordinary FB call -- e.g.
+    // `comm : FB_Comm(retries := 3, THIS);`. In CODESYS these arguments are
+    // passed to the function block's constructor (FB_init method), which is
+    // a distinct construct from the `:= (member := value)` member-init form
+    // -- hence a distinct AST node (InitialValueAssignmentKind::
+    // FunctionBlockCall), not a flag on FunctionBlockInitialValueAssignment.
+    //
+    // Requires the parens unconditionally (not optional) so this rule can
+    // never match a bare "name : Type;" declaration -- that continues to
+    // flow through the existing late-bound-resolution fallback unchanged. No
+    // ordering hazard: every earlier alternative in var_init_decl() requires
+    // its own mandatory leading token (ARRAY, REF_TO, STRING/WSTRING, or a
+    // literal `:=`) and fails outright (not a partial match) on a bare type
+    // name followed by `(`.
+    rule fb_call_style_var_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ params:fb_call_style_init_params() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
-          initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: init.clone().unwrap_or_else(Vec::new) }),
+          initializer: InitialValueAssignmentKind::FunctionBlockCall(FunctionBlockCallInitializer { type_name: type_name.clone(), params: params.clone() }),
         }
       }).collect()
     }
-    rule fb_name_list() -> Vec<Id> = commasep_oneplus(<fb_name()>)
-    rule fb_name() -> Id = i:identifier() { i }
-    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ tok(TokenType::RefTo) _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
+    rule fb_call_style_init_params() -> Vec<ParamAssignmentKind> = tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ tok(TokenType::RightParen) { params }
+    rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ syntax:ref_to_keyword() _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::Reference(ReferenceInitializer {
             target: ref_target.clone(),
             initial_value: init.clone(),
+            syntax,
           }),
         }
       }).collect()
     }
+    // Matches either the IEC `REF_TO` keyword or the TwinCAT/CODESYS
+    // `REFERENCE TO` keyword pair, returning which surface syntax matched.
+    // See `specs/design/reference-to-twincat.md`.
+    rule ref_to_keyword() -> RefSyntax =
+      tok(TokenType::RefTo) { RefSyntax::RefTo }
+      / tok(TokenType::Reference) _ tok(TokenType::To) { RefSyntax::ReferenceTo }
+    // Matches the TwinCAT/CODESYS `REF=` binding operator, returning the `=`
+    // token (used for the assignment span). The `=` must immediately follow
+    // `REF` with no intervening whitespace (no `_`), so `REF =` is not a binding
+    // operator. `REF` may be the `Ref` keyword token (when `--allow-ref-to`/
+    // Edition 3 is also active) or a demoted identifier `REF` (when only
+    // `--allow-reference-to` is set). Matching is case-insensitive to stay
+    // consistent with the rest of the lexer: the `Ref` keyword is itself lexed
+    // case-insensitively, so `ref=` behaves the same as `REF=`, exactly as IEC
+    // 61131-3 (a case-insensitive language) treats every other keyword.
+    rule ref_bind_op() -> &'input Token =
+      tok(TokenType::Ref) eq:tok(TokenType::Equal) { eq }
+      / [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case("REF")] eq:tok(TokenType::Equal) { eq }
     rule ref_initial_value() -> ReferenceInitialValue =
       t:tok(TokenType::Null) { ReferenceInitialValue::Null(t.span.clone()) }
       / tok(TokenType::Ref) _ tok(TokenType::LeftParen) _ v:variable() _ tok(TokenType::RightParen) { ReferenceInitialValue::Ref(v) }
@@ -885,13 +1068,14 @@ parser! {
     pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ declarations:semisep_or_empty(<var_declaration()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::InOut,  None)
     }
-    rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl() / fb_name_decl()
+    rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl()
     rule temp_var_decl() -> Vec<UntypedVarDecl> = string_var_declaration() / var1_declaration() / array_var_declaration() / structured_var_declaration()
     rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(spec)} ) {
       // TODO this could eventually cause duplicated definitions because
       // multiple variables have the same type declaration
       names.iter().map(|identifier| {
         UntypedVarDecl {
+          location: None,
           name: identifier.clone(),
           initializer: init.clone(),
         }
@@ -901,6 +1085,7 @@ parser! {
       names.iter().map(|identifier| {
         let init = ArrayInitialValueAssignment { spec: spec.clone(), initial_values: vec![] };
         UntypedVarDecl {
+          location: None,
           name: identifier.clone(),
           initializer: InitialValueAssignmentKind::Array(init),
         }
@@ -910,6 +1095,7 @@ parser! {
       names.iter().map(|identifier| {
         let init = StructureInitializationDeclaration { type_name: name.clone(), elements_init: vec![] };
         UntypedVarDecl {
+          location: None,
           name: identifier.clone(),
           initializer: InitialValueAssignmentKind::Structure(init),
 
@@ -934,6 +1120,7 @@ parser! {
         var_type: VariableType::Var,
         qualifier: DeclarationQualifier::Unspecified,
         initializer,
+        block: next_block_id(),
       }
     }
     // We use the same type as in other places for VarInit, but the external always omits the initializer
@@ -959,6 +1146,7 @@ parser! {
         var_type: VariableType::External,
         qualifier: DeclarationQualifier::Unspecified,
         initializer: spec,
+        block: next_block_id(),
       }
     }
     rule global_var_name() -> Id = i:identifier() { i }
@@ -983,6 +1171,7 @@ parser! {
           qualifier: DeclarationQualifier::Unspecified,
           // TODO this is clearly wrong
           initializer: init,
+          block: next_block_id(),
         }
       }).collect()
      }
@@ -1001,12 +1190,13 @@ parser! {
       names.into_iter().map(|name| {
         let span = name.span.clone();
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
         }
       }).collect()
     }
-    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
+    rule single_byte_string_spec() -> StringInitializer = start:tok(TokenType::String) _ length:string_length_spec()? _ initial_value:(tok(TokenType::Assignment) _ v:single_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::String,
@@ -1017,12 +1207,13 @@ parser! {
     rule double_byte_string_var_declaration() -> Vec<UntypedVarDecl> =  names:var1_list() _ tok(TokenType::Colon) _ spec:double_byte_string_spec() {
       names.into_iter().map(|name| {
         UntypedVarDecl {
+          location: None,
           name,
           initializer: InitialValueAssignmentKind::String(spec.clone()),
         }
       }).collect()
     }
-    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:(tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) {i})? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
+    rule double_byte_string_spec() -> StringInitializer = start:tok(TokenType::WString) _ length:string_length_spec()? _ initial_value:(tok(TokenType::Assignment) _ v:double_byte_character_string() {v})? {
       StringInitializer {
         length,
         width: StringType::WString,
@@ -1030,6 +1221,15 @@ parser! {
         keyword_span: start.span.clone(),
       }
     }
+    // CODESYS/TwinCAT accept STRING(n)/WSTRING(n) with parentheses as an
+    // alternate delimiter to the standard STRING[n]/WSTRING[n] brackets.
+    // The parenthesis form is a vendor extension (not standard IEC
+    // 61131-3), so the grammar accepts it permissively here and
+    // rule_token_no_paren_string_length rejects it (P4042) unless
+    // allow_paren_string_length is set.
+    rule string_length_spec() -> IntegerRef =
+      tok(TokenType::LeftBracket) _ i:integer_ref() _ tok(TokenType::RightBracket) { i }
+      / tok(TokenType::LeftParen) _ i:integer_ref() _ tok(TokenType::RightParen) { i }
     rule incompl_located_var_declarations() -> VarDeclarations = tok(TokenType::Var) _ qualifier:(tok(TokenType::Retain) {DeclarationQualifier::Retain} / tok(TokenType::NonRetain) {DeclarationQualifier::NonRetain})? _ declarations:semisep_or_empty(<incompl_located_var_decl()>) _ tok(TokenType::EndVar) {
       let declarations = declarations.into_iter().map(|decl| {
         let qualifier = qualifier
@@ -1060,8 +1260,8 @@ parser! {
       sr:subrange_specification__with_range() { VariableSpecificationKind::Subrange(sr) }
       / e:enumerated_specification() { VariableSpecificationKind::Enumerated(e) }
       / a:array_specification() { VariableSpecificationKind::Array(a) }
-      / tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { VariableSpecificationKind::String(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { VariableSpecificationKind::Simple(et.into()) }
       / id:type_name() { VariableSpecificationKind::Ambiguous(id) }
 
@@ -1070,8 +1270,8 @@ parser! {
     rule standard_function_name() -> Id = identifier()
     rule derived_function_name() -> Id = identifier()
     rule function_return_type() -> FunctionReturnType =
-      tok:tok(TokenType::String) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
-      / tok:tok(TokenType::WString) length:(_ tok(TokenType::LeftBracket) _ l:integer_ref() tok(TokenType::RightBracket) { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
+      tok:tok(TokenType::String) length:(_ l:string_length_spec() { l })? { FunctionReturnType::String(StringSpecification{ width: StringType::String, length, keyword_span: tok.span.clone(), }) }
+      / tok:tok(TokenType::WString) length:(_ l:string_length_spec() { l })? { FunctionReturnType::WString(StringSpecification{ width: StringType::WString, length, keyword_span: tok.span.clone(), }) }
       / et:elementary_type_name() { FunctionReturnType::Named(et.into()) }
       / dt:derived_type_name() { FunctionReturnType::Named(dt) }
     rule function_declaration() -> FunctionDeclaration = tok(TokenType::Function) _  name:derived_function_name() _ tok(TokenType::Colon) _ rt:function_return_type() _ var_decls:(io:io_var_declarations() / func:function_var_decls() { vec![ func ] } / temp:temp_var_decls() { vec![ temp ] }) ** _ _ body:function_body() _ tok(TokenType::EndFunction) {
@@ -1273,8 +1473,8 @@ parser! {
       if let Some(inits) = i {
         for init in inits {
           match init {
-              InstanceInitKind::FunctionBlockInit(fb_init) => fb_inits.push(fb_init),
-              InstanceInitKind::LocatedVarInit(located_var_init) => located_var_inits.push(located_var_init),
+              InstanceInitKind::FunctionBlockInit(fb_init) => fb_inits.push(*fb_init),
+              InstanceInitKind::LocatedVarInit(located_var_init) => located_var_inits.push(*located_var_init),
           }
         }
       }
@@ -1407,16 +1607,16 @@ parser! {
     rule instance_specific_initializations() -> Vec<InstanceInitKind> = tok(TokenType::VarConfig) _ init:semisep_oneplus(<instance_specific_init()>) _ tok(TokenType::EndVar) { init }
     rule instance_specific_init() -> InstanceInitKind = instance_specific_init__fb_init() / instance_specific_init__located()
     rule instance_specific_init__located() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_no_trailing(<identifier()>) _ address:location()? _ tok(TokenType::Colon) _ initializer:located_var_spec_init() {
-      InstanceInitKind::LocatedVarInit(LocatedVarInit {
+      InstanceInitKind::LocatedVarInit(Box::new(LocatedVarInit {
         resource_name,
         program_name,
         fb_path,
         address,
         initializer,
-      })
+      }))
     }
     rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_oneplus_no_trailing(<identifier()>) _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
-      InstanceInitKind::FunctionBlockInit(FunctionBlockInit {
+      InstanceInitKind::FunctionBlockInit(Box::new(FunctionBlockInit {
         resource_name,
         program_name,
         fb_path,
@@ -1424,7 +1624,7 @@ parser! {
         fb_name: Id::from(""),
         type_name,
         initializer,
-      })
+      }))
     }
 
     // B 2.1 Instruction List
@@ -1440,6 +1640,7 @@ parser! {
       --
       // and_expression
       x:(@) _ tok(TokenType::And) _ y:@ { ExprKind::compare(CompareOp::And, x, y ) }
+      x:(@) _ tok(TokenType::AndThen) _ y:@ { ExprKind::compare(CompareOp::AndThen, x, y ) }
       --
       // comparison
       x:(@) _ tok(TokenType::Equal)_ y:@ { ExprKind::compare(CompareOp::Eq, x, y ) }
@@ -1524,10 +1725,24 @@ parser! {
 
     // B.3.2.1 Assignment statements
     pub rule assignment_statement() -> StmtKind =
-      var:variable() _ tok(TokenType::Caret) _ assign:tok(TokenType::Assignment) _ expr:expression() {
+      // TwinCAT / CODESYS reference binding: `r REF= x` binds the reference `r`
+      // to variable `x`, equivalent to the IEC `r := REF(x)`. It lowers to the
+      // same `ExprKind::Ref` value, so it reuses the entire reference backend.
+      // See `specs/design/reference-to-twincat.md`.
+      target:variable() _ eq:ref_bind_op() _ referent:variable() {
+        StmtKind::Assignment(Assignment {
+          target,
+          deref: false,
+          ref_bind: true,
+          value: Expr::new(ExprKind::Ref(Box::new(referent))),
+          span: eq.span.clone(),
+        })
+      }
+      / var:variable() _ tok(TokenType::Caret) _ assign:tok(TokenType::Assignment) _ expr:expression() {
         StmtKind::Assignment(Assignment {
           target: var,
           deref: true,
+          ref_bind: false,
           value: Expr::new(expr),
           span: assign.span.clone(),
         })
@@ -1536,6 +1751,7 @@ parser! {
         StmtKind::Assignment(Assignment {
           target: var,
           deref: false,
+          ref_bind: false,
           value: Expr::new(expr),
           span: assign.span.clone(),
         })
@@ -1596,7 +1812,21 @@ parser! {
       }
     }
     rule case_list() -> Vec<CaseSelectionKind> = cases_list:case_list_element() ++ (_ tok(TokenType::Comma) _) { cases_list }
-    rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)}
+    rule case_list_element() -> CaseSelectionKind = sr:subrange() {CaseSelectionKind::Subrange(sr)} / si:signed_integer() {CaseSelectionKind::SignedInteger(si)} / ev:enumerated_value() {CaseSelectionKind::EnumeratedValue(ev)} / bsl:case_bit_string_literal() {CaseSelectionKind::BitStringLiteral(bsl)}
+    // A radix-prefixed bit-string literal used as a CASE label (e.g.
+    // `16#D012:`, `2#1010:`) -- a real grammar gap, not a stdlib gap.
+    // Deliberately narrower than the general bit_string_literal() rule,
+    // which also falls back to a bare decimal integer() -- including
+    // that fallback here would create a PEG ordering hazard with
+    // signed_integer() (a plain "5:" label could start matching as a
+    // BitStringLiteral instead of a SignedInteger). Radix-prefixed
+    // literals are already lexically distinct tokens from plain decimal
+    // digits, so this alternative can only ever fire for the genuinely
+    // new shape. See
+    // specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    rule case_bit_string_literal() -> BitStringLiteral = value:(bi:binary_integer() { bi } / oi:octal_integer() { oi } / hi:hex_integer() { hi }) {
+      BitStringLiteral { value, data_type: None }
+    }
 
     // B.3.2.4 Iteration statements
     rule iteration_statement() -> StmtKind = f:for_statement() {StmtKind::For(f)} / w:while_statement() {StmtKind::While(w)} / r:repeat_statement() {StmtKind::Repeat(r)} / exit_statement()

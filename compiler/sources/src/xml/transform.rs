@@ -5,8 +5,8 @@
 
 use ironplc_dsl::{
     common::{
-        ArrayDeclaration, ArrayElementType, ArraySubranges, Boolean, BooleanLiteral, ConstantKind,
-        DataTypeDeclarationKind, DeclarationQualifier, ElementaryTypeName,
+        next_block_id, ArrayDeclaration, ArrayElementType, ArraySubranges, Boolean, BooleanLiteral,
+        ConstantKind, DataTypeDeclarationKind, DeclarationQualifier, ElementaryTypeName,
         EnumeratedSpecificationInit, EnumeratedSpecificationValues, EnumeratedValue,
         EnumerationDeclaration, FunctionBlockBodyKind, FunctionBlockDeclaration,
         FunctionDeclaration, FunctionReturnType, InitialValueAssignmentKind, Integer, Library,
@@ -134,6 +134,7 @@ fn transform_enum_decl(
         .map(|v| EnumeratedValue {
             type_name: Some(type_name.clone()),
             value: make_id(&v.name, file_id),
+            explicit_value: None,
         })
         .collect();
 
@@ -145,6 +146,7 @@ fn transform_enum_decl(
             spec_init: EnumeratedSpecificationInit {
                 spec,
                 default: None,
+                underlying_type: None,
             },
         },
     ))
@@ -164,7 +166,7 @@ fn transform_array_decl(
         spec: SpecificationKind::Inline(ArraySubranges {
             ranges: subranges,
             type_name: ArrayElementType::Named(base_type_name),
-            ref_to: false,
+            ref_to: None,
         }),
         init: vec![],
     }))
@@ -602,6 +604,7 @@ fn transform_variable(
         var_type,
         qualifier,
         initializer,
+        block: next_block_id(),
     })
 }
 

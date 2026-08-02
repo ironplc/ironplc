@@ -57,26 +57,27 @@ fn from_container_when_max_call_depth_set_then_buffer_sized_to_declared_depth() 
 }
 
 #[test]
-fn from_container_when_max_call_depth_zero_then_buffer_falls_back_to_max_call_depth() {
-    // Hand-built / legacy containers leave the field unset. The buffer
-    // must still allocate the default `MAX_CALL_DEPTH = 32` so those
-    // tests keep working with their existing assumptions.
+fn from_container_when_max_call_depth_zero_then_buffer_is_empty() {
+    // A declared depth of 0 is invalid (codegen always declares >= 1),
+    // so the buffer allocates no frames. Such a container is rejected by
+    // `VmReady::start` before any code runs.
     let c = empty_init_container_with_depth(0);
     let b = VmBuffers::from_container(&c);
-    assert_eq!(b.frames.len(), 32);
+    assert_eq!(b.frames.len(), 0);
 }
 
 #[test]
-fn start_when_container_declares_zero_call_depth_then_no_validation_runs() {
-    // Default / hand-built / legacy containers leave `max_call_depth = 0`.
-    // The validation must skip in that case (back-compat).
+fn start_when_container_declares_zero_call_depth_then_rejected() {
+    // Every program needs at least one call frame for its entry function.
+    // A declared depth of 0 means the field was never computed (a legacy
+    // or hand-built container) and is rejected at load.
     let c = empty_init_container_with_depth(0);
     let mut b = VmBuffers::from_container(&c);
-    let ok = Vm::new().load(&c, &mut b).start().is_ok();
-    assert!(
-        ok,
-        "start should succeed when max_call_depth is 0 (not computed)"
-    );
+    let fault = match Vm::new().load(&c, &mut b).start() {
+        Ok(_) => panic!("start should reject a zero-call-depth container"),
+        Err(f) => f,
+    };
+    assert_eq!(fault.trap, Trap::ZeroCallDepth);
 }
 
 #[test]

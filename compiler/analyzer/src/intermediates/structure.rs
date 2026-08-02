@@ -94,7 +94,8 @@ fn field_has_default(
         InitialValueAssignmentKind::EnumeratedType(enum_type_init) => {
             enum_type_init.initial_value.is_some()
         }
-        InitialValueAssignmentKind::FunctionBlock(_) => {
+        InitialValueAssignmentKind::FunctionBlock(_)
+        | InitialValueAssignmentKind::FunctionBlockCall(_) => {
             // Function block fields can have their inputs initialized,
             // but function blocks themselves don't have "defaults" in the
             // same sense - they always need to be instantiated.
@@ -131,6 +132,11 @@ fn field_has_default(
             // but they may reference a structure type with all defaults
             nested_structure_has_all_defaults(type_name, type_environment)
         }
+        // A constant-expression initializer is only ever produced by the
+        // parser when an explicit `:= expr` was present, so it always
+        // counts as having a default (regardless of whether the fold pass
+        // has run yet).
+        InitialValueAssignmentKind::SimpleExpr(_) => true,
     }
 }
 
@@ -221,7 +227,7 @@ fn resolve_field_type(
         }
         InitialValueAssignmentKind::EnumeratedValues(values) => {
             // Handle enumerated field types with values
-            let enum_attrs = try_from_values(values)?;
+            let enum_attrs = try_from_values(values, None)?;
             Ok(enum_attrs.representation)
         }
         InitialValueAssignmentKind::EnumeratedType(enum_assignment) => {

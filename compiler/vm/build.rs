@@ -126,4 +126,5 @@ fn main() {
         eprintln!("problem generating trap_codes.rs: {err}");
         process::exit(1);
     }
+    ironplc_spec_requirements_gen::generate(&["runtime-execution-model.md"]);
 }

@@ -36,6 +36,7 @@ fn counter_container() -> ironplc_container::Container {
         .add_function(ironplc_container::FunctionId::new(1), &bytecode, 2, 1, 0) // scan: counter
         .init_function_id(ironplc_container::FunctionId::new(0))
         .entry_function_id(ironplc_container::FunctionId::new(1))
+        .max_call_depth(1)
         .build()
 }
 
@@ -115,6 +116,7 @@ fn scenario_when_fault_during_scan_then_prior_writes_visible() {
         .add_task(freewheeling_task(0, 0, 0))
         .add_program_instance(program_instance(0, 0, 1, 0, 1))
         .add_program_instance(program_instance(1, 0, 2, 0, 1))
+        .max_call_depth(1)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -149,6 +151,7 @@ fn scenario_when_variables_read_after_fault_then_accessible() {
         .add_function(ironplc_container::FunctionId::new(1), &bytecode, 1, 1, 0) // scan: stores then faults
         .init_function_id(ironplc_container::FunctionId::new(0))
         .entry_function_id(ironplc_container::FunctionId::new(1))
+        .max_call_depth(1)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -247,6 +250,7 @@ fn scenario_when_two_freewheeling_tasks_then_both_execute() {
         .add_task(freewheeling_task(1, 1, 0))
         .add_program_instance(program_instance(0, 0, 1, 0, 2))
         .add_program_instance(program_instance(1, 1, 2, 2, 2))
+        .max_call_depth(1)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -305,6 +309,7 @@ fn scenario_when_tasks_share_global_then_communication_works() {
         .add_task(freewheeling_task(1, 1, 0))
         .add_program_instance(program_instance(0, 0, 1, 1, 1)) // task 0: private [1,2)
         .add_program_instance(program_instance(1, 1, 2, 2, 2)) // task 1: private [2,4)
+        .max_call_depth(1)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -347,6 +352,7 @@ fn scenario_when_watchdog_exceeded_then_trap() {
         .add_function(FunctionId::new(1), &bytecode, 2, 1, 0) // scan: busy loop
         .add_task(freewheeling_task(0, 0, 1)) // watchdog_us = 1 (1µs)
         .add_program_instance(program_instance(0, 0, 1, 0, 1))
+        .max_call_depth(1)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -376,6 +382,7 @@ fn scenario_when_watchdog_disabled_then_no_trap() {
         .add_function(FunctionId::new(1), &bytecode, 1, 1, 0) // scan
         .add_task(freewheeling_task(0, 0, 0)) // watchdog_us = 0 (disabled)
         .add_program_instance(program_instance(0, 0, 1, 0, 1))
+        .max_call_depth(1)
         .build();
 
     let mut b = VmBuffers::from_container(&c);
@@ -404,6 +411,7 @@ fn scenario_when_scope_violation_then_trap() {
         .add_function(ironplc_container::FunctionId::new(1), &bytecode, 1, 2, 0) // scan: scope violation
         .add_task(freewheeling_task(0, 0, 0))
         .add_program_instance(program_instance(0, 0, 1, 2, 2)) // scope [2, 4)
+        .max_call_depth(1)
         .build();
 
     let mut b = VmBuffers::from_container(&c);

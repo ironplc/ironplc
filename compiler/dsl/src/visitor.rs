@@ -230,6 +230,9 @@ pub trait Visitor<E> {
     // 2.4.3.2
     dispatch!(SimpleInitializer);
 
+    // CODESYS/TwinCAT vendor extension
+    dispatch!(SimpleExprInitializer);
+
     // 2.4.3.1 and 2.4.3.2
     dispatch!(StringInitializer);
 
@@ -238,6 +241,8 @@ pub trait Visitor<E> {
 
     // 2.4.3.2
     dispatch!(FunctionBlockInitialValueAssignment);
+
+    dispatch!(FunctionBlockCallInitializer);
 
     // 2.4.3.2
     dispatch!(ArrayInitialValueAssignment);
