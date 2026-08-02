@@ -24,3 +24,15 @@ posthog_project_id = ""
 
 # App host for the region (default is US). Not the ingestion host.
 # posthog_host = "https://us.posthog.com"
+
+# --- PostHog managed reverse proxy (see proxy.tf) ---
+
+# Custom first-party domain for PostHog's managed reverse proxy. Defaults to
+# "hog.ironplc.com". Use a NEUTRAL name: ad blocker filter lists block hosts
+# containing "analytics", "track", "telemetry", "posthog", "stats", which
+# would defeat the proxy's purpose.
+# posthog_proxy_domain = "hog.ironplc.com"
+
+# Organization that owns the proxy record: a UUID, an org slug, or "@current"
+# for the API key's organization (default).
+# posthog_organization_id = "@current"

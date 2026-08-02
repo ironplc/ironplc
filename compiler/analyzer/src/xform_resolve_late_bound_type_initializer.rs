@@ -38,7 +38,7 @@ impl Value for TypeDefinitionKind {}
 pub fn apply(
     lib: Library,
     type_environment: &mut TypeEnvironment,
-) -> Result<Library, Vec<Diagnostic>> {
+) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let mut type_to_type_kind: ScopedTable<TypeName, TypeDefinitionKind> = ScopedTable::new();
 
     // Walk the entire library to find the types. We don't need
@@ -51,13 +51,14 @@ pub fn apply(
         type_environment,
         diagnostics: vec![],
     };
-    let result = resolver.fold_library(lib).map_err(|e| vec![e]);
+    // An unresolvable type on one declaration (e.g. a reference to a type
+    // that isn't declared anywhere in the compilation unit) is diagnosed
+    // but does not stop the fold: every other, unrelated declaration is
+    // still resolved. Only a genuine fold failure (a compiler bug, not a
+    // user error) should discard the result.
+    let result = resolver.fold_library(lib).map_err(|e| vec![e])?;
 
-    if !resolver.diagnostics.is_empty() {
-        return Err(resolver.diagnostics);
-    }
-
-    result
+    Ok((result, resolver.diagnostics))
 }
 
 impl ScopedTable<'_, TypeName, TypeDefinitionKind> {
@@ -283,7 +284,7 @@ END_FUNCTION_BLOCK
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironment::new();
-        let result = apply(input, &mut type_environment).unwrap();
+        let result = apply(input, &mut type_environment).unwrap().0;
 
         let expected = Library {
             elements: vec![
@@ -327,7 +328,7 @@ END_FUNCTION_BLOCK
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironment::new();
-        let result = apply(input, &mut type_environment).unwrap();
+        let result = apply(input, &mut type_environment).unwrap().0;
 
         let expected = Library {
             elements: vec![
@@ -373,7 +374,7 @@ END_FUNCTION_BLOCK
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironment::new();
-        let result = apply(input, &mut type_environment).unwrap();
+        let result = apply(input, &mut type_environment).unwrap().0;
 
         let expected = Library {
             elements: vec![
@@ -420,7 +421,7 @@ END_FUNCTION_BLOCK
             ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
                 .unwrap();
         let mut type_environment = TypeEnvironment::new();
-        let result = apply(input, &mut type_environment).unwrap();
+        let result = apply(input, &mut type_environment).unwrap().0;
 
         // Find the caller function block and check the variable initializer
         let caller_fb = result.elements.iter().find(|e| {
@@ -467,5 +468,99 @@ END_FUNCTION_BLOCK
         let err = result.unwrap_err();
         assert_eq!(1, err.len());
         assert_eq!(Problem::DefinitionNameDuplicated.code(), err[0].code);
+    }
+
+    #[test]
+    fn apply_when_unrelated_pou_has_undeclared_type_then_other_pou_still_resolves() {
+        // FB_A has a genuinely broken reference to an undeclared type.
+        // FB_B is entirely unrelated and valid. Resolving FB_A's error
+        // must not discard the successful resolution of FB_B's variable.
+        let program = "
+FUNCTION_BLOCK FB_A
+VAR
+    x : Undeclared_Type;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Callee
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_B
+VAR
+    inst : FB_Callee;
+END_VAR
+END_FUNCTION_BLOCK
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+
+        assert_eq!(1, diagnostics.len());
+        assert_eq!(Problem::UndeclaredUnknownType.code(), diagnostics[0].code);
+
+        let fb_b = result
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                LibraryElementKind::FunctionBlockDeclaration(fb)
+                    if fb.name == TypeName::from("FB_B") =>
+                {
+                    Some(fb)
+                }
+                _ => None,
+            })
+            .expect("FB_B should still be present");
+
+        assert!(matches!(
+            &fb_b.variables[0].initializer,
+            InitialValueAssignmentKind::FunctionBlock(fb_init)
+            if fb_init.type_name == TypeName::from("FB_Callee")
+        ));
+    }
+
+    #[test]
+    fn apply_when_same_pou_has_undeclared_type_then_other_variable_still_resolves() {
+        // Both the broken and the valid variable declaration live in the
+        // same POU, matching the shape found in a real corpus.
+        let program = "
+FUNCTION_BLOCK FB_Callee
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_A
+VAR
+    x : Undeclared_Type;
+    inst : FB_Callee;
+END_VAR
+END_FUNCTION_BLOCK
+        ";
+        let input =
+            ironplc_parser::parse_program(program, &FileId::default(), &CompilerOptions::default())
+                .unwrap();
+        let mut type_environment = TypeEnvironment::new();
+        let (result, diagnostics) = apply(input, &mut type_environment).unwrap();
+
+        assert_eq!(1, diagnostics.len());
+        assert_eq!(Problem::UndeclaredUnknownType.code(), diagnostics[0].code);
+
+        let fb_a = result
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                LibraryElementKind::FunctionBlockDeclaration(fb)
+                    if fb.name == TypeName::from("FB_A") =>
+                {
+                    Some(fb)
+                }
+                _ => None,
+            })
+            .expect("FB_A should still be present");
+
+        assert!(matches!(
+            &fb_a.variables[1].initializer,
+            InitialValueAssignmentKind::FunctionBlock(fb_init)
+            if fb_init.type_name == TypeName::from("FB_Callee")
+        ));
     }
 }
