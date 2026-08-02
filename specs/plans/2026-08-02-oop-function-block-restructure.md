@@ -128,16 +128,16 @@ No changes needed in `sources/src/parsers/twincat_parser.rs` or
 
 ## Tasks
 
-- [ ] Add `FunctionBlockOop` struct + `oop` field to `FunctionBlockDeclaration`; move `VendorExtension` impl (`dsl/src/common.rs`)
-- [ ] `dispatch!(FunctionBlockOop);` in `dsl/src/visitor.rs`
-- [ ] Update `function_block_declaration()` parser rule to build `Option<FunctionBlockOop>` with computed span
-- [ ] Update `rule_unsupported_extension.rs`
-- [ ] Update `xform_toposort_declarations.rs`
-- [ ] Update `rule_abstract_not_instantiated.rs`
-- [ ] Update `intermediates/inherited_fields.rs`
-- [ ] Update `plc2plc/src/renderer.rs`
-- [ ] Update all test-fixture constructor sites (`xform_resolve_late_bound_type_initializer.rs`, `sources/src/xml/transform.rs`, `parser/src/tests/corpus.rs`)
-- [ ] Update `parser/src/tests/oop_extensions.rs` assertions
-- [ ] `cargo build` clean, fix any remaining sites it surfaces
-- [ ] Run full CI (`cd compiler && just`)
+- [x] Add `FunctionBlockOop` struct + `oop` field to `FunctionBlockDeclaration`; move `VendorExtension` impl (`dsl/src/common.rs`)
+- [x] `dispatch!(FunctionBlockOop);` in `dsl/src/visitor.rs` (and `dsl/src/fold.rs`, surfaced by `cargo build`)
+- [x] Update `function_block_declaration()` parser rule to build `Option<FunctionBlockOop>` with computed span
+- [x] Update `rule_unsupported_extension.rs`
+- [x] Update `xform_toposort_declarations.rs`
+- [x] Update `rule_abstract_not_instantiated.rs`
+- [x] Update `intermediates/inherited_fields.rs`
+- [x] Update `plc2plc/src/renderer.rs`
+- [x] Update all test-fixture constructor sites (`xform_resolve_late_bound_type_initializer.rs`, `sources/src/xml/transform.rs`, `parser/src/tests/corpus.rs`)
+- [x] Update `parser/src/tests/oop_extensions.rs` assertions
+- [x] `cargo build` clean, fix any remaining sites it surfaces (also needed `dsl/src/fold.rs` dispatch entry, not anticipated in the file map)
+- [x] Run full CI (`cd compiler && just`) — clean
 - [ ] Commit, push to fork

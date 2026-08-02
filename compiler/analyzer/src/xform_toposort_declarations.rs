@@ -457,7 +457,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.name.clone());
         let this = self.declarations.add_node(&node.name.name);
-        if let Some(parent) = &node.extends {
+        if let Some(parent) = node.oop.as_ref().and_then(|oop| oop.base.as_ref()) {
             let depends_on = self.declarations.add_node(&parent.name);
             self.declarations.graph.add_edge(depends_on, this, ());
         }

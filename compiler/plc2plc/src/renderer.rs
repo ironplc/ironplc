@@ -918,21 +918,23 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION_BLOCK");
-        if node.is_abstract {
+        if node.oop.as_ref().is_some_and(|oop| oop.is_abstract) {
             self.write_ws("ABSTRACT");
         }
         self.visit_id(&node.name.name)?;
-        if let Some(extends) = &node.extends {
-            self.write_ws("EXTENDS");
-            self.visit_id(&extends.name)?;
-        }
-        if !node.implements.is_empty() {
-            self.write_ws("IMPLEMENTS");
-            for (i, interface) in node.implements.iter().enumerate() {
-                if i > 0 {
-                    self.write_ws(",");
+        if let Some(oop) = &node.oop {
+            if let Some(base) = &oop.base {
+                self.write_ws("EXTENDS");
+                self.visit_id(&base.name)?;
+            }
+            if !oop.implements.is_empty() {
+                self.write_ws("IMPLEMENTS");
+                for (i, interface) in oop.implements.iter().enumerate() {
+                    if i > 0 {
+                        self.write_ws(",");
+                    }
+                    self.visit_id(&interface.name)?;
                 }
-                self.visit_id(&interface.name)?;
             }
         }
         self.newline();

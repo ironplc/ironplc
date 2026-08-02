@@ -81,8 +81,10 @@ impl Visitor<Diagnostic> for RuleUnsupportedExtension {
         // so there's nothing left unsupported for that shape. IMPLEMENTS
         // (interface dispatch) and ABSTRACT (instantiation-legality
         // enforcement) remain unimplemented and still flag.
-        if !node.implements.is_empty() || node.is_abstract {
-            self.flag(node);
+        if let Some(oop) = &node.oop {
+            if !oop.implements.is_empty() || oop.is_abstract {
+                self.flag(oop);
+            }
         }
         node.recurse_visit(self)
     }

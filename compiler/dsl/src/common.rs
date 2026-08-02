@@ -2776,20 +2776,14 @@ pub struct FunctionBlockDeclaration {
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: FunctionBlockBodyKind,
     pub span: SourceSpan,
-    /// `EXTENDS base_name` (CODESYS/TwinCAT OOP extension). Parsed and
-    /// stored as metadata only — inheritance is not yet semantically
-    /// checked. See `VendorExtension` impl below and
+    /// Object-oriented facet (CODESYS/TwinCAT OOP extension).
+    ///
+    /// `None` for an ordinary function block — the common case — so OOP is
+    /// unrepresentable on a plain FB rather than "present but empty."
+    /// `Some` only when the source actually uses `EXTENDS`, `IMPLEMENTS`,
+    /// or `ABSTRACT`. See `VendorExtension` impl on `FunctionBlockOop` and
     /// `specs/plans/2026-07-18-twincat-extends-implements-interface.md`.
-    pub extends: Option<TypeName>,
-    /// `IMPLEMENTS interface_list` (CODESYS/TwinCAT OOP extension). Parsed
-    /// and stored as metadata only — not yet semantically checked.
-    pub implements: Vec<TypeName>,
-    /// `ABSTRACT` modifier (CODESYS/TwinCAT OOP extension), e.g.
-    /// `FUNCTION_BLOCK ABSTRACT FB_Base`. Parsed and stored as metadata
-    /// only — instantiation of an abstract function block is not yet
-    /// semantically checked.
-    #[recurse(ignore)]
-    pub is_abstract: bool,
+    pub oop: Option<FunctionBlockOop>,
 }
 
 impl HasVariables for FunctionBlockDeclaration {
@@ -2804,11 +2798,41 @@ impl Located for FunctionBlockDeclaration {
     }
 }
 
-/// The `EXTENDS`/`IMPLEMENTS`/`ABSTRACT` clause is a vendor extension; the
-/// rest of a `FunctionBlockDeclaration` is standard IEC 61131-3. The
-/// `rule_unsupported_extension` semantic rule only calls this when
-/// `extends`/`implements`/`is_abstract` is actually present.
-impl VendorExtension for FunctionBlockDeclaration {
+/// The object-oriented facet of a function block: the
+/// `EXTENDS`/`IMPLEMENTS`/`ABSTRACT` header. Present only when the function
+/// block participates in OOP, so an ordinary function block cannot carry
+/// any of this data. Single home for OOP metadata and the natural hook for
+/// ADR-0041 Phase 2: "does this FB participate in polymorphism" is
+/// `oop.is_some()`, not a scan of individual fields.
+#[derive(Clone, Debug, PartialEq, Recurse)]
+pub struct FunctionBlockOop {
+    /// `EXTENDS base` — the single base function block, if any.
+    ///
+    /// Function blocks are single-inheritance (IEC 61131-3 and
+    /// CODESYS/TwinCAT alike), so this is `Option`, not a list. Named
+    /// `base` rather than `extends` so the single-base cardinality isn't
+    /// hidden behind a name shared with `InterfaceDeclaration::extends`,
+    /// which *is* a list.
+    pub base: Option<TypeName>,
+    /// `IMPLEMENTS i1, i2, ...` — interfaces this function block
+    /// implements. Multiple allowed; empty `Vec` when the clause is
+    /// absent.
+    pub implements: Vec<TypeName>,
+    /// `ABSTRACT` modifier. An abstract function block cannot be
+    /// instantiated directly (enforced by `rule_abstract_not_instantiated`,
+    /// P4045).
+    #[recurse(ignore)]
+    pub is_abstract: bool,
+    /// Span of the OOP-related tokens, so diagnostics can point at the
+    /// clause rather than the whole function block.
+    pub span: SourceSpan,
+}
+
+/// Only the OOP facet is a vendor/edition extension — the rest of a
+/// function block is standard IEC 61131-3. Implementing `VendorExtension`
+/// here (rather than on `FunctionBlockDeclaration`) means an ordinary
+/// function block is not, and cannot claim to be, a vendor extension.
+impl VendorExtension for FunctionBlockOop {
     fn extension_name(&self) -> &'static str {
         "EXTENDS/IMPLEMENTS/ABSTRACT clause"
     }

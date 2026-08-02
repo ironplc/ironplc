@@ -46,8 +46,9 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
     let fb = extract_fb(&library);
-    assert_eq!(fb.extends, Some(TypeName::from("FB_Motor")));
-    assert!(fb.implements.is_empty());
+    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    assert_eq!(oop.base, Some(TypeName::from("FB_Motor")));
+    assert!(oop.implements.is_empty());
 }
 
 #[test]
@@ -60,8 +61,9 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
     let fb = extract_fb(&library);
-    assert_eq!(fb.extends, None);
-    assert_eq!(fb.implements, vec![TypeName::from("I_Drivable")]);
+    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    assert_eq!(oop.base, None);
+    assert_eq!(oop.implements, vec![TypeName::from("I_Drivable")]);
 }
 
 #[test]
@@ -74,8 +76,9 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
     let fb = extract_fb(&library);
-    assert_eq!(fb.extends, Some(TypeName::from("FB_Motor")));
-    assert_eq!(fb.implements, vec![TypeName::from("I_Drivable")]);
+    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    assert_eq!(oop.base, Some(TypeName::from("FB_Motor")));
+    assert_eq!(oop.implements, vec![TypeName::from("I_Drivable")]);
 }
 
 #[test]
@@ -89,14 +92,15 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
     let fb = extract_fb(&library);
+    let oop = fb.oop.as_ref().expect("expected oop to be Some");
     assert_eq!(
-        fb.implements,
+        oop.implements,
         vec![TypeName::from("I_Hydraulics"), TypeName::from("I_Brake")]
     );
 }
 
 #[test]
-fn parse_when_no_extends_or_implements_then_fields_empty() {
+fn parse_when_no_extends_or_implements_then_oop_none() {
     let source = "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -105,8 +109,7 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
     let fb = extract_fb(&library);
-    assert_eq!(fb.extends, None);
-    assert!(fb.implements.is_empty());
+    assert!(fb.oop.is_none());
 }
 
 #[test]
@@ -133,9 +136,10 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
     let fb = extract_fb(&library);
-    assert!(fb.is_abstract);
-    assert_eq!(fb.extends, None);
-    assert!(fb.implements.is_empty());
+    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    assert!(oop.is_abstract);
+    assert_eq!(oop.base, None);
+    assert!(oop.implements.is_empty());
 }
 
 #[test]
@@ -149,13 +153,14 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
     let fb = extract_fb(&library);
-    assert!(fb.is_abstract);
-    assert_eq!(fb.extends, Some(TypeName::from("FB_BaseAxis")));
-    assert_eq!(fb.implements, vec![TypeName::from("I_Axis")]);
+    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    assert!(oop.is_abstract);
+    assert_eq!(oop.base, Some(TypeName::from("FB_BaseAxis")));
+    assert_eq!(oop.implements, vec![TypeName::from("I_Axis")]);
 }
 
 #[test]
-fn parse_when_no_abstract_then_is_abstract_false() {
+fn parse_when_no_abstract_then_oop_none() {
     let source = "
 FUNCTION_BLOCK FB_Motor
 VAR
@@ -164,7 +169,7 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
     let fb = extract_fb(&library);
-    assert!(!fb.is_abstract);
+    assert!(fb.oop.is_none());
 }
 
 #[test]
@@ -183,5 +188,5 @@ END_FUNCTION_BLOCK";
         .expect("ABSTRACT must remain a valid identifier in standard mode");
     let fb = extract_fb(&library);
     assert_eq!(fb.name, TypeName::from("ABSTRACT"));
-    assert!(!fb.is_abstract);
+    assert!(fb.oop.is_none());
 }

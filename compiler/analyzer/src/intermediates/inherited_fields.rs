@@ -39,7 +39,7 @@ pub fn collect_inherited_fields(lib: &Library) -> HashMap<TypeName, Vec<VarDecl>
     let mut memo: HashMap<TypeName, Vec<VarDecl>> = HashMap::new();
     let mut result = HashMap::new();
     for fb in by_name.values() {
-        if let Some(parent) = &fb.extends {
+        if let Some(parent) = fb.oop.as_ref().and_then(|oop| oop.base.as_ref()) {
             let fields =
                 resolve_own_and_inherited(parent.clone(), &by_name, &mut memo, &mut HashSet::new());
             result.insert(fb.name.clone(), fields);
@@ -69,7 +69,7 @@ fn resolve_own_and_inherited(
 
     let fields = match by_name.get(&name) {
         Some(fb) => {
-            let mut fields = match &fb.extends {
+            let mut fields = match fb.oop.as_ref().and_then(|oop| oop.base.as_ref()) {
                 Some(parent) => resolve_own_and_inherited(parent.clone(), by_name, memo, visiting),
                 None => vec![],
             };

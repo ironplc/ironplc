@@ -29,6 +29,7 @@ use crate::vars::*;
 use ironplc_dsl::common::*;
 use ironplc_dsl::configuration::*;
 use ironplc_dsl::core::Id;
+use ironplc_dsl::core::Located;
 use ironplc_dsl::sfc::*;
 use ironplc_dsl::textual::*;
 use ironplc_dsl::time::*;
@@ -1305,19 +1306,50 @@ parser! {
     // or IMPLEMENTS tokens are recognized (allow_oop_extensions), since
     // both are demoted to identifiers otherwise.
     rule type_name_list() -> Vec<TypeName> = names:type_name() ++ (_ tok(TokenType::Comma) _) { names }
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(tok(TokenType::Abstract) {})? _ name:derived_function_block_name() _ extends:(tok(TokenType::Extends) _ t:type_name() {t})? _ implements:(tok(TokenType::Implements) _ names:type_name_list() {names})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(t:tok(TokenType::Abstract) {t})? _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
+
+      let base = extends.as_ref().map(|(_, t)| t.clone());
+      let implements_list = implements.as_ref().map(|(_, names)| names.clone()).unwrap_or_default();
+      let is_abstract_present = is_abstract.is_some();
+      let oop = if is_abstract_present || base.is_some() || !implements_list.is_empty() {
+        let mut oop_spans: Vec<SourceSpan> = Vec::new();
+        if let Some(t) = &is_abstract {
+          oop_spans.push(t.span.clone());
+        }
+        if let Some((e, t)) = &extends {
+          oop_spans.push(e.span.clone());
+          oop_spans.push(t.span());
+        }
+        if let Some((i, names)) = &implements {
+          oop_spans.push(i.span.clone());
+          if let Some(last) = names.last() {
+            oop_spans.push(last.span());
+          }
+        }
+        let oop_span = oop_spans
+          .into_iter()
+          .reduce(|acc, span| SourceSpan::join(&acc, &span))
+          .expect("at least one OOP token present");
+        Some(FunctionBlockOop {
+          base,
+          implements: implements_list,
+          is_abstract: is_abstract_present,
+          span: oop_span,
+        })
+      } else {
+        None
+      };
+
       FunctionBlockDeclaration {
         name,
         variables,
         edge_variables,
         body,
         span: SourceSpan::join(&start.span, &end.span),
-        extends,
-        implements: implements.unwrap_or_default(),
-        is_abstract: is_abstract.is_some(),
+        oop,
       }
     }
 
