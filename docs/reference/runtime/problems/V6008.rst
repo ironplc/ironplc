@@ -1,0 +1,16 @@
+=====
+V6008
+=====
+
+.. problem-summary:: V6008
+
+The Debug Adapter Protocol ``launch`` request did not include a ``program``
+path, so the debugger has no bytecode container to load and run.
+
+Solutions
+---------
+
+1. Ensure the launch configuration sets ``program`` to a compiled ``.iplc`` container
+2. In VS Code, check the ``program`` field of the IronPLC debug configuration in ``launch.json``
+3. Confirm the path is a string and is not empty after variable substitution
+4. Recompile the source program if the ``.iplc`` container has not been produced yet

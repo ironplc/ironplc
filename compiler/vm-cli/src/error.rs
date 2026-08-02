@@ -5,8 +5,15 @@ use std::fmt;
 use ironplc_container::{InstanceId, TaskId};
 use ironplc_vm::error::Trap;
 
-// V6xxx code constants are generated from resources/problem-codes.csv
-include!(concat!(env!("OUT_DIR"), "/io_codes.rs"));
+// V6xxx code constants are generated from resources/problem-codes.csv. Some
+// codes (the DAP launch codes V6008–V6010) are consumed only by the
+// `ironplcdap` binary, so they are dead in this binary — the allow keeps that
+// from warning while the constants stay re-exported at `error::*`.
+#[allow(dead_code)]
+mod io_codes {
+    include!(concat!(env!("OUT_DIR"), "/io_codes.rs"));
+}
+pub use io_codes::*;
 
 /// Exit code for file system / IO errors.
 const IO_EXIT_CODE: u8 = 2;
