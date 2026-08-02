@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { existsSync } from 'fs';
 import {
   LanguageClient,
@@ -12,6 +13,12 @@ import { CompilerEnvironment, findCompilerPath, formatStartFailure } from './com
 import { ProblemCode, formatProblem } from './problems';
 import { RunSession, RunState } from './runSession';
 import { findProgramLenses } from './runCodeLensProvider';
+import {
+  IRONPLC_DEBUG_TYPE,
+  IronplcDebugAdapterDescriptorFactory,
+  IronplcDebugConfigurationProvider,
+} from './debugAdapter';
+import { registerCustomRequests } from './customRequests';
 
 /**
  * Reactive code lens provider for PROGRAM declarations. Shows "Run Program"
@@ -92,6 +99,10 @@ export function activate(context: vscode.ExtensionContext) {
   // compiler (the commands gracefully no-op when no client is available).
   registerRunSupport(context);
 
+  // Scan-cycle custom-request commands are always available; they no-op when
+  // no IronPLC debug session is active.
+  registerCustomRequests(context);
+
   const env: CompilerEnvironment = {
     platform: process.platform,
     existsSync: existsSync,
@@ -122,6 +133,8 @@ export function activate(context: vscode.ExtensionContext) {
       new IronplcTaskProvider(result.path),
     ),
   );
+
+  registerDebugSupport(context, result.path);
 
   const config = vscode.workspace.getConfiguration('ironplc');
   client = createClient(result.path, config);
@@ -257,6 +270,29 @@ function registerRunSupport(context: vscode.ExtensionContext) {
         await runSession.stop();
       }
     }),
+  );
+}
+
+/**
+ * Registers the DAP debug adapter: a configuration provider that compiles a
+ * source program to an `.iplc` container before launch, and an adapter factory
+ * that spawns the `ironplcdap` server (resolved from the compiler's directory).
+ */
+function registerDebugSupport(context: vscode.ExtensionContext, compilerPath: string) {
+  const compilerDir = path.dirname(compilerPath);
+
+  context.subscriptions.push(
+    vscode.debug.registerDebugConfigurationProvider(
+      IRONPLC_DEBUG_TYPE,
+      new IronplcDebugConfigurationProvider(compilerPath),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.debug.registerDebugAdapterDescriptorFactory(
+      IRONPLC_DEBUG_TYPE,
+      new IronplcDebugAdapterDescriptorFactory(compilerDir),
+    ),
   );
 }
 
