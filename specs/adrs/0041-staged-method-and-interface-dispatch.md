@@ -5,37 +5,15 @@ date: 2026-07-27
 
 ## Context and Problem Statement
 
-The CODESYS/TwinCAT OOP vendor extensions (`EXTENDS`, `IMPLEMENTS`,
-`METHOD`, `PROPERTY`, `THIS^`/`SUPER^`) parse fully and are checked for
-static shape (field inheritance, `IMPLEMENTS` conformance against an
-interface's required members) in the in-flight OOP-foundation work
-(PR #1247 and siblings), which is **not yet merged to `main`**. None of
-this has runtime semantics yet -- every `FUNCTION_BLOCK` using any of
-these constructs is still uniformly flagged as an unsupported vendor
-extension by that foundation work, and no codegen exists for calling a
-`METHOD`, reading/writing a `PROPERTY`, or resolving `THIS^`/`SUPER^`.
+IEC 61131-3 includes object-oriented programming in some dialects
+(notably CODESYS and TwinCAT): function blocks can use `EXTENDS`,
+`IMPLEMENTS`, `METHOD`, `PROPERTY`, and `THIS^`/`SUPER^`. This ADR
+concerns one question in supporting them in IronPLC: once such a call is
+written, how does it *dispatch* to the method or property body that
+runs?
 
-Verified directly against the current codegen before proposing
-anything here, not assumed:
-
-- `compile_fb_call` (`compiler/codegen/src/compile_stmt.rs`) resolves
-  a function block call's target **statically**: `ctx.fb_instances`
-  looks up a `type_id` (`u16`) from the *declared* variable, baked
-  directly into the emitted call instruction (`emitter.emit_fb_call
-  (type_id)`, `compiler/codegen/src/emit.rs`). There is no per-instance
-  runtime type information anywhere.
-- `FbInstanceInfo`/`FbTypeId` (`compiler/codegen/src/compile.rs`) are
-  compile-time-only bookkeeping: one `type_id` per function block
-  *type*, assigned once during compilation, never stored in the
-  instance's own memory.
-- `iec_type_tag` (`compiler/codegen/src/compile_setup.rs`) is unrelated
-  debug-info metadata used for naming variables in tooling output --
-  not a real type tag usable for dispatch.
-- Function block instances already live in the shared 8-byte-slot data
-  region (ADR-0026), addressed via field offsets resolved entirely at
-  compile time (ADR-0027).
-
-"OOP dispatch" is actually two structurally different problems:
+There are variations of that idea, and they are structurally different
+problems:
 
 1. **Calling a method/property on a value whose concrete type is known
    at compile time** -- a direct instance (`instance.Method()`), including
@@ -128,10 +106,9 @@ below.
 - Given an instance's *static* declared type and a method/property
   name, resolve the concrete `MethodDeclaration`/`PropertyDeclaration`
   to call by walking the static type's own methods first, then its
-  `EXTENDS` chain base-to-derived -- reusing the same traversal built
-  for `IMPLEMENTS` conformance checking in the OOP-foundation PRs
-  (`collect_all_fb_members`, not yet in `main`), which produces "this
-  type's own + everything inherited" in the right precedence order.
+  `EXTENDS` chain base-to-derived -- the same "this type's own +
+  everything inherited" traversal, in the right precedence order, that
+  `IMPLEMENTS` conformance checking needs.
 - `THIS^` resolves to a fixed self-reference plumbed through method
   codegen (new codegen support; no runtime polymorphism -- the "self"
   instance is always the one already executing).
@@ -190,10 +167,7 @@ follows is the starting point for that future ADR, not a settled design.
   enforcement. Currently metadata-only; whether/when to add real
   enforcement is a separate decision, orthogonal to dispatch mechanism.
 - `ABSTRACT` non-instantiation enforcement is orthogonal to dispatch and
-  unaffected by this ADR either way. (No specific problem code is cited
-  here: the OOP-foundation PRs own that diagnostic, and it is not yet in
-  `main`. `P4040` in `main` is `ConstantExpressionOverflow`, unrelated to
-  `ABSTRACT`.)
+  unaffected by this ADR either way.
 - A specific Phase 2 bytecode container-format change. Only the
   general shape (one new tag slot per polymorphic-participating
   instance, a compile-time-built table, one new indirect-call
@@ -265,14 +239,10 @@ therefore mostly about Phase 2, and this is where the tension lives.
   2's per-instance type tag is one more slot in the same data region
   model already used for every other function block field, not a new
   memory model.
-- The parsing and static-shape-checking work for
-  `METHOD`/`PROPERTY`/`EXTENDS`/`IMPLEMENTS`/`THIS^`/`SUPER^` lands in
-  the in-flight OOP-foundation PRs (PR #1247 and siblings) and is **not
-  yet merged to `main`**; it is tracked separately and is not part of
-  this repository's ADR series. That work keeps every OOP-using
-  `FUNCTION_BLOCK` gated as an unsupported vendor extension. This ADR
-  governs the mechanism for eventually lifting that gate, not the gate
-  itself.
+- Parsing and acceptance of the OOP constructs themselves
+  (`METHOD`/`PROPERTY`/`EXTENDS`/`IMPLEMENTS`/`THIS^`/`SUPER^`) are
+  handled separately and are out of scope here. This ADR governs only
+  how a supported call dispatches to a body.
 
 ### Verification
 
