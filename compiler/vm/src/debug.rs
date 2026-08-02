@@ -256,6 +256,18 @@ impl<'a> DebuggerHook<'a> {
             origin_offset: self.last_offset,
         };
     }
+
+    /// Suppress the breakpoint check for the very next instruction.
+    ///
+    /// A single-threaded driver that constructs a fresh hook per resume (so it
+    /// can mutate the [`BreakpointTable`] between rounds) uses this to avoid
+    /// re-triggering, in place, the breakpoint it just paused on: after a
+    /// [`PauseReason::Breakpoint`] pause it builds the next round's hook and
+    /// calls this before resuming, matching the in-hook `skip_breakpoint_once`
+    /// a long-lived hook would have carried across the pause.
+    pub fn suppress_next_breakpoint(&mut self) {
+        self.skip_breakpoint_once = true;
+    }
 }
 
 impl DebugHook for DebuggerHook<'_> {
@@ -346,6 +358,25 @@ mod tests {
         let ghost = BreakpointId(999);
         assert!(!table.set_enabled(ghost, false));
         assert!(!table.remove(ghost));
+    }
+
+    #[test]
+    fn debugger_hook_when_suppress_next_breakpoint_then_skips_one_hit_then_pauses() {
+        use crate::debug_hook::{DebugHook, HookAction};
+        let mut table = BreakpointTable::new();
+        table.add(FunctionId::SCAN, 4);
+        let mut hook = DebuggerHook::new(&table);
+        hook.suppress_next_breakpoint();
+        // The suppressed location is skipped exactly once (the resume step).
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 4, 0),
+            HookAction::Continue
+        ));
+        // A later arrival at the same location pauses as normal.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 4, 0),
+            HookAction::Pause(PauseReason::Breakpoint(_))
+        ));
     }
 
     #[test]

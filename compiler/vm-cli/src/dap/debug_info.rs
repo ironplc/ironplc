@@ -14,10 +14,8 @@
 //! seam — commit 5 swaps real line-map / `debug_format` lookups in behind them
 //! without touching any other module.
 //!
-//! Both resolvers are consumed by the run/stop loop that lands in commit 4
-//! (`setBreakpoints` and `variables`); until then they are exercised only by
-//! the unit tests below, hence the module-level `dead_code` allowance.
-#![allow(dead_code)]
+//! Both resolvers are consumed by the minimal Phase 4 run/stop loop
+//! (`setBreakpoints` and `variables`) in [`super::server`].
 
 use ironplc_container::debug_section::DebugSection;
 use ironplc_container::FunctionId;
