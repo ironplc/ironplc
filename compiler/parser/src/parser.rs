@@ -291,7 +291,7 @@ parser! {
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) semicolon() {v}
     rule semisep_or_empty<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v} / { vec![] }
-    rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) comma() {v}
+    rule commasep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ comma() _)) {v}
 
 
     pub rule library() -> Vec<LibraryElementKind> = traced(<library__impl()>)
@@ -930,7 +930,7 @@ parser! {
     // We have to first handle the special case of enumeration or fb_name without an initializer
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
-    rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() /  fb_name_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
+    rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
     // CODESYS/TwinCAT vendor extension: a located variable (complete or
     // incomplete/wildcard address) declared inside an otherwise plain
     // VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own
@@ -985,16 +985,6 @@ parser! {
         }
       }).collect()
     }
-    rule fb_name_decl() -> Vec<UntypedVarDecl> = names:fb_name_list() _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ init:(tok(TokenType::Assignment) _ init:structure_initialization() { init })? {
-      names.into_iter().map(|name| {
-        UntypedVarDecl {
-          location: None,
-          name,
-          initializer: InitialValueAssignmentKind::FunctionBlock(FunctionBlockInitialValueAssignment { type_name: type_name.clone(), init: init.clone().unwrap_or_else(Vec::new) }),
-        }
-      }).collect()
-    }
-    rule fb_name_list() -> Vec<Id> = commasep_oneplus(<fb_name()>)
     rule fb_name() -> Id = i:identifier() { i }
     rule ref_to_var_init_decl() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ syntax:ref_to_keyword() _ ref_target:ref_to_target() _ init:(tok(TokenType::Assignment) _ v:ref_initial_value() { v })? {
       names.into_iter().map(|name| {
@@ -1044,7 +1034,7 @@ parser! {
     pub rule input_output_declarations() -> Vec<VarDecl> = tok(TokenType::VarInOut) _ declarations:semisep_or_empty(<var_declaration()>) _ tok(TokenType::EndVar) {
       VarDeclarations::flat_map(declarations, VariableType::InOut,  None)
     }
-    rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl() / fb_name_decl()
+    rule var_declaration() -> Vec<UntypedVarDecl> = temp_var_decl()
     rule temp_var_decl() -> Vec<UntypedVarDecl> = string_var_declaration() / var1_declaration() / array_var_declaration() / structured_var_declaration()
     rule var1_declaration() -> Vec<UntypedVarDecl> = names:var1_list() _ tok(TokenType::Colon) _ init:(spec:subrange_specification__with_range() {InitialValueAssignmentKind::Subrange(spec)} / values:enumerated_specification__only_values()  {InitialValueAssignmentKind::EnumeratedValues(EnumeratedValuesInitializer{ values, initial_value: None})} / spec:simple_specification() { InitialValueAssignmentKind::LateResolvedType(spec)} ) {
       // TODO this could eventually cause duplicated definitions because

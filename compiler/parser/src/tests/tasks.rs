@@ -92,6 +92,29 @@ fn parse_when_task_with_priority_only_then_builds_structure() {
 }
 
 #[test]
+fn parse_when_program_configuration_has_conf_elements_then_no_trailing_comma_required() {
+    // Regression test for the `commasep_oneplus` trailing-comma bug: a program
+    // configuration with conf elements must parse WITHOUT a trailing comma. The
+    // `(someVar := 5)` element is a program connection source.
+    let source = "
+        CONFIGURATION config
+            RESOURCE resource1 ON PLC
+                TASK my_task(PRIORITY := 1);
+                PROGRAM instance1 WITH my_task : my_prg (someVar := 5);
+            END_RESOURCE
+        END_CONFIGURATION";
+
+    let lib = parse_text(source);
+    let config = cast!(
+        &lib.elements[0],
+        LibraryElementKind::ConfigurationDeclaration
+    );
+    let program = &config.resource_decl[0].programs[0];
+    assert_eq!(program.name, Id::from("instance1"));
+    assert_eq!(program.sources.len(), 1);
+}
+
+#[test]
 fn parse_when_task_with_interval_non_duration_then_parse_error() {
     let source = "
         CONFIGURATION config
