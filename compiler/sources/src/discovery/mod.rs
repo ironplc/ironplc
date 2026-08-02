@@ -8,6 +8,7 @@
 //! The first match wins.
 
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -146,18 +147,26 @@ fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Detect a TwinCAT project by searching for a `.plcproj` file.
+/// Detect a TwinCAT project by searching for `.plcproj` files.
 ///
-/// Searches recursively, since real TwinCAT layouts commonly nest the
-/// `.plcproj` file several levels below the directory a user would
+/// Searches recursively, since real TwinCAT layouts commonly nest
+/// `.plcproj` files several levels below the directory a user would
 /// naturally point the tool at (e.g. a Visual-Studio-style
-/// solution/project structure). If more than one `.plcproj` is found,
-/// picks deterministically (sorted by path) -- the pre-existing
-/// single-level behavior already picked an arbitrary match with no
-/// disambiguation when this happened within one directory.
+/// solution/project structure).
 ///
-/// Returns `None` if no `.plcproj` exists. Returns `Some(Err(...))` if
-/// the `.plcproj` is found but malformed or references missing files.
+/// A real solution commonly has more than one `.plcproj` -- a main PLC
+/// project plus one or more library/shared sub-projects that it (or
+/// each other) reference types from. All `.plcproj` files found in
+/// *different* directories are therefore merged into a single
+/// compilation unit, the same principle already applied to LSP
+/// workspace folders. Multiple `.plcproj` in the *same* directory are a
+/// different, previously-observed case (a stale duplicate/rename
+/// artifact, not a second sub-project): only the first (sorted) is kept
+/// per directory, preserving the original deterministic-pick behavior
+/// for that case.
+///
+/// Returns `None` if no `.plcproj` exists anywhere. Returns
+/// `Some(Err(...))` if a `.plcproj` is found but malformed.
 fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
     let mut files = Vec::new();
     walk_files(dir, &mut files);
@@ -172,14 +181,65 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
         .collect();
     candidates.sort();
 
-    let plcproj_path = candidates.into_iter().next()?;
+    // Keep only the first (sorted) .plcproj per directory -- collapses
+    // same-directory duplicates without discarding genuine sub-projects
+    // that live in different directories.
+    let mut seen_dirs = HashSet::new();
+    let mut plcproj_paths: Vec<PathBuf> = Vec::new();
+    for path in candidates {
+        let dir_key = path.parent().unwrap_or(dir).to_path_buf();
+        if seen_dirs.insert(dir_key) {
+            plcproj_paths.push(path);
+        }
+    }
 
-    // <Compile Include="..."> paths in the .plcproj are always relative
-    // to the .plcproj file's own directory, not the (possibly higher, now
-    // that the file can be nested arbitrarily deep) directory originally
-    // passed to discover().
-    let plcproj_dir = plcproj_path.parent().unwrap_or(dir);
-    Some(parse_plcproj(&plcproj_path, plcproj_dir))
+    if plcproj_paths.is_empty() {
+        return None;
+    }
+
+    // <Compile Include="..."> paths in a .plcproj are always relative to
+    // that .plcproj file's own directory, not the (possibly higher, now
+    // that files can be nested arbitrarily deep) directory originally
+    // passed to discover() -- each is parsed against its own directory
+    // regardless of how many sub-projects are being merged.
+    let single = plcproj_paths.len() == 1;
+    let mut merged_files = Vec::new();
+    let mut merged_errors = Vec::new();
+    let mut seen_files = HashSet::new();
+    let mut merged_root_dir = dir.to_path_buf();
+
+    for plcproj_path in &plcproj_paths {
+        let plcproj_dir = plcproj_path.parent().unwrap_or(dir);
+        let project = match parse_plcproj(plcproj_path, plcproj_dir) {
+            Ok(project) => project,
+            Err(e) => return Some(Err(e)),
+        };
+
+        if single {
+            merged_root_dir = project.root_dir.clone();
+        }
+
+        for file in project.files {
+            // A file referenced by more than one sub-project (a shared
+            // dependency) must only be loaded/declared once. Dedup by
+            // canonical path, not the raw resolved path -- two
+            // sub-projects in different directories that both reach the
+            // same file via a relative `..` segment resolve to distinct,
+            // non-canonicalized paths that still name the same file.
+            let key = fs::canonicalize(&file).unwrap_or_else(|_| file.clone());
+            if seen_files.insert(key) {
+                merged_files.push(file);
+            }
+        }
+        merged_errors.extend(project.errors);
+    }
+
+    Some(Ok(DiscoveredProject {
+        project_type: ProjectType::TwinCat,
+        root_dir: merged_root_dir,
+        files: merged_files,
+        errors: merged_errors,
+    }))
 }
 
 /// Parse a `.plcproj` file and extract `<Compile Include="...">` paths.
@@ -731,6 +791,131 @@ mod tests {
         // Sorted lexicographically: AAA.plcproj wins over ZZZ.plcproj.
         assert_eq!(result1.files.len(), 1);
         assert_eq!(result1.files, result2.files);
+    }
+
+    #[test]
+    fn discover_when_multiple_plcproj_in_different_directories_then_merges_all() {
+        // A solution with a main PLC project and a separate library
+        // sub-project -- both must be loaded together so a type declared
+        // in one is visible when referenced from the other.
+        let dir = TempDir::new().unwrap();
+
+        let main_dir = dir.path().join("Main");
+        fs::create_dir_all(&main_dir).unwrap();
+        fs::write(main_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            main_dir.join("Main.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let lib_dir = dir.path().join("SharedLib");
+        fs::create_dir_all(&lib_dir).unwrap();
+        fs::write(lib_dir.join("FB_Shared.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            lib_dir.join("SharedLib.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="FB_Shared.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.files.len(), 2);
+        assert!(result.files.iter().any(|f| f.ends_with("MAIN.TcPOU")));
+        assert!(result.files.iter().any(|f| f.ends_with("FB_Shared.TcPOU")));
+    }
+
+    #[test]
+    fn discover_when_multiple_plcproj_in_different_directories_then_root_dir_is_top_level() {
+        let dir = TempDir::new().unwrap();
+
+        let main_dir = dir.path().join("Main");
+        fs::create_dir_all(&main_dir).unwrap();
+        fs::write(main_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            main_dir.join("Main.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let lib_dir = dir.path().join("SharedLib");
+        fs::create_dir_all(&lib_dir).unwrap();
+        fs::write(lib_dir.join("FB_Shared.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            lib_dir.join("SharedLib.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="FB_Shared.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        // With more than one sub-project merged, there is no single
+        // meaningful ".plcproj directory" to fall back on -- unlike the
+        // single-.plcproj case, root_dir is the top-level directory that
+        // was passed to discover().
+        assert_eq!(result.root_dir, dir.path());
+    }
+
+    #[test]
+    fn discover_when_same_file_referenced_by_two_plcproj_then_deduplicated() {
+        // Two sub-projects that both reference the same physical file
+        // (a shared dependency living in a common directory) must only
+        // load and declare it once.
+        let dir = TempDir::new().unwrap();
+
+        let shared_dir = dir.path().join("Common");
+        fs::create_dir_all(&shared_dir).unwrap();
+        fs::write(shared_dir.join("GVL_Shared.TcGVL"), "<TcPlcObject/>").unwrap();
+
+        let a_dir = dir.path().join("ProjectA");
+        fs::create_dir_all(&a_dir).unwrap();
+        fs::write(
+            a_dir.join("ProjectA.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="..\Common\GVL_Shared.TcGVL" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let b_dir = dir.path().join("ProjectB");
+        fs::create_dir_all(&b_dir).unwrap();
+        fs::write(
+            b_dir.join("ProjectB.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="..\Common\GVL_Shared.TcGVL" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        let matches: Vec<_> = result
+            .files
+            .iter()
+            .filter(|f| f.ends_with("GVL_Shared.TcGVL"))
+            .collect();
+        assert_eq!(matches.len(), 1);
     }
 
     #[test]

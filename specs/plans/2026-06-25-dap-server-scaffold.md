@@ -1,15 +1,28 @@
 # Phase 4: DAP Server Scaffold (minimal v1)
 
+## Status (2026-08-02)
+
+Commits 1–3 have landed (PR #1205 merged commit 3: the `initialize → launch →
+disconnect` handshake, launch preconditions, and VM buffer sizing/startup).
+This plan has since been **narrowed to a minimal Phase 4** whose only purpose
+is to give Phase 5 (VS Code integration) something to launch: stop on a
+source-line breakpoint, inspect the stack and variables, and resume.
+**Single-stepping (`next`/`stepIn`/`stepOut`) and trap→`exception` handling
+are deferred to a new Phase 4b** (see §"Phase 4b — deferred follow-up"),
+because Phase 5 does not depend on them and the Phase 3 engine already
+implements the stepping primitives, so wiring them later is cheap.
+
 ## Goal
 
 Stand up `ironplcdap <file.iplc>` — a single-threaded Debug Adapter Protocol
 server that VS Code (or any DAP client) can connect to, drive through the
-`initialize → launch → setBreakpoints → configurationDone →
-continue/step → disconnect` lifecycle, pause on a **line breakpoint**, walk
-the stack, and inspect variables. This is Phase 4 of the debugger design
+`initialize → launch → setBreakpoints → configurationDone → continue →
+disconnect` lifecycle, pause on a **line breakpoint**, walk the stack, and
+inspect variables. This is Phase 4 of the debugger design
 (`specs/design/debugger-support.md` §"Phase 4: DAP Server"), **deliberately
 cut down** from the surface in that spec to the smallest thing that is a real
-debugger.
+debugger — and cut down again (no stepping) to the smallest thing Phase 5 can
+launch.
 
 ## Scope cut from the design spec
 
@@ -17,12 +30,21 @@ The design spec's Phase 4 lists logpoints, `evaluate`, custom scan-cycle
 requests, and a packaging split. This plan cuts the first DAP phase to the
 minimum and defers the rest:
 
-- **In:** the handshake; **line breakpoints** (pause-only); one synthetic
-  thread; `stackTrace` / `scopes` / `variables`; and the four execution-
-  control commands **`continue`, `next`, `stepIn`, `stepOut`**.
-- **Deferred to a later phase:** logpoints, `evaluate` (any expression
-  evaluation), the custom `ironplc/stepScan` + `ironplc/scanCount` requests,
-  conditional breakpoints, `pause`, `setVariable`/forcing, multi-instance.
+- **In (minimal Phase 4):** the handshake; **line breakpoints** (pause-only);
+  one synthetic thread; `stackTrace` / `scopes` / `variables`; and the single
+  execution-control command **`continue`** — everything needed to launch from
+  VS Code, stop on a source-line breakpoint, inspect the stack and variables,
+  and resume.
+- **Deferred to Phase 4b (this plan, below):** single-stepping (`next`,
+  `stepIn`, `stepOut`) and trap→`stopped{reason:"exception"}` handling. The
+  Phase 3 engine already implements stepping
+  (`DebuggerHook::step_over`/`step_in`/`step_out`) and the trap surfaces
+  through the fault path, so both are small follow-ups that Phase 5 does not
+  depend on.
+- **Deferred to a later phase (unchanged):** logpoints, `evaluate` (any
+  expression evaluation), the custom `ironplc/stepScan` + `ironplc/scanCount`
+  requests, conditional breakpoints, `pause`, `setVariable`/forcing,
+  multi-instance.
 
 Logpoints are deferred out of this first DAP phase. The engine hooks for them
 are cheap once breakpoints work, so they are a natural early follow-up, but
@@ -110,14 +132,17 @@ The hand-rolled `types.rs` uses `serde` derive + the already-present
 
 ## DAP surface for the first phase
 
-Requests handled: `initialize`, `launch`, `setBreakpoints` (line breakpoints
-only — no `logMessage`), `configurationDone`, `threads` (one synthetic
-thread), `stackTrace`, `scopes`, `variables`, `continue`, `next`
-(step-over), `stepIn`, `stepOut`, `disconnect`.
+Requests handled (minimal Phase 4): `initialize`, `launch`, `setBreakpoints`
+(line breakpoints only — no `logMessage`), `configurationDone`, `threads`
+(one synthetic thread), `stackTrace`, `scopes`, `variables`, `continue`,
+`disconnect`.
 
-Everything else returns DAP error `requestNotApplicable`, explicitly
-including `pause`, `setVariable`, `evaluate`, `restart`, and the (not-yet-
-registered) custom `ironplc/*` requests.
+Everything else returns DAP error `requestNotApplicable`. This explicitly
+includes the stepping requests **`next`, `stepIn`, `stepOut`** (deferred to
+Phase 4b — the `state::legal` table already models them, so promoting them is
+a legality-plus-handler change), as well as `pause`, `setVariable`,
+`evaluate`, `restart`, and the (not-yet-registered) custom `ironplc/*`
+requests.
 
 Capabilities advertised in `initialize`:
 `supportsConfigurationDoneRequest: true`. Everything optional is **false /
@@ -151,10 +176,16 @@ loop {
 
 `setBreakpoints` received while `Running` is **queued** and applied at the
 next natural stop (documented single-threaded behaviour, not a bug).
-`continue` / `next` / `stepIn` / `stepOut` set the `StepController` mode on
-the `DebuggerHook` and flip state to `Running`. The launch `scanLimit`
-bounds runaway scans. The `DebuggerHook`, its `BreakpointTable`, and the VM
-buffers are owned directly by the loop — no `Arc`, no atomics.
+`continue` clears any step mode and flips state to `Running`; the stepping
+commands (`next` / `stepIn` / `stepOut`), which set the `StepController` mode
+on the `DebuggerHook`, are Phase 4b. The launch `scanLimit` bounds runaway
+scans. The `BreakpointTable` and the VM buffers are owned directly by the
+loop — no `Arc`, no atomics. Because the loop mutates the `BreakpointTable`
+between rounds (a `setBreakpoints` at a pause) while the `DebuggerHook`
+borrows it during a round, the hook is constructed per round; a fresh hook
+after a breakpoint pause is told to suppress that one location once
+(`DebuggerHook::suppress_next_breakpoint`) so `continue` makes forward
+progress instead of re-triggering in place.
 
 ### State legality (`dap/state.rs`)
 
@@ -199,12 +230,17 @@ before Layer 1 finishes; swap in real lookups behind the same signatures.
   breakpoint. (Offset-based breakpoint until Layer 1 line maps land.)
 - **Integration — inspection**: from `stopped`, request `stackTrace`,
   `scopes`, `variables`; verify frames and entries.
-- **Integration — stepping**: `next` over a CALL lands on the next line in
-  the caller; `stepIn` enters the callee; `stepOut` returns to the caller.
 - **Integration — queued setBreakpoints**: sent while `Running`, applied at
   the next stop, not mid-instruction.
 - **Integration — pause refused**: `pause` while `Running` →
   `requestNotApplicable`.
+- **Integration — stepping refused (minimal Phase 4)**: `next` / `stepIn` /
+  `stepOut` while `Paused` → `requestNotApplicable` (promoted in Phase 4b).
+
+Deferred to Phase 4b (see below):
+
+- **Integration — stepping**: `next` over a CALL lands on the next line in
+  the caller; `stepIn` enters the callee; `stepOut` returns to the caller.
 - **Integration — trap**: trigger a trap; expect `stopped{reason:"exception"}`
   then a clean `disconnect`.
 
@@ -220,12 +256,40 @@ Each commit compiles and passes `cd compiler && just` (DAP code behind the
 3. `dap/launch.rs` preconditions + buffer sizing; `initialize`/`launch`/
    `disconnect` handshake against the Phase 3 engine with an
    offset-passthrough `dap/debug_info.rs`; handshake integration test.
-4. `dap/server.rs` run/stop loop: `continue`, `next`/`stepIn`/`stepOut`,
-   `stackTrace`/`scopes`/`variables`, `stopped`/`terminated` events;
-   inspection + stepping integration tests.
+4. `dap/server.rs` **minimal** run/stop loop: `configurationDone` starts the
+   run; `setBreakpoints`; `continue`; `threads`; `stackTrace`/`scopes`/
+   `variables`; `stopped`(breakpoint)/`terminated` events. Inspection + queued
+   `setBreakpoints` + refusal integration tests. **No stepping, no trap-stop.**
+   Adds `DebuggerHook::suppress_next_breakpoint` to the `vm` crate so a
+   per-round hook resumes past a hit breakpoint.
 5. Swap `debug_info.rs` passthrough for real line-map / `debug_format`
    lookups once Layer 1 is complete (or in parallel, behind the same
-   signatures).
+   signatures). This is the last piece of minimal Phase 4: it turns
+   offset-keyed breakpoints and `var[i]` slots into source-line breakpoints
+   and named/typed variables, which is what makes the Phase 5 VS Code session
+   read as a real debugger.
+
+## Phase 4b — deferred follow-up
+
+Not required for Phase 5. Landed as its own change(s) after the minimal loop
+is working in VS Code. The Phase 3 engine already provides the primitives, so
+each is a thin server-side addition:
+
+6. **Stepping.** Promote `next`/`stepIn`/`stepOut` from `requestNotApplicable`
+   to handlers that call `DebuggerHook::step_over`/`step_in`/`step_out` and
+   flip to `Running`; emit `stopped{reason:"step"}` on the `Step` pause.
+   Because stepping consumes the hook's call-depth (`before_call`/
+   `after_return`), the per-round-hook construction from commit 4 must
+   preserve depth across a resume (not just the breakpoint-skip flag) — extend
+   the `suppress_next_breakpoint` seam to carry the full resume state, or keep
+   one hook alive for the duration of a `Running` span. Tests: `next` over a
+   CALL, `stepIn` into a callee, `stepOut` back to the caller.
+7. **Trap-stop.** Map an `Err(FaultContext)` from `run_round_debug` to
+   `stopped{reason:"exception"}` with the trap's V-code in `description`;
+   accept only inspection requests in the resulting `Faulted` phase (the
+   `state::legal` table already encodes this); `disconnect` tears down
+   cleanly. Test: trigger a divide-by-zero in the scan body and assert the
+   exception stop + clean disconnect.
 
 ## Dependencies & packaging
 
