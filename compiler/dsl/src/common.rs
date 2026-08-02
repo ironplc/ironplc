@@ -2096,6 +2096,9 @@ impl VarDecl {
             InitialValueAssignmentKind::FunctionBlock(function_block_initial_value_assignment) => {
                 TypeReference::Named(function_block_initial_value_assignment.type_name.clone())
             }
+            InitialValueAssignmentKind::FunctionBlockCall(function_block_call_initializer) => {
+                TypeReference::Named(function_block_call_initializer.type_name.clone())
+            }
             InitialValueAssignmentKind::Subrange(subrange_specification_kind) => {
                 match subrange_specification_kind {
                     SpecificationKind::Inline(_subrange_specification) => TypeReference::Inline,
@@ -2428,6 +2431,13 @@ pub enum InitialValueAssignmentKind {
     EnumeratedValues(EnumeratedValuesInitializer),
     EnumeratedType(EnumeratedInitialValueAssignment),
     FunctionBlock(FunctionBlockInitialValueAssignment),
+    /// The CODESYS/TwinCAT call-style function-block instance initializer
+    /// (`name : FB_Type(args)`, no `:=`), which passes an argument list to
+    /// the function block's constructor (`FB_init` method in CODESYS).
+    /// This is a distinct construct from [`Self::FunctionBlock`], whose
+    /// `init` sets the instance's own member values -- see
+    /// [`FunctionBlockCallInitializer`].
+    FunctionBlockCall(FunctionBlockCallInitializer),
     Subrange(SubrangeSpecificationKind),
     Structure(StructureInitializationDeclaration),
     Array(ArrayInitialValueAssignment),
@@ -2488,6 +2498,10 @@ pub enum StructInitialValueAssignmentKind {
     EnumeratedValue(EnumeratedValue),
     Array(Vec<ArrayInitialElementKind>),
     Structure(Vec<StructureElementInit>),
+    /// A general expression value (e.g. `pDevice^.Delta`) -- used for
+    /// call-style FB-instance/struct initializers where the value is
+    /// computed at instantiation time, not a compile-time constant.
+    Expression(Expr),
 }
 
 #[derive(Clone, PartialEq, Debug, Recurse)]
@@ -2610,6 +2624,28 @@ pub struct FunctionBlockInitialValueAssignment {
     pub type_name: TypeName,
     // The initializer may be empty
     pub init: Vec<StructureElementInit>,
+}
+
+/// The CODESYS/TwinCAT call-style function-block instance initializer:
+/// `name : FB_Type(args)`, with no `:=`. The argument list uses the same
+/// positional-or-named shape as an ordinary function-block call
+/// (`param_assignment`), because in CODESYS these arguments are passed to
+/// the function block's constructor (`FB_init` method).
+///
+/// This is deliberately a separate node from
+/// [`FunctionBlockInitialValueAssignment`] (whose `init` sets the
+/// instance's own member values via the `:= (member := value, ...)` form):
+/// the two are different constructs that target different things, so
+/// keeping them as distinct AST nodes prevents them from being conflated
+/// at code generation.
+#[derive(Clone, PartialEq, Debug, Recurse)]
+pub struct FunctionBlockCallInitializer {
+    /// The function-block type being instantiated. As with
+    /// [`FunctionBlockInitialValueAssignment::type_name`], this names a
+    /// type, not an identifier.
+    pub type_name: TypeName,
+    /// The constructor argument list. May be empty (`FB_Type()`).
+    pub params: Vec<ParamAssignmentKind>,
 }
 
 /// See section 2.4.3.2. #6

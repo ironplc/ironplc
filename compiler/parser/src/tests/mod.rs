@@ -19,6 +19,7 @@ mod partial_access;
 mod pragmas;
 mod reference_to;
 mod short_circuit;
+mod struct_init_expressions;
 mod tasks;
 mod time_functions;
 mod types_and_returns;

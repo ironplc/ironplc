@@ -185,6 +185,13 @@ struct FileArgs {
     /// extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_paren_string_length: bool,
+
+    /// Allow a general (non-constant) expression as the value in a
+    /// structured/call-style initializer's `name := value` pairs (e.g.
+    /// `tonDelta : TON := (PT := pDevice^.Delta);`). This is a vendor
+    /// extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_struct_initializer_expressions: bool,
 }
 
 impl FileArgs {
@@ -214,6 +221,7 @@ impl FileArgs {
             self.allow_constant_initializer_expressions;
         options.allow_bit_string_case_labels |= self.allow_bit_string_case_labels;
         options.allow_paren_string_length |= self.allow_paren_string_length;
+        options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
         options
     }
 }

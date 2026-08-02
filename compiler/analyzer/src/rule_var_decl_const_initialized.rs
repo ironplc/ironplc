@@ -127,7 +127,8 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                         ),
                     }
                 }
-                InitialValueAssignmentKind::FunctionBlock(_) => {
+                InitialValueAssignmentKind::FunctionBlock(_)
+                | InitialValueAssignmentKind::FunctionBlockCall(_) => {
                     // Function blocks cannot be CONSTANT - this is handled by
                     // rule_var_decl_const_not_fb, so skip initialization checking here.
                 }

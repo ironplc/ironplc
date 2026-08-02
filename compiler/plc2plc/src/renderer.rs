@@ -814,6 +814,20 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_type_name(&node.type_name)
     }
 
+    // CODESYS/TwinCAT call-style FB instance initializer:
+    // `name : FB_Type(args)`. Render the type name followed by the
+    // parenthesized constructor argument list.
+    fn visit_function_block_call_initializer(
+        &mut self,
+        node: &FunctionBlockCallInitializer,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_type_name(&node.type_name)?;
+        self.write_ws("(");
+        visit_comma_separated!(self, node.params.iter(), ParamAssignmentKind);
+        self.write_ws(")");
+        Ok(())
+    }
+
     // 2.4.3.2
     fn visit_array_initial_value_assignment(
         &mut self,
