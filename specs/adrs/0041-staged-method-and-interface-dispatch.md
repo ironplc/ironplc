@@ -1,4 +1,4 @@
-# Staged Method/Property Dispatch and Interface Values
+# ADR-0041: Staged Method/Property Dispatch and Interface Values
 
 status: proposed
 date: 2026-07-27
@@ -8,11 +8,12 @@ date: 2026-07-27
 The CODESYS/TwinCAT OOP vendor extensions (`EXTENDS`, `IMPLEMENTS`,
 `METHOD`, `PROPERTY`, `THIS^`/`SUPER^`) parse fully and are checked for
 static shape (field inheritance, `IMPLEMENTS` conformance against an
-interface's required members). None of this has runtime semantics yet
--- every `FUNCTION_BLOCK` using any of these constructs is still
-uniformly flagged as an unsupported vendor extension (`P9004`), and no
-codegen exists for calling a `METHOD`, reading/writing a `PROPERTY`, or
-resolving `THIS^`/`SUPER^`.
+interface's required members) in the in-flight OOP-foundation work
+(PR #1247 and siblings), which is **not yet merged to `main`**. None of
+this has runtime semantics yet -- every `FUNCTION_BLOCK` using any of
+these constructs is still uniformly flagged as an unsupported vendor
+extension by that foundation work, and no codegen exists for calling a
+`METHOD`, reading/writing a `PROPERTY`, or resolving `THIS^`/`SUPER^`.
 
 Verified directly against the current codegen before proposing
 anything here, not assumed:
@@ -73,9 +74,11 @@ anything here, not assumed:
 - Avoid speculative complexity -- most function blocks never
   participate in `EXTENDS`/`IMPLEMENTS` at all; paying a
   memory/indirection cost for every instance regardless of whether it
-  is ever used polymorphically is waste this compiler generally avoids
-  (see ADR-0026's own "pay only for what you use" framing for structure
-  layout).
+  is ever used polymorphically is a cost this ADR prefers to avoid on
+  the common case. (This "only polymorphic types pay" instinct is this
+  ADR's own. ADR-0026 in fact chose a *uniform* 8-byte slot per
+  structure field over a packed, pay-for-what-you-use layout, so it is
+  not a precedent for selective per-instance cost.)
 
 ## Considered Options
 
@@ -110,18 +113,25 @@ anything here, not assumed:
 
 ## Decision Outcome
 
-Chosen option: **C, staged**.
+Chosen option: **C, staged -- but only Phase 1 is decided by this ADR.**
+
+Phase 1 (static dispatch) is adopted. Phase 2 (dynamic dispatch through
+references, pointers, and interfaces) is **not** decided here: it is
+recorded as the anticipated direction but deferred to its own ADR,
+because as sketched it conflicts with the safety-first principle
+(ADR-0005) and the static-verification requirement (ADR-0006) in ways
+this ADR does not resolve. See "Relationship to ADR-0004/0005/0006"
+below.
 
 ### Phase 1 -- static dispatch (including overridden methods)
 
 - Given an instance's *static* declared type and a method/property
   name, resolve the concrete `MethodDeclaration`/`PropertyDeclaration`
   to call by walking the static type's own methods first, then its
-  `EXTENDS` chain base-to-derived -- reusing the exact traversal
-  already built for `IMPLEMENTS` conformance checking
-  (`intermediates::inherited_members::collect_all_fb_members`), which
-  already produces "this type's own + everything inherited" in the
-  right precedence order.
+  `EXTENDS` chain base-to-derived -- reusing the same traversal built
+  for `IMPLEMENTS` conformance checking in the OOP-foundation PRs
+  (`collect_all_fb_members`, not yet in `main`), which produces "this
+  type's own + everything inherited" in the right precedence order.
 - `THIS^` resolves to a fixed self-reference plumbed through method
   codegen (new codegen support; no runtime polymorphism -- the "self"
   instance is always the one already executing).
@@ -138,7 +148,13 @@ Chosen option: **C, staged**.
   memory-layout change and without introducing any new runtime
   indirection at all.
 
-### Phase 2 -- dynamic dispatch through references, pointers, and interfaces
+### Phase 2 (deferred -- not decided by this ADR) -- dynamic dispatch through references, pointers, and interfaces
+
+Phase 2 is described here only as the anticipated shape of a future
+change, **not** as an approved decision. It must not be implemented
+until a dedicated ADR resolves its conflict with ADR-0005 and ADR-0006
+(see "Relationship to ADR-0004/0005/0006" below). The sketch that
+follows is the starting point for that future ADR, not a settled design.
 
 - A per-instance runtime type tag: one additional 8-byte slot (same
   per-field cost model ADR-0026 already established), added **only**
@@ -153,7 +169,7 @@ Chosen option: **C, staged**.
   the runtime type tag.
 - One new indirect-call mechanism (opcode or opcode variant) that loads
   the instance's own type tag, indexes into the table, and dispatches
-  -- the only new runtime indirection introduced by this ADR.
+  -- the only new runtime indirection Phase 2 would introduce.
 - An interface-typed value needs a representation carrying both the
   underlying instance's data reference and its runtime type tag (a
   "fat" reference), reusing the same tag/table mechanism as
@@ -173,50 +189,90 @@ Chosen option: **C, staged**.
 - Access-modifier (`PUBLIC`/`PRIVATE`/`PROTECTED`/`INTERNAL`)
   enforcement. Currently metadata-only; whether/when to add real
   enforcement is a separate decision, orthogonal to dispatch mechanism.
-- `ABSTRACT` non-instantiation enforcement -- already implemented
-  (`P4040`), unaffected by this ADR either way.
+- `ABSTRACT` non-instantiation enforcement is orthogonal to dispatch and
+  unaffected by this ADR either way. (No specific problem code is cited
+  here: the OOP-foundation PRs own that diagnostic, and it is not yet in
+  `main`. `P4040` in `main` is `ConstantExpressionOverflow`, unrelated to
+  `ABSTRACT`.)
 - A specific Phase 2 bytecode container-format change. Only the
   general shape (one new tag slot per polymorphic-participating
   instance, a compile-time-built table, one new indirect-call
-  mechanism) is decided here.
+  mechanism) is sketched here, and even that is deferred to Phase 2's
+  own ADR rather than decided.
 
 ## Consequences
 
 - Good, because Phase 1 delivers real, useful semantics for the
   expected-majority static-dispatch case without any risky
   architecture change or memory-layout impact.
-- Good, because Phase 2's cost (extra slot, indirect call) is paid
-  only by function block types that are genuinely used
-  polymorphically, not by every instance in every program.
+- Good, because *if* Phase 2 is later approved, its cost (extra slot,
+  indirect call) is paid only by function block types that are genuinely
+  used polymorphically, not by every instance in every program.
 - Good, because both phases stay consistent with the existing
   slot-based data region model (ADR-0017/0026) rather than
   introducing a second, parallel memory model for OOP types alone.
 - Bad, because "Full OOP" is not delivered in a single PR -- accepted
   given the size and risk difference already established between the
   two cases.
-- Neutral, because Phase 2's table/opcode encoding is deliberately left
-  open pending its own implementation plan, so this ADR alone does not
-  fully specify how to build Phase 2 -- only that it is the intended
-  direction and roughly what it costs.
+- Bad/open, because Phase 2 as sketched conflicts with ADR-0005's
+  explicit rejection of runtime-tag polymorphic dispatch and with
+  ADR-0006's static call-target verification. This ADR does not resolve
+  that conflict; it records the direction and defers the decision to a
+  dedicated Phase 2 ADR that must supply the safety and verification
+  analysis first. It is an open question whether Phase 2 should be
+  implemented at all, or whether interface-typed values should instead
+  be supported by a more verifiable mechanism.
+- Neutral, because Phase 2's table/opcode encoding *and* its safety
+  analysis are deliberately left to that future ADR, so this ADR alone
+  does not decide Phase 2 -- only that it is the anticipated direction
+  and roughly what it would cost.
 
 ## More Information
 
 ### Relationship to prior ADRs
 
-- **ADR-0005** (memory safety / static determinism): Phase 2's type tag
-  and dispatch table are both fully static in size and content, computed
-  entirely at compile time -- no new dynamic allocation or unbounded
-  lookup is introduced.
+Phase 1 is uncontroversial against the safety ADRs -- it adds no runtime
+indirection and no memory-layout change. The relationships below are
+therefore mostly about Phase 2, and this is where the tension lives.
+
+- **ADR-0004** (separate type families over polymorphic opcodes) and
+  **ADR-0005** (safety-first): these establish a standing preference for
+  statically-encoded type distinctions over runtime-tag dispatch.
+  ADR-0005 explicitly *rejected* "polymorphic dispatch with a runtime
+  tag" (its STRING/WSTRING worked example) on the grounds that a correct
+  runtime tag is "an assumption, not a proof." Phase 2's core mechanism
+  -- load an instance's runtime type tag, index a table, dispatch -- is
+  exactly that rejected shape. Phase 2 preserves the *memory* invariant
+  ADR-0005 cares about (the tag and table are static in size and
+  content, no dynamic allocation), but it does **not**, on its own,
+  satisfy ADR-0005's *verification* concern. That tension -- not memory
+  layout -- is the reason Phase 2 is deferred rather than decided here.
+  ADR-0005 does allow its default to be overridden "when the safety cost
+  is genuinely minimal and the economy benefit is large"; making that
+  case (or finding a more verifiable alternative) is the first task of
+  Phase 2's own ADR.
+- **ADR-0006** (bytecode verification): the verifier must statically
+  check call-target validity and stack-type consistency at every call
+  site. A call target selected from a runtime tag is data-dependent, so
+  Phase 2's new indirect-call opcode needs an explicit verification
+  story -- for example, the verifier proving each per-type dispatch
+  table is well-formed and that every candidate target shares a
+  compatible signature, so stack typing holds no matter which entry is
+  selected. This ADR does not provide that story; supplying it is a
+  precondition for Phase 2, not an afterthought.
 - **ADR-0017** (unified data region), **ADR-0026** (structure memory
   layout), **ADR-0027** (compile-time field offset resolution): Phase
   2's per-instance type tag is one more slot in the same data region
   model already used for every other function block field, not a new
   memory model.
-- The already-shipped parsing and static-shape-checking work for
-  `METHOD`/`PROPERTY`/`EXTENDS`/`IMPLEMENTS`/`THIS^`/`SUPER^` (tracked
-  separately, not part of this repository's ADR series) remains
-  `P9004`-gated regardless of this ADR landing -- this ADR governs the
-  mechanism for eventually lifting that gate, not the gate itself.
+- The parsing and static-shape-checking work for
+  `METHOD`/`PROPERTY`/`EXTENDS`/`IMPLEMENTS`/`THIS^`/`SUPER^` lands in
+  the in-flight OOP-foundation PRs (PR #1247 and siblings) and is **not
+  yet merged to `main`**; it is tracked separately and is not part of
+  this repository's ADR series. That work keeps every OOP-using
+  `FUNCTION_BLOCK` gated as an unsupported vendor extension. This ADR
+  governs the mechanism for eventually lifting that gate, not the gate
+  itself.
 
 ### Verification
 
