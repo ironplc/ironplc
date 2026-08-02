@@ -192,6 +192,12 @@ struct FileArgs {
     /// extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_struct_initializer_expressions: bool,
+
+    /// Allow the CODESYS/TwinCAT OOP extensions: EXTENDS/IMPLEMENTS on
+    /// FUNCTION_BLOCK and INTERFACE declarations. This is a vendor
+    /// extension not part of the IEC 61131-3 standard.
+    #[arg(long)]
+    allow_oop_extensions: bool,
 }
 
 impl FileArgs {
@@ -222,6 +228,7 @@ impl FileArgs {
         options.allow_bit_string_case_labels |= self.allow_bit_string_case_labels;
         options.allow_paren_string_length |= self.allow_paren_string_length;
         options.allow_struct_initializer_expressions |= self.allow_struct_initializer_expressions;
+        options.allow_oop_extensions |= self.allow_oop_extensions;
         options
     }
 }

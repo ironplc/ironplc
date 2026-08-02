@@ -213,6 +213,15 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &["allow_ref_to"],
         source: "FUNCTION_BLOCK FB_Device\nVAR_INPUT\nDelta : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nTYPE MyStruct :\nSTRUCT\nx : INT;\nEND_STRUCT;\nEND_TYPE\nPROGRAM main\nVAR\npDevice : REF_TO FB_Device;\ns : MyStruct := (x := pDevice^.Delta);\nEND_VAR\nEND_PROGRAM",
     },
+    // The CODESYS/TwinCAT EXTENDS clause on a FUNCTION_BLOCK header. With the
+    // flag off, EXTENDS demotes to a plain identifier, so two consecutive
+    // identifiers after the FB name is a parse error. With the flag on, it
+    // parses as the inheritance clause.
+    FlagFixture {
+        key: "allow_oop_extensions",
+        prereqs: &[],
+        source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
+    },
 ];
 
 /// Wraps snippet text as the single-source input the tools expect.
