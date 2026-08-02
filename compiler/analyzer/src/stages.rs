@@ -143,12 +143,25 @@ pub fn resolve_types(
     // which codegen uses to skip unused functions.
     let (mut library, reachable) = xform_toposort_declarations::apply(library)?;
 
-    // Recoverable: Fold-based transforms consume the Library on error, so clone
-    // before each one. On failure, fall back to the pre-transform clone.
+    // Hard failure: declaration ordering and type-environment population is
+    // required for all subsequent transforms, and a failure here reflects a
+    // fundamentally broken declaration (not an unrelated one), so reverting
+    // the whole library on error is correct.
+    let fallback = library.clone();
+    match xform_resolve_type_decl_environment::apply(library, &mut type_environment) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
+
+    // Recoverable: an unresolvable declaration is diagnosed but does not
+    // discard the rest of the library's successfully resolved declarations.
+    // See specs/plans/2026-08-02-partial-resolution-revert-on-unrelated-error.md.
     let recoverable_xforms: Vec<
-        fn(Library, &mut TypeEnvironment) -> Result<Library, Vec<Diagnostic>>,
+        fn(Library, &mut TypeEnvironment) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
     > = vec![
-        xform_resolve_type_decl_environment::apply,
         xform_resolve_late_bound_expr_kind::apply,
         xform_resolve_late_bound_type_initializer::apply,
     ];
@@ -156,7 +169,10 @@ pub fn resolve_types(
     for xform in recoverable_xforms {
         let fallback = library.clone();
         match xform(library, &mut type_environment) {
-            Ok(result) => library = result,
+            Ok((result, errs)) => {
+                library = result;
+                diagnostics.extend(errs);
+            }
             Err(errs) => {
                 diagnostics.extend(errs);
                 library = fallback;
@@ -396,6 +412,43 @@ END_FUNCTION_BLOCK";
     fn parse_shared_library(name: &'static str) -> Library {
         let src = read_shared_resource(name);
         parse_program(&src, &FileId::default(), &CompilerOptions::default()).unwrap()
+    }
+
+    // ---------------------------------------------------------------------
+    // Don't revert a whole library's type resolution because one unrelated
+    // declaration failed to resolve.
+    // See specs/plans/2026-08-02-partial-resolution-revert-on-unrelated-error.md.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn analyze_when_unrelated_pou_has_undeclared_type_then_valid_pou_unaffected() {
+        let program = "
+FUNCTION_BLOCK FB_A
+VAR
+    x : Undeclared_Type;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Callee
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_B
+VAR
+    inst : FB_Callee;
+END_VAR
+    inst();
+END_FUNCTION_BLOCK
+        ";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        let diagnostics = context.diagnostics();
+        assert_eq!(
+            1,
+            diagnostics.len(),
+            "expected exactly one diagnostic, got {diagnostics:?}"
+        );
+        assert_eq!("P2008", diagnostics[0].code);
     }
 
     // ---------------------------------------------------------------------

@@ -8,6 +8,8 @@ Terraform that provisions:
 - The PostHog **"IronPLC — Problem-code reach"** dashboard and its insights —
   `posthog-problem-code.tf`.
 - The PostHog project's **Authorized URLs** (`app_urls`) — `posthog.tf`.
+- A PostHog **managed reverse proxy** record for first-party analytics
+  ingestion (`hog.ironplc.com`) — `proxy.tf`.
 
 This directory does **not** deploy app code.
 
@@ -58,6 +60,8 @@ and add each one as a **Terraform variable**:
 | `posthog_api_key` | ✅ yes | `phx_…` (personal key) |
 | `posthog_project_id` | no | `12345` |
 | `posthog_host` | no | `https://us.posthog.com` (default) |
+| `posthog_proxy_domain` | no | `hog.ironplc.com` (default) |
+| `posthog_organization_id` | no | `@current` (default) |
 
 Then run the plan + apply from your laptop — it executes remotely in
 HCP, output streams back to your terminal:
@@ -143,9 +147,57 @@ PostHog version, so if `terraform plan`/`apply` reports a rejected query,
 adjust the offending field and re-apply — the resources are additive and do
 not affect the GitHub labels.
 
+## PostHog managed reverse proxy
+
+`proxy.tf` provisions a `posthog_proxy_record` — PostHog's **managed** reverse
+proxy. PostHog runs the proxy and terminates TLS on a first-party subdomain, so
+analytics traffic looks like requests to our own site instead of to
+`us.i.posthog.com`. That's what stops ad blockers (which recognise PostHog's
+ingestion hosts from their filter lists) from silently dropping pageviews and
+product events.
+
+**Pick a neutral domain.** Filter lists (EasyPrivacy, uBlock) block hostnames
+containing `analytics`, `track`, `telemetry`, `posthog`, or `stats` — using one
+of those would defeat the proxy. The default is `hog.ironplc.com`
+(`posthog_proxy_domain`).
+
+### Bringing it up
+
+1. `terraform apply`. The record is created immediately and exposes two
+   outputs:
+
+   ```bash
+   terraform output posthog_proxy_target_cname   # PostHog-managed CNAME target
+   terraform output posthog_proxy_status          # provisioning status
+   ```
+
+2. Create a DNS **CNAME**: `hog.ironplc.com` → the `target_cname` value.
+3. PostHog verifies the CNAME and issues a certificate. `status` converges to
+   `valid` **outside** Terraform — a later `terraform apply`/`refresh` reflects
+   it. This can take a few minutes.
+
+The record is **immutable**: changing `posthog_proxy_domain` replaces it and
+mints a new `target_cname`, so the CNAME must be repointed. Creating a proxy
+record may need an `organization:write` (or proxy) scope on the personal API
+key; if `apply` returns 403, add it in PostHog → Settings → Personal API keys.
+
+### Follow-up: point the SDK at the proxy
+
+The proxy is inert until the browser SDKs actually send events through it. This
+is **deliberately not wired up yet** — flipping the client host before the
+CNAME resolves would 404 every event. Once `status` is `valid`, update the two
+loaders to send through `https://hog.ironplc.com`:
+
+- `docs/_static/posthog-init.js` — set `api_host` to the proxy domain.
+- `playground/posthog-init.js` — set `api_host` to the proxy domain and add
+  `ui_host: 'https://us.posthog.com'` so toolbar/session links still resolve to
+  the PostHog app.
+
 ## What is NOT managed here
 
 - Application code, deployment, or process supervision.
+- The browser SDK loaders (`docs/_static/posthog-init.js`,
+  `playground/posthog-init.js`) — see the follow-up above.
 - The issue template (checked in at
   `.github/ISSUE_TEMPLATE/compatibility_gap.md`).
 

@@ -17,7 +17,7 @@ use crate::type_environment::TypeEnvironment;
 pub fn apply(
     lib: Library,
     type_environment: &mut TypeEnvironment,
-) -> Result<Library, Vec<Diagnostic>> {
+) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let enum_values = collect_enum_values(&lib);
 
     // Resolve the types. This is a single fold of the library
@@ -28,13 +28,12 @@ pub fn apply(
         type_environment,
         enum_values,
     };
-    let result = resolver.fold_library(lib).map_err(|e| vec![e]);
+    // A resolution failure on one declaration is diagnosed but does not
+    // stop the fold, so unrelated declarations still resolve. Only a
+    // genuine fold failure (a compiler bug) discards the result.
+    let result = resolver.fold_library(lib).map_err(|e| vec![e])?;
 
-    if !resolver.diagnostics.is_empty() {
-        return Err(resolver.diagnostics);
-    }
-
-    result
+    Ok((result, resolver.diagnostics))
 }
 
 /// Pre-scans the library to collect all known enumeration value names.
