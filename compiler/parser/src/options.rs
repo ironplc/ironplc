@@ -335,6 +335,11 @@ define_compiler_options! {
     "--allow-paren-string-length",
     [Rusty, Codesys, TwinCat],
     allow_paren_string_length,
+
+    "Allow general (non-constant) expressions as struct/FB-instance initializer values, e.g. (PT := pDevice^.Delta)",
+    "--allow-struct-initializer-expressions",
+    [Rusty, Codesys, TwinCat],
+    allow_struct_initializer_expressions,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -444,6 +449,7 @@ mod tests {
                 "allow_constant_initializer_expressions",
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
+                "allow_struct_initializer_expressions",
             ],
         );
     }
@@ -479,6 +485,7 @@ mod tests {
                 "allow_constant_initializer_expressions",
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
+                "allow_struct_initializer_expressions",
             ],
         );
     }
@@ -514,6 +521,7 @@ mod tests {
                 "allow_mixed_located_var_declarations",
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
+                "allow_struct_initializer_expressions",
             ],
         );
     }
