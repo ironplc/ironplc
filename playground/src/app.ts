@@ -995,13 +995,12 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
           ? "runtime"
           : null;
       if (section) {
-        // utm_source=playground attributes the arrival to the playground;
-        // utm_medium separates diagnostic-link traffic from organic docs
-        // navigation; utm_campaign mirrors the version so PostHog captures it as
-        // a native breakdown dimension. version stays for the out-of-date banner
-        // in docs/_static/version-check.js.
+        // channel=playground attributes the arrival to the playground; version
+        // stays for the out-of-date banner in docs/_static/version-check.js.
+        // PostHog captures both as breakdown dimensions via
+        // custom_campaign_params in docs/_static/posthog-init.js.
         const v = encodeURIComponent(compilerVersion);
-        const url = `https://www.ironplc.com/reference/${section}/problems/${d.code}.html?version=${v}&utm_source=playground&utm_medium=problem-code&utm_campaign=${v}`;
+        const url = `https://www.ironplc.com/reference/${section}/problems/${d.code}.html?version=${v}&channel=playground`;
         html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
       } else {
         html += `<span class="diagnostic-code">${code}</span>`;

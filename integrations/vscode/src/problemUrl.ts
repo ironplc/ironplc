@@ -26,16 +26,15 @@ function sectionForCode(code: string): string {
  * Builds the documentation URL for a problem code, tagged so PostHog can
  * attribute the arrival to the editor extension.
  *
- * `utm_source=extension` identifies the channel (we do not assume the editor is
- * VS Code), `utm_medium` separates diagnostic-link traffic from organic docs
- * navigation, and `utm_campaign` mirrors the version so PostHog captures it as a
- * native breakdown dimension. `version` stays for the out-of-date banner in
- * docs/_static/version-check.js.
+ * `channel=extension` identifies the channel (we do not assume the editor is VS
+ * Code) and `version` stays for the out-of-date banner in
+ * docs/_static/version-check.js; PostHog captures both as breakdown dimensions
+ * via `custom_campaign_params` in docs/_static/posthog-init.js.
  */
 export function problemHelpUrl(code: string, version: string): string {
   const v = encodeURIComponent(version);
   return 'https://www.ironplc.com/reference/' + sectionForCode(code)
     + '/problems/' + code + '.html'
     + '?version=' + v
-    + '&utm_source=extension&utm_medium=problem-code&utm_campaign=' + v;
+    + '&channel=extension';
 }

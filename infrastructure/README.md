@@ -108,14 +108,17 @@ are left as commented stubs at the bottom of `posthog.tf`; they light up once
 the collectors that emit those events exist.
 
 `posthog-problem-code.tf` defines the **"IronPLC — Problem-code reach"**
-dashboard. Problem-code documentation links carry UTM metadata added by every
-client (`utm_source` = playground / cli / extension / mcp, `utm_medium` =
-`problem-code`, `utm_campaign` = the client version), so these tiles re-cut the
-docs `$pageview` stream to show *from where* and *on which version* people reach
-problem-code docs — a channel-adoption signal that needs no new telemetry.
-Tiles: total arrivals, reach by channel, channel trend, top problem codes,
-version freshness, and referrers. This dashboard's insights only appear once a
-release ships the client-side URL changes (the docs `$pageview` already flows).
+dashboard. Problem-code documentation links carry two plain query params added
+by every client — `channel` (playground / cli / extension / mcp) and `version`
+(the client version). These are intentionally *not* utm_* names (which read as
+tracking and are stripped by ad-blockers); `docs/_static/posthog-init.js`
+registers them via `custom_campaign_params` so PostHog captures them as event
+properties anyway. These tiles re-cut the docs `$pageview` stream to show *from
+where* and *on which version* people reach problem-code docs — a channel-adoption
+signal that needs no new telemetry. Tiles: total arrivals, reach by channel,
+channel trend, top problem codes, version freshness, and referrers. This
+dashboard's insights only appear once a release ships the client-side URL
+changes (the docs `$pageview` already flows).
 
 ## PostHog Authorized URLs
 

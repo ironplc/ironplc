@@ -58,14 +58,13 @@ fn section_for_code(code: &str) -> &'static str {
 /// Builds the documentation URL for a problem code, tagged so PostHog can
 /// attribute the arrival to the MCP channel.
 ///
-/// `utm_source=mcp` identifies the channel, `utm_medium` separates
-/// diagnostic-link traffic from organic docs navigation, and `utm_campaign`
-/// mirrors the version so PostHog captures it as a native breakdown dimension.
-/// `version` stays for the out-of-date banner in docs/_static/version-check.js.
+/// `channel=mcp` identifies the channel and `version` stays for the out-of-date
+/// banner in docs/_static/version-check.js; PostHog captures both as breakdown
+/// dimensions via `custom_campaign_params` in docs/_static/posthog-init.js.
 fn problem_help_url(code: &str) -> String {
     let version = env!("CARGO_PKG_VERSION");
     format!(
-        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&utm_source=mcp&utm_medium=problem-code&utm_campaign={version}",
+        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&channel=mcp",
         section = section_for_code(code),
     )
 }
@@ -291,9 +290,7 @@ mod tests {
         let url = resp.doc_url.expect("known code should have a doc_url");
         assert!(url.contains("/reference/compiler/problems/P0001.html"));
         assert!(url.contains("?version="));
-        assert!(url.contains("&utm_source=mcp"));
-        assert!(url.contains("&utm_medium=problem-code"));
-        assert!(url.contains("&utm_campaign="));
+        assert!(url.contains("&channel=mcp"));
     }
 
     #[test]

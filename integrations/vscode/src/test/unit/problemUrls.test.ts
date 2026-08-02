@@ -8,9 +8,8 @@ suite('problemUrls', () => {
     const url = problemHelpUrl('E0001', '0.1.2');
     assert.ok(url.startsWith('https://www.ironplc.com/reference/editor/problems/E0001.html?'));
     assert.ok(url.includes('version=0.1.2'));
-    assert.ok(url.includes('utm_source=extension'));
-    assert.ok(url.includes('utm_medium=problem-code'));
-    assert.ok(url.includes('utm_campaign=0.1.2'));
+    assert.ok(url.includes('channel=extension'));
+    assert.ok(!url.includes('utm_'));
   });
 
   test('problemHelpUrl_when_compiler_or_runtime_code_then_section_matches_prefix', () => {
@@ -21,7 +20,6 @@ suite('problemUrls', () => {
   test('problemHelpUrl_when_version_has_special_chars_then_encoded', () => {
     const url = problemHelpUrl('E0001', '1.0.0 beta');
     assert.ok(url.includes('version=1.0.0%20beta'));
-    assert.ok(url.includes('utm_campaign=1.0.0%20beta'));
   });
 
   test('openProblemInBrowser_when_url_path_then_docs_directory_exists', () => {

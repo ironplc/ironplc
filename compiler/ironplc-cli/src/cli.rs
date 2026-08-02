@@ -373,17 +373,15 @@ fn section_for_code(code: &str) -> &'static str {
 /// Builds the documentation URL for a diagnostic, tagged so PostHog can
 /// attribute the arrival to the CLI.
 ///
-/// `utm_source=cli` identifies the channel, `utm_medium` separates
-/// diagnostic-link traffic from organic docs navigation, and `utm_campaign`
-/// mirrors the version so PostHog captures it as a native breakdown dimension.
-/// `version` stays for the out-of-date banner in
-/// docs/_static/version-check.js. `file`/`line` (the Rust source location that
-/// raised the diagnostic) are appended when present so a maintainer can see
-/// what a remote user hit.
+/// `channel=cli` identifies the channel and `version` stays for the out-of-date
+/// banner in docs/_static/version-check.js; PostHog captures both as breakdown
+/// dimensions via `custom_campaign_params` in docs/_static/posthog-init.js.
+/// `file`/`line` (the Rust source location that raised the diagnostic) are
+/// appended when present so a maintainer can see what a remote user hit.
 fn problem_help_url(diagnostic: &Diagnostic) -> String {
     let version = env!("CARGO_PKG_VERSION");
     let mut url = format!(
-        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&utm_source=cli&utm_medium=problem-code&utm_campaign={version}",
+        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&channel=cli",
         section = section_for_code(&diagnostic.code),
         code = diagnostic.code,
     );
@@ -496,9 +494,7 @@ mod tests {
         let url = super::problem_help_url(&diag);
         assert!(url.contains("/reference/compiler/problems/"));
         assert!(url.contains("?version="));
-        assert!(url.contains("&utm_source=cli"));
-        assert!(url.contains("&utm_medium=problem-code"));
-        assert!(url.contains("&utm_campaign="));
+        assert!(url.contains("&channel=cli"));
         assert!(url.contains("&file=compiler/analyzer/src/rule_example.rs"));
         assert!(url.contains("&line=42"));
     }

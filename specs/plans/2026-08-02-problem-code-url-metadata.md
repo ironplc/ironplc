@@ -14,30 +14,33 @@ adoption-by-channel picture — without any new client telemetry.
 
 ## The URL scheme
 
-Every problem-code URL gains three UTM parameters (in addition to the existing,
-untouched `version`, `file`, and `line`):
+Every problem-code URL gains a single plain `channel` parameter (in addition to
+the existing, untouched `version`, `file`, and `line`):
 
 ```
-…/problems/<CODE>.html?version=<v>&utm_source=<channel>&utm_medium=problem-code&utm_campaign=<v>[&file=…&line=…]
+…/problems/<CODE>.html?version=<v>&channel=<channel>[&file=…&line=…]
 ```
 
 - `version` — unchanged; still the only param `version-check.js` reads.
-- `utm_source` — the channel: `playground`, `cli`, `extension`, or `mcp`.
-- `utm_medium=problem-code` — constant, so diagnostic-link arrivals separate
-  cleanly from organic docs navigation to the same page.
-- `utm_campaign=<version>` — mirrors the version. PostHog auto-extracts only the
-  `utm_*` params (not arbitrary params like `?version`), so this makes the
-  client version a native breakdown dimension. Intentional, minor duplication of
-  `version`.
+- `channel` — the origin: `playground`, `cli`, `extension`, or `mcp`.
 - `file` / `line` — kept as-is on the LSP and CLI paths. They carry the Rust
   source location that raised the diagnostic, which is how a maintainer sees what
   a remote user hit.
 
-`utm_*` is chosen over a custom `?source=` because PostHog parses `utm_*` into
-first-class event and person properties automatically, driving the built-in
-acquisition reports with no extra configuration. The apparent-unique-page
-problem is handled on the dashboard side by breaking down on `$pathname` (path
-only), which collapses every query-string variant to one row per code.
+Plain names (`channel`, `version`) are chosen over `utm_source`/`utm_medium`/
+`utm_campaign` deliberately: utm_* names read as marketing tracking (users
+hesitate to click them) and are stripped by ad-blockers (losing data). PostHog
+still captures `channel` and `version` natively because
+`docs/_static/posthog-init.js` lists them in `custom_campaign_params`, which
+extends PostHog's campaign-param set — so they become event properties and
+`$initial_*` person properties exactly like utm_* would, with no per-insight
+mapping. No `utm_medium` marker is needed: the presence of `channel` already
+means the arrival came from a client link (organic navigation has none). No
+`utm_campaign` mirror is needed: `version` is captured directly.
+
+The apparent-unique-page problem is handled on the dashboard side by breaking
+down on low-cardinality properties (`channel`, `version`, `$pathname`), not the
+full URL, so `version`/`file`/`line` never fragment the tiles.
 
 ### Channel taxonomy
 
@@ -55,21 +58,23 @@ Code.
 ## Code changes
 
 1. **`compiler/ironplc-cli/src/lsp_project.rs`** (`map_diagnostic`, ~line 659) —
-   append `&utm_source=extension&utm_medium=problem-code&utm_campaign=<v>` to the
-   existing URL, before the conditional `&file`/`&line`.
+   append `&channel=extension` to the existing URL, before the conditional
+   `&file`/`&line`.
 2. **`compiler/ironplc-cli/src/cli.rs`** (`map_diagnostic`, ~line 360) — build
-   the same URL (with `utm_source=cli`, plus `&file`/`&line` when present) and
+   the same URL (with `channel=cli`, plus `&file`/`&line` when present) and
    append it as a trailing `Learn more: <url>` note, so CLI diagnostics carry a
    clickable link. New `section_for_code` + `problem_help_url` helpers.
 3. **`integrations/vscode/src/problemUrl.ts`** (new, pure, no `vscode` import) —
    `problemHelpUrl(code, version)` deriving section from the code prefix
-   (`E→editor`, `P→compiler`, `V→runtime`) and emitting `utm_source=extension`.
+   (`E→editor`, `P→compiler`, `V→runtime`) and emitting `channel=extension`.
    `extension.ts` imports it in `openProblemInBrowser`.
-4. **`playground/src/app.ts`** (`renderDiagnostics`, ~line 998) — append the utm
-   params with `utm_source=playground`.
+4. **`playground/src/app.ts`** (`renderDiagnostics`, ~line 998) — append
+   `&channel=playground`.
 5. **`compiler/mcp/src/tools/explain_diagnostic.rs`** — add a `doc_url` field to
-   `ExplainDiagnosticResponse`, populated for found codes with
-   `utm_source=mcp`; new `section_for_code` helper.
+   `ExplainDiagnosticResponse`, populated for found codes with `channel=mcp`;
+   new `section_for_code` helper.
+6. **`docs/_static/posthog-init.js`** — add `custom_campaign_params: ['channel',
+   'version']` so PostHog captures the two plain params as event properties.
 
 `section_for_code` is duplicated in `cli.rs` and `explain_diagnostic.rs` (a
 four-arm match in two different crates); the LSP path keeps its hardcoded
@@ -77,25 +82,26 @@ four-arm match in two different crates); the LSP path keeps its hardcoded
 
 ## Tests
 
-- `lsp_project.rs`: extend the two existing URL tests to assert `utm_source=extension`
-  and `utm_medium=problem-code`.
-- `cli.rs`: new test — `map_diagnostic` notes contain the URL with `utm_source=cli`.
-- `problemUrls.test.ts`: new unit test for `problemHelpUrl()`.
-- `playground/tests/e2e.spec.ts`: update the href regex to require `utm_source=playground`.
-- `explain_diagnostic.rs`: new test — `doc_url` contains `utm_source=mcp`.
+- `lsp_project.rs`: extend the two existing URL tests to assert `channel=extension`.
+- `cli.rs`: new test — `map_diagnostic` notes contain the URL with `channel=cli`.
+- `problemUrls.test.ts`: new unit test for `problemHelpUrl()` (asserts `channel`,
+  no `utm_`).
+- `playground/tests/e2e.spec.ts`: update the href regex to require `channel=playground`.
+- `explain_diagnostic.rs`: new test — `doc_url` contains `channel=mcp`.
 
 ## PostHog dashboard (as code)
 
 New `infrastructure/posthog-problem-code.tf` — a `posthog_dashboard`
-"IronPLC — Problem-code reach" plus one `posthog_insight` per tile. All tiles
-filter `$pageview` where `$pathname` contains `/problems/` and
-`utm_medium = problem-code`:
+"IronPLC — Problem-code reach" plus one `posthog_insight` per tile. Tiles filter
+`$pageview` where `$pathname` contains `/problems/`; the `channel` breakdown then
+splits client-link arrivals from organic (the null bucket):
 
 1. Total problem-code arrivals (BoldNumber).
-2. Reach by channel — breakdown `utm_source` (table). Headline adoption tile.
-3. Channel trend — weekly unique visitors, breakdown `utm_source` (line).
+2. Reach by channel — breakdown `channel` (table). Headline adoption tile.
+3. Channel trend — weekly unique visitors, breakdown `channel` (line).
 4. Top problem codes — breakdown `$pathname` (bar).
-5. Version freshness — breakdown `utm_campaign` (table).
+5. Version freshness — breakdown `version`, scoped to arrivals with a `version`
+   (table).
 6. Referrers to problem pages — breakdown `$referring_domain` (table).
 
 Follows the existing `infrastructure/posthog.tf` pattern (raw query-node

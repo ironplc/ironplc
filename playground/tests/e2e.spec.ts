@@ -225,8 +225,7 @@ END_PROGRAM
     const link = diagnosticsPanel.locator("a.diagnostic-code");
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", /https:\/\/www\.ironplc\.com\/reference\/compiler\/problems\/P\d{4}\.html\?version=/);
-    await expect(link).toHaveAttribute("href", /utm_source=playground/);
-    await expect(link).toHaveAttribute("href", /utm_medium=problem-code/);
+    await expect(link).toHaveAttribute("href", /channel=playground/);
     await expect(link).toHaveAttribute("target", "_blank");
 
     // Diagnostic message should include the label context

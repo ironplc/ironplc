@@ -656,15 +656,14 @@ fn map_diagnostic(
     let description = diagnostic.description();
     let range = map_label(&diagnostic.primary, project);
 
-    // `utm_source=extension` attributes the arrival to the editor integration
-    // (the language server surfaces these diagnostics; we do not assume the
-    // editor is VS Code). `utm_medium` separates diagnostic-link traffic from
-    // organic docs navigation, and `utm_campaign` mirrors the version so PostHog
-    // captures it as a native breakdown dimension. `version` stays for the
-    // out-of-date banner in docs/_static/version-check.js.
+    // `channel=extension` attributes the arrival to the editor integration (the
+    // language server surfaces these diagnostics; we do not assume the editor is
+    // VS Code). `version` stays for the out-of-date banner in
+    // docs/_static/version-check.js. PostHog captures both as breakdown
+    // dimensions via `custom_campaign_params` in docs/_static/posthog-init.js.
     let version = env!("CARGO_PKG_VERSION");
     let mut url_string = format!(
-        "https://www.ironplc.com/reference/compiler/problems/{code}.html?version={version}&utm_source=extension&utm_medium=problem-code&utm_campaign={version}",
+        "https://www.ironplc.com/reference/compiler/problems/{code}.html?version={version}&channel=extension",
         code = diagnostic.code,
     );
     if let Some(ref file) = diagnostic.source_file {
@@ -1307,9 +1306,7 @@ INVALID_SYNTAX"
 
         let href = lsp_diag.code_description.unwrap().href.to_string();
         assert!(href.contains("?version="));
-        assert!(href.contains("&utm_source=extension"));
-        assert!(href.contains("&utm_medium=problem-code"));
-        assert!(href.contains("&utm_campaign="));
+        assert!(href.contains("&channel=extension"));
         assert!(!href.contains("&file="));
         assert!(!href.contains("&line="));
     }
@@ -1342,9 +1339,7 @@ INVALID_SYNTAX"
 
         let href = lsp_diag.code_description.unwrap().href.to_string();
         assert!(href.contains("?version="));
-        assert!(href.contains("&utm_source=extension"));
-        assert!(href.contains("&utm_medium=problem-code"));
-        assert!(href.contains("&utm_campaign="));
+        assert!(href.contains("&channel=extension"));
         assert!(href.contains("&file=compiler/analyzer/src/rule_example.rs"));
         assert!(href.contains("&line=42"));
     }
