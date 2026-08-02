@@ -6,7 +6,7 @@
 //! bytecode_offset)` space, with no dependency on source-line debug info.
 //!
 //! It is deliberately single-threaded: the [`BreakpointTable`] is a plain
-//! sorted `Vec` owned and mutated directly by the caller (the Phase 4 DAP
+//! sorted `Vec` owned and mutated directly by the caller (the DAP server
 //! loop). There are no atomics, no `ArcSwap`, and no cross-thread pause.
 //!
 //! [`DebugHook`]: crate::debug_hook::DebugHook

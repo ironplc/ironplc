@@ -7,15 +7,10 @@
 //! section (line map, VAR_NAME, `debug_format`) is a dependency of exactly one
 //! module.
 //!
-//! This first cut ships **passthrough** resolvers (see the plan,
-//! `specs/plans/2026-06-25-dap-server-scaffold.md` §"Debug-info coupling,
-//! isolated"): the DAP `line` is treated as a raw bytecode offset and slots are
-//! rendered by index with no names. The two function signatures are the stable
-//! seam — commit 5 swaps real line-map / `debug_format` lookups in behind them
-//! without touching any other module.
-//!
-//! Both resolvers are consumed by the minimal Phase 4 run/stop loop
-//! (`setBreakpoints` and `variables`) in [`super::server`].
+//! This first cut ships **passthrough** resolvers: the DAP `line` is treated
+//! as a raw bytecode offset and slots are rendered by index with no names. The
+//! two function signatures are the stable seam — real line-map / `debug_format`
+//! lookups swap in behind them without touching any other module.
 
 use ironplc_container::debug_section::DebugSection;
 use ironplc_container::FunctionId;
@@ -27,9 +22,9 @@ use super::types::Variable;
 ///
 /// **Passthrough:** the DAP `line` is interpreted directly as a bytecode offset
 /// in the scan function, ignoring `debug` and `source_path`. A negative line
-/// (never produced by a conformant client) resolves to nothing. Commit 5
-/// replaces the body with a real line-map + SOURCE_FILE lookup keyed off
-/// `source_path`; this signature stays fixed.
+/// (never produced by a conformant client) resolves to nothing. A real
+/// line-map + SOURCE_FILE lookup keyed off `source_path` will replace the
+/// body; this signature stays fixed.
 pub fn resolve_breakpoint(
     _debug: Option<&DebugSection>,
     _source_path: &str,
@@ -45,8 +40,8 @@ pub fn resolve_breakpoint(
 ///
 /// `values[i]` is the raw 64-bit slot for variable index `i`. **Passthrough:**
 /// each slot is named `var[i]` and rendered as a signed 32-bit decimal, with no
-/// type — `debug` is ignored. Commit 5 replaces the body with VAR_NAME lookups
-/// for names/types and `debug_format::format_variable_value` for the value;
+/// type — `debug` is ignored. VAR_NAME lookups for names/types and
+/// `debug_format::format_variable_value` for the value will replace the body;
 /// this signature stays fixed.
 pub fn render_variables(_debug: Option<&DebugSection>, values: &[u64]) -> Vec<Variable> {
     values

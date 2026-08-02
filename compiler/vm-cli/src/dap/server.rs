@@ -1,11 +1,12 @@
 //! The single-threaded DAP event loop.
 //!
-//! This module implements the minimal Phase 4 debugger: the `initialize` →
-//! `launch` → `setBreakpoints` → `configurationDone` → (run) → `stopped` →
-//! inspect → `continue` → `terminated` → `disconnect` lifecycle against the
-//! Phase 3 VM engine. Every request is gated through the [`state::legal`]
-//! table; an illegal or not-yet-supported request is answered with a DAP error
-//! whose message is `requestNotApplicable`.
+//! This module drives the `initialize` → `launch` → `setBreakpoints` →
+//! `configurationDone` → (run) → `stopped` → inspect → `continue` →
+//! `terminated` → `disconnect` lifecycle against the VM debug engine. Every
+//! request is gated through the [`state::legal`] table; an illegal or
+//! not-yet-supported request is answered with a DAP error whose message is
+//! `requestNotApplicable`. The single-threaded design is described in
+//! `specs/design/debugger-support.md` §"Single-threaded DAP loop (v1)".
 //!
 //! The loop is split at the launch boundary so lifetimes stay simple: the
 //! *pre-launch* loop ([`serve`]) handles `initialize` / `disconnect` and the
@@ -14,10 +15,9 @@
 //! buffers, starts the VM, and runs the *post-launch* run/stop loop borrowing
 //! them.
 //!
-//! **Deferred to Phase 4b** (see the plan,
-//! `specs/plans/2026-06-25-dap-server-scaffold.md`): single-stepping
-//! (`next`/`stepIn`/`stepOut`) and trap→`stopped{reason:"exception"}`. Both are
-//! refused with `requestNotApplicable` / reported as `terminated` for now.
+//! Not yet implemented: single-stepping (`next`/`stepIn`/`stepOut`) is refused
+//! with `requestNotApplicable`, and a trap ends the session as `terminated`
+//! rather than surfacing a `stopped{reason:"exception"}`.
 
 use std::io::{self, BufRead, Write};
 use std::path::Path;
@@ -156,22 +156,22 @@ fn load_and_check(request: &Request) -> Result<Container, String> {
 }
 
 /// Owns the loaded `container`, starts the VM, answers the `launch` request,
-/// and runs the post-launch run/stop loop (minimal Phase 4).
+/// and runs the post-launch run/stop loop.
 ///
 /// The `container` and the buffers sized from it live here so the [`VmRunning`]
 /// can borrow them for the remainder of the session.
 ///
-/// The loop alternates between two modes (see the plan,
-/// `specs/plans/2026-06-25-dap-server-scaffold.md` §"Single-threaded event
-/// loop"): when `Running`, it drives one `run_round_debug` and reacts to the
-/// outcome; otherwise it reads and services one client request. Because the
+/// The loop alternates between two modes (see
+/// `specs/design/debugger-support.md` §"Single-threaded DAP loop (v1)"): when
+/// `Running`, it drives one `run_round_debug` and reacts to the outcome;
+/// otherwise it reads and services one client request. Because the
 /// [`BreakpointTable`] is mutated between rounds (a `setBreakpoints` at a
 /// pause) while the [`DebuggerHook`] borrows it during a round, the hook is
 /// built fresh per round; after a breakpoint pause the next hook is told to
 /// suppress that location once so `continue` makes forward progress.
 ///
-/// **Minimal cut:** `continue` is the only execution control (stepping and
-/// trap→`exception` are Phase 4b); one completed scan is reported as
+/// Current limitations: `continue` is the only execution control (stepping and
+/// trap→`exception` are not yet implemented); one completed scan is reported as
 /// `terminated`; `stopOnEntry`/`scanLimit` launch options are accepted but not
 /// yet acted on.
 fn launched_session<R: BufRead, W: Write>(
@@ -242,8 +242,8 @@ fn launched_session<R: BufRead, W: Write>(
                             suppress_bp = true;
                             "breakpoint"
                         }
-                        // Neither is produced in minimal Phase 4 (no stepping,
-                        // no stop-on-entry), but map them so the loop is total.
+                        // Neither is produced yet (no stepping, no
+                        // stop-on-entry), but map them so the loop is total.
                         PauseReason::Step => {
                             suppress_bp = true;
                             "step"
@@ -253,8 +253,9 @@ fn launched_session<R: BufRead, W: Write>(
                     send(writer, &stopped_event(take_seq(seq), dap_reason))?;
                     phase = Phase::Paused;
                 }
-                // Trap-stop is Phase 4b; for now a trap ends the session like a
-                // normal termination rather than surfacing an `exception` stop.
+                // Trap-stop is not yet implemented; for now a trap ends the
+                // session like a normal termination rather than surfacing an
+                // `exception` stop.
                 Err(_fault) => {
                     send(writer, &Event::new(take_seq(seq), "terminated", None))?;
                     phase = Phase::Terminated;
@@ -325,7 +326,7 @@ fn launched_session<R: BufRead, W: Write>(
                 phase = Phase::Running;
             }
             _ => {
-                // Illegal in this phase, unknown, or deferred to Phase 4b
+                // Illegal in this phase, unknown, or not yet implemented
                 // (`next`/`stepIn`/`stepOut`).
                 send(
                     writer,
@@ -354,7 +355,7 @@ fn stopped_event(seq: i64, reason: &'static str) -> Event {
 /// DAP `setBreakpoints` carries the full set for one source, so the table is
 /// cleared and rebuilt. v1 debugs a single source, so a table-wide clear is
 /// correct. Line→location resolution is delegated to [`debug_info`] (a
-/// passthrough until the Layer-1 swap in commit 5).
+/// passthrough until the Layer-1 line-map swap).
 fn set_breakpoints(
     request: &Request,
     debug: Option<&DebugSection>,
@@ -756,7 +757,7 @@ mod tests {
         assert_eq!(out.len(), 2);
     }
 
-    // -- run/stop loop (minimal Phase 4) ------------------------------------
+    // -- run/stop loop ------------------------------------------------------
 
     /// A single-instance container whose **scan** entry function is
     /// [`FunctionId::SCAN`], matching the passthrough breakpoint resolver
@@ -915,7 +916,7 @@ mod tests {
 
     #[test]
     fn serve_when_step_while_paused_then_request_not_applicable() {
-        // Stepping is deferred to Phase 4b: refused even though the legality
+        // Stepping is not yet implemented: refused even though the legality
         // table models `next` as valid while paused.
         let (_file, path) = scan_container_file(&[0x8C], 0);
         let out = run_server(&[
