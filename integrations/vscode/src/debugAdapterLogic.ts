@@ -167,6 +167,17 @@ export interface ScanCountResponse {
   scanCount?: number;
 }
 
+/** The first non-empty, trimmed line of `text`, or the empty string. */
+export function firstLine(text: string): string {
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+  return '';
+}
+
 /** Formats an `ironplc/scanCount` reply for display in the UI. */
 export function scanCountMessage(response: ScanCountResponse | undefined): string {
   const count = response?.scanCount;

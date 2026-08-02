@@ -5,6 +5,7 @@ import {
   buildDebugCompileArgs,
   containerOutputPath,
   findDapServerPath,
+  firstLine,
   isDebuggableProgram,
   isSourceProgram,
   programKind,
@@ -188,6 +189,20 @@ suite('buildDebugCompileArgs', () => {
   test('buildDebugCompileArgs_when_program_and_output_then_compile_args', () => {
     const args = buildDebugCompileArgs('/work/main.st', '/tmp/main.iplc');
     assert.deepStrictEqual(args, ['compile', '/work/main.st', '-o', '/tmp/main.iplc']);
+  });
+});
+
+suite('firstLine', () => {
+  test('firstLine_when_multiple_lines_then_first_nonempty', () => {
+    assert.strictEqual(firstLine('\n\n  P0001: undeclared X\nnext line'), 'P0001: undeclared X');
+  });
+
+  test('firstLine_when_all_blank_then_empty', () => {
+    assert.strictEqual(firstLine('\n   \n'), '');
+  });
+
+  test('firstLine_when_empty_then_empty', () => {
+    assert.strictEqual(firstLine(''), '');
   });
 });
 

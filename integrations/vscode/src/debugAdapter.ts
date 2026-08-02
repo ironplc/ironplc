@@ -8,13 +8,30 @@ import {
   buildDebugCompileArgs,
   containerOutputPath,
   findDapServerPath,
+  firstLine,
   isDebuggableProgram,
   programKind,
   resolveProgramPath,
 } from './debugAdapterLogic';
+import { ProblemCode } from './problems';
 
 /** The debug type used in `launch.json` and the `debuggers` contribution. */
 export const IRONPLC_DEBUG_TYPE = 'ironplc';
+
+/**
+ * Reports a coded problem to the user (typically a notification with an
+ * "Open Online Help" action). Injected so this module stays decoupled from the
+ * extension's activation-time state (the extension version used to build the
+ * help URL).
+ */
+export type ReportProblem = (code: ProblemCode, context?: string) => void;
+
+/** Result of running the compiler for a debug launch. */
+interface CompileResult {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
 
 /**
  * Fills in launch-configuration defaults and compiles a source program to an
@@ -26,10 +43,17 @@ export const IRONPLC_DEBUG_TYPE = 'ironplc';
  * `resolveDebugConfigurationWithSubstitutedVariables` runs after VS Code has
  * expanded `${file}`-style variables; that is where the source→container
  * compile happens, so the adapter always receives a compiled `.iplc` path.
+ *
+ * Every failure path logs to the output channel and reports a coded problem so
+ * a launch that aborts is never silent.
  */
 export class IronplcDebugConfigurationProvider
 implements vscode.DebugConfigurationProvider {
-  constructor(private readonly compilerPath: string) {}
+  constructor(
+    private readonly compilerPath: string,
+    private readonly reportProblem: ReportProblem,
+    private readonly log: vscode.OutputChannel,
+  ) {}
 
   resolveDebugConfiguration(
     _folder: vscode.WorkspaceFolder | undefined,
@@ -49,9 +73,8 @@ implements vscode.DebugConfigurationProvider {
     const activeDebuggable = active && isDebuggableProgram(active) ? active : undefined;
     const program = resolveProgramPath(config.program, activeDebuggable);
     if (!program) {
-      return vscode.window
-        .showErrorMessage('IronPLC: no program to debug. Open a Structured Text file, or set "program" to a .st or .iplc path in launch.json.')
-        .then(() => undefined);
+      this.reportProblem(ProblemCode.DebugNoProgram, 'Open a Structured Text file, or set "program" to a .st or .iplc path in launch.json.');
+      return undefined;
     }
     config.program = program;
     return config;
@@ -69,39 +92,54 @@ implements vscode.DebugConfigurationProvider {
     switch (programKind(program)) {
       case 'container':
         // Already a compiled `.iplc`: launch it as-is.
+        this.log.appendLine(`Launching compiled container: ${program}`);
         return config;
       case 'unknown':
         // Not a source file or a container. Reject with a clear message rather
         // than handing it to the server, which would fail with an opaque
         // "invalid magic number".
-        await vscode.window.showErrorMessage(`IronPLC: "${program}" is not a Structured Text source (.st) or a compiled .iplc container. Set "program" in launch.json to a source or container path.`);
+        this.log.appendLine(`Cannot debug "${program}": not a .st source or .iplc container.`);
+        this.reportProblem(ProblemCode.DebugProgramNotDebuggable, `"${program}" — set "program" in launch.json to a .st or .iplc path.`);
         return undefined;
       case 'source':
         break;
     }
 
     const output = containerOutputPath(program, os.tmpdir());
-    try {
-      await this.compile(program, output);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      await vscode.window.showErrorMessage(`IronPLC: failed to compile "${program}" for debugging: ${reason}`);
+    const result = await this.compile(program, output);
+    if (result.code !== 0) {
+      // Surface the compiler's own diagnostics: a single file that references
+      // POUs or types defined in sibling files fails analysis on its own.
+      this.log.appendLine(`Compilation failed (exit ${result.code}). The program must compile on its own — a file that references POUs or types from other files will not compile in isolation.`);
+      this.log.show(true);
+      const detail = firstLine(result.stderr) || firstLine(result.stdout) || `compiler exited with ${result.code}`;
+      this.reportProblem(ProblemCode.DebugCompileFailed, `${program}: ${detail} (see the "IronPLC Debug" output for details).`);
       return undefined;
     }
+
+    this.log.appendLine(`Compiled ${program} -> ${output}`);
     config.program = output;
     return config;
   }
 
-  /** Runs `ironplcc compile` to emit a debug-enabled container. */
-  private compile(program: string, output: string): Promise<void> {
+  /** Runs `ironplcc compile` and captures its exit code and output. */
+  private compile(program: string, output: string): Promise<CompileResult> {
     const args = buildDebugCompileArgs(program, output);
-    return new Promise((resolve, reject) => {
-      execFile(this.compilerPath, args, (error, _stdout, stderr) => {
-        if (error) {
-          reject(new Error(stderr?.trim() || error.message));
-          return;
+    this.log.appendLine(`$ ${this.compilerPath} ${args.join(' ')}`);
+    return new Promise((resolve) => {
+      execFile(this.compilerPath, args, (error, stdout, stderr) => {
+        if (stdout) {
+          this.log.append(stdout);
         }
-        resolve();
+        if (stderr) {
+          this.log.append(stderr);
+        }
+        // execFile reports a non-zero exit as an error carrying `code`; a spawn
+        // failure (e.g. the compiler is missing) has no numeric code.
+        const code = error && typeof (error as { code?: unknown }).code === 'number'
+          ? (error as { code: number }).code
+          : (error ? null : 0);
+        resolve({ code, stdout: stdout ?? '', stderr: stderr ?? '' });
       });
     });
   }
@@ -114,14 +152,17 @@ implements vscode.DebugConfigurationProvider {
  */
 export class IronplcDebugAdapterDescriptorFactory
 implements vscode.DebugAdapterDescriptorFactory {
-  constructor(private readonly compilerDir: string | undefined) {}
+  constructor(
+    private readonly compilerDir: string | undefined,
+    private readonly reportProblem: ReportProblem,
+  ) {}
 
   createDebugAdapterDescriptor(
     _session: vscode.DebugSession,
   ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
     const server = this.resolveServer();
     if (!server) {
-      void vscode.window.showErrorMessage('IronPLC: the debug server (ironplcdap) was not found. Set "ironplc.dapServerPath" or install the IronPLC compiler.');
+      this.reportProblem(ProblemCode.DebugServerNotFound, 'Set "ironplc.dapServerPath" or install the IronPLC compiler alongside ironplcdap.');
       return undefined;
     }
     return new vscode.DebugAdapterExecutable(server.path, []);

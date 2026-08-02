@@ -83,6 +83,21 @@ function openProblemInBrowser(code: ProblemCode) {
   vscode.env.openExternal(vscode.Uri.parse(url));
 }
 
+/**
+ * Shows a coded problem as an error notification with an "Open Online Help"
+ * action that links to the problem's documentation page. Shared by the
+ * activation path and the debug adapter.
+ */
+function showProblem(code: ProblemCode, context?: string) {
+  void vscode.window
+    .showErrorMessage(formatProblem(code, context), 'Open Online Help')
+    .then((selection) => {
+      if (selection === 'Open Online Help') {
+        openProblemInBrowser(code);
+      }
+    });
+}
+
 // This method is called when this extension is activated.
 export function activate(context: vscode.ExtensionContext) {
   console.debug('Extension "ironplc" is activating!');
@@ -281,17 +296,20 @@ function registerRunSupport(context: vscode.ExtensionContext) {
 function registerDebugSupport(context: vscode.ExtensionContext, compilerPath: string) {
   const compilerDir = path.dirname(compilerPath);
 
+  const log = vscode.window.createOutputChannel('IronPLC Debug');
+  context.subscriptions.push(log);
+
   context.subscriptions.push(
     vscode.debug.registerDebugConfigurationProvider(
       IRONPLC_DEBUG_TYPE,
-      new IronplcDebugConfigurationProvider(compilerPath),
+      new IronplcDebugConfigurationProvider(compilerPath, showProblem, log),
     ),
   );
 
   context.subscriptions.push(
     vscode.debug.registerDebugAdapterDescriptorFactory(
       IRONPLC_DEBUG_TYPE,
-      new IronplcDebugAdapterDescriptorFactory(compilerDir),
+      new IronplcDebugAdapterDescriptorFactory(compilerDir, showProblem),
     ),
   );
 }
