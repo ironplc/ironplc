@@ -63,21 +63,16 @@ jobs:
   # (neither job depends on the other) so the coverage build and the release
   # build no longer happen serially.
   #
-  # `just ci` exercises the host toolchain only -- it never uses the release
-  # `rust_target`, and nothing consumes its coverage output (lcov.info is a
-  # pass/fail gate, not an artifact). So it runs once per unique CI host rather
-  # than once per release target: the two Windows release targets share one
-  # x86_64 Windows host and the two macOS targets share one arm64 host.
+  # Coverage/lint/dupes are host-independent, and `just ci` never uses the
+  # release `rust_target`. Cross-platform test execution is provided instead by
+  # the per-target test step in compiler-package, so this gate runs on Linux
+  # only.
   compiler-quality:
     name: Compiler Quality Checks
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./compiler
-    strategy:
-      fail-fast: true
-      matrix:
-        os: [ubuntu-latest, windows-2025, macos-latest]
 
     steps:
       # Checkout the repository/fetch input artifacts
@@ -99,7 +94,7 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "compiler -> target"
-          key: quality-${{ matrix.os }}
+          key: quality-ubuntu-latest
       - uses: taiki-e/install-action@03e268b84870ac3cfa58a44d9b504511b732a857 # cargo-llvm-cov
       - name: Install cargo-dupes
         run: cargo install cargo-dupes
@@ -182,6 +177,12 @@ jobs:
         with:
           name: ironplc-compiler-sbom
           path: compiler/
+
+      # Run the full test suite on this host. compiler-quality runs coverage
+      # (and thus the tests) on Linux only, so this is where cross-platform
+      # test execution happens -- tests run on the Windows and macOS hosts too.
+      - name: Run tests
+        run: just test
 
       # Execute build recipe. This is the release build only; the debug /
       # coverage / lint build runs in parallel in compiler-quality.

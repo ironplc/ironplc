@@ -34,15 +34,20 @@ these clean:
 Split the single `compiler` job into two jobs that do not depend on each other,
 so they run concurrently:
 
-- **`compiler-quality`** — runs `just ci` on a 3-host matrix
-  (`ubuntu-latest`, `windows-2025`, `macos-latest`): exactly the host arch/OS
-  combinations `just ci` executes on today, deduplicated. Installs only what
-  `just ci` needs (rustfmt, clippy, cargo-llvm-cov, cargo-dupes). No SBOM
-  download, no cross-compile target, no NSIS.
+- **`compiler-quality`** — runs `just ci` (compile, coverage at 85%, lint,
+  dupes) on **Linux only**. Coverage/lint/dupes are host-independent, so a
+  single host is sufficient for the gate. Installs only what `just ci` needs
+  (rustfmt, clippy, cargo-llvm-cov, cargo-dupes). No SBOM download, no
+  cross-compile target, no NSIS.
 - **`compiler-package`** — keeps the existing 5-target matrix, the
-  `compiler-sbom` dependency, the SBOM download, and the NSIS install. Runs
-  only `just package` and uploads the installer + sha256 artifacts. Drops the
+  `compiler-sbom` dependency, the SBOM download, and the NSIS install. Runs the
+  full test suite (`just test`) on each host and then `just package`, and
+  uploads the installer + sha256 artifacts. Drops the
   clippy/rustfmt/cargo-llvm-cov/cargo-dupes setup it no longer needs.
+
+Cross-platform test execution is preserved by the `just test` step in
+`compiler-package`: tests run on the Windows and macOS hosts (as well as Linux)
+even though coverage/lint only run on Linux.
 
 Per stage the wall-clock drops from `ci + package` to roughly
 `max(ci, package)`.
@@ -72,7 +77,7 @@ parallelism.
 
 ## Tasks
 
-- [ ] Add `compiler-quality` job (3-host matrix, `just ci`, no SBOM/target/NSIS).
-- [ ] Rework `compiler` → `compiler-package` (5-target matrix, `just package`
-      only, drop lint/coverage tool installs).
-- [ ] Verify workflow YAML parses and callers are unaffected.
+- [x] Add `compiler-quality` job (Linux only, `just ci`, no SBOM/target/NSIS).
+- [x] Rework `compiler` → `compiler-package` (5-target matrix, `just test` +
+      `just package`, drop lint/coverage tool installs).
+- [x] Verify workflow YAML parses (actionlint clean) and callers are unaffected.
