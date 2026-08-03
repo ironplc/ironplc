@@ -59,6 +59,40 @@ provides single inheritance for function block types. An instance of a derived
 type *is a* kind of its base type, so it can be used wherever the base type is
 expected.
 
+Hiding inherited names
+----------------------
+
+A derived type can declare a variable whose name is already used by an
+inherited variable. The declaration in the derived type **hides** (or
+*shadows*) the inherited one: within the derived type's own body the name
+refers to the member declared there, not to the one it inherited. The
+inherited member is not removed — it still exists on every instance and is
+reached through the base type.
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Base
+       VAR
+           state : INT;
+       END_VAR
+   END_FUNCTION_BLOCK
+
+   FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+       VAR
+           state : BOOL;
+       END_VAR
+   END_FUNCTION_BLOCK
+
+Inside ``FB_Derived``, ``state`` names the ``BOOL`` declared there; the
+inherited ``INT`` is hidden but still present on the instance.
+
+Hiding is different from declaring the same name twice in one place. Two
+declarations of the same name in a single scope — for example two variables in
+one ``VAR`` block — are a duplicate and are rejected
+(:doc:`P4014 </reference/compiler/problems/P4014>`). Hiding involves two
+*different* scopes, the base type and the derived type, so the name is
+resolved by choosing the nearer declaration rather than reported as an error.
+
 Interfaces
 ==========
 
@@ -140,6 +174,9 @@ Terminology
      - A type that extends a base type and inherits its members.
    * - Inheritance
      - Deriving one type from another so it reuses the base type's members.
+   * - Hiding (shadowing)
+     - A member declared in a derived type takes precedence, within that type,
+       over an inherited member of the same name.
    * - Interface
      - A named set of method signatures with no implementation.
    * - Implement
@@ -164,6 +201,8 @@ See Also
 - :doc:`/reference/language/object-orientation/index` — the object-oriented
   keywords
 - :doc:`/reference/language/pous/function-block` — the ``FUNCTION_BLOCK`` unit
+- :doc:`/reference/language/variables/scope` — variable scope and resolution
+- :doc:`/reference/compiler/problems/P4014` — duplicate name in a single scope
 - :doc:`enabling-dialects-and-features` — enabling the object-oriented syntax
 - :doc:`/reference/compiler/problems/P9999` — the diagnostic reported for
   not-yet-supported object-oriented constructs
