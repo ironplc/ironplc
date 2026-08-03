@@ -30,7 +30,7 @@ impl ExtensionOrigin {
 ///
 /// Nodes implementing this trait are parsed and represented in the AST but
 /// not yet semantically analyzed or supported in code generation. The
-/// semantic rule `rule_unsupported_extension` walks the AST and emits P9004
+/// semantic rule `rule_unsupported_extension` walks the AST and emits P9999
 /// for every node that implements this trait.
 ///
 /// As each extension graduates to full support, remove its `VendorExtension`

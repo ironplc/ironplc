@@ -4,8 +4,6 @@
 //! An `ABSTRACT` function block exists only to be extended via
 //! `EXTENDS` -- it cannot be instantiated directly.
 //!
-//! Verified against a real TcXaeShell compile before implementing
-//! (`C0434: Function block ... is ABSTRACT and cannot be instantiated`).
 //! See `specs/plans/2026-07-20-twincat-abstract-instantiation.md`.
 //!
 //! Deliberately works directly off the AST rather than threading
