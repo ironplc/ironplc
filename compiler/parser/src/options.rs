@@ -345,6 +345,16 @@ define_compiler_options! {
     "--allow-oop-extensions",
     [Rusty, Codesys],
     allow_oop_extensions,
+
+    "Register the ADR (Address Operator) as a built-in stdlib function (Beckhoff/CODESYS extension)",
+    "--allow-address-operator",
+    [Rusty, Codesys],
+    allow_address_operator,
+
+    "Register Beckhoff Tc2_Utilities library functions (LREAL_TO_FMTSTR) as built-in stdlib functions",
+    "--allow-extended-string-functions",
+    [Rusty, Codesys],
+    allow_extended_string_functions,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -456,6 +466,8 @@ mod tests {
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
                 "allow_oop_extensions",
+                "allow_address_operator",
+                "allow_extended_string_functions",
             ],
         );
     }
@@ -493,6 +505,8 @@ mod tests {
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
                 "allow_oop_extensions",
+                "allow_address_operator",
+                "allow_extended_string_functions",
             ],
         );
     }

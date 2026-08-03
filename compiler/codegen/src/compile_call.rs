@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use ironplc_container::opcode;
 use ironplc_dsl::core::{Id, Located};
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
     Expr, ExprKind, Function, ParamAssignmentKind, SymbolicVariableKind, Variable,
 };
@@ -175,6 +175,20 @@ pub(crate) fn compile_function_call(
         "trunc" => compile_trunc(emitter, ctx, func, op_type),
         // SIZEOF operator (vendor extension)
         "sizeof" => compile_sizeof(emitter, ctx, func),
+        // ADR (Address Operator, vendor extension) -- ironplcc check fully
+        // supports it; codegen does not yet compute a real runtime
+        // address. See specs/plans/2026-07-26-twincat-stdlib-bool-fmtstr-adr.md.
+        "adr" => Err(Diagnostic::not_implemented(Label::span(
+            func.name.span(),
+            "ADR",
+        ))),
+        // LREAL_TO_FMTSTR (Beckhoff Tc2_Utilities, vendor extension) --
+        // ironplcc check fully supports it; codegen does not yet
+        // implement the real formatting/rounding semantics.
+        "lreal_to_fmtstr" => Err(Diagnostic::not_implemented(Label::span(
+            func.name.span(),
+            "LREAL_TO_FMTSTR",
+        ))),
         // BCD conversion functions
         "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),
         "int_to_bcd" => compile_int_to_bcd(emitter, ctx, func, op_type),
@@ -1297,6 +1311,15 @@ pub(crate) enum StringConversion {
     NumToString { source: VarTypeInfo },
     /// STRING → Numeric (e.g., STRING_TO_INT, STRING_TO_REAL).
     StringToNum { target: VarTypeInfo },
+    /// BOOL → STRING ("TRUE"/"FALSE") -- deliberately *not* folded into
+    /// `NumToString`. `resolve_type_name` maps `BOOL` to the same
+    /// `VarTypeInfo` shape as any other signed-32-bit source (e.g.
+    /// `DINT`), so `NumToString` would silently compile it via the
+    /// generic integer-to-string opcode, producing `"1"`/`"0"` instead of
+    /// the documented `"TRUE"`/`"FALSE"` -- wrong output that compiles
+    /// cleanly. See
+    /// specs/plans/2026-07-26-twincat-stdlib-bool-fmtstr-adr.md.
+    BoolToString,
 }
 
 /// Checks if a function name is a string conversion (e.g., "int_to_string").
@@ -1310,6 +1333,9 @@ pub(crate) fn parse_string_conversion(name: &str) -> Option<StringConversion> {
         return None;
     }
     if parts[1] == "STRING" {
+        if parts[0] == "BOOL" {
+            return Some(StringConversion::BoolToString);
+        }
         let source = resolve_type_name(&Id::from(parts[0]))?;
         Some(StringConversion::NumToString { source })
     } else if parts[0] == "STRING" {
@@ -1376,6 +1402,21 @@ pub(crate) fn compile_string_conversion(
             emitter.emit_builtin(func_id);
             emit_truncation(emitter, target);
             Ok(())
+        }
+        StringConversion::BoolToString => {
+            // ironplcc check fully supports BOOL_TO_STRING; codegen does
+            // not yet implement the real "TRUE"/"FALSE" string-literal
+            // output (would need constant-pool string entries plus a
+            // runtime conditional branch, not a simple opcode dispatch).
+            // Deliberately not falling through to the generic
+            // NumToString/CONV_I32_TO_STR path, which would silently
+            // compile to "1"/"0" instead -- wrong output that compiles
+            // cleanly is worse than a clean rejection. See
+            // specs/plans/2026-07-26-twincat-stdlib-bool-fmtstr-adr.md.
+            Err(Diagnostic::not_implemented(Label::span(
+                func.name.span(),
+                "BOOL_TO_STRING",
+            )))
         }
     }
 }

@@ -3,7 +3,7 @@
 use ironplc_container::STRING_HEADER_BYTES;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
+use crate::common::{parse_and_run, try_parse_and_compile};
 
 /// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -365,4 +365,34 @@ END_PROGRAM
 ";
     let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
     assert_eq!(bufs.vars[1].as_f32(), 0.0);
+}
+
+// =========================================================================
+// BOOL_TO_STRING (parses/analyzes fine, codegen not yet implemented)
+// =========================================================================
+
+#[test]
+fn bool_to_string_when_called_then_returns_not_implemented() {
+    // ironplcc check fully supports BOOL_TO_STRING (it's a standard,
+    // unconditional TO_STRING conversion); codegen deliberately refuses
+    // rather than silently emitting "1"/"0" via the generic integer path
+    // (see the StringConversion::BoolToString hazard note in
+    // compile_call.rs). See
+    // specs/plans/2026-07-26-twincat-stdlib-bool-fmtstr-adr.md.
+    let source = "
+PROGRAM main
+  VAR
+    ready : BOOL;
+    s : STRING;
+  END_VAR
+  s := BOOL_TO_STRING(ready);
+END_PROGRAM
+";
+    let result = try_parse_and_compile(source, &CompilerOptions::default());
+
+    assert!(
+        result.is_err(),
+        "expected compilation to fail for BOOL_TO_STRING"
+    );
+    assert_eq!(result.unwrap_err().code, "P9999");
 }
