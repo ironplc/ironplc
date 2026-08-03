@@ -15,7 +15,8 @@ IronPLC recognizes the following TwinCAT file extensions (case-insensitive):
 - :file:`.TcGVL` - Global Variable Lists
 - :file:`.TcDUT` - Data Unit Types (type declarations)
 - :file:`.TcIO` - Interface declarations (requires
-  ``--allow-fb-inheritance``; see :doc:`/explanation/enabling-dialects-and-features`)
+  ``--allow-fb-inheritance``, which the ``twincat`` dialect enables
+  automatically; see :doc:`/explanation/enabling-dialects-and-features`)
 
 -------------------
 Supported Languages

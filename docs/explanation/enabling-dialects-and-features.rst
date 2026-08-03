@@ -98,8 +98,9 @@ Supported Dialects
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
-   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``, and
-   ``--allow-struct-initializer-expressions``.
+   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
+   ``--allow-struct-initializer-expressions``, and
+   ``--allow-fb-inheritance``.
 
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
