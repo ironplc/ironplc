@@ -203,7 +203,7 @@ pub enum TokenType {
     #[token("END_FUNCTION_BLOCK", ignore(case))]
     EndFunctionBlock,
 
-    // OOP extensions (Beckhoff/CODESYS origin). Demoted to
+    // Function-block inheritance syntax. Demoted to
     // Identifier unless `allow_fb_inheritance` is set — see
     // xform_demote_oop_keywords.rs.
     #[token("EXTENDS", ignore(case))]
