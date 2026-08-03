@@ -1,0 +1,41 @@
+name: Overlay prepared source tree
+description: >
+  When source-artifact is set, download that artifact (a gzip tarball named
+  ironplc-source.tar.gz, produced earlier in the same run by the version or
+  dependency-update job) and extract it over the already-checked-out tree, so
+  the job builds the prepared (version-stamped or dependency-updated) source
+  instead of the commit that triggered the run. When source-artifact is empty
+  this is a no-op and the job builds the checked-out triggering commit.
+
+  This is what lets the release/update pipelines build an exact prepared tree
+  without any job checking out a caller-supplied git ref (which is what CodeQL
+  flags as an untrusted checkout). To build an arbitrary tag or commit for
+  testing, run the workflow from a clone/fork or dispatch it from that ref.
+  See specs/adrs/0032-ci-gating-and-secret-scoping.md.
+
+inputs:
+  source-artifact:
+    description: >
+      Name of the source-tree artifact to overlay, or empty to keep the
+      checked-out triggering commit.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Download prepared source tree
+      if: ${{ inputs.source-artifact }}
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      with:
+        name: ${{ inputs.source-artifact }}
+        # Relative to the workspace so the tar step below stays portable across
+        # Linux/macOS/Windows bash (no backslash path issues).
+        path: source-artifact
+    - name: Extract prepared source tree
+      if: ${{ inputs.source-artifact }}
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        tar -xzf source-artifact/ironplc-source.tar.gz
+        rm -rf source-artifact

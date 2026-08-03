@@ -16,13 +16,16 @@ on:
         required: true
 
     outputs:
-      commit-ref:
-        description: 'A commit reference that contains the updated dependencies'
-        value: ${{ jobs.update-dependencies.outputs.commit-ref }}
-
       branch-name:
         description: 'A commit reference that contains the updated dependencies'
         value: ${{ jobs.update-dependencies.outputs.branch-name }}
+
+      source-artifact:
+        description: >
+          Name of the uploaded source-tree artifact (ironplc-source.tar.gz) that
+          contains the dependency update. Build jobs consume this instead of
+          checking out the update branch.
+        value: ${{ jobs.update-dependencies.outputs.source-artifact }}
 
 # Pushes via the PAT configured on checkout, not GITHUB_TOKEN, so the
 # GITHUB_TOKEN stays read-only here.
@@ -40,8 +43,9 @@ jobs:
         environment: production
 
         outputs:
-          commit-ref: ${{ inputs.branch-name }}
           branch-name: ${{ inputs.branch-name }}
+          # Source-tree artifact handed to the build jobs.
+          source-artifact: ironplc-source
 
         steps:
           # Checkout the repository including the tags
@@ -62,9 +66,23 @@ jobs:
           # Execute build recipe
           - name: Update dependencies
             run: just update
+          # Commit locally in all cases so the archive below captures the update
+          # even on a dry run; the push to the remote stays gated on a real run.
           - name: Commit branch to repository
-            if: ${{ !inputs.dryrun }}
             run: just commit-branch "Continuous Integration" "garretfick@users.noreply.github.com" ${{ inputs.branch-name }} "Update dependencies"
+
+          # Hand the updated tree to the build jobs as an artifact so no build
+          # job checks out the update branch (removes the CodeQL
+          # untrusted-checkout finding). HEAD is the commit created just above.
+          - name: Archive updated source tree
+            run: git archive --format=tar HEAD | gzip -c > "${{ runner.temp }}/ironplc-source.tar.gz"
+          - name: Upload updated source tree
+            uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+            with:
+              name: ironplc-source
+              path: ${{ runner.temp }}/ironplc-source.tar.gz
+              if-no-files-found: error
+
           - name: Push commit to the repository
             if: ${{ !inputs.dryrun }}
             run: |
