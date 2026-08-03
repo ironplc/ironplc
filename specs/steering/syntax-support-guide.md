@@ -171,37 +171,20 @@ pub fn insert_keyword_statement_terminators(
 
 **Always check existing flags first**. Group related extensions under one flag when they represent the same vendor behavior.
 
-Current flags in `CompilerOptions` (`parser/src/options.rs`). The authoritative
-list is the `define_compiler_options!` macro invocation (exposed at runtime via
-`CompilerOptions::FEATURE_DESCRIPTORS` and the `ironplcc dialects` command); this
-table is a convenience mirror, so consult the macro if the two ever disagree.
+The full list of existing flags is intentionally **not** duplicated here — a
+mirrored table drifts out of date. Consult these instead:
 
-| Flag | CLI | Purpose |
-|------|-----|---------|
-| `allow_iec_61131_3_2013` | Set by `--dialect` | Enables Edition 3 keywords (set by `iec61131-3-ed3` dialect) |
-| `allow_c_style_comments` | `--allow-c-style-comments` | Permits `//` and `/* */` comments |
-| `allow_missing_semicolon` | `--allow-missing-semicolon` | Inserts semicolons after END_IF etc. |
-| `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
-| `allow_constant_type_params` | `--allow-constant-type-params` | Constants in type params (e.g., `STRING[MY_CONST]`) |
-| `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) |
-| `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) |
-| `allow_ref_to` | `--allow-ref-to` | REF_TO/REF/NULL syntax without full Edition 3 |
-| `allow_reference_to` | `--allow-reference-to` | TwinCAT/CODESYS `REFERENCE TO` reference types and the `REF=` binding operator (alternative to `--allow-ref-to`; enabled by the `twincat` and `codesys` dialects) |
-| `allow_ref_arithmetic` | `--allow-ref-arithmetic` | Arithmetic (`+`, `-`) and ordering comparisons on REF_TO types |
-| `allow_ref_stack_variables` | `--allow-ref-stack-variables` | REF() on stack-allocated vars (VAR_TEMP, function VAR_INPUT/VAR_OUTPUT) |
-| `allow_ref_type_punning` | `--allow-ref-type-punning` | Assigning between REF_TO types of different base types |
-| `allow_int_to_bool_initializer` | `--allow-int-to-bool-initializer` | Integer literals `0`/`1` as BOOL initializers |
-| `allow_sizeof` | `--allow-sizeof` | SIZEOF() operator (returns size in bytes) |
-| `allow_system_uptime_global` | `--allow-system-uptime-global` | Exposes `__SYSTEM_UP_TIME`/`__SYSTEM_UP_LTIME` implicit globals |
-| `allow_cross_family_widening` | `--allow-cross-family-widening` | Implicit widening between bit-string and integer families |
-| `allow_partial_access_syntax` | `--allow-partial-access-syntax` | IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) |
-| `allow_pragmas` | `--allow-pragmas` | Curly-brace pragmas (`{attribute 'qualified_only'}`) parsed and discarded like a comment |
-| `allow_short_circuit_operators` | `--allow-short-circuit-operators` | AND_THEN short-circuit boolean operator (Beckhoff/CODESYS) |
-| `allow_mixed_located_var_declarations` | `--allow-mixed-located-var-declarations` | `AT`-located variable (e.g. `AT %I*`) mixed with plain variables in one `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block |
-| `allow_constant_initializer_expressions` | `--allow-constant-initializer-expressions` | Constant expressions (not just bare literals) in `VAR` initializers, e.g. `SCALE*4.0` |
-| `allow_bit_string_case_labels` | `--allow-bit-string-case-labels` | Hex/binary/octal bit-string literals (`16#D012`, `2#1010`) as `CASE` labels (TwinCAT/CODESYS) |
-| `allow_paren_string_length` | `--allow-paren-string-length` | `STRING(n)`/`WSTRING(n)` parenthesis length delimiter in addition to the standard `STRING[n]` brackets (gated by P4042; matched delimiters required) |
-| `allow_fb_inheritance` | `--allow-fb-inheritance` | Function-block inheritance syntax: `EXTENDS`/`IMPLEMENTS` on `FUNCTION_BLOCK` and `INTERFACE` declarations |
+- **Authoritative (code):** the `define_compiler_options!` macro invocation in
+  `compiler/parser/src/options.rs`, exposed at runtime via
+  `CompilerOptions::FEATURE_DESCRIPTORS` and the `ironplcc dialects` command.
+- **Reader-friendly (docs):**
+  [`docs/reference/compiler/ironplcc.rst`](../../docs/reference/compiler/ironplcc.rst)
+  documents every `--allow-*` flag with a description, and
+  [`docs/explanation/enabling-dialects-and-features.rst`](../../docs/explanation/enabling-dialects-and-features.rst)
+  explains which dialects enable each flag.
+
+Scan those before adding a flag to confirm an existing one doesn't already cover
+your syntax.
 
 ### Dialects
 
