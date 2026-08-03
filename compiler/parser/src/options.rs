@@ -345,6 +345,11 @@ define_compiler_options! {
     "--allow-oop-extensions",
     [Rusty, Codesys],
     allow_oop_extensions,
+
+    "Register Beckhoff Tc2_Math library functions (LTRUNC, LMOD) as built-in stdlib functions",
+    "--allow-extended-math-functions",
+    [Rusty, Codesys],
+    allow_extended_math_functions,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -456,6 +461,7 @@ mod tests {
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
                 "allow_oop_extensions",
+                "allow_extended_math_functions",
             ],
         );
     }
@@ -493,6 +499,7 @@ mod tests {
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
                 "allow_oop_extensions",
+                "allow_extended_math_functions",
             ],
         );
     }
