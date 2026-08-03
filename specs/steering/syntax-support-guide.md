@@ -244,6 +244,13 @@ concept they share (e.g. the `REF_TO` family), not after the vendor or the word
 "extension". If you cannot name the flag without a generic umbrella term, that
 usually means it should be split into more than one flag.
 
+The same applies to the flag's **description** and doc comments: describe the
+*syntax* it gates, not the vendor it came from. A construct is rarely exclusive
+to one tool — the same OOP or reference syntax often appears across several —
+so "OOP function-block declaration syntax" ages better than "TwinCAT/CODESYS OOP
+extensions". Let the [Dialects](#dialects) table express which dialects turn the
+flag on; that is where the vendor mapping belongs.
+
 ### Adding a New Flag
 
 When no existing flag covers the extension, add a new one. Update these files in order:
