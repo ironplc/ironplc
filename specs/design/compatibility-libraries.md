@@ -49,12 +49,33 @@ considered earlier:
 
 The promise applies to the **paved path**: activating a library (or a dialect
 that references one) and staying within it. It is explicitly **not** a promise
-that arbitrary combinations of `--allow-*` flags cohere. Per
-[ADR-0038](../adrs/0038-no-restrictions-on-flag-combinations.md), flag
-combinations are unrestricted; a user can enable flags that no real vendor
-environment combines and get code that compiles here but nowhere else. That is
-the unpaved path, and there is no compatibility guarantee on it. The guarantee
-is: *stay on the paved path and it just works by default.*
+that:
+
+- Arbitrary combinations of `--allow-*` flags cohere. Per
+  [ADR-0038](../adrs/0038-no-restrictions-on-flag-combinations.md), flag
+  combinations are unrestricted; a user can enable flags that no real vendor
+  environment combines and get code that compiles here but nowhere else.
+- Mixing libraries — **especially across vendors** — works. A single real
+  project targets one environment; combining, say, a TwinCAT library and a
+  Siemens library is not a supported configuration and carries no guarantee.
+
+Both are the unpaved path. The guarantee is: *stay on the paved path and it just
+works by default.*
+
+### Safety first
+
+Where compatibility cannot be delivered faithfully, the compiler must **refuse
+to compile** rather than silently produce code whose behavior it cannot
+reproduce. This is a safety requirement, not a convenience one. Concretely:
+
+- Calling a POU that is only declared (no runnable body yet — see *Bodies*) is a
+  **compile error**, never a runtime trap.
+- An unsupported library configuration is diagnosed and rejected, not compiled
+  into something with undefined behavior.
+
+The exact mechanism for detecting and rejecting unsupported configurations is an
+open question (see *Open Questions*); the requirement is that the failure mode is
+"does not compile," never "compiles and misbehaves."
 
 ## Goals
 
@@ -67,15 +88,27 @@ is: *stay on the paved path and it just works by default.*
   drops in unchanged, *including its own statement of which libraries it uses*.
 - Preserve bidirectional round-trip fidelity (`plc2plc` renders user source
   unchanged; injected library declarations are never emitted as user source).
+- **Support the playground.** Libraries are additional plain-text files that can
+  be served and loaded, so the browser playground can activate a library and
+  compile against it, not just the CLI.
 
 ## Non-Goals
 
 - A general package manager, remote fetch, or dependency resolution across the
   network. Libraries are bundled with the compiler (or added locally).
-- Guaranteeing that hand-mixed, cross-vendor `--allow-*` flag combinations
-  behave like any real environment (see *Scope of the promise*).
+- **Moving compiler-only intrinsics into libraries.** Names with a `__` prefix
+  (e.g. `__SYSTEM_UP_TIME`, `__ISVALIDREF`) mark things that *only the compiler
+  can provide*. That is precisely the functional line between what already
+  exists (compiler-provided) and what this design adds (libraries). Compiler-only
+  intrinsics stay compiler-provided.
+- **Making library code work regardless of compiler flags.** The user must set
+  the right flags / target for the library they are using; the compiler does not
+  try to make a library work under an arbitrary flag set. (In-source pragmas to
+  express this may come in the future, but are not a goal now.)
+- Collision resolution between simultaneously-active libraries — deferred (see
+  *Future Goals*).
 - Full runtime implementation of every vendor function in the first increment.
-  Some libraries begin as declare-only (see *Bodies*).
+  Some libraries begin as declare-only (see *Bodies*), subject to *Safety first*.
 
 ## Current State
 
@@ -89,9 +122,10 @@ Three existing facts make this cheap to build:
 2. **The stdlib is already seeded, and already conditional.**
    `resolve_types()` builds the type/function/symbol environments from Rust
    builder tables (`get_all_stdlib_functions`, `get_all_stdlib_function_blocks`),
-   and already seeds conditionally: `SIZEOF` only when `allow_sizeof`,
-   `__SYSTEM_UP_TIME` only when `allow_system_uptime_global`. "Conditionally add
-   named things to the environment" is an established pattern.
+   and already seeds conditionally — e.g. `SIZEOF` only when `allow_sizeof`.
+   "Conditionally add named things to the environment" is an established pattern.
+   (Note: `__`-prefixed compiler intrinsics like `__SYSTEM_UP_TIME` are seeded
+   the same way but are *not* candidates for libraries — see *Non-Goals*.)
 3. **Project discovery already reads vendor project files.**
    `sources/src/discovery/` detects TwinCAT `.plcproj` and reads
    `<Compile Include>` file references. Reading the project's *library*
@@ -117,9 +151,6 @@ library provides some mix of:
   parameter (matching Beckhoff, which differs from the base IEC signature).
 - **Function block types** — e.g. vendor-specific FBs.
 
-The stdlib that exists today becomes, conceptually, **the base library**: always
-present, lowest precedence (see *Collision model*).
-
 ### Activation channels
 
 A dormant library is activated **only** out of band, through one of:
@@ -127,13 +158,21 @@ A dormant library is activated **only** out of band, through one of:
 1. **Project file reference.** When IronPLC compiles a discovered vendor project
    (e.g. a `.plcproj`), it reads the project's declared library references and
    activates the matching bundled libraries — pulling them into the composition
-   (the merged compilation unit). The user statement of "which libraries this
-   project uses" is *Beckhoff's own*, read from the project; the user writes
-   nothing new.
+   (the merged compilation unit). The statement of "which libraries this project
+   uses" is *the vendor's own*, read from the project; the user writes nothing
+   new.
 2. **Explicit command-line activation.** `--library <name>[@<version>]`
    (repeatable) for source that has no project context.
 
+In the playground, the same libraries are served as plain-text files and loaded
+as additional sources, so a library can be activated in the browser too.
+
 Neither channel modifies POU source, preserving the portability invariant.
+
+**Never sniff, never guess.** The active library set comes *only* from an
+explicit project-file reference or explicit CLI/playground activation. The
+compiler never infers a library from source content. Guessing wrong would
+silently change behavior, which the portability promise forbids.
 
 **"Dormant by default" and "just works by default" are not in tension.**
 Libraries are off for *bare, context-free source*, but on *automatically when a
@@ -142,76 +181,54 @@ activation is **inferred from the project file** — never asked of the user. So
 the default outcome of compiling a real TwinCAT project is that its libraries
 light up.
 
-### Flat names and the collision model
+### Flat names
 
-Symbols inject **flat**, under their exact vendor names — this is required by
-the portability invariant. Collisions across simultaneously-active libraries are
-resolved so that IronPLC reproduces the *host's* resolution (otherwise "same
-behavior" fails):
+Symbols inject **flat**, under their exact vendor names — this is required by the
+portability invariant. Two rules govern qualifiers:
 
-- Each library has a **namespace identity** (its vendor name, e.g.
-  `Tc2_Standard`). Symbols are reachable both flat (`TON`) and **qualified**
-  (`Tc2_Standard.TON`).
-- IronPLC **accepts** a qualifier the source already wrote, and **never adds**
-  one the source did not. Vendor code sometimes qualifies to disambiguate; that
-  qualifier must parse and resolve, but round-trip must not introduce
-  qualification.
-- **Unqualified resolution is by reference order:** base library lowest, then
-  each activated library in the order the project/CLI referenced it, then user
-  code highest. This mirrors how a vendor library manager resolves, so behavior
-  is preserved by construction.
-- A **source-written qualifier pins** to that library and always wins.
-- Genuine unqualified ambiguity *with no ordering signal* produces a diagnostic
-  ("defined by X and Y; qualify it"). When ordering exists, resolution is silent
-  and order-based — because that is what the host does; erroring there would
-  break drop-in.
-
-### Precedence summary
-
-```
-lowest  ── base library (today's stdlib)
-        ── activated compat libraries, in reference order
-highest ── user source
-```
-
-User declarations shadow library declarations; later-referenced libraries
-shadow earlier ones; an explicit source qualifier overrides the order entirely.
+- IronPLC **accepts** a qualifier the source already wrote (e.g.
+  `Tc2_Standard.TON`) and **never adds** one the source did not. Whether such a
+  qualified access path is *supported by the parser today* is irrelevant to the
+  design: if the access path is valid in a source environment, IronPLC must be
+  able to reproduce it. The open question is only whether qualification is a
+  *requirement* for some libraries or merely optional (see *Open Questions*).
+- Resolving genuine collisions between two simultaneously-active libraries (or
+  between a library and the base stdlib) is **deferred** — see *Future Goals*.
+  The initial increment assumes an activated library provides names that do not
+  collide with each other or with the base set.
 
 ### What a library is on disk
 
 Each bundled library is a **manifest plus declarations**:
 
-- **Manifest** — name, vendor, version, target/dialect it belongs to, and
-  precedence/ordering hints. This is the provenance that makes a symbol
-  restrictable by target.
+- **Manifest** — name, vendor, version, and target/dialect it belongs to. This is
+  the provenance that makes a symbol restrictable by target.
 - **Declarations** — real IEC 61131-3 Structured Text for anything with a
   runnable body (OSCAT functions, `PI` as a constant), and `extern`/intrinsic
   markers for native functions whose bodies IronPLC provides another way (see
   *Bodies*).
 
 Defining libraries as data (manifest + ST) rather than Rust code is what lets a
-library be added without a compiler change, and lets third parties contribute
-libraries.
+library be added without a compiler change, lets third parties contribute
+libraries, and lets the playground serve them as plain-text files.
 
 ### Bodies: runnable vs. declare-only
 
-The portability promise is *same behavior*, so a declaration that only
-type-checks is not the finished product — it is a migration rung. A POU in a
-library binds its implementation one of three ways:
+A POU in a library binds its implementation one of three ways:
 
 - **ST body** — real Structured Text, compiled and run like user code. OSCAT is
   open source and semantically identical across environments, so it rides its
   real bodies for free.
 - **VM intrinsic** — a native implementation in the VM. TwinCAT `Tc2_Math`
   numerics map here, reusing the trig/numeric intrinsics being built out
-  separately. Fidelity means the intrinsic must reproduce the vendor's numeric
-  behavior (rounding, edge cases), not merely match the signature.
-- **Declare-only (check-only)** — the declaration exists so the analyzer is
-  satisfied and examples type-check, but codegen errors if the POU is actually
-  called. This is scaffolding that lets a large library (e.g. OSCAT's ~294
-  functions) go compile-clean well ahead of full runtime support — decoupling
-  "make it check" from "make it run." It does **not** satisfy the same-behavior
-  promise on its own.
+  separately. We *desire* the same numeric behavior as the vendor (rounding,
+  edge cases); whether that is fully achievable is to be determined.
+- **Declare-only** — the declaration exists so the analyzer can resolve a
+  reference, but there is no runnable body yet. Per *Safety first*, **calling a
+  declare-only POU is a compile error**, not a runtime trap. This lets a large
+  library's declarations land (so unrelated code type-checks) ahead of full
+  runtime support, without ever letting an unimplemented function slip through to
+  execution.
 
 ### Referenced-but-unshipped libraries
 
@@ -244,18 +261,30 @@ emitted.
 
 ### `FLOOR` with the TwinCAT signature
 
-The base library and `Tc2_Math` both define `FLOOR`, with different parameter
-types. Under the TwinCAT target, `Tc2_Math` is referenced after the base
-library, so unqualified `FLOOR` resolves to the TwinCAT signature (`LREAL`
-parameter) — reproducing Beckhoff behavior. Code that wrote `Tc2_Math.FLOOR`
-explicitly still resolves there and round-trips with the qualifier intact.
+TwinCAT's `Tc2_Math.FLOOR` takes an `LREAL` parameter, differing from the base
+IEC `FLOOR`. Serving the TwinCAT signature under its exact name is the goal.
+Because this is a case where a library name collides with the base stdlib, the
+*resolution* of that collision depends on the deferred collision/precedence work
+(see *Future Goals*); it is called out here as a concrete motivating case for
+that future work rather than something the first increment resolves.
 
 ### OSCAT
 
 An OSCAT-based project references OSCAT; IronPLC activates the bundled OSCAT
 library, whose functions and function blocks carry real ST bodies and compile
-and run like user code. Where a body is not yet supported at runtime, the
-declare-only rung keeps the example compile-clean until it is.
+and run like user code. Where a body is not yet supported at runtime, the POU is
+declare-only, so unrelated code type-checks while any *call* to an unimplemented
+function is a compile error (per *Safety first*).
+
+## Future Goals
+
+- **Collision resolution / precedence.** When two activated libraries — or a
+  library and the base stdlib — define the same flat name, decide resolution
+  (e.g. reference-order precedence with source-written qualifiers pinning, and a
+  diagnostic on genuine ambiguity), faithfully reproducing the host's behavior.
+  The `FLOOR`-override case above depends on this.
+- **Cross-library / cross-vendor mixing** as a supported configuration.
+- **In-source pragmas** to express flag/library intent, if ever needed.
 
 ## Alternatives Considered
 
@@ -267,8 +296,8 @@ declare-only rung keeps the example compile-clean until it is.
   `plc2plc` would emit qualifiers the source never had.
 - **Required in-source directive (`{library 'Tc2_Math'}`).** Rejected as a
   *required* channel: vendor POU files do not carry it, so requiring it is a
-  source edit. May survive only as an optional IronPLC-native convenience that
-  is never required for vendor code.
+  source edit. May survive only as an optional IronPLC-native convenience that is
+  never required for vendor code.
 - **Capability groups in Rust (generalize the `SIZEOF` seeding).** Viable for
   constants and native intrinsics, but libraries would be *code* not *data*, and
   it does not scale to source libraries like OSCAT (hundreds of ST bodies would
@@ -277,17 +306,19 @@ declare-only rung keeps the example compile-clean until it is.
 
 ## Open Questions
 
-1. **No-project source.** A bare `.st` containing `FLOOR` carries no library
-   reference in *either* tool. Should IronPLC pick the library set from explicit
-   `--library`/`--dialect` only, or ever sniff content? Recommendation: explicit
-   only, to avoid silently guessing wrong and changing behavior.
-2. **Qualifier parsing.** Does the existing `.`-access path already parse and
-   resolve a library-namespace qualifier on a call (`Tc2_Standard.TON`), or does
-   it need work? (Not verified in this design.)
-3. **Library reference identity.** A `.plcproj` names a library with vendor,
-   version, and author (e.g. `Tc2_Standard, * (Beckhoff Automation GmbH)`). What
-   is the resolution table from that reference to a bundled library, and how
-   strict is version matching?
+1. **Qualified access requirement.** If a qualified access path (e.g.
+   `Tc2_Standard.TON`) is valid in a source environment, IronPLC must be able to
+   reproduce it. The open question is whether such qualification is *required* by
+   some libraries, or always optional — which affects how much of the qualifier
+   path must land before those libraries are usable.
+2. **Library reference identity and matching.** A `.plcproj` names a library with
+   vendor, version, and author (e.g. `Tc2_Standard, * (Beckhoff Automation
+   GmbH)`). What is the resolution from that reference to a bundled library?
+   Matching should be **strict and case-sensitive** — better too strict than to
+   silently bind the wrong library.
+3. **Unsupported-configuration detection.** By what mechanism does the compiler
+   recognize an unsupported library/flag configuration in order to reject it
+   (per *Safety first*)?
 4. **Manifest format.** Concrete on-disk shape of the manifest and how
    `extern`/intrinsic bodies are marked in bundled declarations.
 
@@ -305,4 +336,3 @@ declare-only rung keeps the example compile-clean until it is.
 - [Syntax Support Guide](../steering/syntax-support-guide.md)
   — `--allow-*` flag and dialect machinery.
 </content>
-</invoke>
