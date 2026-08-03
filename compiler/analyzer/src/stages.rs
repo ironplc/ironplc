@@ -14,15 +14,17 @@ use crate::{
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
-    rule_bit_access_range, rule_case_bit_string_label, rule_decl_struct_element_unique_names,
-    rule_decl_subrange_limits, rule_enumeration_values_unique,
+    rule_abstract_not_instantiated, rule_bit_access_range, rule_case_bit_string_label,
+    rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
+    rule_enumeration_values_unique, rule_extends_field_duplicated,
     rule_function_block_call_unsupported, rule_function_block_invocation,
     rule_function_call_declared, rule_function_call_type_check,
     rule_mixed_located_var_declarations, rule_no_top_level_var_global, rule_pou_hierarchy,
     rule_program_task_definition_exists, rule_ref_to, rule_stdlib_type_redefinition,
     rule_string_encoding_compat, rule_struct_initializer_expression_allowed,
-    rule_task_names_unique, rule_unsupported_stdlib_type, rule_use_declared_enumerated_value,
-    rule_use_declared_symbolic_var, rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
+    rule_task_names_unique, rule_unsupported_extension, rule_unsupported_stdlib_type,
+    rule_use_declared_enumerated_value, rule_use_declared_symbolic_var,
+    rule_var_decl_const_initialized, rule_var_decl_const_not_fb,
     rule_var_decl_global_const_requires_external_const, rule_var_decl_initializer_type_compat,
     semantic_context::SemanticContext,
     symbol_environment::{ScopeKind, SymbolEnvironment, SymbolKind},
@@ -143,12 +145,25 @@ pub fn resolve_types(
     // which codegen uses to skip unused functions.
     let (mut library, reachable) = xform_toposort_declarations::apply(library)?;
 
-    // Recoverable: Fold-based transforms consume the Library on error, so clone
-    // before each one. On failure, fall back to the pre-transform clone.
+    // Hard failure: declaration ordering and type-environment population is
+    // required for all subsequent transforms, and a failure here reflects a
+    // fundamentally broken declaration (not an unrelated one), so reverting
+    // the whole library on error is correct.
+    let fallback = library.clone();
+    match xform_resolve_type_decl_environment::apply(library, &mut type_environment) {
+        Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
+
+    // Recoverable: an unresolvable declaration is diagnosed but does not
+    // discard the rest of the library's successfully resolved declarations.
+    // See specs/plans/2026-08-02-partial-resolution-revert-on-unrelated-error.md.
     let recoverable_xforms: Vec<
-        fn(Library, &mut TypeEnvironment) -> Result<Library, Vec<Diagnostic>>,
+        fn(Library, &mut TypeEnvironment) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>>,
     > = vec![
-        xform_resolve_type_decl_environment::apply,
         xform_resolve_late_bound_expr_kind::apply,
         xform_resolve_late_bound_type_initializer::apply,
     ];
@@ -156,7 +171,10 @@ pub fn resolve_types(
     for xform in recoverable_xforms {
         let fallback = library.clone();
         match xform(library, &mut type_environment) {
-            Ok(result) => library = result,
+            Ok((result, errs)) => {
+                library = result;
+                diagnostics.extend(errs);
+            }
             Err(errs) => {
                 diagnostics.extend(errs);
                 library = fallback;
@@ -292,9 +310,11 @@ pub(crate) fn semantic(
     options: &CompilerOptions,
 ) -> SemanticResult {
     let functions: Vec<fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult> = vec![
+        rule_abstract_not_instantiated::apply,
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
+        rule_extends_field_duplicated::apply,
         rule_function_block_call_unsupported::apply,
         rule_function_block_invocation::apply,
         rule_function_call_declared::apply,
@@ -308,6 +328,7 @@ pub(crate) fn semantic(
         rule_use_declared_enumerated_value::apply,
         rule_use_declared_symbolic_var::apply,
         rule_unsupported_stdlib_type::apply,
+        rule_unsupported_extension::apply,
         rule_var_decl_const_initialized::apply,
         rule_var_decl_const_not_fb::apply,
         rule_var_decl_initializer_type_compat::apply,
@@ -396,6 +417,43 @@ END_FUNCTION_BLOCK";
     fn parse_shared_library(name: &'static str) -> Library {
         let src = read_shared_resource(name);
         parse_program(&src, &FileId::default(), &CompilerOptions::default()).unwrap()
+    }
+
+    // ---------------------------------------------------------------------
+    // Don't revert a whole library's type resolution because one unrelated
+    // declaration failed to resolve.
+    // See specs/plans/2026-08-02-partial-resolution-revert-on-unrelated-error.md.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn analyze_when_unrelated_pou_has_undeclared_type_then_valid_pou_unaffected() {
+        let program = "
+FUNCTION_BLOCK FB_A
+VAR
+    x : Undeclared_Type;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Callee
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_B
+VAR
+    inst : FB_Callee;
+END_VAR
+    inst();
+END_FUNCTION_BLOCK
+        ";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        let diagnostics = context.diagnostics();
+        assert_eq!(
+            1,
+            diagnostics.len(),
+            "expected exactly one diagnostic, got {diagnostics:?}"
+        );
+        assert_eq!("P2008", diagnostics[0].code);
     }
 
     // ---------------------------------------------------------------------

@@ -270,7 +270,13 @@ pub trait Visitor<E> {
     // 2.5.2
     dispatch!(FunctionBlockDeclaration);
 
+    // CODESYS/TwinCAT OOP extension
+    dispatch!(FunctionBlockOop);
+
     dispatch!(FunctionBlockBodyKind);
+
+    // CODESYS/TwinCAT OOP extension
+    dispatch!(InterfaceDeclaration);
 
     // 2.5.3
     dispatch!(ProgramDeclaration);

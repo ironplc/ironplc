@@ -72,16 +72,19 @@ pub fn parse(
         ));
     }
 
-    // Find the POU, GVL, or DUT child element
+    // Find the POU, GVL, DUT, or Itf (interface) child element. Itf holds
+    // a Beckhoff TwinCAT INTERFACE declaration — a separate object type
+    // from POU, stored in its own .TcIO file (see
+    // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
     let object = root
         .children()
-        .find(|n| n.is_element() && matches!(n.tag_name().name(), "POU" | "GVL" | "DUT"))
+        .find(|n| n.is_element() && matches!(n.tag_name().name(), "POU" | "GVL" | "DUT" | "Itf"))
         .ok_or_else(|| {
             Diagnostic::problem(
                 Problem::TwinCatMalformed,
                 Label::file(
                     file_id.clone(),
-                    "TcPlcObject must contain a POU, GVL, or DUT element".to_string(),
+                    "TcPlcObject must contain a POU, GVL, DUT, or Itf element".to_string(),
                 ),
             )
         })?;
@@ -103,7 +106,11 @@ pub fn parse(
     let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
 
     match object_type {
-        "POU" => parse_pou(
+        // An interface's Declaration is just the header line (e.g.
+        // `INTERFACE I_Drivable EXTENDS I_Base`) with no Implementation —
+        // structurally identical to how parse_pou already handles a POU
+        // with an absent Implementation element.
+        "POU" | "Itf" => parse_pou(
             declaration_text,
             declaration_byte_offset,
             &object,
@@ -255,6 +262,8 @@ fn closing_keyword(declaration: &str) -> &'static str {
         "END_FUNCTION"
     } else if trimmed.len() >= 7 && trimmed[..7].eq_ignore_ascii_case("PROGRAM") {
         "END_PROGRAM"
+    } else if trimmed.len() >= 9 && trimmed[..9].eq_ignore_ascii_case("INTERFACE") {
+        "END_INTERFACE"
     } else {
         // Fallback — the ST parser will report a more specific error
         ""
@@ -334,6 +343,7 @@ fn cdata_text_with_offset(node: &roxmltree::Node) -> (String, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironplc_dsl::common::{LibraryElementKind, TypeName};
     use ironplc_dsl::core::FileId;
 
     fn test_file_id() -> FileId {
@@ -531,7 +541,7 @@ END_TYPE]]></Declaration>
 
         let diagnostic = result.unwrap_err();
         assert_eq!(diagnostic.code, "P0009");
-        assert!(diagnostic.primary.message.contains("POU, GVL, or DUT"));
+        assert!(diagnostic.primary.message.contains("POU, GVL, DUT, or Itf"));
     }
 
     #[test]
@@ -598,6 +608,11 @@ END_VAR]]></Declaration>
     }
 
     #[test]
+    fn closing_keyword_when_interface_then_returns_end_interface() {
+        assert_eq!(closing_keyword("INTERFACE I_Drivable"), "END_INTERFACE");
+    }
+
+    #[test]
     fn closing_keyword_when_unknown_keyword_then_returns_empty() {
         // Unknown POU type — fallback returns empty string
         assert_eq!(closing_keyword("UNKNOWN_TYPE Something"), "");
@@ -628,6 +643,72 @@ END_VAR]]></Declaration>
         assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
         let library = result.unwrap();
         assert_eq!(library.elements.len(), 1);
+    }
+
+    fn opts_with_oop_extensions() -> CompilerOptions {
+        CompilerOptions {
+            allow_oop_extensions: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    #[test]
+    fn parse_when_itf_bare_interface_then_succeeds() {
+        // Modeled on a real .TcIO file's structure (Beckhoff TwinCAT
+        // interface, no base) — see
+        // specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <Itf Name="I_Drivable" Id="{00000000-0000-0000-0000-000000000000}">
+    <Declaration><![CDATA[INTERFACE I_Drivable
+]]></Declaration>
+  </Itf>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_oop_extensions());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+        let library = result.unwrap();
+        assert_eq!(library.elements.len(), 1);
+        assert!(matches!(
+            library.elements[0],
+            LibraryElementKind::InterfaceDeclaration(_)
+        ));
+    }
+
+    #[test]
+    fn parse_when_itf_extends_base_interface_then_succeeds() {
+        // Modeled on a real .TcIO file's structure (e.g. `I_Focus.TcIO`
+        // extending `I_BaseAxis`).
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <Itf Name="I_Focus" Id="{00000000-0000-0000-0000-000000000000}">
+    <Declaration><![CDATA[INTERFACE I_Focus EXTENDS I_BaseAxis]]></Declaration>
+  </Itf>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_oop_extensions());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+        let library = result.unwrap();
+        let interface = match &library.elements[0] {
+            LibraryElementKind::InterfaceDeclaration(decl) => decl,
+            other => panic!("expected InterfaceDeclaration, got {other:?}"),
+        };
+        assert_eq!(interface.extends, vec![TypeName::from("I_BaseAxis")]);
+    }
+
+    #[test]
+    fn parse_when_itf_and_default_dialect_then_err() {
+        // Without allow_oop_extensions, INTERFACE is just an identifier.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <Itf Name="I_Drivable" Id="{00000000-0000-0000-0000-000000000000}">
+    <Declaration><![CDATA[INTERFACE I_Drivable
+]]></Declaration>
+  </Itf>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_err());
     }
 
     #[test]

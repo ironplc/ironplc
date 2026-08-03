@@ -17,6 +17,7 @@ use std::collections::HashMap;
 
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediate_type::IntermediateType;
+use crate::intermediates::inherited_fields::collect_inherited_fields;
 use crate::type_environment::TypeEnvironment;
 use ironplc_parser::options::CompilerOptions;
 
@@ -26,10 +27,12 @@ pub fn apply(
     function_environment: &FunctionEnvironment,
     options: &CompilerOptions,
 ) -> Result<Library, Vec<Diagnostic>> {
+    let inherited_fields = collect_inherited_fields(&lib);
     let mut resolver = ExprTypeResolver {
         var_types: HashMap::new(),
         global_var_types: HashMap::new(),
         array_element_types: HashMap::new(),
+        inherited_fields,
         type_environment,
         function_environment,
         options,
@@ -99,6 +102,11 @@ struct ExprTypeResolver<'a> {
     /// This enables `resolve_variable_type` to return the correct element type
     /// when resolving `arr[i]` or `pt^[i]` expressions.
     array_element_types: HashMap<Id, TypeName>,
+    /// Fields inherited via `EXTENDS`, per function block -- see
+    /// `intermediates::inherited_fields`. Seeded into `var_types` before a
+    /// function block's own fields so unqualified references to a base
+    /// class's fields type-check correctly.
+    inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
     type_environment: &'a TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
     options: &'a CompilerOptions,
@@ -519,6 +527,11 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         &mut self,
         node: FunctionBlockDeclaration,
     ) -> Result<FunctionBlockDeclaration, Diagnostic> {
+        // Insert inherited fields first so the FB's own fields (inserted
+        // next) correctly shadow a same-named ancestor field.
+        if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
+            fields.iter().for_each(|v| self.insert(v));
+        }
         node.variables.iter().for_each(|v| self.insert(v));
         self.seed_implicit_globals();
         let result = node.recurse_fold(self);
@@ -599,8 +612,9 @@ mod tests {
             .unwrap();
         let library =
             xform_resolve_type_decl_environment::apply(library, &mut type_environment).unwrap();
-        let library =
-            xform_resolve_late_bound_expr_kind::apply(library, &mut type_environment).unwrap();
+        let library = xform_resolve_late_bound_expr_kind::apply(library, &mut type_environment)
+            .unwrap()
+            .0;
         let mut function_environment = FunctionEnvironmentBuilder::new()
             .with_stdlib_functions()
             .build();
@@ -901,6 +915,36 @@ VAR
     result : BOOL;
 END_VAR
     result := a AND_THEN b;
+END_FUNCTION_BLOCK";
+
+        let result = run_pass_with_options(program, &options);
+        let types = collect_assignment_types(&result);
+        assert_type_eq(&types[0], "BOOL");
+    }
+
+    // -----------------------------------------------------------------
+    // EXTENDS field inheritance.
+    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn apply_when_expression_uses_inherited_field_then_resolves_type() {
+        let options = CompilerOptions {
+            allow_oop_extensions: true,
+            ..CompilerOptions::default()
+        };
+        let program = "
+FUNCTION_BLOCK FB_Base
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    bRunning : BOOL;
+END_VAR
+    bRunning := bEnabled AND bRunning;
 END_FUNCTION_BLOCK";
 
         let result = run_pass_with_options(program, &options);

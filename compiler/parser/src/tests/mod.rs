@@ -15,6 +15,7 @@ mod duration;
 mod enums;
 mod function_calls;
 mod literals;
+mod oop_extensions;
 mod partial_access;
 mod pragmas;
 mod reference_to;

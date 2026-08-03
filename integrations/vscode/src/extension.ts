@@ -11,6 +11,7 @@ import { IplcEditorProvider } from './iplcEditorProvider';
 import { IronplcTaskProvider } from './ironplcTaskProvider';
 import { CompilerEnvironment, findCompilerPath, formatStartFailure } from './compilerDiscovery';
 import { ProblemCode, formatProblem } from './problems';
+import { problemHelpUrl } from './problemUrl';
 import { RunSession, RunState } from './runSession';
 import { findProgramLenses } from './runCodeLensProvider';
 import {
@@ -80,7 +81,7 @@ let runSession: RunSession | undefined;
 let extensionVersion = '';
 
 function openProblemInBrowser(code: ProblemCode) {
-  const url = 'https://www.ironplc.com/reference/editor/problems/' + code + '.html?version=' + encodeURIComponent(extensionVersion);
+  const url = problemHelpUrl(code, extensionVersion);
   vscode.env.openExternal(vscode.Uri.parse(url));
 }
 

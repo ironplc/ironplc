@@ -38,6 +38,8 @@
 //!    TRIG := TRIG0;
 //! END_FUNCTION_BLOCK
 //! ```
+use std::collections::HashMap;
+
 use ironplc_dsl::{
     common::*,
     core::{Id, Located},
@@ -47,6 +49,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
+    intermediates::inherited_fields::collect_inherited_fields,
     result::SemanticResult,
     scoped_table::{self, Key, ScopedTable, Value},
     semantic_context::SemanticContext,
@@ -59,15 +62,22 @@ pub fn apply(
     _context: &SemanticContext,
     options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor: ScopedTable<Id, DummyNode> = scoped_table::ScopedTable::new();
+    let mut checker = SymbolScopeChecker {
+        table: scoped_table::ScopedTable::new(),
+        inherited_fields: collect_inherited_fields(lib),
+    };
 
     // Seed implicit system globals so direct references don't trigger P4007.
     if options.allow_system_uptime_global {
-        visitor.add(&Id::from("__SYSTEM_UP_TIME"), DummyNode {});
-        visitor.add(&Id::from("__SYSTEM_UP_LTIME"), DummyNode {});
+        checker
+            .table
+            .add(&Id::from("__SYSTEM_UP_TIME"), DummyNode {});
+        checker
+            .table
+            .add(&Id::from("__SYSTEM_UP_LTIME"), DummyNode {});
     }
 
-    visitor.walk(lib).map_err(|e| vec![e])
+    checker.walk(lib).map_err(|e| vec![e])
 }
 
 #[derive(Debug)]
@@ -77,23 +87,32 @@ impl Value for DummyNode {}
 impl Key for Id {}
 impl Key for TypeName {}
 
-impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
+/// Wraps `ScopedTable` with the `EXTENDS`-inherited fields per function
+/// block (see `intermediates::inherited_fields`), so that a derived
+/// function block's own scope also includes fields declared only on its
+/// ancestor chain.
+struct SymbolScopeChecker<'a> {
+    table: ScopedTable<'a, Id, DummyNode>,
+    inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
+}
+
+impl Visitor<Diagnostic> for SymbolScopeChecker<'_> {
     type Value = ();
 
     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Diagnostic> {
-        self.enter();
+        self.table.enter();
 
-        self.add(&node.name, DummyNode {});
+        self.table.add(&node.name, DummyNode {});
         let ret = node.recurse_visit(self);
-        self.exit();
+        self.table.exit();
         ret
     }
 
     fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Diagnostic> {
-        self.enter();
-        self.add(&node.name, DummyNode {});
+        self.table.enter();
+        self.table.add(&node.name, DummyNode {});
         let ret = node.recurse_visit(self);
-        self.exit();
+        self.table.exit();
         ret
     }
 
@@ -101,15 +120,22 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Diagnostic> {
-        self.enter();
-        self.add(&node.name.name, DummyNode {});
+        self.table.enter();
+        self.table.add(&node.name.name, DummyNode {});
+        if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
+            for field in &fields {
+                self.table
+                    .add_if(field.identifier.symbolic_id(), DummyNode {});
+            }
+        }
         let ret = node.recurse_visit(self);
-        self.exit();
+        self.table.exit();
         ret
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
-        self.add_if(node.identifier.symbolic_id(), DummyNode {});
+        self.table
+            .add_if(node.identifier.symbolic_id(), DummyNode {});
         node.recurse_visit(self)
     }
 
@@ -117,7 +143,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
         &mut self,
         node: &ironplc_dsl::textual::NamedVariable,
     ) -> Result<(), Diagnostic> {
-        match self.find(&node.name) {
+        match self.table.find(&node.name) {
             Some(_) => {
                 // We found the variable being referred to
                 Ok(())
@@ -125,7 +151,7 @@ impl Visitor<Diagnostic> for ScopedTable<'_, Id, DummyNode> {
             None => {
                 let suggestion = find_closest_match(
                     node.name.original(),
-                    self.keys().iter().map(|k| k.original().as_str()),
+                    self.table.keys().iter().map(|k| k.original().as_str()),
                 );
                 let mut diagnostic = Diagnostic::problem(
                     Problem::VariableUndefined,
@@ -358,6 +384,99 @@ END_PROGRAM";
         let library = parse_and_resolve_types(program);
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&library, &context, &CompilerOptions::default());
+
+        assert!(result.is_err());
+    }
+
+    // ---------------------------------------------------------------------
+    // EXTENDS field inheritance.
+    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
+    // ---------------------------------------------------------------------
+
+    fn opts_with_oop_extensions() -> CompilerOptions {
+        CompilerOptions {
+            allow_oop_extensions: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    #[test]
+    fn apply_when_unqualified_inherited_field_then_ok() {
+        let program = "
+FUNCTION_BLOCK FB_Base
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    bRunning : BOOL;
+END_VAR
+bRunning := bEnabled;
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_oop_extensions(),
+        );
+        let result = apply(&library, &context, &opts_with_oop_extensions());
+
+        assert!(result.is_ok(), "unexpected errors: {result:?}");
+    }
+
+    #[test]
+    fn apply_when_multi_level_inherited_field_then_ok() {
+        let program = "
+FUNCTION_BLOCK FB_A
+VAR
+    a : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_B EXTENDS FB_A
+VAR
+    b : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_C EXTENDS FB_B
+VAR
+    c : BOOL;
+END_VAR
+c := a AND b;
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_oop_extensions(),
+        );
+        let result = apply(&library, &context, &opts_with_oop_extensions());
+
+        assert!(result.is_ok(), "unexpected errors: {result:?}");
+    }
+
+    #[test]
+    fn apply_when_extends_and_genuinely_undeclared_field_then_error() {
+        let program = "
+FUNCTION_BLOCK FB_Base
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    bRunning : BOOL;
+END_VAR
+bRunning := bNotDeclaredAnywhere;
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_oop_extensions(),
+        );
+        let result = apply(&library, &context, &opts_with_oop_extensions());
 
         assert!(result.is_err());
     }
