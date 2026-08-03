@@ -209,6 +209,10 @@ pub struct DebuggerHook<'a> {
     /// When set, the next instruction skips the breakpoint check exactly
     /// once. Set on every pause so resume makes forward progress.
     skip_breakpoint_once: bool,
+    /// When set, the next instruction pauses with [`PauseReason::Entry`]
+    /// exactly once, before any breakpoint or step check. The single-threaded
+    /// driver arms this only on the first round of a `stopOnEntry` launch.
+    stop_on_entry: bool,
     /// Call depth relative to scan entry: `+1` per call, `-1` per return.
     /// Self-heals to 0 at each scan boundary (the entry-frame return uses a
     /// saturating decrement).
@@ -225,10 +229,22 @@ impl<'a> DebuggerHook<'a> {
         Self {
             breakpoints,
             skip_breakpoint_once: false,
+            stop_on_entry: false,
             depth: 0,
             last_offset: 0,
             step: StepController::idle(),
         }
+    }
+
+    /// Arm a one-shot entry pause: the next instruction pauses with
+    /// [`PauseReason::Entry`] before executing, ahead of any breakpoint or
+    /// step check.
+    ///
+    /// Honors the DAP `stopOnEntry` launch option. The single-threaded driver
+    /// rebuilds the hook each round, so it arms this only on the first round;
+    /// scan 2+ never re-arms and runs normally.
+    pub fn stop_on_entry(&mut self) {
+        self.stop_on_entry = true;
     }
 
     /// Arm a step-over from the current (paused) location: run to the next
@@ -273,6 +289,11 @@ impl<'a> DebuggerHook<'a> {
 impl DebugHook for DebuggerHook<'_> {
     fn before_instruction(&mut self, function_id: FunctionId, pc: usize, _op: u8) -> HookAction {
         self.last_offset = pc;
+        if self.stop_on_entry {
+            // Fires once, before the first instruction of the session.
+            self.stop_on_entry = false;
+            return HookAction::Pause(PauseReason::Entry);
+        }
         let skip = self.skip_breakpoint_once;
         self.skip_breakpoint_once = false;
         if !skip {
@@ -376,6 +397,24 @@ mod tests {
         assert!(matches!(
             hook.before_instruction(FunctionId::SCAN, 4, 0),
             HookAction::Pause(PauseReason::Breakpoint(_))
+        ));
+    }
+
+    #[test]
+    fn debugger_hook_when_stop_on_entry_then_pauses_once_before_first_instruction() {
+        use crate::debug_hook::{DebugHook, HookAction};
+        let table = BreakpointTable::new();
+        let mut hook = DebuggerHook::new(&table);
+        hook.stop_on_entry();
+        // The first instruction pauses with Entry, before any breakpoint check.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 0, 0),
+            HookAction::Pause(PauseReason::Entry)
+        ));
+        // It is one-shot: the next instruction runs normally.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 1, 0),
+            HookAction::Continue
         ));
     }
 
