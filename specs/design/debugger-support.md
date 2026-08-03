@@ -847,6 +847,21 @@ For PLC-specific debugging, users need scan-level control:
 | **Pause Between Scans** | Always pause after OUTPUT_FLUSH, before the next INPUT_FREEZE |
 | **Run to Scan N** | Continue until `scan_count` reaches a target value |
 
+> **Status — continuous run loop deferred (Phase 4c).** The Phase 4 DAP server
+> ships a *single-scan* run loop: on `RoundOutcome::Completed` it emits
+> `terminated` (see the scaffold plan's pseudocode and `dap/server.rs`). A real
+> debugger must instead keep scanning — loop back on `Completed` to run the next
+> scan, so breakpoints fire every cycle and variables evolve across cycles —
+> bounded by the launch `scanLimit` (runaway prevention) and honoring
+> `stopOnEntry`. Because the v1 DAP loop is single-threaded (see §Single-threaded
+> DAP loop), a free-running program with no breakpoint is stopped by `disconnect`
+> (the adapter process is terminated), not by a mid-scan `pause`; interactive
+> `pause`-while-running remains the Phase 6 cut. This continuous-loop work is a
+> tracked server follow-up (Phase 4c) and is **not** part of Phase 5 (VS Code
+> integration). The custom `ironplc/stepScan` / `ironplc/scanCount` handlers land
+> with it; until then the Phase 5 toolbar buttons are wired but answered
+> `requestNotApplicable`.
+
 A new `VmRunning::run_round_debug` method drives a single round under a `DebuggerHook`. v1 supports a single program instance only (see §Multi-instance: not supported in v1), so the `instances_for_task` loop is collapsed to "the one instance":
 
 ```rust
@@ -1341,17 +1356,36 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 
 ### Phase 5: VS Code Integration
 
+Implemented in `specs/plans/2026-08-02-dap-vscode-integration.md`.
+
+**Adapter invocation (as shipped).** Phase 4 shipped the DAP server as a
+**separate binary, `ironplcdap`** (feature-gated on `vm-cli`), that speaks DAP
+over stdin/stdout and takes **no CLI arguments**; the program under debug is
+delivered by the `launch` request's `arguments.program` field (a path to a
+compiled `.iplc` container). Phase 5 matches that: the adapter spawns
+`ironplcdap` with no arguments and, when `program` is a source file, compiles it
+to a temp `.iplc` first so the `launch` sees a debug-enabled container.
+
 | Location | Files | Changes |
 |----------|-------|---------|
-| `integrations/vscode` | `package.json` | Add `debuggers` contribution; **also add `commands` and `menus.debug/toolBar` entries for `ironplc.stepScan` and `ironplc.scanCount`** (otherwise custom DAP requests are unreachable) |
-| `integrations/vscode/src` | new `debugAdapter.ts` | `DebugAdapterDescriptorFactory`; if `program` is `.st`, run the compiler with debug info enabled to emit a temp `.iplc`; launch `ironplcvm-debug --dap <file.iplc>` |
-| `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan`, `ironplc/scanCount` as VS Code commands. (No force/unforce — those are out of v1 scope.) |
-| `integrations/vscode/src` | `extension.ts` | Register debug adapter factory and custom-request commands |
+| `integrations/vscode` | `package.json` | Add `debuggers` (type `ironplc`) and `breakpoints` contributions; **`commands` and `menus.debug/toolBar` entries for `ironplc.stepScan` and `ironplc.scanCount`** (otherwise custom DAP requests are unreachable); `ironplc.dapServerPath` setting |
+| `integrations/vscode/src` | new `debugAdapterLogic.ts` | Pure, unit-tested decision logic: source-vs-container detection, temp container path, `ironplcdap` discovery (env → setting → bundled), program-path fallback, compile args |
+| `integrations/vscode/src` | new `debugAdapter.ts` | `DebugConfigurationProvider` (fills defaults; if `program` is a source file, runs the compiler with debug info to emit a temp `.iplc`) and `DebugAdapterDescriptorFactory` (spawns `ironplcdap`, resolved via `debugAdapterLogic`) |
+| `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan`, `ironplc/scanCount` as VS Code commands forwarding to the active session. (No force/unforce — those are out of v1 scope.) |
+| `integrations/vscode/src` | `extension.ts` | Register debug config provider, adapter factory, and custom-request commands |
 
 **Tests:**
-- Extension: debug adapter registered.
-- Extension: launch configuration resolves the `ironplcvm-debug` path (env var, settings, then bundled).
-- Manual: F5 with a breakpoint hits, variable inspection populates, Step Scan toolbar works.
+- Unit: `debugAdapterLogic` — `ironplcdap` path resolution (env var, setting,
+  then bundled), source-vs-container detection, temp container path, program
+  fallback, compile args, scan-count formatting.
+- Extension (functional): `ironplc.stepScan` / `ironplc.scanCount` commands
+  registered.
+- Manual: F5 with a breakpoint hits, variable inspection populates, Step Scan
+  toolbar works.
+
+Server-side handling of the `ironplc/stepScan` / `ironplc/scanCount` custom
+requests (and single-stepping) is a later phase; until then the server answers
+them `requestNotApplicable`, so the toolbar buttons are wired but inert.
 
 ### Phase 6: Beyond v1 (Future)
 

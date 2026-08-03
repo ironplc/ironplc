@@ -1,0 +1,34 @@
+=====
+E0004
+=====
+
+.. problem-summary:: E0004
+
+No program was specified to debug.
+
+When you start an IronPLC debug session, the launch configuration's ``program``
+attribute must point at the file to debug. This error appears when ``program``
+is empty and there is no debuggable file active in the editor, so the debugger
+has nothing to launch.
+
+The IronPLC debugger accepts two kinds of program: a Structured Text source
+file, which it compiles to a bytecode container before launching, or an
+already-compiled :file:`.iplc` container, which it launches directly. Either
+way, the ``program`` attribute has to resolve to a real path on disk.
+
+**Solutions**:
+
+1. **Set the program explicitly**: In :file:`.vscode/launch.json`, set
+   ``program`` to the path of a Structured Text source, for example
+   ``"program": "${workspaceFolder}/main.st"``. An explicit path is the most
+   reliable choice because it does not depend on which editor is focused.
+
+2. **Debug the active file**: Use ``"program": "${file}"`` and make sure the
+   Structured Text file you want to debug is the focused editor when you press
+   :kbd:`F5`. Otherwise ``${file}`` resolves to whatever else is focused — for
+   example :file:`launch.json` while you are editing it — and the debugger has
+   no Structured Text program to run.
+
+3. **Open a source file first**: If you started debugging from an empty
+   configuration, open the :file:`.st` file in the editor before launching so
+   the debugger can fall back to it.
