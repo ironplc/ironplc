@@ -92,7 +92,7 @@ mod tests {
 
     fn parse(program: &str) -> Library {
         let options = CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
         parse_program(program, &FileId::default(), &options).unwrap()

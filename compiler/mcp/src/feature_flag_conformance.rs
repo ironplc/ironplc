@@ -218,7 +218,7 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
     // identifiers after the FB name is a parse error. With the flag on, it
     // parses as the inheritance clause.
     FlagFixture {
-        key: "allow_oop_extensions",
+        key: "allow_fb_inheritance",
         prereqs: &[],
         source: "FUNCTION_BLOCK FB_Base\nVAR\nx : INT;\nEND_VAR\nEND_FUNCTION_BLOCK\nFUNCTION_BLOCK FB_Derived EXTENDS FB_Base\nEND_FUNCTION_BLOCK",
     },

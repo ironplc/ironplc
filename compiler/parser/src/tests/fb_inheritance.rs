@@ -1,4 +1,4 @@
-//! TwinCAT/CODESYS OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
+//! OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
 //! See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
 
 use super::common::*;
@@ -44,7 +44,7 @@ VAR
     bRunning : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     let oop = fb.oop.as_ref().expect("expected oop to be Some");
     assert_eq!(oop.base, Some(TypeName::from("FB_Motor")));
@@ -59,7 +59,7 @@ VAR
     bRunning : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     let oop = fb.oop.as_ref().expect("expected oop to be Some");
     assert_eq!(oop.base, None);
@@ -74,7 +74,7 @@ VAR
     bRunning : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     let oop = fb.oop.as_ref().expect("expected oop to be Some");
     assert_eq!(oop.base, Some(TypeName::from("FB_Motor")));
@@ -90,7 +90,7 @@ VAR
     bRunning : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     let oop = fb.oop.as_ref().expect("expected oop to be Some");
     assert_eq!(
@@ -107,14 +107,14 @@ VAR
     bRunning : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     assert!(fb.oop.is_none());
 }
 
 #[test]
 fn parse_when_extends_and_default_dialect_then_err() {
-    // Without allow_oop_extensions, EXTENDS is just an identifier, so
+    // Without allow_fb_inheritance, EXTENDS is just an identifier, so
     // this is a parse error (two consecutive identifiers).
     let source = "
 FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
@@ -134,7 +134,7 @@ VAR
     bEnabled : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     let oop = fb.oop.as_ref().expect("expected oop to be Some");
     assert!(oop.is_abstract);
@@ -151,7 +151,7 @@ VAR
     bEnabled : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     let oop = fb.oop.as_ref().expect("expected oop to be Some");
     assert!(oop.is_abstract);
@@ -167,14 +167,14 @@ VAR
     bRunning : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &opts_with_oop_extensions()).unwrap();
+    let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
     assert!(fb.oop.is_none());
 }
 
 #[test]
 fn parse_when_abstract_and_default_dialect_then_ok_as_identifier() {
-    // Without allow_oop_extensions, ABSTRACT demotes to an ordinary
+    // Without allow_fb_inheritance, ABSTRACT demotes to an ordinary
     // identifier, so `FUNCTION_BLOCK ABSTRACT` is parsed as a function
     // block literally named "ABSTRACT" -- matching how EXTENDS/IMPLEMENTS
     // behave when the flag is off.

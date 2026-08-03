@@ -232,8 +232,8 @@ Options
    :doc:`P4043 </reference/compiler/problems/P4043>` when used without this
    flag.
 
-``--allow-oop-extensions``
-   Allow CODESYS/TwinCAT OOP extensions: ``EXTENDS``/``IMPLEMENTS`` on
+``--allow-fb-inheritance``
+   Allow function-block inheritance syntax: ``EXTENDS``/``IMPLEMENTS`` on
    ``FUNCTION_BLOCK`` and ``INTERFACE`` declarations. Parsed and registered
    as known types; inheritance, interface dispatch, and method/property
    declarations are not yet semantically supported (produces

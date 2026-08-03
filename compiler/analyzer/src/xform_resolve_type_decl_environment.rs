@@ -1083,7 +1083,7 @@ END_TYPE
     }
 
     // ---------------------------------------------------------------------
-    // CODESYS/TwinCAT OOP extension: INTERFACE registers as a known type.
+    // OOP extension: INTERFACE registers as a known type.
     // See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
     // ---------------------------------------------------------------------
 
@@ -1094,7 +1094,7 @@ INTERFACE I_Drivable
 END_INTERFACE
         ";
         let options = CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
         let input = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
@@ -1125,7 +1125,7 @@ END_VAR
 END_FUNCTION_BLOCK
         ";
         let options = CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
         let input = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();

@@ -393,9 +393,9 @@ END_PROGRAM";
     // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
     // ---------------------------------------------------------------------
 
-    fn opts_with_oop_extensions() -> CompilerOptions {
+    fn opts_with_fb_inheritance() -> CompilerOptions {
         CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         }
     }
@@ -418,9 +418,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_oop_extensions(),
+            &opts_with_fb_inheritance(),
         );
-        let result = apply(&library, &context, &opts_with_oop_extensions());
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
@@ -449,9 +449,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_oop_extensions(),
+            &opts_with_fb_inheritance(),
         );
-        let result = apply(&library, &context, &opts_with_oop_extensions());
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
 
         assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
@@ -474,9 +474,9 @@ END_FUNCTION_BLOCK";
 
         let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
             program,
-            &opts_with_oop_extensions(),
+            &opts_with_fb_inheritance(),
         );
-        let result = apply(&library, &context, &opts_with_oop_extensions());
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
 
         assert!(result.is_err());
     }
