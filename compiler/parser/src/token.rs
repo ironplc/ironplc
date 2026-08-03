@@ -203,8 +203,8 @@ pub enum TokenType {
     #[token("END_FUNCTION_BLOCK", ignore(case))]
     EndFunctionBlock,
 
-    // CODESYS/TwinCAT OOP extensions (Beckhoff/CODESYS origin). Demoted to
-    // Identifier unless `allow_oop_extensions` is set — see
+    // OOP extensions (Beckhoff/CODESYS origin). Demoted to
+    // Identifier unless `allow_fb_inheritance` is set — see
     // xform_demote_oop_keywords.rs.
     #[token("EXTENDS", ignore(case))]
     Extends,

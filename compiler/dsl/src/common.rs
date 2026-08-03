@@ -2776,7 +2776,7 @@ pub struct FunctionBlockDeclaration {
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: FunctionBlockBodyKind,
     pub span: SourceSpan,
-    /// Object-oriented facet (CODESYS/TwinCAT OOP extension).
+    /// Object-oriented facet (OOP extension).
     ///
     /// `None` for an ordinary function block — the common case — so OOP is
     /// unrepresentable on a plain FB rather than "present but empty."
@@ -2846,7 +2846,7 @@ impl VendorExtension for FunctionBlockOop {
     }
 }
 
-/// `INTERFACE name (EXTENDS base_list)? END_INTERFACE` (CODESYS/TwinCAT OOP
+/// `INTERFACE name (EXTENDS base_list)? END_INTERFACE` (OOP
 /// extension).
 ///
 /// Only the header is represented — method and property signatures are not

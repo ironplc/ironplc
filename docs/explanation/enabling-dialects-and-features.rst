@@ -48,7 +48,7 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
-   ``--allow-oop-extensions``.
+   ``--allow-fb-inheritance``.
 
 **codesys**
    CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
@@ -72,7 +72,7 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
-   ``--allow-oop-extensions``.
+   ``--allow-fb-inheritance``.
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
@@ -331,8 +331,8 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    :doc:`P4043 </reference/compiler/problems/P4043>`. A constant value is
    standard syntax and is always allowed.
 
-``--allow-oop-extensions``
-   Allow CODESYS/TwinCAT object-oriented extensions: ``EXTENDS``/
+``--allow-fb-inheritance``
+   Allow function-block inheritance syntax: ``EXTENDS``/
    ``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK`` declarations, and
    ``INTERFACE`` declarations. These are parsed and the
    ``EXTENDS``/``IMPLEMENTS``/``INTERFACE`` names are recognized as valid

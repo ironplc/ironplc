@@ -930,7 +930,7 @@ END_FUNCTION_BLOCK";
     #[test]
     fn apply_when_expression_uses_inherited_field_then_resolves_type() {
         let options = CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
         let program = "

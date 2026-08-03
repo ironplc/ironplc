@@ -667,11 +667,11 @@ mod tests {
     // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
     // ---------------------------------------------------------------------
 
-    fn parse_with_oop_extensions(program: &str) -> Library {
+    fn parse_with_fb_inheritance(program: &str) -> Library {
         use ironplc_parser::{options::CompilerOptions, parse_program};
 
         let options = CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
         parse_program(program, &FileId::default(), &options).unwrap()
@@ -686,7 +686,7 @@ END_FUNCTION_BLOCK
 FUNCTION_BLOCK FB_B EXTENDS FB_A
 END_FUNCTION_BLOCK";
 
-        let library = parse_with_oop_extensions(program);
+        let library = parse_with_fb_inheritance(program);
         let result = apply(library);
         assert_eq!(
             result.unwrap_err().first().unwrap().code,
@@ -705,7 +705,7 @@ END_FUNCTION_BLOCK
 FUNCTION_BLOCK FB_Base
 END_FUNCTION_BLOCK";
 
-        let library = parse_with_oop_extensions(program);
+        let library = parse_with_fb_inheritance(program);
         let (library, _reachable) = apply(library).unwrap();
 
         let decl = library.elements.first().unwrap();
@@ -723,7 +723,7 @@ END_FUNCTION_BLOCK";
 FUNCTION_BLOCK FB_Plain
 END_FUNCTION_BLOCK";
 
-        let library = parse_with_oop_extensions(program);
+        let library = parse_with_fb_inheritance(program);
         let result = apply(library);
         assert!(result.is_ok());
     }

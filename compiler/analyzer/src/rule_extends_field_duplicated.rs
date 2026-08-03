@@ -107,9 +107,9 @@ mod tests {
     use crate::semantic_context::SemanticContextBuilder;
     use crate::test_helpers::parse_and_resolve_types_with_options;
 
-    fn opts_with_oop_extensions() -> CompilerOptions {
+    fn opts_with_fb_inheritance() -> CompilerOptions {
         CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         }
     }
@@ -129,9 +129,9 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
@@ -153,9 +153,9 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
@@ -177,9 +177,9 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         assert!(result.is_ok());
     }
@@ -208,9 +208,9 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
@@ -226,9 +226,9 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK";
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         assert!(result.is_ok());
     }
