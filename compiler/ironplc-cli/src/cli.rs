@@ -357,6 +357,31 @@ fn handle_diagnostics(
     }
 }
 
+/// Builds the documentation URL for a diagnostic, tagged with the channel it
+/// was surfaced through.
+///
+/// The URL is a working docs link regardless; `channel=cli` marks the origin
+/// and `version` carries the client version (which the out-of-date banner in
+/// docs/_static/version-check.js reads), so we can also see where and on which
+/// version people reach these pages. `file`/`line` (the Rust source location
+/// that raised the diagnostic) are appended when present so a maintainer can see
+/// what a remote user hit.
+fn problem_help_url(diagnostic: &Diagnostic) -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    let mut url = format!(
+        "https://www.ironplc.com/reference/{section}/problems/{code}.html?version={version}&channel=cli",
+        section = ironplc_dsl::diagnostic::docs_section(&diagnostic.code),
+        code = diagnostic.code,
+    );
+    if let Some(ref file) = diagnostic.source_file {
+        url.push_str(&format!("&file={file}"));
+    }
+    if let Some(line) = diagnostic.source_line {
+        url.push_str(&format!("&line={line}"));
+    }
+    url
+}
+
 fn map_diagnostic(
     diagnostic: &Diagnostic,
     file_to_id: &HashMap<&FileId, usize>,
@@ -378,11 +403,17 @@ fn map_diagnostic(
             .map(|lbl| map_label(lbl, LabelStyle::Secondary, file_to_id)),
     );
 
+    // Existing help notes, then a trailing link to the problem-code docs so a
+    // CLI user can follow the same reference page the editor and playground link
+    // to (and so that follow-through is attributable to the CLI in analytics).
+    let mut notes = diagnostic.help().to_vec();
+    notes.push(format!("Learn more: {}", problem_help_url(diagnostic)));
+
     CodeSpanDiagnostic::new(Severity::Error)
         .with_code(diagnostic.code.clone())
         .with_message(description)
         .with_labels(labels)
-        .with_notes(diagnostic.help().to_vec())
+        .with_notes(notes)
 }
 
 fn map_label(
@@ -434,6 +465,26 @@ mod tests {
         let paths = vec![shared_resource_path("first_steps_semantic_error.st")];
         let result = check(&paths, CompilerOptions::default(), true);
         assert!(result.is_err())
+    }
+
+    #[test]
+    fn problem_help_url_when_diagnostic_then_url_tagged_for_cli() {
+        use ironplc_dsl::core::SourceSpan;
+        use ironplc_dsl::diagnostic::{Diagnostic, Label};
+        use ironplc_problems::Problem;
+
+        let diag = Diagnostic::problem(
+            Problem::SyntaxError,
+            Label::span(SourceSpan::default(), "some error".to_string()),
+        )
+        .with_source("compiler/analyzer/src/rule_example.rs", 42);
+
+        let url = super::problem_help_url(&diag);
+        assert!(url.contains("/reference/compiler/problems/"));
+        assert!(url.contains("?version="));
+        assert!(url.contains("&channel=cli"));
+        assert!(url.contains("&file=compiler/analyzer/src/rule_example.rs"));
+        assert!(url.contains("&line=42"));
     }
 
     #[test]

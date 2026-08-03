@@ -362,6 +362,25 @@ impl Diagnostic {
     }
 }
 
+/// The www.ironplc.com reference section that documents a problem code, derived
+/// from its leading letter: `P####` → `compiler`, `V####` → `runtime`,
+/// `E####` → `editor`.
+///
+/// Returns `"unknown"` for any unrecognized prefix rather than guessing a
+/// section: a `…/reference/unknown/problems/…` URL 404s honestly instead of
+/// confidently pointing at the wrong docs. The `docs_section_covers_every_documented_code`
+/// test in this module walks the docs tree and fails if any documented code's
+/// prefix is left unmapped, so adding a new code family without updating this
+/// function is caught at test time rather than shipping a broken link.
+pub fn docs_section(code: &str) -> &'static str {
+    match code.chars().next() {
+        Some('P') => "compiler",
+        Some('V') => "runtime",
+        Some('E') => "editor",
+        _ => "unknown",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -483,5 +502,76 @@ mod tests {
         assert_eq!(ids.len(), 2);
         assert!(ids.contains(&primary_file));
         assert!(ids.contains(&secondary_file));
+    }
+
+    #[test]
+    fn docs_section_when_known_prefix_then_matches_reference_section() {
+        assert_eq!(docs_section("P0001"), "compiler");
+        assert_eq!(docs_section("V6008"), "runtime");
+        assert_eq!(docs_section("E0001"), "editor");
+    }
+
+    #[test]
+    fn docs_section_when_unknown_prefix_then_unknown() {
+        // A future code family must not be silently attributed to an existing
+        // section; it falls back to "unknown" (a 404) until mapped.
+        assert_eq!(docs_section("D0001"), "unknown");
+        assert_eq!(docs_section(""), "unknown");
+    }
+
+    // Guards against a new documented code family (a new
+    // docs/reference/<section>/problems/ directory) slipping past `docs_section`
+    // and shipping a wrong or 404 problem-code link. Walks the real docs tree
+    // and asserts every documented code's prefix maps to the section directory
+    // that actually contains its page. If this fails, add the new prefix to
+    // `docs_section`.
+    #[test]
+    fn docs_section_covers_every_documented_code() {
+        use std::path::Path;
+
+        let reference = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/reference");
+        let mut checked = 0;
+
+        for section_entry in std::fs::read_dir(&reference)
+            .unwrap_or_else(|e| panic!("read {}: {e}", reference.display()))
+            .flatten()
+        {
+            let section = section_entry.file_name().to_string_lossy().to_string();
+            let problems_dir = section_entry.path().join("problems");
+            let Ok(files) = std::fs::read_dir(&problems_dir) else {
+                continue; // Not every reference section has a problems/ dir.
+            };
+
+            for file in files.flatten() {
+                let name = file.file_name().to_string_lossy().to_string();
+                let Some(code) = name.strip_suffix(".rst") else {
+                    continue;
+                };
+                // Problem-code files are <LETTER><digits> (e.g. P0001); skip
+                // index.rst and any other prose pages.
+                let mut chars = code.chars();
+                let is_code = matches!(chars.next(), Some(c) if c.is_ascii_uppercase())
+                    && !code[1..].is_empty()
+                    && code[1..].chars().all(|c| c.is_ascii_digit());
+                if !is_code {
+                    continue;
+                }
+
+                assert_eq!(
+                    docs_section(code),
+                    section,
+                    "docs_section({code}) should be {section:?} (its page lives in \
+                     docs/reference/{section}/problems/); a new code family needs a \
+                     matching arm in docs_section",
+                );
+                checked += 1;
+            }
+        }
+
+        assert!(
+            checked > 0,
+            "found no documented problem codes under {} — test wiring is broken",
+            reference.display()
+        );
     }
 }
