@@ -46,8 +46,9 @@ Supported Dialects
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
-   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``, and
-   ``--allow-struct-initializer-expressions``.
+   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
+   ``--allow-struct-initializer-expressions``, and
+   ``--allow-oop-extensions``.
 
 **codesys**
    CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
@@ -69,8 +70,9 @@ Supported Dialects
    ``--allow-pragmas``, ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
    ``--allow-constant-initializer-expressions``,
-   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``, and
-   ``--allow-struct-initializer-expressions``.
+   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
+   ``--allow-struct-initializer-expressions``, and
+   ``--allow-oop-extensions``.
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
