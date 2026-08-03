@@ -45,6 +45,8 @@ produce this error:
 * ``STRING`` pass-by-reference (``VAR_IN_OUT``)
 * Direct variables (hardware-mapped I/O such as ``%IX0.0``)
 * Enumerated values in expressions and ``CASE`` selectors
+* :doc:`Object-oriented programming </reference/language/object-orientation/index>`
+  constructs (``EXTENDS``, ``IMPLEMENTS``, ``ABSTRACT``, ``INTERFACE``)
 
 .. _IronPLC Playground: https://playground.ironplc.com/
 .. _GitHub issue: https://github.com/ironplc/ironplc/issues/new?template=todo_report.md
