@@ -918,7 +918,25 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.write_ws("FUNCTION_BLOCK");
+        if node.oop.as_ref().is_some_and(|oop| oop.is_abstract) {
+            self.write_ws("ABSTRACT");
+        }
         self.visit_id(&node.name.name)?;
+        if let Some(oop) = &node.oop {
+            if let Some(base) = &oop.base {
+                self.write_ws("EXTENDS");
+                self.visit_id(&base.name)?;
+            }
+            if !oop.implements.is_empty() {
+                self.write_ws("IMPLEMENTS");
+                for (i, interface) in oop.implements.iter().enumerate() {
+                    if i > 0 {
+                        self.write_ws(",");
+                    }
+                    self.visit_id(&interface.name)?;
+                }
+            }
+        }
         self.newline();
 
         self.indent();
@@ -933,6 +951,31 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.newline();
 
         self.write_ws("END_FUNCTION_BLOCK");
+        self.newline();
+        Ok(())
+    }
+
+    // CODESYS/TwinCAT OOP extension: INTERFACE ... END_INTERFACE. Only the
+    // header renders — method/property signatures are not yet parsed (see
+    // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+    fn visit_interface_declaration(
+        &mut self,
+        node: &InterfaceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("INTERFACE");
+        self.visit_id(&node.name)?;
+        if !node.extends.is_empty() {
+            self.write_ws("EXTENDS");
+            for (i, base) in node.extends.iter().enumerate() {
+                if i > 0 {
+                    self.write_ws(",");
+                }
+                self.visit_id(&base.name)?;
+            }
+        }
+        self.newline();
+
+        self.write_ws("END_INTERFACE");
         self.newline();
         Ok(())
     }

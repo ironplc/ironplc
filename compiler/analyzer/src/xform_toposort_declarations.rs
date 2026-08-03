@@ -165,6 +165,12 @@ pub fn apply(lib: Library) -> Result<(Library, HashSet<Id>), Vec<Diagnostic>> {
             LibraryElementKind::GlobalVarDeclarations(decls) => {
                 global_var_decls.push(decls);
             }
+            LibraryElementKind::InterfaceDeclaration(decl) => {
+                elems_by_name.insert(
+                    decl.name.clone(),
+                    LibraryElementKind::InterfaceDeclaration(decl),
+                );
+            }
         }
     }
 
@@ -450,7 +456,11 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         node: &FunctionBlockDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         self.current_from = Some(node.name.name.clone());
-        self.declarations.add_node(&node.name.name);
+        let this = self.declarations.add_node(&node.name.name);
+        if let Some(parent) = node.oop.as_ref().and_then(|oop| oop.base.as_ref()) {
+            let depends_on = self.declarations.add_node(&parent.name);
+            self.declarations.graph.add_edge(depends_on, this, ());
+        }
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -463,6 +473,21 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
         self.current_from = Some(node.name.clone());
         let idx = self.declarations.add_node(&node.name);
         self.program_nodes.push(idx);
+        let res = node.recurse_visit(self);
+        self.current_from = None;
+        res
+    }
+
+    fn visit_interface_declaration(
+        &mut self,
+        node: &InterfaceDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.current_from = Some(node.name.clone());
+        let this = self.declarations.add_node(&node.name);
+        for parent in &node.extends {
+            let depends_on = self.declarations.add_node(&parent.name);
+            self.declarations.graph.add_edge(depends_on, this, ());
+        }
         let res = node.recurse_visit(self);
         self.current_from = None;
         res
@@ -635,6 +660,72 @@ mod tests {
         let decl = library.elements.get(1).unwrap();
         let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
         assert_eq!(decl.name, TypeName::from("Caller"));
+    }
+
+    // ---------------------------------------------------------------------
+    // FUNCTION_BLOCK EXTENDS dependency edge.
+    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
+    // ---------------------------------------------------------------------
+
+    fn parse_with_oop_extensions(program: &str) -> Library {
+        use ironplc_parser::{options::CompilerOptions, parse_program};
+
+        let options = CompilerOptions {
+            allow_oop_extensions: true,
+            ..CompilerOptions::default()
+        };
+        parse_program(program, &FileId::default(), &options).unwrap()
+    }
+
+    #[test]
+    fn apply_when_function_block_extends_cycle_then_return_error() {
+        let program = "
+FUNCTION_BLOCK FB_A EXTENDS FB_B
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_B EXTENDS FB_A
+END_FUNCTION_BLOCK";
+
+        let library = parse_with_oop_extensions(program);
+        let result = apply(library);
+        assert_eq!(
+            result.unwrap_err().first().unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
+    }
+
+    #[test]
+    fn apply_when_function_block_extends_forward_reference_then_base_ordered_first() {
+        // The derived FB is declared textually *before* its base -- the
+        // new dependency edge must still order the base first.
+        let program = "
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Base
+END_FUNCTION_BLOCK";
+
+        let library = parse_with_oop_extensions(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let decl = library.elements.first().unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("FB_Base"));
+
+        let decl = library.elements.get(1).unwrap();
+        let decl = cast!(decl, LibraryElementKind::FunctionBlockDeclaration);
+        assert_eq!(decl.name, TypeName::from("FB_Derived"));
+    }
+
+    #[test]
+    fn apply_when_function_block_no_extends_then_return_ok() {
+        let program = "
+FUNCTION_BLOCK FB_Plain
+END_FUNCTION_BLOCK";
+
+        let library = parse_with_oop_extensions(program);
+        let result = apply(library);
+        assert!(result.is_ok());
     }
 
     #[test]

@@ -1,0 +1,37 @@
+=====
+P9004
+=====
+
+.. problem-summary:: P9004
+
+This error occurs when source code uses a vendor-specific language
+extension that IronPLC recognizes and parses, but does not yet
+semantically analyze or support in code generation.
+
+IronPLC's policy for vendor dialects (Beckhoff TwinCAT, CODESYS, and others)
+is to parse vendor-specific syntax without errors, then add semantic support
+incrementally. A construct that triggers this error is accepted by the
+parser and represented in the syntax tree, but using it further (type
+checking, code generation) is not yet implemented.
+
+Example
+-------
+
+The following code will generate error P9004 when parsed with a dialect that
+enables OOP extensions (e.g. ``--dialect codesys``):
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
+   VAR
+       bRunning : BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+The ``EXTENDS`` clause is parsed and stored, but inheritance is not yet
+checked or applied.
+
+To avoid this error, remove the unsupported construct, or expect this
+diagnostic until the corresponding feature is implemented. Check the
+`IronPLC issue tracker <https://github.com/ironplc/ironplc/issues>`_ for the
+status of specific extensions.

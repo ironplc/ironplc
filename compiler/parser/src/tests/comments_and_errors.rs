@@ -83,5 +83,5 @@ fn parse_program_when_not_valid_top_item_then_err() {
 
     let err = res.unwrap_err();
     assert_eq!("Syntax error".to_owned(), err.description());
-    assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | 'CONFIGURATION' | 'FUNCTION' | 'FUNCTION_BLOCK' | 'PROGRAM' | 'TYPE' | 'VAR_GLOBAL' | '\\n' (new line) | '{ ... }' (pragma). Found text 'ACTION' that matched token 'ACTION'".to_owned(), err.primary.message);
+    assert_eq!("Expected ' ' (space) | '\\t' (tab) | '(* ... *)' (comment) | 'CONFIGURATION' | 'FUNCTION' | 'FUNCTION_BLOCK' | 'INTERFACE' | 'PROGRAM' | 'TYPE' | 'VAR_GLOBAL' | '\\n' (new line) | '{ ... }' (pragma). Found text 'ACTION' that matched token 'ACTION'".to_owned(), err.primary.message);
 }
