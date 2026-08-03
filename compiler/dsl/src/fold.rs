@@ -219,12 +219,12 @@ pub trait Fold<E> {
     // 2.5.2
     dispatch!(FunctionBlockDeclaration);
 
-    // CODESYS/TwinCAT OOP extension
+    // OOP extension
     dispatch!(FunctionBlockOop);
 
     dispatch!(FunctionBlockBodyKind);
 
-    // CODESYS/TwinCAT OOP extension
+    // OOP extension
     dispatch!(InterfaceDeclaration);
 
     // 2.5.3

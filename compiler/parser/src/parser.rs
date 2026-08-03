@@ -1301,9 +1301,9 @@ parser! {
     // but we don't need that distinction here.
     rule function_block_type_name() -> TypeName = type_name()
     rule derived_function_block_name() -> TypeName = type_name()
-    // CODESYS/TwinCAT OOP extension: comma-separated list of type names,
+    // OOP extension: comma-separated list of type names,
     // e.g. `IMPLEMENTS I_Hydraulics, I_Brake`. Only produced when EXTENDS
-    // or IMPLEMENTS tokens are recognized (allow_oop_extensions), since
+    // or IMPLEMENTS tokens are recognized (allow_fb_inheritance), since
     // both are demoted to identifiers otherwise.
     rule type_name_list() -> Vec<TypeName> = names:type_name() ++ (_ tok(TokenType::Comma) _) { names }
     rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(t:tok(TokenType::Abstract) {t})? _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
@@ -1353,7 +1353,7 @@ parser! {
       }
     }
 
-    // CODESYS/TwinCAT OOP extension: INTERFACE ... END_INTERFACE. Only the
+    // OOP extension: INTERFACE ... END_INTERFACE. Only the
     // header (name + optional EXTENDS list) is parsed — method/property
     // signatures are not yet supported (see
     // specs/plans/2026-07-18-twincat-extends-implements-interface.md).

@@ -645,9 +645,9 @@ END_VAR]]></Declaration>
         assert_eq!(library.elements.len(), 1);
     }
 
-    fn opts_with_oop_extensions() -> CompilerOptions {
+    fn opts_with_fb_inheritance() -> CompilerOptions {
         CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         }
     }
@@ -665,7 +665,7 @@ END_VAR]]></Declaration>
   </Itf>
 </TcPlcObject>"#;
 
-        let result = parse(xml, &test_file_id(), &opts_with_oop_extensions());
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
         assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
         let library = result.unwrap();
         assert_eq!(library.elements.len(), 1);
@@ -686,7 +686,7 @@ END_VAR]]></Declaration>
   </Itf>
 </TcPlcObject>"#;
 
-        let result = parse(xml, &test_file_id(), &opts_with_oop_extensions());
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
         assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
         let library = result.unwrap();
         let interface = match &library.elements[0] {
@@ -698,7 +698,7 @@ END_VAR]]></Declaration>
 
     #[test]
     fn parse_when_itf_and_default_dialect_then_err() {
-        // Without allow_oop_extensions, INTERFACE is just an identifier.
+        // Without allow_fb_inheritance, INTERFACE is just an identifier.
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
   <Itf Name="I_Drivable" Id="{00000000-0000-0000-0000-000000000000}">

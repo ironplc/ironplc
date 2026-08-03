@@ -1,4 +1,4 @@
-//! CODESYS/TwinCAT OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE round-trip.
+//! OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE round-trip.
 //! See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
 
 use super::common::*;
@@ -25,7 +25,7 @@ END_VAR
 END_FUNCTION_BLOCK
 ";
     let options = CompilerOptions {
-        allow_oop_extensions: true,
+        allow_fb_inheritance: true,
         ..CompilerOptions::default()
     };
     let library_original = parse_program(source, &FileId::default(), &options).unwrap();
@@ -51,7 +51,7 @@ INTERFACE I_Focus EXTENDS I_BaseAxis
 END_INTERFACE
 ";
     let options = CompilerOptions {
-        allow_oop_extensions: true,
+        allow_fb_inheritance: true,
         ..CompilerOptions::default()
     };
     let library_original = parse_program(source, &FileId::default(), &options).unwrap();
@@ -78,7 +78,7 @@ INTERFACE I_BaseAxis
 END_INTERFACE
 ";
     let options = CompilerOptions {
-        allow_oop_extensions: true,
+        allow_fb_inheritance: true,
         ..CompilerOptions::default()
     };
     let library_original = parse_program(source, &FileId::default(), &options).unwrap();
