@@ -24,7 +24,6 @@ use ironplc_dsl::{
     extension::VendorExtension,
     visitor::Visitor,
 };
-use ironplc_problems::Problem;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
 use ironplc_parser::options::CompilerOptions;
@@ -52,17 +51,15 @@ struct RuleUnsupportedExtension {
 impl RuleUnsupportedExtension {
     fn flag(&mut self, ext: &dyn VendorExtension) {
         let origins: Vec<&str> = ext.extension_origins().iter().map(|o| o.as_str()).collect();
-        self.diagnostics.push(Diagnostic::problem(
-            Problem::UnsupportedExtension,
-            Label::span(
+        self.diagnostics
+            .push(Diagnostic::not_implemented(Label::span(
                 ext.extension_span(),
                 format!(
                     "{} ({} extension) is recognized but not yet supported by IronPLC",
                     ext.extension_name(),
                     origins.join(", "),
                 ),
-            ),
-        ));
+            )));
     }
 }
 
@@ -158,7 +155,7 @@ END_FUNCTION_BLOCK";
     }
 
     #[test]
-    fn apply_when_implements_then_p9004() {
+    fn apply_when_implements_then_p9999() {
         let program = "
 FUNCTION_BLOCK FB_AdvancedMotor IMPLEMENTS I_Drivable
 VAR
@@ -173,11 +170,14 @@ END_FUNCTION_BLOCK";
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!("P9999", errors[0].code);
     }
 
     #[test]
-    fn apply_when_abstract_then_p9004() {
+    fn apply_when_abstract_then_p9999() {
         let program = "
 FUNCTION_BLOCK ABSTRACT FB_BaseAxis
 VAR
@@ -192,11 +192,14 @@ END_FUNCTION_BLOCK";
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!("P9999", errors[0].code);
     }
 
     #[test]
-    fn apply_when_abstract_and_implements_then_only_one_p9004() {
+    fn apply_when_abstract_and_implements_then_only_one_p9999() {
         let program = "
 FUNCTION_BLOCK ABSTRACT FB_BaseAxis IMPLEMENTS I_BaseAxis
 VAR
@@ -212,11 +215,14 @@ END_FUNCTION_BLOCK";
         let errors = result.unwrap_err();
         // One diagnostic for the whole FB, not one per clause.
         assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!("P9999", errors[0].code);
     }
 
     #[test]
-    fn apply_when_interface_declaration_then_p9004() {
+    fn apply_when_interface_declaration_then_p9999() {
         let program = "
 INTERFACE I_Drivable
 END_INTERFACE";
@@ -228,7 +234,10 @@ END_INTERFACE";
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!("P9999", errors[0].code);
     }
 
     #[test]

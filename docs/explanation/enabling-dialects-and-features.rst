@@ -339,7 +339,7 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    types, but inheritance, interface dispatch, method/property
    declarations, and abstract-instantiation checking are not yet
    semantically supported — using them produces problem
-   :doc:`P9004 </reference/compiler/problems/P9004>` rather than a parse
+   :doc:`P9999 </reference/compiler/problems/P9999>` rather than a parse
    error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
 Pass the flag when running :program:`ironplcc`:

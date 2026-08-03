@@ -478,7 +478,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // This is intentionally a placeholder representation, not a claim
         // that interface field/method access works. Any real use beyond
         // "declare a variable of this type" is unreachable: the
-        // `InterfaceDeclaration` itself always triggers P9004 via
+        // `InterfaceDeclaration` itself always triggers P9999 via
         // `rule_unsupported_extension`, which blocks codegen for the whole
         // project before this representation could matter.
         let attrs = crate::type_attributes::TypeAttributes::new(

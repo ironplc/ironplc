@@ -237,7 +237,7 @@ Options
    ``FUNCTION_BLOCK`` and ``INTERFACE`` declarations. Parsed and registered
    as known types; inheritance, interface dispatch, and method/property
    declarations are not yet semantically supported (produces
-   :doc:`P9004 </reference/compiler/problems/P9004>`). Enabled by
+   :doc:`P9999 </reference/compiler/problems/P9999>`). Enabled by
    ``--dialect=rusty`` and ``--dialect=codesys``.
 
 Examples

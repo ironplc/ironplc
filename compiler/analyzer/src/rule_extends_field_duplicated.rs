@@ -3,8 +3,7 @@
 //! already declared on its base function block or any ancestor further
 //! up the `EXTENDS` chain.
 //!
-//! Verified against a real TcXaeShell compile before implementing:
-//! TwinCAT rejects this as a duplicate definition even when the
+//! A redeclaration is rejected as a duplicate definition even when the
 //! redeclared field has a different type. See
 //! `specs/plans/2026-07-20-twincat-extends-duplicate-field.md`.
 //!
