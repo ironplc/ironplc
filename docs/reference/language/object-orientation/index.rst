@@ -1,6 +1,6 @@
-==================
-Object Orientation
-==================
+===========================
+Object Oriented Programming
+===========================
 
 IEC 61131-3 Edition 3 (2013) added object-oriented programming to the
 standard. A function block type can be **derived** from another by
@@ -19,7 +19,7 @@ concepts behind them — inheritance, interfaces, and abstract types — see
    :doc:`/explanation/enabling-dialects-and-features` for the flag and
    dialects reference. IronPLC currently parses this syntax but does not yet
    perform semantic analysis or code generation for it — see
-   :doc:`/reference/compiler/problems/P9004`.
+   :doc:`/reference/compiler/problems/P9999`.
 
 Keywords
 --------

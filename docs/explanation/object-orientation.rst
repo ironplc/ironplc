@@ -1,6 +1,6 @@
-==================
-Object Orientation
-==================
+===========================
+Object Oriented Programming
+===========================
 
 IEC 61131-3 Edition 3 (2013) added **object-oriented programming** to the
 standard. It builds on the function block — the language's existing unit of
@@ -15,11 +15,11 @@ the terminology the standard uses for them.
    :doc:`enabling-dialects-and-features` for the flag and dialects reference.
    IronPLC currently *parses* this syntax but does not yet analyze or execute
    it — a program that uses it reports
-   :doc:`P9004 </reference/compiler/problems/P9004>`. This page describes the
+   :doc:`P9999 </reference/compiler/problems/P9999>`. This page describes the
    language concepts; it is not a statement of what IronPLC executes today.
 
-Why object orientation?
-=======================
+Why object-oriented programming?
+================================
 
 A :doc:`function block </reference/language/pous/function-block>` already
 bundles data and behavior: it has internal state and runs code that acts on
@@ -165,5 +165,5 @@ See Also
   keywords
 - :doc:`/reference/language/pous/function-block` — the ``FUNCTION_BLOCK`` unit
 - :doc:`enabling-dialects-and-features` — enabling the object-oriented syntax
-- :doc:`/reference/compiler/problems/P9004` — the diagnostic reported for
+- :doc:`/reference/compiler/problems/P9999` — the diagnostic reported for
   not-yet-supported object-oriented constructs

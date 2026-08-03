@@ -8,17 +8,19 @@ its methods). It also derives an interface from one or more base interfaces.
 This is the inheritance mechanism introduced in IEC 61131-3 Edition 3.
 
 .. |keyword| replace:: ``EXTENDS``
-.. |flag| replace:: ``--allow-oop-extensions``
+.. |flag| replace:: ``--allow-fb-inheritance``
 .. include:: /includes/oop-keyword-flag.rst
 
 .. list-table::
    :widths: 30 70
 
    * - **IEC 61131-3**
-     - Edition 3 (object-oriented features)
+     - Edition 3 (object-oriented programming)
    * - **Support**
      - Parsed only — not yet analyzed or executed
-       (:doc:`P9004 </reference/compiler/problems/P9004>`)
+       (:doc:`P9999 </reference/compiler/problems/P9999>`). Enable with
+       ``--allow-fb-inheritance``; see
+       :doc:`/explanation/enabling-dialects-and-features`.
 
 Syntax
 ------
