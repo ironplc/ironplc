@@ -222,6 +222,28 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 - If the extension is unique to a specific vendor behavior, create a new flag
 - Keep flag names descriptive: `allow_<what_it_allows>`
 
+#### Naming: be specific, avoid umbrella terms
+
+Flag names must describe the **specific syntax** they enable, not a broad
+category. Vague umbrella words — `extensions`, `features`, `oop`, `advanced`,
+`extra`, `misc` — are ambiguous the moment a second, unrelated extension in the
+same category is added: `allow_oop_extensions` gives no hint whether it covers
+`EXTENDS`, `METHOD`/`PROPERTY`, `THIS^`/`SUPER^`, or interface dispatch, and a
+future OOP flag would have no room left to name itself distinctly.
+
+Prefer names that spell out the construct(s) gated:
+
+| Avoid (ambiguous) | Prefer (specific) |
+|-------------------|-------------------|
+| `allow_oop_extensions` | `allow_fb_inheritance` (`EXTENDS`/`IMPLEMENTS`/`INTERFACE`/`ABSTRACT` shape) |
+| `allow_pointer_features` | `allow_ref_to`, `allow_ref_arithmetic`, … (one flag per construct) |
+| `allow_string_extras` | `allow_paren_string_length` |
+
+When one flag genuinely gates several related constructs, name it after the
+concept they share (e.g. the `REF_TO` family), not after the vendor or the word
+"extension". If you cannot name the flag without a generic umbrella term, that
+usually means it should be split into more than one flag.
+
 ### Adding a New Flag
 
 When no existing flag covers the extension, add a new one. Update these files in order:
