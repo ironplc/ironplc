@@ -343,7 +343,7 @@ define_compiler_options! {
 
     "Allow function-block inheritance syntax: EXTENDS/IMPLEMENTS on FUNCTION_BLOCK and INTERFACE declarations",
     "--allow-fb-inheritance",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_fb_inheritance,
 }
 
@@ -529,6 +529,7 @@ mod tests {
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
+                "allow_fb_inheritance",
             ],
         );
     }
