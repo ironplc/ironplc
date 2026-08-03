@@ -90,6 +90,13 @@ jobs:
               git push
               git push --tags
             
+          # Create the release as a DRAFT. A draft is mutable, so build
+          # artifacts can be attached to it (partial_upload_release_artifacts)
+          # and the smoke tests can run before anything is public. The final
+          # deployment step publishes the draft once the gate is green. This
+          # is also the pattern GitHub's immutable releases require: the single
+          # publish is the only immutability trigger, with all assets already
+          # in place.
           - name: Create Github Release
             if: ${{ !inputs.dryrun }}
             id: create-release
@@ -97,6 +104,5 @@ jobs:
             with:
               token: "${{ secrets.GITHUB_TOKEN }}"
               tag_name: v${{ steps.nextversion.outputs.version }}
-              draft: false
-              prerelease: true
+              draft: true
     
