@@ -201,7 +201,7 @@ table is a convenience mirror, so consult the macro if the two ever disagree.
 | `allow_constant_initializer_expressions` | `--allow-constant-initializer-expressions` | Constant expressions (not just bare literals) in `VAR` initializers, e.g. `SCALE*4.0` |
 | `allow_bit_string_case_labels` | `--allow-bit-string-case-labels` | Hex/binary/octal bit-string literals (`16#D012`, `2#1010`) as `CASE` labels (TwinCAT/CODESYS) |
 | `allow_paren_string_length` | `--allow-paren-string-length` | `STRING(n)`/`WSTRING(n)` parenthesis length delimiter in addition to the standard `STRING[n]` brackets (gated by P4042; matched delimiters required) |
-| `allow_oop_extensions` | `--allow-oop-extensions` | CODESYS/TwinCAT OOP: `EXTENDS`/`IMPLEMENTS` on `FUNCTION_BLOCK`, `INTERFACE` declarations |
+| `allow_fb_inheritance` | `--allow-fb-inheritance` | Function-block inheritance syntax: `EXTENDS`/`IMPLEMENTS` on `FUNCTION_BLOCK` and `INTERFACE` declarations |
 
 ### Dialects
 
