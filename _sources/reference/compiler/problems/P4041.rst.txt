@@ -1,0 +1,54 @@
+=====
+P4041
+=====
+
+.. problem-summary:: P4041
+
+This error occurs when a hex, binary, or octal bit-string literal (e.g.
+``16#D012``, ``2#1010``, ``8#17``) is used as a ``CASE`` label without the
+``--allow-bit-string-case-labels`` compiler flag.
+
+The IEC 61131-3 standard grammar for a case label (Annex B) is
+``case_list_element ::= subrange | signed_integer | enumerated_value``,
+where ``signed_integer`` is a *decimal* digit sequence. Radix-prefixed
+bit-string literals are separate productions that the standard does not
+include as case labels, so accepting them is a vendor extension used by
+TwinCAT and CODESYS.
+
+A plain decimal label (``5:``) is standard syntax and is always allowed.
+
+Example
+-------
+
+The following code will generate error P4041:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       x : DINT;
+       y : INT;
+   END_VAR
+   CASE x OF
+       16#D012: y := 1;
+   END_CASE;
+   END_FUNCTION_BLOCK
+
+To fix this error, either use a decimal label:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Example
+   VAR
+       x : DINT;
+       y : INT;
+   END_VAR
+   CASE x OF
+       53266: y := 1;
+   END_CASE;
+   END_FUNCTION_BLOCK
+
+Or enable the vendor extension:
+
+.. |flag| replace:: ``--allow-bit-string-case-labels``
+.. include:: /includes/enabled-by-flag.rst

@@ -8,9 +8,9 @@ supported by other PLC environments such as CODESYS, TwinCAT, and RuSTy.
 
 .. tip::
 
-   Extension library items require explicit opt-in via ``--allow-*`` flags
-   or ``--dialect rusty``. See :doc:`/explanation/enabling-dialects-and-features`
-   for details.
+   Extension library items require explicit opt-in via ``--allow-*`` flags,
+   or a dialect that enables them. See
+   :doc:`/explanation/enabling-dialects-and-features` for details.
 
 Functions
 ---------

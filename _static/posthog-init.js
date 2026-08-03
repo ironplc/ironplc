@@ -22,4 +22,11 @@ posthog.init('phc_xQV6wYsbu5FuF5AuCkwXgZqcdtcURBi5BoLrPu9Mar7L', {
   capture_pageview: true,
   autocapture: false,
   disable_session_recording: true,
+  // Problem-code links (from the CLI, editor extension, playground, and MCP)
+  // carry plain `channel` and `version` query params instead of utm_* names.
+  // custom_campaign_params tells PostHog to capture these two exactly like the
+  // built-in utm_* params — as event properties and $initial_* person
+  // properties — so the "Problem-code reach" dashboard can break down on them
+  // with no per-insight configuration. See infrastructure/posthog-problem-code.tf.
+  custom_campaign_params: ['channel', 'version'],
 });

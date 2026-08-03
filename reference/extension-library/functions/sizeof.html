@@ -7,9 +7,9 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/extension-library/functions/sizeof.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="Returns the size in bytes of a variable or type.,, IEC 61131-3, Not part of the standard (vendor extension),, Support, Supported (requires--allow-sizeof or--dialect rusty),,,, Signatures:,,,,#, Inp..." />
-<meta name="description" content="Returns the size in bytes of a variable or type.,, IEC 61131-3, Not part of the standard (vendor extension),, Support, Supported (requires--allow-sizeof or--dialect rusty),,,, Signatures:,,,,#, Inp..." />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="Function Blocks" href="../function-blocks/index.html"><link rel="prev" title="Functions" href="index.html">
+<meta property="og:description" content="Returns the size in bytes of a variable or type.,, IEC 61131-3, Not part of the standard (vendor extension),, Support, Supported (requires--allow-sizeof),,,, Signatures:,,,,#, Input (IN), Return Ty..." />
+<meta name="description" content="Returns the size in bytes of a variable or type.,, IEC 61131-3, Not part of the standard (vendor extension),, Support, Supported (requires--allow-sizeof),,,, Signatures:,,,,#, Input (IN), Return Ty..." />
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="__ISVALIDREF" href="isvalidref.html"><link rel="prev" title="Functions" href="index.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/extension-library/functions/sizeof.html">
 
     <link rel="shortcut icon" href="../../../_static/favicon.ico"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.232.0">
+<meta name="ironplc-version" content="0.233.0">
 </head>
   <body>
     
@@ -423,6 +423,7 @@
 <li class="toctree-l2 current has-children"><a class="reference internal" href="../index.html">Extension Library</a><input aria-label="Toggle navigation of Extension Library" checked="" class="toctree-checkbox" id="toctree-checkbox-18" name="toctree-checkbox-18" role="switch" type="checkbox"/><label for="toctree-checkbox-18"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l3 current has-children"><a class="reference internal" href="index.html">Functions</a><input aria-label="Toggle navigation of Functions" checked="" class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">SIZEOF</a></li>
+<li class="toctree-l4"><a class="reference internal" href="isvalidref.html">__ISVALIDREF</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../function-blocks/index.html">Function Blocks</a></li>
@@ -446,7 +447,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0002.html">P0002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0003.html">P0003</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0004.html">P0004</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0005.html">P0005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0005.html">P0004</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0006.html">P0006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0007.html">P0007</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P0008.html">P0008</a></li>
@@ -523,6 +524,16 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4033.html">P4033</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4034.html">P4034</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4035.html">P4035</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4036.html">P4036</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4037.html">P4037</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4038.html">P4038</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4039.html">P4039</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4040.html">P4040</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4041.html">P4041</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4042.html">P4042</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4043.html">P4043</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4044.html">P4044</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4045.html">P4045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -536,7 +547,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9002.html">P9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9003.html">P9003</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9998.html">P9998</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9004.html">P9004</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9998.html">P9999</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9999.html">P9999</a></li>
 </ul>
 </li>
@@ -558,6 +570,9 @@
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6005.html">V6005</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6006.html">V6006</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6007.html">V6007</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6008.html">V6008</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6009.html">V6009</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V6010.html">V6010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9001.html">V9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9002.html">V9002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V9003.html">V9003</a></li>
@@ -594,6 +609,10 @@
 <li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0001.html">E0001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0002.html">E0002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0003.html">E0003</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0004.html">E0004</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0005.html">E0005</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0006.html">E0006</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../editor/problems/E0007.html">E0007</a></li>
 </ul>
 </li>
 </ul>
@@ -657,7 +676,7 @@
 <td><p>Not part of the standard (vendor extension)</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Supported (requires <code class="docutils literal notranslate"><span class="pre">--allow-sizeof</span></code> or <code class="docutils literal notranslate"><span class="pre">--dialect</span> <span class="pre">rusty</span></code>)</p></td>
+<td><p>Supported (requires <code class="docutils literal notranslate"><span class="pre">--allow-sizeof</span></code>)</p></td>
 </tr>
 </tbody>
 </table>
@@ -713,12 +732,9 @@ elements (element count × element size).</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--allow-sizeof<span class="w"> </span>main.st
 </pre></div>
 </div>
-<p>Or use the RuSTy dialect which enables all vendor extensions:</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>ironplcc<span class="w"> </span>check<span class="w"> </span>--dialect<span class="w"> </span>rusty<span class="w"> </span>main.st
-</pre></div>
-</div>
-<p>See <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for more information
-about dialects and feature flags.</p>
+<p>Pass the <code class="docutils literal notranslate"><span class="pre">--allow-sizeof</span></code> flag to enable it, or select a dialect that includes it. See
+<a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for the dialects and flags
+reference.</p>
 </section>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
@@ -746,12 +762,12 @@ about dialects and feature flags.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../function-blocks/index.html">
+          <a class="next-page" href="isvalidref.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Function Blocks</div>
+                <div class="title">__ISVALIDREF</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -830,6 +846,6 @@ about dialects and feature flags.</p>
     <script src="../../../_static/copybutton.js?v=f281be69"></script>
     <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
     <script src="../../../_static/version-check.js?v=735d477a"></script>
-    <script src="../../../_static/posthog-init.js?v=a8ef79a4"></script>
+    <script src="../../../_static/posthog-init.js?v=8ec94b21"></script>
     </body>
 </html>
