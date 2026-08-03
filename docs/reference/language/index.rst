@@ -20,5 +20,6 @@ supported language.
    data-types/index
    variables/index
    pous/index
+   object-orientation/index
    structured-text/index
    ladder-diagram/index
