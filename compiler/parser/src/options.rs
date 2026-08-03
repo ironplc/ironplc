@@ -341,10 +341,10 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_struct_initializer_expressions,
 
-    "Allow CODESYS/TwinCAT OOP extensions: EXTENDS/IMPLEMENTS on FUNCTION_BLOCK and INTERFACE declarations",
-    "--allow-oop-extensions",
+    "Allow function-block inheritance syntax: EXTENDS/IMPLEMENTS on FUNCTION_BLOCK and INTERFACE declarations",
+    "--allow-fb-inheritance",
     [Rusty, Codesys],
-    allow_oop_extensions,
+    allow_fb_inheritance,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -455,7 +455,7 @@ mod tests {
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
-                "allow_oop_extensions",
+                "allow_fb_inheritance",
             ],
         );
     }
@@ -492,7 +492,7 @@ mod tests {
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
-                "allow_oop_extensions",
+                "allow_fb_inheritance",
             ],
         );
     }

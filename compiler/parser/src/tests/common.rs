@@ -204,13 +204,13 @@ pub(crate) fn opts_with_constant_initializer_expressions() -> CompilerOptions {
 }
 
 // ---------------------------------------------------------------------
-// TwinCAT/CODESYS OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
+// OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
 // See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
 // ---------------------------------------------------------------------
 
-pub(crate) fn opts_with_oop_extensions() -> CompilerOptions {
+pub(crate) fn opts_with_fb_inheritance() -> CompilerOptions {
     CompilerOptions {
-        allow_oop_extensions: true,
+        allow_fb_inheritance: true,
         ..CompilerOptions::default()
     }
 }

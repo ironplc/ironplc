@@ -3,9 +3,9 @@ use crate::{
     token::{Token, TokenType},
 };
 
-/// Demote CODESYS/TwinCAT OOP keyword tokens (`EXTENDS`, `IMPLEMENTS`,
+/// Demote OOP keyword tokens (`EXTENDS`, `IMPLEMENTS`,
 /// `INTERFACE`, `END_INTERFACE`, `ABSTRACT`) to identifiers when
-/// `allow_oop_extensions` is not enabled.
+/// `allow_fb_inheritance` is not enabled.
 ///
 /// These words are valid IEC 61131-3 identifiers (e.g. variable or type
 /// names). Demoting them back to `Identifier` when the flag is off keeps
@@ -13,7 +13,7 @@ use crate::{
 /// matching the pattern used for Edition 3 keywords in
 /// `xform_demote_edition3_keywords.rs`.
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
-    if options.allow_oop_extensions {
+    if options.allow_fb_inheritance {
         return;
     }
 
@@ -53,14 +53,14 @@ mod tests {
 
     fn opts_disabled() -> CompilerOptions {
         CompilerOptions {
-            allow_oop_extensions: false,
+            allow_fb_inheritance: false,
             ..CompilerOptions::default()
         }
     }
 
     fn opts_enabled() -> CompilerOptions {
         CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         }
     }

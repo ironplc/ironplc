@@ -955,7 +955,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    // CODESYS/TwinCAT OOP extension: INTERFACE ... END_INTERFACE. Only the
+    // OOP extension: INTERFACE ... END_INTERFACE. Only the
     // header renders — method/property signatures are not yet parsed (see
     // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
     fn visit_interface_declaration(
