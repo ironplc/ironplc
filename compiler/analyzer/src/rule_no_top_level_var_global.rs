@@ -52,6 +52,11 @@ pub fn apply(
             LibraryElementKind::GlobalVarDeclarations(decls) => Some(decls),
             _ => None,
         })
+        // Compiler-synthesized globals (e.g. the implicit PI math constant,
+        // gated by --allow-math-constants) are not user-written VAR_GLOBAL
+        // syntax, so they don't trip this rule. They carry a built-in span
+        // rather than a real source location.
+        .filter(|decls| !decls.iter().all(|d| d.span().file_id.is_builtin()))
         .map(|decls| {
             // Point at the first declaration; the whole block is the offending
             // construct but the AST does not carry the `VAR_GLOBAL` keyword span.

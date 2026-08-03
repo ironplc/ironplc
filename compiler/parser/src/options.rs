@@ -345,6 +345,11 @@ define_compiler_options! {
     "--allow-oop-extensions",
     [Rusty, Codesys],
     allow_oop_extensions,
+
+    "Register implicit math constants (PI) as built-in LREAL globals",
+    "--allow-math-constants",
+    [Rusty, Codesys],
+    allow_math_constants,
 }
 
 /// Format a human-readable summary of all dialects and which features each
@@ -456,6 +461,7 @@ mod tests {
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
                 "allow_oop_extensions",
+                "allow_math_constants",
             ],
         );
     }
@@ -493,6 +499,7 @@ mod tests {
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",
                 "allow_oop_extensions",
+                "allow_math_constants",
             ],
         );
     }

@@ -240,6 +240,12 @@ Options
    :doc:`P9004 </reference/compiler/problems/P9004>`). Enabled by
    ``--dialect=rusty`` and ``--dialect=codesys``.
 
+``--allow-math-constants``
+   Register implicit math constants (currently just ``PI``) as built-in
+   ``LREAL`` globals. Only resolves in statement context today (e.g.
+   ``x := PI/180.0;``); using it as a ``VAR`` initializer is not yet
+   supported. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+
 Examples
 ========
 
