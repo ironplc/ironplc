@@ -355,11 +355,13 @@ function is a compile error (per *Safety first*).
    reproduce it. The open question is whether such qualification is *required* by
    some libraries, or always optional — which affects how much of the qualifier
    path must land before those libraries are usable.
-2. **Library reference identity.** A `.plcproj` names a library with vendor,
-   version, and author (e.g. `Tc2_Standard, * (Beckhoff Automation GmbH)`). What
-   is the resolution from that reference to a bundled library, and how strict is
-   version matching? (Name matching is fixed by **REQ-CL-sources-003**: strict,
-   case-sensitive.)
+2. **Library reference identity.** The `.plcproj` reference shape is now grounded
+   (see *Appendix: `.plcproj` library-reference shapes*): a `PlaceholderReference`
+   or `LibraryReference` carries the library name, a vendor, and a version that is
+   *frequently a `*` wildcard*. Name matching is fixed by **REQ-CL-sources-003**
+   (strict, case-sensitive); what remains open is the **version** policy — treat
+   `*` as "any bundled version," and decide whether a concrete pinned version must
+   match exactly or may be satisfied by the single bundled version with a warning.
 3. **Unsupported-configuration detection.** By what mechanism does the compiler
    recognize an unsupported library/flag configuration in order to reject it
    (per *Safety first*)?
@@ -372,8 +374,51 @@ See the [implementation plan](../plans/2026-08-04-compatibility-libraries.md),
 which delivers `.plcproj` library-list reading and the `PI`-defining library in
 its early phases and wires each `REQ-CL-*` marker to a `#[spec_test]`.
 
+## Appendix: `.plcproj` library-reference shapes
+
+Grounded in real TwinCAT projects (see *References*). A `.plcproj` is an MSBuild
+project (`xmlns="http://schemas.microsoft.com/developer/msbuild/2003"` — the same
+namespace the existing discovery already reads `<Compile Include>` from). Library
+references live in `<ItemGroup>` as one of two element types.
+
+**`PlaceholderReference`** — the common, version-flexible form. `Include` is the
+placeholder name; `DefaultResolution` is `"<Name>, <Version> (<Vendor>)"` where
+the version is usually the `*` wildcard; `Namespace` is the qualifier the source
+may write (`Tc2_Math.FLOOR`):
+
+```xml
+<PlaceholderReference Include="Tc2_Math">
+  <DefaultResolution>Tc2_Math, * (Beckhoff Automation GmbH)</DefaultResolution>
+  <Namespace>Tc2_Math</Namespace>
+</PlaceholderReference>
+```
+
+**`LibraryReference`** — a concrete, pinned reference. `Include` is
+`"<Name>,<Version>,<Vendor>"`:
+
+```xml
+<LibraryReference Include="Tc2_Utilities,3.3.7.0,Beckhoff Automation GmbH">
+  <Namespace>Tc2_Utilities</Namespace>
+</LibraryReference>
+```
+
+Implications for this design:
+
+- The **`<Namespace>`** element *is* the qualifier→library map, supplied by the
+  project. That grounds Open Question 1: for project-driven activation we do not
+  have to infer the namespace — the project states it.
+- A `<SystemLibrary>true</SystemLibrary>` child marks CODESYS/visualization
+  system libraries (e.g. `Recipe Management`, `VisuElems`). These are not
+  vendor-authored ST we would bundle; the first increment skips them.
+- The version is commonly `*`, so **REQ-CL-sources-003** name matching is the
+  load-bearing rule; version matching is the residual open question above.
+
 ## References
 
+- [Real `.plcproj` referencing `Tc2_Math`](https://github.com/evanmj/StructuredTextVideoSeries/blob/master/EP2-/Untitled1/Untitled1.plcproj)
+  and [one with a pinned `LibraryReference`](https://github.com/hiroMTB/n5TC/blob/master/sample/PTP/PTP/TwinCAT_NC_Sample_PTP_Move/TwinCAT_NC_Sample_PTP_Move.plcproj)
+  — grounding for the appendix.
+- [Beckhoff InfoSys: PLC libraries and placeholders](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/41891384434359666059.html)
 - [ADR-0024: Function-local re-init via init template](../adrs/0024-function-local-reinit-via-init-template.md)
   — initializers must constant-fold; `PI`-as-constant complies.
 - [ADR-0036: No IronPLC dialect](../adrs/0036-no-ironplc-dialect.md)

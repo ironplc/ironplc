@@ -127,11 +127,12 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] `cd compiler && just` green
 
 ### Phase 2 — Read the library list from `.plcproj` *(early)*
-- [ ] Parse the `.plcproj` referenced-library list in the twincat detector — **REQ-CL-sources-001**
+- [ ] In the twincat detector, parse `<PlaceholderReference>` and `<LibraryReference>` elements inside `<ItemGroup>` (MSBuild `xmlns`), extracting `Include`, `Namespace`, and (for placeholders) `DefaultResolution` — **REQ-CL-sources-001**
+- [ ] Skip references marked `<SystemLibrary>true</SystemLibrary>` for now
 - [ ] Auto-activate matching bundled libraries (no CLI flag needed)
-- [ ] Resolve reference → bundled library strictly and case-sensitively — **REQ-CL-sources-003**
+- [ ] Resolve reference → bundled library by strict, case-sensitive **name** match; treat a `*` version as "any bundled version" — **REQ-CL-sources-003**
 - [ ] Diagnose a referenced-but-unshipped library, naming it — **REQ-CL-sources-004**
-- [ ] Un-ignore sources-001/003/004; add the `.plcproj`-driven end-to-end `PI` test
+- [ ] Un-ignore sources-001/003/004; add the `.plcproj`-driven end-to-end `PI` test using a fixture that references a bundled library
 - [ ] `cd compiler && just` green
 
 ### Phase 3 — Declare-only bodies + safety
@@ -163,3 +164,8 @@ source**, so a user declaration shadows a library declaration of the same name
   `sources` (it produces a `Library`), not the analyzer.
 - The activated-library merge reuses `resolve_types`'s existing `library.extend`;
   no new merge machinery is needed — only the ordering (base → library → user).
+- The `.plcproj` library-reference shape is grounded against real projects — see
+  the design doc's *Appendix: `.plcproj` library-reference shapes*. References
+  live in `<ItemGroup>` as `<PlaceholderReference>` (version usually `*`) or
+  `<LibraryReference>` (pinned `Name,Version,Vendor`); the `<Namespace>` child
+  supplies the qualifier the source may write.
