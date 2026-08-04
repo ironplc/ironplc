@@ -206,3 +206,15 @@ See Also
 - :doc:`enabling-dialects-and-features` — enabling the object-oriented syntax
 - :doc:`/reference/compiler/problems/P9999` — the diagnostic reported for
   not-yet-supported object-oriented constructs
+
+References
+==========
+
+* IEC 61131-3:2013 — object-oriented extensions (``EXTENDS``, ``SUPER``,
+  class and function block inheritance)
+* `CODESYS: Extension of a Function Block (EXTENDS) <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_extending_function_block.html>`_
+* `CODESYS: Shadowing Rules <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_shadowing_rules.html>`_
+* `CODESYS: SUPER pointer <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_pointer_super.html>`_
+* `CODESYS: Static Analysis SA0013 (Declarations with the same variable name) <https://content.helpme-codesys.com/en/CODESYS%20Static%20Analysis/_san_rule_sa0013.html>`_
+* `PLCCoder: IEC 61131-3 — The hiding attributes <https://www.plccoder.com/the-hiding-attributes/>`_
+* `Stefan Henneken: IEC 61131-3 — Methods, Properties and Inheritance <https://stefanhenneken.net/2017/04/23/iec-61131-3-methods-properties-and-inheritance/>`_
