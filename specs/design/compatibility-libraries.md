@@ -19,6 +19,15 @@ This replaces the earlier, stalled approach of adding `PI` behind a
 `--allow-math-constants` flag (a per-symbol flag with no provenance and no way
 to restrict it by dialect).
 
+> **Requirement markers.** This document carries `REQ-CL-*` requirement markers
+> (area `CL` = compatibility libraries) for each testable claim, per the
+> [design requirement](../steering/development-standards.md). They become
+> build-enforced only once a crate's `build.rs` lists this doc; the
+> [implementation plan](../plans/2026-08-04-compatibility-libraries.md) wires
+> each owning crate and adds the matching `#[spec_test]` conformance tests
+> (using `#[ignore]` for claims not yet implemented). Until then the markers are
+> inert.
+
 ## The Portability Promise
 
 The value proposition — and the invariant that constrains this entire design —
@@ -68,14 +77,12 @@ Where compatibility cannot be delivered faithfully, the compiler must **refuse
 to compile** rather than silently produce code whose behavior it cannot
 reproduce. This is a safety requirement, not a convenience one. Concretely:
 
-- Calling a POU that is only declared (no runnable body yet — see *Bodies*) is a
-  **compile error**, never a runtime trap.
+- **REQ-CL-analyzer-005** Calling a library POU that is only declared (no
+  runnable body — see *Bodies*) is a compile error, never a runtime trap.
 - An unsupported library configuration is diagnosed and rejected, not compiled
-  into something with undefined behavior.
-
-The exact mechanism for detecting and rejecting unsupported configurations is an
-open question (see *Open Questions*); the requirement is that the failure mode is
-"does not compile," never "compiles and misbehaves."
+  into something with undefined behavior. (The detection mechanism is an open
+  question — see *Open Questions* — but the failure mode is fixed: "does not
+  compile," never "compiles and misbehaves.")
 
 ## Goals
 
@@ -151,6 +158,16 @@ library provides some mix of:
   parameter (matching Beckhoff, which differs from the base IEC signature).
 - **Function block types** — e.g. vendor-specific FBs.
 
+Testable behavior:
+
+- **REQ-CL-analyzer-001** A compatibility library is dormant by default: its
+  declarations are in scope only when the library is activated.
+- **REQ-CL-analyzer-003** When a math compatibility library is active, `PI`
+  resolves as a constant and folds at compile time, so it is usable in a `VAR`
+  initializer (e.g. `d2r : LREAL := PI/180.0;`).
+- **REQ-CL-analyzer-004** A user declaration shadows an activated library
+  declaration of the same name.
+
 ### Activation channels
 
 A dormant library is activated **only** out of band, through one of:
@@ -169,10 +186,22 @@ as additional sources, so a library can be activated in the browser too.
 
 Neither channel modifies POU source, preserving the portability invariant.
 
+- **REQ-CL-sources-001** The compiler reads the set of referenced libraries from
+  a discovered `.plcproj` project file's declared library references and
+  activates the matching bundled libraries.
+- **REQ-CL-sources-006** An explicit activation request (e.g. the
+  `--library <name>` CLI option) activates the named bundled library for source
+  that has no project context.
+- **REQ-CL-playground-001** The playground activates a library by loading it from
+  the plain-text library files served alongside the app.
+
 **Never sniff, never guess.** The active library set comes *only* from an
-explicit project-file reference or explicit CLI/playground activation. The
-compiler never infers a library from source content. Guessing wrong would
-silently change behavior, which the portability promise forbids.
+explicit project-file reference or explicit CLI/playground activation. Guessing
+wrong would silently change behavior, which the portability promise forbids.
+
+- **REQ-CL-sources-005** The active library set derives only from explicit
+  activation (a project-file reference or explicit CLI/playground activation);
+  the compiler never infers a library from POU source content.
 
 **"Dormant by default" and "just works by default" are not in tension.**
 Libraries are off for *bare, context-free source*, but on *automatically when a
@@ -184,7 +213,12 @@ light up.
 ### Flat names
 
 Symbols inject **flat**, under their exact vendor names — this is required by the
-portability invariant. Two rules govern qualifiers:
+portability invariant.
+
+- **REQ-CL-analyzer-002** An activated library's symbols resolve under their
+  exact vendor names (flat), with no compiler-injected namespace qualifier.
+
+Two rules govern qualifiers:
 
 - IronPLC **accepts** a qualifier the source already wrote (e.g.
   `Tc2_Standard.TON`) and **never adds** one the source did not. Whether such a
@@ -201,12 +235,10 @@ portability invariant. Two rules govern qualifiers:
 
 Each bundled library is a **manifest plus declarations**:
 
-- **Manifest** — name, vendor, version, and target/dialect it belongs to. This is
-  the provenance that makes a symbol restrictable by target.
-- **Declarations** — real IEC 61131-3 Structured Text for anything with a
-  runnable body (OSCAT functions, `PI` as a constant), and `extern`/intrinsic
-  markers for native functions whose bodies IronPLC provides another way (see
-  *Bodies*).
+| Requirement | Part | Contents |
+|-------------|------|----------|
+| **REQ-CL-sources-002** | Manifest | Name, vendor, version, and target/dialect the library belongs to — the provenance that makes a symbol restrictable by target. |
+| — | Declarations | Real IEC 61131-3 Structured Text for anything with a runnable body (OSCAT functions, `PI` as a constant), and `extern`/intrinsic markers for native functions whose bodies IronPLC provides another way (see *Bodies*). |
 
 Defining libraries as data (manifest + ST) rather than Rust code is what lets a
 library be added without a compiler change, lets third parties contribute
@@ -224,17 +256,29 @@ A POU in a library binds its implementation one of three ways:
   separately. We *desire* the same numeric behavior as the vendor (rounding,
   edge cases); whether that is fully achievable is to be determined.
 - **Declare-only** — the declaration exists so the analyzer can resolve a
-  reference, but there is no runnable body yet. Per *Safety first*, **calling a
-  declare-only POU is a compile error**, not a runtime trap. This lets a large
-  library's declarations land (so unrelated code type-checks) ahead of full
-  runtime support, without ever letting an unimplemented function slip through to
-  execution.
+  reference, but there is no runnable body yet. Per *Safety first*
+  (**REQ-CL-analyzer-005**), calling a declare-only POU is a compile error, not a
+  runtime trap. This lets a large library's declarations land (so unrelated code
+  type-checks) ahead of full runtime support, without ever letting an
+  unimplemented function slip through to execution.
 
 ### Referenced-but-unshipped libraries
 
-If a project references a library IronPLC does not bundle, emit a diagnostic
-that names the missing library, so the resulting `undefined symbol` errors are
-explained rather than mysterious. Do not fail silently.
+- **REQ-CL-sources-004** If a project references a library IronPLC does not
+  bundle, the compiler emits a diagnostic that names the missing library (rather
+  than failing silently), so the resulting `undefined symbol` errors are
+  explained.
+
+### Reference matching
+
+- **REQ-CL-sources-003** Resolution from a project's library reference to a
+  bundled library is strict and case-sensitive — better too strict than to
+  silently bind the wrong library.
+
+### Round-trip fidelity
+
+- **REQ-CL-plc2plc-001** `plc2plc` emits the user's source unchanged; declarations
+  injected by an activated library are never rendered as user source.
 
 ### Composition with dialects (the reverse direction)
 
@@ -311,16 +355,22 @@ function is a compile error (per *Safety first*).
    reproduce it. The open question is whether such qualification is *required* by
    some libraries, or always optional — which affects how much of the qualifier
    path must land before those libraries are usable.
-2. **Library reference identity and matching.** A `.plcproj` names a library with
-   vendor, version, and author (e.g. `Tc2_Standard, * (Beckhoff Automation
-   GmbH)`). What is the resolution from that reference to a bundled library?
-   Matching should be **strict and case-sensitive** — better too strict than to
-   silently bind the wrong library.
+2. **Library reference identity.** A `.plcproj` names a library with vendor,
+   version, and author (e.g. `Tc2_Standard, * (Beckhoff Automation GmbH)`). What
+   is the resolution from that reference to a bundled library, and how strict is
+   version matching? (Name matching is fixed by **REQ-CL-sources-003**: strict,
+   case-sensitive.)
 3. **Unsupported-configuration detection.** By what mechanism does the compiler
    recognize an unsupported library/flag configuration in order to reject it
    (per *Safety first*)?
 4. **Manifest format.** Concrete on-disk shape of the manifest and how
    `extern`/intrinsic bodies are marked in bundled declarations.
+
+## Implementation
+
+See the [implementation plan](../plans/2026-08-04-compatibility-libraries.md),
+which delivers `.plcproj` library-list reading and the `PI`-defining library in
+its early phases and wires each `REQ-CL-*` marker to a `#[spec_test]`.
 
 ## References
 
@@ -335,4 +385,3 @@ function is a compile error (per *Safety first*).
   — permissive parsing, configurable validation; vendor extensions are additive.
 - [Syntax Support Guide](../steering/syntax-support-guide.md)
   — `--allow-*` flag and dialect machinery.
-</content>
