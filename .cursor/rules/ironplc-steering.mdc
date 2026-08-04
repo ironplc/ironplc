@@ -11,6 +11,7 @@ alwaysApply: true
 
 ## Read when relevant
 
+- `specs/steering/glossary.md` — authoritative vocabulary (dialect, vendor, extension, edition); check before coining a term
 - `specs/steering/development-standards.md` — conventions, tests, planning requirement
 - `specs/steering/compiler-architecture.md` — compiler layout and semantic patterns
 - `specs/steering/iec-61131-3-compliance.md` — analyzer / standard compliance
