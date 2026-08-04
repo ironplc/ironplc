@@ -74,17 +74,17 @@ struct FileArgs {
     allow_missing_semicolon: bool,
 
     /// Allow VAR_GLOBAL declarations at the top level (outside CONFIGURATION).
-    /// This is a dialect extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_top_level_var_global: bool,
 
     /// Allow constant references in type parameters (e.g., STRING[MY_CONST]).
-    /// This is a dialect extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_constant_type_params: bool,
 
     /// Allow empty variable blocks (VAR END_VAR, VAR_INPUT END_VAR, etc.).
-    /// This is a dialect extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_empty_var_blocks: bool,
 
@@ -105,13 +105,13 @@ struct FileArgs {
     allow_ref_to: bool,
 
     /// Allow the Beckhoff TwinCAT/CODESYS `REFERENCE TO` reference type and the
-    /// `REF=` binding operator. This is a dialect extension, an alternative to
+    /// `REF=` binding operator. This is an extension, an alternative to
     /// `--allow-ref-to`; the `twincat` and `codesys` dialects enable it.
     #[arg(long)]
     allow_reference_to: bool,
 
     /// Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types.
-    /// This is a dialect extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_ref_arithmetic: bool,
 
@@ -127,12 +127,12 @@ struct FileArgs {
     allow_ref_type_punning: bool,
 
     /// Allow integer literals (0 or 1) as BOOL variable initializers.
-    /// This is a dialect extension supported by CoDeSys, TwinCAT, and RuSTy.
+    /// This is an extension supported by CoDeSys, TwinCAT, and RuSTy.
     #[arg(long)]
     allow_int_to_bool_initializer: bool,
 
     /// Allow SIZEOF() operator that returns the size in bytes of a variable or type.
-    /// This is a dialect extension supported by CODESYS, TwinCAT, and RuSTy.
+    /// This is an extension supported by CODESYS, TwinCAT, and RuSTy.
     #[arg(long)]
     allow_sizeof: bool,
 
@@ -142,7 +142,7 @@ struct FileArgs {
     allow_system_uptime_global: bool,
 
     /// Allow implicit widening between bit-string and integer type families
-    /// (e.g. BYTE→INT, literal 0→BYTE). This is a dialect extension.
+    /// (e.g. BYTE→INT, literal 0→BYTE). This is an extension.
     #[arg(long)]
     allow_cross_family_widening: bool,
 
@@ -153,29 +153,29 @@ struct FileArgs {
     allow_partial_access_syntax: bool,
 
     /// Allow curly-brace pragmas ({attribute 'name'}) as opaque, skipped trivia.
-    /// This is a dialect extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_pragmas: bool,
 
     /// Allow the AND_THEN short-circuit boolean operator (Beckhoff/CODESYS extension).
-    /// This is a dialect extension not part of the IEC 61131-3 standard.
+    /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_short_circuit_operators: bool,
 
     /// Allow an AT-located variable inside an otherwise plain
     /// VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own dedicated
-    /// block. This is a dialect extension not part of the IEC 61131-3 standard.
+    /// block. This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_mixed_located_var_declarations: bool,
 
     /// Allow a VAR initializer to be a constant expression (e.g. SCALE*4.0)
-    /// rather than only a bare literal. This is a dialect extension not part
+    /// rather than only a bare literal. This is an extension not part
     /// of the IEC 61131-3 standard.
     #[arg(long)]
     allow_constant_initializer_expressions: bool,
 
     /// Allow hex/binary/octal bit-string literals (e.g. 16#D012, 2#1010) as
-    /// CASE labels. This is a dialect extension not part of the IEC 61131-3
+    /// CASE labels. This is an extension not part of the IEC 61131-3
     /// standard.
     #[arg(long)]
     allow_bit_string_case_labels: bool,

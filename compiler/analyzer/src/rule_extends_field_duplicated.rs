@@ -1,5 +1,5 @@
 //! Semantic rule that rejects a derived function block (via the
-//! CODESYS/TwinCAT `EXTENDS` dialect extension) redeclaring a field
+//! `EXTENDS` extension) redeclaring a field
 //! already declared on its base function block or any ancestor further
 //! up the `EXTENDS` chain.
 //!

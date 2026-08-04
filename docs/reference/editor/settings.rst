@@ -88,15 +88,15 @@ ironplc.dialect
 :Values: ``iec61131-3-ed2``, ``iec61131-3-ed3``, ``rusty``, ``codesys``, ``twincat``
 
 Selects the language dialect preset. A dialect controls the IEC 61131-3 edition
-and a default set of dialect extensions.
+and a default set of extensions.
 
-* ``iec61131-3-ed2``: Strict IEC 61131-3:2003 (Edition 2). No dialect extensions.
+* ``iec61131-3-ed2``: Strict IEC 61131-3:2003 (Edition 2). No extensions.
 * ``iec61131-3-ed3``: IEC 61131-3:2013 (Edition 3) with ``LTIME``, ``REF_TO``, etc.
 * ``rusty``: RuSTy-compatible — designed for compatibility with code from
   RuSTy-based PLC environments.
 * ``codesys``: CODESYS-compatible — Edition 2 base with ``REF_TO`` and the
-  dialect extensions that the CODESYS IDE accepts.
-* ``twincat``: TwinCAT-compatible — Edition 2 base with the dialect extensions
+  extensions that the CODESYS IDE accepts.
+* ``twincat``: TwinCAT-compatible — Edition 2 base with the extensions
   Beckhoff TwinCAT shares with CODESYS. Unlike ``codesys`` it does not enable
   the ``REF_TO`` reference extensions, since TwinCAT uses ``REFERENCE TO`` /
   ``POINTER TO`` (not yet parsed by IronPLC).

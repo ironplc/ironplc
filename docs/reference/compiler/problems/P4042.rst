@@ -12,7 +12,7 @@ The IEC 61131-3 standard grammar (Annex B) declares a string length only
 with square brackets --
 ``single_byte_string_spec ::= 'STRING' ['[' unsigned_int ']'] ...`` (and the
 corresponding ``'WSTRING' ['[' unsigned_int ']']``). The parenthesis form is
-a dialect extension.
+an extension.
 
 A bracketed length (``STRING[255]``) is standard syntax and is always
 allowed.
@@ -40,6 +40,6 @@ To fix this error, either use the standard bracket form:
    END_VAR
    END_FUNCTION_BLOCK
 
-Or enable the dialect extension with the ``--allow-paren-string-length``
+Or enable the extension with the ``--allow-paren-string-length``
 flag. See :doc:`/explanation/enabling-dialects-and-features` for how to
-enable dialect extensions and which dialects include them.
+enable extensions and which dialects include them.

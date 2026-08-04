@@ -4,7 +4,7 @@ P4029
 
 .. problem-summary:: P4029
 
-This error occurs when a constant name is used in place of an integer literal in a type parameter (such as a ``STRING`` length or array bound) without the ``--allow-constant-type-params`` compiler flag. In the IEC 61131-3 standard, type parameters require integer literals. Using constant references is a dialect extension.
+This error occurs when a constant name is used in place of an integer literal in a type parameter (such as a ``STRING`` length or array bound) without the ``--allow-constant-type-params`` compiler flag. In the IEC 61131-3 standard, type parameters require integer literals. Using constant references is an extension.
 
 Example
 -------
@@ -33,4 +33,4 @@ To fix this error, either use an integer literal directly:
    END_VAR
    END_FUNCTION_BLOCK
 
-Or enable the dialect extension with the ``--allow-constant-type-params`` flag.
+Or enable the extension with the ``--allow-constant-type-params`` flag.

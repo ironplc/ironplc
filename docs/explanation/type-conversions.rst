@@ -282,7 +282,7 @@ Cross-family widening
 
 Widening from a bit-string type to an integer type crosses the ``ANY_BIT`` /
 ``ANY_INT`` boundary and is not part of the IEC 61131-3 standard. IronPLC
-supports this as a dialect extension behind the ``--allow-cross-family-widening``
+supports this as an extension behind the ``--allow-cross-family-widening``
 flag (enabled by default in the ``Rusty`` dialect). See
 :doc:`/explanation/enabling-dialects-and-features` for how to enable this flag.
 

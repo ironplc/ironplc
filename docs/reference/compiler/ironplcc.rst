@@ -94,43 +94,43 @@ Options
 
 ``--dialect`` *DIALECT*
    Select the language dialect. A dialect sets the IEC 61131-3 edition and a
-   default set of dialect extensions. Individual ``--allow-*`` flags can
+   default set of extensions. Individual ``--allow-*`` flags can
    override the dialect's defaults. Available values: ``iec61131-3-ed2``
    (default), ``iec61131-3-ed3``, ``rusty``, ``codesys``, ``twincat``. See
    :doc:`/explanation/enabling-dialects-and-features` for details.
 
 ``--allow-c-style-comments``
    Allow C-style comments (``//`` line comments and ``/* */`` block
-   comments). This is a dialect extension not part of the IEC 61131-3
+   comments). This is an extension not part of the IEC 61131-3
    standard.
 
 ``--allow-missing-semicolon``
    Allow missing semicolons after keyword statements like ``END_IF`` and
-   ``END_STRUCT``. This is a dialect extension not part of the IEC 61131-3
+   ``END_STRUCT``. This is an extension not part of the IEC 61131-3
    standard.
 
 ``--allow-top-level-var-global``
    Allow ``VAR_GLOBAL`` declarations at the top level of a file, outside of
-   a ``CONFIGURATION`` block. This is a dialect extension not part of the
+   a ``CONFIGURATION`` block. This is an extension not part of the
    IEC 61131-3 standard.
 
 ``--allow-constant-type-params``
    Allow constant references in type parameters (e.g., ``STRING[MY_CONST]``
-   or ``ARRAY[1..MY_CONST] OF INT``). This is a dialect extension not part
+   or ``ARRAY[1..MY_CONST] OF INT``). This is an extension not part
    of the IEC 61131-3 standard.
 
 ``--allow-empty-var-blocks``
    Allow empty variable blocks (``VAR END_VAR``, ``VAR_INPUT END_VAR``,
-   etc.). This is a dialect extension not part of the IEC 61131-3 standard.
+   etc.). This is an extension not part of the IEC 61131-3 standard.
 
 ``--allow-time-as-function-name``
    Allow ``TIME`` to be used as a function name (e.g., ``TIME()``).
-   Required for OSCAT compatibility. This is a dialect extension not part
+   Required for OSCAT compatibility. This is an extension not part
    of the IEC 61131-3 standard.
 
 ``--allow-ref-to``
    Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
-   Edition 3. This is a dialect extension useful when you need references
+   Edition 3. This is an extension useful when you need references
    but want to keep Edition 2 keyword handling for the rest of your code.
 
 ``--allow-reference-to``
@@ -145,12 +145,12 @@ Options
 
 ``--allow-ref-stack-variables``
    Allow ``REF()`` on stack-allocated variables (``VAR_TEMP`` and function
-   ``VAR_INPUT``/``VAR_OUTPUT``). This is a dialect extension not part of the
+   ``VAR_INPUT``/``VAR_OUTPUT``). This is an extension not part of the
    IEC 61131-3 standard.
 
 ``--allow-ref-type-punning``
    Allow assigning between ``REF_TO`` types of different base types (type
-   punning). This is a dialect extension not part of the IEC 61131-3 standard.
+   punning). This is an extension not part of the IEC 61131-3 standard.
 
 ``--allow-int-to-bool-initializer``
    Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers,
@@ -160,7 +160,7 @@ Options
 
 ``--allow-sizeof``
    Allow the ``SIZEOF()`` operator that returns the size in bytes of a
-   variable or type. This is a dialect extension supported by CODESYS,
+   variable or type. This is an extension supported by CODESYS,
    TwinCAT, and RuSTy.
 
 ``--allow-system-uptime-global``
@@ -217,7 +217,7 @@ Options
    Allow a string type's maximum length to be delimited with parentheses
    (``STRING(255)``, ``WSTRING(100)``) in addition to the standard square
    brackets. The IEC 61131-3 standard declares a string length only with
-   brackets; the parenthesis form is a dialect extension. Produces
+   brackets; the parenthesis form is an extension. Produces
    :doc:`P4042 </reference/compiler/problems/P4042>` when used without this
    flag.
 
@@ -227,7 +227,7 @@ Options
    structured or call-style initializer's ``name := value`` pairs (e.g.
    ``tonDelta : TON := (PT := pDevice^.Delta);``). The IEC 61131-3 standard
    permits only a constant, enumerated value, array initializer, or nested
-   structure initializer here; this dialect extension accepts a value
+   structure initializer here; this extension accepts a value
    computed at instantiation time. Produces
    :doc:`P4043 </reference/compiler/problems/P4043>` when used without this
    flag.

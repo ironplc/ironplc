@@ -179,7 +179,7 @@ pub trait Fold<E> {
     // 2.4.3.2
     dispatch!(SimpleInitializer);
 
-    // CODESYS/TwinCAT dialect extension
+    // Expression-valued initializer (extension)
     dispatch!(SimpleExprInitializer);
 
     // 2.4.3.1 and 2.4.3.2

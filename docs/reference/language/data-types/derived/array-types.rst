@@ -43,8 +43,8 @@ Example
 Multi-dimensional arrays use comma-separated ranges in the index
 specification.
 
-Constant Bounds (Dialect Extension)
------------------------------------
+Constant Bounds (Language Extension)
+------------------------------------
 
 .. include:: ../../../../includes/requires-dialect-extension.rst
 

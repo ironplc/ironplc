@@ -10,7 +10,7 @@ inside an otherwise plain ``VAR``/``VAR_INPUT``/``VAR_OUTPUT`` block,
 without the ``--allow-mixed-located-var-declarations`` compiler flag. The
 IEC 61131-3 standard requires located variables to be declared in their
 own dedicated block, separate from ordinary symbolic variables. Mixing
-them in one block is a dialect extension.
+them in one block is an extension.
 
 A block containing *only* located variables is unaffected by this error —
 that is standard syntax and always allowed.
@@ -42,7 +42,7 @@ To fix this error, either move the located variable into its own block:
    END_VAR
    END_FUNCTION_BLOCK
 
-Or enable the dialect extension:
+Or enable the extension:
 
 .. |flag| replace:: ``--allow-mixed-located-var-declarations``
 .. include:: /includes/enabled-by-flag.rst

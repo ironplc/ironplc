@@ -9,7 +9,7 @@ This error occurs when a ``VAR`` initializer uses a constant expression
 variables) instead of a bare literal, without the
 ``--allow-constant-initializer-expressions`` compiler flag. The IEC 61131-3
 standard's initializer grammar only permits a single literal in this
-position. Constant expressions are a dialect extension.
+position. Constant expressions are an extension.
 
 Example
 -------
@@ -38,7 +38,7 @@ To fix this error, either use a literal value directly:
    END_VAR
    END_PROGRAM
 
-Or enable the dialect extension:
+Or enable the extension:
 
 .. |flag| replace:: ``--allow-constant-initializer-expressions``
 .. include:: /includes/enabled-by-flag.rst

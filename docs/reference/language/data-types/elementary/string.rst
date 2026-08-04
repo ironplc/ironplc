@@ -43,8 +43,8 @@ Example
    name := 'my name';
    msg := 'a message';
 
-Constant Length (Dialect Extension)
------------------------------------
+Constant Length (Language Extension)
+------------------------------------
 
 .. include:: ../../../../includes/requires-dialect-extension.rst
 

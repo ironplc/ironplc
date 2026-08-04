@@ -132,7 +132,7 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32(), 50);
 }
 
-/// Options enabling only the bit-string CASE label dialect extension, on the
+/// Options enabling only the bit-string CASE label extension, on the
 /// default Edition 2 base. The selector is a standard integer type (`DINT`);
 /// only the radix-prefixed *label* form is the extension under test.
 fn opts_with_bit_string_case_labels() -> CompilerOptions {

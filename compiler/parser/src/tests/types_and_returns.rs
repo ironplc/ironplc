@@ -241,7 +241,7 @@ END_PROGRAM",
 
 #[test]
 fn parse_when_var_with_string_paren_length_and_strict_dialect_then_rejected() {
-    // The STRING(n) parenthesis delimiter is a dialect extension, not
+    // The STRING(n) parenthesis delimiter is an extension, not
     // standard IEC 61131-3. Under the strict default dialect (no
     // allow_paren_string_length flag) it must be rejected (P4042).
     let result = parse_program(

@@ -100,7 +100,7 @@ global variable it references.
      firstReading := Readings[1];
    END_PROGRAM
 
-Top-Level Global Variables (Dialect Extension)
+Top-Level Global Variables (Language Extension)
 -----------------------------------------------
 
 .. include:: ../../../includes/requires-dialect-extension.rst

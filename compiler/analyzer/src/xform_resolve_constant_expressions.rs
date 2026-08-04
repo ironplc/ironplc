@@ -5,7 +5,7 @@
 //! this pass substitutes the constant's value so downstream analysis sees
 //! only concrete integer literals.
 //!
-//! This is a dialect extension — the IEC 61131-3 standard requires integer
+//! This is an extension — the IEC 61131-3 standard requires integer
 //! literals in these positions. The `--allow-constant-type-params` flag
 //! controls whether unresolved references are accepted or rejected.
 
@@ -32,7 +32,7 @@ struct ConstantInfo {
 /// constants (VAR CONSTANT inside FUNCTION, FUNCTION_BLOCK, or PROGRAM) are
 /// scoped — they are only visible within their declaring POU.
 ///
-/// Using a constant reference in a type parameter is a dialect extension. When
+/// Using a constant reference in a type parameter is an extension. When
 /// `options.allow_constant_type_params` is false (strict IEC 61131-3), any such
 /// reference is rejected with [`Problem::ConstantTypeParamNotAllowed`] instead
 /// of being resolved.
@@ -128,7 +128,7 @@ fn extract_integer_value(init: &InitialValueAssignmentKind) -> Option<u128> {
 
 struct ConstantResolver {
     constants: HashMap<String, ConstantInfo>,
-    /// Whether the `--allow-constant-type-params` dialect extension is enabled.
+    /// Whether the `--allow-constant-type-params` extension is enabled.
     /// When false, a constant reference in a type parameter is rejected outright
     /// (P4029) rather than resolved.
     allow_constant_type_params: bool,
@@ -137,7 +137,7 @@ struct ConstantResolver {
 
 impl ConstantResolver {
     /// Records a P4029 diagnostic for a constant reference that appears in a type
-    /// parameter while the dialect extension is disabled. Returns `true` when the
+    /// parameter while the extension is disabled. Returns `true` when the
     /// reference was rejected (flag off), so callers skip resolution.
     fn reject_if_not_allowed(&mut self, id: &Id) -> bool {
         if self.allow_constant_type_params {
@@ -150,7 +150,7 @@ impl ConstantResolver {
             )
             .with_help(
                 "Use an integer literal in the type parameter, or enable the \
-                 --allow-constant-type-params dialect extension.",
+                 --allow-constant-type-params extension.",
             ),
         );
         true
@@ -266,7 +266,7 @@ mod tests {
         .unwrap()
     }
 
-    /// Options with the constant-type-params dialect extension enabled, so the
+    /// Options with the constant-type-params extension enabled, so the
     /// transform resolves references instead of rejecting them (P4029).
     fn enabled() -> CompilerOptions {
         CompilerOptions {
@@ -556,7 +556,7 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------
-    // Enforcement of the `--allow-constant-type-params` dialect extension.
+    // Enforcement of the `--allow-constant-type-params` extension.
     // See ironplc/ironplc#1234.
     // ---------------------------------------------------------------------
 

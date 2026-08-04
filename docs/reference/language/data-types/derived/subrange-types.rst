@@ -42,8 +42,8 @@ Example
        level := level + 10;
    END_PROGRAM
 
-Constant Bounds (Dialect Extension)
------------------------------------
+Constant Bounds (Language Extension)
+------------------------------------
 
 .. include:: ../../../../includes/requires-dialect-extension.rst
 

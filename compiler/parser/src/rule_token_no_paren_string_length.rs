@@ -2,7 +2,7 @@
 //! delimiter unless the `allow_paren_string_length` flag is set.
 //!
 //! IEC 61131-3 (Annex B) declares a string length only with square brackets
-//! (`STRING [ n ]`). The parenthesis form is a dialect extension, accepted
+//! (`STRING [ n ]`). The parenthesis form is an extension, accepted
 //! under `--allow-paren-string-length`; which dialects enable it is defined
 //! by the dialect mapping in `options.rs`, not restated here.
 //!

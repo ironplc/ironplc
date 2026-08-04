@@ -4,7 +4,7 @@ P4028
 
 .. problem-summary:: P4028
 
-This error occurs when ``VAR_GLOBAL`` declarations appear at the top level (outside a ``CONFIGURATION`` block) without the ``--allow-top-level-var-global`` compiler flag. In the IEC 61131-3 standard, ``VAR_GLOBAL`` declarations are only permitted inside ``CONFIGURATION`` and ``RESOURCE`` blocks. Top-level ``VAR_GLOBAL`` is a dialect extension.
+This error occurs when ``VAR_GLOBAL`` declarations appear at the top level (outside a ``CONFIGURATION`` block) without the ``--allow-top-level-var-global`` compiler flag. In the IEC 61131-3 standard, ``VAR_GLOBAL`` declarations are only permitted inside ``CONFIGURATION`` and ``RESOURCE`` blocks. Top-level ``VAR_GLOBAL`` is an extension.
 
 Example
 -------
@@ -38,4 +38,4 @@ To fix this error, either wrap the declaration in a ``CONFIGURATION`` block:
        END_RESOURCE
    END_CONFIGURATION
 
-Or enable the dialect extension with the ``--allow-top-level-var-global`` flag.
+Or enable the extension with the ``--allow-top-level-var-global`` flag.

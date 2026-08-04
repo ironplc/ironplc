@@ -12,7 +12,7 @@ The IEC 61131-3 standard grammar for a case label (Annex B) is
 ``case_list_element ::= subrange | signed_integer | enumerated_value``,
 where ``signed_integer`` is a *decimal* digit sequence. Radix-prefixed
 bit-string literals are separate productions that the standard does not
-include as case labels, so accepting them is a dialect extension used by
+include as case labels, so accepting them is an extension used by
 TwinCAT and CODESYS.
 
 A plain decimal label (``5:``) is standard syntax and is always allowed.
@@ -48,7 +48,7 @@ To fix this error, either use a decimal label:
    END_CASE;
    END_FUNCTION_BLOCK
 
-Or enable the dialect extension:
+Or enable the extension:
 
 .. |flag| replace:: ``--allow-bit-string-case-labels``
 .. include:: /includes/enabled-by-flag.rst

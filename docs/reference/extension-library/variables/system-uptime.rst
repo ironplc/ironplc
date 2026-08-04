@@ -8,7 +8,7 @@ Implicit global variables that expose the VM's monotonic uptime counter.
    :widths: 30 70
 
    * - **IEC 61131-3**
-     - Not part of the standard (dialect extension)
+     - Not part of the standard (language extension)
    * - **Support**
      - Supported (requires ``--allow-system-uptime-global``)
 
@@ -97,4 +97,4 @@ with CODESYS-style code:
 See Also
 --------
 
-- :doc:`/explanation/enabling-dialects-and-features` -- enabling dialect extensions
+- :doc:`/explanation/enabling-dialects-and-features` -- enabling language extensions

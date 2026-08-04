@@ -749,9 +749,9 @@ pub enum Operator {
 }
 ```
 
-## Dialect Extension Trait and Semantic Rule
+## Language Extension Trait and Semantic Rule
 
-### The `DialectExtension` Trait
+### The `LanguageExtension` Trait
 
 Every AST node representing a non-standard construct implements this trait. It provides the metadata needed for the `P9004` diagnostic without any per-instance runtime data — origins are static per type.
 
@@ -763,9 +763,9 @@ Every AST node representing a non-standard construct implements this trait. It p
 /// rule `rule_unsupported_extension` walks the AST and emits P9004 for every
 /// node that implements this trait.
 ///
-/// As each extension graduates to full support, remove its DialectExtension
+/// As each extension graduates to full support, remove its LanguageExtension
 /// impl. The semantic rule automatically stops flagging it.
-pub trait DialectExtension {
+pub trait LanguageExtension {
     /// Human-readable name of this extension (e.g., "METHOD declaration").
     fn extension_name(&self) -> &'static str;
 
@@ -784,7 +784,7 @@ pub trait DialectExtension {
 ```rust
 // Beckhoff/CODESYS extension — METHOD declaration
 // Extension: Beckhoff/CODESYS OOP
-impl DialectExtension for MethodDeclaration {
+impl LanguageExtension for MethodDeclaration {
     fn extension_name(&self) -> &'static str { "METHOD declaration" }
     fn extension_origins(&self) -> &'static [ExtensionOrigin] { &[ExtensionOrigin::BeckhoffCodesys] }
     fn extension_span(&self) -> SourceSpan { self.span }
@@ -792,7 +792,7 @@ impl DialectExtension for MethodDeclaration {
 
 // Shared extension — VAR_STAT
 // Extension: Beckhoff/CODESYS, Siemens SCL
-impl DialectExtension for VarStatSection {
+impl LanguageExtension for VarStatSection {
     fn extension_name(&self) -> &'static str { "VAR_STAT section" }
     fn extension_origins(&self) -> &'static [ExtensionOrigin] {
         &[ExtensionOrigin::BeckhoffCodesys, ExtensionOrigin::SiemensSCL]
@@ -802,7 +802,7 @@ impl DialectExtension for VarStatSection {
 
 // IEC 61131-3 3rd edition + Beckhoff — CONTINUE statement
 // Extension: IEC 61131-3 3rd edition, Beckhoff/CODESYS
-impl DialectExtension for ContinueStatement {
+impl LanguageExtension for ContinueStatement {
     fn extension_name(&self) -> &'static str { "CONTINUE statement" }
     fn extension_origins(&self) -> &'static [ExtensionOrigin] {
         &[ExtensionOrigin::Iec61131Ed3, ExtensionOrigin::BeckhoffCodesys]
@@ -837,7 +837,7 @@ P9004 - Recognized extension not supported
 
 ### Semantic Rule: `rule_unsupported_extension.rs`
 
-A single visitor walks the AST and emits `P9004` for every `DialectExtension` node. The visitor checks each AST node type that could be a dialect extension:
+A single visitor walks the AST and emits `P9004` for every `LanguageExtension` node. The visitor checks each AST node type that could be an extension:
 
 ```rust
 pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
@@ -850,7 +850,7 @@ pub fn apply(lib: &Library, _context: &SemanticContext) -> SemanticResult {
 }
 
 impl RuleUnsupportedExtension {
-    fn check_extension(&mut self, ext: &dyn DialectExtension) {
+    fn check_extension(&mut self, ext: &dyn LanguageExtension) {
         let origins: Vec<&str> = ext.extension_origins().iter().map(|o| o.as_str()).collect();
         let origin_text = origins.join(", ");
         self.diagnostics.push(Diagnostic::problem(
@@ -868,13 +868,13 @@ impl RuleUnsupportedExtension {
 }
 ```
 
-The visitor overrides `visit_*` for each extension node type (MethodDeclaration, PropertyDeclaration, InterfaceDeclaration, etc.) and calls `check_extension`. As extensions graduate to full support, their `visit_*` override is removed (or their `DialectExtension` impl is removed) and the rule stops flagging them.
+The visitor overrides `visit_*` for each extension node type (MethodDeclaration, PropertyDeclaration, InterfaceDeclaration, etc.) and calls `check_extension`. As extensions graduate to full support, their `visit_*` override is removed (or their `LanguageExtension` impl is removed) and the rule stops flagging them.
 
 ### Graduation Path
 
 When an extension moves from "parsed but unsupported" to "fully supported":
 
-1. Remove the `DialectExtension` impl from the AST node
+1. Remove the `LanguageExtension` impl from the AST node
 2. Remove the `visit_*` override in `rule_unsupported_extension.rs`
 3. Add real semantic rules for the construct
 4. The `P9004` diagnostic automatically stops appearing for that construct
@@ -992,7 +992,7 @@ This test lives in `compiler/parser/src/tests/` alongside the other parser tests
 0. **Phase 0 — Prerequisites** (before any dialect code):
    - Keyword safety regression test: function block with all planned keywords as variable names, parsed in standard mode
    - `ExtensionOrigin` enum in the DSL crate
-   - `DialectExtension` trait in the DSL crate
+   - `LanguageExtension` trait in the DSL crate
    - `P9004 UnsupportedExtension` problem code in CSV and documentation
    - `rule_unsupported_extension.rs` semantic rule (empty initially — no extension nodes exist yet)
 
@@ -1006,14 +1006,14 @@ This test lives in `compiler/parser/src/tests/` alongside the other parser tests
    - Method, Property, and Interface XML element handling in `twincat_parser.rs`
    - `INTERFACE` / `END_INTERFACE`
    - DSL: `MethodDeclaration`, `PropertyDeclaration`, `InterfaceDeclaration`, `extends`/`implements` fields
-   - `DialectExtension` impls on all new AST nodes; `rule_unsupported_extension` visitor overrides
+   - `LanguageExtension` impls on all new AST nodes; `rule_unsupported_extension` visitor overrides
 
 2. **Phase 2 — Access modifiers and expressions**:
    - Access modifiers on methods/properties (`PUBLIC`, `PRIVATE`, `PROTECTED`, `INTERNAL`)
    - `ABSTRACT` / `FINAL` / `OVERRIDE` method modifiers
    - `THIS^` / `SUPER^` expressions
    - DSL: `AccessModifier`, `ThisRef`, `SuperRef`
-   - `DialectExtension` impls on new nodes
+   - `LanguageExtension` impls on new nodes
 
 3. **Phase 3 — Type system extensions**:
    - `POINTER TO` / `REFERENCE TO`
@@ -1025,11 +1025,11 @@ This test lives in `compiler/parser/src/tests/` alongside the other parser tests
    - `AND_THEN` / `OR_ELSE` short-circuit operators
    - `CONTINUE` statement
    - DSL: `PointerTo`, `ReferenceTo`, `UnionDeclaration`, `RefAssign`, `Continue`, `AndThen`/`OrElse`
-   - `DialectExtension` impls on new nodes
+   - `LanguageExtension` impls on new nodes
 
 4. **Phase 4 — Advanced features**:
    - `S=` / `R=` extended assignment operators (parser-level, assignment context)
    - `__TRY` / `__CATCH` / `__FINALLY` / `__ENDTRY`
    - Conditional compilation pragmas (`{IF defined(...)}` / `{END_IF}`)
    - DSL: `SetAssign`, `ResetAssign`
-   - `DialectExtension` impls on new nodes
+   - `LanguageExtension` impls on new nodes

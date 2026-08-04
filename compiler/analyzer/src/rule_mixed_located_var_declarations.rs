@@ -6,7 +6,7 @@
 //! like `AT %IX0.0`, or incomplete/wildcard address like `AT %I*`) to live
 //! in their own dedicated `VAR ... END_VAR` block, separate from ordinary
 //! symbolic variables. Real CODESYS/TwinCAT code commonly mixes them in one
-//! block; this is a dialect extension.
+//! block; this is an extension.
 //!
 //! The parser always accepts the mixed form; this rule is what actually
 //! enforces the flag, by deriving "is this declaration mixed with a plain

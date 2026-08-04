@@ -19,7 +19,7 @@ IronPLC follows a **permissive parsing, configurable validation** approach:
 
 ## Standard Compliance Levels
 
-IEC 61131-3 compliance levels relate to dialect extensions and vendor restrictions, not progressive feature implementation:
+IEC 61131-3 compliance levels relate to extensions and vendor restrictions, not progressive feature implementation:
 
 ### Base Standard Compliance
 - Full IEC 61131-3 standard implementation
@@ -27,7 +27,7 @@ IEC 61131-3 compliance levels relate to dialect extensions and vendor restrictio
 - Standard-compliant semantic validation
 - Complete type system as defined by the standard
 
-### Dialect Extensions (Additive)
+### Language Extensions (Additive)
 - Additional data types beyond the standard
 - Extended function libraries
 - Enhanced language constructs
@@ -125,7 +125,7 @@ Design validation to be configurable rather than fixed:
 - Maintain compatibility with older versions
 - Document compliance level clearly
 
-### Dialect Extensions
+### Language Extensions
 - Provide clear extension points
 - Avoid conflicts with standard features
 - Document extension behavior

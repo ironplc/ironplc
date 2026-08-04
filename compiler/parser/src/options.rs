@@ -14,17 +14,17 @@ use std::str::FromStr;
 /// Individual `--allow-*` CLI flags can still override on top of a dialect.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
-    /// Strict IEC 61131-3:2003 (Edition 2).  No dialect extensions.
+    /// Strict IEC 61131-3:2003 (Edition 2).  No extensions.
     #[default]
     Iec61131_3Ed2,
-    /// Strict IEC 61131-3:2013 (Edition 3).  No dialect extensions.
+    /// Strict IEC 61131-3:2013 (Edition 3).  No extensions.
     Iec61131_3Ed3,
     /// RuSTy-compatible dialect: Edition 2 base (so long-time keywords
     /// like `LDT` stay as identifiers) plus `REF_TO` support and all
-    /// dialect extensions enabled.
+    /// extensions enabled.
     Rusty,
     /// CODESYS-compatible dialect: Edition 2 base plus `REF_TO` support
-    /// and the dialect extensions that CODESYS accepts.  Does not bind the
+    /// and the extensions that CODESYS accepts.  Does not bind the
     /// implicit `__SYSTEM_UP_TIME` globals, which are an IronPLC runtime
     /// convention rather than a CODESYS feature.
     Codesys,
@@ -65,17 +65,17 @@ impl Dialect {
     pub fn description(&self) -> &'static str {
         match self {
             Dialect::Iec61131_3Ed2 => {
-                "Strict IEC 61131-3:2003 (Edition 2). No dialect extensions. [default]"
+                "Strict IEC 61131-3:2003 (Edition 2). No extensions. [default]"
             }
-            Dialect::Iec61131_3Ed3 => "Strict IEC 61131-3:2013 (Edition 3). No dialect extensions.",
+            Dialect::Iec61131_3Ed3 => "Strict IEC 61131-3:2013 (Edition 3). No extensions.",
             Dialect::Rusty => {
-                "RuSTy-compatible: Edition 2 base with REF_TO and all dialect extensions."
+                "RuSTy-compatible: Edition 2 base with REF_TO and the extensions RuSTy accepts."
             }
             Dialect::Codesys => {
-                "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS dialect extensions."
+                "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS extensions."
             }
             Dialect::TwinCat => {
-                "TwinCAT-compatible: Edition 2 base with the dialect extensions TwinCAT accepts."
+                "TwinCAT-compatible: Edition 2 base with the extensions TwinCAT accepts."
             }
         }
     }
@@ -409,7 +409,7 @@ mod tests {
         );
     }
 
-    /// IEC 61131-3 Ed. 2 (the default) enables no dialect extensions at all.
+    /// IEC 61131-3 Ed. 2 (the default) enables no extensions at all.
     #[test]
     fn ed2_dialect_enables_no_flags() {
         assert!(!CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2).allow_iec_61131_3_2013);
@@ -425,7 +425,7 @@ mod tests {
     }
 
     /// The RuSTy dialect stays on the Edition-2 keyword base and enables every
-    /// dialect extension. Listed explicitly (not derived) so a new option that
+    /// extension. Listed explicitly (not derived) so a new option that
     /// is meant to be Rusty-only, or accidentally left off Rusty, is caught.
     #[test]
     fn rusty_dialect_enables_exactly_these_flags() {
