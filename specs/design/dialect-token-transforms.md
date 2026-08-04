@@ -278,7 +278,7 @@ fn apply_dialect_transforms(tokens: Vec<Token>, options: &CompilerOptions) -> Ve
 }
 ```
 
-Keyword promotion uses a single `promote_keywords` function driven by the shared `DIALECT_KEYWORDS` table (see the [Extension Origin Model](beckhoff-twincat-dialect.md#extension-origin-model) in the Beckhoff design). Each entry in the table has an `origins` field; the function promotes identifiers whose entry origins intersect the active dialect's origin set. This avoids duplicating promotion logic per dialect.
+Keyword promotion is gated by the active dialect and its `--allow-*` flags (see [Keyword Promotion Is Gated by Dialect and Flags](beckhoff-twincat-dialect.md#keyword-promotion-is-gated-by-dialect-and-flags) in the Beckhoff design). A keyword-carrying identifier is only promoted when the dialect enables the corresponding flag, so promotion logic is not duplicated per dialect.
 
 ### Module organization
 

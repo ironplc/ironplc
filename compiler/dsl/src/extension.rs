@@ -6,25 +6,6 @@
 
 use crate::core::SourceSpan;
 
-/// Identifies the vendor or standards origin of a language extension.
-///
-/// A single extension may have multiple origins (e.g. a construct shared by
-/// Beckhoff/CODESYS and Siemens SCL would list both).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ExtensionOrigin {
-    /// Beckhoff TwinCAT / CODESYS OOP and type system extensions.
-    BeckhoffCodesys,
-}
-
-impl ExtensionOrigin {
-    /// A human-readable label suitable for diagnostic messages.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ExtensionOrigin::BeckhoffCodesys => "Beckhoff/CODESYS",
-        }
-    }
-}
-
 /// Marker trait for AST nodes representing non-standard language
 /// extensions.
 ///
@@ -39,23 +20,6 @@ pub trait LanguageExtension {
     /// Human-readable name of this extension (e.g., "EXTENDS clause").
     fn extension_name(&self) -> &'static str;
 
-    /// Which dialects introduced this extension. A single extension may
-    /// originate from multiple vendors.
-    fn extension_origins(&self) -> &'static [ExtensionOrigin];
-
     /// The source span for diagnostic reporting.
     fn extension_span(&self) -> SourceSpan;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn extension_origin_as_str_when_beckhoff_codesys_then_readable_label() {
-        assert_eq!(
-            ExtensionOrigin::BeckhoffCodesys.as_str(),
-            "Beckhoff/CODESYS"
-        );
-    }
 }

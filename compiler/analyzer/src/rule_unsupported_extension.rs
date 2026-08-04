@@ -50,14 +50,12 @@ struct RuleUnsupportedExtension {
 
 impl RuleUnsupportedExtension {
     fn flag(&mut self, ext: &dyn LanguageExtension) {
-        let origins: Vec<&str> = ext.extension_origins().iter().map(|o| o.as_str()).collect();
         self.diagnostics
             .push(Diagnostic::not_implemented(Label::span(
                 ext.extension_span(),
                 format!(
-                    "{} ({} extension) is recognized but not yet supported by IronPLC",
+                    "{} is recognized but not yet supported by IronPLC",
                     ext.extension_name(),
-                    origins.join(", "),
                 ),
             )));
     }
