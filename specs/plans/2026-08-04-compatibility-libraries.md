@@ -10,12 +10,15 @@ early are:
 
 1. **Reading the referenced-library list from a `.plcproj` project file** and
    activating the matching bundled libraries.
-2. **A bundled library that defines `PI`** (and `e`), so `PI` resolves as a
-   compile-time-folded constant with no new keyword and no per-symbol flag.
+2. **The `Tc2_Math` compatibility library** — the TwinCAT library whose global
+   constants include `PI` — so `PI` resolves as a compile-time-folded constant
+   with no new keyword and no per-symbol flag. `Tc2_Math` is the exact name a
+   `.plcproj` references, so activation matches by name.
 
 This closes the long-standing `PI` gap through the general library mechanism
 rather than the stalled `--allow-math-constants` approach, and lays the
-substrate for `Tc2_Math` and OSCAT.
+substrate for the rest of `Tc2_Math` and beyond. The key outcome is **`PI` for
+TwinCAT**.
 
 ## Non-goals
 
@@ -23,25 +26,30 @@ substrate for `Tc2_Math` and OSCAT.
   deferred *Future Goal* in the design.
 - Cross-library / cross-vendor mixing as a supported configuration.
 - The general mechanism for *detecting* an unsupported library/flag
-  configuration (design Open Question 3). This plan only holds the invariant
-  that declare-only calls fail to compile.
-- Qualified-access-as-a-requirement (design Open Question 1). The parser must
-  not *add* qualifiers; making a library *require* qualified access is out of
-  scope here.
+  configuration. This plan only holds the invariant that declare-only calls fail
+  to compile.
+- Qualified-access-as-a-requirement. The parser must not *add* qualifiers; making
+  a library *require* qualified access is deferred (design *Future Goals*).
 - Full runtime bodies for native vendor functions (e.g. `Tc2_Math` numeric
   fidelity). Signature/declare-only support lands; intrinsics come later.
 
 ## Design doc reference
 
-[specs/design/compatibility-libraries.md](../design/compatibility-libraries.md).
-Every `REQ-CL-*` marker in that doc is delivered by a phase below and wired to a
-`#[spec_test]`. Areas: `sources`, `analyzer`, `plc2plc`, `playground`.
+Two design docs:
+[compatibility-libraries.md](../design/compatibility-libraries.md) (behavior,
+`REQ-CL-*`) and
+[compatibility-library-format.md](../design/compatibility-library-format.md)
+(on-disk format + installation, `REQ-LF-*`). Every marker in both is delivered by
+a phase below and wired to a `#[spec_test]`. Owning crate slugs: `sources`,
+`analyzer`, `plc2plc`, `playground`.
 
 ## Architecture
 
 A **compatibility library** is bundled data: a manifest (name, vendor, version,
-target) plus IEC 61131-3 declarations. A loader in the `sources` crate parses a
-library into an `ironplc_dsl::common::Library`. An **activated-library set**
+references) plus IEC 61131-3 declarations, in the package format specified by
+[compatibility-library-format.md](../design/compatibility-library-format.md). A
+loader in the `sources` crate parses a library into an
+`ironplc_dsl::common::Library`. An **activated-library set**
 (names) is carried on the project and threaded into analysis; the analyzer
 prepends each activated library's `Library` to the existing
 `analyze(sources: &[&Library])` merge (`resolve_types` already does
@@ -59,15 +67,13 @@ source**, so a user declaration shadows a library declaration of the same name
 ## File map
 
 **New — bundled library + loader (`sources`)**
-- `compiler/sources/resources/compat-libraries/math/library.toml` — manifest.
-- `compiler/sources/resources/compat-libraries/math/math.st` — `VAR_GLOBAL CONSTANT PI, e`.
-- `compiler/sources/src/libraries/mod.rs` — registry + loader (name → `Library`).
-- `compiler/sources/src/libraries/manifest.rs` — manifest parse + provenance.
+- `compiler/sources/resources/compat-libraries/Tc2_Math/library.toml` — manifest (name, vendor, version, references).
+- `compiler/sources/resources/compat-libraries/Tc2_Math/Tc2_Math.st` — `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;`.
+- `compiler/sources/src/libraries/mod.rs` — registry + loader (name → `Library`), embedding the bundled set at build time.
+- `compiler/sources/src/libraries/manifest.rs` — manifest parse (identity + references + bindings).
 
 **New — spec-conformance wiring**
-- `compiler/sources/build.rs`, `compiler/analyzer/build.rs`,
-  `compiler/plc2plc/build.rs`, `compiler/playground/build.rs` — each calls
-  `ironplc_spec_requirements_gen::generate(&["compatibility-libraries.md"])`
+- `compiler/sources/build.rs` calls `generate(&["compatibility-libraries.md", "compatibility-library-format.md"])` (it owns `REQ-CL-*` and `REQ-LF-*`); `compiler/analyzer/build.rs`, `compiler/plc2plc/build.rs`, `compiler/playground/build.rs` each call `generate(&["compatibility-libraries.md"])`
   (create where absent; reference `compiler/container/build.rs`).
 - `compiler/{sources,analyzer,plc2plc}/src/spec_conformance.rs` and the
   `playground` equivalent — `#[spec_test]` tests + the
@@ -83,10 +89,10 @@ source**, so a user declaration shadows a library declaration of the same name
 - A `.plcproj` referencing the library, plus an `.st`/POU using `PI`.
 
 **New — provenance & policy**
+- `specs/design/compatibility-library-format.md` — the on-disk format + installation design (already added).
 - `specs/steering/compatibility-library-authoring.md` (+ `.kiro/steering/` pointer) — the authoring policy (already added).
-- `compiler/sources/resources/compat-libraries/<name>/library.toml` — `[provenance]` fields.
-- Provenance conformance test in `compiler/sources` (walks manifests).
-- (Tier C is *refused* by this mechanism, not quarantined — see the design's *Licensing…*.)
+- Manifest `references` field (the public references authored from); the clean-room spec is a separate non-squashed git commit, not a file in the package.
+- Provenance conformance test in `compiler/sources` (walks manifests; asserts `references` present).
 
 **Modified**
 - `compiler/sources/src/discovery/mod.rs` — twincat detector reads the
@@ -115,9 +121,8 @@ source**, so a user declaration shadows a library declaration of the same name
 - End-to-end: parse → activate → analyze → (Phase 1) confirm `PI` resolves and
   folds; (Phase 2) same with activation coming only from the `.plcproj`.
 - **Provenance conformance test (Phase 5):** a `sources` test walks every bundled
-  library manifest and asserts it is well-formed, its `derivation`/`license` are
-  from the allowed sets, and any Tier C content (a `vendored` derivation or
-  non-permissive license) is refused. This enforces the *machine-checkable* half
+  library manifest and asserts it is well-formed and records a non-empty
+  `references` list. This enforces the *machine-checkable* half
   of the
   [authoring policy](../steering/compatibility-library-authoring.md); the
   human-only half (no forbidden input used, clearance performed) stays a reviewer
@@ -126,11 +131,12 @@ source**, so a user declaration shadows a library declaration of the same name
 
 ## Tasks
 
-### Phase 1 — Library representation, the `math` library (PI), explicit activation *(early)*
-- [x] Write plan and add `REQ-CL-*` markers to the design doc
-- [ ] Define the on-disk library format: manifest (`library.toml` with identity + `[provenance]` + `[bindings]`) plus `.st` declarations — **REQ-CL-sources-002**
+### Phase 1 — The `Tc2_Math` library (PI), package format, explicit activation *(early)*
+- [x] Write plan and add `REQ-CL-*` / `REQ-LF-*` markers to the design docs
+- [ ] Implement the on-disk package format per [compatibility-library-format.md](../design/compatibility-library-format.md): package layout, manifest schema, declarations/bindings grammar, build-time embedding, name resolution — **REQ-LF-sources-001** through **006**
+- [ ] Manifest identity validated on load (`name`, `vendor`, `version`) — **REQ-CL-sources-002**
 - [ ] Validate POU bindings on load: `st` has a body, `intrinsic:<name>` names an implemented intrinsic, `declare-only` is signature-only — **REQ-CL-sources-009**
-- [ ] Add the bundled `math` library defining `PI` and `e`
+- [ ] Add the bundled `Tc2_Math` library defining `PI`
 - [ ] Implement the library loader + registry (name → `Library`) in `sources`
 - [ ] Carry an activated-library set on the project; add `--library <name>` to the CLI — **REQ-CL-sources-006**
 - [ ] Inject activated libraries into the analyze merge, base → library → user — **REQ-CL-analyzer-001**
@@ -139,7 +145,7 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] A user declaration shadows a library declaration of the same name — **REQ-CL-analyzer-004**
 - [ ] Activated set derives only from explicit activation; never inferred from source — **REQ-CL-sources-005**
 - [ ] Selecting a dialect does not activate any library (dialect ≠ vendor) — **REQ-CL-analyzer-006**
-- [ ] Wire `sources` + `analyzer` `build.rs` to the design doc; add `spec_conformance` + meta-tests; `#[spec_test]` the markers above; `#[ignore]` sources-001/003/004/007/008 and analyzer-005 for now
+- [ ] Wire `sources` `build.rs` (both design docs) + `analyzer` `build.rs`; add `spec_conformance` + meta-tests; `#[spec_test]` the markers above; `#[ignore]` sources-001/003/004/007 and analyzer-005 for now
 - [ ] `cd compiler && just` green
 
 ### Phase 2 — Read the library list from `.plcproj` *(early)*
@@ -164,10 +170,9 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] Wire `playground` `build.rs` + spec test; update `playground/` frontend to fetch library files
 - [ ] `cd compiler && just` green
 
-### Phase 5 — Provenance & licensing policy enforcement
-- [ ] Conformance test in `sources` walks every bundled manifest and asserts provenance is well-formed with `derivation`/`license` from the allowed (permissive / own-authored) sets — **REQ-CL-sources-007**
-- [ ] The mechanism refuses Tier C: a `vendored` derivation or a non-permissive license is rejected, not bundled — **REQ-CL-sources-008**
-- [ ] Un-ignore sources-007/008; confirm the [authoring policy](../steering/compatibility-library-authoring.md) reviewer checklist is referenced from contribution docs
+### Phase 5 — Provenance policy enforcement
+- [ ] Conformance test in `sources` walks every bundled manifest and asserts it records a non-empty `references` list (a factual record, no legal judgment) — **REQ-CL-sources-007**
+- [ ] Un-ignore sources-007; confirm the [authoring policy](../steering/compatibility-library-authoring.md) — the reviewer checklist and the non-squashed clean-room-spec-commit rule — is referenced from contribution docs
 - [ ] `cd compiler && just` green
 
 ### Deferred / out of scope (see the design's *Non-Goals* and *Future Goals*)

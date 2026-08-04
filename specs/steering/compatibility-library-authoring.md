@@ -66,31 +66,35 @@ Never feed to an AI tool, paste, or transliterate:
 
 ## Required Workflow (clean-room with AI)
 
-1. **Spec from docs.** Write a short interface/behavior spec from allowed inputs
-   and commit it *before* implementation.
+1. **Spec from references.** Write a short interface/behavior spec from the
+   allowed public references and **commit and merge it as its own non-squashed
+   git entry** *before* implementation — a durable, squash-immune history record
+   of what was authored from what.
 2. **Implement from the spec only.** Generate the body from the spec. Prefer a
    *different medium* than the vendor's — a Rust VM intrinsic rather than ST — so
    the output structurally cannot be a copy of the vendor's source expression.
 3. **Clearance.** If a licensed copy of the original is available, compare the
    output against it (comparison for clearance is not copying) and record the
    result.
-4. **Record provenance** in the manifest and commit it alongside the code.
+4. **Record the references** used in the manifest (`references`) and commit them
+   alongside the code. The reviewer and the spec commit are already in git
+   history — do not duplicate them as manifest fields.
 
 ## Required Artifacts (per library)
 
-- Manifest provenance fields: `license`, `derivation` (one of `math-dictated`,
-  `clean-room-from-docs`), `inputs` (docs cited), `attribution` (when the license
-  requires it), `reviewer`.
-- The committed spec doc (Tier B).
+- Manifest `references`: the public references the library was authored from —
+  facts, not a legal classification. (No `derivation`, `license`, `reviewer`, or
+  `attribution` field: the risk tier is a policy judgment, the reviewer and spec
+  live in git history, and bundled Tier A/B ships under the repository's MIT
+  license.)
+- The clean-room spec, committed and **merged as its own non-squashed commit**.
 - (Tier C is out of scope for this mechanism — see *Risk Tiers*.)
 
 ## Enforcement: automated vs. review
 
 - **Automated (a conformance test — see the implementation plan).** Every
-  manifest is well-formed and declares the required provenance; `derivation` and
-  `license` are from the allowed sets; and any Tier C content is refused (a
-  `vendored` derivation or non-permissive license is rejected). The test verifies
-  the record *exists and is well-formed*.
+  manifest is well-formed and records a non-empty `references` list. The test
+  verifies the record *exists and is well-formed* — it makes no legal judgment.
 - **Review-only (cannot be tested).** That the declared provenance is *true* —
   that no forbidden input was used and clearance was actually performed. A
   reviewer confirms the record is *honest*. The test checks the shape; the human
@@ -98,8 +102,9 @@ Never feed to an AI tool, paste, or transliterate:
 
 ## Reviewer Checklist
 
-- Inputs were within the allowed set; no forbidden input was used (attested).
+- The recorded `references` are public and within the allowed set; no forbidden
+  input was used (attested).
 - Bodies are own / math-dictated — not transliterations of vendor source.
-- No Tier C content is being bundled here (a `vendored` derivation or encumbered
-  license must be rejected, not merged).
-- The manifest provenance fields are present and match what actually happened.
+- No Tier C content is being bundled here (encumbered third-party source belongs
+  to the separate distribution mechanism).
+- The clean-room spec was committed as its own non-squashed entry.

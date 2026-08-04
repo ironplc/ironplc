@@ -80,9 +80,9 @@ reproduce. This is a safety requirement, not a convenience one. Concretely:
 - **REQ-CL-analyzer-005** Calling a library POU that is only declared (no
   runnable body — see *Bodies*) is a compile error, never a runtime trap.
 - An unsupported library configuration is diagnosed and rejected, not compiled
-  into something with undefined behavior. (The detection mechanism is an open
-  question — see *Open Questions* — but the failure mode is fixed: "does not
-  compile," never "compiles and misbehaves.")
+  into something with undefined behavior. (Beyond the declare-only case above,
+  the first increment defines no general detector; the failure mode is fixed:
+  "does not compile," never "compiles and misbehaves.")
 
 ## Goals
 
@@ -230,8 +230,8 @@ Two rules govern qualifiers:
   `Tc2_Standard.TON`) and **never adds** one the source did not. Whether such a
   qualified access path is *supported by the parser today* is irrelevant to the
   design: if the access path is valid in a source environment, IronPLC must be
-  able to reproduce it. The open question is only whether qualification is a
-  *requirement* for some libraries or merely optional (see *Open Questions*).
+  able to reproduce it. Whether qualification is a *requirement* for some
+  libraries (rather than merely optional) is deferred — see *Future Goals*.
 - Resolving genuine collisions between two simultaneously-active libraries (or
   between a library and the base stdlib) is **deferred** — see *Future Goals*.
   The initial increment assumes an activated library provides names that do not
@@ -239,41 +239,27 @@ Two rules govern qualifiers:
 
 ### What a library is on disk
 
-Each bundled library is a directory under
-`compiler/sources/resources/compat-libraries/<name>/` holding a **manifest**
-(`library.toml`) and its **declarations** (`.st`). Example:
+The on-disk package layout (a directory named for the library, a `library.toml`
+manifest, and `.st` declarations), the manifest schema, and installation /
+discovery are specified in
+[Compatibility Library Format](compatibility-library-format.md). The behavioral
+requirements the loader enforces on that format are:
 
-```toml
-name = "math"
-vendor = "IronPLC"
-version = "1.0.0"
+- **REQ-CL-sources-002** A library's manifest declares its identity — `name`,
+  `vendor`, `version` — and the loader rejects a manifest missing any of them.
+- **REQ-CL-sources-007** The manifest records the **public references** the
+  library was authored from (a non-empty `references` list). This is a factual
+  record of inputs, not a legal classification; the reviewer and the clean-room
+  spec are recorded by git history (see the
+  [authoring policy](../steering/compatibility-library-authoring.md)).
+- **REQ-CL-sources-009** Every POU binding is valid: an `st` POU has a body in a
+  `.st` file; an `intrinsic:<name>` POU names an implemented VM intrinsic; a
+  `declare-only` POU has a signature only. A malformed binding fails to load,
+  naming the library and POU.
 
-[provenance]
-license = "MIT"                # from the allowed (permissive / own-authored) set
-derivation = "math-dictated"   # math-dictated | clean-room-from-docs
-inputs = ["IEC 61131-3 numeric constants"]
-attribution = ""               # required when the license demands it
-reviewer = "garretfick"
-
-# Per-POU implementation binding. A POU not listed defaults to `st` (its body is
-# in the .st file). Constants need no entry.
-[bindings]
-# FLOOR   = "intrinsic:floor_lreal"   # bound to a named, implemented VM intrinsic
-# SOME_FB = "declare-only"            # signature only; calling it is a compile error
-```
-
-| Requirement | Field group | Rule |
-|-------------|-------------|------|
-| **REQ-CL-sources-002** | Identity | `name`, `vendor`, `version` are present. |
-| **REQ-CL-sources-007** | Provenance | `license` (from the allowed set) and `derivation` (one of `math-dictated`, `clean-room-from-docs`) are present; `attribution` is present when the license requires it. |
-| **REQ-CL-sources-009** | Bindings | Every POU binding is valid: an `st` POU has a body in the `.st`; an `intrinsic:<name>` POU names an implemented VM intrinsic; a `declare-only` POU has a signature only. A malformed binding fails to load, naming the library and POU. |
-
-The manifest carries **no** dialect/target field: a library is activated
-explicitly, never by dialect (see *Dialect and vendor are different concepts*).
-
-Declarations are real IEC 61131-3 Structured Text. Defining libraries as data
-(manifest + ST) rather than Rust code is what lets a library be added without a
-compiler change, lets third parties contribute libraries, and lets the
+A library is activated explicitly, never by dialect (see *Dialect and vendor are
+different concepts*). Defining libraries as data (manifest + ST) rather than Rust
+code is what lets a library be added without a compiler change and lets the
 playground serve them as plain-text files.
 
 ### Licensing, provenance, and clean-room authoring
@@ -281,31 +267,21 @@ playground serve them as plain-text files.
 Distributing these libraries — including AI-generated shims — must not create
 copyright or license problems. Because much of the code is AI-generated, we
 cannot prove a model "never saw" an original in training, so clean provenance is
-demonstrated by an **auditable record** (controlled inputs, output clearance, a
-committed spec) rather than an unprovable claim. Libraries are tiered by risk:
+demonstrated by a **factual, durable record** rather than an unprovable claim:
 
-- **Tier A — facts / math-dictated** (constants like `PI`, IEC standard
-  behavior): own authorship; ships under MIT.
-- **Tier B — clean-room interface shim**: vendor names/signatures matched for
-  interoperability, bodies implemented as our own Rust VM intrinsics (or
-  math-dictated ST) authored from public documentation; ships under MIT.
+- The manifest lists the **public references** the library was authored from
+  (**REQ-CL-sources-007**) — inputs, not a legal judgment.
+- The clean-room spec authored from those references is committed and **merged as
+  its own non-squashed git entry**, and the reviewer is recorded by git history.
 
-**This mechanism ships only Tier A and Tier B** — own-authored, MIT-licensed
-content. **Tier C — vendored third-party source** (e.g. OSCAT) is *not*
-distributed through this mechanism: redistributing encumbered third-party code is
-a **separate distribution mechanism** with its own licensing, out of scope here.
-
-- **REQ-CL-sources-008** The mechanism refuses Tier C content: a manifest whose
-  `derivation` is `vendored`, or whose `license` is outside the allowed
-  (permissive / own-authored) set, is rejected rather than bundled.
-
-The full authoring rules — allowed vs. forbidden inputs, the clean-room-with-AI
-workflow, and the reviewer checklist — live in the
-[Compatibility Library Authoring policy](../steering/compatibility-library-authoring.md).
-Its machine-checkable parts (manifest well-formedness, allowed `derivation`/
-`license`, Tier C refusal) are enforced by a conformance test; the parts that
-cannot be tested (that no forbidden input was used, that clearance was actually
-performed) are confirmed at review. The test checks the record's *shape*; the
+The risk tiers (Tier A facts/math-dictated; Tier B clean-room interface shim) and
+the allowed/forbidden inputs are a **human policy** in the
+[authoring policy](../steering/compatibility-library-authoring.md), not fields in
+the manifest. **Tier C — vendored third-party source** (e.g. OSCAT) is *not*
+distributed through this mechanism; it is a separate distribution mechanism (see
+*Non-Goals*). The machine-checkable part — the manifest is well-formed and
+records its references — is a conformance test; whether the references are honest
+and complete is confirmed at review. The test checks the record's *shape*; the
 reviewer checks its *truth*.
 
 ### Bodies and the fail-if-unimplemented rule
@@ -378,8 +354,9 @@ provide that guarantee.
 ### `PI` in a TwinCAT project
 
 `d2r : LREAL := PI/180.0;` in a `.plcproj`-rooted project. The project references
-the library that defines `PI`; IronPLC activates it, injecting
-`VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;` into the composition. `PI`
+`Tc2_Math` (the TwinCAT library whose global constants include `PI`); IronPLC
+activates it, injecting `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;`
+into the composition. `PI`
 resolves as a constant symbol, folds at compile time, and the initializer
 compiles. No flag, no keyword, no source edit. `plc2plc` renders the user's
 `d2r` declaration unchanged; the injected `PI` is not user source and is not
@@ -439,12 +416,14 @@ distribution mechanism, out of scope here.
 
 Prior open questions are now decided:
 
-- **Manifest format** and the **fail-if-unimplemented rule** — specified under
-  *What a library is on disk* and *Bodies and the fail-if-unimplemented rule*.
+- **Manifest format** and installation — specified in
+  [Compatibility Library Format](compatibility-library-format.md). The
+  **fail-if-unimplemented rule** — *Bodies and the fail-if-unimplemented rule*.
+- **Provenance** — the manifest records the public references used; the reviewer
+  and clean-room spec are recorded by git history, not manifest fields
+  (*Licensing, provenance, and clean-room authoring*).
 - **Tier C** (vendored third-party, e.g. OSCAT) is **not** shipped through this
-  mechanism — it is a separate distribution mechanism (see *Non-Goals* and
-  *Licensing…*). The license allow-list here is therefore the permissive /
-  own-authored set (**REQ-CL-sources-008**).
+  mechanism — it is a separate distribution mechanism (see *Non-Goals*).
 - **Dialects never auto-activate libraries** — dialect and vendor are independent
   axes (**REQ-CL-analyzer-006**).
 - **Qualified access** — the first increment injects **flat names only**;
@@ -457,9 +436,11 @@ No open questions remain for the first increment.
 
 ## Implementation
 
-See the [implementation plan](../plans/2026-08-04-compatibility-libraries.md),
-which delivers `.plcproj` library-list reading and the `PI`-defining library in
-its early phases and wires each `REQ-CL-*` marker to a `#[spec_test]`.
+The on-disk package format and installation/discovery are specified separately in
+[Compatibility Library Format](compatibility-library-format.md) (`REQ-LF-*`). The
+[implementation plan](../plans/2026-08-04-compatibility-libraries.md) delivers
+`.plcproj` library-list reading and the `Tc2_Math` library (defining `PI`) in its
+early phases and wires each `REQ-CL-*` / `REQ-LF-*` marker to a `#[spec_test]`.
 
 ## Appendix: `.plcproj` library-reference shapes
 
