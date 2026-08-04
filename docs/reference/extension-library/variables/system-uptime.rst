@@ -8,7 +8,7 @@ Implicit global variables that expose the VM's monotonic uptime counter.
    :widths: 30 70
 
    * - **IEC 61131-3**
-     - Not part of the standard (vendor extension)
+     - Not part of the standard (dialect extension)
    * - **Support**
      - Supported (requires ``--allow-system-uptime-global``)
 
@@ -56,7 +56,7 @@ and effectively never wraps (~292 million years).
 Enabling
 --------
 
-System uptime variables are a vendor extension and must be explicitly enabled:
+System uptime variables are an IronPLC extension and must be explicitly enabled:
 
 .. code-block:: shell
 
@@ -97,4 +97,4 @@ with CODESYS-style code:
 See Also
 --------
 
-- :doc:`/explanation/enabling-dialects-and-features` -- enabling vendor extensions
+- :doc:`/explanation/enabling-dialects-and-features` -- enabling dialect extensions

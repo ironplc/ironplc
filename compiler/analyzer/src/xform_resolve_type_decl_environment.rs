@@ -245,7 +245,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
             }
             InitialValueAssignmentKind::SimpleExpr(_) => {
                 // Constant-expression initializers are a VAR-declaration
-                // vendor extension; they never appear in a TYPE alias's
+                // dialect extension; they never appear in a TYPE alias's
                 // spec_and_init (that grammar path is unchanged).
                 return Err(Diagnostic::internal_error(file!(), line!()));
             }

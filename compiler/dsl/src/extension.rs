@@ -1,5 +1,5 @@
-//! Marks AST nodes representing vendor-specific language extensions that
-//! IronPLC parses but does not yet semantically analyze.
+//! Marks AST nodes representing non-standard (dialect) language extensions
+//! that IronPLC parses but does not yet semantically analyze.
 //!
 //! See `specs/design/beckhoff-twincat-dialect.md` and
 //! `specs/plans/2026-07-18-twincat-extends-implements-interface.md`.
@@ -25,7 +25,7 @@ impl ExtensionOrigin {
     }
 }
 
-/// Marker trait for AST nodes representing vendor-specific language
+/// Marker trait for AST nodes representing non-standard (dialect) language
 /// extensions.
 ///
 /// Nodes implementing this trait are parsed and represented in the AST but
@@ -33,14 +33,14 @@ impl ExtensionOrigin {
 /// semantic rule `rule_unsupported_extension` walks the AST and emits P9999
 /// for every node that implements this trait.
 ///
-/// As each extension graduates to full support, remove its `VendorExtension`
+/// As each extension graduates to full support, remove its `DialectExtension`
 /// impl. The semantic rule automatically stops flagging it.
-pub trait VendorExtension {
+pub trait DialectExtension {
     /// Human-readable name of this extension (e.g., "EXTENDS clause").
     fn extension_name(&self) -> &'static str;
 
-    /// Which vendor dialects introduced this extension. A single extension
-    /// may originate from multiple vendors.
+    /// Which dialects introduced this extension. A single extension may
+    /// originate from multiple vendors.
     fn extension_origins(&self) -> &'static [ExtensionOrigin];
 
     /// The source span for diagnostic reporting.

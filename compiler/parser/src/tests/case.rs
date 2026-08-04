@@ -6,7 +6,7 @@ use super::common::*;
 fn parse_when_case_branch_empty_and_followed_by_another_label_then_ok() {
     // An empty CASE branch isn't strict IEC 61131-3 (the standard only
     // allows an explicit empty statement, `5: ;`) -- this is the
-    // `--allow-missing-semicolon` vendor extension filling in the
+    // `--allow-missing-semicolon` dialect extension filling in the
     // dropped `;`, so it must be gated behind that flag.
     let source = "
 FUNCTION_BLOCK FB_Example

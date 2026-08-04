@@ -42,10 +42,10 @@ Example
        level := level + 10;
    END_PROGRAM
 
-Constant Bounds (Vendor Extension)
-----------------------------------
+Constant Bounds (Dialect Extension)
+-----------------------------------
 
-.. include:: ../../../../includes/requires-vendor-extension.rst
+.. include:: ../../../../includes/requires-dialect-extension.rst
 
 With the ``--allow-constant-type-params`` flag, you can
 use global constants for the subrange bounds:

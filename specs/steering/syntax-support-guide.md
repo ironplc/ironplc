@@ -1,6 +1,6 @@
 # Syntax Support Guide
 
-This guide describes everything needed to add support for new syntax in the IronPLC compiler. Follow this guide when adding new language features, vendor extensions, or fixing syntax-related issues.
+This guide describes everything needed to add support for new syntax in the IronPLC compiler. Follow this guide when adding new language features, dialect extensions, or fixing syntax-related issues.
 
 > **Note**: This covers the full pipeline from lexer through execution. For general compiler architecture, see [compiler-architecture.md](compiler-architecture.md). For IEC 61131-3 compliance rules, see [iec-61131-3-compliance.md](iec-61131-3-compliance.md).
 
@@ -67,7 +67,7 @@ Keywords are case-insensitive (`ignore(case)`). Identifiers have lower priority 
 
 ### Token Demotion Pattern
 
-**When to use**: When a keyword is only valid under certain conditions (e.g., Edition 3 mode, or a vendor extension flag) and programs may use that keyword as an identifier otherwise.
+**When to use**: When a keyword is only valid under certain conditions (e.g., Edition 3 mode, or a dialect extension flag) and programs may use that keyword as an identifier otherwise.
 
 **How it works**: Define the token as a specific type in the lexer, then "demote" it to `TokenType::Identifier` in a transform pass when the feature is disabled.
 
@@ -142,7 +142,7 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 | New keyword that could conflict with existing identifiers | Token demotion |
 | Syntax that is always distinct from standard syntax | Validation rule |
 | Feature controlled by `--dialect` (edition selection) | Token demotion |
-| Feature controlled by `--allow-x` vendor flag | Either, depending on conflict risk |
+| Feature controlled by `--allow-x` flag | Either, depending on conflict risk |
 
 ### Token Insertion Pattern
 
@@ -165,7 +165,7 @@ pub fn insert_keyword_statement_terminators(
 
 ## Non-Standard Syntax Gating (`--allow-x` Flags)
 
-**Rule**: Anything not in the IEC 61131-3 standard **must** be gated behind an `--allow-x` flag. Using `--dialect=rusty` enables all vendor extensions.
+**Rule**: Anything not in the IEC 61131-3 standard **must** be gated behind an `--allow-x` flag. Using `--dialect=rusty` enables all dialect extensions.
 
 ### Before Creating a New Flag
 
@@ -190,7 +190,7 @@ your syntax.
 
 Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags can override on top.
 
-| Dialect | `--dialect` value | Edition 3 types | REF_TO | Vendor extensions |
+| Dialect | `--dialect` value | Edition 3 types | REF_TO | Dialect extensions |
 |---------|-------------------|----------------|--------|-------------------|
 | IEC 61131-3 Ed 2 (default) | `iec61131-3-ed2` | OFF | OFF | all OFF |
 | IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
@@ -254,7 +254,7 @@ Add the clap argument:
 
 ```rust
 /// Allow [description of what this enables].
-/// This is a vendor extension not part of the IEC 61131-3 standard.
+/// This is a dialect extension not part of the IEC 61131-3 standard.
 #[arg(long)]
 allow_my_extension: bool,
 ```
@@ -293,7 +293,7 @@ Use either the token demotion pattern, validation rule pattern, or analyzer-leve
 #### 6. Documentation
 
 Update these files to document the new flag:
-- `docs/explanation/enabling-dialects-and-features.rst` — add to the Vendor Extensions section
+- `docs/explanation/enabling-dialects-and-features.rst` — add to the Dialect Extensions section
 - `docs/reference/compiler/ironplcc.rst` — add to the Options section
 - Update the flag table in this file (syntax-support-guide.md)
 
@@ -350,7 +350,7 @@ fn parse_and_render_with_options(name: &'static str, options: CompilerOptions) -
 }
 
 #[test]
-fn write_to_string_my_vendor_extension() {
+fn write_to_string_my_dialect_extension() {
     let options = CompilerOptions {
         allow_my_extension: true,
         ..CompilerOptions::default()
@@ -502,7 +502,7 @@ New demotion transforms must be called in `tokenize_program()` **before** `check
 - **Missing LSP wiring**: The flag works on the CLI but not in VS Code because `extract_compiler_options()` in `plc2x/src/lsp.rs` was not updated. Always add LSP extraction for new flags.
 - **No round-trip test**: The feature parses but the renderer in `plc2plc` cannot write it back. Always add the round-trip test.
 - **No execution test**: The feature parses and analyzes but was never proven to execute correctly. Always add at least one end-to-end test.
-- **Creating a flag for standard syntax**: Only vendor extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--dialect`).
+- **Creating a flag for standard syntax**: Only dialect extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--dialect`).
 - **Stateful lexer changes**: The lexer (`logos`) is stateless. Use token transforms for context-dependent behavior, not lexer rules.
 - **Not registering transforms**: Adding a new `xform_*.rs` module but forgetting to call it from `tokenize_program()` in `parser/src/lib.rs`, or adding a new rule module but forgetting to register it in `check_tokens()`.
 
@@ -510,7 +510,7 @@ New demotion transforms must be called in `tokenize_program()` **before** `check
 
 This walkthrough shows the typical sequence for adding a new syntax feature.
 
-### Example: Adding Support for a Hypothetical Vendor Extension
+### Example: Adding Support for a Hypothetical Dialect Extension
 
 Suppose a vendor allows `REPEAT ... UNTIL ... END_REPEAT` with an optional `LIMIT` clause (non-standard).
 
@@ -520,7 +520,7 @@ Review `parser/src/options.rs` — does an existing flag cover this? If not, pro
 
 #### Step 2: Add the Flag
 
-1. Add `allow_repeat_limit` to `CompilerOptions` vendor fields in the `define_compiler_options!` macro
+1. Add `allow_repeat_limit` to `CompilerOptions` dialect fields in the `define_compiler_options!` macro
 2. Add `--allow-repeat-limit` to CLI `FileArgs`
 3. Add `|= self.allow_repeat_limit` in `compiler_options()`
 4. Add to relevant dialect presets in `CompilerOptions::from_dialect()`

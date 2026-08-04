@@ -25,7 +25,7 @@ When enabled, IronPLC updates the system update into two variables each scan cyc
 any task runs. The default name of these variables  are ``__SYSTEM_UP_TIME`` and
 ``__SYSTEM_UP_LTIME``.
 
-These variables are specific to IronPLC so you must enable this feature as a vendor extension
+These variables are specific to IronPLC so you must enable this feature
 using ``--allow-system-uptime-global`` or a dialect that enables this feature. See
 :doc:`/explanation/enabling-dialects-and-features` for more information about dialects and feature flags.
 

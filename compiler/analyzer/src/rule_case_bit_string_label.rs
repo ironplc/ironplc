@@ -7,7 +7,7 @@
 //! where `signed_integer` is a *decimal* digit sequence. Radix-prefixed
 //! bit-string literals (`hex_integer` / `binary_integer` / `octal_integer`)
 //! are deliberately not in `case_list_element`, so accepting them as a
-//! label is a vendor extension (TwinCAT/CODESYS). The parser always accepts
+//! label is a dialect extension (TwinCAT/CODESYS). The parser always accepts
 //! the form; this rule is what enforces the flag.
 //!
 //! ## Fails (without the flag)

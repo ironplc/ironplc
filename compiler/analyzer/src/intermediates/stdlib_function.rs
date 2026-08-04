@@ -1028,7 +1028,7 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
 }
 
 // =============================================================================
-// SIZEOF (Vendor Extension)
+// SIZEOF (Dialect Extension)
 // =============================================================================
 
 /// Returns the SIZEOF function definition.

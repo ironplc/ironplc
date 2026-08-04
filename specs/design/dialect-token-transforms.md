@@ -2,21 +2,21 @@
 
 ## Overview
 
-This document describes the architecture for dialect-specific token transforms — the mechanism that enables vendor-dialect parsing without modifying the core logos lexer. It is the shared infrastructure underlying both the [Siemens SCL](siemens-scl-dialect.md) and [Beckhoff TwinCAT](beckhoff-twincat-dialect.md) dialect designs.
+This document describes the architecture for dialect-specific token transforms — the mechanism that enables dialect parsing without modifying the core logos lexer. It is the shared infrastructure underlying both the [Siemens SCL](siemens-scl-dialect.md) and [Beckhoff TwinCAT](beckhoff-twincat-dialect.md) dialect designs.
 
-The core principle: **the logos lexer stays dialect-neutral**. It only recognizes IEC 61131-3 standard tokens. Vendor-specific syntax is handled by a pipeline of token transforms that run between lexing and parsing.
+The core principle: **the logos lexer stays dialect-neutral**. It only recognizes IEC 61131-3 standard tokens. Non-standard syntax is handled by a pipeline of token transforms that run between lexing and parsing.
 
 ## Problem
 
 The logos lexer in `token.rs` declares standard keywords with `#[token("KEYWORD", ignore(case))]` at higher priority than the `Identifier` regex. This means `FUNCTION_BLOCK` always lexes as `TokenType::FunctionBlock`, never as `Identifier`. This is correct for IEC 61131-3.
 
-Vendor dialects introduce new keywords (`METHOD`, `REGION`, `BEGIN`, `EXTENDS`, etc.) and new syntax conventions (`#variable`, `"quoted_name"`, `{pragma}`). These cannot be added to the logos lexer because:
+Dialects introduce new keywords (`METHOD`, `REGION`, `BEGIN`, `EXTENDS`, etc.) and new syntax conventions (`#variable`, `"quoted_name"`, `{pragma}`). These cannot be added to the logos lexer because:
 
-1. **Vendor keywords shadow valid identifiers.** In standard IEC 61131-3, `METHOD`, `INTERFACE`, `BEGIN`, `REGION` are all legal variable or type names. Making them always-on keywords breaks valid standard programs.
+1. **Dialect keywords shadow valid identifiers.** In standard IEC 61131-3, `METHOD`, `INTERFACE`, `BEGIN`, `REGION` are all legal variable or type names. Making them always-on keywords breaks valid standard programs.
 
-2. **Vendor syntax changes token semantics.** In Siemens SCL, `"FB_Motor"` is an identifier, not a wide string literal. In standard mode, it's a `DoubleByteString`. The same token text has different meaning depending on dialect.
+2. **Dialect syntax changes token semantics.** In Siemens SCL, `"FB_Motor"` is an identifier, not a wide string literal. In standard mode, it's a `DoubleByteString`. The same token text has different meaning depending on dialect.
 
-3. **Vendor syntax merges or removes tokens.** Siemens SCL's `#counter` should become a single variable reference, not `Hash` + `Identifier`. Pragma blocks `{ ... }` should become a single opaque token.
+3. **Dialect syntax merges or removes tokens.** Siemens SCL's `#counter` should become a single variable reference, not `Hash` + `Identifier`. Pragma blocks `{ ... }` should become a single opaque token.
 
 ## Transform Categories
 
@@ -24,7 +24,7 @@ Token transforms fall into four distinct categories, each with different invaria
 
 ### Category 1: Keyword Promotion
 
-**What:** Change an `Identifier` token's `token_type` to a vendor keyword type.
+**What:** Change an `Identifier` token's `token_type` to a dialect keyword type.
 
 **Invariants:**
 - `token_type` changes
@@ -147,7 +147,7 @@ Source text
 ┌─────────────────────────────────────────────────┐
 │ 1. Logos lexer                                  │
 │    Standard IEC 61131-3 tokens only.            │
-│    Vendor keywords arrive as Identifier.        │
+│    Dialect keywords arrive as Identifier.       │
 │    "quoted" text arrives as DoubleByteString.   │
 │    # arrives as Hash.                           │
 │    { } arrive as LeftBrace / RightBrace.        │
@@ -167,7 +167,7 @@ Source text
 │    Standard). Order within this stage:          │
 │                                                 │
 │    a. Keyword promotion                         │
-│       Identifier → vendor keyword TokenType.    │
+│       Identifier → dialect keyword TokenType.   │
 │       Must run first so subsequent transforms   │
 │       can match on promoted types (e.g.,        │
 │       Region, EndRegion).                       │

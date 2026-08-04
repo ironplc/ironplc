@@ -173,7 +173,7 @@ pub(crate) fn compile_function_call(
         "move" => compile_move(emitter, ctx, func, op_type),
         // Truncation function
         "trunc" => compile_trunc(emitter, ctx, func, op_type),
-        // SIZEOF operator (vendor extension)
+        // SIZEOF operator (dialect extension)
         "sizeof" => compile_sizeof(emitter, ctx, func),
         // BCD conversion functions
         "bcd_to_int" => compile_bcd_to_int(emitter, ctx, func, op_type),

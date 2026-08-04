@@ -51,7 +51,7 @@ thread_local! {
 /// `"iec61131-3-ed3"`, `"rusty"`, `"codesys"`).
 ///
 /// The empty string (and any unrecognized value) resolves to the RuSTy
-/// dialect, which enables all vendor extensions. This keeps the many existing
+/// dialect, which enables all dialect extensions. This keeps the many existing
 /// documentation embeds that omit a dialect working, since they rely on the
 /// lenient default to explore non-standard features without toggling flags.
 fn dialect_from(dialect: &str) -> Dialect {
