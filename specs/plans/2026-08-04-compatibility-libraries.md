@@ -45,19 +45,21 @@ a phase below and wired to a `#[spec_test]`. Owning crate slugs: `sources`,
 
 ## Architecture
 
-A **compatibility library** is bundled data: a manifest (name, vendor, version,
-references) plus IEC 61131-3 declarations, in the package format specified by
-[compatibility-library-format.md](../design/compatibility-library-format.md). A
-loader in the `sources` crate parses a library into an
+A **compatibility library** is on-disk data: a manifest (`name`, `vendor`,
+`default_version`, `references`) plus per-version subdirectories of IEC 61131-3
+declarations, in the package format specified by
+[compatibility-library-format.md](../design/compatibility-library-format.md).
+Libraries are installed on disk and read at runtime (not embedded in the
+compiler). A loader in the `sources` crate parses a library into an
 `ironplc_dsl::common::Library`. An **activated-library set**
 (names) is carried on the project and threaded into analysis; the analyzer
 prepends each activated library's `Library` to the existing
 `analyze(sources: &[&Library])` merge (`resolve_types` already does
 `library.extend()`), so activated declarations resolve exactly like user source.
 Because the merge and conditional environment seeding already exist, the new
-surface is: the on-disk format + loader, the activation set + its two input
-channels (project file, CLI/playground), and a rule that rejects calls to
-declare-only POUs.
+surface is: the on-disk format + loader, and the activation set + its two input
+channels (project file, CLI/playground). The first increment ships only
+fully-defined ST — bindings, intrinsics, and declare-only are deferred.
 
 Activation order in the merge is **base stdlib → activated libraries → user
 source**, so a user declaration shadows a library declaration of the same name
@@ -67,10 +69,10 @@ source**, so a user declaration shadows a library declaration of the same name
 ## File map
 
 **New — bundled library + loader (`sources`)**
-- `compiler/sources/resources/compat-libraries/Tc2_Math/library.toml` — manifest (name, vendor, version, references).
-- `compiler/sources/resources/compat-libraries/Tc2_Math/Tc2_Math.st` — `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;`.
-- `compiler/sources/src/libraries/mod.rs` — registry + loader (name → `Library`), embedding the bundled set at build time.
-- `compiler/sources/src/libraries/manifest.rs` — manifest parse (identity + references + bindings).
+- `compiler/sources/resources/compat-libraries/Tc2_Math/library.toml` — manifest (`name`, `vendor`, `default_version`, `references`).
+- `compiler/sources/resources/compat-libraries/Tc2_Math/1.0.0/Tc2_Math.st` — `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;` (version subdirectory).
+- `compiler/sources/src/libraries/mod.rs` — registry + loader (name → `Library`), reading installed on-disk libraries at runtime.
+- `compiler/sources/src/libraries/manifest.rs` — manifest parse (identity + `default_version` + references).
 
 **New — spec-conformance wiring**
 - `compiler/sources/build.rs` calls `generate(&["compatibility-libraries.md", "compatibility-library-format.md"])` (it owns `REQ-CL-*` and `REQ-LF-*`); `compiler/analyzer/build.rs`, `compiler/plc2plc/build.rs`, `compiler/playground/build.rs` each call `generate(&["compatibility-libraries.md"])`
@@ -78,12 +80,6 @@ source**, so a user declaration shadows a library declaration of the same name
 - `compiler/{sources,analyzer,plc2plc}/src/spec_conformance.rs` and the
   `playground` equivalent — `#[spec_test]` tests + the
   `all_spec_requirements_have_tests` meta-test.
-
-**New — declare-only safety**
-- `compiler/analyzer/src/rule_call_not_declare_only.rs` — reject calls to a
-  declare-only POU.
-- `compiler/problems/resources/problem-codes.csv` — new `P####` for the above.
-- `docs/compiler/problems/P####.rst` — its documentation.
 
 **New — test fixtures**
 - A `.plcproj` referencing the library, plus an `.st`/POU using `PI`.
@@ -115,12 +111,11 @@ source**, so a user declaration shadows a library declaration of the same name
   first wires a crate, add `#[spec_test]` for every marker that crate owns, using
   `#[ignore]` for markers whose implementation lands in a later phase. Un-ignore
   them as each phase completes.
-- Prefer structural asserts: `PI` folds to a known `LREAL`; a declare-only call
-  produces the expected `P####`; `plc2plc` output of a library-using program is
-  byte-identical to its input.
+- Prefer structural asserts: `PI` folds to a known `LREAL`; `plc2plc` output of a
+  library-using program is byte-identical to its input.
 - End-to-end: parse → activate → analyze → (Phase 1) confirm `PI` resolves and
   folds; (Phase 2) same with activation coming only from the `.plcproj`.
-- **Provenance conformance test (Phase 5):** a `sources` test walks every bundled
+- **Provenance conformance test (Phase 4):** a `sources` test walks every bundled
   library manifest and asserts it is well-formed and records a non-empty
   `references` list. This enforces the *machine-checkable* half
   of the
@@ -133,9 +128,8 @@ source**, so a user declaration shadows a library declaration of the same name
 
 ### Phase 1 — The `Tc2_Math` library (PI), package format, explicit activation *(early)*
 - [x] Write plan and add `REQ-CL-*` / `REQ-LF-*` markers to the design docs
-- [ ] Implement the on-disk package format per [compatibility-library-format.md](../design/compatibility-library-format.md): package layout, manifest schema, declarations/bindings grammar, build-time embedding, name resolution — **REQ-LF-sources-001** through **006**
-- [ ] Manifest identity validated on load (`name`, `vendor`, `version`) — **REQ-CL-sources-002**
-- [ ] Validate POU bindings on load: `st` has a body, `intrinsic:<name>` names an implemented intrinsic, `declare-only` is signature-only — **REQ-CL-sources-009**
+- [ ] Implement the on-disk package format per [compatibility-library-format.md](../design/compatibility-library-format.md): package layout (version subdirectories), manifest schema, and name resolution; libraries read from disk at runtime — **REQ-LF-sources-001**, **002**, **004**
+- [ ] Manifest identity validated on load (`name`, `vendor`, `default_version`) — **REQ-CL-sources-002**
 - [ ] Add the bundled `Tc2_Math` library defining `PI`
 - [ ] Implement the library loader + registry (name → `Library`) in `sources`
 - [ ] Carry an activated-library set on the project; add `--library <name>` to the CLI — **REQ-CL-sources-006**
@@ -145,7 +139,7 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] A user declaration shadows a library declaration of the same name — **REQ-CL-analyzer-004**
 - [ ] Activated set derives only from explicit activation; never inferred from source — **REQ-CL-sources-005**
 - [ ] Selecting a dialect does not activate any library (dialect ≠ vendor) — **REQ-CL-analyzer-006**
-- [ ] Wire `sources` `build.rs` (both design docs) + `analyzer` `build.rs`; add `spec_conformance` + meta-tests; `#[spec_test]` the markers above; `#[ignore]` sources-001/003/004/007 and analyzer-005 for now
+- [ ] Wire `sources` `build.rs` (both design docs) + `analyzer` `build.rs`; add `spec_conformance` + meta-tests; `#[spec_test]` the markers above; `#[ignore]` sources-001/003/004/007 for now
 - [ ] `cd compiler && just` green
 
 ### Phase 2 — Read the library list from `.plcproj` *(early)*
@@ -157,25 +151,22 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] Un-ignore sources-001/003/004; add the `.plcproj`-driven end-to-end `PI` test using a fixture that references a bundled library
 - [ ] `cd compiler && just` green
 
-### Phase 3 — Declare-only bodies + safety
-- [ ] Add a `declare-only` library POU (signature only) — e.g. a `Tc2_Math`-style `FLOOR : LREAL` — using the binding kind from Phase 1
-- [ ] Analyzer rule: a *call* to a `declare-only` POU is a compile error, naming the library + POU (new `P####`) — **REQ-CL-analyzer-005**
-- [ ] Add the problem-code CSV entry + `docs/compiler/problems/P####.rst`; un-ignore analyzer-005
-- [ ] `cd compiler && just` green
-
-### Phase 4 — Round-trip fidelity + playground
+### Phase 3 — Round-trip fidelity + playground
 - [ ] `plc2plc` emits user source unchanged; injected library declarations are never rendered — **REQ-CL-plc2plc-001**
 - [ ] Wire `plc2plc` `build.rs` + `spec_conformance`; add the round-trip test
 - [ ] Playground: serve library files as plain text, load as sources, activate — **REQ-CL-playground-001**
 - [ ] Wire `playground` `build.rs` + spec test; update `playground/` frontend to fetch library files
 - [ ] `cd compiler && just` green
 
-### Phase 5 — Provenance policy enforcement
+### Phase 4 — Provenance policy enforcement
 - [ ] Conformance test in `sources` walks every bundled manifest and asserts it records a non-empty `references` list (a factual record, no legal judgment) — **REQ-CL-sources-007**
 - [ ] Un-ignore sources-007; confirm the [authoring policy](../steering/compatibility-library-authoring.md) — the reviewer checklist and the non-squashed clean-room-spec-commit rule — is referenced from contribution docs
 - [ ] `cd compiler && just` green
 
 ### Deferred / out of scope (see the design's *Non-Goals* and *Future Goals*)
+- **Bindings** (per-version manifest table), non-ST implementations (VM
+  intrinsics), the **declare-only** state, and the fail-if-unimplemented compile
+  error. The first increment ships only fully-defined ST.
 - Collision / precedence resolution; cross-vendor mixing.
 - Accepting source-written namespace qualifiers (flat names only for now).
 - **Tier C (vendored third-party, e.g. OSCAT)** — not shipped through this

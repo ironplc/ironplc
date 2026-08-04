@@ -15,10 +15,6 @@ or because the user activated it explicitly on the command line. Activation
 injects the library's declarations into the compilation unit, where they resolve
 by the same machinery user source does.
 
-This replaces the earlier, stalled approach of adding `PI` behind a
-`--allow-math-constants` flag (a per-symbol flag with no provenance and no way
-to restrict it by dialect).
-
 > **Requirement markers.** This document carries `REQ-CL-*` requirement markers
 > (area `CL` = compatibility libraries) for each testable claim, per the
 > [design requirement](../steering/development-standards.md). They become
@@ -77,12 +73,14 @@ Where compatibility cannot be delivered faithfully, the compiler must **refuse
 to compile** rather than silently produce code whose behavior it cannot
 reproduce. This is a safety requirement, not a convenience one. Concretely:
 
-- **REQ-CL-analyzer-005** Calling a library POU that is only declared (no
-  runnable body — see *Bodies*) is a compile error, never a runtime trap.
 - An unsupported library configuration is diagnosed and rejected, not compiled
-  into something with undefined behavior. (Beyond the declare-only case above,
-  the first increment defines no general detector; the failure mode is fixed:
-  "does not compile," never "compiles and misbehaves.")
+  into something with undefined behavior; the failure mode is fixed — "does not
+  compile," never "compiles and misbehaves."
+
+The first increment ships only constants (`Tc2_Math`'s `PI`), so there are no
+callable library POUs that could be unimplemented. The concrete enforcement — a
+call to a declare-only POU is a compile error — arrives with *bindings* (see
+*Future Goals*).
 
 ## Goals
 
@@ -120,8 +118,9 @@ reproduce. This is a safety requirement, not a convenience one. Concretely:
   authoring*).
 - Collision resolution between simultaneously-active libraries — deferred (see
   *Future Goals*).
-- Full runtime implementation of every vendor function in the first increment.
-  Some libraries begin as declare-only (see *Bodies*), subject to *Safety first*.
+- Bindings, non-ST implementations (VM intrinsics), and the declare-only state —
+  deferred with the bindings mechanism (see *Future Goals*). The first increment
+  ships only fully-defined ST.
 
 ## Current State
 
@@ -240,22 +239,20 @@ Two rules govern qualifiers:
 ### What a library is on disk
 
 The on-disk package layout (a directory named for the library, a `library.toml`
-manifest, and `.st` declarations), the manifest schema, and installation /
-discovery are specified in
-[Compatibility Library Format](compatibility-library-format.md). The behavioral
-requirements the loader enforces on that format are:
+manifest, and per-version subdirectories of `.st` declarations) and the manifest
+schema are specified in
+[Compatibility Library Format](compatibility-library-format.md). Libraries are
+installed on disk and read at runtime, not embedded in the compiler. The
+behavioral requirements the loader enforces are:
 
 - **REQ-CL-sources-002** A library's manifest declares its identity — `name`,
-  `vendor`, `version` — and the loader rejects a manifest missing any of them.
+  `vendor`, `default_version` — and the loader rejects a manifest missing any
+  required field.
 - **REQ-CL-sources-007** The manifest records the **public references** the
   library was authored from (a non-empty `references` list). This is a factual
   record of inputs, not a legal classification; the reviewer and the clean-room
   spec are recorded by git history (see the
   [authoring policy](../steering/compatibility-library-authoring.md)).
-- **REQ-CL-sources-009** Every POU binding is valid: an `st` POU has a body in a
-  `.st` file; an `intrinsic:<name>` POU names an implemented VM intrinsic; a
-  `declare-only` POU has a signature only. A malformed binding fails to load,
-  naming the library and POU.
 
 A library is activated explicitly, never by dialect (see *Dialect and vendor are
 different concepts*). Defining libraries as data (manifest + ST) rather than Rust
@@ -284,28 +281,20 @@ records its references — is a conformance test; whether the references are hon
 and complete is confirmed at review. The test checks the record's *shape*; the
 reviewer checks its *truth*.
 
-### Bodies and the fail-if-unimplemented rule
+### Bodies (first increment) and the future bindings mechanism
 
-A library POU's `[bindings]` entry selects how its implementation is provided:
+The first increment ships only fully-defined ST — for `Tc2_Math`, `PI` as a
+`VAR_GLOBAL CONSTANT`. There is no partial/declare-only state and no non-ST
+implementation.
 
-- **`st`** (default) — a real Structured Text body, compiled and run like user
-  code. This is how a math-dictated ST function or a Tier B ST body ships.
-- **`intrinsic:<name>`** — a native VM intrinsic. TwinCAT `Tc2_Math` numerics map
-  here, reusing the trig/numeric intrinsics built out separately. We *desire* the
-  same numeric behavior as the vendor (rounding, edge cases); whether that is
-  fully achievable is to be determined. The binding must name an *implemented*
-  intrinsic (**REQ-CL-sources-009**); a not-yet-built one is expressed as
-  `declare-only`, not a dangling intrinsic reference.
-- **`declare-only`** — the signature exists so the analyzer can resolve a
-  reference, but there is no body yet.
-
-**Failing when the body is not implemented.** Per *Safety first*, a *call* to a
-`declare-only` POU is a **compile error** at analysis time — a dedicated problem
-code (`P####`) that names the library and POU and states the function is declared
-by a compatibility library but not yet implemented in IronPLC — never a runtime
-trap (**REQ-CL-analyzer-005**). Merely *declaring* it is fine: unrelated code
-that does not call it still type-checks, so a large library's surface can land
-ahead of its bodies. The failure is surfaced at the call site, at compile time.
+A later increment adds **bindings** (a per-version manifest table; see
+[Compatibility Library Format §Future](compatibility-library-format.md)) so a POU
+can map to a **VM intrinsic** — for native functions like `Tc2_Math` numerics,
+where we *desire* the same numeric behavior as the vendor (feasibility TBD) — or
+be **declare-only**. Per *Safety first*, once that exists a *call* to a
+declare-only POU is a **compile error** (a dedicated problem code, not a runtime
+trap), so a large library's surface can land ahead of its bodies without letting
+an unimplemented function reach execution.
 
 ### Referenced-but-unshipped libraries
 
@@ -389,6 +378,11 @@ distribution mechanism, out of scope here.
   diagnostic on genuine ambiguity), faithfully reproducing the host's behavior.
   The `FLOOR`-override case above depends on this.
 - **Cross-library / cross-vendor mixing** as a supported configuration.
+- **Bindings** — a per-version manifest table (see
+  [Compatibility Library Format §Future](compatibility-library-format.md)) mapping
+  a POU to a **VM intrinsic** or **declare-only**, plus the fail-if-unimplemented
+  rule (a call to a declare-only POU is a compile error). Omitted from the first
+  increment, which ships only fully-defined ST.
 - **Accept source-written namespace qualifiers** (`Tc2_Standard.TON`), mapping the
   qualifier to its library. Needed only if some library requires the qualified
   form; no known Tier A/B library does.

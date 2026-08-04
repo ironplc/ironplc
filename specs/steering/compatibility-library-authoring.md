@@ -27,6 +27,19 @@ original** in training. So we do not rely on the classic "isolated implementer"
 guarantee. Instead we demonstrate clean provenance by controlling the *inputs*,
 clearing the *outputs*, and keeping the *record*.
 
+## Non-affiliation
+
+A compatibility library names a vendor and reproduces its interface as a matter
+of interoperability, not endorsement. Bundled libraries and their distribution
+carry this statement:
+
+> IronPLC is an independent open-source project. It is not affiliated with,
+> endorsed by, or sponsored by any third party.
+
+The manifest `vendor` field is nominative (whose interface the library mirrors),
+never a claim of affiliation. See
+[Compatibility Library Format §Non-affiliation](../design/compatibility-library-format.md).
+
 ## Risk Tiers
 
 Every bundled library is one of:
