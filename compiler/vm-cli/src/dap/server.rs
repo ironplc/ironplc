@@ -255,7 +255,7 @@ fn launched_session<R: BufRead, W: Write>(
                     // are outermost-first; the entry frame is depth 0.
                     let frames = running.debug_frames();
                     let depth = frames.len().saturating_sub(1);
-                    let offset = frames.last().map_or(0, |f| f.pc as usize);
+                    let offset = frames.last().map_or(0, |f| f.pc);
                     hook.seed_resume_position(depth, offset);
                     match mode {
                         StepMode::Over => hook.step_over(),
