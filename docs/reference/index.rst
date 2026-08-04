@@ -14,3 +14,4 @@ Technical reference material for IronPLC tools.
    Runtime <runtime/index>
    MCP Server <mcp/index>
    Editor Extension <editor/index>
+   Playground <playground/index>

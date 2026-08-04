@@ -1,0 +1,38 @@
+=====
+H1002
+=====
+
+.. problem-summary:: H1002
+
+The playground decoded the supplied base64 successfully, but the resulting bytes
+are not a valid IronPLC bytecode container, so the program could not be loaded
+for execution.
+
+A compiled IronPLC program is stored in an ``.iplc`` *container*: a binary format
+with a header, a version, a bytecode section, and optional debug information.
+Reading a container validates that structure. This error means the decode step
+passed but the container reader rejected the contents — the header is missing or
+wrong, the bytes are truncated, or the container was produced by an incompatible
+version of the compiler.
+
+When this happens
+=================
+
+This error appears when the runtime is handed container bytes it did not compile
+itself in this session — for example a ``.iplc`` value carried in a shared link
+that was produced by a different, incompatible release, or bytes that were
+corrupted or partially copied.
+
+How to fix it
+=============
+
+Recompile the program from source with the current playground so the container
+matches the runtime's expected format. Paste your IEC 61131-3 source into the
+editor and run it again. If the program came from a shared link created with an
+older release, regenerate the link from source in the current playground.
+
+See Also
+========
+
+- :doc:`H1001 <H1001>` --- the input was not valid base64 to begin with
+- :doc:`Playground problem code index <index>`

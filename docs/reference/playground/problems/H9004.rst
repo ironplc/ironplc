@@ -1,0 +1,38 @@
+=====
+H9004
+=====
+
+.. problem-summary:: H9004
+
+The playground finished an operation but could not serialize the result into the
+JSON payload it returns across the WebAssembly boundary, so a minimal fallback
+error was produced instead.
+
+Every playground entry point — compile, run, run-source, load, and step —
+returns its result as a JSON string that the browser front end parses and
+renders. That final serialization step is the last thing each call does. This
+code marks the rare case where it failed, meaning the front end received the
+fallback payload carrying this code rather than the intended result.
+
+When this happens
+=================
+
+This is an **internal error**. Serializing the result structures to JSON is
+expected to always succeed, so a failure here points to a defect in IronPLC
+rather than anything in your program — for example a value that cannot be
+represented in JSON reaching the result on some code path.
+
+How to fix it
+=============
+
+There is nothing to correct in your IEC 61131-3 source. Reload the page and try
+again; because the failure is in reporting the result rather than in computing
+it, a repeat attempt often succeeds. If the error persists, please report it at
+https://github.com/ironplc/ironplc/issues with the program in the editor, the
+action you took, and the playground version shown in the interface.
+
+See Also
+========
+
+- :doc:`H9005 <H9005>` --- failure serializing the compiled bytecode container
+- :doc:`Playground problem code index <index>`

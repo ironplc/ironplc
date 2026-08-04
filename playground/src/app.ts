@@ -982,29 +982,30 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
   let html = "";
   for (const d of diagnostics) {
     html += '<div class="diagnostic-item">';
-    // Infrastructure errors (e.g. a decode failure) carry no code; skip the
-    // code chip rather than render an empty one.
-    if (d.code) {
-      const code = escapeHtml(d.code);
-      // P#### are compiler problems and V#### are runtime (VM) problems; each
-      // has a documentation page under a different section of the reference
-      // site. Codes outside these families render as plain, unlinked chips.
-      const section = /^P\d{4}$/.test(d.code)
-        ? "compiler"
-        : /^V\d{4}$/.test(d.code)
-          ? "runtime"
+    // Every diagnostic — compiler, VM trap, or host/embedding-layer error —
+    // now carries a code, so the chip always renders.
+    const code = escapeHtml(d.code);
+    // P#### are compiler problems, V#### are runtime (VM) problems, and H####
+    // are host/embedding-layer errors; each has a documentation page under a
+    // different section of the reference site. Codes outside these families
+    // render as plain, unlinked chips.
+    const section = /^P\d{4}$/.test(d.code)
+      ? "compiler"
+      : /^V\d{4}$/.test(d.code)
+        ? "runtime"
+        : /^H\d{4}$/.test(d.code)
+          ? "playground"
           : null;
-      if (section) {
-        // channel=playground attributes the arrival to the playground; version
-        // stays for the out-of-date banner in docs/_static/version-check.js.
-        // PostHog captures both as breakdown dimensions via
-        // custom_campaign_params in docs/_static/posthog-init.js.
-        const v = encodeURIComponent(compilerVersion);
-        const url = `https://www.ironplc.com/reference/${section}/problems/${d.code}.html?version=${v}&channel=playground`;
-        html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
-      } else {
-        html += `<span class="diagnostic-code">${code}</span>`;
-      }
+    if (section) {
+      // channel=playground attributes the arrival to the playground; version
+      // stays for the out-of-date banner in docs/_static/version-check.js.
+      // PostHog captures both as breakdown dimensions via
+      // custom_campaign_params in docs/_static/posthog-init.js.
+      const v = encodeURIComponent(compilerVersion);
+      const url = `https://www.ironplc.com/reference/${section}/problems/${d.code}.html?version=${v}&channel=playground`;
+      html += `<a class="diagnostic-code" href="${url}" target="_blank" rel="noopener">${code}</a>`;
+    } else {
+      html += `<span class="diagnostic-code">${code}</span>`;
     }
     let message = escapeHtml(d.message);
     if (d.label) {

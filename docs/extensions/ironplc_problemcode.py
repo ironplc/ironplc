@@ -18,7 +18,8 @@ from os.path import join
 compiler_help_topics = set([v.split('.')[0] for v in listdir(join('reference', 'compiler', 'problems'))])
 extension_help_topics = set([v.split('.')[0] for v in listdir(join('reference', 'editor', 'problems'))])
 runtime_help_topics = set([v.split('.')[0] for v in listdir(join('reference', 'runtime', 'problems'))])
-help_topics = compiler_help_topics.union(extension_help_topics).union(runtime_help_topics)
+playground_help_topics = set([v.split('.')[0] for v in listdir(join('reference', 'playground', 'problems'))])
+help_topics = compiler_help_topics.union(extension_help_topics).union(runtime_help_topics).union(playground_help_topics)
 problem_infos = dict()
 
 class ProblemCode:
@@ -30,6 +31,7 @@ definitions = [
     join('..', 'integrations', 'vscode', 'resources', 'problem-codes.csv'),
     join('..', 'compiler', 'vm', 'resources', 'problem-codes.csv'),
     join('..', 'compiler', 'vm-cli', 'resources', 'problem-codes.csv'),
+    join('..', 'compiler', 'playground', 'resources', 'problem-codes.csv'),
 ]
 
 for definition in definitions:
@@ -116,7 +118,7 @@ class ProblemIndex(Directive):
         wrappernode.append(subnode)
         return [wrappernode]
 
-_PROBLEM_PAGE_RE = re.compile(r'^reference/(compiler|editor|runtime)/problems/([PEV]\d+)$')
+_PROBLEM_PAGE_RE = re.compile(r'^reference/(compiler|editor|runtime|playground)/problems/([PEVH]\d+)$')
 
 
 def _problem_code_for_docname(docname):
@@ -212,12 +214,13 @@ THIN_PAGE_MIN_TEXT_LENGTH = 900
 
 ALLOWLIST_FILENAME = 'thin_problem_pages_allowlist.txt'
 
-PROBLEM_PAGE_PATTERN = re.compile(r'^[PEV]\d+\.html$')
+PROBLEM_PAGE_PATTERN = re.compile(r'^[PEVH]\d+\.html$')
 
 PROBLEM_PAGE_DIRS = (
     'reference/compiler/problems',
     'reference/editor/problems',
     'reference/runtime/problems',
+    'reference/playground/problems',
 )
 
 
