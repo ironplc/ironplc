@@ -15,16 +15,17 @@
 //! buffers, starts the VM, and runs the *post-launch* run/stop loop borrowing
 //! them.
 //!
-//! Not yet implemented: single-stepping (`next`/`stepIn`/`stepOut`) is refused
-//! with `requestNotApplicable`, and a trap ends the session as `terminated`
-//! rather than surfacing a `stopped{reason:"exception"}`.
+//! Not yet implemented: a trap ends the session as `terminated` rather than
+//! surfacing a `stopped{reason:"exception"}`.
 
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use ironplc_container::debug_section::DebugSection;
 use ironplc_container::{Container, VarIndex};
-use ironplc_vm::{BreakpointTable, DebuggerHook, PauseReason, RoundOutcome, VmBuffers, VmRunning};
+use ironplc_vm::{
+    BreakpointTable, DebuggerHook, PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning,
+};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -178,10 +179,14 @@ fn load_and_check(request: &Request) -> Result<(Container, LaunchRequestArgument
 /// — the session terminates once `scan_count` reaches it — and `stopOnEntry`
 /// pauses before the first instruction of the first scan.
 ///
-/// Current limitations: `continue` is the only execution control (stepping and
-/// trap→`exception` are not yet implemented). A free-running program with no
-/// breakpoint and no `scanLimit` scans until the client disconnects — the
-/// single-threaded loop cannot service an interactive `pause` (a Phase 6 cut).
+/// Execution control is `continue` plus single-stepping (`next`/`stepIn`/
+/// `stepOut`); a step is armed on the next round's hook, seeded from the paused
+/// frames so it measures from the real pause point.
+///
+/// Current limitations: trap→`exception` is not yet implemented. A free-running
+/// program with no breakpoint and no `scanLimit` scans until the client
+/// disconnects — the single-threaded loop cannot service an interactive `pause`
+/// (a Phase 6 cut).
 fn launched_session<R: BufRead, W: Write>(
     reader: &mut R,
     writer: &mut W,
@@ -229,6 +234,8 @@ fn launched_session<R: BufRead, W: Write>(
     let scan_limit = args.scan_limit;
     // Armed once, before the first scan, when the launch requested `stopOnEntry`.
     let mut pending_stop_on_entry = args.stop_on_entry;
+    // Set by a `next`/`stepIn`/`stepOut` request; armed on the next round's hook.
+    let mut pending_step: Option<StepMode> = None;
 
     loop {
         if phase == Phase::Running {
@@ -241,6 +248,21 @@ fn launched_session<R: BufRead, W: Write>(
                 if pending_stop_on_entry {
                     hook.stop_on_entry();
                     pending_stop_on_entry = false;
+                }
+                if let Some(mode) = pending_step.take() {
+                    // Seed the hook to the paused position so the step's origin
+                    // is where the VM actually stopped, not scan entry. Frames
+                    // are outermost-first; the entry frame is depth 0.
+                    let frames = running.debug_frames();
+                    let depth = frames.len().saturating_sub(1);
+                    let offset = frames.last().map_or(0, |f| f.pc);
+                    hook.seed_resume_position(depth, offset);
+                    match mode {
+                        StepMode::Over => hook.step_over(),
+                        StepMode::In => hook.step_in(),
+                        StepMode::Out => hook.step_out(),
+                        StepMode::None => {}
+                    }
                 }
                 running.run_round_debug(current_time_us, &mut hook)
             };
@@ -346,9 +368,23 @@ fn launched_session<R: BufRead, W: Write>(
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
                 phase = Phase::Running;
             }
+            Some(Command::Next) if legal_here => {
+                send(writer, &Response::success(take_seq(seq), &request, None))?;
+                pending_step = Some(StepMode::Over);
+                phase = Phase::Running;
+            }
+            Some(Command::StepIn) if legal_here => {
+                send(writer, &Response::success(take_seq(seq), &request, None))?;
+                pending_step = Some(StepMode::In);
+                phase = Phase::Running;
+            }
+            Some(Command::StepOut) if legal_here => {
+                send(writer, &Response::success(take_seq(seq), &request, None))?;
+                pending_step = Some(StepMode::Out);
+                phase = Phase::Running;
+            }
             _ => {
-                // Illegal in this phase, unknown, or not yet implemented
-                // (`next`/`stepIn`/`stepOut`).
+                // Illegal in this phase or an unknown command.
                 send(
                     writer,
                     &Response::error(take_seq(seq), &request, REQUEST_NOT_APPLICABLE),
@@ -1041,11 +1077,25 @@ mod tests {
         assert!(sbp[0]["body"]["breakpoints"][0]["message"].is_string());
     }
 
+    /// A scan of four single-byte-operand statements at the same call depth,
+    /// then `RET_VOID`, needing no constant pool: `LOAD_VAR var[0]; STORE_VAR
+    /// var[0]; LOAD_VAR var[0]; STORE_VAR var[0]; RET_VOID`. Statement starts
+    /// land at offsets 0, 3, 6, 9, 12 — so a step advances the paused pc by one
+    /// statement each time.
+    const MULTI_STATEMENT_SCAN: [u8; 13] = [
+        0x0C, 0x00, 0x00, // LOAD_VAR_I32  var[0]  (offset 0)
+        0x10, 0x00, 0x00, // STORE_VAR_I32 var[0]  (offset 3)
+        0x0C, 0x00, 0x00, // LOAD_VAR_I32  var[0]  (offset 6)
+        0x10, 0x00, 0x00, // STORE_VAR_I32 var[0]  (offset 9)
+        0x8C, // RET_VOID                          (offset 12)
+    ];
+
     #[test]
-    fn serve_when_step_while_paused_then_request_not_applicable() {
-        // Stepping is not yet implemented: refused even though the legality
-        // table models `next` as valid while paused.
-        let (_file, path) = scan_container_file(&[0x8C], 0);
+    fn serve_when_step_over_then_advances_paused_pc_statement_by_statement() {
+        // From a breakpoint at offset 0, each `next` lands on the next statement
+        // (no CALL to step over, so step-over lands on the immediately-following
+        // instruction). The paused pc is read back via `stackTrace`.
+        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
@@ -1054,14 +1104,74 @@ mod tests {
                    "arguments": {"source": {"path": "demo.st"},
                                  "breakpoints": [{"line": 0}]}}),
             json!({"seq": 4, "type": "request", "command": "configurationDone"}),
-            json!({"seq": 5, "type": "request", "command": "next",
+            json!({"seq": 5, "type": "request", "command": "stackTrace",
                    "arguments": {"threadId": 1}}),
-            json!({"seq": 6, "type": "request", "command": "disconnect"}),
+            json!({"seq": 6, "type": "request", "command": "next",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "stackTrace",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 8, "type": "request", "command": "next",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 9, "type": "request", "command": "stackTrace",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 10, "type": "request", "command": "disconnect"}),
         ]);
-        // It did stop at the breakpoint first.
-        assert_eq!(events(&out, "stopped").len(), 1);
-        let next = responses(&out, "next");
-        assert_eq!(next[0]["success"], false);
-        assert_eq!(next[0]["message"], "requestNotApplicable");
+
+        // Breakpoint stop, then a step stop for each `next`.
+        let stopped = events(&out, "stopped");
+        assert_eq!(stopped.len(), 3);
+        assert_eq!(stopped[0]["body"]["reason"], "breakpoint");
+        assert_eq!(stopped[1]["body"]["reason"], "step");
+        assert_eq!(stopped[2]["body"]["reason"], "step");
+
+        // The paused pc advances one statement per step: 0 → 3 → 6.
+        let st = responses(&out, "stackTrace");
+        assert_eq!(st[0]["body"]["stackFrames"][0]["line"], 0);
+        assert_eq!(st[1]["body"]["stackFrames"][0]["line"], 3);
+        assert_eq!(st[2]["body"]["stackFrames"][0]["line"], 6);
+
+        for n in responses(&out, "next") {
+            assert_eq!(n["success"], true);
+        }
+    }
+
+    #[test]
+    fn serve_when_step_in_and_step_out_then_wired_and_resume() {
+        // Cover the `stepIn` and `stepOut` handlers. With no callee: `stepIn`
+        // lands on the next instruction; `stepOut` from the sole (entry) frame
+        // has no shallower frame to reach, so it runs the scan to completion.
+        // `scanLimit: 1` bounds the run so completing that scan terminates the
+        // session (rather than continuing into the next scan).
+        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1}}),
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": 0}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 5, "type": "request", "command": "stepIn",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 6, "type": "request", "command": "stackTrace",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "stepOut",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        // Breakpoint stop, then a step stop from `stepIn` landing at offset 3.
+        let stopped = events(&out, "stopped");
+        assert_eq!(stopped.len(), 2);
+        assert_eq!(stopped[1]["body"]["reason"], "step");
+        assert_eq!(
+            responses(&out, "stackTrace")[0]["body"]["stackFrames"][0]["line"],
+            3
+        );
+
+        // stepOut from the top frame runs the scan to completion.
+        assert_eq!(events(&out, "terminated").len(), 1);
+        assert_eq!(responses(&out, "stepIn")[0]["success"], true);
+        assert_eq!(responses(&out, "stepOut")[0]["success"], true);
     }
 }
