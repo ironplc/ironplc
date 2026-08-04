@@ -233,16 +233,65 @@ Two rules govern qualifiers:
 
 ### What a library is on disk
 
-Each bundled library is a **manifest plus declarations**:
+Each bundled library is a directory under
+`compiler/sources/resources/compat-libraries/<name>/` holding a **manifest**
+(`library.toml`) and its **declarations** (`.st`). Example:
 
-| Requirement | Part | Contents |
-|-------------|------|----------|
-| **REQ-CL-sources-002** | Manifest | Name, vendor, version, and target/dialect the library belongs to — the provenance that makes a symbol restrictable by target. |
-| — | Declarations | Real IEC 61131-3 Structured Text for anything with a runnable body (OSCAT functions, `PI` as a constant), and `extern`/intrinsic markers for native functions whose bodies IronPLC provides another way (see *Bodies*). |
+```toml
+name = "math"
+vendor = "IronPLC"
+version = "1.0.0"
+target = "any"                 # or a dialect, e.g. "twincat"
+
+[provenance]
+license = "MIT"
+derivation = "math-dictated"   # math-dictated | clean-room-from-docs | vendored
+inputs = ["IEC 61131-3 numeric constants"]
+attribution = ""               # required when the license demands it
+reviewer = "garretfick"
+```
+
+| Requirement | Field group | Rule |
+|-------------|-------------|------|
+| **REQ-CL-sources-002** | Identity | `name`, `vendor`, `version`, `target` are present. |
+| **REQ-CL-sources-007** | Provenance | `license` (from the allowed set) and `derivation` (one of `math-dictated`, `clean-room-from-docs`, `vendored`) are present; `attribution` is present when the license requires it. |
+
+Declarations are real IEC 61131-3 Structured Text for anything with a runnable
+body (OSCAT functions, `PI` as a constant), plus `extern`/intrinsic markers for
+native functions whose bodies IronPLC provides another way (see *Bodies*).
 
 Defining libraries as data (manifest + ST) rather than Rust code is what lets a
 library be added without a compiler change, lets third parties contribute
 libraries, and lets the playground serve them as plain-text files.
+
+### Licensing, provenance, and clean-room authoring
+
+Distributing these libraries — including AI-generated shims — must not create
+copyright or license problems. Because much of the code is AI-generated, we
+cannot prove a model "never saw" an original in training, so clean provenance is
+demonstrated by an **auditable record** (controlled inputs, output clearance, a
+committed spec) rather than an unprovable claim. Libraries are tiered by risk:
+
+- **Tier A — facts / math-dictated** (constants like `PI`, IEC standard
+  behavior): own authorship; ships under MIT.
+- **Tier B — clean-room interface shim**: vendor names/signatures matched for
+  interoperability, bodies implemented as our own Rust VM intrinsics (or
+  math-dictated ST) authored from public documentation; ships under MIT.
+- **Tier C — vendored third-party source** (e.g. OSCAT): governed by the upstream
+  license, **not** MIT.
+
+- **REQ-CL-sources-008** A `vendored` (Tier C) library carries its upstream
+  license file and an attribution string and is quarantined from the
+  MIT-licensed crates — it is never redistributed under the compiler's MIT terms.
+
+The full authoring rules — allowed vs. forbidden inputs, the clean-room-with-AI
+workflow, and the reviewer checklist — live in the
+[Compatibility Library Authoring policy](../steering/compatibility-library-authoring.md).
+Its machine-checkable parts (manifest well-formedness, allowed `derivation`/
+`license`, Tier C quarantine) are enforced by a conformance test; the parts that
+cannot be tested (that no forbidden input was used, that clearance was actually
+performed) are confirmed at review. The test checks the record's *shape*; the
+reviewer checks its *truth*.
 
 ### Bodies: runnable vs. declare-only
 
@@ -272,8 +321,14 @@ A POU in a library binds its implementation one of three ways:
 ### Reference matching
 
 - **REQ-CL-sources-003** Resolution from a project's library reference to a
-  bundled library is strict and case-sensitive — better too strict than to
-  silently bind the wrong library.
+  bundled library is by strict, case-sensitive **name** match — better too strict
+  than to silently bind the wrong library.
+
+Version policy: a `*` version in the reference (the common `PlaceholderReference`
+case) matches the single bundled version. A pinned version that differs from the
+bundled one still resolves but emits a warning, since IronPLC ships one version
+per library — mismatched behavior, if any, is surfaced rather than silently
+accepted or hard-failed.
 
 ### Round-trip fidelity
 
@@ -350,23 +405,30 @@ function is a compile error (per *Safety first*).
 
 ## Open Questions
 
-1. **Qualified access requirement.** If a qualified access path (e.g.
-   `Tc2_Standard.TON`) is valid in a source environment, IronPLC must be able to
-   reproduce it. The open question is whether such qualification is *required* by
-   some libraries, or always optional — which affects how much of the qualifier
-   path must land before those libraries are usable.
-2. **Library reference identity.** The `.plcproj` reference shape is now grounded
-   (see *Appendix: `.plcproj` library-reference shapes*): a `PlaceholderReference`
-   or `LibraryReference` carries the library name, a vendor, and a version that is
-   *frequently a `*` wildcard*. Name matching is fixed by **REQ-CL-sources-003**
-   (strict, case-sensitive); what remains open is the **version** policy — treat
-   `*` as "any bundled version," and decide whether a concrete pinned version must
-   match exactly or may be satisfied by the single bundled version with a warning.
-3. **Unsupported-configuration detection.** By what mechanism does the compiler
+*Resolved in this revision:* the **manifest format** is specified under *What a
+library is on disk*; the **`.plcproj` reference shape** is grounded in the
+appendix; **version matching** policy is stated under *Reference matching*.
+
+1. **Qualified access requirement.** For project-driven activation the qualifier
+   is *given* — the `.plcproj` reference carries a `<Namespace>` element (see the
+   appendix), so IronPLC does not infer it. What remains open is whether any
+   library *requires* qualified access (rather than merely permitting it), which
+   affects how much of the qualifier path must land before those libraries work.
+2. **Unsupported-configuration detection.** By what mechanism does the compiler
    recognize an unsupported library/flag configuration in order to reject it
-   (per *Safety first*)?
-4. **Manifest format.** Concrete on-disk shape of the manifest and how
-   `extern`/intrinsic bodies are marked in bundled declarations.
+   (per *Safety first*)? The concrete declare-only case is covered
+   (**REQ-CL-analyzer-005**); the general detector is not yet designed.
+3. **Tier C distribution model.** Are vendored (Tier C) libraries shipped in-tree
+   but quarantined, or obtained opt-in by the user? This tensions with the
+   *no network fetch* non-goal, and is a distribution decision for the project
+   owner (see the [authoring policy](../steering/compatibility-library-authoring.md)).
+4. **License allow-list.** Which upstream licenses are acceptable to bundle at
+   all, given IronPLC is MIT? (**REQ-CL-sources-007** enforces membership in an
+   allowed set; the set's contents are the open decision.)
+5. **Dialect → default activation.** Does selecting a vendor dialect (e.g.
+   `--dialect twincat`) auto-activate that vendor's libraries, or is activation
+   always explicit (project reference or `--library`)? The first increment is
+   explicit-only; dialect-driven defaults are a possible later convenience.
 
 ## Implementation
 

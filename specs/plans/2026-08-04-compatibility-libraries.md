@@ -82,6 +82,12 @@ source**, so a user declaration shadows a library declaration of the same name
 **New — test fixtures**
 - A `.plcproj` referencing the library, plus an `.st`/POU using `PI`.
 
+**New — provenance & policy**
+- `specs/steering/compatibility-library-authoring.md` (+ `.kiro/steering/` pointer) — the authoring policy (already added).
+- `compiler/sources/resources/compat-libraries/<name>/library.toml` — `[provenance]` fields.
+- Provenance conformance test in `compiler/sources` (walks manifests).
+- Tier C quarantine location (established when the first vendored library lands; not in this plan).
+
 **Modified**
 - `compiler/sources/src/discovery/mod.rs` — twincat detector reads the
   `.plcproj` library references (in addition to `<Compile Include>`).
@@ -108,6 +114,13 @@ source**, so a user declaration shadows a library declaration of the same name
   byte-identical to its input.
 - End-to-end: parse → activate → analyze → (Phase 1) confirm `PI` resolves and
   folds; (Phase 2) same with activation coming only from the `.plcproj`.
+- **Provenance conformance test (Phase 5):** a `sources` test walks every bundled
+  library manifest and asserts it is well-formed, its `derivation`/`license` are
+  from the allowed sets, and any `vendored` library is quarantined with a license
+  and attribution. This enforces the *machine-checkable* half of the
+  [authoring policy](../steering/compatibility-library-authoring.md); the
+  human-only half (no forbidden input used, clearance performed) stays a reviewer
+  responsibility.
 - Run `cd compiler && just` (compile, coverage ≥85%, clippy, fmt) before any PR.
 
 ## Tasks
@@ -123,7 +136,7 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] `PI` resolves as a constant and folds in a `VAR` initializer — **REQ-CL-analyzer-003**
 - [ ] A user declaration shadows a library declaration of the same name — **REQ-CL-analyzer-004**
 - [ ] Activated set derives only from explicit activation; never inferred from source — **REQ-CL-sources-005**
-- [ ] Wire `sources` + `analyzer` `build.rs` to the design doc; add `spec_conformance` + meta-tests; `#[spec_test]` the markers above; `#[ignore]` sources-001/003/004 and analyzer-005 for now
+- [ ] Wire `sources` + `analyzer` `build.rs` to the design doc; add `spec_conformance` + meta-tests; `#[spec_test]` the markers above; `#[ignore]` sources-001/003/004/007/008 and analyzer-005 for now
 - [ ] `cd compiler && just` green
 
 ### Phase 2 — Read the library list from `.plcproj` *(early)*
@@ -149,10 +162,21 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] Wire `playground` `build.rs` + spec test; update `playground/` frontend to fetch library files
 - [ ] `cd compiler && just` green
 
+### Phase 5 — Provenance & licensing policy enforcement
+- [ ] Add the `[provenance]` fields to the manifest schema (`license`, `derivation`, `inputs`, `attribution`, `reviewer`)
+- [ ] Conformance test in `sources` walks every bundled manifest and asserts identity fields present — **REQ-CL-sources-002** — and provenance well-formed with `derivation`/`license` from the allowed sets — **REQ-CL-sources-007**
+- [ ] Establish the Tier C quarantine location; assert a `vendored` library carries an upstream `LICENSE` + attribution and is excluded from MIT-licensed crate sources — **REQ-CL-sources-008**
+- [ ] Un-ignore sources-002/007/008; confirm the [authoring policy](../steering/compatibility-library-authoring.md) reviewer checklist is referenced from contribution docs
+- [ ] `cd compiler && just` green
+
 ### Deferred (tracked in the design's *Future Goals* / *Open Questions*, not this plan)
 - Collision / precedence resolution; cross-vendor mixing.
 - Unsupported-configuration detection mechanism.
 - Qualified-access as a per-library requirement.
+- **Tier C vendoring (e.g. OSCAT)** — pending the license/distribution decision
+  (design Open Questions 3–4). The math library (Tier A) and TwinCAT signature
+  shims (Tier B) do not depend on it.
+- Dialect-driven default library activation (design Open Question 5).
 
 ## Implementation notes
 
