@@ -273,6 +273,20 @@ impl<'a> DebuggerHook<'a> {
         };
     }
 
+    /// Seed the depth / last-offset mirror to a resumed pause position.
+    ///
+    /// A fresh hook starts at depth 0 / offset 0, but the single-threaded driver
+    /// rebuilds the hook each round; when it resumes a mid-scan paused frame
+    /// stack it seeds the live call depth (`frames.len() - 1`, so the entry
+    /// frame is depth 0, matching the `before_call`/`after_return` mirror) and
+    /// the current offset here, so a step armed immediately after
+    /// ([`step_over`](Self::step_over) etc.) measures from where the VM actually
+    /// paused rather than from scan entry.
+    pub fn seed_resume_position(&mut self, depth: usize, offset: usize) {
+        self.depth = depth;
+        self.last_offset = offset;
+    }
+
     /// Suppress the breakpoint check for the very next instruction.
     ///
     /// A single-threaded driver that constructs a fresh hook per resume (so it
@@ -415,6 +429,98 @@ mod tests {
         assert!(matches!(
             hook.before_instruction(FunctionId::SCAN, 1, 0),
             HookAction::Continue
+        ));
+    }
+
+    #[test]
+    fn debugger_hook_when_step_over_then_lands_on_next_instruction_same_depth() {
+        use crate::debug_hook::{DebugHook, HookAction};
+        let table = BreakpointTable::new();
+        let mut hook = DebuggerHook::new(&table);
+        // Paused at (depth 0, offset 4); arm step-over from there.
+        hook.seed_resume_position(0, 4);
+        hook.step_over();
+        // The resume re-executes the origin instruction: not a landing.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 4, 0),
+            HookAction::Continue
+        ));
+        // The next instruction at the same depth is the landing.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 7, 0),
+            HookAction::Pause(PauseReason::Step)
+        ));
+    }
+
+    #[test]
+    fn debugger_hook_when_step_over_call_then_skips_callee_body() {
+        use crate::debug_hook::{DebugHook, HookAction};
+        let table = BreakpointTable::new();
+        let mut hook = DebuggerHook::new(&table);
+        hook.seed_resume_position(0, 4);
+        hook.step_over();
+        // Origin instruction resumes.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 4, 0),
+            HookAction::Continue
+        ));
+        // A CALL descends into a callee; instructions there are deeper than the
+        // origin, so step-over does not land inside the callee body.
+        hook.before_call(FunctionId::new(2));
+        assert!(matches!(
+            hook.before_instruction(FunctionId::new(2), 0, 0),
+            HookAction::Continue
+        ));
+        // The callee returns; the next instruction back at origin depth lands.
+        hook.after_return(Some(FunctionId::SCAN));
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 8, 0),
+            HookAction::Pause(PauseReason::Step)
+        ));
+    }
+
+    #[test]
+    fn debugger_hook_when_step_in_then_lands_on_first_instruction_of_callee() {
+        use crate::debug_hook::{DebugHook, HookAction};
+        let table = BreakpointTable::new();
+        let mut hook = DebuggerHook::new(&table);
+        hook.seed_resume_position(0, 4);
+        hook.step_in();
+        // Origin instruction (the CALL site) resumes.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 4, 0),
+            HookAction::Continue
+        ));
+        // Step-in descends: the first instruction of the callee is the landing.
+        hook.before_call(FunctionId::new(2));
+        assert!(matches!(
+            hook.before_instruction(FunctionId::new(2), 0, 0),
+            HookAction::Pause(PauseReason::Step)
+        ));
+    }
+
+    #[test]
+    fn debugger_hook_when_step_out_then_lands_only_after_origin_frame_returns() {
+        use crate::debug_hook::{DebugHook, HookAction};
+        let table = BreakpointTable::new();
+        let mut hook = DebuggerHook::new(&table);
+        // Paused inside a callee at depth 1; step out of it.
+        hook.seed_resume_position(1, 2);
+        hook.step_out();
+        // Still inside the callee (origin depth): no landing yet.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::new(2), 2, 0),
+            HookAction::Continue
+        ));
+        assert!(matches!(
+            hook.before_instruction(FunctionId::new(2), 5, 0),
+            HookAction::Continue
+        ));
+        // The callee returns to the caller (shallower than origin): landing.
+        hook.after_return(Some(FunctionId::SCAN));
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 8, 0),
+            HookAction::Pause(PauseReason::Step)
         ));
     }
 
