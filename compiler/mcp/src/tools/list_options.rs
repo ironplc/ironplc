@@ -48,7 +48,7 @@ pub fn build_response() -> ListOptionsResponse {
 
     let mut flags = Vec::with_capacity(CompilerOptions::FEATURE_DESCRIPTORS.len());
 
-    // All vendor-extension flags from the macro-generated descriptors.
+    // All dialect-extension flags from the macro-generated descriptors.
     for fd in CompilerOptions::FEATURE_DESCRIPTORS {
         flags.push(FlagInfo {
             id: fd.option_key.to_string(),

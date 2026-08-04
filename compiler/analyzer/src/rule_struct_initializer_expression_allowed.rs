@@ -9,7 +9,7 @@
 //! | enumerated_value | array_initialization | structure_initialization)`.
 //! A general expression -- and in particular a pointer dereference plus
 //! member access like `pDevice^.Delta` -- is deliberately not one of those
-//! productions, so accepting it is a vendor extension (TwinCAT/CODESYS). The
+//! productions, so accepting it is an extension. The
 //! parser always accepts the broader form; this rule is what enforces the
 //! flag.
 //!

@@ -1,7 +1,7 @@
-//! Semantic rule that flags vendor-specific language extensions that are
-//! parsed and represented in the AST but not yet semantically analyzed.
+//! Semantic rule that flags non-standard language extensions that
+//! are parsed and represented in the AST but not yet semantically analyzed.
 //!
-//! See `ironplc_dsl::extension::VendorExtension`,
+//! See `ironplc_dsl::extension::LanguageExtension`,
 //! `specs/plans/2026-07-18-twincat-extends-implements-interface.md`, and
 //! `specs/plans/2026-07-20-twincat-extends-field-inheritance.md` (plain
 //! `EXTENDS` with no `IMPLEMENTS`/`ABSTRACT` no longer flags, since field
@@ -21,10 +21,9 @@
 use ironplc_dsl::{
     common::*,
     diagnostic::{Diagnostic, Label},
-    extension::VendorExtension,
+    extension::LanguageExtension,
     visitor::Visitor,
 };
-use ironplc_problems::Problem;
 
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
 use ironplc_parser::options::CompilerOptions;
@@ -50,19 +49,15 @@ struct RuleUnsupportedExtension {
 }
 
 impl RuleUnsupportedExtension {
-    fn flag(&mut self, ext: &dyn VendorExtension) {
-        let origins: Vec<&str> = ext.extension_origins().iter().map(|o| o.as_str()).collect();
-        self.diagnostics.push(Diagnostic::problem(
-            Problem::UnsupportedExtension,
-            Label::span(
+    fn flag(&mut self, ext: &dyn LanguageExtension) {
+        self.diagnostics
+            .push(Diagnostic::not_implemented(Label::span(
                 ext.extension_span(),
                 format!(
-                    "{} ({} extension) is recognized but not yet supported by IronPLC",
+                    "{} is recognized but not yet supported by IronPLC",
                     ext.extension_name(),
-                    origins.join(", "),
                 ),
-            ),
-        ));
+            )));
     }
 }
 
@@ -94,7 +89,7 @@ impl Visitor<Diagnostic> for RuleUnsupportedExtension {
         node: &InterfaceDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         // An InterfaceDeclaration only exists when INTERFACE syntax was
-        // used, so it is always a vendor extension.
+        // used, so it is always an extension.
         self.flag(node);
         node.recurse_visit(self)
     }
@@ -107,9 +102,9 @@ mod tests {
     use crate::semantic_context::SemanticContextBuilder;
     use crate::test_helpers::parse_and_resolve_types_with_options;
 
-    fn opts_with_oop_extensions() -> CompilerOptions {
+    fn opts_with_fb_inheritance() -> CompilerOptions {
         CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         }
     }
@@ -150,15 +145,15 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         assert!(result.is_ok());
     }
 
     #[test]
-    fn apply_when_implements_then_p9004() {
+    fn apply_when_implements_then_p9999() {
         let program = "
 FUNCTION_BLOCK FB_AdvancedMotor IMPLEMENTS I_Drivable
 VAR
@@ -167,17 +162,20 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!("P9999", errors[0].code);
     }
 
     #[test]
-    fn apply_when_abstract_then_p9004() {
+    fn apply_when_abstract_then_p9999() {
         let program = "
 FUNCTION_BLOCK ABSTRACT FB_BaseAxis
 VAR
@@ -186,17 +184,20 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!("P9999", errors[0].code);
     }
 
     #[test]
-    fn apply_when_abstract_and_implements_then_only_one_p9004() {
+    fn apply_when_abstract_and_implements_then_only_one_p9999() {
         let program = "
 FUNCTION_BLOCK ABSTRACT FB_BaseAxis IMPLEMENTS I_BaseAxis
 VAR
@@ -205,30 +206,36 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         let errors = result.unwrap_err();
         // One diagnostic for the whole FB, not one per clause.
         assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!("P9999", errors[0].code);
     }
 
     #[test]
-    fn apply_when_interface_declaration_then_p9004() {
+    fn apply_when_interface_declaration_then_p9999() {
         let program = "
 INTERFACE I_Drivable
 END_INTERFACE";
 
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::UnsupportedExtension.code(), errors[0].code);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!("P9999", errors[0].code);
     }
 
     #[test]
@@ -244,9 +251,9 @@ END_VAR
 END_FUNCTION_BLOCK";
 
         let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_oop_extensions());
+            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_oop_extensions());
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
 
         let errors = result.unwrap_err();
         // One for the INTERFACE declaration, one for the FB's IMPLEMENTS

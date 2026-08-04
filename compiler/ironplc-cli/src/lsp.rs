@@ -76,7 +76,7 @@ fn extract_compiler_options(initialize_params: &InitializeParams) -> CompilerOpt
 
         let mut options = CompilerOptions::from_dialect(dialect);
 
-        // Overlay individual vendor flags (can only enable, never disable). The
+        // Overlay individual dialect flags (can only enable, never disable). The
         // LSP option key is the lowerCamelCase form of each descriptor's
         // `option_key` (e.g. `allow_ref_to` -> `allowRefTo`). Deriving from
         // `FEATURE_DESCRIPTORS` keeps this in lockstep with the compiler: a new
@@ -788,12 +788,12 @@ mod test {
     }
 
     /// Guards the LSP option surface against drifting out of sync with the
-    /// compiler: every vendor flag must be enablable via its lowerCamelCase
+    /// compiler: every dialect flag must be enablable via its lowerCamelCase
     /// `initializationOptions` key. `extract_compiler_options` derives these
     /// from `FEATURE_DESCRIPTORS`, so this also pins the snake -> camelCase
     /// contract the VS Code extension relies on.
     #[test]
-    fn extract_compiler_options_when_each_vendor_flag_key_set_then_flag_enabled() {
+    fn extract_compiler_options_when_each_dialect_flag_key_set_then_flag_enabled() {
         for fd in ironplc_parser::options::CompilerOptions::FEATURE_DESCRIPTORS {
             let key = super::to_lower_camel_case(fd.option_key);
             let params = params_with_init_options(serde_json::json!({ key.clone(): true }));
@@ -862,7 +862,7 @@ mod test {
     }
 
     #[test]
-    fn extract_compiler_options_when_rusty_dialect_then_enables_ref_to_and_vendor_flags() {
+    fn extract_compiler_options_when_rusty_dialect_then_enables_ref_to_and_dialect_flags() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
@@ -1128,13 +1128,13 @@ mod test {
     }
 
     #[test]
-    fn extract_compiler_options_when_allow_oop_extensions_then_enables_flag() {
+    fn extract_compiler_options_when_allow_fb_inheritance_then_enables_flag() {
         #[allow(deprecated)]
         let params = InitializeParams {
             process_id: None,
             root_path: None,
             root_uri: None,
-            initialization_options: Some(serde_json::json!({"allowOopExtensions": true})),
+            initialization_options: Some(serde_json::json!({"allowFbInheritance": true})),
             capabilities: ClientCapabilities::default(),
             trace: None,
             workspace_folders: None,
@@ -1146,7 +1146,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(options.allow_oop_extensions);
+        assert!(options.allow_fb_inheritance);
     }
 
     #[test]

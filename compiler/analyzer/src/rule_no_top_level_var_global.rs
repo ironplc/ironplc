@@ -1,6 +1,6 @@
 //! Semantic rule that rejects `VAR_GLOBAL` declarations at the top level of a
 //! library (outside any `CONFIGURATION`/`RESOURCE` block) unless the
-//! `--allow-top-level-var-global` vendor extension is enabled.
+//! `--allow-top-level-var-global` extension is enabled.
 //!
 //! In strict IEC 61131-3, `VAR_GLOBAL` is only permitted inside
 //! `CONFIGURATION` and `RESOURCE`. The parser represents a top-level block as a

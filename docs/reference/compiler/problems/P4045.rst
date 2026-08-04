@@ -5,7 +5,7 @@ P4045
 .. problem-summary:: P4045
 
 This error occurs when a variable is declared with the type of a
-function block marked ``ABSTRACT`` (the CODESYS/TwinCAT vendor
+function block marked ``ABSTRACT`` (the CODESYS/TwinCAT dialect
 extension). An ``ABSTRACT`` function block exists only to be extended
 via ``EXTENDS`` -- it cannot be instantiated directly.
 
@@ -45,8 +45,3 @@ function block type that extends the abstract base instead:
 Extending an abstract function block via ``EXTENDS`` is unaffected by
 this error -- only directly declaring a variable of the abstract type
 itself is rejected.
-
-Verified against a real TcXaeShell compile (``C0434: Function block
-FB_Base is ABSTRACT and cannot be instantiated``) before this check was
-implemented. Covered by ``rule_abstract_not_instantiated::tests`` in the
-compiler's own test suite.

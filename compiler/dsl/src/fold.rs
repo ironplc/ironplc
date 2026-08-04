@@ -179,7 +179,7 @@ pub trait Fold<E> {
     // 2.4.3.2
     dispatch!(SimpleInitializer);
 
-    // CODESYS/TwinCAT vendor extension
+    // Expression-valued initializer (extension)
     dispatch!(SimpleExprInitializer);
 
     // 2.4.3.1 and 2.4.3.2
@@ -219,12 +219,12 @@ pub trait Fold<E> {
     // 2.5.2
     dispatch!(FunctionBlockDeclaration);
 
-    // CODESYS/TwinCAT OOP extension
+    // OOP extension
     dispatch!(FunctionBlockOop);
 
     dispatch!(FunctionBlockBodyKind);
 
-    // CODESYS/TwinCAT OOP extension
+    // OOP extension
     dispatch!(InterfaceDeclaration);
 
     // 2.5.3

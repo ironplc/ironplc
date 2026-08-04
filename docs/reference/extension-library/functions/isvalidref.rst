@@ -52,7 +52,7 @@ function name.
 Enabling
 --------
 
-``__ISVALIDREF`` is a vendor extension and must be explicitly enabled:
+``__ISVALIDREF`` is a language extension and must be explicitly enabled:
 
 .. code-block:: shell
 
@@ -76,4 +76,4 @@ See Also
 --------
 
 - :doc:`/reference/language/data-types/derived/reference-types` — ``REFERENCE TO`` reference types
-- :doc:`/explanation/enabling-dialects-and-features` — enabling vendor extensions
+- :doc:`/explanation/enabling-dialects-and-features` — enabling language extensions

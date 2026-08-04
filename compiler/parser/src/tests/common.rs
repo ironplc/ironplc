@@ -79,7 +79,7 @@ pub(crate) fn parse_text_reference_to(source: &str) -> Library {
 }
 
 /// Parse with `allow_paren_string_length` enabled (the STRING(n)/WSTRING(n)
-/// vendor delimiter). The default (strict IEC 61131-3) dialect rejects it.
+/// dialect delimiter). The default (strict IEC 61131-3) dialect rejects it.
 pub(crate) fn parse_text_paren_string_length(source: &str) -> Library {
     let options = CompilerOptions {
         allow_paren_string_length: true,
@@ -204,13 +204,13 @@ pub(crate) fn opts_with_constant_initializer_expressions() -> CompilerOptions {
 }
 
 // ---------------------------------------------------------------------
-// TwinCAT/CODESYS OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
+// OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
 // See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
 // ---------------------------------------------------------------------
 
-pub(crate) fn opts_with_oop_extensions() -> CompilerOptions {
+pub(crate) fn opts_with_fb_inheritance() -> CompilerOptions {
     CompilerOptions {
-        allow_oop_extensions: true,
+        allow_fb_inheritance: true,
         ..CompilerOptions::default()
     }
 }

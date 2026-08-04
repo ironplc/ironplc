@@ -1,6 +1,6 @@
 # Syntax Support Guide
 
-This guide describes everything needed to add support for new syntax in the IronPLC compiler. Follow this guide when adding new language features, vendor extensions, or fixing syntax-related issues.
+This guide describes everything needed to add support for new syntax in the IronPLC compiler. Follow this guide when adding new language features, extensions, or fixing syntax-related issues.
 
 > **Note**: This covers the full pipeline from lexer through execution. For general compiler architecture, see [compiler-architecture.md](compiler-architecture.md). For IEC 61131-3 compliance rules, see [iec-61131-3-compliance.md](iec-61131-3-compliance.md).
 
@@ -67,7 +67,7 @@ Keywords are case-insensitive (`ignore(case)`). Identifiers have lower priority 
 
 ### Token Demotion Pattern
 
-**When to use**: When a keyword is only valid under certain conditions (e.g., Edition 3 mode, or a vendor extension flag) and programs may use that keyword as an identifier otherwise.
+**When to use**: When a keyword is only valid under certain conditions (e.g., Edition 3 mode, or an extension flag) and programs may use that keyword as an identifier otherwise.
 
 **How it works**: Define the token as a specific type in the lexer, then "demote" it to `TokenType::Identifier` in a transform pass when the feature is disabled.
 
@@ -142,7 +142,7 @@ pub fn apply(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<Diag
 | New keyword that could conflict with existing identifiers | Token demotion |
 | Syntax that is always distinct from standard syntax | Validation rule |
 | Feature controlled by `--dialect` (edition selection) | Token demotion |
-| Feature controlled by `--allow-x` vendor flag | Either, depending on conflict risk |
+| Feature controlled by `--allow-x` flag | Either, depending on conflict risk |
 
 ### Token Insertion Pattern
 
@@ -165,49 +165,32 @@ pub fn insert_keyword_statement_terminators(
 
 ## Non-Standard Syntax Gating (`--allow-x` Flags)
 
-**Rule**: Anything not in the IEC 61131-3 standard **must** be gated behind an `--allow-x` flag. Using `--dialect=rusty` enables all vendor extensions.
+**Rule**: Anything not in the IEC 61131-3 standard **must** be gated behind an `--allow-x` flag. Using `--dialect=rusty` enables the broadest set of extensions.
 
 ### Before Creating a New Flag
 
 **Always check existing flags first**. Group related extensions under one flag when they represent the same vendor behavior.
 
-Current flags in `CompilerOptions` (`parser/src/options.rs`). The authoritative
-list is the `define_compiler_options!` macro invocation (exposed at runtime via
-`CompilerOptions::FEATURE_DESCRIPTORS` and the `ironplcc dialects` command); this
-table is a convenience mirror, so consult the macro if the two ever disagree.
+The full list of existing flags is intentionally **not** duplicated here — a
+mirrored table drifts out of date. Consult these instead:
 
-| Flag | CLI | Purpose |
-|------|-----|---------|
-| `allow_iec_61131_3_2013` | Set by `--dialect` | Enables Edition 3 keywords (set by `iec61131-3-ed3` dialect) |
-| `allow_c_style_comments` | `--allow-c-style-comments` | Permits `//` and `/* */` comments |
-| `allow_missing_semicolon` | `--allow-missing-semicolon` | Inserts semicolons after END_IF etc. |
-| `allow_top_level_var_global` | `--allow-top-level-var-global` | VAR_GLOBAL outside CONFIGURATION |
-| `allow_constant_type_params` | `--allow-constant-type-params` | Constants in type params (e.g., `STRING[MY_CONST]`) |
-| `allow_empty_var_blocks` | `--allow-empty-var-blocks` | Empty variable blocks (VAR END_VAR etc.) |
-| `allow_time_as_function_name` | `--allow-time-as-function-name` | TIME as function name (OSCAT compat) |
-| `allow_ref_to` | `--allow-ref-to` | REF_TO/REF/NULL syntax without full Edition 3 |
-| `allow_reference_to` | `--allow-reference-to` | TwinCAT/CODESYS `REFERENCE TO` reference types and the `REF=` binding operator (alternative to `--allow-ref-to`; enabled by the `twincat` and `codesys` dialects) |
-| `allow_ref_arithmetic` | `--allow-ref-arithmetic` | Arithmetic (`+`, `-`) and ordering comparisons on REF_TO types |
-| `allow_ref_stack_variables` | `--allow-ref-stack-variables` | REF() on stack-allocated vars (VAR_TEMP, function VAR_INPUT/VAR_OUTPUT) |
-| `allow_ref_type_punning` | `--allow-ref-type-punning` | Assigning between REF_TO types of different base types |
-| `allow_int_to_bool_initializer` | `--allow-int-to-bool-initializer` | Integer literals `0`/`1` as BOOL initializers |
-| `allow_sizeof` | `--allow-sizeof` | SIZEOF() operator (returns size in bytes) |
-| `allow_system_uptime_global` | `--allow-system-uptime-global` | Exposes `__SYSTEM_UP_TIME`/`__SYSTEM_UP_LTIME` implicit globals |
-| `allow_cross_family_widening` | `--allow-cross-family-widening` | Implicit widening between bit-string and integer families |
-| `allow_partial_access_syntax` | `--allow-partial-access-syntax` | IEC 61131-3:2013 partial-access bit syntax (`.%Xn`) |
-| `allow_pragmas` | `--allow-pragmas` | Curly-brace pragmas (`{attribute 'qualified_only'}`) parsed and discarded like a comment |
-| `allow_short_circuit_operators` | `--allow-short-circuit-operators` | AND_THEN short-circuit boolean operator (Beckhoff/CODESYS) |
-| `allow_mixed_located_var_declarations` | `--allow-mixed-located-var-declarations` | `AT`-located variable (e.g. `AT %I*`) mixed with plain variables in one `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block |
-| `allow_constant_initializer_expressions` | `--allow-constant-initializer-expressions` | Constant expressions (not just bare literals) in `VAR` initializers, e.g. `SCALE*4.0` |
-| `allow_bit_string_case_labels` | `--allow-bit-string-case-labels` | Hex/binary/octal bit-string literals (`16#D012`, `2#1010`) as `CASE` labels (TwinCAT/CODESYS) |
-| `allow_paren_string_length` | `--allow-paren-string-length` | `STRING(n)`/`WSTRING(n)` parenthesis length delimiter in addition to the standard `STRING[n]` brackets (gated by P4042; matched delimiters required) |
-| `allow_oop_extensions` | `--allow-oop-extensions` | CODESYS/TwinCAT OOP: `EXTENDS`/`IMPLEMENTS` on `FUNCTION_BLOCK`, `INTERFACE` declarations |
+- **Authoritative (code):** the `define_compiler_options!` macro invocation in
+  `compiler/parser/src/options.rs`, exposed at runtime via
+  `CompilerOptions::FEATURE_DESCRIPTORS` and the `ironplcc dialects` command.
+- **Reader-friendly (docs):**
+  [`docs/reference/compiler/ironplcc.rst`](../../docs/reference/compiler/ironplcc.rst)
+  documents every `--allow-*` flag with a description, and
+  [`docs/explanation/enabling-dialects-and-features.rst`](../../docs/explanation/enabling-dialects-and-features.rst)
+  explains which dialects enable each flag.
+
+Scan those before adding a flag to confirm an existing one doesn't already cover
+your syntax.
 
 ### Dialects
 
 Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags can override on top.
 
-| Dialect | `--dialect` value | Edition 3 types | REF_TO | Vendor extensions |
+| Dialect | `--dialect` value | Edition 3 types | REF_TO | Extensions |
 |---------|-------------------|----------------|--------|-------------------|
 | IEC 61131-3 Ed 2 (default) | `iec61131-3-ed2` | OFF | OFF | all OFF |
 | IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
@@ -221,6 +204,35 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 - If the extension is common across multiple vendors and represents the same concept, group under one flag
 - If the extension is unique to a specific vendor behavior, create a new flag
 - Keep flag names descriptive: `allow_<what_it_allows>`
+
+#### Naming: be specific, avoid umbrella terms
+
+Flag names must describe the **specific syntax** they enable, not a broad
+category. Vague umbrella words — `extensions`, `features`, `oop`, `advanced`,
+`extra`, `misc` — are ambiguous the moment a second, unrelated extension in the
+same category is added: `allow_oop_extensions` gives no hint whether it covers
+`EXTENDS`, `METHOD`/`PROPERTY`, `THIS^`/`SUPER^`, or interface dispatch, and a
+future OOP flag would have no room left to name itself distinctly.
+
+Prefer names that spell out the construct(s) gated:
+
+| Avoid (ambiguous) | Prefer (specific) |
+|-------------------|-------------------|
+| `allow_oop_extensions` | `allow_fb_inheritance` (`EXTENDS`/`IMPLEMENTS`/`INTERFACE`/`ABSTRACT` shape) |
+| `allow_pointer_features` | `allow_ref_to`, `allow_ref_arithmetic`, … (one flag per construct) |
+| `allow_string_extras` | `allow_paren_string_length` |
+
+When one flag genuinely gates several related constructs, name it after the
+concept they share (e.g. the `REF_TO` family), not after the vendor or the word
+"extension". If you cannot name the flag without a generic umbrella term, that
+usually means it should be split into more than one flag.
+
+The same applies to the flag's **description** and doc comments: describe the
+*syntax* it gates, not the vendor it came from. A construct is rarely exclusive
+to one tool — the same OOP or reference syntax often appears across several —
+so "OOP function-block declaration syntax" ages better than "TwinCAT/CODESYS OOP
+extensions". Let the [Dialects](#dialects) table express which dialects turn the
+flag on; that is where the vendor mapping belongs.
 
 ### Adding a New Flag
 
@@ -242,7 +254,7 @@ Add the clap argument:
 
 ```rust
 /// Allow [description of what this enables].
-/// This is a vendor extension not part of the IEC 61131-3 standard.
+/// This is an extension not part of the IEC 61131-3 standard.
 #[arg(long)]
 allow_my_extension: bool,
 ```
@@ -281,7 +293,7 @@ Use either the token demotion pattern, validation rule pattern, or analyzer-leve
 #### 6. Documentation
 
 Update these files to document the new flag:
-- `docs/explanation/enabling-dialects-and-features.rst` — add to the Vendor Extensions section
+- `docs/explanation/enabling-dialects-and-features.rst` — add to the Language Extensions section
 - `docs/reference/compiler/ironplcc.rst` — add to the Options section
 - Update the flag table in this file (syntax-support-guide.md)
 
@@ -338,7 +350,7 @@ fn parse_and_render_with_options(name: &'static str, options: CompilerOptions) -
 }
 
 #[test]
-fn write_to_string_my_vendor_extension() {
+fn write_to_string_my_dialect_extension() {
     let options = CompilerOptions {
         allow_my_extension: true,
         ..CompilerOptions::default()
@@ -490,7 +502,7 @@ New demotion transforms must be called in `tokenize_program()` **before** `check
 - **Missing LSP wiring**: The flag works on the CLI but not in VS Code because `extract_compiler_options()` in `plc2x/src/lsp.rs` was not updated. Always add LSP extraction for new flags.
 - **No round-trip test**: The feature parses but the renderer in `plc2plc` cannot write it back. Always add the round-trip test.
 - **No execution test**: The feature parses and analyzes but was never proven to execute correctly. Always add at least one end-to-end test.
-- **Creating a flag for standard syntax**: Only vendor extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--dialect`).
+- **Creating a flag for standard syntax**: Only extensions get `--allow-x` flags. Standard IEC 61131-3 syntax is always on (or gated by `--dialect`).
 - **Stateful lexer changes**: The lexer (`logos`) is stateless. Use token transforms for context-dependent behavior, not lexer rules.
 - **Not registering transforms**: Adding a new `xform_*.rs` module but forgetting to call it from `tokenize_program()` in `parser/src/lib.rs`, or adding a new rule module but forgetting to register it in `check_tokens()`.
 
@@ -498,7 +510,7 @@ New demotion transforms must be called in `tokenize_program()` **before** `check
 
 This walkthrough shows the typical sequence for adding a new syntax feature.
 
-### Example: Adding Support for a Hypothetical Vendor Extension
+### Example: Adding Support for a Hypothetical Language Extension
 
 Suppose a vendor allows `REPEAT ... UNTIL ... END_REPEAT` with an optional `LIMIT` clause (non-standard).
 
@@ -508,7 +520,7 @@ Review `parser/src/options.rs` — does an existing flag cover this? If not, pro
 
 #### Step 2: Add the Flag
 
-1. Add `allow_repeat_limit` to `CompilerOptions` vendor fields in the `define_compiler_options!` macro
+1. Add `allow_repeat_limit` to `CompilerOptions` dialect fields in the `define_compiler_options!` macro
 2. Add `--allow-repeat-limit` to CLI `FileArgs`
 3. Add `|= self.allow_repeat_limit` in `compiler_options()`
 4. Add to relevant dialect presets in `CompilerOptions::from_dialect()`

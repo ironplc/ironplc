@@ -4,7 +4,7 @@ Enabling Dialects and Features
 
 IronPLC aims to let you take code from another PLC environment and use it
 without changes. To support this, IronPLC uses **dialects** — named presets
-that select the IEC 61131-3 edition and a default set of vendor extensions.
+that select the IEC 61131-3 edition and a default set of extensions.
 Individual ``--allow-*`` flags provide fine-grained control on top of the
 selected dialect.
 
@@ -13,10 +13,10 @@ Supported Dialects
 ---------------------------------
 
 **iec61131-3-ed2** *(default)*
-   Strict IEC 61131-3:2003 (Edition 2). No vendor extensions are enabled.
+   Strict IEC 61131-3:2003 (Edition 2). No extensions are enabled.
    This is the default when no dialect is specified.
 
-   **Enables:** nothing beyond strict IEC 61131-3 (no vendor extensions).
+   **Enables:** nothing beyond strict IEC 61131-3 (no extensions).
 
 **iec61131-3-ed3**
    Strict IEC 61131-3:2013 (Edition 3). Enables Edition 3 keywords
@@ -26,14 +26,14 @@ Supported Dialects
    :doc:`LDATE_AND_TIME </reference/language/data-types/elementary/ldate-and-time>`,
    :doc:`REF_TO </reference/language/data-types/derived/reference-types>`,
    :doc:`REF </reference/language/data-types/derived/reference-types>`, and
-   :doc:`NULL </reference/language/data-types/derived/reference-types>`. No vendor extensions.
+   :doc:`NULL </reference/language/data-types/derived/reference-types>`. No extensions.
 
    **Enables:** Edition 3 keywords, plus ``--allow-partial-access-syntax``.
 
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
    names like :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` remain available as identifiers) and enables
-   :doc:`REF_TO </reference/language/data-types/derived/reference-types>` support plus all vendor extensions.
+   :doc:`REF_TO </reference/language/data-types/derived/reference-types>` support together with the extensions that RuSTy accepts (listed below).
 
    **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
    ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
@@ -48,14 +48,14 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
-   ``--allow-oop-extensions``.
+   ``--allow-fb-inheritance``.
 
 **codesys**
    CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
    :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
    preserved) and enables
    :doc:`REF_TO </reference/language/data-types/derived/reference-types>`
-   together with the vendor extensions that the CODESYS IDE accepts. The
+   together with the extensions that the CODESYS IDE accepts. The
    implicit :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound under this dialect, since they are an IronPLC
    runtime convention rather than a CODESYS feature.
@@ -72,13 +72,13 @@ Supported Dialects
    ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
-   ``--allow-oop-extensions``.
+   ``--allow-fb-inheritance``.
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
    runtime, so it uses an Edition 2 base (identifiers like
    :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
-   preserved) and enables the vendor extensions TwinCAT shares with CODESYS,
+   preserved) and enables the extensions TwinCAT shares with CODESYS,
    such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
    short-circuit operator. Unlike ``codesys``, it does **not** enable the
    ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
@@ -98,8 +98,9 @@ Supported Dialects
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
-   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``, and
-   ``--allow-struct-initializer-expressions``.
+   ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
+   ``--allow-struct-initializer-expressions``, and
+   ``--allow-fb-inheritance``.
 
 Editions are additive — enabling a later edition includes all features from
 earlier editions.
@@ -223,12 +224,12 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
 ``--allow-int-to-bool-initializer``
    Allow integer literals ``0`` and ``1`` as ``BOOL`` variable initializers
    (e.g., ``debug : BOOL := 0;``). The compiler rewrites ``0`` to ``FALSE``
-   and ``1`` to ``TRUE``. This is a universal vendor extension supported by
+   and ``1`` to ``TRUE``. This is a universal extension supported by
    CoDeSys, TwinCAT, RuSTy, and virtually every PLC runtime.
 
 ``--allow-sizeof``
    Allow the ``SIZEOF()`` operator that returns the size in bytes of a
-   variable or type. This is a vendor extension supported by CODESYS,
+   variable or type. This is an extension supported by CODESYS,
    TwinCAT, and RuSTy. See
    :doc:`/reference/extension-library/functions/sizeof`.
 
@@ -241,7 +242,7 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    Allow implicit widening between bit-string and integer type families.
    For example, passing a ``BYTE`` variable where an ``INT`` parameter is
    expected, or passing a bare integer literal ``0`` where a ``BYTE``
-   parameter is expected. This is a vendor extension supported by CODESYS,
+   parameter is expected. This is an extension supported by CODESYS,
    TwinCAT, and RuSTy.
 
 ``--allow-partial-access-syntax``
@@ -291,7 +292,7 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    between literals and/or references to declared ``CONSTANT`` variables
    (e.g. ``scaled : LREAL := SCALE*4.0;``) — rather than only a bare
    literal. The IEC 61131-3 standard's initializer grammar permits only
-   literals in this position; this vendor extension folds the expression
+   literals in this position; this extension folds the expression
    to a literal at compile time. Using this form without the flag produces
    :doc:`P4037 </reference/compiler/problems/P4037>`; if the expression
    does not fully reduce to a constant (e.g. it references a
@@ -312,7 +313,7 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    Allow a string type's maximum length to be delimited with parentheses
    (``STRING(255)``, ``WSTRING(100)``) in addition to the standard square
    brackets (``STRING[255]``). The IEC 61131-3 standard grammar declares a
-   string length only with brackets; the parenthesis form is a vendor
+   string length only with brackets; the parenthesis form is a dialect
    extension. Without this flag, the parenthesis form produces
    :doc:`P4042 </reference/compiler/problems/P4042>`. The bracket form is
    standard syntax and is always allowed, and the delimiters must match
@@ -326,20 +327,20 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    ``tonDelta : TON := (PT := pDevice^.Delta);``). The IEC 61131-3 standard
    grammar for a structured initializer value permits only a constant,
    enumerated value, array initializer, or nested structure initializer;
-   a value computed at instantiation time is a vendor extension used by
+   a value computed at instantiation time is an extension used by
    TwinCAT/CODESYS. Without this flag, such a value produces
    :doc:`P4043 </reference/compiler/problems/P4043>`. A constant value is
    standard syntax and is always allowed.
 
-``--allow-oop-extensions``
-   Allow CODESYS/TwinCAT object-oriented extensions: ``EXTENDS``/
+``--allow-fb-inheritance``
+   Allow function-block inheritance syntax: ``EXTENDS``/
    ``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK`` declarations, and
    ``INTERFACE`` declarations. These are parsed and the
    ``EXTENDS``/``IMPLEMENTS``/``INTERFACE`` names are recognized as valid
    types, but inheritance, interface dispatch, method/property
    declarations, and abstract-instantiation checking are not yet
    semantically supported — using them produces problem
-   :doc:`P9004 </reference/compiler/problems/P9004>` rather than a parse
+   :doc:`P9999 </reference/compiler/problems/P9999>` rather than a parse
    error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
 
 Pass the flag when running :program:`ironplcc`:

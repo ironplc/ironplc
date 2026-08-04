@@ -17,7 +17,7 @@ pub struct UntypedVarDecl {
     pub name: Id,
     /// Present when this declaration has an `AT` location clause inside an
     /// otherwise plain `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block (CODESYS/TwinCAT
-    /// vendor extension — see `allow_mixed_located_var_declarations`).
+    /// extension — see `allow_mixed_located_var_declarations`).
     pub location: Option<AddressAssignment>,
     pub initializer: InitialValueAssignmentKind,
 }

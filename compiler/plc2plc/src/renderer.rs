@@ -740,7 +740,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    // CODESYS/TwinCAT vendor extension: constant-expression VAR initializer
+    // Extension: constant-expression VAR initializer
     // (e.g. `PI/180.0`), not yet folded to a literal.
     fn visit_simple_expr_initializer(
         &mut self,
@@ -955,7 +955,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    // CODESYS/TwinCAT OOP extension: INTERFACE ... END_INTERFACE. Only the
+    // OOP extension: INTERFACE ... END_INTERFACE. Only the
     // header renders — method/property signatures are not yet parsed (see
     // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
     fn visit_interface_declaration(

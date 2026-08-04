@@ -245,7 +245,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
             }
             InitialValueAssignmentKind::SimpleExpr(_) => {
                 // Constant-expression initializers are a VAR-declaration
-                // vendor extension; they never appear in a TYPE alias's
+                // extension; they never appear in a TYPE alias's
                 // spec_and_init (that grammar path is unchanged).
                 return Err(Diagnostic::internal_error(file!(), line!()));
             }
@@ -478,7 +478,7 @@ impl Fold<Diagnostic> for TypeEnvironment {
         // This is intentionally a placeholder representation, not a claim
         // that interface field/method access works. Any real use beyond
         // "declare a variable of this type" is unreachable: the
-        // `InterfaceDeclaration` itself always triggers P9004 via
+        // `InterfaceDeclaration` itself always triggers P9999 via
         // `rule_unsupported_extension`, which blocks codegen for the whole
         // project before this representation could matter.
         let attrs = crate::type_attributes::TypeAttributes::new(
@@ -1083,7 +1083,7 @@ END_TYPE
     }
 
     // ---------------------------------------------------------------------
-    // CODESYS/TwinCAT OOP extension: INTERFACE registers as a known type.
+    // OOP extension: INTERFACE registers as a known type.
     // See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
     // ---------------------------------------------------------------------
 
@@ -1094,7 +1094,7 @@ INTERFACE I_Drivable
 END_INTERFACE
         ";
         let options = CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
         let input = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();
@@ -1125,7 +1125,7 @@ END_VAR
 END_FUNCTION_BLOCK
         ";
         let options = CompilerOptions {
-            allow_oop_extensions: true,
+            allow_fb_inheritance: true,
             ..CompilerOptions::default()
         };
         let input = ironplc_parser::parse_program(program, &FileId::default(), &options).unwrap();

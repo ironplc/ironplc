@@ -101,7 +101,7 @@ pub fn resolve_types(
         .with_stdlib_functions()
         .build();
 
-    // Conditionally register vendor-extension functions gated by allow flags.
+    // Conditionally register dialect-extension functions gated by allow flags.
     if options.allow_sizeof {
         use crate::intermediates::stdlib_function::get_sizeof_function;
         function_environment

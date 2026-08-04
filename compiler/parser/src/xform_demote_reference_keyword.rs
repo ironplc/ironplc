@@ -1,7 +1,7 @@
 //! Demote the `REFERENCE` keyword to an identifier unless the Beckhoff /
 //! CODESYS `REFERENCE TO` extension is enabled.
 //!
-//! `REFERENCE` is a vendor-flag-gated keyword (`--allow-reference-to`), not an
+//! `REFERENCE` is a dialect-flag-gated keyword (`--allow-reference-to`), not an
 //! edition-gated one, so it lives in its own transform rather than in
 //! `xform_demote_edition3_keywords`. When the flag is off, `REFERENCE` behaves
 //! like any ordinary identifier so existing programs that use it as a name keep

@@ -100,10 +100,10 @@ global variable it references.
      firstReading := Readings[1];
    END_PROGRAM
 
-Top-Level Global Variables (Vendor Extension)
-----------------------------------------------
+Top-Level Global Variables (Language Extension)
+-----------------------------------------------
 
-.. include:: ../../../includes/requires-vendor-extension.rst
+.. include:: ../../../includes/requires-dialect-extension.rst
 
 Many PLC vendors allow :code:`VAR_GLOBAL` blocks at the top level of a file,
 outside of a :code:`CONFIGURATION` block. IronPLC supports this common

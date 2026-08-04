@@ -68,7 +68,7 @@ fn negate_literal_constant(c: ConstantKind) -> Result<ConstantKind, ConstantKind
 
 /// Collapses an initializer expression to `Simple` when it is exactly a
 /// literal (optionally with one leading unary minus, e.g. `-123`), and
-/// otherwise wraps it as `SimpleExpr` (the constant-expression vendor
+/// otherwise wraps it as `SimpleExpr` (the constant-expression dialect
 /// extension, folded by `xform_fold_initializer_expressions`).
 fn resolve_initializer_expr(type_name: TypeName, e: ExprKind) -> InitialValueAssignmentKind {
     match e {
@@ -554,7 +554,7 @@ parser! {
     rule simple_spec_init() -> InitialValueAssignmentKind = type_name:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {
       // A bare literal parses as ExprKind::Const via expression() too (it's
       // one of its own alternatives), so this single rule handles both the
-      // standard literal-only case and the constant-expression vendor
+      // standard literal-only case and the constant-expression dialect
       // extension (e.g. PI/180.0) without ambiguity — trying constant()
       // first and falling back to expression() doesn't work here because
       // constant() greedily matches a leading literal and stops, without
@@ -770,7 +770,7 @@ parser! {
     rule simple_or_enumerated_or_subrange_ambiguous_struct_spec_init() -> InitialValueAssignmentKind = s:simple_specification() _ tok(TokenType::Assignment) _ e:expression() {?
       // A bare literal parses as ExprKind::Const via expression() too (it's
       // one of its own alternatives), so this handles both the standard
-      // literal-only case and the constant-expression vendor extension
+      // literal-only case and the constant-expression extension
       // (e.g. PI/180.0) — see allow_constant_initializer_expressions and
       // xform_fold_initializer_expressions, which folds SimpleExpr back to
       // Simple or diagnoses it.
@@ -941,7 +941,7 @@ parser! {
     // because these share the same syntax. We only know the type after trying to resolve the
     // type name.
     rule var_init_decl() -> Vec<UntypedVarDecl> = located_var1_init_decl() / structured_var_init_decl__without_ambiguous() / string_var_declaration() / array_var_init_decl() / ref_to_var_init_decl() / fb_call_style_var_decl() / string_var_declaration() / var1_init_decl__with_ambiguous_struct()
-    // CODESYS/TwinCAT vendor extension: a located variable (complete or
+    // Extension: a located variable (complete or
     // incomplete/wildcard address) declared inside an otherwise plain
     // VAR/VAR_INPUT/VAR_OUTPUT block, instead of requiring its own
     // dedicated located_var_declarations()/incompl_located_var_declarations()
@@ -1225,7 +1225,7 @@ parser! {
     }
     // CODESYS/TwinCAT accept STRING(n)/WSTRING(n) with parentheses as an
     // alternate delimiter to the standard STRING[n]/WSTRING[n] brackets.
-    // The parenthesis form is a vendor extension (not standard IEC
+    // The parenthesis form is an extension (not standard IEC
     // 61131-3), so the grammar accepts it permissively here and
     // rule_token_no_paren_string_length rejects it (P4042) unless
     // allow_paren_string_length is set.
@@ -1301,9 +1301,9 @@ parser! {
     // but we don't need that distinction here.
     rule function_block_type_name() -> TypeName = type_name()
     rule derived_function_block_name() -> TypeName = type_name()
-    // CODESYS/TwinCAT OOP extension: comma-separated list of type names,
+    // OOP extension: comma-separated list of type names,
     // e.g. `IMPLEMENTS I_Hydraulics, I_Brake`. Only produced when EXTENDS
-    // or IMPLEMENTS tokens are recognized (allow_oop_extensions), since
+    // or IMPLEMENTS tokens are recognized (allow_fb_inheritance), since
     // both are demoted to identifiers otherwise.
     rule type_name_list() -> Vec<TypeName> = names:type_name() ++ (_ tok(TokenType::Comma) _) { names }
     rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(t:tok(TokenType::Abstract) {t})? _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
@@ -1353,15 +1353,14 @@ parser! {
       }
     }
 
-    // CODESYS/TwinCAT OOP extension: INTERFACE ... END_INTERFACE. Only the
+    // OOP extension: INTERFACE ... END_INTERFACE. Only the
     // header (name + optional EXTENDS list) is parsed — method/property
     // signatures are not yet supported (see
     // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
-    rule interface_declaration() -> InterfaceDeclaration = start:tok(TokenType::Interface) _ name:identifier() _ extends:(tok(TokenType::Extends) _ names:type_name_list() {names})? _ end:tok(TokenType::EndInterface) {
+    rule interface_declaration() -> InterfaceDeclaration = tok(TokenType::Interface) _ name:identifier() _ extends:(tok(TokenType::Extends) _ names:type_name_list() {names})? _ tok(TokenType::EndInterface) {
       InterfaceDeclaration {
         name,
         extends: extends.unwrap_or_default(),
-        span: SourceSpan::join(&start.span, &end.span),
       }
     }
 

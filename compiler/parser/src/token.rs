@@ -203,8 +203,8 @@ pub enum TokenType {
     #[token("END_FUNCTION_BLOCK", ignore(case))]
     EndFunctionBlock,
 
-    // CODESYS/TwinCAT OOP extensions (Beckhoff/CODESYS origin). Demoted to
-    // Identifier unless `allow_oop_extensions` is set — see
+    // Function-block inheritance syntax. Demoted to
+    // Identifier unless `allow_fb_inheritance` is set — see
     // xform_demote_oop_keywords.rs.
     #[token("EXTENDS", ignore(case))]
     Extends,
@@ -421,7 +421,7 @@ pub enum TokenType {
     DirectAddress,
     /// Partial-access bit selector: `%X<digits>` (case-insensitive), used as
     /// `var.%Xn` to access bit `n` of an integer variable. IEC 61131-3:2013
-    /// equivalent of the vendor short form `var.n`. Gated behind
+    /// equivalent of the dialect short form `var.n`. Gated behind
     /// `--allow-partial-access-syntax`.
     #[regex(r"%[Xx]\d+")]
     PartialAccessBit,

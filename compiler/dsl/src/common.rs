@@ -11,7 +11,7 @@ use dsl_macro_derive::Recurse;
 
 use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
-use crate::extension::{ExtensionOrigin, VendorExtension};
+use crate::extension::LanguageExtension;
 use crate::fold::Fold;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
@@ -318,7 +318,7 @@ impl SignedInteger {
 
 /// An integer value that may be either a literal or a reference to a named constant.
 ///
-/// This enables vendor extensions where constant identifiers can be used in
+/// This enables extensions where constant identifiers can be used in
 /// positions that normally require integer literals, such as STRING lengths
 /// and array bounds.
 #[derive(Clone, Debug, PartialEq, Recurse)]
@@ -338,7 +338,7 @@ impl IntegerRef {
 
 /// A signed integer value that may be either a literal or a reference to a named constant.
 ///
-/// See `IntegerRef` for details on the vendor extension support.
+/// See `IntegerRef` for details on the extension support.
 #[derive(Clone, Debug, PartialEq, Recurse)]
 pub enum SignedIntegerRef {
     Literal(SignedInteger),
@@ -1501,7 +1501,7 @@ pub struct EnumeratedValue {
     pub value: Id,
     /// Present when this member's value was assigned explicitly
     /// (`member := 5`) in an enum *declaration's* value list -- a
-    /// CODESYS/TwinCAT extension (also standard as of IEC 61131-3:2013).
+    /// an extension (also standard as of IEC 61131-3:2013).
     /// `None` in every other context `EnumeratedValue` is used in
     /// (references, default values, case labels) -- only the
     /// declaration-list grammar path sets this.
@@ -2128,7 +2128,7 @@ impl VarDecl {
 
 /// Declarations that are `AT`-located but share a `BlockId` with at least
 /// one plain (symbolic) declaration -- derived from block identity, not
-/// stored. This is the CODESYS/TwinCAT vendor extension gated by
+/// stored. This is the extension gated by
 /// `--allow-mixed-located-var-declarations`: standard IEC 61131-3 requires
 /// located variables to live in their own dedicated block, separate from
 /// ordinary symbolic ones.
@@ -2448,7 +2448,7 @@ pub enum InitialValueAssignmentKind {
     /// definitions. Value is the name of the type.
     LateResolvedType(TypeName),
     /// A constant-expression initializer not yet folded to a literal
-    /// (vendor extension — see `allow_constant_initializer_expressions`).
+    /// (extension — see `allow_constant_initializer_expressions`).
     /// Always normalized to `Simple` by
     /// `xform_fold_initializer_expressions` before any other pass runs;
     /// no other code should ever match on this variant.
@@ -2543,7 +2543,7 @@ pub struct SimpleInitializer {
 /// A variable initializer expressed as a constant expression (e.g.
 /// `PI/180.0`) rather than a bare literal.
 ///
-/// This is a vendor extension — the IEC 61131-3 standard's `constant()`
+/// This is an extension — the IEC 61131-3 standard's `constant()`
 /// grammar production only permits literals in this position. Parsed
 /// unconditionally; `xform_fold_initializer_expressions` folds it back to
 /// `SimpleInitializer` or emits a diagnostic, depending on
@@ -2695,13 +2695,13 @@ pub enum LibraryElementKind {
     FunctionBlockDeclaration(FunctionBlockDeclaration),
     ProgramDeclaration(ProgramDeclaration),
     ConfigurationDeclaration(ConfigurationDeclaration),
-    /// Top-level global variable declarations (vendor extension).
+    /// Top-level global variable declarations (extension).
     ///
     /// In the IEC 61131-3 standard, VAR_GLOBAL only appears inside
     /// CONFIGURATION/RESOURCE blocks. This variant enables the common
-    /// vendor extension of declaring globals at the top level.
+    /// extension of declaring globals at the top level.
     GlobalVarDeclarations(Vec<VarDecl>),
-    /// `INTERFACE ... END_INTERFACE` (vendor extension). See
+    /// `INTERFACE ... END_INTERFACE` (extension). See
     /// `InterfaceDeclaration`.
     InterfaceDeclaration(InterfaceDeclaration),
 }
@@ -2776,12 +2776,12 @@ pub struct FunctionBlockDeclaration {
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: FunctionBlockBodyKind,
     pub span: SourceSpan,
-    /// Object-oriented facet (CODESYS/TwinCAT OOP extension).
+    /// Object-oriented facet (OOP extension).
     ///
     /// `None` for an ordinary function block — the common case — so OOP is
     /// unrepresentable on a plain FB rather than "present but empty."
     /// `Some` only when the source actually uses `EXTENDS`, `IMPLEMENTS`,
-    /// or `ABSTRACT`. See `VendorExtension` impl on `FunctionBlockOop` and
+    /// or `ABSTRACT`. See `LanguageExtension` impl on `FunctionBlockOop` and
     /// `specs/plans/2026-07-18-twincat-extends-implements-interface.md`.
     pub oop: Option<FunctionBlockOop>,
 }
@@ -2828,17 +2828,13 @@ pub struct FunctionBlockOop {
     pub span: SourceSpan,
 }
 
-/// Only the OOP facet is a vendor/edition extension — the rest of a
-/// function block is standard IEC 61131-3. Implementing `VendorExtension`
+/// Only the OOP facet is a dialect/edition extension — the rest of a
+/// function block is standard IEC 61131-3. Implementing `LanguageExtension`
 /// here (rather than on `FunctionBlockDeclaration`) means an ordinary
-/// function block is not, and cannot claim to be, a vendor extension.
-impl VendorExtension for FunctionBlockOop {
+/// function block is not, and cannot claim to be, an extension.
+impl LanguageExtension for FunctionBlockOop {
     fn extension_name(&self) -> &'static str {
         "EXTENDS/IMPLEMENTS/ABSTRACT clause"
-    }
-
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] {
-        &[ExtensionOrigin::BeckhoffCodesys]
     }
 
     fn extension_span(&self) -> SourceSpan {
@@ -2846,7 +2842,7 @@ impl VendorExtension for FunctionBlockOop {
     }
 }
 
-/// `INTERFACE name (EXTENDS base_list)? END_INTERFACE` (CODESYS/TwinCAT OOP
+/// `INTERFACE name (EXTENDS base_list)? END_INTERFACE` (OOP
 /// extension).
 ///
 /// Only the header is represented — method and property signatures are not
@@ -2862,29 +2858,31 @@ pub struct InterfaceDeclaration {
     /// Interfaces this interface extends (an interface may extend more than
     /// one other interface, unlike a function block).
     pub extends: Vec<TypeName>,
-    pub span: SourceSpan,
 }
 
 impl Located for InterfaceDeclaration {
+    /// Derived from the declaration's own located parts rather than stored:
+    /// the name (always present) through the last extended interface, if any.
+    /// This spans the declaration's identifiers rather than the surrounding
+    /// `INTERFACE`/`END_INTERFACE` keywords.
     fn span(&self) -> SourceSpan {
-        self.span.clone()
+        match self.extends.last() {
+            Some(last) => SourceSpan::join(&self.name.span(), &last.span()),
+            None => self.name.span(),
+        }
     }
 }
 
-/// An `InterfaceDeclaration` is always a vendor extension — unlike
+/// An `InterfaceDeclaration` is always an extension — unlike
 /// `FunctionBlockDeclaration`, there is no standard-IEC-61131-3 meaning for
 /// it.
-impl VendorExtension for InterfaceDeclaration {
+impl LanguageExtension for InterfaceDeclaration {
     fn extension_name(&self) -> &'static str {
         "INTERFACE declaration"
     }
 
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] {
-        &[ExtensionOrigin::BeckhoffCodesys]
-    }
-
     fn extension_span(&self) -> SourceSpan {
-        self.span.clone()
+        self.span()
     }
 }
 

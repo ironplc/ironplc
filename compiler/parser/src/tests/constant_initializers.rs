@@ -6,7 +6,7 @@ use super::common::*;
 fn parse_when_negative_integer_initializer_then_parses_as_simple_not_simple_expr() {
     // Regression test: switching the initializer grammar from
     // constant() to expression() must not turn ordinary negative
-    // literals into the vendor-extension SimpleExpr shape, since
+    // literals into the dialect-extension SimpleExpr shape, since
     // expression() routes a leading '-' through its own unary-operator
     // handling rather than constant()'s built-in signed-literal
     // parsing. This must parse identically with or without the flag.

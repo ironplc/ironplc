@@ -58,7 +58,7 @@ VAR
 END_VAR
 END_FUNCTION_BLOCK
 ";
-    // The parenthesis length form is a vendor extension, so it only parses
+    // The parenthesis length form is an extension, so it only parses
     // with allow_paren_string_length enabled.
     let paren_options = CompilerOptions {
         allow_paren_string_length: true,
