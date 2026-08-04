@@ -108,10 +108,12 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> io::Result
             }
             Some(Command::Launch) if legal_here => {
                 match load_and_check(&request) {
-                    Ok(container) => {
+                    Ok((container, args)) => {
                         // Preconditions hold: own the container and run the
                         // rest of the session against a live VM.
-                        return launched_session(reader, writer, &mut seq, container, &request);
+                        return launched_session(
+                            reader, writer, &mut seq, container, args, &request,
+                        );
                     }
                     Err(message) => {
                         send(
@@ -141,9 +143,9 @@ pub fn serve<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> io::Result
 }
 
 /// Parses the `launch` arguments, loads the container, and checks the launch
-/// preconditions. Returns the loaded container on success, or the DAP error
-/// message to report on failure.
-fn load_and_check(request: &Request) -> Result<Container, String> {
+/// preconditions. Returns the loaded container and the parsed arguments (run
+/// bounds) on success, or the DAP error message to report on failure.
+fn load_and_check(request: &Request) -> Result<(Container, LaunchRequestArguments), String> {
     let args: LaunchRequestArguments = request
         .arguments
         .as_ref()
@@ -152,7 +154,7 @@ fn load_and_check(request: &Request) -> Result<Container, String> {
 
     let container = launch::load_container(Path::new(&args.program)).map_err(|e| e.to_string())?;
     launch::check_preconditions(&container).map_err(|e| e.to_string())?;
-    Ok(container)
+    Ok((container, args))
 }
 
 /// Owns the loaded `container`, starts the VM, answers the `launch` request,
@@ -170,15 +172,22 @@ fn load_and_check(request: &Request) -> Result<Container, String> {
 /// built fresh per round; after a breakpoint pause the next hook is told to
 /// suppress that location once so `continue` makes forward progress.
 ///
+/// The loop keeps scanning: on `RoundOutcome::Completed` it runs the next scan
+/// (so breakpoints re-fire every cycle and variables evolve across cycles)
+/// rather than terminating after one scan. `scanLimit` bounds a runaway program
+/// — the session terminates once `scan_count` reaches it — and `stopOnEntry`
+/// pauses before the first instruction of the first scan.
+///
 /// Current limitations: `continue` is the only execution control (stepping and
-/// trap→`exception` are not yet implemented); one completed scan is reported as
-/// `terminated`; `stopOnEntry`/`scanLimit` launch options are accepted but not
-/// yet acted on.
+/// trap→`exception` are not yet implemented). A free-running program with no
+/// breakpoint and no `scanLimit` scans until the client disconnects — the
+/// single-threaded loop cannot service an interactive `pause` (a Phase 6 cut).
 fn launched_session<R: BufRead, W: Write>(
     reader: &mut R,
     writer: &mut W,
     seq: &mut i64,
     container: Container,
+    args: LaunchRequestArguments,
     launch_request: &Request,
 ) -> io::Result<()> {
     let mut bufs = VmBuffers::from_container(&container);
@@ -215,6 +224,11 @@ fn launched_session<R: BufRead, W: Write>(
     // Set after a breakpoint pause so the next resume skips that one location
     // instead of re-triggering in place.
     let mut suppress_bp = false;
+    // Upper bound on scan cycles (runaway prevention); `None` runs until the
+    // client disconnects.
+    let scan_limit = args.scan_limit;
+    // Armed once, before the first scan, when the launch requested `stopOnEntry`.
+    let mut pending_stop_on_entry = args.stop_on_entry;
 
     loop {
         if phase == Phase::Running {
@@ -224,16 +238,23 @@ fn launched_session<R: BufRead, W: Write>(
                     hook.suppress_next_breakpoint();
                     suppress_bp = false;
                 }
+                if pending_stop_on_entry {
+                    hook.stop_on_entry();
+                    pending_stop_on_entry = false;
+                }
                 running.run_round_debug(current_time_us, &mut hook)
             };
             current_time_us = current_time_us.saturating_add(1000);
 
             match outcome {
-                // One completed scan ends the minimal session; a multi-scan run
-                // loop is a later phase.
+                // A completed scan keeps the debugger scanning: run the next
+                // cycle unless a `scanLimit` bound has been reached.
                 Ok(RoundOutcome::Completed) | Ok(RoundOutcome::PausedAfterScan) => {
-                    send(writer, &Event::new(take_seq(seq), "terminated", None))?;
-                    phase = Phase::Terminated;
+                    if scan_limit.is_some_and(|limit| running.scan_count() >= limit) {
+                        send(writer, &Event::new(take_seq(seq), "terminated", None))?;
+                        phase = Phase::Terminated;
+                    }
+                    // Otherwise stay in `Running`: the loop drives the next scan.
                 }
                 Ok(RoundOutcome::Paused(reason)) => {
                     let dap_reason = match reason {
@@ -788,6 +809,41 @@ mod tests {
         write_container_to_temp(&container)
     }
 
+    /// A single-instance container whose scan increments `var[0]` (a DINT) by
+    /// one each cycle, then `RET_VOID`. The store lands at bytecode offset 7 and
+    /// the `RET_VOID` at offset 10, so a breakpoint on line 10 pauses *after*
+    /// the increment — letting a test observe the variable evolve across scans.
+    fn incrementing_scan_container_file() -> (tempfile::NamedTempFile, String) {
+        #[rustfmt::skip]
+        let scan: Vec<u8> = vec![
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32  var[0]
+            0x00, 0x00, 0x00, // LOAD_CONST_I32 pool[0] (1)
+            0x20,             // ADD_I32
+            0x10, 0x00, 0x00, // STORE_VAR_I32 var[0]   (offset 7)
+            0x8C,             // RET_VOID               (offset 10)
+        ];
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_i32_constant(1)
+            .add_function(FunctionId::INIT, &[0x8C], 0, 1, 0)
+            .add_function(FunctionId::SCAN, &scan, 2, 1, 0)
+            .max_call_depth(1)
+            .add_var_name(a_var_name())
+            .add_task(a_task(TaskId::new(0)))
+            .add_program_instance(ProgramInstanceEntry {
+                instance_id: InstanceId::new(0),
+                task_id: TaskId::new(0),
+                entry_function_id: FunctionId::SCAN,
+                var_table_offset: 0,
+                var_table_count: 1,
+                fb_instance_offset: 0,
+                fb_instance_count: 0,
+                init_function_id: FunctionId::INIT,
+            })
+            .build();
+        write_container_to_temp(&container)
+    }
+
     /// All response messages for `command`, in order.
     fn responses<'a>(out: &'a [Value], command: &str) -> Vec<&'a Value> {
         out.iter()
@@ -808,17 +864,20 @@ mod tests {
     }
 
     #[test]
-    fn serve_when_no_breakpoints_then_runs_to_completion_and_terminates() {
+    fn serve_when_no_breakpoints_and_scan_limit_then_runs_to_bound_and_terminates() {
+        // With no breakpoint, `scanLimit` is what bounds the run: the loop keeps
+        // scanning until `scan_count` reaches it (without a bound this program
+        // would scan forever, as the single-threaded loop has no `pause`).
         let (_file, path) = scan_container_file(&[0x8C], 0);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
-                   "arguments": {"program": path}}),
+                   "arguments": {"program": path, "scanLimit": 1}}),
             json!({"seq": 3, "type": "request", "command": "configurationDone"}),
             json!({"seq": 4, "type": "request", "command": "disconnect"}),
         ]);
         assert_eq!(responses(&out, "configurationDone")[0]["success"], true);
-        // One scan completes → a single terminated event, then disconnect.
+        // The scan bound is reached → a single terminated event, then disconnect.
         assert_eq!(events(&out, "terminated").len(), 1);
         assert_eq!(responses(&out, "disconnect")[0]["success"], true);
         // terminated precedes the disconnect response.
@@ -833,7 +892,7 @@ mod tests {
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
-                   "arguments": {"program": path}}),
+                   "arguments": {"program": path, "scanLimit": 1}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
                                  "breakpoints": [{"line": 0}]}}),
@@ -894,6 +953,74 @@ mod tests {
         let terminated_at = index_of(&out, |m| m["event"] == "terminated");
         assert!(stopped_at < stacktrace_at);
         assert!(continue_at < terminated_at);
+    }
+
+    #[test]
+    fn serve_when_breakpoint_then_refires_every_scan_and_variable_evolves() {
+        // The core Phase 4c behavior: the loop keeps scanning, so a breakpoint
+        // fires once per scan and `var[0]` grows across cycles (1, 2, 3, …).
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            // Breakpoint on the RET_VOID (offset 10), after the increment store.
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": 10}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+            // Scan 1 paused: inspect, then continue to scan 2.
+            json!({"seq": 5, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 1}}),
+            json!({"seq": 6, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            // Scan 2 paused: inspect, then continue to scan 3.
+            json!({"seq": 7, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 1}}),
+            json!({"seq": 8, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            // Scan 3 paused: inspect, then tear down.
+            json!({"seq": 9, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 1}}),
+            json!({"seq": 10, "type": "request", "command": "disconnect"}),
+        ]);
+
+        // A breakpoint stop for each of the three scans (no `terminated`).
+        assert_eq!(events(&out, "stopped").len(), 3);
+        assert!(events(&out, "terminated").is_empty());
+        for stopped in events(&out, "stopped") {
+            assert_eq!(stopped["body"]["reason"], "breakpoint");
+        }
+
+        // The variable increments once per scan: 1, then 2, then 3.
+        let vars = responses(&out, "variables");
+        assert_eq!(vars.len(), 3);
+        assert_eq!(vars[0]["body"]["variables"][0]["value"], "1");
+        assert_eq!(vars[1]["body"]["variables"][0]["value"], "2");
+        assert_eq!(vars[2]["body"]["variables"][0]["value"], "3");
+    }
+
+    #[test]
+    fn serve_when_stop_on_entry_then_pauses_before_first_instruction() {
+        // `stopOnEntry` pauses before any logic runs, so the incrementing
+        // scan has not yet touched `var[0]` (still 0) at the entry stop.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 1}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let stopped = events(&out, "stopped");
+        assert_eq!(stopped.len(), 1);
+        assert_eq!(stopped[0]["body"]["reason"], "entry");
+        // No logic has run yet: the increment has not happened.
+        let vars = responses(&out, "variables");
+        assert_eq!(vars[0]["body"]["variables"][0]["value"], "0");
     }
 
     #[test]
