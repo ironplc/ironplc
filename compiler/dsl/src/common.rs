@@ -11,7 +11,7 @@ use dsl_macro_derive::Recurse;
 
 use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
-use crate::extension::{ExtensionOrigin, LanguageExtension};
+use crate::extension::LanguageExtension;
 use crate::fold::Fold;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
@@ -2837,10 +2837,6 @@ impl LanguageExtension for FunctionBlockOop {
         "EXTENDS/IMPLEMENTS/ABSTRACT clause"
     }
 
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] {
-        &[ExtensionOrigin::BeckhoffCodesys]
-    }
-
     fn extension_span(&self) -> SourceSpan {
         self.span.clone()
     }
@@ -2883,10 +2879,6 @@ impl Located for InterfaceDeclaration {
 impl LanguageExtension for InterfaceDeclaration {
     fn extension_name(&self) -> &'static str {
         "INTERFACE declaration"
-    }
-
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] {
-        &[ExtensionOrigin::BeckhoffCodesys]
     }
 
     fn extension_span(&self) -> SourceSpan {
