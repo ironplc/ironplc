@@ -3,6 +3,12 @@
 status: proposed
 date: 2026-02-27
 
+> **Terminology note (added later):** This ADR predates
+> [`specs/steering/glossary.md`](../steering/glossary.md), which now draws a
+> firm line between a *dialect* (the syntax the parser accepts) and a *vendor*
+> (a product/runtime). This ADR's text uses "vendor" loosely in both senses and
+> is preserved as written; for current terminology, defer to the glossary.
+
 ## Context and Problem Statement
 
 IEC 61131-3 defines the standard syntax for Structured Text, but no major PLC vendor ships a strict implementation. Every vendor extends the language with proprietary syntax: Siemens SCL adds `#` variable prefixes, `REGION`/`END_REGION` blocks, and curly-brace pragmas; Beckhoff TwinCAT adds object-oriented features (`INTERFACE`, `METHOD`, `PROPERTY`, `EXTENDS`), `POINTER TO`/`REFERENCE TO` types, and `VAR_INST` sections; other vendors make similar additions. These extensions are not cosmetic — they appear on virtually every line of real-world vendor-authored code.

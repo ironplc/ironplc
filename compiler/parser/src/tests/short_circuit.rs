@@ -48,7 +48,7 @@ END_FUNCTION_BLOCK";
 #[test]
 fn parse_when_and_then_and_disabled_then_parses_as_identifiers() {
     // AND_THEN demotes to an ordinary identifier when the flag is
-    // off, matching the pattern used for every other vendor-extension
+    // off, matching the pattern used for every other dialect-extension
     // keyword.
     let source = "
 FUNCTION_BLOCK FB_ALL_AND_THEN_AS_VAR

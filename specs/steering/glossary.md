@@ -49,8 +49,8 @@ syntax a real toolchain accepts (see [ADR-0036](../adrs/0036-no-ironplc-dialect.
 IronPLC never invents a dialect of its own). A file belongs to exactly one
 dialect (see [ADR-0012](../adrs/0012-accept-vendor-dialect-files-as-is.md)).
 
-*Canonical uses:* "the CODESYS dialect", "select a dialect", "dialect
-extension", "per-file dialect detection", "the `--dialect` flag".
+*Canonical uses:* "the CODESYS dialect", "select a dialect", "per-file dialect
+detection", "the `--dialect` flag".
 
 *Do not say:* "vendor dialect" (redundant — a dialect is already the syntax a
 target accepts; just say "dialect", or name the dialect).
@@ -68,17 +68,24 @@ A single **non-standard syntax feature** — something beyond strict IEC 61131-3
 that a dialect may enable, gated by an `--allow-*` [flag](#flag). "Extension"
 always refers to *syntax the parser recognizes*, never to a runtime library.
 
-*Canonical uses:* "dialect extension", "the `--allow-sizeof` extension", "this
-extension is not part of the standard".
+The default word is just **"extension"**. When the bare word would be ambiguous
+(see the overload note below), qualify it as a **"language extension"** — *not*
+a "dialect extension". Do not attach the "dialect" qualifier to an extension:
+an extension is a syntax feature; a dialect is a bundle of them.
 
-*Do not say:* "vendor extension" — an extension is defined by the *syntax* it
-adds, not by a company. Name it a "dialect extension" or just an "extension",
-and put the "which vendors accept it" mapping in the dialect table.
+*Canonical uses:* "extension", "language extension" (when disambiguation is
+needed), "the `--allow-sizeof` extension", "this extension is not part of the
+standard".
+
+*Do not say:* "vendor extension" or "dialect extension" — an extension is
+defined by the *syntax* it adds, not by a company or a dialect. Say
+"extension" (or "language extension" when generic), and put the "which vendors
+accept it" mapping in the dialect table.
 
 > **Beware the overload.** "Extension" is used in three unrelated senses in this
 > project: (1) a syntax feature, as defined here; (2) the **Extension Library**
 > (runtime functions/function blocks/variables such as `SIZEOF`); and (3) the
-> **VS Code extension**. When ambiguous, qualify it: *dialect extension*,
+> **VS Code extension**. When ambiguous, qualify it: *language extension*,
 > *extension library*, *editor extension*.
 
 ### Flag
@@ -154,7 +161,7 @@ extensions. Anything an `--allow-*` flag enables is, by definition,
 | Say this | Not this | Because |
 |---|---|---|
 | dialect | vendor dialect | "dialect" already means the accepted syntax |
-| dialect extension / extension | vendor extension | an extension is defined by syntax, not a company |
+| extension / language extension | vendor extension, dialect extension | an extension is a syntax feature, not a company or a dialect |
 | dialect flag / `--allow-*` flag | vendor flag, vendor-extension flag | the flag gates syntax |
 | non-standard syntax | vendor syntax | it's about the standard, not a vendor |
 | vendor toolchain / vendor files / vendor library | *(keep — correct)* | these really are about the product/runtime |
@@ -173,6 +180,7 @@ These are externally-defined identifiers, not IronPLC vocabulary.
   concept, define it here before it spreads.
 - **Challenge conflicts on sight.** When wording in code or docs contradicts a
   definition here, that is a bug to fix, not a variation to tolerate.
-- **New syntax feature?** It is a *dialect extension*; describe it by the syntax
-  it adds and record which dialects enable it in the dialect table. See
+- **New syntax feature?** It is an *extension* (a *language extension* when the
+  bare word is ambiguous); describe it by the syntax it adds and record which
+  dialects enable it in the dialect table. See
   [Syntax Support Guide](syntax-support-guide.md).

@@ -348,7 +348,7 @@ The REGION filter removes `Region` token + all tokens until the next `Newline` (
 
 ## Extension Origin Model
 
-Every vendor-specific construct is tagged with its origin using the shared `ExtensionOrigin` enum defined in the [Beckhoff design](beckhoff-twincat-dialect.md#extension-origin-model). This enum is the **single source of truth** that drives both the token transform pipeline and the semantic diagnostic (`P9004 UnsupportedExtension`).
+Every non-standard construct is tagged with its origin using the shared `ExtensionOrigin` enum defined in the [Beckhoff design](beckhoff-twincat-dialect.md#extension-origin-model). This enum is the **single source of truth** that drives both the token transform pipeline and the semantic diagnostic (`P9004 UnsupportedExtension`).
 
 SCL-specific keywords are added to the shared `DIALECT_KEYWORDS` table. Keywords shared between SCL and Beckhoff/CODESYS have multiple origins:
 
@@ -380,14 +380,14 @@ Keywords shared with Beckhoff (already in the table from the [Beckhoff design](b
 | `VAR_STAT` | `VarStat` | `BeckhoffCodesys, SiemensSCL` |
 | `CONTINUE` | `Continue` | `Iec61131Ed3, BeckhoffCodesys, SiemensSCL` |
 
-### `VendorExtension` Implementations for SCL Nodes
+### `LanguageExtension` Implementations for SCL Nodes
 
-Every new AST node representing an SCL-specific construct implements the `VendorExtension` trait defined in the [Beckhoff design](beckhoff-twincat-dialect.md#the-vendorextension-trait). This enables the `rule_unsupported_extension.rs` semantic rule to emit `P9004` diagnostics:
+Every new AST node representing an SCL-specific construct implements the `LanguageExtension` trait defined in the [Beckhoff design](beckhoff-twincat-dialect.md#the-languageextension-trait). This enables the `rule_unsupported_extension.rs` semantic rule to emit `P9004` diagnostics:
 
 ```rust
 // Siemens SCL extension — DATA_BLOCK declaration
 // Extension: Siemens SCL
-impl VendorExtension for DataBlockDeclaration {
+impl LanguageExtension for DataBlockDeclaration {
     fn extension_name(&self) -> &'static str { "DATA_BLOCK declaration" }
     fn extension_origins(&self) -> &'static [ExtensionOrigin] { &[ExtensionOrigin::SiemensSCL] }
     fn extension_span(&self) -> SourceSpan { self.span }
@@ -395,7 +395,7 @@ impl VendorExtension for DataBlockDeclaration {
 
 // Siemens SCL extension — ORGANIZATION_BLOCK declaration
 // Extension: Siemens SCL
-impl VendorExtension for OrganizationBlockDeclaration {
+impl LanguageExtension for OrganizationBlockDeclaration {
     fn extension_name(&self) -> &'static str { "ORGANIZATION_BLOCK declaration" }
     fn extension_origins(&self) -> &'static [ExtensionOrigin] { &[ExtensionOrigin::SiemensSCL] }
     fn extension_span(&self) -> SourceSpan { self.span }
@@ -403,14 +403,14 @@ impl VendorExtension for OrganizationBlockDeclaration {
 
 // Siemens SCL extension — GOTO statement
 // Extension: Siemens SCL
-impl VendorExtension for GotoStatement {
+impl LanguageExtension for GotoStatement {
     fn extension_name(&self) -> &'static str { "GOTO statement" }
     fn extension_origins(&self) -> &'static [ExtensionOrigin] { &[ExtensionOrigin::SiemensSCL] }
     fn extension_span(&self) -> SourceSpan { self.span }
 }
 ```
 
-`VAR_STAT` and `CONTINUE` are shared with Beckhoff — their `VendorExtension` implementations are defined in the [Beckhoff design](beckhoff-twincat-dialect.md#the-vendorextension-trait) with multiple origins.
+`VAR_STAT` and `CONTINUE` are shared with Beckhoff — their `LanguageExtension` implementations are defined in the [Beckhoff design](beckhoff-twincat-dialect.md#the-languageextension-trait) with multiple origins.
 
 ## AST Extensions (DSL Crate)
 
@@ -657,7 +657,7 @@ Phase 0 is shared infrastructure with the [Beckhoff design](beckhoff-twincat-dia
 0. **Phase 0 — Prerequisites** (before any dialect code, shared with Beckhoff):
    - Keyword safety regression test: function block with all planned keywords (both Beckhoff AND Siemens) as variable names, parsed in standard mode
    - `ExtensionOrigin` enum in the DSL crate
-   - `VendorExtension` trait in the DSL crate
+   - `LanguageExtension` trait in the DSL crate
    - `P9004 UnsupportedExtension` problem code in CSV and documentation
    - `rule_unsupported_extension.rs` semantic rule (empty initially — no extension nodes exist yet)
    - `Dialect` enum and `CompilerOptions` extension (shared infrastructure)
@@ -672,21 +672,21 @@ Phase 0 is shared infrastructure with the [Beckhoff design](beckhoff-twincat-dia
    - `BEGIN` keyword (optional body separator)
    - `CONTINUE` statement (shared with Beckhoff)
    - DSL: `VariableType::Static` (shared), `StmtKind::Continue` (shared)
-   - `VendorExtension` impls on new AST nodes; `rule_unsupported_extension` visitor overrides
+   - `LanguageExtension` impls on new AST nodes; `rule_unsupported_extension` visitor overrides
 
 2. **Phase 2 — Declarations**:
    - `VERSION : 0.1` parsing and `version` field on POU declarations
    - `VAR_STAT` support (shared with Beckhoff)
    - Classic block attributes (`TITLE`, `AUTHOR`, `FAMILY`, `NAME`, `KNOW_HOW_PROTECT`)
    - DSL: `version` field on `FunctionBlockDeclaration`, `FunctionDeclaration`, `ProgramDeclaration`
-   - `VendorExtension` impls on new nodes
+   - `LanguageExtension` impls on new nodes
 
 3. **Phase 3 — Siemens-specific POU types**:
    - `DATA_BLOCK` / `END_DATA_BLOCK` with `STRUCT` body, `NON_RETAIN`, and `BEGIN` initialization section
    - Instance data blocks with FB type reference
    - `ORGANIZATION_BLOCK` / `END_ORGANIZATION_BLOCK`
    - DSL: `DataBlockDeclaration`, `OrganizationBlockDeclaration`
-   - `VendorExtension` impls on new nodes
+   - `LanguageExtension` impls on new nodes
 
 4. **Phase 4 — Advanced syntax**:
    - `GOTO` and labels
@@ -694,4 +694,4 @@ Phase 0 is shared infrastructure with the [Beckhoff design](beckhoff-twincat-dia
    - `REF_TO` type constructor (maps to shared `TypeSpec::ReferenceTo` from Beckhoff design)
    - Assign-attempt operator `?=` (also a Beckhoff/CODESYS construct — shared AST representation)
    - DSL: `GotoStatement`, `LabelStatement`, `RefTo` → `ReferenceTo`
-   - `VendorExtension` impls on new nodes
+   - `LanguageExtension` impls on new nodes

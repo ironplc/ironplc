@@ -140,7 +140,7 @@
           "editPresentation": "singlelineText"
         },
         "ironplc.dialect": {
-          "markdownDescription": "Language dialect preset. Controls IEC edition and vendor extensions.\n\n- `iec61131-3-ed2`: Strict IEC 61131-3:2003 (Edition 2)\n- `iec61131-3-ed3`: IEC 61131-3:2013 (Edition 3) with `LTIME`, `REF_TO`, etc.\n- `rusty`: RuSTy-compatible — Edition 2 base with `REF_TO` and all vendor extensions\n- `codesys`: CODESYS-compatible — Edition 2 base with `REF_TO` and CODESYS vendor extensions\n- `twincat`: TwinCAT-compatible — Edition 2 base with the vendor extensions TwinCAT shares with CODESYS (no `REF_TO`; TwinCAT uses `REFERENCE TO`/`POINTER TO`)",
+          "markdownDescription": "Language dialect preset. Controls IEC edition and extensions.\n\n- `iec61131-3-ed2`: Strict IEC 61131-3:2003 (Edition 2)\n- `iec61131-3-ed3`: IEC 61131-3:2013 (Edition 3) with `LTIME`, `REF_TO`, etc.\n- `rusty`: RuSTy-compatible — Edition 2 base with `REF_TO` and the extensions RuSTy accepts\n- `codesys`: CODESYS-compatible — Edition 2 base with `REF_TO` and the CODESYS extensions\n- `twincat`: TwinCAT-compatible — Edition 2 base with the extensions TwinCAT shares with CODESYS (no `REF_TO`; TwinCAT uses `REFERENCE TO`/`POINTER TO`)",
           "type": "string",
           "default": "iec61131-3-ed2",
           "enum": [

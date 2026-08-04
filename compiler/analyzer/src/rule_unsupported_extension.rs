@@ -1,7 +1,7 @@
-//! Semantic rule that flags vendor-specific language extensions that are
-//! parsed and represented in the AST but not yet semantically analyzed.
+//! Semantic rule that flags non-standard language extensions that
+//! are parsed and represented in the AST but not yet semantically analyzed.
 //!
-//! See `ironplc_dsl::extension::VendorExtension`,
+//! See `ironplc_dsl::extension::LanguageExtension`,
 //! `specs/plans/2026-07-18-twincat-extends-implements-interface.md`, and
 //! `specs/plans/2026-07-20-twincat-extends-field-inheritance.md` (plain
 //! `EXTENDS` with no `IMPLEMENTS`/`ABSTRACT` no longer flags, since field
@@ -21,7 +21,7 @@
 use ironplc_dsl::{
     common::*,
     diagnostic::{Diagnostic, Label},
-    extension::VendorExtension,
+    extension::LanguageExtension,
     visitor::Visitor,
 };
 
@@ -49,7 +49,7 @@ struct RuleUnsupportedExtension {
 }
 
 impl RuleUnsupportedExtension {
-    fn flag(&mut self, ext: &dyn VendorExtension) {
+    fn flag(&mut self, ext: &dyn LanguageExtension) {
         let origins: Vec<&str> = ext.extension_origins().iter().map(|o| o.as_str()).collect();
         self.diagnostics
             .push(Diagnostic::not_implemented(Label::span(
@@ -91,7 +91,7 @@ impl Visitor<Diagnostic> for RuleUnsupportedExtension {
         node: &InterfaceDeclaration,
     ) -> Result<Self::Value, Diagnostic> {
         // An InterfaceDeclaration only exists when INTERFACE syntax was
-        // used, so it is always a vendor extension.
+        // used, so it is always an extension.
         self.flag(node);
         node.recurse_visit(self)
     }

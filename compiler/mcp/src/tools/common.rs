@@ -398,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_options_when_rusty_dialect_then_vendor_flags_enabled() {
+    fn parse_options_when_rusty_dialect_then_dialect_flags_enabled() {
         let val = serde_json::json!({"dialect": "rusty"});
         let opts = parse_options(&val).unwrap();
         assert!(opts.allow_c_style_comments);

@@ -43,10 +43,10 @@ Example
    name := 'my name';
    msg := 'a message';
 
-Constant Length (Vendor Extension)
-----------------------------------
+Constant Length (Language Extension)
+------------------------------------
 
-.. include:: ../../../../includes/requires-vendor-extension.rst
+.. include:: ../../../../includes/requires-dialect-extension.rst
 
 With the ``--allow-constant-type-params`` flag, you can
 use a global constant for the maximum length instead of a literal:

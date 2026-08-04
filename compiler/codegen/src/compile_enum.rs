@@ -59,8 +59,8 @@ pub(crate) fn build_enum_ordinal_map(library: &Library) -> EnumOrdinalMap {
                 let mut value_names = Vec::new();
 
                 // Uses the resolved ordinal (not just declaration
-                // position) so explicit values (`member := 5`, a
-                // CODESYS/TwinCAT extension) are reflected at runtime,
+                // position) so explicit values (`member := 5`,
+                // an extension) are reflected at runtime,
                 // not just at the type-sizing stage.
                 let resolved = ironplc_analyzer::resolve_ordinal_values(&spec_values.values);
                 for (ev, ordinal) in spec_values.values.iter().zip(resolved) {

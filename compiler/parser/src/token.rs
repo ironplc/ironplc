@@ -421,7 +421,7 @@ pub enum TokenType {
     DirectAddress,
     /// Partial-access bit selector: `%X<digits>` (case-insensitive), used as
     /// `var.%Xn` to access bit `n` of an integer variable. IEC 61131-3:2013
-    /// equivalent of the vendor short form `var.n`. Gated behind
+    /// equivalent of the dialect short form `var.n`. Gated behind
     /// `--allow-partial-access-syntax`.
     #[regex(r"%[Xx]\d+")]
     PartialAccessBit,

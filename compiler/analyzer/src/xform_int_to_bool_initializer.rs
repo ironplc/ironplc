@@ -1,7 +1,7 @@
 //! Transform that rewrites integer literal 0/1 initializers on BOOL variables
 //! into proper boolean literals (FALSE/TRUE).
 //!
-//! This is a vendor extension enabled by `--allow-int-to-bool-initializer`
+//! This is an extension enabled by `--allow-int-to-bool-initializer`
 //! (or `--dialect rusty`). It allows patterns like `debug : BOOL := 0;`
 //! which are universally supported by CoDeSys, TwinCAT, RuSTy, and
 //! virtually every PLC runtime.

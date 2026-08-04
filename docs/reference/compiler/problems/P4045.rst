@@ -5,7 +5,7 @@ P4045
 .. problem-summary:: P4045
 
 This error occurs when a variable is declared with the type of a
-function block marked ``ABSTRACT`` (the CODESYS/TwinCAT vendor
+function block marked ``ABSTRACT`` (the CODESYS/TwinCAT dialect
 extension). An ``ABSTRACT`` function block exists only to be extended
 via ``EXTENDS`` -- it cannot be instantiated directly.
 

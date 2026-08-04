@@ -2,33 +2,33 @@
 //!
 //! Use [`Dialect`] to select a preset configuration, then optionally
 //! override individual flags.  Use the [`define_compiler_options`] macro
-//! to declare vendor-extension fields so that [`CompilerOptions::from_dialect`]
+//! to declare dialect-extension fields so that [`CompilerOptions::from_dialect`]
 //! is the single place that maps dialects to flags.
 
 use std::fmt;
 use std::str::FromStr;
 
 /// A named configuration preset that sets the IEC edition and
-/// vendor-extension flags in one shot.
+/// dialect-extension flags in one shot.
 ///
 /// Individual `--allow-*` CLI flags can still override on top of a dialect.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
-    /// Strict IEC 61131-3:2003 (Edition 2).  No vendor extensions.
+    /// Strict IEC 61131-3:2003 (Edition 2).  No extensions.
     #[default]
     Iec61131_3Ed2,
-    /// Strict IEC 61131-3:2013 (Edition 3).  No vendor extensions.
+    /// Strict IEC 61131-3:2013 (Edition 3).  No extensions.
     Iec61131_3Ed3,
     /// RuSTy-compatible dialect: Edition 2 base (so long-time keywords
     /// like `LDT` stay as identifiers) plus `REF_TO` support and all
-    /// vendor extensions enabled.
+    /// extensions enabled.
     Rusty,
     /// CODESYS-compatible dialect: Edition 2 base plus `REF_TO` support
-    /// and the vendor extensions that CODESYS accepts.  Does not bind the
+    /// and the extensions that CODESYS accepts.  Does not bind the
     /// implicit `__SYSTEM_UP_TIME` globals, which are an IronPLC runtime
     /// convention rather than a CODESYS feature.
     Codesys,
-    /// Beckhoff TwinCAT-compatible dialect: Edition 2 base plus the vendor
+    /// Beckhoff TwinCAT-compatible dialect: Edition 2 base plus the dialect
     /// extensions that TwinCAT accepts.  TwinCAT 3 is built on the CODESYS V3
     /// runtime, so this is close to [`Dialect::Codesys`], but does not enable
     /// the `REF_TO` / `REF()` / `NULL` reference extensions: TwinCAT spells
@@ -65,17 +65,17 @@ impl Dialect {
     pub fn description(&self) -> &'static str {
         match self {
             Dialect::Iec61131_3Ed2 => {
-                "Strict IEC 61131-3:2003 (Edition 2). No vendor extensions. [default]"
+                "Strict IEC 61131-3:2003 (Edition 2). No extensions. [default]"
             }
-            Dialect::Iec61131_3Ed3 => "Strict IEC 61131-3:2013 (Edition 3). No vendor extensions.",
+            Dialect::Iec61131_3Ed3 => "Strict IEC 61131-3:2013 (Edition 3). No extensions.",
             Dialect::Rusty => {
-                "RuSTy-compatible: Edition 2 base with REF_TO and all vendor extensions."
+                "RuSTy-compatible: Edition 2 base with REF_TO and the extensions RuSTy accepts."
             }
             Dialect::Codesys => {
-                "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS vendor extensions."
+                "CODESYS-compatible: Edition 2 base with REF_TO and CODESYS extensions."
             }
             Dialect::TwinCat => {
-                "TwinCAT-compatible: Edition 2 base with the vendor extensions TwinCAT accepts."
+                "TwinCAT-compatible: Edition 2 base with the extensions TwinCAT accepts."
             }
         }
     }
@@ -128,7 +128,7 @@ impl fmt::Display for ParseDialectError {
 
 impl std::error::Error for ParseDialectError {}
 
-/// Metadata for a single vendor-extension feature flag.
+/// Metadata for a single dialect-extension feature flag.
 pub struct FeatureDescriptor {
     /// The CLI flag name (e.g. `"--allow-c-style-comments"`).
     pub cli_flag: &'static str,
@@ -141,7 +141,7 @@ pub struct FeatureDescriptor {
     pub dialects: &'static [Dialect],
 }
 
-/// Declares [`CompilerOptions`] with a set of vendor-extension boolean flags.
+/// Declares [`CompilerOptions`] with a set of dialect-extension boolean flags.
 ///
 /// Each field carries a description string and a list of [`Dialect`] variants
 /// that enable it.  The macro auto-generates the struct, its `Default` impl,
@@ -152,7 +152,7 @@ macro_rules! define_compiler_options {
             $desc:literal,
             $cli_flag:literal,
             [$($dialect:ident),* $(,)?],
-            $vendor_field:ident
+            $flag_field:ident
         ),* $(,)?
     ) => {
         #[derive(Debug, Default, Clone, Copy)]
@@ -160,7 +160,7 @@ macro_rules! define_compiler_options {
             /// When `true`, IEC 61131-3:2013 keywords (`LTIME`, `LDATE`,
             /// `LTOD`, `LDT`, `REF_TO`, `REF`, `NULL`) are recognised.
             pub allow_iec_61131_3_2013: bool,
-            $(pub $vendor_field: bool,)*
+            $(pub $flag_field: bool,)*
         }
 
         impl CompilerOptions {
@@ -175,33 +175,33 @@ macro_rules! define_compiler_options {
                 }
                 $(
                     if [$(Dialect::$dialect),*].contains(&dialect) {
-                        opts.$vendor_field = true;
+                        opts.$flag_field = true;
                     }
                 )*
                 opts
             }
 
-            /// Metadata for every vendor-extension feature flag.
+            /// Metadata for every dialect-extension feature flag.
             pub const FEATURE_DESCRIPTORS: &[FeatureDescriptor] = &[
                 $(
                     FeatureDescriptor {
                         cli_flag: $cli_flag,
-                        option_key: stringify!($vendor_field),
+                        option_key: stringify!($flag_field),
                         description: $desc,
                         dialects: &[$(Dialect::$dialect),*],
                     },
                 )*
             ];
 
-            /// Set a vendor-extension feature flag by its `option_key` (the
+            /// Set a dialect-extension feature flag by its `option_key` (the
             /// field name from [`FeatureDescriptor`]).
             ///
             /// Returns `true` if the key matched a known flag.
             pub fn set_flag_by_key(&mut self, key: &str, value: bool) -> bool {
                 match key {
                     $(
-                        stringify!($vendor_field) => {
-                            self.$vendor_field = value;
+                        stringify!($flag_field) => {
+                            self.$flag_field = value;
                             true
                         }
                     )*
@@ -209,14 +209,14 @@ macro_rules! define_compiler_options {
                 }
             }
 
-            /// Get a vendor-extension feature flag by its `option_key` (the
+            /// Get a dialect-extension feature flag by its `option_key` (the
             /// field name from [`FeatureDescriptor`]).
             ///
             /// Returns `None` if the key does not match a known flag.
             pub fn get_flag_by_key(&self, key: &str) -> Option<bool> {
                 match key {
                     $(
-                        stringify!($vendor_field) => Some(self.$vendor_field),
+                        stringify!($flag_field) => Some(self.$flag_field),
                     )*
                     _ => None,
                 }
@@ -381,9 +381,9 @@ pub fn describe_dialects() -> String {
 mod tests {
     use super::*;
 
-    /// Collect the vendor-flag `option_key`s that `from_dialect(dialect)`
+    /// Collect the dialect-flag `option_key`s that `from_dialect(dialect)`
     /// turns on, sorted for order-independent comparison.
-    fn enabled_vendor_flags(dialect: Dialect) -> Vec<&'static str> {
+    fn enabled_flags(dialect: Dialect) -> Vec<&'static str> {
         let options = CompilerOptions::from_dialect(dialect);
         let mut enabled: Vec<&'static str> = CompilerOptions::FEATURE_DESCRIPTORS
             .iter()
@@ -394,43 +394,43 @@ mod tests {
         enabled
     }
 
-    /// Assert that a dialect enables *exactly* the given set of vendor flags --
+    /// Assert that a dialect enables *exactly* the given set of dialect flags --
     /// no more, no less. This is the guard against a newly added option
     /// silently leaking into a dialect it should not belong to: adding an
     /// option to a dialect's macro tags forces a matching update here, and an
     /// accidental extra tag makes that dialect's expected set mismatch.
-    fn assert_enabled_vendor_flags(dialect: Dialect, expected: &[&str]) {
+    fn assert_enabled_flags(dialect: Dialect, expected: &[&str]) {
         let mut expected_sorted = expected.to_vec();
         expected_sorted.sort_unstable();
         assert_eq!(
-            enabled_vendor_flags(dialect),
+            enabled_flags(dialect),
             expected_sorted,
-            "dialect {dialect} does not enable exactly the expected vendor flags"
+            "dialect {dialect} does not enable exactly the expected dialect flags"
         );
     }
 
-    /// IEC 61131-3 Ed. 2 (the default) enables no vendor extensions at all.
+    /// IEC 61131-3 Ed. 2 (the default) enables no extensions at all.
     #[test]
-    fn ed2_dialect_enables_no_vendor_flags() {
+    fn ed2_dialect_enables_no_flags() {
         assert!(!CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(Dialect::Iec61131_3Ed2, &[]);
+        assert_enabled_flags(Dialect::Iec61131_3Ed2, &[]);
     }
 
-    /// IEC 61131-3 Ed. 3 turns on the Edition-3 keyword set and, among vendor
+    /// IEC 61131-3 Ed. 3 turns on the Edition-3 keyword set and, among dialect
     /// extensions, only partial-access syntax (standardized in Edition 3).
     #[test]
     fn ed3_dialect_enables_only_partial_access_syntax() {
         assert!(CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(Dialect::Iec61131_3Ed3, &["allow_partial_access_syntax"]);
+        assert_enabled_flags(Dialect::Iec61131_3Ed3, &["allow_partial_access_syntax"]);
     }
 
     /// The RuSTy dialect stays on the Edition-2 keyword base and enables every
-    /// vendor extension. Listed explicitly (not derived) so a new option that
+    /// extension. Listed explicitly (not derived) so a new option that
     /// is meant to be Rusty-only, or accidentally left off Rusty, is caught.
     #[test]
-    fn rusty_dialect_enables_exactly_these_vendor_flags() {
+    fn rusty_dialect_enables_exactly_these_flags() {
         assert!(!CompilerOptions::from_dialect(Dialect::Rusty).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(
+        assert_enabled_flags(
             Dialect::Rusty,
             &[
                 "allow_c_style_comments",
@@ -465,9 +465,9 @@ mod tests {
     /// IronPLC/RuSTy runtime convention rather than a CODESYS feature. Listed
     /// explicitly so that omission is asserted rather than assumed.
     #[test]
-    fn codesys_dialect_enables_exactly_these_vendor_flags() {
+    fn codesys_dialect_enables_exactly_these_flags() {
         assert!(!CompilerOptions::from_dialect(Dialect::Codesys).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(
+        assert_enabled_flags(
             Dialect::Codesys,
             &[
                 "allow_c_style_comments",
@@ -507,9 +507,9 @@ mod tests {
     /// with `ADR()` are not parsed yet.) Listed explicitly so an accidental
     /// divergence from the intended set is caught.
     #[test]
-    fn twincat_dialect_enables_exactly_these_vendor_flags() {
+    fn twincat_dialect_enables_exactly_these_flags() {
         assert!(!CompilerOptions::from_dialect(Dialect::TwinCat).allow_iec_61131_3_2013);
-        assert_enabled_vendor_flags(
+        assert_enabled_flags(
             Dialect::TwinCat,
             &[
                 "allow_c_style_comments",

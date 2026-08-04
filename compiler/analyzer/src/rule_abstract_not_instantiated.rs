@@ -1,5 +1,5 @@
 //! Semantic rule that rejects a variable declared with the type of an
-//! `ABSTRACT` function block (the CODESYS/TwinCAT vendor extension).
+//! `ABSTRACT` function block.
 //!
 //! An `ABSTRACT` function block exists only to be extended via
 //! `EXTENDS` -- it cannot be instantiated directly.

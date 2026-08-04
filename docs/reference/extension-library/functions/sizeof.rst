@@ -8,7 +8,7 @@ Returns the size in bytes of a variable or type.
    :widths: 30 70
 
    * - **IEC 61131-3**
-     - Not part of the standard (vendor extension)
+     - Not part of the standard (language extension)
    * - **Support**
      - Supported (requires ``--allow-sizeof``)
 
@@ -33,7 +33,7 @@ Description
 
 ``SIZEOF`` returns the size in bytes of the argument's type as a
 compile-time constant. It is not part of the IEC 61131-3 standard but is
-a widely supported vendor extension available in CODESYS, TwinCAT/Beckhoff,
+a widely supported language extension available in CODESYS, TwinCAT/Beckhoff,
 and RuSTy. It is commonly used in buffer management functions that work with
 ``REF_TO`` pointers, such as those in the OSCAT library.
 
@@ -51,7 +51,7 @@ elements (element count × element size).
 Enabling
 --------
 
-``SIZEOF`` is a vendor extension and must be explicitly enabled:
+``SIZEOF`` is a language extension and must be explicitly enabled:
 
 .. code-block:: shell
 
@@ -73,4 +73,4 @@ Example
 See Also
 --------
 
-- :doc:`/explanation/enabling-dialects-and-features` — enabling vendor extensions
+- :doc:`/explanation/enabling-dialects-and-features` — enabling language extensions

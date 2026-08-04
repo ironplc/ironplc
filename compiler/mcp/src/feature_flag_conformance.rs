@@ -2,7 +2,7 @@
 //!
 //! ## Why this exists
 //!
-//! The `list_options` tool exposes one entry per vendor-extension flag in
+//! The `list_options` tool exposes one entry per dialect-extension flag in
 //! [`CompilerOptions::FEATURE_DESCRIPTORS`]. It is tempting to test that surface
 //! by *counting* flags (`assert_eq!(flags.len(), 16)`) or by asserting a flag's
 //! boolean is set. Both couple the test suite to every feature commit — the
@@ -52,7 +52,7 @@ struct FlagFixture {
     source: &'static str,
 }
 
-/// One fixture per vendor-extension flag. Order mirrors
+/// One fixture per dialect-extension flag. Order mirrors
 /// `FEATURE_DESCRIPTORS` for readability; the suite does not depend on ordering.
 /// Snippets are adapted from the compiler's own positive/negative tests (parser
 /// and analyzer) so they exercise the real enforcement path.

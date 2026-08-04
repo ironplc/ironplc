@@ -49,7 +49,7 @@ The feature is delivered in two phases, one PR each:
 
 ## Gating & coexistence
 
-`REFERENCE TO` is gated behind a new `--allow-reference-to` vendor flag,
+`REFERENCE TO` is gated behind a new `--allow-reference-to` flag,
 following the established token-demotion pattern. A new `REFERENCE` keyword
 token is demoted to `Identifier` unless `--allow-reference-to` is set — exactly
 how `REF_TO`/`REF`/`NULL` are demoted today. The always-present grammar

@@ -4,7 +4,7 @@
 
 ## Overview
 
-IronPLC supports bit-level access on integer-typed variables using the vendor
+IronPLC supports bit-level access on integer-typed variables using the non-standard
 short form `x.n` (for example, `byte_var.3`). This design adds support for the
 IEC 61131-3:2013 standard form `x.%Xn` (for example, `byte_var.%X3`), which is
 semantically equivalent. The new form is accepted on any symbolic variable,
