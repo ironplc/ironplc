@@ -89,8 +89,9 @@ reproduce. This is a safety requirement, not a convenience one. Concretely:
 - Support vendor constants (`PI`, `e`), functions (`Tc2_Math` numerics, OSCAT
   functions), and function blocks under their exact vendor names.
 - Scale to arbitrarily many libraries with **zero** new per-symbol flags.
-- Make availability restrictable by target: a non-standard name like `PI` is
-  only in scope when a library that provides it is active.
+- Restrict availability by activation: a non-standard name like `PI` is only in
+  scope when a library that provides it has been explicitly activated. Activation
+  is independent of dialect (see *Dialect and vendor are different concepts*).
 - Auto-activate from a real vendor project file, so a genuine TwinCAT project
   drops in unchanged, *including its own statement of which libraries it uses*.
 - Preserve bidirectional round-trip fidelity (`plc2plc` renders user source
@@ -112,6 +113,11 @@ reproduce. This is a safety requirement, not a convenience one. Concretely:
   the right flags / target for the library they are using; the compiler does not
   try to make a library work under an arbitrary flag set. (In-source pragmas to
   express this may come in the future, but are not a goal now.)
+- **Shipping Tier C (vendored third-party) libraries through this mechanism.** It
+  bundles only own-authored Tier A/B content; redistributing vendored third-party
+  source (e.g. OSCAT) is a *separate distribution mechanism* with its own
+  licensing, out of scope here (see *Licensing, provenance, and clean-room
+  authoring*).
 - Collision resolution between simultaneously-active libraries — deferred (see
   *Future Goals*).
 - Full runtime implementation of every vendor function in the first increment.
@@ -241,28 +247,34 @@ Each bundled library is a directory under
 name = "math"
 vendor = "IronPLC"
 version = "1.0.0"
-target = "any"                 # or a dialect, e.g. "twincat"
 
 [provenance]
-license = "MIT"
-derivation = "math-dictated"   # math-dictated | clean-room-from-docs | vendored
+license = "MIT"                # from the allowed (permissive / own-authored) set
+derivation = "math-dictated"   # math-dictated | clean-room-from-docs
 inputs = ["IEC 61131-3 numeric constants"]
 attribution = ""               # required when the license demands it
 reviewer = "garretfick"
+
+# Per-POU implementation binding. A POU not listed defaults to `st` (its body is
+# in the .st file). Constants need no entry.
+[bindings]
+# FLOOR   = "intrinsic:floor_lreal"   # bound to a named, implemented VM intrinsic
+# SOME_FB = "declare-only"            # signature only; calling it is a compile error
 ```
 
 | Requirement | Field group | Rule |
 |-------------|-------------|------|
-| **REQ-CL-sources-002** | Identity | `name`, `vendor`, `version`, `target` are present. |
-| **REQ-CL-sources-007** | Provenance | `license` (from the allowed set) and `derivation` (one of `math-dictated`, `clean-room-from-docs`, `vendored`) are present; `attribution` is present when the license requires it. |
+| **REQ-CL-sources-002** | Identity | `name`, `vendor`, `version` are present. |
+| **REQ-CL-sources-007** | Provenance | `license` (from the allowed set) and `derivation` (one of `math-dictated`, `clean-room-from-docs`) are present; `attribution` is present when the license requires it. |
+| **REQ-CL-sources-009** | Bindings | Every POU binding is valid: an `st` POU has a body in the `.st`; an `intrinsic:<name>` POU names an implemented VM intrinsic; a `declare-only` POU has a signature only. A malformed binding fails to load, naming the library and POU. |
 
-Declarations are real IEC 61131-3 Structured Text for anything with a runnable
-body (OSCAT functions, `PI` as a constant), plus `extern`/intrinsic markers for
-native functions whose bodies IronPLC provides another way (see *Bodies*).
+The manifest carries **no** dialect/target field: a library is activated
+explicitly, never by dialect (see *Dialect and vendor are different concepts*).
 
-Defining libraries as data (manifest + ST) rather than Rust code is what lets a
-library be added without a compiler change, lets third parties contribute
-libraries, and lets the playground serve them as plain-text files.
+Declarations are real IEC 61131-3 Structured Text. Defining libraries as data
+(manifest + ST) rather than Rust code is what lets a library be added without a
+compiler change, lets third parties contribute libraries, and lets the
+playground serve them as plain-text files.
 
 ### Licensing, provenance, and clean-room authoring
 
@@ -277,39 +289,47 @@ committed spec) rather than an unprovable claim. Libraries are tiered by risk:
 - **Tier B — clean-room interface shim**: vendor names/signatures matched for
   interoperability, bodies implemented as our own Rust VM intrinsics (or
   math-dictated ST) authored from public documentation; ships under MIT.
-- **Tier C — vendored third-party source** (e.g. OSCAT): governed by the upstream
-  license, **not** MIT.
 
-- **REQ-CL-sources-008** A `vendored` (Tier C) library carries its upstream
-  license file and an attribution string and is quarantined from the
-  MIT-licensed crates — it is never redistributed under the compiler's MIT terms.
+**This mechanism ships only Tier A and Tier B** — own-authored, MIT-licensed
+content. **Tier C — vendored third-party source** (e.g. OSCAT) is *not*
+distributed through this mechanism: redistributing encumbered third-party code is
+a **separate distribution mechanism** with its own licensing, out of scope here.
+
+- **REQ-CL-sources-008** The mechanism refuses Tier C content: a manifest whose
+  `derivation` is `vendored`, or whose `license` is outside the allowed
+  (permissive / own-authored) set, is rejected rather than bundled.
 
 The full authoring rules — allowed vs. forbidden inputs, the clean-room-with-AI
 workflow, and the reviewer checklist — live in the
 [Compatibility Library Authoring policy](../steering/compatibility-library-authoring.md).
 Its machine-checkable parts (manifest well-formedness, allowed `derivation`/
-`license`, Tier C quarantine) are enforced by a conformance test; the parts that
+`license`, Tier C refusal) are enforced by a conformance test; the parts that
 cannot be tested (that no forbidden input was used, that clearance was actually
 performed) are confirmed at review. The test checks the record's *shape*; the
 reviewer checks its *truth*.
 
-### Bodies: runnable vs. declare-only
+### Bodies and the fail-if-unimplemented rule
 
-A POU in a library binds its implementation one of three ways:
+A library POU's `[bindings]` entry selects how its implementation is provided:
 
-- **ST body** — real Structured Text, compiled and run like user code. OSCAT is
-  open source and semantically identical across environments, so it rides its
-  real bodies for free.
-- **VM intrinsic** — a native implementation in the VM. TwinCAT `Tc2_Math`
-  numerics map here, reusing the trig/numeric intrinsics being built out
-  separately. We *desire* the same numeric behavior as the vendor (rounding,
-  edge cases); whether that is fully achievable is to be determined.
-- **Declare-only** — the declaration exists so the analyzer can resolve a
-  reference, but there is no runnable body yet. Per *Safety first*
-  (**REQ-CL-analyzer-005**), calling a declare-only POU is a compile error, not a
-  runtime trap. This lets a large library's declarations land (so unrelated code
-  type-checks) ahead of full runtime support, without ever letting an
-  unimplemented function slip through to execution.
+- **`st`** (default) — a real Structured Text body, compiled and run like user
+  code. This is how a math-dictated ST function or a Tier B ST body ships.
+- **`intrinsic:<name>`** — a native VM intrinsic. TwinCAT `Tc2_Math` numerics map
+  here, reusing the trig/numeric intrinsics built out separately. We *desire* the
+  same numeric behavior as the vendor (rounding, edge cases); whether that is
+  fully achievable is to be determined. The binding must name an *implemented*
+  intrinsic (**REQ-CL-sources-009**); a not-yet-built one is expressed as
+  `declare-only`, not a dangling intrinsic reference.
+- **`declare-only`** — the signature exists so the analyzer can resolve a
+  reference, but there is no body yet.
+
+**Failing when the body is not implemented.** Per *Safety first*, a *call* to a
+`declare-only` POU is a **compile error** at analysis time — a dedicated problem
+code (`P####`) that names the library and POU and states the function is declared
+by a compatibility library but not yet implemented in IronPLC — never a runtime
+trap (**REQ-CL-analyzer-005**). Merely *declaring* it is fine: unrelated code
+that does not call it still type-checks, so a large library's surface can land
+ahead of its bodies. The failure is surfaced at the call site, at compile time.
 
 ### Referenced-but-unshipped libraries
 
@@ -335,16 +355,23 @@ accepted or hard-failed.
 - **REQ-CL-plc2plc-001** `plc2plc` emits the user's source unchanged; declarations
   injected by an activated library are never rendered as user source.
 
-### Composition with dialects (the reverse direction)
+### Dialect and vendor are different concepts
 
-IronPLC → vendor portability holds only if "compiles under the vendor target"
-also means "uses nothing the vendor would reject." That is the existing
-permissive-parse / reject-by-policy machinery
-([ADR-0040](../adrs/0040-dialect-violations-diagnosed-in-policy-phase.md)).
-Compatibility libraries **compose** with it: activating a vendor target makes
-that vendor's libraries available *and* constrains the accepted language, so
-"green under the vendor target" is the portability certificate for the reverse
-direction.
+A **dialect** governs which *syntax and language rules* the compiler accepts
+(permissive-parse / reject-by-policy,
+[ADR-0040](../adrs/0040-dialect-violations-diagnosed-in-policy-phase.md)). A
+**library** governs which *declarations* are in scope. They are independent axes,
+selected independently: a dialect **never** activates a library, and a library
+never changes the accepted syntax.
+
+- **REQ-CL-analyzer-006** Selecting a dialect does not activate any compatibility
+  library; library activation comes only from the channels in *Activation
+  channels*.
+
+The reverse-direction portability guarantee is a property of the **dialect**
+alone: if code compiles under a vendor's dialect (its language subset), it uses
+nothing that vendor's language would reject. Libraries ride alongside but do not
+provide that guarantee.
 
 ## Worked Examples
 
@@ -367,13 +394,15 @@ Because this is a case where a library name collides with the base stdlib, the
 (see *Future Goals*); it is called out here as a concrete motivating case for
 that future work rather than something the first increment resolves.
 
-### OSCAT
+### OSCAT (Tier C — via a separate mechanism)
 
-An OSCAT-based project references OSCAT; IronPLC activates the bundled OSCAT
-library, whose functions and function blocks carry real ST bodies and compile
-and run like user code. Where a body is not yet supported at runtime, the POU is
-declare-only, so unrelated code type-checks while any *call* to an unimplemented
-function is a compile error (per *Safety first*).
+OSCAT is a **Tier C** library: its source is license-encumbered, so it is **not**
+bundled through this mechanism (see *Licensing, provenance, and clean-room
+authoring*). It is retained here only to illustrate the body model — an
+OSCAT-style library's functions would carry real ST bodies, with any
+not-yet-supported POU marked `declare-only` so unrelated code type-checks while a
+*call* to it is a compile error. Delivering OSCAT itself is a separate
+distribution mechanism, out of scope here.
 
 ## Future Goals
 
@@ -383,6 +412,9 @@ function is a compile error (per *Safety first*).
   diagnostic on genuine ambiguity), faithfully reproducing the host's behavior.
   The `FLOOR`-override case above depends on this.
 - **Cross-library / cross-vendor mixing** as a supported configuration.
+- **Accept source-written namespace qualifiers** (`Tc2_Standard.TON`), mapping the
+  qualifier to its library. Needed only if some library requires the qualified
+  form; no known Tier A/B library does.
 - **In-source pragmas** to express flag/library intent, if ever needed.
 
 ## Alternatives Considered
@@ -405,30 +437,23 @@ function is a compile error (per *Safety first*).
 
 ## Open Questions
 
-*Resolved in this revision:* the **manifest format** is specified under *What a
-library is on disk*; the **`.plcproj` reference shape** is grounded in the
-appendix; **version matching** policy is stated under *Reference matching*.
+Prior open questions are now decided:
 
-1. **Qualified access requirement.** For project-driven activation the qualifier
-   is *given* — the `.plcproj` reference carries a `<Namespace>` element (see the
-   appendix), so IronPLC does not infer it. What remains open is whether any
-   library *requires* qualified access (rather than merely permitting it), which
-   affects how much of the qualifier path must land before those libraries work.
-2. **Unsupported-configuration detection.** By what mechanism does the compiler
-   recognize an unsupported library/flag configuration in order to reject it
-   (per *Safety first*)? The concrete declare-only case is covered
-   (**REQ-CL-analyzer-005**); the general detector is not yet designed.
-3. **Tier C distribution model.** Are vendored (Tier C) libraries shipped in-tree
-   but quarantined, or obtained opt-in by the user? This tensions with the
-   *no network fetch* non-goal, and is a distribution decision for the project
-   owner (see the [authoring policy](../steering/compatibility-library-authoring.md)).
-4. **License allow-list.** Which upstream licenses are acceptable to bundle at
-   all, given IronPLC is MIT? (**REQ-CL-sources-007** enforces membership in an
-   allowed set; the set's contents are the open decision.)
-5. **Dialect → default activation.** Does selecting a vendor dialect (e.g.
-   `--dialect twincat`) auto-activate that vendor's libraries, or is activation
-   always explicit (project reference or `--library`)? The first increment is
-   explicit-only; dialect-driven defaults are a possible later convenience.
+- **Manifest format** and the **fail-if-unimplemented rule** — specified under
+  *What a library is on disk* and *Bodies and the fail-if-unimplemented rule*.
+- **Tier C** (vendored third-party, e.g. OSCAT) is **not** shipped through this
+  mechanism — it is a separate distribution mechanism (see *Non-Goals* and
+  *Licensing…*). The license allow-list here is therefore the permissive /
+  own-authored set (**REQ-CL-sources-008**).
+- **Dialects never auto-activate libraries** — dialect and vendor are independent
+  axes (**REQ-CL-analyzer-006**).
+- **Qualified access** — the first increment injects **flat names only**;
+  accepting a source-written `Namespace.Symbol` qualifier is deferred until a
+  library requires it (see *Future Goals*). None known do.
+- **Version matching** and the **`.plcproj` shape** — *Reference matching* and the
+  *Appendix*.
+
+No open questions remain for the first increment.
 
 ## Implementation
 

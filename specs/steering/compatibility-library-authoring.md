@@ -38,8 +38,10 @@ Every bundled library is one of:
   interoperability, with bodies implemented as our own Rust VM intrinsics (or
   math-dictated ST), authored **from public documentation**. Ships under MIT.
 - **Tier C — vendored third-party source** (e.g. OSCAT). Governed by the upstream
-  license, **not** MIT. Quarantined, attributed, and added only after license
-  review. Never produced by feeding upstream source to an AI to "reimplement."
+  license, **not** MIT. **Not distributed through this mechanism** — Tier C is a
+  *separate distribution mechanism* with its own licensing. This mechanism
+  **refuses** it: a `vendored` derivation or a non-permissive license is rejected,
+  never bundled. (And it is never produced by feeding upstream source to an AI.)
 
 ## Allowed Inputs
 
@@ -57,9 +59,9 @@ Never feed to an AI tool, paste, or transliterate:
 - Vendor implementation *source*, decompiled binaries, or exported `.library`
   files (the export's selection/arrangement is where thin interface copyright
   could bite — derive signatures from published docs instead).
-- Any copyleft or otherwise encumbered source, **except** when it is being added
-  deliberately as a license-reviewed Tier C library — and then it is vendored
-  as-is, not fed to a model.
+- Any copyleft or otherwise encumbered source. This mechanism ships only Tier
+  A/B; encumbered third-party source is never bundled here (it belongs to the
+  separate Tier C distribution mechanism) and is never fed to a model.
 - Verbatim text from the IEC 61131-3 standard document.
 
 ## Required Workflow (clean-room with AI)
@@ -76,19 +78,19 @@ Never feed to an AI tool, paste, or transliterate:
 
 ## Required Artifacts (per library)
 
-- Manifest provenance fields: `license`, `derivation`, `inputs` (docs cited),
-  `attribution` (when the license requires it), `reviewer`.
+- Manifest provenance fields: `license`, `derivation` (one of `math-dictated`,
+  `clean-room-from-docs`), `inputs` (docs cited), `attribution` (when the license
+  requires it), `reviewer`.
 - The committed spec doc (Tier B).
-- For Tier C: the upstream `LICENSE` file, an attribution string, and placement
-  in the quarantine location — never inside an MIT-licensed crate's own sources.
+- (Tier C is out of scope for this mechanism — see *Risk Tiers*.)
 
 ## Enforcement: automated vs. review
 
 - **Automated (a conformance test — see the implementation plan).** Every
   manifest is well-formed and declares the required provenance; `derivation` and
-  `license` are from the allowed sets; Tier C libraries are quarantined with a
-  license and attribution. The test verifies the record *exists and is
-  well-formed*.
+  `license` are from the allowed sets; and any Tier C content is refused (a
+  `vendored` derivation or non-permissive license is rejected). The test verifies
+  the record *exists and is well-formed*.
 - **Review-only (cannot be tested).** That the declared provenance is *true* —
   that no forbidden input was used and clearance was actually performed. A
   reviewer confirms the record is *honest*. The test checks the shape; the human
@@ -97,8 +99,7 @@ Never feed to an AI tool, paste, or transliterate:
 ## Reviewer Checklist
 
 - Inputs were within the allowed set; no forbidden input was used (attested).
-- Bodies are own/ math-dictated/ properly vendored — not transliterations of
-  vendor source.
-- Tier C carries its upstream license + attribution and is quarantined from
-  MIT-licensed crates.
+- Bodies are own / math-dictated — not transliterations of vendor source.
+- No Tier C content is being bundled here (a `vendored` derivation or encumbered
+  license must be rejected, not merged).
 - The manifest provenance fields are present and match what actually happened.

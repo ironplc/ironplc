@@ -86,7 +86,7 @@ source**, so a user declaration shadows a library declaration of the same name
 - `specs/steering/compatibility-library-authoring.md` (+ `.kiro/steering/` pointer) — the authoring policy (already added).
 - `compiler/sources/resources/compat-libraries/<name>/library.toml` — `[provenance]` fields.
 - Provenance conformance test in `compiler/sources` (walks manifests).
-- Tier C quarantine location (established when the first vendored library lands; not in this plan).
+- (Tier C is *refused* by this mechanism, not quarantined — see the design's *Licensing…*.)
 
 **Modified**
 - `compiler/sources/src/discovery/mod.rs` — twincat detector reads the
@@ -116,8 +116,9 @@ source**, so a user declaration shadows a library declaration of the same name
   folds; (Phase 2) same with activation coming only from the `.plcproj`.
 - **Provenance conformance test (Phase 5):** a `sources` test walks every bundled
   library manifest and asserts it is well-formed, its `derivation`/`license` are
-  from the allowed sets, and any `vendored` library is quarantined with a license
-  and attribution. This enforces the *machine-checkable* half of the
+  from the allowed sets, and any Tier C content (a `vendored` derivation or
+  non-permissive license) is refused. This enforces the *machine-checkable* half
+  of the
   [authoring policy](../steering/compatibility-library-authoring.md); the
   human-only half (no forbidden input used, clearance performed) stays a reviewer
   responsibility.
@@ -127,7 +128,8 @@ source**, so a user declaration shadows a library declaration of the same name
 
 ### Phase 1 — Library representation, the `math` library (PI), explicit activation *(early)*
 - [x] Write plan and add `REQ-CL-*` markers to the design doc
-- [ ] Define the on-disk library format (manifest + ST) — **REQ-CL-sources-002**
+- [ ] Define the on-disk library format: manifest (`library.toml` with identity + `[provenance]` + `[bindings]`) plus `.st` declarations — **REQ-CL-sources-002**
+- [ ] Validate POU bindings on load: `st` has a body, `intrinsic:<name>` names an implemented intrinsic, `declare-only` is signature-only — **REQ-CL-sources-009**
 - [ ] Add the bundled `math` library defining `PI` and `e`
 - [ ] Implement the library loader + registry (name → `Library`) in `sources`
 - [ ] Carry an activated-library set on the project; add `--library <name>` to the CLI — **REQ-CL-sources-006**
@@ -136,6 +138,7 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] `PI` resolves as a constant and folds in a `VAR` initializer — **REQ-CL-analyzer-003**
 - [ ] A user declaration shadows a library declaration of the same name — **REQ-CL-analyzer-004**
 - [ ] Activated set derives only from explicit activation; never inferred from source — **REQ-CL-sources-005**
+- [ ] Selecting a dialect does not activate any library (dialect ≠ vendor) — **REQ-CL-analyzer-006**
 - [ ] Wire `sources` + `analyzer` `build.rs` to the design doc; add `spec_conformance` + meta-tests; `#[spec_test]` the markers above; `#[ignore]` sources-001/003/004/007/008 and analyzer-005 for now
 - [ ] `cd compiler && just` green
 
@@ -149,9 +152,8 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] `cd compiler && just` green
 
 ### Phase 3 — Declare-only bodies + safety
-- [ ] Support marking a library POU `extern`/declare-only in the manifest/declarations
-- [ ] Add a signature-only example (e.g. a `Tc2_Math`-style `FLOOR : LREAL`), declare-only
-- [ ] Analyzer rule: calling a declare-only POU is a compile error (new `P####`) — **REQ-CL-analyzer-005**
+- [ ] Add a `declare-only` library POU (signature only) — e.g. a `Tc2_Math`-style `FLOOR : LREAL` — using the binding kind from Phase 1
+- [ ] Analyzer rule: a *call* to a `declare-only` POU is a compile error, naming the library + POU (new `P####`) — **REQ-CL-analyzer-005**
 - [ ] Add the problem-code CSV entry + `docs/compiler/problems/P####.rst`; un-ignore analyzer-005
 - [ ] `cd compiler && just` green
 
@@ -163,20 +165,18 @@ source**, so a user declaration shadows a library declaration of the same name
 - [ ] `cd compiler && just` green
 
 ### Phase 5 — Provenance & licensing policy enforcement
-- [ ] Add the `[provenance]` fields to the manifest schema (`license`, `derivation`, `inputs`, `attribution`, `reviewer`)
-- [ ] Conformance test in `sources` walks every bundled manifest and asserts identity fields present — **REQ-CL-sources-002** — and provenance well-formed with `derivation`/`license` from the allowed sets — **REQ-CL-sources-007**
-- [ ] Establish the Tier C quarantine location; assert a `vendored` library carries an upstream `LICENSE` + attribution and is excluded from MIT-licensed crate sources — **REQ-CL-sources-008**
-- [ ] Un-ignore sources-002/007/008; confirm the [authoring policy](../steering/compatibility-library-authoring.md) reviewer checklist is referenced from contribution docs
+- [ ] Conformance test in `sources` walks every bundled manifest and asserts provenance is well-formed with `derivation`/`license` from the allowed (permissive / own-authored) sets — **REQ-CL-sources-007**
+- [ ] The mechanism refuses Tier C: a `vendored` derivation or a non-permissive license is rejected, not bundled — **REQ-CL-sources-008**
+- [ ] Un-ignore sources-007/008; confirm the [authoring policy](../steering/compatibility-library-authoring.md) reviewer checklist is referenced from contribution docs
 - [ ] `cd compiler && just` green
 
-### Deferred (tracked in the design's *Future Goals* / *Open Questions*, not this plan)
+### Deferred / out of scope (see the design's *Non-Goals* and *Future Goals*)
 - Collision / precedence resolution; cross-vendor mixing.
-- Unsupported-configuration detection mechanism.
-- Qualified-access as a per-library requirement.
-- **Tier C vendoring (e.g. OSCAT)** — pending the license/distribution decision
-  (design Open Questions 3–4). The math library (Tier A) and TwinCAT signature
-  shims (Tier B) do not depend on it.
-- Dialect-driven default library activation (design Open Question 5).
+- Accepting source-written namespace qualifiers (flat names only for now).
+- **Tier C (vendored third-party, e.g. OSCAT)** — not shipped through this
+  mechanism; it is a *separate distribution mechanism*. Tier A (math) and Tier B
+  (clean-room shims) do not depend on it.
+- Dialect-driven default activation — **decided against** (dialect ≠ vendor).
 
 ## Implementation notes
 
