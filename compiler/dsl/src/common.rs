@@ -2862,12 +2862,18 @@ pub struct InterfaceDeclaration {
     /// Interfaces this interface extends (an interface may extend more than
     /// one other interface, unlike a function block).
     pub extends: Vec<TypeName>,
-    pub span: SourceSpan,
 }
 
 impl Located for InterfaceDeclaration {
+    /// Derived from the declaration's own located parts rather than stored:
+    /// the name (always present) through the last extended interface, if any.
+    /// This spans the declaration's identifiers rather than the surrounding
+    /// `INTERFACE`/`END_INTERFACE` keywords.
     fn span(&self) -> SourceSpan {
-        self.span.clone()
+        match self.extends.last() {
+            Some(last) => SourceSpan::join(&self.name.span(), &last.span()),
+            None => self.name.span(),
+        }
     }
 }
 
@@ -2884,7 +2890,7 @@ impl VendorExtension for InterfaceDeclaration {
     }
 
     fn extension_span(&self) -> SourceSpan {
-        self.span.clone()
+        self.span()
     }
 }
 
