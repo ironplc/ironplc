@@ -52,10 +52,11 @@ Supported Dialects
    ``--allow-fb-inheritance``.
 
 **codesys**
-   CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
-   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
-   preserved) and enables
-   :doc:`REF_TO </reference/language/data-types/derived/reference-types>`
+   CODESYS-compatible dialect. Uses Edition 2 as a base and enables the
+   long-time-type keywords
+   (:doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>`, etc.)
+   and :doc:`REF_TO </reference/language/data-types/derived/reference-types>`
    together with the extensions that the CODESYS IDE accepts. The
    implicit :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound under this dialect, since they are an IronPLC
@@ -64,6 +65,7 @@ Supported Dialects
    **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
    ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
+   ``--allow-long-time-types``,
    ``--allow-ref-to``, ``--allow-reference-to``, ``--allow-ref-arithmetic``,
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
@@ -77,9 +79,11 @@ Supported Dialects
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
-   runtime, so it uses an Edition 2 base (identifiers like
-   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
-   preserved) and enables the extensions TwinCAT shares with CODESYS,
+   runtime, so it uses an Edition 2 base and enables the long-time-type
+   keywords
+   (:doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>`, etc.)
+   along with the extensions TwinCAT shares with CODESYS,
    such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
    short-circuit operator. Unlike ``codesys``, it does **not** enable the
    ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
@@ -94,6 +98,7 @@ Supported Dialects
    **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
    ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
+   ``--allow-long-time-types``,
    ``--allow-reference-to``, ``--allow-int-to-bool-initializer``,
    ``--allow-sizeof``, ``--allow-cross-family-widening``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,

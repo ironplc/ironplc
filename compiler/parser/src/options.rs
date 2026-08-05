@@ -252,7 +252,7 @@ define_compiler_options! {
 
     "Allow IEC 61131-3:2013 long-time-type keywords (LTIME, LDATE, LTOD, LDT)",
     "--allow-long-time-types",
-    [Iec61131_3Ed3],
+    [Iec61131_3Ed3, Codesys, TwinCat],
     allow_long_time_types,
 
     "Allow REF_TO, REF(), and NULL (standardized in IEC 61131-3:2013)",
@@ -411,9 +411,7 @@ mod tests {
 
     /// IEC 61131-3 Ed. 3 is a preset assembled from the descriptors tagged with
     /// `Iec61131_3Ed3`: the long-time-type keywords, the `REF_TO`/`REF`/`NULL`
-    /// reference keywords, and partial-access syntax. There is no longer a
-    /// separate coarse edition boolean -- the edition is exactly its descriptor
-    /// set.
+    /// reference keywords, and partial-access syntax.
     #[test]
     fn ed3_dialect_enables_edition3_descriptors() {
         assert_enabled_flags(
@@ -461,10 +459,13 @@ mod tests {
         );
     }
 
-    /// The CODESYS dialect matches RuSTy except it does *not* bind the
-    /// `__SYSTEM_UP_TIME` globals (`allow_system_uptime_global`), which are an
-    /// IronPLC/RuSTy runtime convention rather than a CODESYS feature. Listed
-    /// explicitly so that omission is asserted rather than assumed.
+    /// The CODESYS dialect is close to RuSTy, with two differences: it does
+    /// *not* bind the `__SYSTEM_UP_TIME` globals (`allow_system_uptime_global`),
+    /// which are an IronPLC/RuSTy runtime convention rather than a CODESYS
+    /// feature, and it *does* enable `allow_long_time_types` (CODESYS supports
+    /// the LTIME/LDATE/LTOD/LDT keywords, whereas RuSTy keeps them as
+    /// identifiers for OSCAT). Listed explicitly so each divergence is asserted
+    /// rather than assumed.
     #[test]
     fn codesys_dialect_enables_exactly_these_flags() {
         assert_enabled_flags(
@@ -476,6 +477,7 @@ mod tests {
                 "allow_constant_type_params",
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
+                "allow_long_time_types",
                 "allow_ref_to",
                 "allow_reference_to",
                 "allow_ref_arithmetic",
@@ -504,8 +506,9 @@ mod tests {
     /// of `allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`,
     /// or `allow_ref_type_punning` are enabled -- enabling those would accept
     /// `REF_TO` code that TwinCAT itself rejects. (Pointer types `POINTER TO`
-    /// with `ADR()` are not parsed yet.) Listed explicitly so an accidental
-    /// divergence from the intended set is caught.
+    /// with `ADR()` are not parsed yet.) It does enable `allow_long_time_types`,
+    /// since TwinCAT supports the LTIME/LDATE/LTOD/LDT keywords. Listed
+    /// explicitly so an accidental divergence from the intended set is caught.
     #[test]
     fn twincat_dialect_enables_exactly_these_flags() {
         assert_enabled_flags(
@@ -517,6 +520,7 @@ mod tests {
                 "allow_constant_type_params",
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
+                "allow_long_time_types",
                 "allow_reference_to",
                 "allow_int_to_bool_initializer",
                 "allow_sizeof",

@@ -100,14 +100,14 @@ struct FileArgs {
     allow_c_style_comments: bool,
 
     /// Allow the IEC 61131-3:2013 long-time-type keywords (LTIME, LDATE, LTOD,
-    /// LDT). Enabled by `--dialect=iec61131-3-ed3`.
+    /// LDT). Without this flag those words remain available as identifiers.
     #[arg(long)]
     allow_long_time_types: bool,
 
     /// Allow REF_TO, REF(), and NULL syntax (standardized in IEC 61131-3:2013)
     /// without enabling the rest of Edition 3. This is useful for libraries like
     /// OSCAT that use references but also use Edition 3 type names (LDT, LTIME)
-    /// as identifiers. Enabled by `--dialect=iec61131-3-ed3`.
+    /// as identifiers.
     #[arg(long)]
     allow_ref_to: bool,
 
