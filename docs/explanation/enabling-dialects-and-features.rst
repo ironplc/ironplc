@@ -28,7 +28,8 @@ Supported Dialects
    :doc:`REF </reference/language/data-types/derived/reference-types>`, and
    :doc:`NULL </reference/language/data-types/derived/reference-types>`. No extensions.
 
-   **Enables:** Edition 3 keywords, plus ``--allow-partial-access-syntax``.
+   **Enables:** ``--allow-long-time-types`` and ``--allow-ref-to`` (the
+   Edition 3 keywords), plus ``--allow-partial-access-syntax``.
 
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
@@ -51,10 +52,11 @@ Supported Dialects
    ``--allow-fb-inheritance``.
 
 **codesys**
-   CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
-   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
-   preserved) and enables
-   :doc:`REF_TO </reference/language/data-types/derived/reference-types>`
+   CODESYS-compatible dialect. Uses Edition 2 as a base and enables the
+   long-time-type keywords
+   (:doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>`, etc.)
+   and :doc:`REF_TO </reference/language/data-types/derived/reference-types>`
    together with the extensions that the CODESYS IDE accepts. The
    implicit :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound under this dialect, since they are an IronPLC
@@ -63,6 +65,7 @@ Supported Dialects
    **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
    ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
+   ``--allow-long-time-types``,
    ``--allow-ref-to``, ``--allow-reference-to``, ``--allow-ref-arithmetic``,
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
@@ -76,9 +79,11 @@ Supported Dialects
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
-   runtime, so it uses an Edition 2 base (identifiers like
-   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
-   preserved) and enables the extensions TwinCAT shares with CODESYS,
+   runtime, so it uses an Edition 2 base and enables the long-time-type
+   keywords
+   (:doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>`, etc.)
+   along with the extensions TwinCAT shares with CODESYS,
    such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
    short-circuit operator. Unlike ``codesys``, it does **not** enable the
    ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
@@ -93,6 +98,7 @@ Supported Dialects
    **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
    ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
+   ``--allow-long-time-types``,
    ``--allow-reference-to``, ``--allow-int-to-bool-initializer``,
    ``--allow-sizeof``, ``--allow-cross-family-widening``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
@@ -192,10 +198,21 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    Required for OSCAT compatibility where ``TIME()`` reads the PLC system
    clock.
 
+``--allow-long-time-types``
+   Allow the IEC 61131-3:2013 long-time-type keywords
+   :doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDATE </reference/language/data-types/elementary/ldate>`,
+   :doc:`LTIME_OF_DAY </reference/language/data-types/elementary/ltime-of-day>`
+   (``LTOD``), and
+   :doc:`LDATE_AND_TIME </reference/language/data-types/elementary/ldate-and-time>`
+   (``LDT``). Without this flag those words remain available as ordinary
+   identifiers, so Edition 2 code may use them as names.
+
 ``--allow-ref-to``
-   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
-   Edition 3. This is useful when you need references but want to keep
-   Edition 2 keyword handling for the rest of your code. See
+   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax (standardized in
+   IEC 61131-3:2013) without enabling the rest of Edition 3. This is useful
+   when you need references but want to keep Edition 2 keyword handling for the
+   rest of your code. See
    :doc:`/reference/language/data-types/derived/reference-types`.
 
 ``--allow-reference-to``

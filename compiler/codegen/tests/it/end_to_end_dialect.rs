@@ -5,7 +5,9 @@
 //! as identifiers while still supporting REF_TO syntax.
 
 use crate::common::{parse, parse_and_run};
+use ironplc_dsl::core::FileId;
 use ironplc_parser::options::{CompilerOptions, Dialect};
+use ironplc_parser::parse_program;
 
 #[test]
 fn end_to_end_when_rusty_dialect_then_ldt_usable_as_variable_name() {
@@ -85,9 +87,9 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_codesys_dialect_then_ldt_usable_as_variable_name() {
-    // The CODESYS dialect uses an Edition 2 base, so LDT remains usable as
-    // an identifier.
+fn end_to_end_when_codesys_dialect_then_ldt_is_reserved_keyword() {
+    // The CODESYS dialect enables the long-time-type keywords, so LDT is
+    // reserved and cannot be used as an ordinary variable name.
     let source = "
 PROGRAM main
 VAR
@@ -97,10 +99,15 @@ END_VAR
     result := LDT;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
-    // CODESYS does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
-    // user variables start at index 0: LDT=0, result=1.
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    let result = parse_program(
+        source,
+        &FileId::default(),
+        &CompilerOptions::from_dialect(Dialect::Codesys),
+    );
+    assert!(
+        result.is_err(),
+        "LDT should be a reserved keyword under the CODESYS dialect"
+    );
 }
 
 #[test]
@@ -140,9 +147,9 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_twincat_dialect_then_ldt_usable_as_variable_name() {
-    // The TwinCAT dialect uses an Edition 2 base, so LDT remains usable as
-    // an identifier.
+fn end_to_end_when_twincat_dialect_then_ldt_is_reserved_keyword() {
+    // The TwinCAT dialect enables the long-time-type keywords, so LDT is
+    // reserved and cannot be used as an ordinary variable name.
     let source = "
 PROGRAM main
 VAR
@@ -152,10 +159,15 @@ END_VAR
     result := LDT;
 END_PROGRAM
 ";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::TwinCat));
-    // TwinCAT does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
-    // user variables start at index 0: LDT=0, result=1.
-    assert_eq!(bufs.vars[1].as_i32(), 42);
+    let result = parse_program(
+        source,
+        &FileId::default(),
+        &CompilerOptions::from_dialect(Dialect::TwinCat),
+    );
+    assert!(
+        result.is_err(),
+        "LDT should be a reserved keyword under the TwinCAT dialect"
+    );
 }
 
 #[test]

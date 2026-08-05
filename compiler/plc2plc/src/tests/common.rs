@@ -3,7 +3,7 @@ pub(crate) use std::path::PathBuf;
 
 pub(crate) use dsl::core::FileId;
 
-pub(crate) use ironplc_parser::options::CompilerOptions;
+pub(crate) use ironplc_parser::options::{CompilerOptions, Dialect};
 pub(crate) use ironplc_parser::parse_program;
 pub(crate) use ironplc_test::read_shared_resource;
 
@@ -35,19 +35,13 @@ pub(crate) fn parse_and_render_resource_with_partial_access(name: &'static str) 
 
 pub(crate) fn parse_and_render_resource_edition3(name: &'static str) -> String {
     let source = read_shared_resource(name);
-    let options = CompilerOptions {
-        allow_iec_61131_3_2013: true,
-        ..CompilerOptions::default()
-    };
+    let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
     let library = parse_program(&source, &FileId::default(), &options).unwrap();
     write_to_string(&library).unwrap()
 }
 
 pub(crate) fn parse_and_render_edition3(source: &str) -> String {
-    let options = CompilerOptions {
-        allow_iec_61131_3_2013: true,
-        ..CompilerOptions::default()
-    };
+    let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
     let library = parse_program(source, &FileId::default(), &options).unwrap();
     write_to_string(&library).unwrap()
 }

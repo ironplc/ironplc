@@ -832,7 +832,8 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_time_types);
+        assert!(options.allow_ref_to);
     }
 
     #[test]
@@ -854,7 +855,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
     }
 
     #[test]
@@ -876,7 +877,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
         assert!(options.allow_ref_to);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_missing_semicolon);
@@ -901,7 +902,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_time_types);
         assert!(options.allow_ref_to);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_sizeof);
@@ -928,7 +929,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_time_types);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_pragmas);
         assert!(options.allow_short_circuit_operators);
@@ -962,7 +963,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
     }
 
     #[test]

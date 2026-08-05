@@ -59,10 +59,7 @@ pub(crate) fn with_empty_var_blocks_flag() -> CompilerOptions {
 }
 
 pub(crate) fn parse_text_edition3(source: &str) -> Library {
-    let options = CompilerOptions {
-        allow_iec_61131_3_2013: true,
-        ..CompilerOptions::default()
-    };
+    let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
     let result = parse_program(source, &FileId::default(), &options);
     assert!(result.is_ok(), "Parse failed: {:?}", result.err());
     result.unwrap()
