@@ -37,6 +37,12 @@ lint:
 dupes:
   cargo dupes check --max-exact-percent 10 --max-near-percent 5 --exclude-tests --min-lines 10
 
+# Report duplication including test code (informational only; does not gate CI).
+# The blocking `dupes` recipe above uses `--exclude-tests`, so test duplication is
+# otherwise unmeasured. Use this to track redundancy-reduction progress in tests.
+dupes-tests:
+  cargo dupes check --max-exact-percent 100 --max-near-percent 100 --min-lines 10
+
 # Set the version number for this component.
 version version:
   cargo release version {{version}} --execute --no-confirm
