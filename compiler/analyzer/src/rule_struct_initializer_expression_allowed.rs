@@ -126,7 +126,7 @@ END_PROGRAM";
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&library, &context, &opts_ref_to());
 
-        let diagnostics = result.expect_err("expression-valued struct init must be flagged");
+        let diagnostics = result.unwrap_err();
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(
             diagnostics[0].code,

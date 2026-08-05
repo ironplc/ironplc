@@ -26,8 +26,8 @@ fn all_spec_requirements_have_tests() {
 }
 
 fn render(source: &str, options: &CompilerOptions) -> String {
-    let library = parse_program(source, &FileId::default(), options).expect("program parses");
-    write_to_string(&library).expect("library renders")
+    let library = parse_program(source, &FileId::default(), options).unwrap();
+    write_to_string(&library).unwrap()
 }
 
 fn reference_to_options() -> CompilerOptions {

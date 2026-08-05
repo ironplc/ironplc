@@ -426,12 +426,9 @@ mod tests {
         // The `enum` array must list exactly the dialect cli_names, in order.
         let enum_values: Vec<&str> = dialect["enum"]
             .as_array()
-            .expect("ironplc.dialect.enum must be an array")
+            .unwrap()
             .iter()
-            .map(|v| {
-                v.as_str()
-                    .expect("ironplc.dialect.enum entries must be strings")
-            })
+            .map(|v| v.as_str().unwrap())
             .collect();
         assert_eq!(
             enum_values, expected_names,
@@ -454,9 +451,7 @@ mod tests {
         }
 
         // The prose description must mention every dialect by cli_name.
-        let markdown = dialect["markdownDescription"]
-            .as_str()
-            .expect("ironplc.dialect.markdownDescription must be a string");
+        let markdown = dialect["markdownDescription"].as_str().unwrap();
         for name in &expected_names {
             assert!(
                 markdown.contains(name),

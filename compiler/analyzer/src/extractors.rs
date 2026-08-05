@@ -280,9 +280,8 @@ mod tests {
     fn analyze_source(source: &str) -> SemanticContext {
         let options = CompilerOptions::default();
         let file_id = FileId::from_string("test.st");
-        let library =
-            ironplc_parser::parse_program(source, &file_id, &options).expect("parse failed");
-        let (_lib, ctx) = analyze(&[&library], &options).expect("semantic analysis failed");
+        let library = ironplc_parser::parse_program(source, &file_id, &options).unwrap();
+        let (_lib, ctx) = analyze(&[&library], &options).unwrap();
         ctx
     }
 
@@ -353,15 +352,12 @@ mod tests {
             "FUNCTION_BLOCK fb\nVAR_INPUT i : INT; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM p\nVAR inst : fb; END_VAR\nEND_PROGRAM",
         );
         let fbs = ctx.function_blocks();
-        let fb = fbs
-            .iter()
-            .find(|f| f.name.to_string() == "fb")
-            .expect("fb missing");
+        let fb = fbs.iter().find(|f| f.name.to_string() == "fb").unwrap();
         let input = fb
             .variables
             .iter()
             .find(|v| v.name.to_string() == "i")
-            .expect("input missing");
+            .unwrap();
         assert_eq!(input.direction, VariableDirection::In);
     }
 
@@ -374,8 +370,8 @@ mod tests {
         let f = funcs
             .iter()
             .find(|fv| fv.signature.name.to_string() == "f")
-            .expect("function f missing");
-        let return_type = f.return_type_name().expect("return type missing");
+            .unwrap();
+        let return_type = f.return_type_name().unwrap();
         assert_eq!(return_type.to_string().to_uppercase(), "INT");
         let params: Vec<_> = f.parameters().collect();
         assert_eq!(params.len(), 1);
@@ -396,7 +392,7 @@ mod tests {
         let t = types
             .iter()
             .find(|t| t.name.to_string().to_lowercase() == "myenum")
-            .expect("MyEnum missing");
+            .unwrap();
         assert_eq!(t.kind, TypeSymbolKind::Enumeration);
     }
 

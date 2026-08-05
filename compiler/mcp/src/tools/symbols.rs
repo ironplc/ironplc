@@ -381,12 +381,8 @@ mod tests {
             .function_blocks
             .iter()
             .find(|fb| fb.name == "fb")
-            .expect("fb not found");
-        let var = fb
-            .variables
-            .iter()
-            .find(|v| v.name == "x")
-            .expect("x not found");
+            .unwrap();
+        let var = fb.variables.iter().find(|v| v.name == "x").unwrap();
         assert_eq!(var.direction, "In");
         assert!(var.external);
     }
@@ -430,11 +426,7 @@ mod tests {
         }];
         let resp = build_response(&sources, &ed2_options(), None);
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-        let t = resp
-            .types
-            .iter()
-            .find(|t| t.name == "MyEnum")
-            .expect("MyEnum not found");
+        let t = resp.types.iter().find(|t| t.name == "MyEnum").unwrap();
         assert_eq!(t.kind, "enumeration");
     }
 

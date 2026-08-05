@@ -399,8 +399,8 @@ fn tools_list_when_parsed_then_no_tool_uses_boolean_property_schema(
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .find_map(|message| message.get("result").and_then(|r| r.get("tools").cloned()))
-        .expect("a tools/list response carrying a `tools` array");
-    let tools = tools.as_array().expect("`tools` is an array");
+        .unwrap();
+    let tools = tools.as_array().unwrap();
     assert!(!tools.is_empty(), "expected at least one advertised tool");
     for tool in tools {
         let name = tool

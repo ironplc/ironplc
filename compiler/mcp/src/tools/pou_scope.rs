@@ -275,20 +275,12 @@ mod tests {
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
         assert_eq!(resp.pou, "p");
-        let start = resp
-            .variables
-            .iter()
-            .find(|v| v.name == "start")
-            .expect("start not found");
+        let start = resp.variables.iter().find(|v| v.name == "start").unwrap();
         assert_eq!(start.type_name.to_uppercase(), "BOOL");
         assert_eq!(start.direction, "In");
         assert_eq!(start.initial_value.as_deref(), Some("FALSE"));
 
-        let count = resp
-            .variables
-            .iter()
-            .find(|v| v.name == "count")
-            .expect("count not found");
+        let count = resp.variables.iter().find(|v| v.name == "count").unwrap();
         assert_eq!(count.type_name.to_uppercase(), "DINT");
         assert_eq!(count.direction, "Local");
         assert_eq!(count.initial_value.as_deref(), Some("0"));
@@ -301,11 +293,7 @@ mod tests {
             "p",
         );
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-        let entry = resp
-            .variables
-            .iter()
-            .find(|v| v.name == "run")
-            .expect("run not found");
+        let entry = resp.variables.iter().find(|v| v.name == "run").unwrap();
         assert_eq!(entry.direction, "Out");
         assert_eq!(entry.initial_value, None);
     }
@@ -318,11 +306,7 @@ mod tests {
         );
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
-        let entry = resp
-            .variables
-            .iter()
-            .find(|v| v.name == "c")
-            .expect("c not found");
+        let entry = resp.variables.iter().find(|v| v.name == "c").unwrap();
         assert_eq!(entry.direction, "InOut");
     }
 
@@ -355,11 +339,7 @@ mod tests {
             "fb",
         );
         assert!(resp.found);
-        let entry = resp
-            .variables
-            .iter()
-            .find(|v| v.name == "x")
-            .expect("x not found");
+        let entry = resp.variables.iter().find(|v| v.name == "x").unwrap();
         assert_eq!(entry.type_name.to_uppercase(), "INT");
         assert_eq!(entry.direction, "In");
         assert_eq!(entry.initial_value.as_deref(), Some("5"));
@@ -372,11 +352,7 @@ mod tests {
             "f",
         );
         assert!(resp.found, "diagnostics: {:?}", resp.diagnostics);
-        let entry = resp
-            .variables
-            .iter()
-            .find(|v| v.name == "a")
-            .expect("a not found");
+        let entry = resp.variables.iter().find(|v| v.name == "a").unwrap();
         assert_eq!(entry.type_name.to_uppercase(), "INT");
         assert_eq!(entry.direction, "In");
     }
