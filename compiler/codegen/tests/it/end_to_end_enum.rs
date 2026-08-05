@@ -179,7 +179,7 @@ END_PROGRAM
         .enum_defs
         .iter()
         .find(|e| e.type_name == "COLOR")
-        .expect("COLOR enum def should be present");
+        .unwrap();
     assert_eq!(color_def.values, vec!["RED", "GREEN", "BLUE"]);
 }
 

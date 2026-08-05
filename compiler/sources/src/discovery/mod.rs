@@ -837,7 +837,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = discover(dir.path()).expect("missing entries must not abort discovery itself");
+        let result = discover(dir.path()).unwrap();
         assert_eq!(result.errors.len(), 1);
     }
 

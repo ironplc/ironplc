@@ -124,8 +124,7 @@ PROGRAM main
   c();
 END_PROGRAM
 ";
-    let _ = crate::common::try_parse_and_compile(source, &CompilerOptions::default())
-        .expect("FB calling user function should compile");
+    let _ = crate::common::try_parse_and_compile(source, &CompilerOptions::default()).unwrap();
 }
 
 // Mirror of the DOUBLER test using dot-access instead of `Q => result`.

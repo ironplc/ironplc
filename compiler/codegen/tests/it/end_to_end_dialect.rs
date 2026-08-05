@@ -5,7 +5,9 @@
 //! as identifiers while still supporting REF_TO syntax.
 
 use crate::common::{parse, parse_and_run};
+use ironplc_dsl::core::FileId;
 use ironplc_parser::options::{CompilerOptions, Dialect};
+use ironplc_parser::parse_program;
 
 // In the RuSTy dialect, LDT is demoted to an identifier so it can be
 // used as a variable name (as OSCAT libraries do).
@@ -58,16 +60,29 @@ END_PROGRAM
     // If we get here, parsing and type resolution succeeded.
 }
 
-// The CODESYS dialect uses an Edition 2 base, so LDT remains usable as
-// an identifier.
-// CODESYS does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
-// user variables start at index 0: LDT=0, result=1.
-e2e_i32_with!(
-    end_to_end_when_codesys_dialect_then_ldt_usable_as_variable_name,
-    CompilerOptions::from_dialect(Dialect::Codesys),
-    "PROGRAM main VAR LDT : DINT := 42; result : DINT; END_VAR result := LDT; END_PROGRAM",
-    &[(1, 42)],
-);
+#[test]
+fn end_to_end_when_codesys_dialect_then_ldt_is_reserved_keyword() {
+    // The CODESYS dialect enables the long-time-type keywords, so LDT is
+    // reserved and cannot be used as an ordinary variable name.
+    let source = "
+PROGRAM main
+VAR
+    LDT : DINT := 42;
+    result : DINT;
+END_VAR
+    result := LDT;
+END_PROGRAM
+";
+    let result = parse_program(
+        source,
+        &FileId::default(),
+        &CompilerOptions::from_dialect(Dialect::Codesys),
+    );
+    assert!(
+        result.is_err(),
+        "LDT should be a reserved keyword under the CODESYS dialect"
+    );
+}
 
 // The CODESYS dialect enables REF_TO.
 // var layout: counter=0, r=1, result=2
@@ -98,16 +113,29 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32(), 4);
 }
 
-// The TwinCAT dialect uses an Edition 2 base, so LDT remains usable as
-// an identifier.
-// TwinCAT does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
-// user variables start at index 0: LDT=0, result=1.
-e2e_i32_with!(
-    end_to_end_when_twincat_dialect_then_ldt_usable_as_variable_name,
-    CompilerOptions::from_dialect(Dialect::TwinCat),
-    "PROGRAM main VAR LDT : DINT := 42; result : DINT; END_VAR result := LDT; END_PROGRAM",
-    &[(1, 42)],
-);
+#[test]
+fn end_to_end_when_twincat_dialect_then_ldt_is_reserved_keyword() {
+    // The TwinCAT dialect enables the long-time-type keywords, so LDT is
+    // reserved and cannot be used as an ordinary variable name.
+    let source = "
+PROGRAM main
+VAR
+    LDT : DINT := 42;
+    result : DINT;
+END_VAR
+    result := LDT;
+END_PROGRAM
+";
+    let result = parse_program(
+        source,
+        &FileId::default(),
+        &CompilerOptions::from_dialect(Dialect::TwinCat),
+    );
+    assert!(
+        result.is_err(),
+        "LDT should be a reserved keyword under the TwinCAT dialect"
+    );
+}
 
 // Curly-brace pragmas ({attribute '...'}) appear in virtually every
 // TwinCAT source file. The TwinCAT dialect skips them as opaque trivia so

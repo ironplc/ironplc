@@ -673,20 +673,16 @@ mod test {
 
         fn receive_response<T: DeserializeOwned>(&mut self, request_id: RequestId) -> T {
             self.receive();
-            let response = self.responses.get(&request_id).expect("No request");
+            let response = self.responses.get(&request_id).unwrap();
             // `response_result` is `Ok(value)` for a successful response and
             // `Err(..)` for a failure, so `expect` asserts success here.
-            let result = response
-                .response_result
-                .as_ref()
-                .expect("Expected successful response")
-                .clone();
+            let result = response.response_result.as_ref().unwrap().clone();
             serde_json::from_value::<T>(result).unwrap()
         }
 
         fn receive_notification<T: DeserializeOwned>(&mut self) -> T {
             self.receive();
-            let notification = self.notifications.pop().expect("Must have notification");
+            let notification = self.notifications.pop().unwrap();
             serde_json::from_value::<T>(notification.params).unwrap()
         }
 
@@ -836,7 +832,8 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_time_types);
+        assert!(options.allow_ref_to);
     }
 
     #[test]
@@ -858,7 +855,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
     }
 
     #[test]
@@ -880,7 +877,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
         assert!(options.allow_ref_to);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_missing_semicolon);
@@ -905,7 +902,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_time_types);
         assert!(options.allow_ref_to);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_sizeof);
@@ -932,7 +929,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(options.allow_long_time_types);
         assert!(options.allow_c_style_comments);
         assert!(options.allow_pragmas);
         assert!(options.allow_short_circuit_operators);
@@ -966,7 +963,7 @@ mod test {
         };
 
         let options = super::extract_compiler_options(&params);
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
     }
 
     #[test]

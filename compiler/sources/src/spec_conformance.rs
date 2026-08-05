@@ -74,9 +74,7 @@ fn sources_spec_req_lf_001_package_layout_is_read() {
     );
 
     let registry = LibraryRegistry::with_root(dir.path());
-    let loaded = registry
-        .load(&LibraryName::from("Fixture"))
-        .expect("package loads");
+    let loaded = registry.load(&LibraryName::from("Fixture")).unwrap();
     // The declaration in the version subdirectory's `.st` file was read.
     assert!(declares_pi(&loaded.library));
 }
@@ -91,7 +89,7 @@ fn sources_spec_req_lf_002_manifest_declares_identity() {
         "name = \"Tc2_System\"\nvendor = \"Beckhoff Automation GmbH\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n",
         &file_id,
     )
-    .expect("valid manifest parses");
+    .unwrap();
     assert_eq!(manifest.name, "Tc2_System");
     assert_eq!(manifest.vendor, "Beckhoff Automation GmbH");
     assert_eq!(manifest.default_version, "1.0.0");
@@ -101,7 +99,7 @@ fn sources_spec_req_lf_002_manifest_declares_identity() {
         "name = \"Tc2_System\"\nvendor = \"Beckhoff Automation GmbH\"\nreferences = [\"https://example.com\"]\n",
         &file_id,
     )
-    .expect_err("missing field is rejected");
+    .unwrap_err();
     assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
 }
 
@@ -114,7 +112,7 @@ fn sources_spec_req_lf_004_manifest_records_references() {
         "name = \"Tc2_System\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com/a\", \"https://example.com/b\"]\n",
         &file_id,
     )
-    .expect("valid manifest parses");
+    .unwrap();
     assert_eq!(manifest.references.len(), 2);
 
     // An empty `references` list is rejected.
@@ -122,7 +120,7 @@ fn sources_spec_req_lf_004_manifest_records_references() {
         "name = \"Tc2_System\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = []\n",
         &file_id,
     )
-    .expect_err("empty references is rejected");
+    .unwrap_err();
     assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
 }
 
@@ -146,9 +144,7 @@ fn sources_spec_req_cl_002_loader_validates_manifest_identity() {
     .unwrap();
 
     let registry = LibraryRegistry::with_root(dir.path());
-    let err = registry
-        .load(&LibraryName::from("Bad"))
-        .expect_err("invalid manifest is rejected on load");
+    let err = registry.load(&LibraryName::from("Bad")).unwrap_err();
     assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
 }
 
@@ -233,7 +229,7 @@ fn sources_spec_req_cl_001_reads_plcproj_library_references() {
     )
     .unwrap();
 
-    let discovered = discover(dir.path()).expect("discovery succeeds");
+    let discovered = discover(dir.path()).unwrap();
 
     // Both vendor references are read; the system library is skipped.
     let names: Vec<&str> = discovered
@@ -341,6 +337,34 @@ fn sources_spec_req_cl_004_diagnoses_unshipped_library() {
 /// REQ-CL-sources-007: The manifest records the public references the library
 /// was authored from (a non-empty `references` list), enforced as a provenance
 /// conformance test that walks every bundled manifest.
+///
+/// This is the machine-checkable half of the authoring policy in
+/// `specs/steering/compatibility-library-authoring.md`: every bundled library
+/// must record a factual, non-empty list of the public references it was
+/// authored from. The human-only half (no forbidden input was used, clearance
+/// was performed) stays a reviewer responsibility.
 #[spec_test(REQ_CL_sources_007)]
-#[ignore = "phase 4: provenance walk over every bundled manifest"]
-fn sources_spec_req_cl_007_provenance_references_recorded() {}
+fn sources_spec_req_cl_007_provenance_references_recorded() {
+    let registry = LibraryRegistry::bundled();
+    let names = registry.library_names();
+
+    // There is at least one bundled library to vouch for (guards against the
+    // walk silently passing over an empty or misrooted registry).
+    assert!(
+        !names.is_empty(),
+        "expected at least one bundled compatibility library"
+    );
+
+    for name in &names {
+        // Loading validates the manifest is well-formed (`from_toml` rejects a
+        // malformed or field-missing manifest) and, in particular, that its
+        // `references` list is non-empty.
+        let loaded = registry.load(name).unwrap_or_else(|diagnostic| {
+            panic!("bundled library `{name}` must load: {diagnostic:?}")
+        });
+        assert!(
+            !loaded.manifest.references.is_empty(),
+            "bundled library `{name}` must record a non-empty `references` list"
+        );
+    }
+}

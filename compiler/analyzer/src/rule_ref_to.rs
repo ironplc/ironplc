@@ -407,21 +407,19 @@ impl Visitor<Diagnostic> for RuleRefTo<'_> {
 mod tests {
     use crate::stages::analyze;
     use ironplc_dsl::core::FileId;
-    use ironplc_parser::{options::CompilerOptions, parse_program};
+    use ironplc_parser::{
+        options::{CompilerOptions, Dialect},
+        parse_program,
+    };
 
     fn edition3_options() -> CompilerOptions {
-        CompilerOptions {
-            allow_iec_61131_3_2013: true,
-            ..CompilerOptions::default()
-        }
+        CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3)
     }
 
     fn ref_arithmetic_options() -> CompilerOptions {
-        CompilerOptions {
-            allow_iec_61131_3_2013: true,
-            allow_ref_arithmetic: true,
-            ..CompilerOptions::default()
-        }
+        let mut options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
+        options.allow_ref_arithmetic = true;
+        options
     }
 
     fn parse_with_options(program: &str, options: &CompilerOptions) -> Result<(), String> {
@@ -787,7 +785,7 @@ END_PROGRAM",
     #[test]
     fn ref_when_allow_ref_stack_variables_and_function_var_input_then_ok() {
         let options = CompilerOptions {
-            allow_iec_61131_3_2013: true,
+            allow_ref_to: true,
             allow_ref_stack_variables: true,
             ..CompilerOptions::default()
         };
@@ -811,7 +809,7 @@ END_FUNCTION",
     #[test]
     fn ref_when_allow_ref_stack_variables_and_var_temp_then_ok() {
         let options = CompilerOptions {
-            allow_iec_61131_3_2013: true,
+            allow_ref_to: true,
             allow_ref_stack_variables: true,
             ..CompilerOptions::default()
         };
@@ -834,7 +832,7 @@ END_FUNCTION_BLOCK",
     #[test]
     fn assign_when_allow_ref_type_punning_and_types_incompatible_then_ok() {
         let options = CompilerOptions {
-            allow_iec_61131_3_2013: true,
+            allow_ref_to: true,
             allow_ref_type_punning: true,
             ..CompilerOptions::default()
         };
@@ -871,7 +869,7 @@ END_PROGRAM",
     #[test]
     fn assign_when_allow_ref_stack_variables_only_and_types_incompatible_then_error() {
         let options = CompilerOptions {
-            allow_iec_61131_3_2013: true,
+            allow_ref_to: true,
             allow_ref_stack_variables: true,
             ..CompilerOptions::default()
         };

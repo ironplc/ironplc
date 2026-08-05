@@ -15,6 +15,10 @@ compile:
   npx tsc -p tsconfig.worker.json
   cp posthog-init.js _build/
   cp *.html *.css *.txt *.xml _build/
+  # Serve the compatibility libraries as plain-text files and generate the
+  # fetch index the browser uses to activate a library (REQ-CL-playground-001).
+  cp -r ../compiler/sources/resources/libs _build/libs
+  node scripts/gen-libs-index.mjs _build
 
 # Run end-to-end tests (requires a compiled _build/)
 test: compile

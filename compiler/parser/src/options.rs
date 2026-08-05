@@ -157,9 +157,6 @@ macro_rules! define_compiler_options {
     ) => {
         #[derive(Debug, Default, Clone, Copy)]
         pub struct CompilerOptions {
-            /// When `true`, IEC 61131-3:2013 keywords (`LTIME`, `LDATE`,
-            /// `LTOD`, `LDT`, `REF_TO`, `REF`, `NULL`) are recognised.
-            pub allow_iec_61131_3_2013: bool,
             $(pub $flag_field: bool,)*
         }
 
@@ -170,9 +167,6 @@ macro_rules! define_compiler_options {
             /// additional extensions on top of the dialect.
             pub fn from_dialect(dialect: Dialect) -> Self {
                 let mut opts = Self::default();
-                if dialect == Dialect::Iec61131_3Ed3 {
-                    opts.allow_iec_61131_3_2013 = true;
-                }
                 $(
                     if [$(Dialect::$dialect),*].contains(&dialect) {
                         opts.$flag_field = true;
@@ -256,9 +250,14 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_time_as_function_name,
 
-    "Allow REF_TO, REF(), and NULL without full Edition 3",
+    "Allow IEC 61131-3:2013 long-time-type keywords (LTIME, LDATE, LTOD, LDT)",
+    "--allow-long-time-types",
+    [Iec61131_3Ed3, Codesys, TwinCat],
+    allow_long_time_types,
+
+    "Allow REF_TO, REF(), and NULL (standardized in IEC 61131-3:2013)",
     "--allow-ref-to",
-    [Rusty, Codesys],
+    [Rusty, Codesys, Iec61131_3Ed3],
     allow_ref_to,
 
     "Allow Beckhoff TwinCAT/CODESYS REFERENCE TO reference types and the REF= binding operator",
@@ -361,14 +360,9 @@ pub fn describe_dialects() -> String {
             .iter()
             .filter(|f| f.dialects.contains(dialect))
             .collect();
-        if features.is_empty() && *dialect != Dialect::Iec61131_3Ed3 {
+        if features.is_empty() {
             out.push_str("  (none)\n");
         } else {
-            if *dialect == Dialect::Iec61131_3Ed3 {
-                out.push_str(
-                    "  IEC 61131-3:2013 keywords (LTIME, LDATE, LTOD, LDT, REF_TO, REF, NULL)\n",
-                );
-            }
             for f in &features {
                 out.push_str(&format!("  {:<34} {}\n", f.cli_flag, f.description));
             }
@@ -412,16 +406,22 @@ mod tests {
     /// IEC 61131-3 Ed. 2 (the default) enables no extensions at all.
     #[test]
     fn ed2_dialect_enables_no_flags() {
-        assert!(!CompilerOptions::from_dialect(Dialect::Iec61131_3Ed2).allow_iec_61131_3_2013);
         assert_enabled_flags(Dialect::Iec61131_3Ed2, &[]);
     }
 
-    /// IEC 61131-3 Ed. 3 turns on the Edition-3 keyword set and, among dialect
-    /// extensions, only partial-access syntax (standardized in Edition 3).
+    /// IEC 61131-3 Ed. 3 is a preset assembled from the descriptors tagged with
+    /// `Iec61131_3Ed3`: the long-time-type keywords, the `REF_TO`/`REF`/`NULL`
+    /// reference keywords, and partial-access syntax.
     #[test]
-    fn ed3_dialect_enables_only_partial_access_syntax() {
-        assert!(CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3).allow_iec_61131_3_2013);
-        assert_enabled_flags(Dialect::Iec61131_3Ed3, &["allow_partial_access_syntax"]);
+    fn ed3_dialect_enables_edition3_descriptors() {
+        assert_enabled_flags(
+            Dialect::Iec61131_3Ed3,
+            &[
+                "allow_long_time_types",
+                "allow_ref_to",
+                "allow_partial_access_syntax",
+            ],
+        );
     }
 
     /// The RuSTy dialect stays on the Edition-2 keyword base and enables every
@@ -429,7 +429,6 @@ mod tests {
     /// is meant to be Rusty-only, or accidentally left off Rusty, is caught.
     #[test]
     fn rusty_dialect_enables_exactly_these_flags() {
-        assert!(!CompilerOptions::from_dialect(Dialect::Rusty).allow_iec_61131_3_2013);
         assert_enabled_flags(
             Dialect::Rusty,
             &[
@@ -460,13 +459,15 @@ mod tests {
         );
     }
 
-    /// The CODESYS dialect matches RuSTy except it does *not* bind the
-    /// `__SYSTEM_UP_TIME` globals (`allow_system_uptime_global`), which are an
-    /// IronPLC/RuSTy runtime convention rather than a CODESYS feature. Listed
-    /// explicitly so that omission is asserted rather than assumed.
+    /// The CODESYS dialect is close to RuSTy, with two differences: it does
+    /// *not* bind the `__SYSTEM_UP_TIME` globals (`allow_system_uptime_global`),
+    /// which are an IronPLC/RuSTy runtime convention rather than a CODESYS
+    /// feature, and it *does* enable `allow_long_time_types` (CODESYS supports
+    /// the LTIME/LDATE/LTOD/LDT keywords, whereas RuSTy keeps them as
+    /// identifiers for OSCAT). Listed explicitly so each divergence is asserted
+    /// rather than assumed.
     #[test]
     fn codesys_dialect_enables_exactly_these_flags() {
-        assert!(!CompilerOptions::from_dialect(Dialect::Codesys).allow_iec_61131_3_2013);
         assert_enabled_flags(
             Dialect::Codesys,
             &[
@@ -476,6 +477,7 @@ mod tests {
                 "allow_constant_type_params",
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
+                "allow_long_time_types",
                 "allow_ref_to",
                 "allow_reference_to",
                 "allow_ref_arithmetic",
@@ -504,11 +506,11 @@ mod tests {
     /// of `allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`,
     /// or `allow_ref_type_punning` are enabled -- enabling those would accept
     /// `REF_TO` code that TwinCAT itself rejects. (Pointer types `POINTER TO`
-    /// with `ADR()` are not parsed yet.) Listed explicitly so an accidental
-    /// divergence from the intended set is caught.
+    /// with `ADR()` are not parsed yet.) It does enable `allow_long_time_types`,
+    /// since TwinCAT supports the LTIME/LDATE/LTOD/LDT keywords. Listed
+    /// explicitly so an accidental divergence from the intended set is caught.
     #[test]
     fn twincat_dialect_enables_exactly_these_flags() {
-        assert!(!CompilerOptions::from_dialect(Dialect::TwinCat).allow_iec_61131_3_2013);
         assert_enabled_flags(
             Dialect::TwinCat,
             &[
@@ -518,6 +520,7 @@ mod tests {
                 "allow_constant_type_params",
                 "allow_empty_var_blocks",
                 "allow_time_as_function_name",
+                "allow_long_time_types",
                 "allow_reference_to",
                 "allow_int_to_bool_initializer",
                 "allow_sizeof",
@@ -552,7 +555,7 @@ mod tests {
     fn from_dialect_when_default_then_ed2() {
         let options = CompilerOptions::from_dialect(Dialect::default());
 
-        assert!(!options.allow_iec_61131_3_2013);
+        assert!(!options.allow_long_time_types);
         assert!(!options.allow_ref_to);
     }
 

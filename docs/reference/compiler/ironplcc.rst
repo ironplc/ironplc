@@ -128,10 +128,16 @@ Options
    Required for OSCAT compatibility. This is an extension not part
    of the IEC 61131-3 standard.
 
+``--allow-long-time-types``
+   Allow the IEC 61131-3:2013 long-time-type keywords ``LTIME``, ``LDATE``,
+   ``LTIME_OF_DAY`` (``LTOD``), and ``LDATE_AND_TIME`` (``LDT``). Without this
+   flag those words remain available as ordinary identifiers.
+
 ``--allow-ref-to``
-   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
-   Edition 3. This is an extension useful when you need references
-   but want to keep Edition 2 keyword handling for the rest of your code.
+   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax (standardized in
+   IEC 61131-3:2013) without enabling the rest of Edition 3. This is useful
+   when you need references but want to keep Edition 2 keyword handling for the
+   rest of your code.
 
 ``--allow-reference-to``
    Allow the Beckhoff TwinCAT / CODESYS ``REFERENCE TO`` reference type and the

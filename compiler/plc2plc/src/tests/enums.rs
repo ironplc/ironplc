@@ -17,8 +17,7 @@ END_TYPE
     assert!(rendered.contains("English := 2"));
 
     let library_rendered =
-        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
-            .expect("rendered output must parse");
+        parse_program(&rendered, &FileId::default(), &CompilerOptions::default()).unwrap();
     assert_eq!(library_original, library_rendered);
 }
 
@@ -36,8 +35,7 @@ END_TYPE
     assert!(rendered.contains("BYTE"));
 
     let library_rendered =
-        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
-            .expect("rendered output must parse");
+        parse_program(&rendered, &FileId::default(), &CompilerOptions::default()).unwrap();
     assert_eq!(library_original, library_rendered);
 }
 
@@ -66,7 +64,6 @@ END_FUNCTION_BLOCK
     assert!(rendered.contains("COLOR#RED"));
 
     let library_rendered =
-        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
-            .expect("rendered output must parse");
+        parse_program(&rendered, &FileId::default(), &CompilerOptions::default()).unwrap();
     assert_eq!(library_original, library_rendered);
 }

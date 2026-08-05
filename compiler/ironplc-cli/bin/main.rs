@@ -99,9 +99,15 @@ struct FileArgs {
     #[arg(long)]
     allow_c_style_comments: bool,
 
-    /// Allow REF_TO, REF(), and NULL syntax without enabling full Edition 3.
-    /// This is useful for libraries like OSCAT that use references but also
-    /// use Edition 3 type names (LDT, LTIME) as identifiers.
+    /// Allow the IEC 61131-3:2013 long-time-type keywords (LTIME, LDATE, LTOD,
+    /// LDT). Without this flag those words remain available as identifiers.
+    #[arg(long)]
+    allow_long_time_types: bool,
+
+    /// Allow REF_TO, REF(), and NULL syntax (standardized in IEC 61131-3:2013)
+    /// without enabling the rest of Edition 3. This is useful for libraries like
+    /// OSCAT that use references but also use Edition 3 type names (LDT, LTIME)
+    /// as identifiers.
     #[arg(long)]
     allow_ref_to: bool,
 
@@ -211,6 +217,7 @@ impl FileArgs {
         options.allow_empty_var_blocks |= self.allow_empty_var_blocks;
         options.allow_time_as_function_name |= self.allow_time_as_function_name;
         options.allow_c_style_comments |= self.allow_c_style_comments;
+        options.allow_long_time_types |= self.allow_long_time_types;
         options.allow_ref_to |= self.allow_ref_to;
         options.allow_reference_to |= self.allow_reference_to;
         options.allow_ref_arithmetic |= self.allow_ref_arithmetic;
@@ -419,12 +426,9 @@ mod tests {
         // The `enum` array must list exactly the dialect cli_names, in order.
         let enum_values: Vec<&str> = dialect["enum"]
             .as_array()
-            .expect("ironplc.dialect.enum must be an array")
+            .unwrap()
             .iter()
-            .map(|v| {
-                v.as_str()
-                    .expect("ironplc.dialect.enum entries must be strings")
-            })
+            .map(|v| v.as_str().unwrap())
             .collect();
         assert_eq!(
             enum_values, expected_names,
@@ -447,9 +451,7 @@ mod tests {
         }
 
         // The prose description must mention every dialect by cli_name.
-        let markdown = dialect["markdownDescription"]
-            .as_str()
-            .expect("ironplc.dialect.markdownDescription must be a string");
+        let markdown = dialect["markdownDescription"].as_str().unwrap();
         for name in &expected_names {
             assert!(
                 markdown.contains(name),

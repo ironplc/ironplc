@@ -509,7 +509,7 @@ mod test {
         );
 
         let result = project.semantic();
-        let diagnostics = result.expect_err("an unshipped library must produce a diagnostic");
+        let diagnostics = result.unwrap_err();
         assert!(
             diagnostics.iter().any(|d| d.code == "P6011"),
             "expected P6011 naming the missing library, got: {diagnostics:?}"
@@ -560,7 +560,7 @@ mod test {
         fn element_names(source_project: &mut SourceProject) -> Vec<String> {
             let (_, _, library) =
                 super::run_semantic_analysis(source_project, &CompilerOptions::default());
-            let library = library.expect("valid project must produce a merged library");
+            let library = library.unwrap();
             library
                 .elements
                 .iter()

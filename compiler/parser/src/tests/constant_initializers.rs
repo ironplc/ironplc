@@ -11,9 +11,7 @@ fn parse_when_negative_integer_initializer_then_parses_as_simple_not_simple_expr
     // handling rather than constant()'s built-in signed-literal
     // parsing. This must parse identically with or without the flag.
     let source = "PROGRAM main VAR x : INT := -123; END_VAR END_PROGRAM";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).expect(
-        "negative literal initializers must not require allow_constant_initializer_expressions",
-    );
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
 
     let program = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
     let simple = cast!(
@@ -31,9 +29,7 @@ fn parse_when_negative_integer_initializer_then_parses_as_simple_not_simple_expr
 #[test]
 fn parse_when_negative_real_initializer_then_parses_as_simple() {
     let source = "PROGRAM main VAR x : LREAL := -3.5; END_VAR END_PROGRAM";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).expect(
-        "negative real initializers must not require allow_constant_initializer_expressions",
-    );
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
 
     let program = cast!(&library.elements[0], LibraryElementKind::ProgramDeclaration);
     let simple = cast!(
