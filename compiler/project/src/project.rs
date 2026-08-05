@@ -462,6 +462,43 @@ mod test {
         );
     }
 
+    /// End-to-end (Phase 2): activation comes *only* from a discovered
+    /// `.plcproj`'s library reference -- no `--library` flag and no source-level
+    /// directive -- yet `PI` resolves and the initializer folds.
+    #[test]
+    fn semantic_when_plcproj_references_tc2_system_then_pi_resolves() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), PI_PROGRAM).unwrap();
+        fs::write(
+            dir.path().join("proj.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="main.st" />
+    <PlaceholderReference Include="Tc2_System">
+      <DefaultResolution>Tc2_System, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc2_System</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let mut project = FileBackedProject::with_options(library_options());
+        let errors = project.initialize(dir.path());
+        assert!(errors.is_empty(), "unexpected discovery errors: {errors:?}");
+
+        // The .plcproj reference alone activated Tc2_System.
+        let result = project.semantic();
+        assert!(
+            result.is_ok(),
+            "expected clean analysis, got: {:?}",
+            result.err()
+        );
+    }
+
     #[test]
     fn semantic_when_unshipped_library_activated_then_diagnostic() {
         let mut project = MemoryBackedProject::new(library_options());

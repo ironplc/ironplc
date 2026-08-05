@@ -21,8 +21,9 @@ use ironplc_problems::Problem;
 use spec_test_macro::spec_test;
 use tempfile::TempDir;
 
+use crate::discovery::discover;
 use crate::libraries::manifest::LibraryManifest;
-use crate::libraries::{LibraryName, LibraryRegistry};
+use crate::libraries::{LibraryName, LibraryReference, LibraryRegistry};
 use crate::SourceProject;
 
 #[test]
@@ -203,20 +204,139 @@ fn sources_spec_req_cl_006_explicit_activation_activates_library() {
 /// a discovered `.plcproj` project file's declared library references and
 /// activates the matching bundled libraries.
 #[spec_test(REQ_CL_sources_001)]
-#[ignore = "phase 2: reading library references from .plcproj"]
-fn sources_spec_req_cl_001_reads_plcproj_library_references() {}
+fn sources_spec_req_cl_001_reads_plcproj_library_references() {
+    let dir = TempDir::new().unwrap();
+    // A POU the project compiles, referenced by <Compile Include>.
+    fs::write(
+        dir.path().join("main.st"),
+        "FUNCTION_BLOCK FB END_FUNCTION_BLOCK",
+    )
+    .unwrap();
+    // A .plcproj declaring both reference shapes plus a skipped system library.
+    fs::write(
+        dir.path().join("proj.plcproj"),
+        r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="main.st" />
+    <PlaceholderReference Include="Tc2_System">
+      <DefaultResolution>Tc2_System, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc2_System</Namespace>
+    </PlaceholderReference>
+    <LibraryReference Include="Tc2_Utilities,3.3.7.0,Beckhoff Automation GmbH">
+      <Namespace>Tc2_Utilities</Namespace>
+    </LibraryReference>
+    <PlaceholderReference Include="VisuElems">
+      <SystemLibrary>true</SystemLibrary>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#,
+    )
+    .unwrap();
+
+    let discovered = discover(dir.path()).expect("discovery succeeds");
+
+    // Both vendor references are read; the system library is skipped.
+    let names: Vec<&str> = discovered
+        .library_references
+        .iter()
+        .map(|reference| reference.name.as_str())
+        .collect();
+    assert!(names.contains(&"Tc2_System"), "got: {names:?}");
+    assert!(names.contains(&"Tc2_Utilities"), "got: {names:?}");
+    assert!(
+        !names.contains(&"VisuElems"),
+        "system library must be skipped, got: {names:?}"
+    );
+
+    // The placeholder's Namespace and wildcard version were captured.
+    let placeholder = discovered
+        .library_references
+        .iter()
+        .find(|reference| reference.name.as_str() == "Tc2_System")
+        .unwrap();
+    assert_eq!(placeholder.namespace.as_deref(), Some("Tc2_System"));
+    assert_eq!(placeholder.version.as_deref(), Some("*"));
+
+    // The pinned LibraryReference's version was parsed from its Include field.
+    let pinned = discovered
+        .library_references
+        .iter()
+        .find(|reference| reference.name.as_str() == "Tc2_Utilities")
+        .unwrap();
+    assert_eq!(pinned.version.as_deref(), Some("3.3.7.0"));
+    assert_eq!(pinned.namespace.as_deref(), Some("Tc2_Utilities"));
+}
 
 /// REQ-CL-sources-003: Resolution from a project's library reference to a
 /// bundled library is by strict, case-sensitive name match.
 #[spec_test(REQ_CL_sources_003)]
-#[ignore = "phase 2: project reference -> bundled library name matching"]
-fn sources_spec_req_cl_003_reference_matched_by_strict_name() {}
+fn sources_spec_req_cl_003_reference_matched_by_strict_name() {
+    let dir = TempDir::new().unwrap();
+    write_library_package(
+        dir.path(),
+        "Tc2_System",
+        "VAR_GLOBAL CONSTANT PI : LREAL := 3.14; END_VAR",
+    );
+    let registry = LibraryRegistry::with_root(dir.path());
+    let declared_in = FileId::from_string("proj.plcproj");
+
+    let reference = |name: &str, version: &str| LibraryReference {
+        name: LibraryName::from(name),
+        version: Some(version.to_string()),
+        namespace: None,
+        declared_in: declared_in.clone(),
+    };
+
+    // A `*` version resolves to the single bundled version by name alone.
+    let (activated, diagnostics) = registry.resolve_references(&[reference("Tc2_System", "*")]);
+    assert_eq!(activated, [LibraryName::from("Tc2_System")]);
+    assert!(diagnostics.is_empty());
+
+    // A pinned version that differs from the bundled one still resolves: the
+    // version is not used to select a package (only the name is).
+    let (activated, diagnostics) =
+        registry.resolve_references(&[reference("Tc2_System", "9.9.9.9")]);
+    assert_eq!(activated, [LibraryName::from("Tc2_System")]);
+    assert!(diagnostics.is_empty());
+
+    // A differently-cased name does NOT match -- matching is case-sensitive.
+    let (activated, diagnostics) = registry.resolve_references(&[reference("tc2_system", "*")]);
+    assert!(activated.is_empty(), "case-insensitive match leaked in");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].code, Problem::LibraryNotFound.code());
+}
 
 /// REQ-CL-sources-004: If a project references a library IronPLC does not
 /// bundle, the compiler emits a diagnostic that names the missing library.
 #[spec_test(REQ_CL_sources_004)]
-#[ignore = "phase 2: diagnose a referenced-but-unshipped library"]
-fn sources_spec_req_cl_004_diagnoses_unshipped_library() {}
+fn sources_spec_req_cl_004_diagnoses_unshipped_library() {
+    let dir = TempDir::new().unwrap();
+    write_library_package(
+        dir.path(),
+        "Tc2_System",
+        "VAR_GLOBAL CONSTANT PI : LREAL := 3.14; END_VAR",
+    );
+    let registry = LibraryRegistry::with_root(dir.path());
+
+    let missing = LibraryReference {
+        name: LibraryName::from("Tc3_Module"),
+        version: Some("*".to_string()),
+        namespace: None,
+        declared_in: FileId::from_string("proj.plcproj"),
+    };
+    let (activated, diagnostics) = registry.resolve_references(&[missing]);
+
+    assert!(activated.is_empty());
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].code, Problem::LibraryNotFound.code());
+    // The diagnostic names the missing library so the resulting
+    // undefined-symbol errors are explained.
+    assert!(
+        diagnostics[0].primary.message.contains("Tc3_Module"),
+        "diagnostic must name the missing library: {}",
+        diagnostics[0].primary.message
+    );
+}
 
 /// REQ-CL-sources-007: The manifest records the public references the library
 /// was authored from (a non-empty `references` list), enforced as a provenance
