@@ -25,10 +25,11 @@ use crate::{
 /// The flag-gated groups:
 ///
 /// * **Long-time-type keywords** (`LTIME`, `LDATE`, `LTOD`, `LDT`) — demoted
-///   when Edition 3 mode is off (`!allow_iec_61131_3_2013`).
-/// * **Reference keywords** (`REF_TO`, `REF`, `NULL`) — demoted when *both*
-///   Edition 3 mode *and* `allow_ref_to` are off. This lets the RuSTy dialect
-///   enable `REF_TO` syntax while keeping `LDT` etc. available as identifiers.
+///   unless `allow_long_time_types` (standardized in IEC 61131-3:2013).
+/// * **Reference keywords** (`REF_TO`, `REF`, `NULL`) — demoted unless
+///   `allow_ref_to`. Because the long-time types and the reference keywords are
+///   now independent flags, the RuSTy dialect can enable `REF_TO` syntax while
+///   keeping `LDT` etc. available as identifiers.
 /// * **`REFERENCE`** — demoted unless `allow_reference_to` (TwinCAT/CODESYS
 ///   `REFERENCE TO`).
 /// * **OOP keywords** (`EXTENDS`, `IMPLEMENTS`, `INTERFACE`, `END_INTERFACE`,
@@ -38,8 +39,8 @@ use crate::{
 /// The context-sensitive `TIME` keyword is handled by [`apply_time`].
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     // Precompute each gate once. Demotion happens when the gate is `true`.
-    let demote_time_types = !options.allow_iec_61131_3_2013;
-    let demote_ref = !options.allow_iec_61131_3_2013 && !options.allow_ref_to;
+    let demote_time_types = !options.allow_long_time_types;
+    let demote_ref = !options.allow_ref_to;
     let demote_reference = !options.allow_reference_to;
     let demote_oop = !options.allow_fb_inheritance;
     let demote_and_then = !options.allow_short_circuit_operators;
@@ -155,16 +156,19 @@ mod tests {
         CompilerOptions::default()
     }
 
+    /// The Edition-3 keyword set: long-time types *and* the reference keywords
+    /// stay as keywords. With the coarse edition boolean gone, that is exactly
+    /// the two granular flags the Ed3 preset turns on.
     fn opts_edition3() -> CompilerOptions {
         CompilerOptions {
-            allow_iec_61131_3_2013: true,
+            allow_long_time_types: true,
+            allow_ref_to: true,
             ..CompilerOptions::default()
         }
     }
 
     fn opts_ref_to() -> CompilerOptions {
         CompilerOptions {
-            allow_iec_61131_3_2013: false,
             allow_ref_to: true,
             ..CompilerOptions::default()
         }

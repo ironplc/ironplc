@@ -78,8 +78,8 @@ To add a demotion, precompute the gate once and add a `match` arm to `apply`:
 ```rust
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     // Precompute each gate once. Demotion happens when the gate is `true`.
-    let demote_time_types = !options.allow_iec_61131_3_2013;
-    let demote_ref = !options.allow_iec_61131_3_2013 && !options.allow_ref_to;
+    let demote_time_types = !options.allow_long_time_types;
+    let demote_ref = !options.allow_ref_to;
     let demote_oop = !options.allow_fb_inheritance;
     // ...one gate per feature...
 

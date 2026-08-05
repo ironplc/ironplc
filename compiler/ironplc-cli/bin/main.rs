@@ -99,9 +99,15 @@ struct FileArgs {
     #[arg(long)]
     allow_c_style_comments: bool,
 
-    /// Allow REF_TO, REF(), and NULL syntax without enabling full Edition 3.
-    /// This is useful for libraries like OSCAT that use references but also
-    /// use Edition 3 type names (LDT, LTIME) as identifiers.
+    /// Allow the IEC 61131-3:2013 long-time-type keywords (LTIME, LDATE, LTOD,
+    /// LDT). Enabled by `--dialect=iec61131-3-ed3`.
+    #[arg(long)]
+    allow_long_time_types: bool,
+
+    /// Allow REF_TO, REF(), and NULL syntax (standardized in IEC 61131-3:2013)
+    /// without enabling the rest of Edition 3. This is useful for libraries like
+    /// OSCAT that use references but also use Edition 3 type names (LDT, LTIME)
+    /// as identifiers. Enabled by `--dialect=iec61131-3-ed3`.
     #[arg(long)]
     allow_ref_to: bool,
 
@@ -211,6 +217,7 @@ impl FileArgs {
         options.allow_empty_var_blocks |= self.allow_empty_var_blocks;
         options.allow_time_as_function_name |= self.allow_time_as_function_name;
         options.allow_c_style_comments |= self.allow_c_style_comments;
+        options.allow_long_time_types |= self.allow_long_time_types;
         options.allow_ref_to |= self.allow_ref_to;
         options.allow_reference_to |= self.allow_reference_to;
         options.allow_ref_arithmetic |= self.allow_ref_arithmetic;

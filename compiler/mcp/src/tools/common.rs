@@ -385,7 +385,7 @@ mod tests {
     fn parse_options_when_ed2_dialect_then_default_options() {
         let val = serde_json::json!({"dialect": "iec61131-3-ed2"});
         let opts = parse_options(&val).unwrap();
-        assert!(!opts.allow_iec_61131_3_2013);
+        assert!(!opts.allow_long_time_types);
         assert!(!opts.allow_c_style_comments);
     }
 
@@ -393,7 +393,8 @@ mod tests {
     fn parse_options_when_ed3_dialect_then_edition3_enabled() {
         let val = serde_json::json!({"dialect": "iec61131-3-ed3"});
         let opts = parse_options(&val).unwrap();
-        assert!(opts.allow_iec_61131_3_2013);
+        assert!(opts.allow_long_time_types);
+        assert!(opts.allow_ref_to);
         assert!(!opts.allow_c_style_comments);
     }
 
