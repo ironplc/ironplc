@@ -570,7 +570,7 @@ mod tests {
             .add_line_map_entry(entry)
             .build();
 
-        let debug = container.debug_section.expect("debug section present");
+        let debug = container.debug_section.unwrap();
         assert_eq!(debug.line_map.len(), 1);
         assert_eq!(debug.line_map[0], entry);
     }
@@ -611,7 +611,7 @@ mod tests {
             .add_line_map_entry(entries[2])
             .build();
 
-        let debug = container.debug_section.expect("debug section present");
+        let debug = container.debug_section.unwrap();
         let keys: Vec<_> = debug
             .line_map
             .iter()
@@ -640,7 +640,7 @@ mod tests {
             })
             .build();
 
-        let debug = container.debug_section.expect("debug section present");
+        let debug = container.debug_section.unwrap();
         assert_eq!(debug.source_files.len(), 2);
         // Insertion order = file_id order (a → 0, b → 1).
         assert_eq!(debug.source_files[0].path, "a.st");
@@ -673,7 +673,7 @@ mod tests {
             .add_source_files(entries.clone())
             .build();
 
-        let debug = container.debug_section.expect("debug section present");
+        let debug = container.debug_section.unwrap();
         assert_eq!(debug.source_files, entries);
     }
 
@@ -695,7 +695,7 @@ mod tests {
             .add_fb_type(desc.clone())
             .build();
 
-        let ts = container.type_section.expect("type section present");
+        let ts = container.type_section.unwrap();
         assert_eq!(ts.fb_types.len(), 1);
         assert_eq!(ts.fb_types[0], desc);
     }

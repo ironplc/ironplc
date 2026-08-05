@@ -94,7 +94,7 @@ END_FUNCTION_BLOCK";
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&input, &context, &CompilerOptions::default());
 
-        let diagnostics = result.expect_err("call-style initializer must be flagged");
+        let diagnostics = result.unwrap_err();
         assert_eq!(diagnostics.len(), 1);
         // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
         // (must be constructed via Diagnostic::not_implemented), so assert on

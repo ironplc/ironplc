@@ -33,9 +33,7 @@ fn scenario_agent_self_heals_syntax_error() {
         "should have at least one diagnostic"
     );
 
-    let code = r1.diagnostics[0]["code"]
-        .as_str()
-        .expect("diagnostic must have a code field");
+    let code = r1.diagnostics[0]["code"].as_str().unwrap();
     assert!(!code.is_empty(), "diagnostic code must not be empty");
 
     // Step 2: agent looks up the diagnostic code

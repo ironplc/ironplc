@@ -148,7 +148,7 @@ END_FUNCTION_BLOCK";
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        let diagnostics = result.expect_err("both bit-string labels must be flagged");
+        let diagnostics = result.unwrap_err();
         assert_eq!(diagnostics.len(), 2);
     }
 

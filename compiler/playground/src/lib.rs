@@ -1330,7 +1330,7 @@ END_PROGRAM
         let json = run(&bytecode, 1);
         let result: RunResult = serde_json::from_str(&json).unwrap();
         assert!(!result.ok);
-        let error = result.error.expect("expected a runtime error");
+        let error = result.error.unwrap();
         assert_eq!(error.code.as_deref(), Some("V4001"));
         // The JSON payload carries the code as a member of the error object.
         assert!(json.contains("\"code\":\"V4001\""));
@@ -1341,7 +1341,7 @@ END_PROGRAM
         let json = run("not-valid-base64!!!", 1);
         let result: RunResult = serde_json::from_str(&json).unwrap();
         assert!(!result.ok);
-        let error = result.error.expect("expected a host error");
+        let error = result.error.unwrap();
         // Host illegal states share the internal-error code and are told apart
         // by the recorded call-site location, not by a bespoke per-error code.
         assert_eq!(error.code.as_deref(), Some("P9998"));
@@ -1355,7 +1355,7 @@ END_PROGRAM
         let bytes = BASE64.encode(b"not a container");
         let result: RunResult = serde_json::from_str(&run(&bytes, 1)).unwrap();
         assert!(!result.ok);
-        let error = result.error.expect("expected a host error");
+        let error = result.error.unwrap();
         assert_eq!(error.code.as_deref(), Some("P9998"));
         assert!(error.compiler_line > 0);
     }
@@ -1781,7 +1781,7 @@ END_PROGRAM
             .diagnostics
             .iter()
             .find(|d| d.code == "P9999")
-            .expect("expected a P9999 diagnostic");
+            .unwrap();
         assert!(
             diag.compiler_file.ends_with(".rs"),
             "expected a compiler .rs file, got {:?}",
@@ -1954,11 +1954,7 @@ END_PROGRAM
             "Expected ok but got diagnostics: {:?}, error: {:?}",
             result.diagnostics, result.error
         );
-        let s = result
-            .variables
-            .iter()
-            .find(|v| v.name == "s")
-            .expect("variable 's' present");
+        let s = result.variables.iter().find(|v| v.name == "s").unwrap();
         assert_eq!(s.value, "'hello'");
         assert!(s.valid, "expected s.valid == true for a real STRING value");
     }
@@ -2182,7 +2178,7 @@ END_PROGRAM
             .diagnostics
             .iter()
             .find(|d| d.code == "P0004")
-            .expect("expected a P0004 diagnostic");
+            .unwrap();
         assert!(!cstyle.help.is_empty());
     }
 

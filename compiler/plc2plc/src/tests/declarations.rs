@@ -76,8 +76,7 @@ END_FUNCTION_BLOCK
     assert!(rendered.contains("STRING [ 255 ]"));
 
     let library_rendered =
-        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
-            .expect("rendered output must parse");
+        parse_program(&rendered, &FileId::default(), &CompilerOptions::default()).unwrap();
     assert_eq!(library_original, library_rendered);
 }
 
@@ -108,7 +107,6 @@ END_FUNCTION_BLOCK
     assert!(rendered.contains("FB_Comm ( retries := 3 , THIS )"));
 
     let library_rendered =
-        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
-            .expect("rendered output must parse");
+        parse_program(&rendered, &FileId::default(), &CompilerOptions::default()).unwrap();
     assert_eq!(library_original, library_rendered);
 }

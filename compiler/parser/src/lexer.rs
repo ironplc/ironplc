@@ -191,10 +191,7 @@ mod test {
             "unexpected diagnostics: {diagnostics:?}"
         );
 
-        let y = tokens
-            .iter()
-            .find(|t| t.text == "y")
-            .expect("expected `y` identifier in tokens");
+        let y = tokens.iter().find(|t| t.text == "y").unwrap();
         // `y` sits at byte offset 17 in the source, all on line 0. Without the
         // fix the column counter would still report the column where the
         // comment started (8) because the comment branch did not advance col.

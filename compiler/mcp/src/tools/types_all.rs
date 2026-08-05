@@ -312,11 +312,7 @@ mod tests {
         let resp =
             build("TYPE MyEnum : (Stopped, Running, Fault); END_TYPE\nPROGRAM p\nEND_PROGRAM");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-        let entry = resp
-            .types
-            .iter()
-            .find(|t| t.name == "MyEnum")
-            .expect("MyEnum not found");
+        let entry = resp.types.iter().find(|t| t.name == "MyEnum").unwrap();
         assert_eq!(entry.kind, "enum");
         let mut values = entry.values.clone().unwrap();
         values.sort();
@@ -336,11 +332,7 @@ mod tests {
             "TYPE PidParams : STRUCT Kp : REAL; Ki : REAL; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM",
         );
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-        let entry = resp
-            .types
-            .iter()
-            .find(|t| t.name == "PidParams")
-            .expect("PidParams not found");
+        let entry = resp.types.iter().find(|t| t.name == "PidParams").unwrap();
         assert_eq!(entry.kind, "struct");
         let fields = entry.fields.clone().unwrap();
         let names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
@@ -352,11 +344,7 @@ mod tests {
     fn build_response_when_array_type_then_kind_array_with_bounds() {
         let resp = build("TYPE Buf : ARRAY[1..10] OF INT; END_TYPE\nPROGRAM p\nEND_PROGRAM");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-        let entry = resp
-            .types
-            .iter()
-            .find(|t| t.name == "Buf")
-            .expect("Buf not found");
+        let entry = resp.types.iter().find(|t| t.name == "Buf").unwrap();
         assert_eq!(entry.kind, "array");
         let bounds = entry.bounds.clone().unwrap();
         assert_eq!(bounds.len(), 1);
@@ -369,11 +357,7 @@ mod tests {
     fn build_response_when_subrange_type_then_kind_subrange_with_low_high() {
         let resp = build("TYPE Percent : INT (0..100); END_TYPE\nPROGRAM p\nEND_PROGRAM");
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-        let entry = resp
-            .types
-            .iter()
-            .find(|t| t.name == "Percent")
-            .expect("Percent not found");
+        let entry = resp.types.iter().find(|t| t.name == "Percent").unwrap();
         assert_eq!(entry.kind, "subrange");
         assert_eq!(entry.low, Some(0));
         assert_eq!(entry.high, Some(100));
@@ -387,12 +371,8 @@ mod tests {
             "TYPE MyRec : STRUCT s : STRING; w : WSTRING; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM",
         );
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-        let entry = resp
-            .types
-            .iter()
-            .find(|t| t.name == "MyRec")
-            .expect("MyRec not found");
-        let fields = entry.fields.clone().expect("struct fields missing");
+        let entry = resp.types.iter().find(|t| t.name == "MyRec").unwrap();
+        let fields = entry.fields.clone().unwrap();
         let s = fields.iter().find(|f| f.name == "s").unwrap();
         assert_eq!(s.type_name, "STRING");
         let w = fields.iter().find(|f| f.name == "w").unwrap();

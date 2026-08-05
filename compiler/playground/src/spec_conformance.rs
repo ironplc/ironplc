@@ -33,7 +33,7 @@ const TC2_SYSTEM_ST: &str =
 
 fn compile_ok(source: &str, libraries: &str) -> bool {
     let json = crate::compile(source, "", "", libraries);
-    let value: Value = serde_json::from_str(&json).expect("compile returns JSON");
+    let value: Value = serde_json::from_str(&json).unwrap();
     value["ok"] == Value::Bool(true)
 }
 
@@ -50,7 +50,7 @@ fn playground_spec_req_cl_001_activates_library_from_served_files() {
     // Loading the served library file (as the browser would, passing its text
     // as a JSON array of sources) activates the library: `PI` resolves, folds
     // at compile time, and the same source compiles.
-    let libraries = serde_json::to_string(&[TC2_SYSTEM_ST]).expect("serialize library sources");
+    let libraries = serde_json::to_string(&[TC2_SYSTEM_ST]).unwrap();
     assert!(
         compile_ok(PI_PROGRAM, &libraries),
         "loading the served library file must make PI resolve"

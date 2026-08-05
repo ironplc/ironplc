@@ -36,8 +36,7 @@ END_FUNCTION_BLOCK
     assert!(rendered.contains("INTERFACE I_Drivable"));
     assert!(rendered.contains("END_INTERFACE"));
 
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options)
-        .expect("rendered output must parse under the same dialect");
+    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
     assert_eq!(library_original, library_rendered);
 }
 
@@ -60,8 +59,7 @@ END_INTERFACE
     assert!(rendered.contains("INTERFACE I_Focus"));
     assert!(rendered.contains("EXTENDS I_BaseAxis"));
 
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options)
-        .expect("rendered output must parse under the same dialect");
+    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
     assert_eq!(library_original, library_rendered);
 }
 
@@ -86,7 +84,6 @@ END_INTERFACE
 
     assert!(rendered.contains("FUNCTION_BLOCK ABSTRACT FB_BaseAxis"));
 
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options)
-        .expect("rendered output must parse under the same dialect");
+    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
     assert_eq!(library_original, library_rendered);
 }

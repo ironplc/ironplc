@@ -58,10 +58,7 @@ fn line_map_when_program_has_assignment_statements_then_each_gets_an_entry() {
     let source =
         "PROGRAM main\n  VAR x : DINT; y : DINT; END_VAR\n  x := 10;\n  y := 20;\nEND_PROGRAM\n";
     let (container, _) = compile_with_source(source);
-    let debug = container
-        .debug_section
-        .as_ref()
-        .expect("debug section present");
+    let debug = container.debug_section.as_ref().unwrap();
 
     // SOURCE_FILE_TABLE: one entry for the program's file, BLAKE3
     // hash matches the source bytes.
@@ -115,7 +112,7 @@ fn line_map_when_empty_program_then_source_file_table_still_populated_with_zero_
         &ironplc_codegen::EmptyLookup,
     )
     .unwrap();
-    let debug = container.debug_section.as_ref().expect("debug section");
+    let debug = container.debug_section.as_ref().unwrap();
 
     // Source file is still registered (so file_ids resolve) but the
     // hash is all-zero.
@@ -142,16 +139,13 @@ fn line_map_when_optimizer_runs_then_bytecode_offsets_are_on_instruction_boundar
     // bytecode.
     let source = "PROGRAM main\n  VAR x : DINT; END_VAR\n  x := 10;\n  x := x + 5;\nEND_PROGRAM\n";
     let (container, _) = compile_with_source(source);
-    let debug = container
-        .debug_section
-        .as_ref()
-        .expect("debug section present");
+    let debug = container.debug_section.as_ref().unwrap();
 
     for entry in &debug.line_map {
         let bytecode = container
             .code
             .get_function_bytecode(entry.function_id)
-            .expect("function bytecode present");
+            .unwrap();
         let offset = entry.bytecode_offset as usize;
         assert!(
             offset < bytecode.len(),

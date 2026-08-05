@@ -308,14 +308,10 @@ fn read_when_debug_source_file_table_golden_then_decodes_new_debug_fields() {
     use ironplc_container::Container;
     use std::io::Cursor;
 
-    let bytes = std::fs::read(path_to_golden_resource("debug_source_file_table.iplc"))
-        .expect("debug_source_file_table.iplc must exist; regenerate via generate_golden_files");
+    let bytes = std::fs::read(path_to_golden_resource("debug_source_file_table.iplc")).unwrap();
     let container = Container::read_from(&mut Cursor::new(&bytes)).unwrap();
 
-    let debug = container
-        .debug_section
-        .as_ref()
-        .expect("debug section present");
+    let debug = container.debug_section.as_ref().unwrap();
 
     // SOURCE_FILE_TABLE round-trip
     assert_eq!(debug.source_files.len(), 2);
@@ -782,9 +778,7 @@ fn benchmark_when_cyclic_task_then_budget_pct_in_output() -> Result<(), Box<dyn 
         .arg("5");
     let output = cmd.assert().success().get_output().stdout.clone();
     let json: serde_json::Value = serde_json::from_slice(&output)?;
-    let tasks = json["tasks"]
-        .as_array()
-        .expect("tasks must be a JSON array");
+    let tasks = json["tasks"].as_array().unwrap();
     assert!(!tasks.is_empty(), "expected at least one task entry");
     let task = &tasks[0];
     assert_eq!(task["task_type"], "Cyclic");

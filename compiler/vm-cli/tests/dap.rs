@@ -117,18 +117,18 @@ fn parse_messages(bytes: &[u8]) -> Vec<Value> {
     let mut messages = Vec::new();
     let mut rest = bytes;
     while let Some(header_end) = find_subslice(rest, b"\r\n\r\n") {
-        let header = std::str::from_utf8(&rest[..header_end]).expect("ascii header");
+        let header = std::str::from_utf8(&rest[..header_end]).unwrap();
         let len: usize = header
             .lines()
             .find_map(|line| line.strip_prefix("Content-Length:"))
-            .expect("Content-Length header")
+            .unwrap()
             .trim()
             .parse()
-            .expect("numeric Content-Length");
+            .unwrap();
         let body_start = header_end + 4;
         let body_end = body_start + len;
         let body = &rest[body_start..body_end];
-        messages.push(serde_json::from_slice(body).expect("json body"));
+        messages.push(serde_json::from_slice(body).unwrap());
         rest = &rest[body_end..];
     }
     messages
@@ -148,20 +148,20 @@ fn run_dap(requests: &[Value]) -> Vec<Value> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn ironplcdap");
+        .unwrap();
 
     {
-        let mut stdin = child.stdin.take().expect("child stdin");
+        let mut stdin = child.stdin.take().unwrap();
         for request in requests {
-            stdin.write_all(&frame(request)).expect("write request");
+            stdin.write_all(&frame(request)).unwrap();
         }
         // stdin dropped here → the server sees EOF once it has drained input.
     }
 
-    let mut stdout = child.stdout.take().expect("child stdout");
+    let mut stdout = child.stdout.take().unwrap();
     let mut out = Vec::new();
-    stdout.read_to_end(&mut out).expect("read stdout");
-    child.wait().expect("wait for ironplcdap");
+    stdout.read_to_end(&mut out).unwrap();
+    child.wait().unwrap();
 
     parse_messages(&out)
 }
@@ -215,10 +215,7 @@ fn ironplcdap_when_launch_container_without_debug_then_no_debug_info() {
                "arguments": {"program": path}}),
     ]);
 
-    let launch = messages
-        .iter()
-        .find(|m| m["command"] == "launch")
-        .expect("launch response");
+    let launch = messages.iter().find(|m| m["command"] == "launch").unwrap();
     assert_eq!(launch["success"], false);
     // The failure carries the V6009 launch-no-debug-info code.
     assert!(launch["message"].as_str().unwrap().starts_with("V6009 - "));
@@ -235,10 +232,7 @@ fn ironplcdap_when_launch_multi_instance_then_multi_instance_unsupported() {
                "arguments": {"program": path}}),
     ]);
 
-    let launch = messages
-        .iter()
-        .find(|m| m["command"] == "launch")
-        .expect("launch response");
+    let launch = messages.iter().find(|m| m["command"] == "launch").unwrap();
     assert_eq!(launch["success"], false);
     // The failure carries the V6010 multi-instance code plus the descriptive text.
     let message = launch["message"].as_str().unwrap();
