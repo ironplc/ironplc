@@ -156,13 +156,13 @@ source**, so a user declaration shadows a library declaration of the same name
 > `#[spec_test]`s.
 
 ### Phase 2 — Read the library list from `.plcproj` *(early)*
-- [ ] In the twincat detector, parse `<PlaceholderReference>` and `<LibraryReference>` elements inside `<ItemGroup>` (MSBuild `xmlns`), extracting `Include`, `Namespace`, and (for placeholders) `DefaultResolution` — **REQ-CL-sources-001**
-- [ ] Skip references marked `<SystemLibrary>true</SystemLibrary>` for now
-- [ ] Auto-activate matching bundled libraries (no CLI flag needed)
-- [ ] Resolve reference → bundled library by strict, case-sensitive **name** match; treat a `*` version as "any bundled version" — **REQ-CL-sources-003**
-- [ ] Diagnose a referenced-but-unshipped library, naming it — **REQ-CL-sources-004**
-- [ ] Un-ignore sources-001/003/004; add the `.plcproj`-driven end-to-end `PI` test using a fixture that references a bundled library
-- [ ] `cd compiler && just` green
+- [x] In the twincat detector, parse `<PlaceholderReference>` and `<LibraryReference>` elements inside `<ItemGroup>` (MSBuild `xmlns`), extracting `Include`, `Namespace`, and (for placeholders) `DefaultResolution` — **REQ-CL-sources-001**
+- [x] Skip references marked `<SystemLibrary>true</SystemLibrary>` for now
+- [x] Auto-activate matching bundled libraries (no CLI flag needed)
+- [x] Resolve reference → bundled library by strict, case-sensitive **name** match; treat a `*` version as "any bundled version" — **REQ-CL-sources-003**
+- [x] Diagnose a referenced-but-unshipped library, naming it — **REQ-CL-sources-004**
+- [x] Un-ignore sources-001/003/004; add the `.plcproj`-driven end-to-end `PI` test using a fixture that references a bundled library
+- [x] `cd compiler && just` green
 
 ### Phase 3 — Round-trip fidelity + playground
 - [ ] `plc2plc` emits user source unchanged; injected library declarations are never rendered — **REQ-CL-plc2plc-001**

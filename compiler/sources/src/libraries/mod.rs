@@ -74,6 +74,31 @@ impl FromStr for LibraryName {
     }
 }
 
+/// A compatibility-library reference declared by a project file.
+///
+/// This is the *statement of intent* read from a discovered `.plcproj` — the
+/// vendor's own record of which libraries the project uses. It is resolved
+/// against the bundled registry by [`LibraryRegistry::resolve_references`];
+/// the version and namespace are captured for completeness (and future
+/// qualified-access work) but do not participate in matching today.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LibraryReference {
+    /// The referenced library's name, matched against a bundled package by
+    /// strict, case-sensitive equality (`REQ-CL-sources-003`).
+    pub name: LibraryName,
+    /// The version as declared in the project — commonly the `*` wildcard for a
+    /// `PlaceholderReference`, or a pinned version for a `LibraryReference`.
+    /// `None` when the project states no version. Not used to select a package.
+    pub version: Option<String>,
+    /// The namespace the source may qualify with (the `<Namespace>` element).
+    /// Captured for future qualified-access support; unused in the first
+    /// increment, which injects flat names only.
+    pub namespace: Option<String>,
+    /// The project file the reference was declared in, used to anchor a
+    /// diagnostic when the referenced library is not bundled.
+    pub declared_in: FileId,
+}
+
 /// A loaded compatibility library: its manifest plus the parsed declarations
 /// for the selected version, ready to inject into semantic analysis.
 #[derive(Debug, Clone)]
@@ -188,6 +213,47 @@ impl LibraryRegistry {
         let library = load_version_library(&version_dir, &manifest_file_id)?;
 
         Ok(CompatLibrary { manifest, library })
+    }
+
+    /// Resolve project-declared library references to the set of bundled library
+    /// names to activate, diagnosing any reference this build does not bundle.
+    ///
+    /// Matching is by strict, case-sensitive **name** (`REQ-CL-sources-003`);
+    /// the reference's version does not select a package, so a `*` (the common
+    /// `PlaceholderReference` wildcard) or any pinned version resolves to the
+    /// single bundled version by name alone. Returned names are deduplicated and
+    /// in first-seen order.
+    ///
+    /// A referenced library that is not bundled yields a `LibraryNotFound`
+    /// (P6011) diagnostic that names it (`REQ-CL-sources-004`), rather than
+    /// failing silently, so any resulting undefined-symbol errors are explained.
+    pub fn resolve_references(
+        &self,
+        references: &[LibraryReference],
+    ) -> (Vec<LibraryName>, Vec<Diagnostic>) {
+        let mut activated: Vec<LibraryName> = Vec::new();
+        let mut diagnostics: Vec<Diagnostic> = Vec::new();
+
+        for reference in references {
+            if self.contains(&reference.name) {
+                if !activated.contains(&reference.name) {
+                    activated.push(reference.name.clone());
+                }
+            } else {
+                diagnostics.push(Diagnostic::problem(
+                    Problem::LibraryNotFound,
+                    Label::file(
+                        reference.declared_in.clone(),
+                        format!(
+                            "project references compatibility library `{}`, which IronPLC does not bundle",
+                            reference.name
+                        ),
+                    ),
+                ));
+            }
+        }
+
+        (activated, diagnostics)
     }
 }
 
@@ -384,5 +450,41 @@ mod tests {
         let registry = LibraryRegistry::with_root(dir.path());
         let loaded = registry.load(&LibraryName::from("Multi")).unwrap();
         assert_eq!(loaded.library.elements.len(), 2);
+    }
+
+    fn reference(name: &str) -> LibraryReference {
+        LibraryReference {
+            name: LibraryName::from(name),
+            version: Some("*".to_string()),
+            namespace: None,
+            declared_in: FileId::from_string("proj.plcproj"),
+        }
+    }
+
+    #[test]
+    fn resolve_references_when_bundled_then_activates() {
+        let registry = LibraryRegistry::bundled();
+        let (activated, diagnostics) = registry.resolve_references(&[reference("Tc2_System")]);
+        assert_eq!(activated, [LibraryName::from("Tc2_System")]);
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn resolve_references_when_unshipped_then_diagnoses_by_name() {
+        let registry = LibraryRegistry::bundled();
+        let (activated, diagnostics) = registry.resolve_references(&[reference("Nonexistent")]);
+        assert!(activated.is_empty());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, Problem::LibraryNotFound.code());
+        assert!(diagnostics[0].primary.message.contains("Nonexistent"));
+    }
+
+    #[test]
+    fn resolve_references_when_duplicate_then_deduplicated() {
+        let registry = LibraryRegistry::bundled();
+        let (activated, diagnostics) =
+            registry.resolve_references(&[reference("Tc2_System"), reference("Tc2_System")]);
+        assert_eq!(activated, [LibraryName::from("Tc2_System")]);
+        assert!(diagnostics.is_empty());
     }
 }

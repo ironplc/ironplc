@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::Path};
 
 use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
 use ironplc_parser::options::CompilerOptions;
-use log::{info, trace};
+use log::{debug, info, trace};
 
 use crate::libraries::{LibraryName, LibraryRegistry};
 use crate::source::Source;
@@ -127,6 +127,7 @@ impl SourceProject {
     /// supported files when no specific project is detected.
     pub fn initialize_from_directory(&mut self, dir: &Path) -> Vec<Diagnostic> {
         self.sources.clear();
+        self.activated_libraries.clear();
         self.discover_and_add(dir)
     }
 
@@ -141,6 +142,7 @@ impl SourceProject {
     /// loading.
     pub fn initialize_from_directories(&mut self, dirs: &[&Path]) -> Vec<Diagnostic> {
         self.sources.clear();
+        self.activated_libraries.clear();
         let mut errors = vec![];
         for dir in dirs {
             errors.extend(self.discover_and_add(dir));
@@ -166,6 +168,23 @@ impl SourceProject {
         );
 
         let mut errors = vec![];
+
+        // Auto-activate the compatibility libraries the project declares it
+        // references (`REQ-CL-sources-001`). Resolution is by strict name match
+        // against the bundled registry; a referenced-but-unshipped library
+        // contributes a diagnostic naming it (`REQ-CL-sources-004`) but does not
+        // abort discovery. Activation is out of band -- the source text is never
+        // touched.
+        let (activated, reference_diagnostics) =
+            LibraryRegistry::bundled().resolve_references(&discovered.library_references);
+        for name in activated {
+            if !self.activated_libraries.contains(&name) {
+                debug!("Auto-activating referenced library: {name}");
+                self.activated_libraries.push(name);
+            }
+        }
+        errors.extend(reference_diagnostics);
+
         for file_path in &discovered.files {
             let file_id = FileId::from_path(file_path);
             if let Err(err) = self.add_file(file_id) {
