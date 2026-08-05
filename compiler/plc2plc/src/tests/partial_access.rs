@@ -19,8 +19,7 @@ fn plc2plc_spec_req_pab_060_percent_x_round_trips_through_short_form() {
     };
     let library_original = parse_program(&original, &FileId::default(), &options).unwrap();
     let library_rendered =
-        parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
-            .expect("rendered output must parse under default (no-flag) options");
+        parse_program(&rendered, &FileId::default(), &CompilerOptions::default()).unwrap();
     assert_eq!(library_original, library_rendered);
 }
 

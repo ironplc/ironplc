@@ -46,7 +46,7 @@ fn reference_to_options() -> CompilerOptions {
 }
 
 fn parse(source: &str, options: &CompilerOptions) -> Library {
-    crate::parse_program(source, &FileId::default(), options).expect("program should parse")
+    crate::parse_program(source, &FileId::default(), options).unwrap()
 }
 
 fn token_types(source: &str, options: &CompilerOptions) -> Vec<TokenType> {
@@ -126,10 +126,7 @@ END_VAR
 END_PROGRAM";
     let lib = parse(source, &CompilerOptions::default());
     let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
-    let name = prog.variables[0]
-        .identifier
-        .symbolic_id()
-        .expect("variable has a symbolic name");
+    let name = prog.variables[0].identifier.symbolic_id().unwrap();
     assert_eq!(name.to_string(), "REFERENCE");
 }
 

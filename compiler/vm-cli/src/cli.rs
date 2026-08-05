@@ -496,8 +496,7 @@ mod tests {
     fn write_variable_line_when_writer_errors_then_v6006() {
         let debug_map: HashMap<u16, VarDebugInfo> = HashMap::new();
         let mut sink = FailingWriter;
-        let err = write_variable_line(&mut sink, 0, 0, &debug_map)
-            .expect_err("writer failure should surface as VmError");
+        let err = write_variable_line(&mut sink, 0, 0, &debug_map).unwrap_err();
         assert!(
             err.to_string().starts_with("V6006"),
             "expected V6006 (dump write), got {err}"

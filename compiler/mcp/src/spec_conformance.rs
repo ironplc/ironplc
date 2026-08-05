@@ -1043,7 +1043,7 @@ fn mcp_spec_req_tol_212_project_io_entry_format() {
         .unwrap()
         .iter()
         .find(|e| e["name"] == "p.start")
-        .expect("p.start not found in inputs");
+        .unwrap();
     assert!(entry.get("name").is_some());
     assert!(entry.get("type").is_some());
     assert!(entry.get("address").is_some());
@@ -1071,20 +1071,12 @@ fn mcp_spec_req_tol_220_pou_scope_returns_variables() {
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
     assert!(resp.found);
 
-    let start = resp
-        .variables
-        .iter()
-        .find(|v| v.name == "start")
-        .expect("start variable missing");
+    let start = resp.variables.iter().find(|v| v.name == "start").unwrap();
     assert_eq!(start.direction, "In");
     assert_eq!(start.initial_value.as_deref(), Some("FALSE"));
     assert!(!start.type_name.is_empty());
 
-    let count = resp
-        .variables
-        .iter()
-        .find(|v| v.name == "count")
-        .expect("count variable missing");
+    let count = resp.variables.iter().find(|v| v.name == "count").unwrap();
     assert_eq!(count.direction, "Local");
     assert_eq!(count.initial_value, None);
 }
@@ -1190,36 +1182,20 @@ fn mcp_spec_req_tol_240_types_all_returns_user_defined_types() {
     let resp = tools::types_all::build_response(&sources, &options);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
 
-    let motor = resp
-        .types
-        .iter()
-        .find(|t| t.name == "MotorState")
-        .expect("MotorState missing");
+    let motor = resp.types.iter().find(|t| t.name == "MotorState").unwrap();
     assert_eq!(motor.kind, "enum");
     assert!(motor.values.is_some());
 
-    let pid = resp
-        .types
-        .iter()
-        .find(|t| t.name == "PidParams")
-        .expect("PidParams missing");
+    let pid = resp.types.iter().find(|t| t.name == "PidParams").unwrap();
     assert_eq!(pid.kind, "struct");
     assert!(pid.fields.is_some());
 
-    let buf = resp
-        .types
-        .iter()
-        .find(|t| t.name == "Buf")
-        .expect("Buf missing");
+    let buf = resp.types.iter().find(|t| t.name == "Buf").unwrap();
     assert_eq!(buf.kind, "array");
     assert!(buf.element_type.is_some());
     assert!(buf.bounds.is_some());
 
-    let percent = resp
-        .types
-        .iter()
-        .find(|t| t.name == "Percent")
-        .expect("Percent missing");
+    let percent = resp.types.iter().find(|t| t.name == "Percent").unwrap();
     assert_eq!(percent.kind, "subrange");
     assert_eq!(percent.low, Some(0));
     assert_eq!(percent.high, Some(100));

@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn build_response_when_known_code_then_doc_url_tagged_for_mcp() {
         let resp = build_response("P0001");
-        let url = resp.doc_url.expect("known code should have a doc_url");
+        let url = resp.doc_url.unwrap();
         assert!(url.contains("/reference/compiler/problems/P0001.html"));
         assert!(url.contains("?version="));
         assert!(url.contains("&channel=mcp"));

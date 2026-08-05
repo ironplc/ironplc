@@ -599,8 +599,7 @@ pub fn try_parse_and_compile(
 /// Parses, analyzes, compiles, and runs one scan cycle.
 /// Returns the container and buffers so callers can inspect variable values.
 pub fn parse_and_run(source: &str, options: &CompilerOptions) -> (Container, VmBuffers) {
-    let (container, bufs) =
-        parse_and_try_run(source, options).expect("VM execution trapped unexpectedly");
+    let (container, bufs) = parse_and_try_run(source, options).unwrap();
     (container, bufs)
 }
 

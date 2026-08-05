@@ -132,7 +132,7 @@ pub(crate) fn extract_duration(library: &Library) -> &DurationLiteral {
     );
     let initializer = &func.variables[0].initializer;
     let simple = cast!(initializer, InitialValueAssignmentKind::Simple);
-    let constant = simple.initial_value.as_ref().expect("initializer");
+    let constant = simple.initial_value.as_ref().unwrap();
     cast!(constant, ConstantKind::Duration)
 }
 
@@ -161,7 +161,7 @@ pub(crate) fn extract_case(library: &Library) -> Case {
         .elements
         .iter()
         .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
-        .expect("expected a FunctionBlockDeclaration");
+        .unwrap();
     let fb = cast!(element, LibraryElementKind::FunctionBlockDeclaration);
     let stmts = cast!(&fb.body, FunctionBlockBodyKind::Statements);
     cast!(&stmts.body[0], StmtKind::Case).clone()
@@ -184,7 +184,7 @@ pub(crate) fn extract_assignment_value(library: &Library) -> Expr {
         .elements
         .iter()
         .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
-        .expect("expected a FunctionBlockDeclaration");
+        .unwrap();
     let fb = cast!(element, LibraryElementKind::FunctionBlockDeclaration);
     let stmts = cast!(&fb.body, FunctionBlockBodyKind::Statements);
     let assignment = cast!(&stmts.body[0], StmtKind::Assignment);
@@ -220,6 +220,6 @@ pub(crate) fn extract_fb(library: &Library) -> &FunctionBlockDeclaration {
         .elements
         .iter()
         .find(|e| matches!(e, LibraryElementKind::FunctionBlockDeclaration(_)))
-        .expect("expected a FunctionBlockDeclaration");
+        .unwrap();
     cast!(element, LibraryElementKind::FunctionBlockDeclaration)
 }

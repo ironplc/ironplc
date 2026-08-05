@@ -896,7 +896,7 @@ mod tests {
 
     /// Index of the first message matching `pred`, for ordering assertions.
     fn index_of(out: &[Value], pred: impl Fn(&Value) -> bool) -> usize {
-        out.iter().position(pred).expect("message not found")
+        out.iter().position(pred).unwrap()
     }
 
     #[test]

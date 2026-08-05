@@ -867,7 +867,7 @@ mod test {
             "PROGRAM Main\nVAR\nx : BOOL;\nEND_VAR\nEND_PROGRAM".to_owned(),
         );
 
-        let tokens = proj.tokenize(&url).expect("expected tokens");
+        let tokens = proj.tokenize(&url).unwrap();
         assert!(!tokens.is_empty(), "expected tokens, got none");
 
         // Reconstruct absolute positions from the deltas.
@@ -951,7 +951,7 @@ mod test {
         let url = Uri::from_str(FAKE_PATH).unwrap();
         proj.change_text_document(&url, source.to_owned());
 
-        let tokens = proj.tokenize(&url).expect("expected tokens");
+        let tokens = proj.tokenize(&url).unwrap();
         let resolved = resolve_lsp_tokens(source, &tokens);
 
         // Spot-check key tokens that the user reported as broken.
@@ -976,19 +976,13 @@ mod test {
 
         // Both BOOL and INT sit on line 2; their reconstructed columns must
         // match the actual source columns.
-        let bool_pos = resolved
-            .iter()
-            .find(|(_, _, s, _)| *s == "BOOL")
-            .expect("BOOL token");
+        let bool_pos = resolved.iter().find(|(_, _, s, _)| *s == "BOOL").unwrap();
         assert_eq!(
             (bool_pos.0, bool_pos.1),
             (2, 6),
             "BOOL should be at line 2 col 6"
         );
-        let int_pos = resolved
-            .iter()
-            .find(|(_, _, s, _)| *s == "INT")
-            .expect("INT token");
+        let int_pos = resolved.iter().find(|(_, _, s, _)| *s == "INT").unwrap();
         // After the inline block comment, the next BOOL/INT must still report
         // the correct column — this is the regression that produced the
         // user's "trip"/"ain Mot" mis-coloring.
@@ -1019,7 +1013,7 @@ mod test {
             "VAR\n  a : BOOL; (* note *) b : BOOL;\nEND_VAR".to_owned(),
         );
 
-        let tokens = proj.tokenize(&url).expect("expected tokens");
+        let tokens = proj.tokenize(&url).unwrap();
         // Reconstruct absolute positions and the keyword index of each token.
         let mut line: u32 = 0;
         let mut col: u32 = 0;
@@ -1664,8 +1658,7 @@ INVALID_SYNTAX"
         let path = std::path::PathBuf::from(original.path().as_str());
         let file_id = FileId::from_path(&path);
 
-        let reconstructed =
-            UriKey::from_file_id(&file_id).expect("file id should map back to a URI key");
+        let reconstructed = UriKey::from_file_id(&file_id).unwrap();
         assert_eq!(
             reconstructed.as_str(),
             original.as_str(),

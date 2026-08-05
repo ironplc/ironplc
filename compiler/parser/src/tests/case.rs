@@ -20,8 +20,8 @@ CASE x OF
     10: y := 3;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &with_missing_semicolon_flag())
-        .expect("empty CASE branch followed by another label must parse");
+    let library =
+        parse_program(source, &FileId::default(), &with_missing_semicolon_flag()).unwrap();
     let case = extract_case(&library);
     assert_eq!(case.statement_groups.len(), 3);
     assert!(case.statement_groups[1].statements.is_empty());
@@ -40,8 +40,8 @@ CASE x OF
     5: (* no statement here *)
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &with_missing_semicolon_flag())
-        .expect("empty CASE branch as the last one must parse");
+    let library =
+        parse_program(source, &FileId::default(), &with_missing_semicolon_flag()).unwrap();
     let case = extract_case(&library);
     assert_eq!(case.statement_groups.len(), 2);
     assert!(case.statement_groups[1].statements.is_empty());
@@ -80,8 +80,7 @@ CASE x OF
     5: y := 2;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
-        .expect("populated CASE branch must still parse");
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let case = extract_case(&library);
     assert_eq!(case.statement_groups.len(), 2);
     assert_eq!(case.statement_groups[1].statements.len(), 1);
@@ -111,8 +110,7 @@ CASE x OF
     2#1010: y := 2;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
-        .expect("hex/binary CASE labels must parse");
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let case = extract_case(&library);
     assert_eq!(case.statement_groups.len(), 2);
 
@@ -137,8 +135,7 @@ CASE x OF
     8#17: y := 1;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
-        .expect("octal CASE label must parse");
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let case = extract_case(&library);
     let selector = &case.statement_groups[0].selectors[0];
     let lit = cast!(selector, CaseSelectionKind::BitStringLiteral);
@@ -159,8 +156,7 @@ CASE x OF
     5: y := 1;
 END_CASE;
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
-        .expect("plain decimal CASE label must still parse");
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let case = extract_case(&library);
     let selector = &case.statement_groups[0].selectors[0];
     assert!(matches!(selector, CaseSelectionKind::SignedInteger(_)));

@@ -10,8 +10,7 @@ use ironplc_parser::options::CompilerOptions;
 use crate::common::try_parse_and_compile;
 
 fn compile_for_depth(source: &str) -> u16 {
-    let container =
-        try_parse_and_compile(source, &CompilerOptions::default()).expect("source should compile");
+    let container = try_parse_and_compile(source, &CompilerOptions::default()).unwrap();
     container.header.max_call_depth
 }
 

@@ -33,8 +33,7 @@ END_FUNCTION_BLOCK
     // equality check against the original isn't meaningful here.
     // Instead, verify the rendered output re-parses cleanly under the
     // same flag and both variables keep their original shape.
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options)
-        .expect("rendered output must parse under the same dialect");
+    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
 
     let fb = match &library_rendered.elements[0] {
         LibraryElementKind::FunctionBlockDeclaration(fb) => fb,
@@ -45,7 +44,7 @@ END_FUNCTION_BLOCK
             .variables
             .iter()
             .find(|v| matches!(&v.identifier, VariableIdentifier::Direct(d) if d.name.as_ref().map(|n| n.to_string()) == Some("tempSensor".to_string())))
-            .expect("tempSensor should still be a Direct (located) variable");
+            .unwrap();
     assert!(matches!(
         &temp_sensor.identifier,
         VariableIdentifier::Direct(_)
@@ -55,6 +54,6 @@ END_FUNCTION_BLOCK
             .variables
             .iter()
             .find(|v| matches!(&v.identifier, VariableIdentifier::Symbol(id) if id.to_string() == "fbComm"))
-            .expect("fbComm should still be a plain Symbol variable");
+            .unwrap();
     assert!(matches!(&fb_comm.identifier, VariableIdentifier::Symbol(_)));
 }

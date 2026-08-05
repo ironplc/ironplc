@@ -78,7 +78,7 @@ END_TYPE
         let type_name_span = spans
             .iter()
             .find(|span| span.start == 6 && span.end == 11)
-            .expect("Should find the type name span");
+            .unwrap();
 
         assert_eq!(expected_fid, type_name_span.file_id);
     }
