@@ -172,9 +172,9 @@ source**, so a user declaration shadows a library declaration of the same name
 - [x] `cd compiler && just` green
 
 ### Phase 4 — Provenance policy enforcement
-- [ ] Conformance test in `sources` walks every bundled manifest and asserts it records a non-empty `references` list (a factual record, no legal judgment) — **REQ-CL-sources-007**
-- [ ] Un-ignore sources-007; confirm the [authoring policy](../steering/compatibility-library-authoring.md) — the reviewer checklist and the non-squashed clean-room-spec-commit rule — is referenced from contribution docs
-- [ ] `cd compiler && just` green
+- [x] Conformance test in `sources` walks every bundled manifest and asserts it records a non-empty `references` list (a factual record, no legal judgment) — **REQ-CL-sources-007**
+- [x] Un-ignore sources-007; confirm the [authoring policy](../steering/compatibility-library-authoring.md) — the reviewer checklist and the non-squashed clean-room-spec-commit rule — is referenced from contribution docs
+- [x] `cd compiler && just` green
 
 ### Deferred / out of scope (see the design's *Non-Goals* and *Future Goals*)
 - **Bindings** (per-version manifest table), non-ST implementations (VM

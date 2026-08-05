@@ -341,6 +341,34 @@ fn sources_spec_req_cl_004_diagnoses_unshipped_library() {
 /// REQ-CL-sources-007: The manifest records the public references the library
 /// was authored from (a non-empty `references` list), enforced as a provenance
 /// conformance test that walks every bundled manifest.
+///
+/// This is the machine-checkable half of the authoring policy in
+/// `specs/steering/compatibility-library-authoring.md`: every bundled library
+/// must record a factual, non-empty list of the public references it was
+/// authored from. The human-only half (no forbidden input was used, clearance
+/// was performed) stays a reviewer responsibility.
 #[spec_test(REQ_CL_sources_007)]
-#[ignore = "phase 4: provenance walk over every bundled manifest"]
-fn sources_spec_req_cl_007_provenance_references_recorded() {}
+fn sources_spec_req_cl_007_provenance_references_recorded() {
+    let registry = LibraryRegistry::bundled();
+    let names = registry.library_names();
+
+    // There is at least one bundled library to vouch for (guards against the
+    // walk silently passing over an empty or misrooted registry).
+    assert!(
+        !names.is_empty(),
+        "expected at least one bundled compatibility library"
+    );
+
+    for name in &names {
+        // Loading validates the manifest is well-formed (`from_toml` rejects a
+        // malformed or field-missing manifest) and, in particular, that its
+        // `references` list is non-empty.
+        let loaded = registry.load(name).unwrap_or_else(|diagnostic| {
+            panic!("bundled library `{name}` must load: {diagnostic:?}")
+        });
+        assert!(
+            !loaded.manifest.references.is_empty(),
+            "bundled library `{name}` must record a non-empty `references` list"
+        );
+    }
+}
