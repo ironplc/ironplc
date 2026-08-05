@@ -111,22 +111,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn apply_when_mixed_block_and_flag_disabled_then_error() {
-        let program = "
-FUNCTION_BLOCK FB_Example
-VAR
-    tempSensor AT%I*: INT;
-    fbComm     : BOOL;
-END_VAR
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-    }
+    rule_err!(
+        apply_when_mixed_block_and_flag_disabled_then_error,
+        "FUNCTION_BLOCK FB_Example VAR tempSensor AT%I*: INT; fbComm     : BOOL; END_VAR END_FUNCTION_BLOCK"
+    );
 
     #[test]
     fn apply_when_mixed_block_and_flag_enabled_then_ok() {
@@ -145,43 +133,13 @@ END_FUNCTION_BLOCK";
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn apply_when_dedicated_incompl_located_block_then_never_flagged() {
-        // A block containing ONLY located variables uses the pre-existing,
-        // always-allowed incompl_located_var_declarations() grammar path,
-        // not the new mixed-block extension -- must never be flagged
-        // regardless of the option, proving mixed_located_var_decls
-        // correctly distinguishes the two (no Symbol sibling in this
-        // block's BlockId group).
-        let program = "
-FUNCTION_BLOCK FB_Example
-VAR
-    tempSensor1 AT%I*: INT;
-    tempSensor2 AT%I*: INT;
-END_VAR
-END_FUNCTION_BLOCK";
+    rule_ok!(
+        apply_when_dedicated_incompl_located_block_then_never_flagged,
+        "FUNCTION_BLOCK FB_Example VAR tempSensor1 AT%I*: INT; tempSensor2 AT%I*: INT; END_VAR END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_plain_block_then_ok() {
-        let program = "
-FUNCTION_BLOCK FB_Example
-VAR
-    x : INT;
-    y : BOOL;
-END_VAR
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+    rule_ok!(
+        apply_when_plain_block_then_ok,
+        "FUNCTION_BLOCK FB_Example VAR x : INT; y : BOOL; END_VAR END_FUNCTION_BLOCK"
+    );
 }

@@ -444,406 +444,97 @@ mod tests {
     use super::*;
     use crate::test_helpers::parse_and_resolve_types_with_context;
 
-    #[test]
-    fn apply_when_matching_types_then_ok() {
-        let program = "
-FUNCTION ADD_INTS : INT
-VAR_INPUT
-    A : INT;
-    B : INT;
-END_VAR
-    ADD_INTS := A + B;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_matching_types_then_ok,
+        "FUNCTION ADD_INTS : INT VAR_INPUT A : INT; B : INT; END_VAR ADD_INTS := A + B; END_FUNCTION PROGRAM main VAR result : INT; a : INT; b : INT; END_VAR result := ADD_INTS(a, b); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : INT;
-    a : INT;
-    b : INT;
-END_VAR
-    result := ADD_INTS(a, b);
-END_PROGRAM";
+    rule_ctx_ok!(
+        apply_when_int_arg_to_real_param_lossless_then_ok,
+        "FUNCTION DOUBLE_REAL : REAL VAR_INPUT A : REAL; END_VAR DOUBLE_REAL := A; END_FUNCTION PROGRAM main VAR result : REAL; x : INT; END_VAR result := DOUBLE_REAL(x); END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_err1!(
+        apply_when_dint_arg_to_real_param_lossy_then_error,
+        "FUNCTION DOUBLE_REAL : REAL VAR_INPUT A : REAL; END_VAR DOUBLE_REAL := A; END_FUNCTION PROGRAM main VAR result : REAL; x : DINT; END_VAR result := DOUBLE_REAL(x); END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
 
-    #[test]
-    fn apply_when_int_arg_to_real_param_lossless_then_ok() {
-        let program = "
-FUNCTION DOUBLE_REAL : REAL
-VAR_INPUT
-    A : REAL;
-END_VAR
-    DOUBLE_REAL := A;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_stdlib_function_then_skipped,
+        "PROGRAM main VAR result : REAL; x : INT; END_VAR result := INT_TO_REAL(x); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : REAL;
-    x : INT;
-END_VAR
-    result := DOUBLE_REAL(x);
-END_PROGRAM";
+    rule_ctx_err1!(
+        apply_when_multiple_args_one_mismatch_then_one_error,
+        "FUNCTION MY_FUNC : INT VAR_INPUT A : INT; B : SINT; END_VAR MY_FUNC := A; END_FUNCTION PROGRAM main VAR result : INT; x : INT; END_VAR result := MY_FUNC(x, x); END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_err1!(
+        apply_when_return_type_mismatch_then_error,
+        "FUNCTION GET_VALUE : REAL VAR_INPUT A : REAL; END_VAR GET_VALUE := A; END_FUNCTION PROGRAM main VAR result : INT; x : REAL; END_VAR result := GET_VALUE(x); END_PROGRAM",
+        Problem::FunctionCallReturnTypeMismatch
+    );
 
-    #[test]
-    fn apply_when_dint_arg_to_real_param_lossy_then_error() {
-        let program = "
-FUNCTION DOUBLE_REAL : REAL
-VAR_INPUT
-    A : REAL;
-END_VAR
-    DOUBLE_REAL := A;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_nested_function_call_types_match_then_ok,
+        "FUNCTION DOUBLE : INT VAR_INPUT A : INT; END_VAR DOUBLE := A + A; END_FUNCTION PROGRAM main VAR result : INT; x : INT; END_VAR result := DOUBLE(DOUBLE(x)); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : REAL;
-    x : DINT;
-END_VAR
-    result := DOUBLE_REAL(x);
-END_PROGRAM";
+    rule_ctx_ok!(
+        apply_when_all_args_match_then_ok,
+        "FUNCTION ADD3 : DINT VAR_INPUT A : DINT; B : DINT; C : DINT; END_VAR ADD3 := A + B + C; END_FUNCTION PROGRAM main VAR result : DINT; a : DINT; b : DINT; c : DINT; END_VAR result := ADD3(a, b, c); END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallArgTypeMismatch.code()
-        );
-    }
+    rule_ctx_ok!(
+        apply_when_return_type_matches_then_ok,
+        "FUNCTION GET_REAL : REAL VAR_INPUT A : REAL; END_VAR GET_REAL := A; END_FUNCTION PROGRAM main VAR result : REAL; x : REAL; END_VAR result := GET_REAL(x); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_stdlib_function_then_skipped() {
-        let program = "
-PROGRAM main
-VAR
-    result : REAL;
-    x : INT;
-END_VAR
-    result := INT_TO_REAL(x);
-END_PROGRAM";
+    rule_ctx_ok!(
+        apply_when_bare_literal_arg_to_int_param_then_ok,
+        "FUNCTION ADD_ONE : INT VAR_INPUT x : INT; END_VAR ADD_ONE := x + 1; END_FUNCTION PROGRAM main VAR result : INT; END_VAR result := ADD_ONE(5); END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_ok!(
+        apply_when_bare_literal_arg_to_sint_param_then_ok,
+        "FUNCTION INC : SINT VAR_INPUT x : SINT; END_VAR INC := x; END_FUNCTION PROGRAM main VAR result : SINT; END_VAR result := INC(5); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_multiple_args_one_mismatch_then_one_error() {
-        let program = "
-FUNCTION MY_FUNC : INT
-VAR_INPUT
-    A : INT;
-    B : SINT;
-END_VAR
-    MY_FUNC := A;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_bare_real_literal_arg_to_lreal_param_then_ok,
+        "FUNCTION DBL : LREAL VAR_INPUT x : LREAL; END_VAR DBL := x; END_FUNCTION PROGRAM main VAR result : LREAL; END_VAR result := DBL(3.14); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : INT;
-    x : INT;
-END_VAR
-    result := MY_FUNC(x, x);
-END_PROGRAM";
+    // REAL -> LREAL is lossless, standard widening (unlike the bare
+    // literal case above, this argument is a typed REAL variable, not
+    // an untyped ANY_REAL literal -- a separate code path through
+    // ElementaryTypeName::can_widen_to()).
+    rule_ctx_ok!(
+        apply_when_typed_real_var_arg_to_lreal_param_then_ok,
+        "FUNCTION DBL : LREAL VAR_INPUT x : LREAL; END_VAR DBL := x; END_FUNCTION PROGRAM main VAR input : REAL; result : LREAL; END_VAR result := DBL(input); END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallArgTypeMismatch.code()
-        );
-    }
+    // The reverse direction (LREAL -> REAL) is narrowing and must
+    // remain an error -- guards against accidentally allowing both
+    // directions.
+    rule_ctx_err!(
+        apply_when_typed_lreal_var_arg_to_real_param_then_error,
+        "FUNCTION SNGL : REAL VAR_INPUT x : REAL; END_VAR SNGL := x; END_FUNCTION PROGRAM main VAR input : LREAL; result : REAL; END_VAR result := SNGL(input); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_return_type_mismatch_then_error() {
-        let program = "
-FUNCTION GET_VALUE : REAL
-VAR_INPUT
-    A : REAL;
-END_VAR
-    GET_VALUE := A;
-END_FUNCTION
+    rule_ctx_err1!(
+        apply_when_typed_dint_literal_arg_to_int_param_then_error,
+        "FUNCTION ADD_ONE : INT VAR_INPUT x : INT; END_VAR ADD_ONE := x; END_FUNCTION PROGRAM main VAR result : INT; END_VAR result := ADD_ONE(DINT#5); END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
 
-PROGRAM main
-VAR
-    result : INT;
-    x : REAL;
-END_VAR
-    result := GET_VALUE(x);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallReturnTypeMismatch.code()
-        );
-    }
-
-    #[test]
-    fn apply_when_nested_function_call_types_match_then_ok() {
-        let program = "
-FUNCTION DOUBLE : INT
-VAR_INPUT
-    A : INT;
-END_VAR
-    DOUBLE := A + A;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : INT;
-    x : INT;
-END_VAR
-    result := DOUBLE(DOUBLE(x));
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_all_args_match_then_ok() {
-        let program = "
-FUNCTION ADD3 : DINT
-VAR_INPUT
-    A : DINT;
-    B : DINT;
-    C : DINT;
-END_VAR
-    ADD3 := A + B + C;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : DINT;
-    a : DINT;
-    b : DINT;
-    c : DINT;
-END_VAR
-    result := ADD3(a, b, c);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_return_type_matches_then_ok() {
-        let program = "
-FUNCTION GET_REAL : REAL
-VAR_INPUT
-    A : REAL;
-END_VAR
-    GET_REAL := A;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : REAL;
-    x : REAL;
-END_VAR
-    result := GET_REAL(x);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_bare_literal_arg_to_int_param_then_ok() {
-        let program = "
-FUNCTION ADD_ONE : INT
-VAR_INPUT
-    x : INT;
-END_VAR
-    ADD_ONE := x + 1;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : INT;
-END_VAR
-    result := ADD_ONE(5);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_bare_literal_arg_to_sint_param_then_ok() {
-        let program = "
-FUNCTION INC : SINT
-VAR_INPUT
-    x : SINT;
-END_VAR
-    INC := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : SINT;
-END_VAR
-    result := INC(5);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_bare_real_literal_arg_to_lreal_param_then_ok() {
-        let program = "
-FUNCTION DBL : LREAL
-VAR_INPUT
-    x : LREAL;
-END_VAR
-    DBL := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : LREAL;
-END_VAR
-    result := DBL(3.14);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_typed_real_var_arg_to_lreal_param_then_ok() {
-        // REAL -> LREAL is lossless, standard widening (unlike the bare
-        // literal case above, this argument is a typed REAL variable, not
-        // an untyped ANY_REAL literal -- a separate code path through
-        // ElementaryTypeName::can_widen_to()).
-        let program = "
-FUNCTION DBL : LREAL
-VAR_INPUT
-    x : LREAL;
-END_VAR
-    DBL := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    input : REAL;
-    result : LREAL;
-END_VAR
-    result := DBL(input);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_typed_lreal_var_arg_to_real_param_then_error() {
-        // The reverse direction (LREAL -> REAL) is narrowing and must
-        // remain an error -- guards against accidentally allowing both
-        // directions.
-        let program = "
-FUNCTION SNGL : REAL
-VAR_INPUT
-    x : REAL;
-END_VAR
-    SNGL := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    input : LREAL;
-    result : REAL;
-END_VAR
-    result := SNGL(input);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_typed_dint_literal_arg_to_int_param_then_error() {
-        let program = "
-FUNCTION ADD_ONE : INT
-VAR_INPUT
-    x : INT;
-END_VAR
-    ADD_ONE := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : INT;
-END_VAR
-    result := ADD_ONE(DINT#5);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallArgTypeMismatch.code()
-        );
-    }
-
-    #[test]
-    fn apply_when_dint_var_arg_to_int_param_then_error() {
-        let program = "
-FUNCTION ADD_ONE : INT
-VAR_INPUT
-    x : INT;
-END_VAR
-    ADD_ONE := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : INT;
-    y : DINT;
-END_VAR
-    result := ADD_ONE(y);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallArgTypeMismatch.code()
-        );
-    }
+    rule_ctx_err1!(
+        apply_when_dint_var_arg_to_int_param_then_error,
+        "FUNCTION ADD_ONE : INT VAR_INPUT x : INT; END_VAR ADD_ONE := x; END_FUNCTION PROGRAM main VAR result : INT; y : DINT; END_VAR result := ADD_ONE(y); END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
 
     #[test]
     fn are_types_compatible_when_exact_match_then_true() {
@@ -925,271 +616,67 @@ END_PROGRAM";
         ));
     }
 
-    #[test]
-    fn apply_when_bare_int_literal_arg_to_real_param_then_ok() {
-        let program = "
-FUNCTION TAKES_REAL : REAL
-VAR_INPUT
-    x : REAL;
-END_VAR
-    TAKES_REAL := x;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_bare_int_literal_arg_to_real_param_then_ok,
+        "FUNCTION TAKES_REAL : REAL VAR_INPUT x : REAL; END_VAR TAKES_REAL := x; END_FUNCTION PROGRAM main VAR result : REAL; END_VAR result := TAKES_REAL(0); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : REAL;
-END_VAR
-    result := TAKES_REAL(0);
-END_PROGRAM
-";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_bare_int_literal_arg_to_lreal_param_then_ok() {
-        let program = "
-FUNCTION TAKES_LREAL : LREAL
-VAR_INPUT
-    x : LREAL;
-END_VAR
-    TAKES_LREAL := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : LREAL;
-END_VAR
-    result := TAKES_LREAL(42);
-END_PROGRAM
-";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_ok!(
+        apply_when_bare_int_literal_arg_to_lreal_param_then_ok,
+        "FUNCTION TAKES_LREAL : LREAL VAR_INPUT x : LREAL; END_VAR TAKES_LREAL := x; END_FUNCTION PROGRAM main VAR result : LREAL; END_VAR result := TAKES_LREAL(42); END_PROGRAM"
+    );
 
     // --- Implicit integer widening tests (ADR-0029) ---
 
-    #[test]
-    fn apply_when_sint_arg_to_int_param_then_ok() {
-        let program = "
-FUNCTION TAKES_INT : INT
-VAR_INPUT
-    x : INT;
-END_VAR
-    TAKES_INT := x;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_sint_arg_to_int_param_then_ok,
+        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : SINT; END_VAR result := TAKES_INT(y); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : INT;
-    y : SINT;
-END_VAR
-    result := TAKES_INT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_ok!(
+        apply_when_int_arg_to_dint_param_then_ok,
+        "FUNCTION TAKES_DINT : DINT VAR_INPUT x : DINT; END_VAR TAKES_DINT := x; END_FUNCTION PROGRAM main VAR result : DINT; y : INT; END_VAR result := TAKES_DINT(y); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_int_arg_to_dint_param_then_ok() {
-        let program = "
-FUNCTION TAKES_DINT : DINT
-VAR_INPUT
-    x : DINT;
-END_VAR
-    TAKES_DINT := x;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_sint_arg_to_lint_param_then_ok,
+        "FUNCTION TAKES_LINT : LINT VAR_INPUT x : LINT; END_VAR TAKES_LINT := x; END_FUNCTION PROGRAM main VAR result : LINT; y : SINT; END_VAR result := TAKES_LINT(y); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : DINT;
-    y : INT;
-END_VAR
-    result := TAKES_DINT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_ok!(
+        apply_when_usint_arg_to_uint_param_then_ok,
+        "FUNCTION TAKES_UINT : UINT VAR_INPUT x : UINT; END_VAR TAKES_UINT := x; END_FUNCTION PROGRAM main VAR result : UINT; y : USINT; END_VAR result := TAKES_UINT(y); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_sint_arg_to_lint_param_then_ok() {
-        let program = "
-FUNCTION TAKES_LINT : LINT
-VAR_INPUT
-    x : LINT;
-END_VAR
-    TAKES_LINT := x;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_usint_arg_to_int_param_then_ok,
+        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : USINT; END_VAR result := TAKES_INT(y); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : LINT;
-    y : SINT;
-END_VAR
-    result := TAKES_LINT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_ok!(
+        apply_when_uint_arg_to_dint_param_then_ok,
+        "FUNCTION TAKES_DINT : DINT VAR_INPUT x : DINT; END_VAR TAKES_DINT := x; END_FUNCTION PROGRAM main VAR result : DINT; y : UINT; END_VAR result := TAKES_DINT(y); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_usint_arg_to_uint_param_then_ok() {
-        let program = "
-FUNCTION TAKES_UINT : UINT
-VAR_INPUT
-    x : UINT;
-END_VAR
-    TAKES_UINT := x;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_sint_return_to_dint_var_then_ok,
+        "FUNCTION GET_SINT : SINT VAR_INPUT x : SINT; END_VAR GET_SINT := x; END_FUNCTION PROGRAM main VAR result : DINT; y : SINT; END_VAR result := GET_SINT(y); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : UINT;
-    y : USINT;
-END_VAR
-    result := TAKES_UINT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_err!(
+        apply_when_dint_arg_to_int_param_then_error,
+        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : DINT; END_VAR result := TAKES_INT(y); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_usint_arg_to_int_param_then_ok() {
-        let program = "
-FUNCTION TAKES_INT : INT
-VAR_INPUT
-    x : INT;
-END_VAR
-    TAKES_INT := x;
-END_FUNCTION
+    rule_ctx_err!(
+        apply_when_int_arg_to_uint_param_then_error,
+        "FUNCTION TAKES_UINT : UINT VAR_INPUT x : UINT; END_VAR TAKES_UINT := x; END_FUNCTION PROGRAM main VAR result : UINT; y : INT; END_VAR result := TAKES_UINT(y); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : INT;
-    y : USINT;
-END_VAR
-    result := TAKES_INT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_uint_arg_to_dint_param_then_ok() {
-        let program = "
-FUNCTION TAKES_DINT : DINT
-VAR_INPUT
-    x : DINT;
-END_VAR
-    TAKES_DINT := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : DINT;
-    y : UINT;
-END_VAR
-    result := TAKES_DINT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_sint_return_to_dint_var_then_ok() {
-        let program = "
-FUNCTION GET_SINT : SINT
-VAR_INPUT
-    x : SINT;
-END_VAR
-    GET_SINT := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : DINT;
-    y : SINT;
-END_VAR
-    result := GET_SINT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_dint_arg_to_int_param_then_error() {
-        let program = "
-FUNCTION TAKES_INT : INT
-VAR_INPUT
-    x : INT;
-END_VAR
-    TAKES_INT := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : INT;
-    y : DINT;
-END_VAR
-    result := TAKES_INT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_int_arg_to_uint_param_then_error() {
-        let program = "
-FUNCTION TAKES_UINT : UINT
-VAR_INPUT
-    x : UINT;
-END_VAR
-    TAKES_UINT := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : UINT;
-    y : INT;
-END_VAR
-    result := TAKES_UINT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_byte_arg_to_int_param_then_error() {
-        let program = "
-FUNCTION TAKES_INT : INT
-VAR_INPUT
-    x : INT;
-END_VAR
-    TAKES_INT := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : INT;
-    y : BYTE;
-END_VAR
-    result := TAKES_INT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
+    rule_ctx_err!(
+        apply_when_byte_arg_to_int_param_then_error,
+        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : BYTE; END_VAR result := TAKES_INT(y); END_PROGRAM"
+    );
 
     #[test]
     fn are_types_compatible_when_int_to_dint_then_true() {
@@ -1245,115 +732,30 @@ END_PROGRAM";
 
     // --- Integration tests for new widening cases ---
 
-    #[test]
-    fn apply_when_int_arg_to_real_param_then_ok() {
-        let program = "
-FUNCTION TAKES_REAL : REAL
-VAR_INPUT
-    x : REAL;
-END_VAR
-    TAKES_REAL := x;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_int_arg_to_real_param_then_ok,
+        "FUNCTION TAKES_REAL : REAL VAR_INPUT x : REAL; END_VAR TAKES_REAL := x; END_FUNCTION PROGRAM main VAR result : REAL; y : INT; END_VAR result := TAKES_REAL(y); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : REAL;
-    y : INT;
-END_VAR
-    result := TAKES_REAL(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_err!(
+        apply_when_dint_arg_to_real_param_then_error,
+        "FUNCTION TAKES_REAL : REAL VAR_INPUT x : REAL; END_VAR TAKES_REAL := x; END_FUNCTION PROGRAM main VAR result : REAL; y : DINT; END_VAR result := TAKES_REAL(y); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_dint_arg_to_real_param_then_error() {
-        let program = "
-FUNCTION TAKES_REAL : REAL
-VAR_INPUT
-    x : REAL;
-END_VAR
-    TAKES_REAL := x;
-END_FUNCTION
+    rule_ctx_ok!(
+        apply_when_byte_arg_to_word_param_then_ok,
+        "FUNCTION TAKES_WORD : WORD VAR_INPUT x : WORD; END_VAR TAKES_WORD := x; END_FUNCTION PROGRAM main VAR result : WORD; y : BYTE; END_VAR result := TAKES_WORD(y); END_PROGRAM"
+    );
 
-PROGRAM main
-VAR
-    result : REAL;
-    y : DINT;
-END_VAR
-    result := TAKES_REAL(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
+    rule_ctx_err!(
+        apply_when_word_arg_to_byte_param_then_error,
+        "FUNCTION TAKES_BYTE : BYTE VAR_INPUT x : BYTE; END_VAR TAKES_BYTE := x; END_FUNCTION PROGRAM main VAR result : BYTE; y : WORD; END_VAR result := TAKES_BYTE(y); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_byte_arg_to_word_param_then_ok() {
-        let program = "
-FUNCTION TAKES_WORD : WORD
-VAR_INPUT
-    x : WORD;
-END_VAR
-    TAKES_WORD := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : WORD;
-    y : BYTE;
-END_VAR
-    result := TAKES_WORD(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_word_arg_to_byte_param_then_error() {
-        let program = "
-FUNCTION TAKES_BYTE : BYTE
-VAR_INPUT
-    x : BYTE;
-END_VAR
-    TAKES_BYTE := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : BYTE;
-    y : WORD;
-END_VAR
-    result := TAKES_BYTE(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_real_arg_to_int_param_then_error() {
-        let program = "
-FUNCTION TAKES_INT : INT
-VAR_INPUT
-    x : INT;
-END_VAR
-    TAKES_INT := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : INT;
-    y : REAL;
-END_VAR
-    result := TAKES_INT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
+    rule_ctx_err!(
+        apply_when_real_arg_to_int_param_then_error,
+        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : REAL; END_VAR result := TAKES_INT(y); END_PROGRAM"
+    );
 
     // --- Cross-family widening tests (ADR-0031, requires flag) ---
 
@@ -1408,26 +810,10 @@ END_PROGRAM";
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn apply_when_literal_zero_to_byte_param_without_flag_then_error() {
-        let program = "
-FUNCTION TAKES_BYTE : BYTE
-VAR_INPUT
-    x : BYTE;
-END_VAR
-    TAKES_BYTE := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : BYTE;
-END_VAR
-    result := TAKES_BYTE(0);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
+    rule_ctx_err!(
+        apply_when_literal_zero_to_byte_param_without_flag_then_error,
+        "FUNCTION TAKES_BYTE : BYTE VAR_INPUT x : BYTE; END_VAR TAKES_BYTE := x; END_FUNCTION PROGRAM main VAR result : BYTE; END_VAR result := TAKES_BYTE(0); END_PROGRAM"
+    );
 
     #[test]
     fn apply_when_byte_return_to_int_var_with_flag_then_ok() {
@@ -1455,27 +841,10 @@ END_PROGRAM";
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn apply_when_byte_return_to_int_var_without_flag_then_error() {
-        let program = "
-FUNCTION GET_BYTE : BYTE
-VAR_INPUT
-    x : BYTE;
-END_VAR
-    GET_BYTE := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : INT;
-    y : BYTE;
-END_VAR
-    result := GET_BYTE(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
+    rule_ctx_err!(
+        apply_when_byte_return_to_int_var_without_flag_then_error,
+        "FUNCTION GET_BYTE : BYTE VAR_INPUT x : BYTE; END_VAR GET_BYTE := x; END_FUNCTION PROGRAM main VAR result : INT; y : BYTE; END_VAR result := GET_BYTE(y); END_PROGRAM"
+    );
 
     #[test]
     fn apply_when_int_arg_to_byte_param_with_flag_then_error() {
@@ -1506,156 +875,59 @@ END_PROGRAM";
 
     // --- Standard-library argument type checks ---
 
-    #[test]
-    fn apply_when_stdlib_sin_arg_is_bool_then_arg_type_error() {
-        let program = "
-PROGRAM main
-VAR
-    b : BOOL;
-    r : REAL;
-END_VAR
-    r := SIN(b);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        let diagnostics = result.unwrap_err();
-        assert!(diagnostics
-            .iter()
-            .any(|d| d.code == Problem::FunctionCallArgTypeMismatch.code()));
-    }
+    rule_ctx_err_code!(
+        apply_when_stdlib_sin_arg_is_bool_then_arg_type_error,
+        "PROGRAM main VAR b : BOOL; r : REAL; END_VAR r := SIN(b); END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
 
-    #[test]
-    fn apply_when_stdlib_sin_arg_is_real_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    x : REAL;
-    r : REAL;
-END_VAR
-    r := SIN(x);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_ok!(
+        apply_when_stdlib_sin_arg_is_real_then_ok,
+        "PROGRAM main VAR x : REAL; r : REAL; END_VAR r := SIN(x); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_wrong_conversion_function_arg_then_arg_type_error() {
-        // UINT_TO_REAL expects UINT, but the argument is UDINT.
-        let program = "
-PROGRAM main
-VAR
-    u : UDINT;
-    r : REAL;
-END_VAR
-    r := UINT_TO_REAL(u);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallArgTypeMismatch.code()
-        );
-    }
+    // UINT_TO_REAL expects UINT, but the argument is UDINT.
+    rule_ctx_err1!(
+        apply_when_wrong_conversion_function_arg_then_arg_type_error,
+        "PROGRAM main VAR u : UDINT; r : REAL; END_VAR r := UINT_TO_REAL(u); END_PROGRAM",
+        Problem::FunctionCallArgTypeMismatch
+    );
 
-    #[test]
-    fn apply_when_correct_conversion_function_arg_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    u : UDINT;
-    r : REAL;
-END_VAR
-    r := UDINT_TO_REAL(u);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_ok!(
+        apply_when_correct_conversion_function_arg_then_ok,
+        "PROGRAM main VAR u : UDINT; r : REAL; END_VAR r := UDINT_TO_REAL(u); END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_stdlib_int_literal_arg_to_real_param_then_ok() {
-        // ABS accepts ANY_NUM; a bare integer literal is accepted.
-        let program = "
-PROGRAM main
-VAR
-    r : REAL;
-END_VAR
-    r := SQRT(2.0);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    // ABS accepts ANY_NUM; a bare integer literal is accepted.
+    rule_ctx_ok!(
+        apply_when_stdlib_int_literal_arg_to_real_param_then_ok,
+        "PROGRAM main VAR r : REAL; END_VAR r := SQRT(2.0); END_PROGRAM"
+    );
 
     // --- Assignment statement type checks (P4035) ---
 
-    #[test]
-    fn apply_when_bool_target_assigned_real_expr_then_error() {
-        let program = "
-PROGRAM main
-VAR
-    b : BOOL;
-    x : REAL;
-END_VAR
-    b := x * 2.0;
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, Problem::AssignmentTypeMismatch.code());
-    }
+    rule_ctx_err1!(
+        apply_when_bool_target_assigned_real_expr_then_error,
+        "PROGRAM main VAR b : BOOL; x : REAL; END_VAR b := x * 2.0; END_PROGRAM",
+        Problem::AssignmentTypeMismatch
+    );
 
-    #[test]
-    fn apply_when_int_target_assigned_real_var_then_error() {
-        let program = "
-PROGRAM main
-VAR
-    i : INT;
-    r : REAL;
-END_VAR
-    i := r;
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, Problem::AssignmentTypeMismatch.code());
-    }
+    rule_ctx_err1!(
+        apply_when_int_target_assigned_real_var_then_error,
+        "PROGRAM main VAR i : INT; r : REAL; END_VAR i := r; END_PROGRAM",
+        Problem::AssignmentTypeMismatch
+    );
 
-    #[test]
-    fn apply_when_real_target_assigned_int_var_then_ok() {
-        // INT widens losslessly to REAL, so this assignment is valid.
-        let program = "
-PROGRAM main
-VAR
-    i : INT;
-    r : REAL;
-END_VAR
-    r := i;
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    // INT widens losslessly to REAL, so this assignment is valid.
+    rule_ctx_ok!(
+        apply_when_real_target_assigned_int_var_then_ok,
+        "PROGRAM main VAR i : INT; r : REAL; END_VAR r := i; END_PROGRAM"
+    );
 
-    #[test]
-    fn apply_when_matching_assignment_then_ok() {
-        let program = "
-PROGRAM main
-VAR
-    i : INT;
-    j : INT;
-END_VAR
-    i := j + 1;
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ctx_ok!(
+        apply_when_matching_assignment_then_ok,
+        "PROGRAM main VAR i : INT; j : INT; END_VAR i := j + 1; END_PROGRAM"
+    );
 
     #[test]
     fn apply_when_dword_target_assigned_udint_var_with_flag_then_ok() {
@@ -1698,20 +970,10 @@ END_PROGRAM";
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn apply_when_dword_target_assigned_udint_var_without_flag_then_error() {
-        let program = "
-PROGRAM main
-VAR
-    dwFromUdint : DWORD;
-    udValue : UDINT;
-END_VAR
-    dwFromUdint := udValue;
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
+    rule_ctx_err!(
+        apply_when_dword_target_assigned_udint_var_without_flag_then_error,
+        "PROGRAM main VAR dwFromUdint : DWORD; udValue : UDINT; END_VAR dwFromUdint := udValue; END_PROGRAM"
+    );
 
     #[test]
     fn apply_when_dword_target_assigned_dint_var_with_flag_then_error() {
@@ -1734,21 +996,11 @@ END_PROGRAM";
         assert!(result.is_err());
     }
 
-    #[test]
-    fn apply_when_ltime_target_assigned_time_var_then_ok() {
-        // Temporal short/long widths are treated as one family.
-        let program = "
-PROGRAM main
-VAR
-    lt : LTIME;
-    t : TIME;
-END_VAR
-    lt := t;
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    // Temporal short/long widths are treated as one family.
+    rule_ctx_ok!(
+        apply_when_ltime_target_assigned_time_var_then_ok,
+        "PROGRAM main VAR lt : LTIME; t : TIME; END_VAR lt := t; END_PROGRAM"
+    );
 
     // --- are_types_compatible: generic expected (stdlib parameters) ---
 

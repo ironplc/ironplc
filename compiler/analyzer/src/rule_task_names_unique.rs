@@ -82,73 +82,23 @@ impl Visitor<Diagnostic> for RuleTaskNamesUnique {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
+    rule_ok!(
+        apply_when_task_names_unique_then_return_ok,
+        "CONFIGURATION config RESOURCE resource1 ON PLC TASK task_a(INTERVAL := T#100ms,PRIORITY := 1); TASK task_b(INTERVAL := T#200ms,PRIORITY := 2); PROGRAM instance1 WITH task_a : plc_prg; END_RESOURCE END_CONFIGURATION"
+    );
 
-    use super::*;
+    rule_err!(
+        apply_when_task_names_duplicated_then_return_error,
+        "CONFIGURATION config RESOURCE resource1 ON PLC TASK my_task(INTERVAL := T#100ms,PRIORITY := 1); TASK my_task(INTERVAL := T#200ms,PRIORITY := 2); PROGRAM instance1 WITH my_task : plc_prg; END_RESOURCE END_CONFIGURATION"
+    );
 
-    #[test]
-    fn apply_when_task_names_unique_then_return_ok() {
-        let program = "
-        CONFIGURATION config
-            RESOURCE resource1 ON PLC
-               TASK task_a(INTERVAL := T#100ms,PRIORITY := 1);
-               TASK task_b(INTERVAL := T#200ms,PRIORITY := 2);
-               PROGRAM instance1 WITH task_a : plc_prg;
-            END_RESOURCE
-        END_CONFIGURATION";
+    rule_ok!(
+        apply_when_single_task_then_return_ok,
+        "CONFIGURATION config RESOURCE resource1 ON PLC TASK my_task(INTERVAL := T#100ms,PRIORITY := 1); PROGRAM instance1 WITH my_task : plc_prg; END_RESOURCE END_CONFIGURATION"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_task_names_duplicated_then_return_error() {
-        let program = "
-        CONFIGURATION config
-            RESOURCE resource1 ON PLC
-               TASK my_task(INTERVAL := T#100ms,PRIORITY := 1);
-               TASK my_task(INTERVAL := T#200ms,PRIORITY := 2);
-               PROGRAM instance1 WITH my_task : plc_prg;
-            END_RESOURCE
-        END_CONFIGURATION";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_single_task_then_return_ok() {
-        let program = "
-        CONFIGURATION config
-            RESOURCE resource1 ON PLC
-               TASK my_task(INTERVAL := T#100ms,PRIORITY := 1);
-               PROGRAM instance1 WITH my_task : plc_prg;
-            END_RESOURCE
-        END_CONFIGURATION";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_no_tasks_then_return_ok() {
-        let program = "
-        CONFIGURATION config
-            RESOURCE resource1 ON PLC
-               PROGRAM instance1 : plc_prg;
-            END_RESOURCE
-        END_CONFIGURATION";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+    rule_ok!(
+        apply_when_no_tasks_then_return_ok,
+        "CONFIGURATION config RESOURCE resource1 ON PLC PROGRAM instance1 : plc_prg; END_RESOURCE END_CONFIGURATION"
+    );
 }

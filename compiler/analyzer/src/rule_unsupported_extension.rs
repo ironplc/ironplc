@@ -109,48 +109,19 @@ mod tests {
         }
     }
 
-    #[test]
-    fn apply_when_plain_function_block_then_ok() {
-        let program = "
-FUNCTION_BLOCK FB_Motor
-VAR
-    bRunning : BOOL;
-END_VAR
-END_FUNCTION_BLOCK";
+    rule_ok!(
+        apply_when_plain_function_block_then_ok,
+        "FUNCTION_BLOCK FB_Motor VAR bRunning : BOOL; END_VAR END_FUNCTION_BLOCK"
+    );
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &CompilerOptions::default());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_plain_extends_then_ok() {
-        // Plain EXTENDS (no IMPLEMENTS, not ABSTRACT) no longer flags --
-        // field inheritance through the EXTENDS chain is fully resolved.
-        // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
-        let program = "
-FUNCTION_BLOCK FB_Motor
-VAR
-    bRunning : BOOL;
-END_VAR
-END_FUNCTION_BLOCK
-
-FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
-VAR
-    bTurbo : BOOL;
-END_VAR
-END_FUNCTION_BLOCK";
-
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok());
-    }
+    // Plain EXTENDS (no IMPLEMENTS, not ABSTRACT) no longer flags --
+    // field inheritance through the EXTENDS chain is fully resolved.
+    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
+    rule_ok_with!(
+        apply_when_plain_extends_then_ok,
+        opts_with_fb_inheritance(),
+        "FUNCTION_BLOCK FB_Motor VAR bRunning : BOOL; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor VAR bTurbo : BOOL; END_VAR END_FUNCTION_BLOCK"
+    );
 
     #[test]
     fn apply_when_implements_then_p9999() {

@@ -73,49 +73,13 @@ impl Visitor<Diagnostic> for RuleVarDeclConstIsNotFunctionBlock {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
+    rule_err!(
+        apply_when_var_init_function_block_is_const_then_error,
+        "FUNCTION_BLOCK Callee END_FUNCTION_BLOCK FUNCTION_BLOCK Caller VAR CONSTANT FB_INSTANCE : Callee; END_VAR END_FUNCTION_BLOCK"
+    );
 
-    use super::*;
-
-    #[test]
-    fn apply_when_var_init_function_block_is_const_then_error() {
-        let program = "
-FUNCTION_BLOCK Callee
-
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR CONSTANT
-FB_INSTANCE : Callee;
-END_VAR
-
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-    #[test]
-    fn apply_when_var_init_function_block_not_const_then_error() {
-        let program = "
-FUNCTION_BLOCK Callee
-
-END_FUNCTION_BLOCK
-        
-FUNCTION_BLOCK Caller
-VAR
-FB_INSTANCE : Callee;
-END_VAR
-
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
+    rule_ok!(
+        apply_when_var_init_function_block_not_const_then_error,
+        "FUNCTION_BLOCK Callee END_FUNCTION_BLOCK FUNCTION_BLOCK Caller VAR FB_INSTANCE : Callee; END_VAR END_FUNCTION_BLOCK"
+    );
 }

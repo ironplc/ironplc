@@ -113,62 +113,13 @@ impl Visitor<Diagnostic> for RuleExternalGlobalConst<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
+    rule_err!(
+        apply_when_global_const_external_not_const_then_error,
+        "CONFIGURATION config VAR_GLOBAL CONSTANT ResetCounterValue : INT := 17; END_VAR RESOURCE resource1 ON PLC TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1); PROGRAM plc_task_instance WITH plc_task : plc_prg; END_RESOURCE END_CONFIGURATION FUNCTION_BLOCK func VAR_EXTERNAL ResetCounterValue : INT; END_VAR END_FUNCTION_BLOCK"
+    );
 
-    use super::*;
-
-    #[test]
-    fn apply_when_global_const_external_not_const_then_error() {
-        let program = "
-CONFIGURATION config
-    VAR_GLOBAL CONSTANT
-        ResetCounterValue : INT := 17;
-    END_VAR
-    RESOURCE resource1 ON PLC
-        TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
-        PROGRAM plc_task_instance WITH plc_task : plc_prg;
-    END_RESOURCE
-END_CONFIGURATION
-
-FUNCTION_BLOCK func
-    VAR_EXTERNAL
-        ResetCounterValue : INT;
-    END_VAR
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_global_const_external_const_then_ok() {
-        let program = "
-CONFIGURATION config
-    VAR_GLOBAL CONSTANT
-        ResetCounterValue : INT := 17;
-    END_VAR
-    RESOURCE resource1 ON PLC
-        TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
-        PROGRAM plc_task_instance WITH plc_task : plc_prg;
-    END_RESOURCE
-
-END_CONFIGURATION
-
-FUNCTION_BLOCK func
-    VAR_EXTERNAL CONSTANT
-        ResetCounterValue : INT;
-    END_VAR
-
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
+    rule_ok!(
+        apply_when_global_const_external_const_then_ok,
+        "CONFIGURATION config VAR_GLOBAL CONSTANT ResetCounterValue : INT := 17; END_VAR RESOURCE resource1 ON PLC TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1); PROGRAM plc_task_instance WITH plc_task : plc_prg; END_RESOURCE END_CONFIGURATION FUNCTION_BLOCK func VAR_EXTERNAL CONSTANT ResetCounterValue : INT; END_VAR END_FUNCTION_BLOCK"
+    );
 }
