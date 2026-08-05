@@ -77,7 +77,7 @@ reproduce. This is a safety requirement, not a convenience one. Concretely:
   into something with undefined behavior; the failure mode is fixed — "does not
   compile," never "compiles and misbehaves."
 
-The first increment ships only constants (`Tc2_Math`'s `PI`), so there are no
+The first increment ships only constants (`Tc2_System`'s `PI`), so there are no
 callable library POUs that could be unimplemented. The concrete enforcement — a
 call to a declare-only POU is a compile error — arrives with *bindings* (see
 *Future Goals*).
@@ -283,7 +283,7 @@ reviewer checks its *truth*.
 
 ### Bodies (first increment) and the future bindings mechanism
 
-The first increment ships only fully-defined ST — for `Tc2_Math`, `PI` as a
+The first increment ships only fully-defined ST — for `Tc2_System`, `PI` as a
 `VAR_GLOBAL CONSTANT`. There is no partial/declare-only state and no non-ST
 implementation.
 
@@ -343,8 +343,8 @@ provide that guarantee.
 ### `PI` in a TwinCAT project
 
 `d2r : LREAL := PI/180.0;` in a `.plcproj`-rooted project. The project references
-`Tc2_Math` (the TwinCAT library whose global constants include `PI`); IronPLC
-activates it, injecting `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;`
+`Tc2_System` (the TwinCAT library whose global constants include `PI`); IronPLC
+activates it, injecting `VAR_GLOBAL CONSTANT PI : LREAL := 3.1415926535897932384626433832795;`
 into the composition. `PI`
 resolves as a constant symbol, folds at compile time, and the initializer
 compiles. No flag, no keyword, no source edit. `plc2plc` renders the user's
@@ -433,7 +433,7 @@ No open questions remain for the first increment.
 The on-disk package format and installation/discovery are specified separately in
 [Compatibility Library Format](compatibility-library-format.md) (`REQ-LF-*`). The
 [implementation plan](../plans/2026-08-04-compatibility-libraries.md) delivers
-`.plcproj` library-list reading and the `Tc2_Math` library (defining `PI`) in its
+`.plcproj` library-list reading and the `Tc2_System` library (defining `PI`) in its
 early phases and wires each `REQ-CL-*` / `REQ-LF-*` marker to a `#[spec_test]`.
 
 ## Appendix: `.plcproj` library-reference shapes

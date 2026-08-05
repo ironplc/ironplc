@@ -10,14 +10,14 @@ early are:
 
 1. **Reading the referenced-library list from a `.plcproj` project file** and
    activating the matching bundled libraries.
-2. **The `Tc2_Math` compatibility library** — the TwinCAT library whose global
+2. **The `Tc2_System` compatibility library** — the TwinCAT library whose global
    constants include `PI` — so `PI` resolves as a compile-time-folded constant
-   with no new keyword and no per-symbol flag. `Tc2_Math` is the exact name a
+   with no new keyword and no per-symbol flag. `Tc2_System` is the exact name a
    `.plcproj` references, so activation matches by name.
 
 This closes the long-standing `PI` gap through the general library mechanism
 rather than the stalled `--allow-math-constants` approach, and lays the
-substrate for the rest of `Tc2_Math` and beyond. The key outcome is **`PI` for
+substrate for further libraries and beyond. The key outcome is **`PI` for
 TwinCAT**.
 
 ## Non-goals
@@ -69,8 +69,8 @@ source**, so a user declaration shadows a library declaration of the same name
 ## File map
 
 **New — bundled library + loader (`sources`)**
-- `compiler/sources/resources/libs/Tc2_Math/library.toml` — manifest (`name`, `vendor`, `default_version`, `references`).
-- `compiler/sources/resources/libs/Tc2_Math/1.0.0/Tc2_Math.st` — `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;` (version subdirectory).
+- `compiler/sources/resources/libs/Tc2_System/library.toml` — manifest (`name`, `vendor`, `default_version`, `references`).
+- `compiler/sources/resources/libs/Tc2_System/1.0.0/Tc2_System.st` — `VAR_GLOBAL CONSTANT PI : LREAL := 3.1415926535897932384626433832795;` (version subdirectory).
 - `compiler/sources/src/libraries/mod.rs` — registry + loader (name → `Library`), reading installed on-disk libraries at runtime.
 - `compiler/sources/src/libraries/manifest.rs` — manifest parse (identity + `default_version` + references).
 
@@ -126,11 +126,11 @@ source**, so a user declaration shadows a library declaration of the same name
 
 ## Tasks
 
-### Phase 1 — The `Tc2_Math` library (PI), package format, explicit activation *(early)*
+### Phase 1 — The `Tc2_System` library (PI), package format, explicit activation *(early)*
 - [x] Write plan and add `REQ-CL-*` / `REQ-LF-*` markers to the design docs
 - [x] Implement the on-disk package format per [compatibility-library-format.md](../design/compatibility-library-format.md): package layout (version subdirectories), manifest schema, and name resolution; libraries read from disk at runtime — **REQ-LF-sources-001**, **002**, **004**
 - [x] Manifest identity validated on load (`name`, `vendor`, `default_version`) — **REQ-CL-sources-002**
-- [x] Add the bundled `Tc2_Math` library defining `PI`
+- [x] Add the bundled `Tc2_System` library defining `PI`
 - [x] Implement the library loader + registry (name → `Library`) in `sources`
 - [x] Carry an activated-library set on the project; add `--library <name>` to the CLI — **REQ-CL-sources-006**
 - [x] Inject activated libraries into the analyze merge, base → library → user — **REQ-CL-analyzer-001**

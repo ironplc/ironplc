@@ -245,7 +245,7 @@ enum Action {
         file_args: FileArgs,
 
         /// Activate a compatibility library by name (repeatable), e.g.
-        /// `--library Tc2_Math`. Activation injects the library's declarations
+        /// `--library Tc2_System`. Activation injects the library's declarations
         /// (such as the TwinCAT `PI` constant) so they resolve under their
         /// exact vendor names. Use for source that has no project context; a
         /// discovered project file activates its referenced libraries
@@ -266,7 +266,7 @@ enum Action {
         output: PathBuf,
 
         /// Activate a compatibility library by name (repeatable), e.g.
-        /// `--library Tc2_Math`. See `check --library`.
+        /// `--library Tc2_System`. See `check --library`.
         #[arg(long = "library")]
         libraries: Vec<LibraryName>,
     },

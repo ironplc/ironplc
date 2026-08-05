@@ -448,12 +448,12 @@ mod test {
     }
 
     #[test]
-    fn semantic_when_tc2_math_activated_then_pi_resolves() {
+    fn semantic_when_tc2_system_activated_then_pi_resolves() {
         let mut project = MemoryBackedProject::new(library_options());
-        project.set_activated_libraries(vec![LibraryName::from("Tc2_Math")]);
+        project.set_activated_libraries(vec![LibraryName::from("Tc2_System")]);
         project.add_source(FileId::from_string("main.st"), PI_PROGRAM.to_owned());
 
-        // Activating Tc2_Math injects the global PI, so the initializer folds.
+        // Activating Tc2_System injects the global PI, so the initializer folds.
         let result = project.semantic();
         assert!(
             result.is_ok(),

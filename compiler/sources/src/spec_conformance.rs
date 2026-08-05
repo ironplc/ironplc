@@ -42,7 +42,7 @@ fn declares_pi(library: &Library) -> bool {
     })
 }
 
-/// Write a minimal, valid `Tc2_Math`-style library package under `root`.
+/// Write a minimal, valid `Tc2_System`-style library package under `root`.
 fn write_library_package(root: &std::path::Path, name: &str, body: &str) {
     let version_dir = root.join(name).join("1.0.0");
     fs::create_dir_all(&version_dir).unwrap();
@@ -87,17 +87,17 @@ fn sources_spec_req_lf_001_package_layout_is_read() {
 fn sources_spec_req_lf_002_manifest_declares_identity() {
     let file_id = FileId::from_string("library.toml");
     let manifest = LibraryManifest::from_toml(
-        "name = \"Tc2_Math\"\nvendor = \"Beckhoff Automation GmbH\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n",
+        "name = \"Tc2_System\"\nvendor = \"Beckhoff Automation GmbH\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n",
         &file_id,
     )
     .expect("valid manifest parses");
-    assert_eq!(manifest.name, "Tc2_Math");
+    assert_eq!(manifest.name, "Tc2_System");
     assert_eq!(manifest.vendor, "Beckhoff Automation GmbH");
     assert_eq!(manifest.default_version, "1.0.0");
 
     // Missing `default_version` is rejected.
     let err = LibraryManifest::from_toml(
-        "name = \"Tc2_Math\"\nvendor = \"Beckhoff Automation GmbH\"\nreferences = [\"https://example.com\"]\n",
+        "name = \"Tc2_System\"\nvendor = \"Beckhoff Automation GmbH\"\nreferences = [\"https://example.com\"]\n",
         &file_id,
     )
     .expect_err("missing field is rejected");
@@ -110,7 +110,7 @@ fn sources_spec_req_lf_002_manifest_declares_identity() {
 fn sources_spec_req_lf_004_manifest_records_references() {
     let file_id = FileId::from_string("library.toml");
     let manifest = LibraryManifest::from_toml(
-        "name = \"Tc2_Math\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com/a\", \"https://example.com/b\"]\n",
+        "name = \"Tc2_System\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com/a\", \"https://example.com/b\"]\n",
         &file_id,
     )
     .expect("valid manifest parses");
@@ -118,7 +118,7 @@ fn sources_spec_req_lf_004_manifest_records_references() {
 
     // An empty `references` list is rejected.
     let err = LibraryManifest::from_toml(
-        "name = \"Tc2_Math\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = []\n",
+        "name = \"Tc2_System\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = []\n",
         &file_id,
     )
     .expect_err("empty references is rejected");
@@ -177,10 +177,10 @@ fn sources_spec_req_cl_005_active_set_not_inferred_from_source() {
 #[spec_test(REQ_CL_sources_006)]
 fn sources_spec_req_cl_006_explicit_activation_activates_library() {
     let mut project = SourceProject::new();
-    project.set_activated_libraries(vec![LibraryName::from("Tc2_Math")]);
+    project.set_activated_libraries(vec![LibraryName::from("Tc2_System")]);
     assert_eq!(
         project.activated_libraries(),
-        [LibraryName::from("Tc2_Math")]
+        [LibraryName::from("Tc2_System")]
     );
 
     let (libraries, diagnostics) = project.load_activated_libraries();
@@ -191,7 +191,7 @@ fn sources_spec_req_cl_006_explicit_activation_activates_library() {
     assert_eq!(libraries.len(), 1);
     assert!(
         declares_pi(&libraries[0]),
-        "activated Tc2_Math must provide the global constant PI"
+        "activated Tc2_System must provide the global constant PI"
     );
 }
 

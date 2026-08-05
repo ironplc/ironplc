@@ -25,7 +25,7 @@ use ironplc_problems::Problem;
 
 use crate::libraries::manifest::LibraryManifest;
 
-/// The name of a compatibility library (e.g. `Tc2_Math`).
+/// The name of a compatibility library (e.g. `Tc2_System`).
 ///
 /// A distinct type from a filesystem path or an arbitrary string: it is the
 /// vendor-facing identifier a project reference or a `--library` option names,
@@ -134,7 +134,7 @@ impl LibraryRegistry {
     ///
     /// Name matching must be strict and case-sensitive (`REQ-CL-sources-003`),
     /// but `Path::is_file`/`is_dir` resolve case-insensitively on macOS (APFS)
-    /// and Windows, so `tc2_math` would match a `Tc2_Math` directory there.
+    /// and Windows, so `tc2_system` would match a `Tc2_System` directory there.
     /// Confirming the real on-disk entry name makes the match case-sensitive on
     /// every platform.
     fn has_exact_dir(&self, name: &LibraryName) -> bool {
@@ -159,7 +159,7 @@ impl LibraryRegistry {
 
         // Strict, case-sensitive name match (`REQ-CL-sources-003`): the exact
         // directory-entry check guards against case-insensitive filesystems
-        // that would otherwise bind e.g. `tc2_math` to `Tc2_Math`.
+        // that would otherwise bind e.g. `tc2_system` to `Tc2_System`.
         if !self.has_exact_dir(name) || !manifest_path.is_file() {
             return Err(Diagnostic::problem(
                 Problem::LibraryNotFound,
@@ -263,14 +263,14 @@ mod tests {
 
     #[test]
     fn library_name_round_trips_through_str() {
-        let name = LibraryName::from("Tc2_Math");
-        assert_eq!(name.as_str(), "Tc2_Math");
-        assert_eq!(name.to_string(), "Tc2_Math");
-        assert_eq!("Tc2_Math".parse::<LibraryName>().unwrap(), name);
-        assert_eq!(LibraryName::new(String::from("Tc2_Math")), name);
+        let name = LibraryName::from("Tc2_System");
+        assert_eq!(name.as_str(), "Tc2_System");
+        assert_eq!(name.to_string(), "Tc2_System");
+        assert_eq!("Tc2_System".parse::<LibraryName>().unwrap(), name);
+        assert_eq!(LibraryName::new(String::from("Tc2_System")), name);
     }
 
-    /// The bundled `Tc2_Math` library loads and provides the global `PI`.
+    /// The bundled `Tc2_System` library loads and provides the global `PI`.
     fn library_declares_pi(library: &Library) -> bool {
         library.elements.iter().any(|element| {
             matches!(element, LibraryElementKind::GlobalVarDeclarations(globals)
@@ -279,23 +279,23 @@ mod tests {
     }
 
     #[test]
-    fn bundled_registry_contains_tc2_math() {
+    fn bundled_registry_contains_tc2_system() {
         let registry = LibraryRegistry::bundled();
-        assert!(registry.contains(&LibraryName::from("Tc2_Math")));
+        assert!(registry.contains(&LibraryName::from("Tc2_System")));
         assert!(!registry.contains(&LibraryName::from("DoesNotExist")));
     }
 
     #[test]
-    fn load_when_tc2_math_then_provides_pi() {
+    fn load_when_tc2_system_then_provides_pi() {
         let registry = LibraryRegistry::bundled();
         let loaded = registry
-            .load(&LibraryName::from("Tc2_Math"))
-            .expect("Tc2_Math loads");
-        assert_eq!(loaded.manifest.name, "Tc2_Math");
+            .load(&LibraryName::from("Tc2_System"))
+            .expect("Tc2_System loads");
+        assert_eq!(loaded.manifest.name, "Tc2_System");
         assert_eq!(loaded.manifest.default_version, "1.0.0");
         assert!(
             library_declares_pi(&loaded.library),
-            "Tc2_Math must declare the global constant PI"
+            "Tc2_System must declare the global constant PI"
         );
     }
 
@@ -303,7 +303,7 @@ mod tests {
     fn load_when_case_differs_then_not_found() {
         // Strict, case-sensitive name match (REQ-CL-sources-003).
         let registry = LibraryRegistry::bundled();
-        let err = registry.load(&LibraryName::from("tc2_math")).unwrap_err();
+        let err = registry.load(&LibraryName::from("tc2_system")).unwrap_err();
         assert_eq!(err.code, Problem::LibraryNotFound.code());
     }
 

@@ -202,7 +202,7 @@ fn library_options() -> CompilerOptions {
     }
 }
 
-/// The `Tc2_Math`-style compatibility library providing the global `PI`.
+/// The `Tc2_System`-style compatibility library providing the global `PI`.
 fn pi_library(options: &CompilerOptions) -> Library {
     parse_program(
         "VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979; END_VAR",
@@ -275,7 +275,7 @@ fn analyzer_spec_req_cl_001_library_dormant_until_activated() {
 fn analyzer_spec_req_cl_002_symbols_resolve_flat() {
     let options = library_options();
     let library = pi_library(&options);
-    // The source writes the bare, unqualified name `PI` (not `Tc2_Math.PI`).
+    // The source writes the bare, unqualified name `PI` (not `Tc2_System.PI`).
     let user = parse_program(
         "FUNCTION_BLOCK FB_Example VAR half : LREAL := PI/2.0; END_VAR END_FUNCTION_BLOCK",
         &FileId::default(),

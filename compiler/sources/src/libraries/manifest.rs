@@ -128,13 +128,13 @@ mod tests {
     #[test]
     fn from_toml_when_all_fields_present_then_parses() {
         let content = r#"
-name = "Tc2_Math"
+name = "Tc2_System"
 vendor = "Beckhoff Automation GmbH"
 default_version = "1.0.0"
 references = [ "https://example.com/reference" ]
 "#;
         let manifest = LibraryManifest::from_toml(content, &file_id()).unwrap();
-        assert_eq!(manifest.name, "Tc2_Math");
+        assert_eq!(manifest.name, "Tc2_System");
         assert_eq!(manifest.vendor, "Beckhoff Automation GmbH");
         assert_eq!(manifest.default_version, "1.0.0");
         assert_eq!(manifest.references, vec!["https://example.com/reference"]);
@@ -154,7 +154,7 @@ references = [ "https://example.com/reference" ]
     #[test]
     fn from_toml_when_missing_vendor_then_error() {
         let content = r#"
-name = "Tc2_Math"
+name = "Tc2_System"
 default_version = "1.0.0"
 references = [ "https://example.com/reference" ]
 "#;
@@ -165,7 +165,7 @@ references = [ "https://example.com/reference" ]
     #[test]
     fn from_toml_when_missing_default_version_then_error() {
         let content = r#"
-name = "Tc2_Math"
+name = "Tc2_System"
 vendor = "Beckhoff Automation GmbH"
 references = [ "https://example.com/reference" ]
 "#;
@@ -176,7 +176,7 @@ references = [ "https://example.com/reference" ]
     #[test]
     fn from_toml_when_missing_references_then_error() {
         let content = r#"
-name = "Tc2_Math"
+name = "Tc2_System"
 vendor = "Beckhoff Automation GmbH"
 default_version = "1.0.0"
 "#;
@@ -187,7 +187,7 @@ default_version = "1.0.0"
     #[test]
     fn from_toml_when_references_empty_then_error() {
         let content = r#"
-name = "Tc2_Math"
+name = "Tc2_System"
 vendor = "Beckhoff Automation GmbH"
 default_version = "1.0.0"
 references = []
@@ -211,7 +211,7 @@ references = [ "https://example.com/reference" ]
     #[test]
     fn from_toml_when_references_not_strings_then_error() {
         let content = r#"
-name = "Tc2_Math"
+name = "Tc2_System"
 vendor = "Beckhoff Automation GmbH"
 default_version = "1.0.0"
 references = [ 1, 2, 3 ]
