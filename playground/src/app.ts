@@ -393,6 +393,74 @@ const allowsParam = (params.get("allows") || "")
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
 
+// `libraries` is a comma-separated list of compatibility-library names to
+// activate (e.g. "Tc2_System"), mirroring the CLI `--library` option and a
+// `.plcproj`'s referenced-library list. Each named library's declarations are
+// served alongside the app as plain-text `.st` files; we fetch and load them so
+// their symbols (e.g. `PI`) resolve, without editing the user's source
+// (REQ-CL-playground-001).
+const librariesParam = (params.get("libraries") || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
+
+// The served library sources, once fetched: a JSON array of `.st` file
+// contents ready to hand to the WASM compile path. Empty until fetched (and
+// when no library is activated), which the compiler treats as "no library".
+let activatedLibrarySources: string[] = [];
+
+// Index of the served compatibility libraries, generated at build time and
+// served at `libs/index.json`: library name -> the paths of its `.st` files
+// (relative to the app root). A static index avoids relying on directory
+// listing, which static hosts do not provide.
+type LibraryIndex = Record<string, string[]>;
+
+// Fetch and load the activated libraries' plain-text files. Best-effort: a
+// missing index or file leaves the affected library inactive (its symbols stay
+// undefined and surface as ordinary diagnostics) rather than blocking the app.
+async function loadActivatedLibraries(): Promise<void> {
+  if (librariesParam.length === 0) {
+    return;
+  }
+  let index: LibraryIndex;
+  try {
+    const response = await fetch("libs/index.json");
+    if (!response.ok) {
+      return;
+    }
+    index = (await response.json()) as LibraryIndex;
+  } catch {
+    return;
+  }
+
+  const sources: string[] = [];
+  for (const name of librariesParam) {
+    const files = index[name];
+    if (!files) {
+      continue;
+    }
+    for (const path of files) {
+      try {
+        const response = await fetch(path);
+        if (response.ok) {
+          sources.push(await response.text());
+        }
+      } catch {
+        // Skip a file that fails to load; its symbols stay undefined.
+      }
+    }
+  }
+  activatedLibrarySources = sources;
+}
+
+// The activated library sources as the WASM compile path expects them: a JSON
+// array of `.st` file contents, or "" when none are active.
+function getLibraries(): string {
+  return activatedLibrarySources.length > 0
+    ? JSON.stringify(activatedLibrarySources)
+    : "";
+}
+
 // Populate the dialect picker from the compiler-provided list (via the WASM
 // `dialects()` export), then apply the URL dialect parameter and dialect badge.
 // Called once the worker reports the WASM module is ready.
@@ -546,8 +614,13 @@ worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
     compilerVersion = msg.version || "";
     initDialects(msg.dialects);
     initAnalytics();
-    startBtn.disabled = false;
-    statusEl.textContent = "Ready";
+    // Fetch any activated compatibility libraries' served files before enabling
+    // Start, so the first compile already has them. The load is best-effort and
+    // resolves even if a file is missing.
+    void loadActivatedLibraries().finally(() => {
+      startBtn.disabled = false;
+      statusEl.textContent = "Ready";
+    });
     return;
   }
 
@@ -733,7 +806,15 @@ startBtn.addEventListener("click", async () => {
   const allows = getAllows();
   const compileStart = performance.now();
   capture("compile_attempted", { trigger: "manual" });
-  const loadMsg = await postCommand({ command: "load_program", source, cycleTimeUs, dialect, allows });
+  const libraries = getLibraries();
+  const loadMsg = await postCommand({
+    command: "load_program",
+    source,
+    cycleTimeUs,
+    dialect,
+    allows,
+    libraries,
+  });
   const compileDurationMs = performance.now() - compileStart;
 
   if (loadMsg.type === "error") {

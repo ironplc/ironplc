@@ -165,11 +165,11 @@ source**, so a user declaration shadows a library declaration of the same name
 - [x] `cd compiler && just` green
 
 ### Phase 3 — Round-trip fidelity + playground
-- [ ] `plc2plc` emits user source unchanged; injected library declarations are never rendered — **REQ-CL-plc2plc-001**
-- [ ] Wire `plc2plc` `build.rs` + `spec_conformance`; add the round-trip test
-- [ ] Playground: serve library files as plain text, load as sources, activate — **REQ-CL-playground-001**
-- [ ] Wire `playground` `build.rs` + spec test; update `playground/` frontend to fetch library files
-- [ ] `cd compiler && just` green
+- [x] `plc2plc` emits user source unchanged; injected library declarations are never rendered — **REQ-CL-plc2plc-001**
+- [x] Wire `plc2plc` `build.rs` + `spec_conformance`; add the round-trip test
+- [x] Playground: serve library files as plain text, load as sources, activate — **REQ-CL-playground-001**
+- [x] Wire `playground` `build.rs` + spec test; update `playground/` frontend to fetch library files
+- [x] `cd compiler && just` green
 
 ### Phase 4 — Provenance policy enforcement
 - [ ] Conformance test in `sources` walks every bundled manifest and asserts it records a non-empty `references` list (a factual record, no legal judgment) — **REQ-CL-sources-007**
