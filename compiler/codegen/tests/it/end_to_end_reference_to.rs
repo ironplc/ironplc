@@ -6,7 +6,7 @@
 //! They prove the feature reuses the existing `REF_TO` backend unchanged.
 //! See `specs/design/reference-to-twincat.md`.
 
-use crate::common::{parse_and_run, parse_and_try_run};
+use crate::common::parse_and_try_run;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_vm::error::Trap;
 
@@ -17,155 +17,70 @@ fn reference_to_options() -> CompilerOptions {
     }
 }
 
-#[test]
-fn end_to_end_when_reference_to_bound_then_reads_through_caret() {
-    let source = "
-PROGRAM main
-  VAR
-    x : INT := 42;
-    r : REFERENCE TO INT;
-    y : INT;
-  END_VAR
-  r REF= x;
-  y := r^;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &reference_to_options());
-    // vars: x=0, r=1, y=2
-    assert_eq!(bufs.vars[2].as_i32(), 42);
-}
+// vars: x=0, r=1, y=2
+e2e_i32_with!(
+    end_to_end_when_reference_to_bound_then_reads_through_caret,
+    reference_to_options(),
+    "PROGRAM main VAR x : INT := 42; r : REFERENCE TO INT; y : INT; END_VAR r REF= x; y := r^; END_PROGRAM",
+    &[(2, 42)],
+);
 
-#[test]
-fn end_to_end_when_reference_to_written_then_updates_referent() {
-    let source = "
-PROGRAM main
-  VAR
-    x : INT := 1;
-    r : REFERENCE TO INT;
-  END_VAR
-  r REF= x;
-  r^ := 99;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &reference_to_options());
-    assert_eq!(bufs.vars[0].as_i32(), 99);
-}
+e2e_i32_with!(
+    end_to_end_when_reference_to_written_then_updates_referent,
+    reference_to_options(),
+    "PROGRAM main VAR x : INT := 1; r : REFERENCE TO INT; END_VAR r REF= x; r^ := 99; END_PROGRAM",
+    &[(0, 99)],
+);
 
-#[test]
-fn end_to_end_when_reference_to_named_type_then_runs() {
-    let source = "
-TYPE IntRef : REFERENCE TO INT; END_TYPE
+// vars: x=0, r=1, y=2
+e2e_i32_with!(
+    end_to_end_when_reference_to_named_type_then_runs,
+    reference_to_options(),
+    "TYPE IntRef : REFERENCE TO INT; END_TYPE PROGRAM main VAR x : INT := 7; r : IntRef; y : INT; END_VAR r REF= x; y := r^; END_PROGRAM",
+    &[(2, 7)],
+);
 
-PROGRAM main
-  VAR
-    x : INT := 7;
-    r : IntRef;
-    y : INT;
-  END_VAR
-  r REF= x;
-  y := r^;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &reference_to_options());
-    // vars: x=0, r=1, y=2
-    assert_eq!(bufs.vars[2].as_i32(), 7);
-}
+// vars: val=0, refs=1, result=2
+e2e_i32_with!(
+    end_to_end_when_array_of_reference_to_element_bound_then_reads,
+    reference_to_options(),
+    "PROGRAM main VAR val : INT := 77; refs : ARRAY[0..2] OF REFERENCE TO INT; result : INT; END_VAR refs[0] REF= val; result := refs[0]^; END_PROGRAM",
+    &[(2, 77)],
+);
 
-#[test]
-fn end_to_end_when_array_of_reference_to_element_bound_then_reads() {
-    let source = "
-PROGRAM main
-  VAR
-    val : INT := 77;
-    refs : ARRAY[0..2] OF REFERENCE TO INT;
-    result : INT;
-  END_VAR
-  refs[0] REF= val;
-  result := refs[0]^;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &reference_to_options());
-    // vars: val=0, refs=1, result=2
-    assert_eq!(bufs.vars[2].as_i32(), 77);
-}
+// TwinCAT `REFERENCE TO` auto-dereferences: a bare read reads through it.
+// vars: x=0, r=1, y=2
+e2e_i32_with!(
+    end_to_end_when_reference_to_read_without_caret_then_auto_dereferences,
+    reference_to_options(),
+    "PROGRAM main VAR x : INT := 42; r : REFERENCE TO INT; y : INT; END_VAR r REF= x; y := r; END_PROGRAM",
+    &[(2, 42)],
+);
 
-#[test]
-fn end_to_end_when_reference_to_read_without_caret_then_auto_dereferences() {
-    // TwinCAT `REFERENCE TO` auto-dereferences: a bare read reads through it.
-    let source = "
-PROGRAM main
-  VAR
-    x : INT := 42;
-    r : REFERENCE TO INT;
-    y : INT;
-  END_VAR
-  r REF= x;
-  y := r;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &reference_to_options());
-    // vars: x=0, r=1, y=2
-    assert_eq!(bufs.vars[2].as_i32(), 42);
-}
+// A bare write stores through the reference to the referent.
+e2e_i32_with!(
+    end_to_end_when_reference_to_written_without_caret_then_auto_dereferences,
+    reference_to_options(),
+    "PROGRAM main VAR x : INT := 1; r : REFERENCE TO INT; END_VAR r REF= x; r := 99; END_PROGRAM",
+    &[(0, 99)],
+);
 
-#[test]
-fn end_to_end_when_reference_to_written_without_caret_then_auto_dereferences() {
-    // A bare write stores through the reference to the referent.
-    let source = "
-PROGRAM main
-  VAR
-    x : INT := 1;
-    r : REFERENCE TO INT;
-  END_VAR
-  r REF= x;
-  r := 99;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &reference_to_options());
-    assert_eq!(bufs.vars[0].as_i32(), 99);
-}
+// vars: x=0, r1=1, r2=2, y=3
+e2e_i32_with!(
+    end_to_end_when_two_references_alias_then_writes_are_observed,
+    reference_to_options(),
+    "PROGRAM main VAR x : INT := 10; r1 : REFERENCE TO INT; r2 : REFERENCE TO INT; y : INT; END_VAR r1 REF= x; r2 REF= x; r1 := 55; y := r2; END_PROGRAM",
+    &[(3, 55)],
+);
 
-#[test]
-fn end_to_end_when_two_references_alias_then_writes_are_observed() {
-    let source = "
-PROGRAM main
-  VAR
-    x : INT := 10;
-    r1 : REFERENCE TO INT;
-    r2 : REFERENCE TO INT;
-    y : INT;
-  END_VAR
-  r1 REF= x;
-  r2 REF= x;
-  r1 := 55;
-  y := r2;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &reference_to_options());
-    // vars: x=0, r1=1, r2=2, y=3
-    assert_eq!(bufs.vars[3].as_i32(), 55);
-}
-
-#[test]
-fn end_to_end_when_isvalidref_then_reflects_binding_state() {
-    let source = "
-PROGRAM main
-  VAR
-    x : INT := 5;
-    r : REFERENCE TO INT;
-    before : BOOL;
-    after : BOOL;
-  END_VAR
-  before := __ISVALIDREF(r);
-  r REF= x;
-  after := __ISVALIDREF(r);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &reference_to_options());
-    // vars: x=0, r=1, before=2, after=3
-    assert_eq!(bufs.vars[2].as_i32(), 0, "unbound reference is not valid");
-    assert_eq!(bufs.vars[3].as_i32(), 1, "bound reference is valid");
-}
+// vars: x=0, r=1, before=2, after=3
+// var 2: unbound reference is not valid; var 3: bound reference is valid
+e2e_i32_with!(
+    end_to_end_when_isvalidref_then_reflects_binding_state,
+    reference_to_options(),
+    "PROGRAM main VAR x : INT := 5; r : REFERENCE TO INT; before : BOOL; after : BOOL; END_VAR before := __ISVALIDREF(r); r REF= x; after := __ISVALIDREF(r); END_PROGRAM",
+    &[(2, 0), (3, 1)],
+);
 
 #[test]
 fn end_to_end_when_unbound_reference_to_dereferenced_then_traps() {

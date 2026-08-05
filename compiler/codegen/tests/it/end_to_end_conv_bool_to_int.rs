@@ -36,69 +36,29 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32() as i8, 0);
 }
 
-#[test]
-fn end_to_end_when_bool_to_int_true_then_returns_1() {
-    let source = "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : INT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_INT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
+e2e_i32!(
+    end_to_end_when_bool_to_int_true_then_returns_1,
+    "PROGRAM main VAR x : BOOL; y : INT; END_VAR x := TRUE; y := BOOL_TO_INT(x); END_PROGRAM",
+    &[(1, 1)],
+);
 
-#[test]
-fn end_to_end_when_bool_to_int_false_then_returns_0() {
-    let source = "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : INT;
-  END_VAR
-  x := FALSE;
-  y := BOOL_TO_INT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
+e2e_i32!(
+    end_to_end_when_bool_to_int_false_then_returns_0,
+    "PROGRAM main VAR x : BOOL; y : INT; END_VAR x := FALSE; y := BOOL_TO_INT(x); END_PROGRAM",
+    &[(1, 0)],
+);
 
-#[test]
-fn end_to_end_when_bool_to_dint_true_then_returns_1() {
-    let source = "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : DINT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_DINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
+e2e_i32!(
+    end_to_end_when_bool_to_dint_true_then_returns_1,
+    "PROGRAM main VAR x : BOOL; y : DINT; END_VAR x := TRUE; y := BOOL_TO_DINT(x); END_PROGRAM",
+    &[(1, 1)],
+);
 
-#[test]
-fn end_to_end_when_bool_to_lint_true_then_returns_1() {
-    let source = "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : LINT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_LINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64(), 1);
-}
+e2e_i64!(
+    end_to_end_when_bool_to_lint_true_then_returns_1,
+    "PROGRAM main VAR x : BOOL; y : LINT; END_VAR x := TRUE; y := BOOL_TO_LINT(x); END_PROGRAM",
+    &[(1, 1)],
+);
 
 #[test]
 fn end_to_end_when_bool_to_usint_true_then_returns_1() {

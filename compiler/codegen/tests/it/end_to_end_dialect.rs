@@ -7,60 +7,34 @@
 use crate::common::{parse, parse_and_run};
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
-#[test]
-fn end_to_end_when_rusty_dialect_then_ldt_usable_as_variable_name() {
-    // In the RuSTy dialect, LDT is demoted to an identifier so it can be
-    // used as a variable name (as OSCAT libraries do).
-    let source = "
-PROGRAM main
-VAR
-    LDT : DINT := 42;
-    result : DINT;
-END_VAR
-    result := LDT;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
-    // var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, LDT=2, result=3
-    assert_eq!(bufs.vars[3].as_i32(), 42);
-}
+// In the RuSTy dialect, LDT is demoted to an identifier so it can be
+// used as a variable name (as OSCAT libraries do).
+// var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, LDT=2, result=3
+e2e_i32_with!(
+    end_to_end_when_rusty_dialect_then_ldt_usable_as_variable_name,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "PROGRAM main VAR LDT : DINT := 42; result : DINT; END_VAR result := LDT; END_PROGRAM",
+    &[(3, 42)],
+);
 
-#[test]
-fn end_to_end_when_rusty_dialect_then_ref_to_works() {
-    // The RuSTy dialect enables REF_TO even though Edition 3 types
-    // (LTIME, LDT, etc.) are not keywords.
-    let source = "
-PROGRAM main
-VAR
-    counter : DINT := 99;
-    r : REF_TO DINT := REF(counter);
-    result : DINT;
-END_VAR
-    result := r^;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
-    // var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, counter=2, r=3, result=4
-    assert_eq!(bufs.vars[4].as_i32(), 99);
-}
+// The RuSTy dialect enables REF_TO even though Edition 3 types
+// (LTIME, LDT, etc.) are not keywords.
+// var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, counter=2, r=3, result=4
+e2e_i32_with!(
+    end_to_end_when_rusty_dialect_then_ref_to_works,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "PROGRAM main VAR counter : DINT := 99; r : REF_TO DINT := REF(counter); result : DINT; END_VAR result := r^; END_PROGRAM",
+    &[(4, 99)],
+);
 
-#[test]
-fn end_to_end_when_rusty_dialect_then_ldt_and_ref_to_coexist() {
-    // Core OSCAT scenario: LDT used as a variable name alongside REF_TO.
-    let source = "
-PROGRAM main
-VAR
-    LDT : DINT := 42;
-    r : REF_TO DINT := REF(LDT);
-    result : DINT;
-END_VAR
-    result := r^;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Rusty));
-    // var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, LDT=2, r=3, result=4
-    assert_eq!(bufs.vars[4].as_i32(), 42);
-}
+// Core OSCAT scenario: LDT used as a variable name alongside REF_TO.
+// var layout: __SYSTEM_UP_TIME=0, __SYSTEM_UP_LTIME=1, LDT=2, r=3, result=4
+e2e_i32_with!(
+    end_to_end_when_rusty_dialect_then_ldt_and_ref_to_coexist,
+    CompilerOptions::from_dialect(Dialect::Rusty),
+    "PROGRAM main VAR LDT : DINT := 42; r : REF_TO DINT := REF(LDT); result : DINT; END_VAR result := r^; END_PROGRAM",
+    &[(4, 42)],
+);
 
 #[test]
 fn end_to_end_when_rusty_dialect_then_struct_with_ldt_member_parses() {
@@ -84,46 +58,31 @@ END_PROGRAM
     // If we get here, parsing and type resolution succeeded.
 }
 
-#[test]
-fn end_to_end_when_codesys_dialect_then_ldt_usable_as_variable_name() {
-    // The CODESYS dialect uses an Edition 2 base, so LDT remains usable as
-    // an identifier.
-    let source = "
-PROGRAM main
-VAR
-    LDT : DINT := 42;
-    result : DINT;
-END_VAR
-    result := LDT;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
-    // CODESYS does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
-    // user variables start at index 0: LDT=0, result=1.
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
+// The CODESYS dialect uses an Edition 2 base, so LDT remains usable as
+// an identifier.
+// CODESYS does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
+// user variables start at index 0: LDT=0, result=1.
+e2e_i32_with!(
+    end_to_end_when_codesys_dialect_then_ldt_usable_as_variable_name,
+    CompilerOptions::from_dialect(Dialect::Codesys),
+    "PROGRAM main VAR LDT : DINT := 42; result : DINT; END_VAR result := LDT; END_PROGRAM",
+    &[(1, 42)],
+);
 
-#[test]
-fn end_to_end_when_codesys_dialect_then_ref_to_works() {
-    // The CODESYS dialect enables REF_TO.
-    let source = "
-PROGRAM main
-VAR
-    counter : DINT := 99;
-    r : REF_TO DINT := REF(counter);
-    result : DINT;
-END_VAR
-    result := r^;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::Codesys));
-    // var layout: counter=0, r=1, result=2
-    assert_eq!(bufs.vars[2].as_i32(), 99);
-}
+// The CODESYS dialect enables REF_TO.
+// var layout: counter=0, r=1, result=2
+e2e_i32_with!(
+    end_to_end_when_codesys_dialect_then_ref_to_works,
+    CompilerOptions::from_dialect(Dialect::Codesys),
+    "PROGRAM main VAR counter : DINT := 99; r : REF_TO DINT := REF(counter); result : DINT; END_VAR result := r^; END_PROGRAM",
+    &[(2, 99)],
+);
 
 #[test]
 fn end_to_end_when_codesys_dialect_then_sizeof_and_c_style_comments_work() {
-    // CODESYS supports SIZEOF() and C-style comments.
+    // CODESYS supports SIZEOF() and C-style comments. The program contains a
+    // `//` line comment, so it must stay multi-line (collapsing to one line
+    // would comment out the rest of the program).
     let source = "
 PROGRAM main
 VAR
@@ -139,48 +98,33 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32(), 4);
 }
 
-#[test]
-fn end_to_end_when_twincat_dialect_then_ldt_usable_as_variable_name() {
-    // The TwinCAT dialect uses an Edition 2 base, so LDT remains usable as
-    // an identifier.
-    let source = "
-PROGRAM main
-VAR
-    LDT : DINT := 42;
-    result : DINT;
-END_VAR
-    result := LDT;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::TwinCat));
-    // TwinCAT does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
-    // user variables start at index 0: LDT=0, result=1.
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
+// The TwinCAT dialect uses an Edition 2 base, so LDT remains usable as
+// an identifier.
+// TwinCAT does not pre-bind __SYSTEM_UP_TIME/__SYSTEM_UP_LTIME, so the
+// user variables start at index 0: LDT=0, result=1.
+e2e_i32_with!(
+    end_to_end_when_twincat_dialect_then_ldt_usable_as_variable_name,
+    CompilerOptions::from_dialect(Dialect::TwinCat),
+    "PROGRAM main VAR LDT : DINT := 42; result : DINT; END_VAR result := LDT; END_PROGRAM",
+    &[(1, 42)],
+);
 
-#[test]
-fn end_to_end_when_twincat_dialect_then_pragmas_are_skipped() {
-    // Curly-brace pragmas ({attribute '...'}) appear in virtually every
-    // TwinCAT source file. The TwinCAT dialect skips them as opaque trivia so
-    // the surrounding code compiles and runs unchanged.
-    let source = "
-{attribute 'qualified_only'}
-PROGRAM main
-VAR
-    x : DINT := 99;
-    result : DINT;
-END_VAR
-    result := x;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::from_dialect(Dialect::TwinCat));
-    // var layout: x=0, result=1
-    assert_eq!(bufs.vars[1].as_i32(), 99);
-}
+// Curly-brace pragmas ({attribute '...'}) appear in virtually every
+// TwinCAT source file. The TwinCAT dialect skips them as opaque trivia so
+// the surrounding code compiles and runs unchanged.
+// var layout: x=0, result=1
+e2e_i32_with!(
+    end_to_end_when_twincat_dialect_then_pragmas_are_skipped,
+    CompilerOptions::from_dialect(Dialect::TwinCat),
+    "{attribute 'qualified_only'} PROGRAM main VAR x : DINT := 99; result : DINT; END_VAR result := x; END_PROGRAM",
+    &[(1, 99)],
+);
 
 #[test]
 fn end_to_end_when_twincat_dialect_then_sizeof_and_c_style_comments_work() {
-    // TwinCAT supports SIZEOF() and C-style comments.
+    // TwinCAT supports SIZEOF() and C-style comments. The program contains a
+    // `//` line comment, so it must stay multi-line (collapsing to one line
+    // would comment out the rest of the program).
     let source = "
 PROGRAM main
 VAR

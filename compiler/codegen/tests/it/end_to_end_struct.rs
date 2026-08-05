@@ -388,22 +388,11 @@ e2e_i32_with!(
 // signed types (Int B64 and Time B64) — the Signed W64 branch only fires
 // when these types are declared inside a STRUCT.
 
-#[test]
-fn end_to_end_when_struct_field_lint_then_reads_and_writes() {
-    let source = "
-TYPE MyStruct : STRUCT v : LINT; END_STRUCT; END_TYPE
-PROGRAM main
-  VAR
-    s : MyStruct;
-    result : LINT;
-  END_VAR
-    s.v := LINT#9000000000;
-    result := s.v;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64(), 9_000_000_000);
-}
+e2e_i64!(
+    end_to_end_when_struct_field_lint_then_reads_and_writes,
+    "TYPE MyStruct : STRUCT v : LINT; END_STRUCT; END_TYPE PROGRAM main VAR s : MyStruct; result : LINT; END_VAR s.v := LINT#9000000000; result := s.v; END_PROGRAM",
+    &[(1, 9_000_000_000)],
+);
 
 #[test]
 fn end_to_end_when_struct_field_ltime_then_reads_and_writes() {
@@ -488,100 +477,36 @@ END_PROGRAM
 // Exercises `emit_default_for_field` — W32 branch for INT-based subranges
 // and W64 branch for LINT-based subranges.
 
-#[test]
-fn end_to_end_when_struct_field_subrange_int_default_then_lower_bound() {
-    let source = "
-TYPE
-  MY_RANGE : INT (5..50);
-  MyStruct : STRUCT v : MY_RANGE; END_STRUCT;
-END_TYPE
-PROGRAM main
-  VAR
-    s : MyStruct;
-    result : INT;
-  END_VAR
-    result := s.v;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 5);
-}
+e2e_i32!(
+    end_to_end_when_struct_field_subrange_int_default_then_lower_bound,
+    "TYPE MY_RANGE : INT (5..50); MyStruct : STRUCT v : MY_RANGE; END_STRUCT; END_TYPE PROGRAM main VAR s : MyStruct; result : INT; END_VAR result := s.v; END_PROGRAM",
+    &[(1, 5)],
+);
 
-#[test]
-fn end_to_end_when_struct_field_subrange_lint_default_then_lower_bound() {
-    let source = "
-TYPE
-  MY_RANGE : LINT (10..10000);
-  MyStruct : STRUCT v : MY_RANGE; END_STRUCT;
-END_TYPE
-PROGRAM main
-  VAR
-    s : MyStruct;
-    result : LINT;
-  END_VAR
-    result := s.v;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64(), 10);
-}
+e2e_i64!(
+    end_to_end_when_struct_field_subrange_lint_default_then_lower_bound,
+    "TYPE MY_RANGE : LINT (10..10000); MyStruct : STRUCT v : MY_RANGE; END_STRUCT; END_TYPE PROGRAM main VAR s : MyStruct; result : LINT; END_VAR result := s.v; END_PROGRAM",
+    &[(1, 10)],
+);
 
 // --- Nested struct initialization ---
 // Exercises the recursive `initialize_struct_fields` call path for nested
 // struct fields, with and without explicit inner initializers.
 
-#[test]
-fn end_to_end_when_nested_struct_with_explicit_inner_init_then_values_stored() {
-    let source = "
-TYPE
-  Inner : STRUCT x : DINT; y : DINT; END_STRUCT;
-  Outer : STRUCT inner : Inner; z : DINT; END_STRUCT;
-END_TYPE
-PROGRAM main
-  VAR
-    o : Outer := (inner := (x := 1, y := 2), z := 3);
-    rx : DINT;
-    ry : DINT;
-    rz : DINT;
-  END_VAR
-    rx := o.inner.x;
-    ry := o.inner.y;
-    rz := o.z;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-    assert_eq!(bufs.vars[2].as_i32(), 2);
-    assert_eq!(bufs.vars[3].as_i32(), 3);
-}
+e2e_i32!(
+    end_to_end_when_nested_struct_with_explicit_inner_init_then_values_stored,
+    "TYPE Inner : STRUCT x : DINT; y : DINT; END_STRUCT; Outer : STRUCT inner : Inner; z : DINT; END_STRUCT; END_TYPE PROGRAM main VAR o : Outer := (inner := (x := 1, y := 2), z := 3); rx : DINT; ry : DINT; rz : DINT; END_VAR rx := o.inner.x; ry := o.inner.y; rz := o.z; END_PROGRAM",
+    &[(1, 1), (2, 2), (3, 3)],
+);
 
-#[test]
-fn end_to_end_when_nested_struct_without_explicit_init_then_zero_defaults() {
-    // Covers the recursive `initialize_struct_fields` path when the inner
-    // struct has no explicit initializer — inner leaf fields still get
-    // zero-initialized via the default-value branch.
-    let source = "
-TYPE
-  Inner : STRUCT x : DINT; y : DINT; END_STRUCT;
-  Outer : STRUCT inner : Inner; z : DINT; END_STRUCT;
-END_TYPE
-PROGRAM main
-  VAR
-    o : Outer;
-    rx : DINT;
-    ry : DINT;
-    rz : DINT;
-  END_VAR
-    rx := o.inner.x;
-    ry := o.inner.y;
-    rz := o.z;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-    assert_eq!(bufs.vars[2].as_i32(), 0);
-    assert_eq!(bufs.vars[3].as_i32(), 0);
-}
+// Covers the recursive `initialize_struct_fields` path when the inner
+// struct has no explicit initializer — inner leaf fields still get
+// zero-initialized via the default-value branch.
+e2e_i32!(
+    end_to_end_when_nested_struct_without_explicit_init_then_zero_defaults,
+    "TYPE Inner : STRUCT x : DINT; y : DINT; END_STRUCT; Outer : STRUCT inner : Inner; z : DINT; END_STRUCT; END_TYPE PROGRAM main VAR o : Outer; rx : DINT; ry : DINT; rz : DINT; END_VAR rx := o.inner.x; ry := o.inner.y; rz := o.z; END_PROGRAM",
+    &[(1, 0), (2, 0), (3, 0)],
+);
 
 #[test]
 fn end_to_end_when_struct_init_value_is_expression_then_returns_not_implemented() {

@@ -687,6 +687,30 @@ pub fn assert_run_i32_with(source: &str, options: &CompilerOptions, asserts: &[(
     }
 }
 
+/// Like [`assert_run_i64`] but with explicit [`CompilerOptions`].
+pub fn assert_run_i64_with(source: &str, options: &CompilerOptions, asserts: &[(usize, i64)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_i64(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Like [`assert_run_f32`] but with explicit [`CompilerOptions`].
+pub fn assert_run_f32_with(source: &str, options: &CompilerOptions, asserts: &[(usize, f32)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_f32(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Like [`assert_run_f64`] but with explicit [`CompilerOptions`].
+pub fn assert_run_f64_with(source: &str, options: &CompilerOptions, asserts: &[(usize, f64)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_f64(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
 /// Same as [`assert_run_i32`] but reads slots as f32 (REAL). Uses exact bit
 /// equality so tests must choose inputs that produce deterministic results.
 pub fn assert_run_f32(source: &str, asserts: &[(usize, f32)]) {
@@ -778,6 +802,39 @@ macro_rules! e2e_i32_with {
         #[test]
         fn $name() {
             $crate::common::assert_run_i32_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32_with`] but reads slots as i64 (LINT/ULINT).
+macro_rules! e2e_i64_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_i64_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32_with`] but reads slots as f32 (REAL).
+macro_rules! e2e_f32_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_f32_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32_with`] but reads slots as f64 (LREAL).
+macro_rules! e2e_f64_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_f64_with($source, &$opts, $asserts);
         }
     };
 }

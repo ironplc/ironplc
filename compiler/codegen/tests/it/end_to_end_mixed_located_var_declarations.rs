@@ -12,60 +12,27 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_mixed_var_block_then_plain_variable_readable() {
-    let source = "
-PROGRAM main
-VAR
-    tempSensor AT%I*: INT;
-    result : INT;
-END_VAR
-    result := 42;
-END_PROGRAM
-";
-    let options = CompilerOptions {
+// var layout: result=0, tempSensor=1 (plain variables are allocated
+// before located ones, unrelated to source declaration order --
+// confirmed via debug_section.var_names, same as other located-variable
+// end-to-end tests elsewhere in this suite).
+e2e_i32_with!(
+    end_to_end_when_mixed_var_block_then_plain_variable_readable,
+    CompilerOptions {
         allow_mixed_located_var_declarations: true,
         ..CompilerOptions::default()
-    };
-    let (_c, bufs) = parse_and_run(source, &options);
+    },
+    "PROGRAM main VAR tempSensor AT%I*: INT; result : INT; END_VAR result := 42; END_PROGRAM",
+    &[(0, 42)],
+);
 
-    // var layout: result=0, tempSensor=1 (plain variables are allocated
-    // before located ones, unrelated to source declaration order --
-    // confirmed via debug_section.var_names, same as other located-variable
-    // end-to-end tests elsewhere in this suite).
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_mixed_var_input_block_then_plain_input_readable() {
-    let source = "
-FUNCTION_BLOCK FB_Example
-VAR_INPUT
-    tempSensor AT%I*: INT;
-    scale : INT;
-END_VAR
-VAR_OUTPUT
-    result : INT;
-END_VAR
-    result := scale * 2;
-END_FUNCTION_BLOCK
-PROGRAM main
-VAR
-    inst : FB_Example;
-    out : INT;
-END_VAR
-    inst(scale := 21);
-    out := inst.result;
-END_PROGRAM
-";
-    let options = CompilerOptions {
+// var layout: inst=0 (struct), out=1
+e2e_i32_with!(
+    end_to_end_when_mixed_var_input_block_then_plain_input_readable,
+    CompilerOptions {
         allow_mixed_located_var_declarations: true,
         ..CompilerOptions::default()
-    };
-    let (_c, bufs) = parse_and_run(source, &options);
-
-    // var layout: inst=0 (struct), out=1
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
+    },
+    "FUNCTION_BLOCK FB_Example VAR_INPUT tempSensor AT%I*: INT; scale : INT; END_VAR VAR_OUTPUT result : INT; END_VAR result := scale * 2; END_FUNCTION_BLOCK PROGRAM main VAR inst : FB_Example; out : INT; END_VAR inst(scale := 21); out := inst.result; END_PROGRAM",
+    &[(1, 42)],
+);
