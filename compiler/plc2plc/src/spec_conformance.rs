@@ -90,3 +90,17 @@ fn plc2plc_spec_req_rto_602_ref_to_still_renders() {
         "REF_TO must not render as REFERENCE TO:\n{rendered}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Compatibility libraries (plc2plc-owned requirement).
+//
+// See `specs/design/compatibility-libraries.md`. The round-trip guarantee for
+// injected library declarations lands with the playground/round-trip phase;
+// wired here as an ignored test so the meta-test passes.
+// ---------------------------------------------------------------------------
+
+/// REQ-CL-plc2plc-001: `plc2plc` emits the user's source unchanged; declarations
+/// injected by an activated library are never rendered as user source.
+#[spec_test(REQ_CL_plc2plc_001)]
+#[ignore = "phase 3: round-trip fidelity with injected library declarations"]
+fn plc2plc_spec_req_cl_001_injected_declarations_not_rendered() {}
