@@ -6,7 +6,7 @@ P6011
 
 This error occurs when a compatibility library is activated by name — either
 explicitly with ``--library <name>`` or by a project file reference — but no
-library of that exact name is bundled with the compiler.
+library of that exact name can be found.
 
 Library names are matched strictly and case-sensitively, so that the compiler
 never silently binds the wrong library. The diagnostic names the missing
@@ -17,11 +17,11 @@ Example
 
 .. code-block:: bash
 
-   # No library named "Tc2_Maths" is bundled (note the trailing 's')
+   # No library named "Tc2_Maths" exists (note the trailing 's')
    ironplcc check --library Tc2_Maths main.st
 
 To fix this error:
 
 - Check the spelling and capitalization of the library name.
-- Confirm the library is one that IronPLC bundles.
+- Confirm the library is installed where the compiler looks for libraries.
 - Remove the activation if the library is not required.

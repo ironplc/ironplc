@@ -69,8 +69,8 @@ source**, so a user declaration shadows a library declaration of the same name
 ## File map
 
 **New — bundled library + loader (`sources`)**
-- `compiler/sources/resources/compat-libraries/Tc2_Math/library.toml` — manifest (`name`, `vendor`, `default_version`, `references`).
-- `compiler/sources/resources/compat-libraries/Tc2_Math/1.0.0/Tc2_Math.st` — `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;` (version subdirectory).
+- `compiler/sources/resources/libs/Tc2_Math/library.toml` — manifest (`name`, `vendor`, `default_version`, `references`).
+- `compiler/sources/resources/libs/Tc2_Math/1.0.0/Tc2_Math.st` — `VAR_GLOBAL CONSTANT PI : LREAL := 3.14159265358979;` (version subdirectory).
 - `compiler/sources/src/libraries/mod.rs` — registry + loader (name → `Library`), reading installed on-disk libraries at runtime.
 - `compiler/sources/src/libraries/manifest.rs` — manifest parse (identity + `default_version` + references).
 

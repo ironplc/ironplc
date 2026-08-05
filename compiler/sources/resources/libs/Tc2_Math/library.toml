@@ -1,0 +1,10 @@
+name = "Tc2_Math"
+vendor = "Beckhoff Automation GmbH"
+default_version = "1.0.0"
+# `PI` mirrors the TwinCAT Tc2_Math global constant of the same name. Its value
+# is the mathematical constant pi -- a Tier A, math-dictated fact rather than a
+# copied expression -- authored to LREAL precision. See the authoring policy at
+# specs/steering/compatibility-library-authoring.md.
+references = [
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68453899.html -- Tc2_Math global constants documentation",
+]

@@ -1,6 +1,0 @@
-name = "Tc2_Math"
-vendor = "Beckhoff Automation GmbH"
-default_version = "1.0.0"
-references = [
-  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/ — Tc2_Math global constants (PI)",
-]

@@ -22,7 +22,7 @@ use spec_test_macro::spec_test;
 use tempfile::TempDir;
 
 use crate::libraries::manifest::LibraryManifest;
-use crate::libraries::LibraryRegistry;
+use crate::libraries::{LibraryName, LibraryRegistry};
 use crate::SourceProject;
 
 #[test]
@@ -73,7 +73,9 @@ fn sources_spec_req_lf_001_package_layout_is_read() {
     );
 
     let registry = LibraryRegistry::with_root(dir.path());
-    let loaded = registry.load("Fixture").expect("package loads");
+    let loaded = registry
+        .load(&LibraryName::from("Fixture"))
+        .expect("package loads");
     // The declaration in the version subdirectory's `.st` file was read.
     assert!(declares_pi(&loaded.library));
 }
@@ -144,7 +146,7 @@ fn sources_spec_req_cl_002_loader_validates_manifest_identity() {
 
     let registry = LibraryRegistry::with_root(dir.path());
     let err = registry
-        .load("Bad")
+        .load(&LibraryName::from("Bad"))
         .expect_err("invalid manifest is rejected on load");
     assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
 }
@@ -175,8 +177,11 @@ fn sources_spec_req_cl_005_active_set_not_inferred_from_source() {
 #[spec_test(REQ_CL_sources_006)]
 fn sources_spec_req_cl_006_explicit_activation_activates_library() {
     let mut project = SourceProject::new();
-    project.set_activated_libraries(vec!["Tc2_Math".to_string()]);
-    assert_eq!(project.activated_libraries(), ["Tc2_Math"]);
+    project.set_activated_libraries(vec![LibraryName::from("Tc2_Math")]);
+    assert_eq!(
+        project.activated_libraries(),
+        [LibraryName::from("Tc2_Math")]
+    );
 
     let (libraries, diagnostics) = project.load_activated_libraries();
     assert!(

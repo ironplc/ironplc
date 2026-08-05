@@ -11,8 +11,10 @@
 
 pub mod manifest;
 
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
@@ -22,6 +24,55 @@ use ironplc_parser::parse_program;
 use ironplc_problems::Problem;
 
 use crate::libraries::manifest::LibraryManifest;
+
+/// The name of a compatibility library (e.g. `Tc2_Math`).
+///
+/// A distinct type from a filesystem path or an arbitrary string: it is the
+/// vendor-facing identifier a project reference or a `--library` option names,
+/// matched against a library package by strict, case-sensitive equality
+/// (`REQ-CL-sources-003`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LibraryName(String);
+
+impl LibraryName {
+    /// Create a library name from any string-like value.
+    pub fn new(name: impl Into<String>) -> Self {
+        LibraryName(name.into())
+    }
+
+    /// The name as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for LibraryName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<&str> for LibraryName {
+    fn from(value: &str) -> Self {
+        LibraryName(value.to_string())
+    }
+}
+
+impl From<String> for LibraryName {
+    fn from(value: String) -> Self {
+        LibraryName(value)
+    }
+}
+
+impl FromStr for LibraryName {
+    // A library name is any non-empty token; parsing is infallible so the CLI
+    // can collect `Vec<LibraryName>` directly.
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(LibraryName(s.to_string()))
+    }
+}
 
 /// A loaded compatibility library: its manifest plus the parsed declarations
 /// for the selected version, ready to inject into semantic analysis.
@@ -49,16 +100,18 @@ impl Default for LibraryRegistry {
 }
 
 impl LibraryRegistry {
-    /// The registry of libraries bundled with the compiler.
+    /// The registry of libraries installed alongside the application.
     ///
-    /// Libraries are read from disk at runtime (not embedded in the binary):
-    /// the root is the crate's `resources/compat-libraries` directory. The
-    /// install location and search mechanism for a shipped binary are defined
-    /// separately (out of scope for the on-disk format; see the format design's
-    /// *Installation* section).
+    /// Libraries are read from disk at runtime (not embedded in the binary).
+    /// The installed layout places them in `resources/libs` next to the
+    /// application executable, so the root is derived from the running
+    /// executable's directory. When that directory does not exist — a
+    /// development build or the test harness, where the executable is under
+    /// `target/` with no resources beside it — the search falls back to the
+    /// crate's own `resources/libs` source directory.
     pub fn bundled() -> Self {
         LibraryRegistry {
-            root: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/compat-libraries"),
+            root: installed_libraries_root(),
         }
     }
 
@@ -67,41 +120,40 @@ impl LibraryRegistry {
         LibraryRegistry { root: root.into() }
     }
 
-    /// Whether a library with this exact, case-sensitive name is bundled.
-    pub fn contains(&self, name: &str) -> bool {
+    /// Whether a library with this exact, case-sensitive name is available.
+    pub fn contains(&self, name: &LibraryName) -> bool {
         self.has_exact_dir(name) && self.manifest_path(name).is_file()
     }
 
-    fn manifest_path(&self, name: &str) -> PathBuf {
-        self.root.join(name).join("library.toml")
+    fn manifest_path(&self, name: &LibraryName) -> PathBuf {
+        self.root.join(name.as_str()).join("library.toml")
     }
 
-    /// Whether an immediate subdirectory named exactly (byte-for-byte) `name`
-    /// exists under the registry root.
+    /// Whether an immediate subdirectory named exactly (byte-for-byte) equal to
+    /// `name` exists under the registry root.
     ///
     /// Name matching must be strict and case-sensitive (`REQ-CL-sources-003`),
     /// but `Path::is_file`/`is_dir` resolve case-insensitively on macOS (APFS)
     /// and Windows, so `tc2_math` would match a `Tc2_Math` directory there.
     /// Confirming the real on-disk entry name makes the match case-sensitive on
     /// every platform.
-    fn has_exact_dir(&self, name: &str) -> bool {
+    fn has_exact_dir(&self, name: &LibraryName) -> bool {
         match fs::read_dir(&self.root) {
-            Ok(entries) => entries
-                .filter_map(Result::ok)
-                .any(|entry| entry.file_name().to_str() == Some(name) && entry.path().is_dir()),
+            Ok(entries) => entries.filter_map(Result::ok).any(|entry| {
+                entry.file_name().to_str() == Some(name.as_str()) && entry.path().is_dir()
+            }),
             Err(_) => false,
         }
     }
 
-    /// Load a bundled library by its exact, case-sensitive name.
+    /// Load a library by its exact, case-sensitive name.
     ///
-    /// Resolution to a bundled library is by strict name match
-    /// (`REQ-CL-sources-003`), so the compiler never silently binds the wrong
-    /// library. Returns a `LibraryNotFound` (P6011) diagnostic when no library
-    /// of that name is bundled, or a `LibraryManifestInvalid` (P6010)
-    /// diagnostic when the manifest is malformed or missing a required field
-    /// (`REQ-CL-sources-002`).
-    pub fn load(&self, name: &str) -> Result<CompatLibrary, Diagnostic> {
+    /// Resolution is by strict name match (`REQ-CL-sources-003`), so the
+    /// compiler never silently binds the wrong library. Returns a
+    /// `LibraryNotFound` (P6011) diagnostic when no library of that name is
+    /// available, or a `LibraryManifestInvalid` (P6010) diagnostic when the
+    /// manifest is malformed or missing a required field (`REQ-CL-sources-002`).
+    pub fn load(&self, name: &LibraryName) -> Result<CompatLibrary, Diagnostic> {
         let manifest_path = self.manifest_path(name);
         let manifest_file_id = FileId::from_path(&manifest_path);
 
@@ -113,7 +165,7 @@ impl LibraryRegistry {
                 Problem::LibraryNotFound,
                 Label::file(
                     manifest_file_id,
-                    format!("no bundled compatibility library named `{name}`"),
+                    format!("compatibility library `{name}` not found"),
                 ),
             ));
         }
@@ -129,11 +181,32 @@ impl LibraryRegistry {
         })?;
         let manifest = LibraryManifest::from_toml(&content, &manifest_file_id)?;
 
-        let version_dir = self.root.join(name).join(&manifest.default_version);
+        let version_dir = self
+            .root
+            .join(name.as_str())
+            .join(&manifest.default_version);
         let library = load_version_library(&version_dir, &manifest_file_id)?;
 
         Ok(CompatLibrary { manifest, library })
     }
+}
+
+/// The root directory holding installed compatibility libraries.
+///
+/// Prefers `resources/libs` beside the running executable (the installed
+/// layout); falls back to the crate's `resources/libs` source directory for
+/// development and test builds, where the executable lives under `target/`
+/// with no resources beside it.
+fn installed_libraries_root() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let installed = exe_dir.join("resources").join("libs");
+            if installed.is_dir() {
+                return installed;
+            }
+        }
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/libs")
 }
 
 /// Parse and merge every `.st` file in a version subdirectory into one Library.
@@ -188,6 +261,15 @@ mod tests {
     use super::*;
     use ironplc_dsl::common::LibraryElementKind;
 
+    #[test]
+    fn library_name_round_trips_through_str() {
+        let name = LibraryName::from("Tc2_Math");
+        assert_eq!(name.as_str(), "Tc2_Math");
+        assert_eq!(name.to_string(), "Tc2_Math");
+        assert_eq!("Tc2_Math".parse::<LibraryName>().unwrap(), name);
+        assert_eq!(LibraryName::new(String::from("Tc2_Math")), name);
+    }
+
     /// The bundled `Tc2_Math` library loads and provides the global `PI`.
     fn library_declares_pi(library: &Library) -> bool {
         library.elements.iter().any(|element| {
@@ -199,14 +281,16 @@ mod tests {
     #[test]
     fn bundled_registry_contains_tc2_math() {
         let registry = LibraryRegistry::bundled();
-        assert!(registry.contains("Tc2_Math"));
-        assert!(!registry.contains("DoesNotExist"));
+        assert!(registry.contains(&LibraryName::from("Tc2_Math")));
+        assert!(!registry.contains(&LibraryName::from("DoesNotExist")));
     }
 
     #[test]
     fn load_when_tc2_math_then_provides_pi() {
         let registry = LibraryRegistry::bundled();
-        let loaded = registry.load("Tc2_Math").expect("Tc2_Math loads");
+        let loaded = registry
+            .load(&LibraryName::from("Tc2_Math"))
+            .expect("Tc2_Math loads");
         assert_eq!(loaded.manifest.name, "Tc2_Math");
         assert_eq!(loaded.manifest.default_version, "1.0.0");
         assert!(
@@ -219,14 +303,16 @@ mod tests {
     fn load_when_case_differs_then_not_found() {
         // Strict, case-sensitive name match (REQ-CL-sources-003).
         let registry = LibraryRegistry::bundled();
-        let err = registry.load("tc2_math").unwrap_err();
+        let err = registry.load(&LibraryName::from("tc2_math")).unwrap_err();
         assert_eq!(err.code, Problem::LibraryNotFound.code());
     }
 
     #[test]
     fn load_when_unknown_name_then_library_not_found() {
         let registry = LibraryRegistry::bundled();
-        let err = registry.load("Nonexistent").unwrap_err();
+        let err = registry
+            .load(&LibraryName::from("Nonexistent"))
+            .unwrap_err();
         assert_eq!(err.code, Problem::LibraryNotFound.code());
     }
 
@@ -246,7 +332,7 @@ mod tests {
         .unwrap();
 
         let registry = LibraryRegistry::with_root(dir.path());
-        let err = registry.load("Bad").unwrap_err();
+        let err = registry.load(&LibraryName::from("Bad")).unwrap_err();
         assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
     }
 
@@ -265,7 +351,7 @@ mod tests {
         .unwrap();
 
         let registry = LibraryRegistry::with_root(dir.path());
-        let err = registry.load("NoVersion").unwrap_err();
+        let err = registry.load(&LibraryName::from("NoVersion")).unwrap_err();
         assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
     }
 
@@ -296,7 +382,7 @@ mod tests {
         fs::write(version_dir.join("notes.txt"), "ignore me").unwrap();
 
         let registry = LibraryRegistry::with_root(dir.path());
-        let loaded = registry.load("Multi").unwrap();
+        let loaded = registry.load(&LibraryName::from("Multi")).unwrap();
         assert_eq!(loaded.library.elements.len(), 2);
     }
 }

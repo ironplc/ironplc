@@ -6,7 +6,7 @@ use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
 use ironplc_parser::options::CompilerOptions;
 use log::{info, trace};
 
-use crate::libraries::LibraryRegistry;
+use crate::libraries::{LibraryName, LibraryRegistry};
 use crate::source::Source;
 
 /// A project consisting of one or more source files
@@ -20,7 +20,7 @@ pub struct SourceProject {
     /// The active set comes only from explicit activation (a project-file
     /// reference or an explicit CLI/playground request) and is never inferred
     /// from source content (`REQ-CL-sources-005`).
-    activated_libraries: Vec<String>,
+    activated_libraries: Vec<LibraryName>,
 }
 
 impl Default for SourceProject {
@@ -53,12 +53,12 @@ impl SourceProject {
     /// Replaces any previously activated set. Activation is out of band — it
     /// never touches source text — and comes only from an explicit channel such
     /// as a project-file reference or a `--library` request.
-    pub fn set_activated_libraries(&mut self, names: Vec<String>) {
+    pub fn set_activated_libraries(&mut self, names: Vec<LibraryName>) {
         self.activated_libraries = names;
     }
 
     /// The names of the activated compatibility libraries, in activation order.
-    pub fn activated_libraries(&self) -> &[String] {
+    pub fn activated_libraries(&self) -> &[LibraryName] {
         &self.activated_libraries
     }
 

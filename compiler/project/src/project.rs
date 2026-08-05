@@ -13,7 +13,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::{options::CompilerOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
-use ironplc_sources::{Source, SourceProject};
+use ironplc_sources::{LibraryName, Source, SourceProject};
 use log::{debug, trace};
 
 /// Runs semantic analysis on the given source project and compiler options.
@@ -213,7 +213,7 @@ impl FileBackedProject {
     ///
     /// Activation is out of band — it never modifies source — and comes only
     /// from an explicit channel such as a `--library` request.
-    pub fn set_activated_libraries(&mut self, names: Vec<String>) {
+    pub fn set_activated_libraries(&mut self, names: Vec<LibraryName>) {
         self.source_project.set_activated_libraries(names);
     }
 
@@ -333,7 +333,7 @@ impl MemoryBackedProject {
     }
 
     /// Activate the named compatibility libraries (replacing any current set).
-    pub fn set_activated_libraries(&mut self, names: Vec<String>) {
+    pub fn set_activated_libraries(&mut self, names: Vec<LibraryName>) {
         self.source_project.set_activated_libraries(names);
     }
 }
@@ -405,7 +405,7 @@ mod test {
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use std::path::Path;
 
-    use super::{FileBackedProject, MemoryBackedProject, Project};
+    use super::{FileBackedProject, LibraryName, MemoryBackedProject, Project};
 
     #[test]
     fn change_text_document_when_overwrite_then_one_file() {
@@ -450,7 +450,7 @@ mod test {
     #[test]
     fn semantic_when_tc2_math_activated_then_pi_resolves() {
         let mut project = MemoryBackedProject::new(library_options());
-        project.set_activated_libraries(vec!["Tc2_Math".to_string()]);
+        project.set_activated_libraries(vec![LibraryName::from("Tc2_Math")]);
         project.add_source(FileId::from_string("main.st"), PI_PROGRAM.to_owned());
 
         // Activating Tc2_Math injects the global PI, so the initializer folds.
@@ -465,7 +465,7 @@ mod test {
     #[test]
     fn semantic_when_unshipped_library_activated_then_diagnostic() {
         let mut project = MemoryBackedProject::new(library_options());
-        project.set_activated_libraries(vec!["DoesNotExist".to_string()]);
+        project.set_activated_libraries(vec![LibraryName::from("DoesNotExist")]);
         project.add_source(
             FileId::from_string("main.st"),
             "FUNCTION_BLOCK FB VAR x : INT; END_VAR END_FUNCTION_BLOCK".to_owned(),

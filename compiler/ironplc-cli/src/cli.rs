@@ -24,6 +24,7 @@ use std::{
 
 use ironplc_dsl::common::Library;
 use ironplc_parser::options::CompilerOptions;
+use ironplc_sources::LibraryName;
 
 use ironplc_project::tokenizer;
 use ironplc_project::{FileBackedProject, Project};
@@ -32,7 +33,7 @@ use ironplc_project::{FileBackedProject, Project};
 pub fn check(
     paths: &[PathBuf],
     compiler_options: CompilerOptions,
-    libraries: &[String],
+    libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<(), String> {
     let mut project = create_project(paths, compiler_options, libraries, suppress_output)?;
@@ -50,10 +51,10 @@ pub fn check(
 pub fn echo(
     paths: &[PathBuf],
     compiler_options: CompilerOptions,
-    libraries: &[String],
     suppress_output: bool,
 ) -> Result<(), String> {
-    let mut project = create_project(paths, compiler_options, libraries, suppress_output)?;
+    // Echo renders parsed source; it runs no analysis, so no library activation.
+    let mut project = create_project(paths, compiler_options, &[], suppress_output)?;
 
     // Collect the results and output after because getting the results may change
     // the project itself
@@ -95,10 +96,10 @@ pub fn echo(
 pub fn tokenize(
     paths: &[PathBuf],
     compiler_options: CompilerOptions,
-    libraries: &[String],
     suppress_output: bool,
 ) -> Result<(), String> {
-    let project = create_project(paths, compiler_options, libraries, suppress_output)?;
+    // Tokenize only lexes each source; library activation is irrelevant here.
+    let project = create_project(paths, compiler_options, &[], suppress_output)?;
 
     for src in project.sources() {
         tokenizer::tokenize_source(src, &project, suppress_output, &handle_diagnostics)?;
@@ -115,7 +116,7 @@ pub fn compile(
     paths: &[PathBuf],
     output: &Path,
     compiler_options: CompilerOptions,
-    libraries: &[String],
+    libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<(), String> {
     let mut project = create_project(paths, compiler_options, libraries, suppress_output)?;
@@ -225,7 +226,7 @@ impl ironplc_codegen::SourceLookup for HashMapSourceLookup {
 fn create_project(
     paths: &[PathBuf],
     compiler_options: CompilerOptions,
-    libraries: &[String],
+    libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<FileBackedProject, String> {
     trace!("Reading paths {paths:?}");
@@ -576,21 +577,21 @@ mod tests {
     #[test]
     fn echo_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(&paths, CompilerOptions::default(), &[], true);
+        let result = echo(&paths, CompilerOptions::default(), true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn tokenize_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(&paths, CompilerOptions::default(), &[], true);
+        let result = echo(&paths, CompilerOptions::default(), true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn tokenize_xml_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("simple.xml")];
-        let result = tokenize(&paths, CompilerOptions::default(), &[], true);
+        let result = tokenize(&paths, CompilerOptions::default(), true);
         assert!(result.is_ok())
     }
 

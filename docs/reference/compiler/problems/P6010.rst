@@ -4,7 +4,7 @@ P6010
 
 .. problem-summary:: P6010
 
-This error occurs when a bundled compatibility library's ``library.toml``
+This error occurs when a compatibility library's ``library.toml``
 manifest is malformed or is missing one of its required fields (``name``,
 ``vendor``, ``default_version``, or ``references``).
 
