@@ -31,5 +31,9 @@ class Ironplc < Formula
       bin.install "ironplcc"
       bin.install "ironplcvm"
       bin.install "ironplcmcp"
+      # Compatibility libraries ship beside the binaries; the compiler reads
+      # them from <bindir>/resources/libs at runtime. current_exe() resolves the
+      # Homebrew symlink to the Cellar bin, so this is where the loader looks.
+      (bin/"resources").install "resources/libs"
     end
   end

@@ -66,13 +66,23 @@ _package-windows version filename target:
 _package-macos version filename target:
   cargo build --release --target {{target}}
   cp bom.cdx.json target/{{target}}/release/bom.cdx.json
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json
+  # Stage the compatibility libraries so they ship beside the binaries; the
+  # loader reads them from `<bindir>/resources/libs` at runtime.
+  rm -rf target/{{target}}/release/resources/libs
+  mkdir -p target/{{target}}/release/resources
+  cp -R sources/resources/libs target/{{target}}/release/resources/libs
+  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json resources
   shasum -a 256 {{filename}} > {{filename}}.sha256
 
 _package-linux version filename target:
   cargo build --release --target {{target}}
   cp bom.cdx.json target/{{target}}/release/bom.cdx.json
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json
+  # Stage the compatibility libraries so they ship beside the binaries; the
+  # loader reads them from `<bindir>/resources/libs` at runtime.
+  rm -rf target/{{target}}/release/resources/libs
+  mkdir -p target/{{target}}/release/resources
+  cp -R sources/resources/libs target/{{target}}/release/resources/libs
+  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json resources
   sha256sum {{filename}} > {{filename}}.sha256
 
 # Builds the Homebrew repository to release for Mac and Linux

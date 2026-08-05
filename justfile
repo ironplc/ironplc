@@ -261,6 +261,20 @@ _install-script-smoke-verify:
   "$BIN/ironplcc" version
   "$BIN/ironplcc" help
 
+  # Compatibility libraries ship beside the binaries so the loader finds them at
+  # <bindir>/resources/libs. When present, verify a program reading the bundled
+  # Tc2_System `PI` constant actually compiles -- this exercises the shipped
+  # files, not the dev-tree fallback. The files are optional here because this
+  # recipe also runs against the latest published release, which predates library
+  # shipping; a release that ships them makes this a hard check on every later run.
+  if [ -f "$BIN/resources/libs/Tc2_System/library.toml" ]; then
+    _pi_src="$(mktemp -d)/pi.st"
+    printf '%s\n' 'FUNCTION_BLOCK FB_Angle VAR d2r : LREAL := PI/180.0; END_VAR END_FUNCTION_BLOCK' > "$_pi_src"
+    "$BIN/ironplcc" check --dialect twincat --allow-constant-initializer-expressions --library Tc2_System "$_pi_src"
+  else
+    echo "warning: compatibility libraries not installed (release predates library shipping); skipping PI check" >&2
+  fi
+
   # ironplcvm and ironplcmcp are optional (older releases may not include them).
   if [ -x "$BIN/ironplcmcp" ]; then
     # MCP handshake: initialize -> notifications/initialized -> tools/list.
