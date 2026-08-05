@@ -65,16 +65,28 @@ self.onmessage = (e: MessageEvent) => {
     let json: string;
     switch (data.command) {
       case "compile":
-        json = compile(data.source, data.dialect || "", data.allows || "");
+        json = compile(data.source, data.dialect || "", data.allows || "", data.libraries || "");
         break;
       case "run":
         json = run(data.bytecodeBase64, data.scans);
         break;
       case "run_source":
-        json = run_source(data.source, data.scans, data.dialect || "", data.allows || "");
+        json = run_source(
+          data.source,
+          data.scans,
+          data.dialect || "",
+          data.allows || "",
+          data.libraries || "",
+        );
         break;
       case "load_program":
-        json = load_program(data.source, data.cycleTimeUs || 100000, data.dialect || "", data.allows || "");
+        json = load_program(
+          data.source,
+          data.cycleTimeUs || 100000,
+          data.dialect || "",
+          data.allows || "",
+          data.libraries || "",
+        );
         break;
       case "step":
         json = step(data.scans);
