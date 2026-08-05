@@ -23,10 +23,12 @@ The four distribution paths and where each puts the executable:
 |---------------------|----------------------------|-----------------------------------|
 | Linux/macOS tarball | `$INSTALL_DIR/bin/`        | `$INSTALL_DIR/bin/resources/libs` |
 | Windows NSIS        | `$INSTDIR\bin\`            | `$INSTDIR\bin\resources\libs`     |
-| Homebrew            | Cellar `bin/` (symlinked)  | `#{bin}/resources/libs`           |
+| Homebrew            | `libexec/` (symlinked)     | `#{libexec}/resources/libs`       |
 
-`current_exe()` resolves symlinks, so the Homebrew symlink on `PATH` resolves to
-the Cellar `bin`, making `#{bin}/resources/libs` the correct target there too.
+`current_exe()` resolves symlinks, so a `bin` symlink on `PATH` resolves back to
+the real binary. The idiomatic Homebrew layout keeps the binaries and their
+resources together in `libexec` and symlinks the executables onto the `PATH`, so
+the loader finds `#{libexec}/resources/libs` beside the resolved binary.
 
 **Contract:** libraries install to `<bindir>/resources/libs`, uniformly across
 all three installers. The design doc's *Installation* section previously left the
@@ -48,8 +50,8 @@ defines it.
 - `compiler/setup.nsi` — install `resources\libs` into `$INSTDIR\bin\resources`.
 - `compiler/install.sh` — place the extracted `resources/` dir next to the
   installed binaries; warn (not fail) when an older release omits it.
-- `compiler/homebrew/Formula/ironplc.rb` — install `resources/libs` into
-  `#{bin}/resources`.
+- `compiler/homebrew/Formula/ironplc.rb` — install the binaries and
+  `resources/libs` into `libexec` and symlink the executables into `bin`.
 
 **Modified — verification**
 - `justfile` (root) — `_install-script-smoke-verify` asserts the library files

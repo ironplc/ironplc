@@ -28,12 +28,14 @@ class Ironplc < Formula
     end
   
     def install
-      bin.install "ironplcc"
-      bin.install "ironplcvm"
-      bin.install "ironplcmcp"
-      # Compatibility libraries ship beside the binaries; the compiler reads
-      # them from <bindir>/resources/libs at runtime. current_exe() resolves the
-      # Homebrew symlink to the Cellar bin, so this is where the loader looks.
-      (bin/"resources").install "resources/libs"
+      # Keep the binaries and their runtime resources together in libexec, then
+      # symlink the executables onto the PATH. The compiler reads its bundled
+      # compatibility libraries from <exedir>/resources/libs at runtime, and
+      # current_exe() resolves the bin symlink back to libexec -- so the
+      # libraries must sit beside the real binaries here, not in bin.
+      libexec.install "ironplcc", "ironplcvm", "ironplcmcp", "resources"
+      bin.install_symlink libexec/"ironplcc"
+      bin.install_symlink libexec/"ironplcvm"
+      bin.install_symlink libexec/"ironplcmcp"
     end
   end

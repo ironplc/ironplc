@@ -92,9 +92,10 @@ The install location is `resources/libs/` **beside the compiler executable**
 tree only for development and test builds. Every installer therefore ships
 `resources/libs/` next to the binaries: the Linux/macOS tarball carries it, the
 Windows NSIS installer writes it under `bin\resources\libs`, and the Homebrew
-formula installs it into `#{bin}/resources/libs` (`current_exe()` resolves the
-Homebrew symlink to the Cellar `bin`, so the loader finds it there). The
-discovery/search mechanism beyond this fixed location is **not part of this
+formula keeps the binaries and `resources/libs` together in `libexec` and
+symlinks the executables onto the `PATH` (`current_exe()` resolves the symlink
+back to `libexec`, so the loader finds the libraries beside the real binary).
+The discovery/search mechanism beyond this fixed location is **not part of this
 format** and is defined separately when needed.
 
 ## Future
