@@ -270,7 +270,15 @@ END_PROGRAM
 
 e2e_i32!(
     string_to_int_when_valid_then_parsed,
-    "PROGRAM main VAR s : STRING := '123'; x : INT; END_VAR x := STRING_TO_INT(s); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    s : STRING := '123';
+    x : INT;
+  END_VAR
+  x := STRING_TO_INT(s);
+END_PROGRAM
+",
     &[(1, 123)],
 );
 
@@ -292,7 +300,15 @@ END_PROGRAM
 
 e2e_i32!(
     string_to_int_when_invalid_then_zero,
-    "PROGRAM main VAR s : STRING := 'abc'; x : INT; END_VAR x := STRING_TO_INT(s); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    s : STRING := 'abc';
+    x : INT;
+  END_VAR
+  x := STRING_TO_INT(s);
+END_PROGRAM
+",
     &[(1, 0)],
 );
 
@@ -302,7 +318,15 @@ e2e_i32!(
 
 e2e_i32!(
     string_to_dint_when_large_then_correct,
-    "PROGRAM main VAR s : STRING := '2147483647'; x : DINT; END_VAR x := STRING_TO_DINT(s); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    s : STRING := '2147483647';
+    x : DINT;
+  END_VAR
+  x := STRING_TO_DINT(s);
+END_PROGRAM
+",
     &[(1, 2147483647)],
 );
 
@@ -313,12 +337,28 @@ e2e_i32!(
 e2e_f32_near!(
     string_to_real_when_valid_then_parsed,
     1e-5,
-    "PROGRAM main VAR s : STRING := '2.5'; x : REAL; END_VAR x := STRING_TO_REAL(s); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    s : STRING := '2.5';
+    x : REAL;
+  END_VAR
+  x := STRING_TO_REAL(s);
+END_PROGRAM
+",
     &[(1, 2.5)],
 );
 
 e2e_f32!(
     string_to_real_when_invalid_then_zero,
-    "PROGRAM main VAR s : STRING := 'xyz'; x : REAL; END_VAR x := STRING_TO_REAL(s); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    s : STRING := 'xyz';
+    x : REAL;
+  END_VAR
+  x := STRING_TO_REAL(s);
+END_PROGRAM
+",
     &[(1, 0.0)],
 );

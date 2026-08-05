@@ -276,12 +276,36 @@ mod tests {
 
     rule_ok!(
         apply_when_program_uses_function_block_instance_then_ok,
-        "FUNCTION_BLOCK COUNTER VAR count : INT; END_VAR count := count + 1; END_FUNCTION_BLOCK PROGRAM main VAR c : COUNTER; END_VAR c(); END_PROGRAM"
+        "
+        FUNCTION_BLOCK COUNTER
+            VAR
+                count : INT;
+            END_VAR
+            count := count + 1;
+        END_FUNCTION_BLOCK
+
+        PROGRAM main
+            VAR
+                c : COUNTER;
+            END_VAR
+            c();
+        END_PROGRAM"
     );
 
     rule_ok!(
         apply_when_function_block_uses_function_block_instance_then_ok,
-        "FUNCTION_BLOCK Callee VAR IN1 : BOOL; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK Caller VAR CalleeInstance : Callee; END_VAR END_FUNCTION_BLOCK"
+        "
+        FUNCTION_BLOCK Callee
+            VAR
+                IN1 : BOOL;
+            END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Caller
+            VAR
+                CalleeInstance : Callee;
+            END_VAR
+        END_FUNCTION_BLOCK"
     );
 
     #[test]

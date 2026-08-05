@@ -114,33 +114,88 @@ mod tests {
     rule_err1_with!(
         apply_when_derived_redeclares_base_field_same_type_then_error,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK FB_Base VAR state : INT; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK FB_Derived EXTENDS FB_Base VAR state : INT; END_VAR END_FUNCTION_BLOCK",
+        "
+FUNCTION_BLOCK FB_Base
+VAR
+    state : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    state : INT;
+END_VAR
+END_FUNCTION_BLOCK",
         Problem::ExtendsFieldNameDuplicated
     );
 
     rule_err1_with!(
         apply_when_derived_redeclares_base_field_different_type_then_error,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK FB_Base VAR state : INT; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK FB_Derived EXTENDS FB_Base VAR state : BOOL; END_VAR END_FUNCTION_BLOCK",
+        "
+FUNCTION_BLOCK FB_Base
+VAR
+    state : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    state : BOOL;
+END_VAR
+END_FUNCTION_BLOCK",
         Problem::ExtendsFieldNameDuplicated
     );
 
     rule_ok_with!(
         apply_when_derived_has_no_field_collision_then_ok,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK FB_Base VAR state : INT; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK FB_Derived EXTENDS FB_Base VAR derivedState : BOOL; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Base
+VAR
+    state : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+VAR
+    derivedState : BOOL;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     rule_err1_with!(
         apply_when_grandparent_field_collision_then_error,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK FB_A VAR a : BOOL; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK FB_B EXTENDS FB_A VAR b : BOOL; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK FB_C EXTENDS FB_B VAR a : INT; END_VAR END_FUNCTION_BLOCK",
+        "
+FUNCTION_BLOCK FB_A
+VAR
+    a : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_B EXTENDS FB_A
+VAR
+    b : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_C EXTENDS FB_B
+VAR
+    a : INT;
+END_VAR
+END_FUNCTION_BLOCK",
         Problem::ExtendsFieldNameDuplicated
     );
 
     rule_ok_with!(
         apply_when_no_extends_then_ok,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK FB_Plain VAR x : INT; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Plain
+VAR
+    x : INT;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 }

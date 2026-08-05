@@ -8,25 +8,59 @@ use ironplc_vm::Vm;
 
 e2e_i32!(
     end_to_end_when_add_expression_then_variable_has_sum,
-    "PROGRAM main VAR x : DINT; y : DINT; END_VAR x := 10; y := x + 32; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  x := 10;
+  y := x + 32;
+END_PROGRAM
+",
     &[(0, 10), (1, 42)],
 );
 
 e2e_i32!(
     end_to_end_when_chain_of_additions_then_variable_has_total,
-    "PROGRAM main VAR result : DINT; END_VAR result := 1 + 2 + 3; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := 1 + 2 + 3;
+END_PROGRAM
+",
     &[(0, 6)],
 );
 
 e2e_i32!(
     end_to_end_when_multiple_assignments_then_all_variables_correct,
-    "PROGRAM main VAR a : DINT; b : DINT; c : DINT; END_VAR a := 100; b := 200; c := a + b; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    a : DINT;
+    b : DINT;
+    c : DINT;
+  END_VAR
+  a := 100;
+  b := 200;
+  c := a + b;
+END_PROGRAM
+",
     &[(0, 100), (1, 200), (2, 300)],
 );
 
 e2e_i32!(
     end_to_end_when_deeply_nested_expression_then_correct_result,
-    "PROGRAM main VAR result : DINT; END_VAR result := 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;
+END_PROGRAM
+",
     &[(0, 55)],
 );
 

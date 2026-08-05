@@ -117,6 +117,17 @@ mod tests {
     // standard syntax and must never be flagged regardless of the option.
     rule_ok!(
         apply_when_plain_constant_struct_init_then_never_flagged,
-        "TYPE MyStruct : STRUCT x : INT; END_STRUCT; END_TYPE PROGRAM main VAR s : MyStruct := (x := 5); END_VAR END_PROGRAM"
+        "
+TYPE MyStruct :
+STRUCT
+    x : INT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+VAR
+    s : MyStruct := (x := 5);
+END_VAR
+END_PROGRAM"
     );
 }

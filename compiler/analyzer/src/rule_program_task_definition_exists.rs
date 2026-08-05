@@ -88,11 +88,22 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
 mod tests {
     rule_err!(
         apply_when_task_not_defined_then_return_error,
-        "CONFIGURATION config RESOURCE resource1 ON PLC PROGRAM plc_task_instance WITH plc_task : plc_prg; END_RESOURCE END_CONFIGURATION"
+        "
+        CONFIGURATION config
+            RESOURCE resource1 ON PLC
+               PROGRAM plc_task_instance WITH plc_task : plc_prg;
+            END_RESOURCE
+        END_CONFIGURATION"
     );
 
     rule_ok!(
         apply_when_task_defined_then_return_ok,
-        "CONFIGURATION config RESOURCE resource1 ON PLC TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1); PROGRAM plc_task_instance WITH plc_task : plc_prg; END_RESOURCE END_CONFIGURATION"
+        "
+        CONFIGURATION config
+            RESOURCE resource1 ON PLC
+               TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
+               PROGRAM plc_task_instance WITH plc_task : plc_prg;
+            END_RESOURCE
+        END_CONFIGURATION"
     );
 }

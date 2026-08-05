@@ -72,18 +72,41 @@ mod tests {
     // CTU_DINT is now a supported stdlib type variant
     rule_ok!(
         apply_when_has_ctu_dint_supported_type_then_ok,
-        "FUNCTION_BLOCK DUMMY VAR_INPUT counter : CTU_DINT; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK DUMMY
+VAR_INPUT
+counter : CTU_DINT;
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 
     // TON is a supported stdlib type - should not trigger this rule
     rule_ok!(
         apply_when_has_ton_supported_type_then_ok,
-        "FUNCTION_BLOCK DUMMY VAR_INPUT timer : TON; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK DUMMY
+VAR_INPUT
+timer : TON;
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 
     // User-defined function blocks should not trigger this rule
     rule_ok!(
         apply_when_has_user_defined_function_block_then_ok,
-        "FUNCTION_BLOCK MY_CUSTOM_FB VAR_INPUT value : INT; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK DUMMY VAR_INPUT my_var : MY_CUSTOM_FB; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK MY_CUSTOM_FB
+VAR_INPUT
+value : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK DUMMY
+VAR_INPUT
+my_var : MY_CUSTOM_FB;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 }

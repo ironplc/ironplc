@@ -22,7 +22,15 @@ e2e_i32_with!(
         allow_mixed_located_var_declarations: true,
         ..CompilerOptions::default()
     },
-    "PROGRAM main VAR tempSensor AT%I*: INT; result : INT; END_VAR result := 42; END_PROGRAM",
+    "
+PROGRAM main
+VAR
+    tempSensor AT%I*: INT;
+    result : INT;
+END_VAR
+    result := 42;
+END_PROGRAM
+",
     &[(0, 42)],
 );
 
@@ -33,6 +41,25 @@ e2e_i32_with!(
         allow_mixed_located_var_declarations: true,
         ..CompilerOptions::default()
     },
-    "FUNCTION_BLOCK FB_Example VAR_INPUT tempSensor AT%I*: INT; scale : INT; END_VAR VAR_OUTPUT result : INT; END_VAR result := scale * 2; END_FUNCTION_BLOCK PROGRAM main VAR inst : FB_Example; out : INT; END_VAR inst(scale := 21); out := inst.result; END_PROGRAM",
+    "
+FUNCTION_BLOCK FB_Example
+VAR_INPUT
+    tempSensor AT%I*: INT;
+    scale : INT;
+END_VAR
+VAR_OUTPUT
+    result : INT;
+END_VAR
+    result := scale * 2;
+END_FUNCTION_BLOCK
+PROGRAM main
+VAR
+    inst : FB_Example;
+    out : INT;
+END_VAR
+    inst(scale := 21);
+    out := inst.result;
+END_PROGRAM
+",
     &[(1, 42)],
 );

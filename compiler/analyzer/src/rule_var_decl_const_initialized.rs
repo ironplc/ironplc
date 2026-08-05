@@ -245,49 +245,129 @@ mod test {
 
     rule_err!(
         apply_when_const_simple_type_missing_initializer_then_error,
-        "FUNCTION_BLOCK LOGGER VAR CONSTANT ResetCounterValue : INT; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : INT;
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 
     rule_err!(
         apply_when_const_enum_type_missing_initializer_then_error,
-        "TYPE LOGLEVEL : (CRITICAL) := CRITICAL; END_TYPE FUNCTION_BLOCK LOGGER VAR CONSTANT ResetCounterValue : LOGLEVEL; END_VAR END_FUNCTION_BLOCK"
+        "
+TYPE
+LOGLEVEL : (CRITICAL) := CRITICAL;
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : LOGLEVEL;
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 
     rule_err!(
         apply_when_const_enum_values_type_missing_initializer_then_error,
-        "FUNCTION_BLOCK LOGGER VAR CONSTANT ResetCounterValue : (INFO, WARN); END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : (INFO, WARN);
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 
     rule_ok!(
         apply_when_const_enum_values_type_has_initializer_then_ok,
-        "FUNCTION_BLOCK LOGGER VAR CONSTANT ResetCounterValue : (INFO, WARN) := INFO; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : (INFO, WARN) := INFO;
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 
     rule_ok!(
         apply_when_const_simple_external_type_missing_initializer_then_ok,
-        "TYPE LOGLEVEL : (CRITICAL) := CRITICAL; END_TYPE FUNCTION_BLOCK LOGGER VAR_EXTERNAL CONSTANT ResetCounterValue : LOGLEVEL; END_VAR END_FUNCTION_BLOCK"
+        "
+TYPE
+LOGLEVEL : (CRITICAL) := CRITICAL;
+END_TYPE
+
+FUNCTION_BLOCK LOGGER
+VAR_EXTERNAL CONSTANT
+ResetCounterValue : LOGLEVEL;
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 
     rule_ok!(
         apply_when_const_simple_has_initializer_then_ok,
-        "FUNCTION_BLOCK LOGGER VAR CONSTANT ResetCounterValue : INT := 1; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : INT := 1;
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 
     // Tests for const structure initialization
 
     rule_ctx_ok!(
         apply_when_const_struct_all_fields_have_defaults_then_ok,
-        "TYPE Point : STRUCT x : INT := 0; y : INT := 0; END_STRUCT; END_TYPE FUNCTION_BLOCK MAIN VAR CONSTANT origin : Point; END_VAR END_FUNCTION_BLOCK"
+        "
+TYPE
+    Point : STRUCT
+        x : INT := 0;
+        y : INT := 0;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR CONSTANT
+    origin : Point;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     rule_ctx_ok!(
         apply_when_const_struct_missing_defaults_but_explicitly_initialized_then_ok,
-        "TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE FUNCTION_BLOCK MAIN VAR CONSTANT origin : Point := (x := 10, y := 20); END_VAR END_FUNCTION_BLOCK"
+        "
+TYPE
+    Point : STRUCT
+        x : INT;
+        y : INT;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR CONSTANT
+    origin : Point := (x := 10, y := 20);
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     rule_ctx_ok!(
         apply_when_const_struct_partial_defaults_with_remaining_initialized_then_ok,
-        "TYPE Point : STRUCT x : INT := 0; y : INT; END_STRUCT; END_TYPE FUNCTION_BLOCK MAIN VAR CONSTANT origin : Point := (y := 20); END_VAR END_FUNCTION_BLOCK"
+        "
+TYPE
+    Point : STRUCT
+        x : INT := 0;
+        y : INT;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR CONSTANT
+    origin : Point := (y := 20);
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     #[test]
@@ -344,36 +424,107 @@ END_FUNCTION_BLOCK";
     // Non-constant structures don't require initialization
     rule_ctx_ok!(
         apply_when_non_const_struct_missing_initialization_then_ok,
-        "TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE FUNCTION_BLOCK MAIN VAR origin : Point; END_VAR END_FUNCTION_BLOCK"
+        "
+TYPE
+    Point : STRUCT
+        x : INT;
+        y : INT;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR
+    origin : Point;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     // When a nested structure's type has all fields with defaults,
     // the outer struct field should be considered as having a default
     rule_ctx_ok!(
         apply_when_const_nested_struct_inner_has_all_defaults_then_ok,
-        "TYPE Inner : STRUCT a : INT := 0; b : INT := 0; END_STRUCT; Outer : STRUCT inner : Inner; END_STRUCT; END_TYPE FUNCTION_BLOCK MAIN VAR CONSTANT myOuter : Outer; END_VAR END_FUNCTION_BLOCK"
+        "
+TYPE
+    Inner : STRUCT
+        a : INT := 0;
+        b : INT := 0;
+    END_STRUCT;
+    Outer : STRUCT
+        inner : Inner;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR CONSTANT
+    myOuter : Outer;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     // When a nested structure's type has fields without defaults,
     // the outer const should require initialization
     rule_ctx_err!(
         apply_when_const_nested_struct_inner_missing_defaults_then_error,
-        "TYPE Inner : STRUCT a : INT; b : INT; END_STRUCT; Outer : STRUCT inner : Inner; END_STRUCT; END_TYPE FUNCTION_BLOCK MAIN VAR CONSTANT myOuter : Outer; END_VAR END_FUNCTION_BLOCK"
+        "
+TYPE
+    Inner : STRUCT
+        a : INT;
+        b : INT;
+    END_STRUCT;
+    Outer : STRUCT
+        inner : Inner;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR CONSTANT
+    myOuter : Outer;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     // Test deeply nested structures where all fields have defaults
     rule_ctx_ok!(
         apply_when_const_deeply_nested_struct_all_have_defaults_then_ok,
-        "TYPE Level3 : STRUCT value : INT := 42; END_STRUCT; Level2 : STRUCT inner : Level3; END_STRUCT; Level1 : STRUCT inner : Level2; END_STRUCT; END_TYPE FUNCTION_BLOCK MAIN VAR CONSTANT deepNested : Level1; END_VAR END_FUNCTION_BLOCK"
+        "
+TYPE
+    Level3 : STRUCT
+        value : INT := 42;
+    END_STRUCT;
+    Level2 : STRUCT
+        inner : Level3;
+    END_STRUCT;
+    Level1 : STRUCT
+        inner : Level2;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK MAIN
+VAR CONSTANT
+    deepNested : Level1;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     rule_err!(
         apply_when_const_array_type_missing_initializer_then_error,
-        "FUNCTION_BLOCK LOGGER VAR CONSTANT ResetCounterValue : ARRAY[1..10] OF INT; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : ARRAY[1..10] OF INT;
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 
     rule_ok!(
         apply_when_const_array_type_has_initializer_then_ok,
-        "FUNCTION_BLOCK LOGGER VAR CONSTANT ResetCounterValue : ARRAY[1..3] OF INT := [1, 2, 3]; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK LOGGER
+VAR CONSTANT
+ResetCounterValue : ARRAY[1..3] OF INT := [1, 2, 3];
+END_VAR
+
+END_FUNCTION_BLOCK"
     );
 }

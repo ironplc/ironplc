@@ -390,7 +390,17 @@ e2e_i32_with!(
 
 e2e_i64!(
     end_to_end_when_struct_field_lint_then_reads_and_writes,
-    "TYPE MyStruct : STRUCT v : LINT; END_STRUCT; END_TYPE PROGRAM main VAR s : MyStruct; result : LINT; END_VAR s.v := LINT#9000000000; result := s.v; END_PROGRAM",
+    "
+TYPE MyStruct : STRUCT v : LINT; END_STRUCT; END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : LINT;
+  END_VAR
+    s.v := LINT#9000000000;
+    result := s.v;
+END_PROGRAM
+",
     &[(1, 9_000_000_000)],
 );
 
@@ -479,13 +489,37 @@ END_PROGRAM
 
 e2e_i32!(
     end_to_end_when_struct_field_subrange_int_default_then_lower_bound,
-    "TYPE MY_RANGE : INT (5..50); MyStruct : STRUCT v : MY_RANGE; END_STRUCT; END_TYPE PROGRAM main VAR s : MyStruct; result : INT; END_VAR result := s.v; END_PROGRAM",
+    "
+TYPE
+  MY_RANGE : INT (5..50);
+  MyStruct : STRUCT v : MY_RANGE; END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : INT;
+  END_VAR
+    result := s.v;
+END_PROGRAM
+",
     &[(1, 5)],
 );
 
 e2e_i64!(
     end_to_end_when_struct_field_subrange_lint_default_then_lower_bound,
-    "TYPE MY_RANGE : LINT (10..10000); MyStruct : STRUCT v : MY_RANGE; END_STRUCT; END_TYPE PROGRAM main VAR s : MyStruct; result : LINT; END_VAR result := s.v; END_PROGRAM",
+    "
+TYPE
+  MY_RANGE : LINT (10..10000);
+  MyStruct : STRUCT v : MY_RANGE; END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    s : MyStruct;
+    result : LINT;
+  END_VAR
+    result := s.v;
+END_PROGRAM
+",
     &[(1, 10)],
 );
 
@@ -495,7 +529,23 @@ e2e_i64!(
 
 e2e_i32!(
     end_to_end_when_nested_struct_with_explicit_inner_init_then_values_stored,
-    "TYPE Inner : STRUCT x : DINT; y : DINT; END_STRUCT; Outer : STRUCT inner : Inner; z : DINT; END_STRUCT; END_TYPE PROGRAM main VAR o : Outer := (inner := (x := 1, y := 2), z := 3); rx : DINT; ry : DINT; rz : DINT; END_VAR rx := o.inner.x; ry := o.inner.y; rz := o.z; END_PROGRAM",
+    "
+TYPE
+  Inner : STRUCT x : DINT; y : DINT; END_STRUCT;
+  Outer : STRUCT inner : Inner; z : DINT; END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    o : Outer := (inner := (x := 1, y := 2), z := 3);
+    rx : DINT;
+    ry : DINT;
+    rz : DINT;
+  END_VAR
+    rx := o.inner.x;
+    ry := o.inner.y;
+    rz := o.z;
+END_PROGRAM
+",
     &[(1, 1), (2, 2), (3, 3)],
 );
 
@@ -504,7 +554,23 @@ e2e_i32!(
 // zero-initialized via the default-value branch.
 e2e_i32!(
     end_to_end_when_nested_struct_without_explicit_init_then_zero_defaults,
-    "TYPE Inner : STRUCT x : DINT; y : DINT; END_STRUCT; Outer : STRUCT inner : Inner; z : DINT; END_STRUCT; END_TYPE PROGRAM main VAR o : Outer; rx : DINT; ry : DINT; rz : DINT; END_VAR rx := o.inner.x; ry := o.inner.y; rz := o.z; END_PROGRAM",
+    "
+TYPE
+  Inner : STRUCT x : DINT; y : DINT; END_STRUCT;
+  Outer : STRUCT inner : Inner; z : DINT; END_STRUCT;
+END_TYPE
+PROGRAM main
+  VAR
+    o : Outer;
+    rx : DINT;
+    ry : DINT;
+    rz : DINT;
+  END_VAR
+    rx := o.inner.x;
+    ry := o.inner.y;
+    rz := o.z;
+END_PROGRAM
+",
     &[(1, 0), (2, 0), (3, 0)],
 );
 

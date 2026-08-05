@@ -15,7 +15,15 @@ use ironplc_parser::parse_program;
 e2e_i32_with!(
     end_to_end_when_rusty_dialect_then_ldt_usable_as_variable_name,
     CompilerOptions::from_dialect(Dialect::Rusty),
-    "PROGRAM main VAR LDT : DINT := 42; result : DINT; END_VAR result := LDT; END_PROGRAM",
+    "
+PROGRAM main
+VAR
+    LDT : DINT := 42;
+    result : DINT;
+END_VAR
+    result := LDT;
+END_PROGRAM
+",
     &[(3, 42)],
 );
 
@@ -25,7 +33,16 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_rusty_dialect_then_ref_to_works,
     CompilerOptions::from_dialect(Dialect::Rusty),
-    "PROGRAM main VAR counter : DINT := 99; r : REF_TO DINT := REF(counter); result : DINT; END_VAR result := r^; END_PROGRAM",
+    "
+PROGRAM main
+VAR
+    counter : DINT := 99;
+    r : REF_TO DINT := REF(counter);
+    result : DINT;
+END_VAR
+    result := r^;
+END_PROGRAM
+",
     &[(4, 99)],
 );
 
@@ -34,7 +51,16 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_rusty_dialect_then_ldt_and_ref_to_coexist,
     CompilerOptions::from_dialect(Dialect::Rusty),
-    "PROGRAM main VAR LDT : DINT := 42; r : REF_TO DINT := REF(LDT); result : DINT; END_VAR result := r^; END_PROGRAM",
+    "
+PROGRAM main
+VAR
+    LDT : DINT := 42;
+    r : REF_TO DINT := REF(LDT);
+    result : DINT;
+END_VAR
+    result := r^;
+END_PROGRAM
+",
     &[(4, 42)],
 );
 
@@ -89,7 +115,16 @@ END_PROGRAM
 e2e_i32_with!(
     end_to_end_when_codesys_dialect_then_ref_to_works,
     CompilerOptions::from_dialect(Dialect::Codesys),
-    "PROGRAM main VAR counter : DINT := 99; r : REF_TO DINT := REF(counter); result : DINT; END_VAR result := r^; END_PROGRAM",
+    "
+PROGRAM main
+VAR
+    counter : DINT := 99;
+    r : REF_TO DINT := REF(counter);
+    result : DINT;
+END_VAR
+    result := r^;
+END_PROGRAM
+",
     &[(2, 99)],
 );
 
@@ -144,7 +179,16 @@ END_PROGRAM
 e2e_i32_with!(
     end_to_end_when_twincat_dialect_then_pragmas_are_skipped,
     CompilerOptions::from_dialect(Dialect::TwinCat),
-    "{attribute 'qualified_only'} PROGRAM main VAR x : DINT := 99; result : DINT; END_VAR result := x; END_PROGRAM",
+    "
+{attribute 'qualified_only'}
+PROGRAM main
+VAR
+    x : DINT := 99;
+    result : DINT;
+END_VAR
+    result := x;
+END_PROGRAM
+",
     &[(1, 99)],
 );
 

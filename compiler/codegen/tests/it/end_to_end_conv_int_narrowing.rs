@@ -6,13 +6,31 @@ use crate::common::parse_and_run;
 
 e2e_i32!(
     end_to_end_when_dint_to_int_then_narrows,
-    "PROGRAM main VAR x : DINT; y : INT; END_VAR x := 1000; y := DINT_TO_INT(x); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : INT;
+  END_VAR
+  x := 1000;
+  y := DINT_TO_INT(x);
+END_PROGRAM
+",
     &[(1, 1000)],
 );
 
 e2e_i32!(
     end_to_end_when_lint_to_dint_then_narrows,
-    "PROGRAM main VAR x : LINT; y : DINT; END_VAR x := 42; y := LINT_TO_DINT(x); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : LINT;
+    y : DINT;
+  END_VAR
+  x := 42;
+  y := LINT_TO_DINT(x);
+END_PROGRAM
+",
     &[(1, 42)],
 );
 
@@ -35,7 +53,16 @@ END_PROGRAM
 
 e2e_i32!(
     end_to_end_when_lint_to_sint_then_narrows,
-    "PROGRAM main VAR x : LINT; y : SINT; END_VAR x := 50; y := LINT_TO_SINT(x); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : LINT;
+    y : SINT;
+  END_VAR
+  x := 50;
+  y := LINT_TO_SINT(x);
+END_PROGRAM
+",
     &[(1, 50)],
 );
 

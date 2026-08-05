@@ -23,26 +23,58 @@ END_PROGRAM
 // 3000 milliseconds = T#3s
 e2e_i32!(
     end_to_end_when_dword_to_time_then_correct,
-    "PROGRAM main VAR dw : DWORD := 3000; result : TIME; END_VAR result := DWORD_TO_TIME(dw); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    dw : DWORD := 3000;
+    result : TIME;
+  END_VAR
+  result := DWORD_TO_TIME(dw);
+END_PROGRAM
+",
     &[(1, 3000)],
 );
 
 e2e_i32!(
     end_to_end_when_time_to_dint_then_correct,
-    "PROGRAM main VAR t : TIME := T#5s; result : DINT; END_VAR result := TIME_TO_DINT(t); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    t : TIME := T#5s;
+    result : DINT;
+  END_VAR
+  result := TIME_TO_DINT(t);
+END_PROGRAM
+",
     &[(1, 5000)],
 );
 
 e2e_i32!(
     end_to_end_when_time_to_int_then_correct,
-    "PROGRAM main VAR t : TIME := T#2s; result : INT; END_VAR result := TIME_TO_INT(t); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    t : TIME := T#2s;
+    result : INT;
+  END_VAR
+  result := TIME_TO_INT(t);
+END_PROGRAM
+",
     &[(1, 2000)],
 );
 
 e2e_f32_near!(
     end_to_end_when_time_to_real_then_correct,
     1e-1,
-    "PROGRAM main VAR t : TIME := T#5s; result : REAL; END_VAR result := TIME_TO_REAL(t); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    t : TIME := T#5s;
+    result : REAL;
+  END_VAR
+  result := TIME_TO_REAL(t);
+END_PROGRAM
+",
     &[(1, 5000.0)],
 );
 

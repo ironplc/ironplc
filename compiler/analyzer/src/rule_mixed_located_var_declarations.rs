@@ -113,7 +113,13 @@ mod tests {
 
     rule_err!(
         apply_when_mixed_block_and_flag_disabled_then_error,
-        "FUNCTION_BLOCK FB_Example VAR tempSensor AT%I*: INT; fbComm     : BOOL; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    tempSensor AT%I*: INT;
+    fbComm     : BOOL;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     #[test]
@@ -135,11 +141,23 @@ END_FUNCTION_BLOCK";
 
     rule_ok!(
         apply_when_dedicated_incompl_located_block_then_never_flagged,
-        "FUNCTION_BLOCK FB_Example VAR tempSensor1 AT%I*: INT; tempSensor2 AT%I*: INT; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    tempSensor1 AT%I*: INT;
+    tempSensor2 AT%I*: INT;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     rule_ok!(
         apply_when_plain_block_then_ok,
-        "FUNCTION_BLOCK FB_Example VAR x : INT; y : BOOL; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : BOOL;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 }

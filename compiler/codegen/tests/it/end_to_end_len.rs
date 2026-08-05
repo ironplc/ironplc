@@ -8,26 +8,58 @@ use proptest::prelude::*;
 // s is at variable slot 0, n is at variable slot 1.
 e2e_i32!(
     end_to_end_when_len_of_string_with_value_then_returns_length,
-    "PROGRAM main VAR s : STRING := 'hello'; n : INT; END_VAR n := LEN(s); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    s : STRING := 'hello';
+    n : INT;
+  END_VAR
+  n := LEN(s);
+END_PROGRAM
+",
     &[(1, 5)],
 );
 
 e2e_i32!(
     end_to_end_when_len_of_empty_string_then_returns_zero,
-    "PROGRAM main VAR s : STRING; n : INT; END_VAR n := LEN(s); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    s : STRING;
+    n : INT;
+  END_VAR
+  n := LEN(s);
+END_PROGRAM
+",
     &[(1, 0)],
 );
 
 // Current length is 2 ('hi'), not the max length of 10.
 e2e_i32!(
     end_to_end_when_len_of_string_with_max_length_then_returns_current_length,
-    "PROGRAM main VAR s : STRING[10] := 'hi'; n : INT; END_VAR n := LEN(s); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    s : STRING[10] := 'hi';
+    n : INT;
+  END_VAR
+  n := LEN(s);
+END_PROGRAM
+",
     &[(1, 2)],
 );
 
 e2e_i32!(
     end_to_end_when_len_of_single_char_string_then_returns_one,
-    "PROGRAM main VAR s : STRING := 'x'; n : INT; END_VAR n := LEN(s); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    s : STRING := 'x';
+    n : INT;
+  END_VAR
+  n := LEN(s);
+END_PROGRAM
+",
     &[(1, 1)],
 );
 

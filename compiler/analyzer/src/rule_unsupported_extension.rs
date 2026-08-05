@@ -111,7 +111,12 @@ mod tests {
 
     rule_ok!(
         apply_when_plain_function_block_then_ok,
-        "FUNCTION_BLOCK FB_Motor VAR bRunning : BOOL; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     // Plain EXTENDS (no IMPLEMENTS, not ABSTRACT) no longer flags --
@@ -120,7 +125,18 @@ mod tests {
     rule_ok_with!(
         apply_when_plain_extends_then_ok,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK FB_Motor VAR bRunning : BOOL; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor VAR bTurbo : BOOL; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Motor
+VAR
+    bRunning : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
+VAR
+    bTurbo : BOOL;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     #[test]

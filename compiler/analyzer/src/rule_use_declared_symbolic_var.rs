@@ -200,22 +200,56 @@ END_FUNCTION_BLOCK";
 
     rule_ok!(
         apply_when_function_block_all_symbol_declared_then_ok,
-        "FUNCTION_BLOCK LOGGER VAR TRIG : BOOL; TRIG0 : BOOL; END_VAR TRIG := TRIG0; END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK LOGGER
+VAR
+TRIG : BOOL;
+TRIG0 : BOOL;
+END_VAR
+         
+TRIG := TRIG0;
+END_FUNCTION_BLOCK"
     );
 
     rule_ok!(
         apply_when_function_all_symbol_declared_then_ok,
-        "FUNCTION LOGGER : REAL VAR_INPUT TRIG : BOOL; TRIG0 : BOOL; END_VAR TRIG := TRIG0; END_FUNCTION"
+        "
+FUNCTION LOGGER : REAL
+VAR_INPUT
+TRIG : BOOL;
+TRIG0 : BOOL;
+END_VAR
+         
+TRIG := TRIG0;
+END_FUNCTION"
     );
 
     rule_ok!(
         apply_when_program_all_symbol_declared_then_ok,
-        "PROGRAM LOGGER VAR TRIG : BOOL; TRIG0 : BOOL; END_VAR TRIG := TRIG0; END_PROGRAM"
+        "
+PROGRAM LOGGER
+VAR
+TRIG : BOOL;
+TRIG0 : BOOL;
+END_VAR
+         
+TRIG := TRIG0;
+END_PROGRAM"
     );
 
     rule_ok!(
         apply_when_assign_enum_variant_then_ok,
-        "TYPE MyColors: (Red, Green); END_TYPE FUNCTION_BLOCK FB_EXAMPLE VAR Color: MyColors := Red; END_VAR Color := Green; END_FUNCTION_BLOCK"
+        "
+TYPE
+    MyColors: (Red, Green);
+END_TYPE
+
+FUNCTION_BLOCK FB_EXAMPLE
+    VAR
+        Color: MyColors := Red;
+    END_VAR
+    Color := Green;
+END_FUNCTION_BLOCK"
     );
 
     #[test]
@@ -269,7 +303,19 @@ END_FUNCTION_BLOCK";
 
     rule_ok!(
         apply_when_enum_value_in_comparison_then_ok,
-        "TYPE MotorState : (STOPPED, RUNNING, FAULTED); END_TYPE FUNCTION_BLOCK FB_MotorControl VAR State : MotorState := STOPPED; CONTACTOR : BOOL; Seal : BOOL; END_VAR CONTACTOR := (State = RUNNING) AND Seal; END_FUNCTION_BLOCK"
+        "
+TYPE
+    MotorState : (STOPPED, RUNNING, FAULTED);
+END_TYPE
+
+FUNCTION_BLOCK FB_MotorControl
+    VAR
+        State : MotorState := STOPPED;
+        CONTACTOR : BOOL;
+        Seal : BOOL;
+    END_VAR
+    CONTACTOR := (State = RUNNING) AND Seal;
+END_FUNCTION_BLOCK"
     );
 
     #[test]
@@ -296,7 +342,14 @@ END_PROGRAM";
 
     rule_err!(
         apply_when_system_uptime_global_disabled_then_direct_access_error,
-        "PROGRAM main VAR t : TIME; END_VAR t := __SYSTEM_UP_TIME; END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    t : TIME;
+END_VAR
+
+t := __SYSTEM_UP_TIME;
+END_PROGRAM"
     );
 
     // ---------------------------------------------------------------------

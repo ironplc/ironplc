@@ -115,11 +115,43 @@ impl Visitor<Diagnostic> for RuleExternalGlobalConst<'_> {
 mod test {
     rule_err!(
         apply_when_global_const_external_not_const_then_error,
-        "CONFIGURATION config VAR_GLOBAL CONSTANT ResetCounterValue : INT := 17; END_VAR RESOURCE resource1 ON PLC TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1); PROGRAM plc_task_instance WITH plc_task : plc_prg; END_RESOURCE END_CONFIGURATION FUNCTION_BLOCK func VAR_EXTERNAL ResetCounterValue : INT; END_VAR END_FUNCTION_BLOCK"
+        "
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        ResetCounterValue : INT := 17;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
+        PROGRAM plc_task_instance WITH plc_task : plc_prg;
+    END_RESOURCE
+END_CONFIGURATION
+
+FUNCTION_BLOCK func
+    VAR_EXTERNAL
+        ResetCounterValue : INT;
+    END_VAR
+END_FUNCTION_BLOCK"
     );
 
     rule_ok!(
         apply_when_global_const_external_const_then_ok,
-        "CONFIGURATION config VAR_GLOBAL CONSTANT ResetCounterValue : INT := 17; END_VAR RESOURCE resource1 ON PLC TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1); PROGRAM plc_task_instance WITH plc_task : plc_prg; END_RESOURCE END_CONFIGURATION FUNCTION_BLOCK func VAR_EXTERNAL CONSTANT ResetCounterValue : INT; END_VAR END_FUNCTION_BLOCK"
+        "
+CONFIGURATION config
+    VAR_GLOBAL CONSTANT
+        ResetCounterValue : INT := 17;
+    END_VAR
+    RESOURCE resource1 ON PLC
+        TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
+        PROGRAM plc_task_instance WITH plc_task : plc_prg;
+    END_RESOURCE
+
+END_CONFIGURATION
+
+FUNCTION_BLOCK func
+    VAR_EXTERNAL CONSTANT
+        ResetCounterValue : INT;
+    END_VAR
+
+END_FUNCTION_BLOCK"
     );
 }

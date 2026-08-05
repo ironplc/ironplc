@@ -89,16 +89,26 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
 mod tests {
     rule_ok!(
         apply_when_values_unique_then_ok,
-        "TYPE LOGLEVEL : (CRITICAL, ERROR); END_TYPE"
+        "
+TYPE
+LOGLEVEL : (CRITICAL, ERROR);
+END_TYPE"
     );
 
     rule_ok!(
         apply_when_typename_values_unique_then_ok,
-        "TYPE LOGLEVEL : (CRITICAL, ERROR); LOGLEVEL2 : LOGLEVEL; END_TYPE"
+        "
+TYPE
+LOGLEVEL : (CRITICAL, ERROR);
+LOGLEVEL2 : LOGLEVEL;
+END_TYPE"
     );
 
     rule_err!(
         apply_when_value_duplicated_then_error,
-        "TYPE LOGLEVEL : (CRITICAL, CRITICAL); END_TYPE"
+        "
+TYPE
+LOGLEVEL : (CRITICAL, CRITICAL);
+END_TYPE"
     );
 }

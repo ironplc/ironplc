@@ -7,14 +7,30 @@ use ironplc_vm::error::Trap;
 
 e2e_i32!(
     end_to_end_when_div_expression_then_variable_has_quotient,
-    "PROGRAM main VAR x : DINT; y : DINT; END_VAR x := 12; y := x / 4; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  x := 12;
+  y := x / 4;
+END_PROGRAM
+",
     &[(0, 12), (1, 3)],
 );
 
 // (100 / 5) / 2 = 10
 e2e_i32!(
     end_to_end_when_chain_of_divisions_then_correct,
-    "PROGRAM main VAR x : DINT; END_VAR x := 100 / 5 / 2; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : DINT;
+  END_VAR
+  x := 100 / 5 / 2;
+END_PROGRAM
+",
     &[(0, 10)],
 );
 

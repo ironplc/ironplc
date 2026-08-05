@@ -82,7 +82,10 @@ impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
 mod tests {
     rule_ok!(
         apply_when_subrange_valid_then_ok,
-        "TYPE VALID_RANGE : INT(-10..10); END_TYPE"
+        "
+TYPE
+    VALID_RANGE : INT(-10..10);
+END_TYPE"
     );
 
     #[test]

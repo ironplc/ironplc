@@ -38,25 +38,61 @@ END_PROGRAM
 
 e2e_i32!(
     end_to_end_when_bool_to_int_true_then_returns_1,
-    "PROGRAM main VAR x : BOOL; y : INT; END_VAR x := TRUE; y := BOOL_TO_INT(x); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : BOOL;
+    y : INT;
+  END_VAR
+  x := TRUE;
+  y := BOOL_TO_INT(x);
+END_PROGRAM
+",
     &[(1, 1)],
 );
 
 e2e_i32!(
     end_to_end_when_bool_to_int_false_then_returns_0,
-    "PROGRAM main VAR x : BOOL; y : INT; END_VAR x := FALSE; y := BOOL_TO_INT(x); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : BOOL;
+    y : INT;
+  END_VAR
+  x := FALSE;
+  y := BOOL_TO_INT(x);
+END_PROGRAM
+",
     &[(1, 0)],
 );
 
 e2e_i32!(
     end_to_end_when_bool_to_dint_true_then_returns_1,
-    "PROGRAM main VAR x : BOOL; y : DINT; END_VAR x := TRUE; y := BOOL_TO_DINT(x); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : BOOL;
+    y : DINT;
+  END_VAR
+  x := TRUE;
+  y := BOOL_TO_DINT(x);
+END_PROGRAM
+",
     &[(1, 1)],
 );
 
 e2e_i64!(
     end_to_end_when_bool_to_lint_true_then_returns_1,
-    "PROGRAM main VAR x : BOOL; y : LINT; END_VAR x := TRUE; y := BOOL_TO_LINT(x); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : BOOL;
+    y : LINT;
+  END_VAR
+  x := TRUE;
+  y := BOOL_TO_LINT(x);
+END_PROGRAM
+",
     &[(1, 1)],
 );
 

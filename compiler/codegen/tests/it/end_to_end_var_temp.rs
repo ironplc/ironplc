@@ -2,12 +2,51 @@
 
 e2e_i32!(
     end_to_end_when_function_with_var_temp_then_correct,
-    "FUNCTION add_doubled : DINT VAR_INPUT a : DINT; b : DINT; END_VAR VAR_TEMP temp : DINT; END_VAR temp := a + b; add_doubled := temp * 2; END_FUNCTION PROGRAM main VAR result : DINT; END_VAR result := add_doubled(3, 4); END_PROGRAM",
+    "
+FUNCTION add_doubled : DINT
+  VAR_INPUT
+    a : DINT;
+    b : DINT;
+  END_VAR
+  VAR_TEMP
+    temp : DINT;
+  END_VAR
+  temp := a + b;
+  add_doubled := temp * 2;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := add_doubled(3, 4);
+END_PROGRAM
+",
     &[(0, 14)],
 );
 
 e2e_i32!(
     end_to_end_when_function_with_multiple_var_temp_then_correct,
-    "FUNCTION compute : DINT VAR_INPUT x : DINT; END_VAR VAR_TEMP a : DINT; b : DINT; END_VAR a := x + 1; b := a * 3; compute := b; END_FUNCTION PROGRAM main VAR result : DINT; END_VAR result := compute(4); END_PROGRAM",
+    "
+FUNCTION compute : DINT
+  VAR_INPUT
+    x : DINT;
+  END_VAR
+  VAR_TEMP
+    a : DINT;
+    b : DINT;
+  END_VAR
+  a := x + 1;
+  b := a * 3;
+  compute := b;
+END_FUNCTION
+
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := compute(4);
+END_PROGRAM
+",
     &[(0, 15)],
 );

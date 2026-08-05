@@ -8,50 +8,112 @@ use ironplc_vm::Vm;
 
 e2e_i32!(
     end_to_end_when_mul_expression_then_variable_has_product,
-    "PROGRAM main VAR x : DINT; y : DINT; END_VAR x := 7; y := x * 6; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  x := 7;
+  y := x * 6;
+END_PROGRAM
+",
     &[(0, 7), (1, 42)],
 );
 
 e2e_i32!(
     end_to_end_when_mul_by_zero_then_zero,
-    "PROGRAM main VAR result : DINT; END_VAR result := 999 * 0; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := 999 * 0;
+END_PROGRAM
+",
     &[(0, 0)],
 );
 
 e2e_i32!(
     end_to_end_when_mul_by_one_then_identity,
-    "PROGRAM main VAR result : DINT; END_VAR result := 42 * 1; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := 42 * 1;
+END_PROGRAM
+",
     &[(0, 42)],
 );
 
 e2e_i32!(
     end_to_end_when_mul_negative_then_negative_result,
-    "PROGRAM main VAR result : DINT; END_VAR result := 7 * -6; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := 7 * -6;
+END_PROGRAM
+",
     &[(0, -42)],
 );
 
 e2e_i32!(
     end_to_end_when_mul_two_negatives_then_positive,
-    "PROGRAM main VAR result : DINT; END_VAR result := -7 * -6; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := -7 * -6;
+END_PROGRAM
+",
     &[(0, 42)],
 );
 
 e2e_i32!(
     end_to_end_when_chain_of_multiplications_then_correct,
-    "PROGRAM main VAR result : DINT; END_VAR result := 2 * 3 * 4; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := 2 * 3 * 4;
+END_PROGRAM
+",
     &[(0, 24)],
 );
 
 e2e_i32!(
     end_to_end_when_mul_with_variables_then_correct,
-    "PROGRAM main VAR a : DINT; b : DINT; c : DINT; END_VAR a := 7; b := 6; c := a * b; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    a : DINT;
+    b : DINT;
+    c : DINT;
+  END_VAR
+  a := 7;
+  b := 6;
+  c := a * b;
+END_PROGRAM
+",
     &[(0, 7), (1, 6), (2, 42)],
 );
 
 // Multiplication has higher precedence: 2 + (3 * 4) = 14
 e2e_i32!(
     end_to_end_when_add_and_mul_precedence_then_correct,
-    "PROGRAM main VAR result : DINT; END_VAR result := 2 + 3 * 4; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := 2 + 3 * 4;
+END_PROGRAM
+",
     &[(0, 14)],
 );
 

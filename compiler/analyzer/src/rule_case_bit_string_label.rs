@@ -92,7 +92,16 @@ mod tests {
 
     rule_err!(
         apply_when_hex_case_label_and_flag_disabled_then_error,
-        "FUNCTION_BLOCK FB_Example VAR x : DINT; y : INT; END_VAR CASE x OF 16#D012: y := 1; END_CASE; END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : DINT;
+    y : INT;
+END_VAR
+CASE x OF
+    16#D012: y := 1;
+END_CASE;
+END_FUNCTION_BLOCK"
     );
 
     #[test]
@@ -139,6 +148,15 @@ END_FUNCTION_BLOCK";
 
     rule_ok!(
         apply_when_plain_decimal_case_label_then_never_flagged,
-        "FUNCTION_BLOCK FB_Example VAR x : INT; y : INT; END_VAR CASE x OF 5: y := 1; END_CASE; END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Example
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+CASE x OF
+    5: y := 1;
+END_CASE;
+END_FUNCTION_BLOCK"
     );
 }

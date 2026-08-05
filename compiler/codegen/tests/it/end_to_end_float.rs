@@ -247,7 +247,34 @@ fn end_to_end_when_real_zero_divide_by_zero_then_nan() {
 // NaN == NaN, NaN < 1.0, and NaN > 1.0 should all be false.
 e2e_i32!(
     end_to_end_when_real_nan_comparison_then_all_false,
-    "PROGRAM main VAR x : REAL; nan : REAL; eq_result : DINT; lt_result : DINT; gt_result : DINT; END_VAR x := 0.0; nan := x / 0.0; IF nan = nan THEN eq_result := 1; ELSE eq_result := 0; END_IF; IF nan < 1.0 THEN lt_result := 1; ELSE lt_result := 0; END_IF; IF nan > 1.0 THEN gt_result := 1; ELSE gt_result := 0; END_IF; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : REAL;
+    nan : REAL;
+    eq_result : DINT;
+    lt_result : DINT;
+    gt_result : DINT;
+  END_VAR
+  x := 0.0;
+  nan := x / 0.0;
+  IF nan = nan THEN
+    eq_result := 1;
+  ELSE
+    eq_result := 0;
+  END_IF;
+  IF nan < 1.0 THEN
+    lt_result := 1;
+  ELSE
+    lt_result := 0;
+  END_IF;
+  IF nan > 1.0 THEN
+    gt_result := 1;
+  ELSE
+    gt_result := 0;
+  END_IF;
+END_PROGRAM
+",
     &[(2, 0), (3, 0), (4, 0)],
 );
 
@@ -313,7 +340,34 @@ fn end_to_end_when_lreal_zero_divide_by_zero_then_nan() {
 // NaN == NaN, NaN < 1.0, and NaN > 1.0 should all be false.
 e2e_i32!(
     end_to_end_when_lreal_nan_comparison_then_all_false,
-    "PROGRAM main VAR x : LREAL; nan : LREAL; eq_result : DINT; lt_result : DINT; gt_result : DINT; END_VAR x := 0.0; nan := x / 0.0; IF nan = nan THEN eq_result := 1; ELSE eq_result := 0; END_IF; IF nan < 1.0 THEN lt_result := 1; ELSE lt_result := 0; END_IF; IF nan > 1.0 THEN gt_result := 1; ELSE gt_result := 0; END_IF; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    x : LREAL;
+    nan : LREAL;
+    eq_result : DINT;
+    lt_result : DINT;
+    gt_result : DINT;
+  END_VAR
+  x := 0.0;
+  nan := x / 0.0;
+  IF nan = nan THEN
+    eq_result := 1;
+  ELSE
+    eq_result := 0;
+  END_IF;
+  IF nan < 1.0 THEN
+    lt_result := 1;
+  ELSE
+    lt_result := 0;
+  END_IF;
+  IF nan > 1.0 THEN
+    gt_result := 1;
+  ELSE
+    gt_result := 0;
+  END_IF;
+END_PROGRAM
+",
     &[(2, 0), (3, 0), (4, 0)],
 );
 

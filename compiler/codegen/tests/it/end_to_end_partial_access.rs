@@ -17,7 +17,16 @@ fn opts() -> CompilerOptions {
 e2e_i32_with!(
     end_to_end_when_read_byte_0_from_dword_then_correct,
     opts(),
-    "PROGRAM main VAR d : DWORD; r : BYTE; END_VAR d := DWORD#16#AABBCCDD; r := d.%B0; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    d : DWORD;
+    r : BYTE;
+  END_VAR
+  d := DWORD#16#AABBCCDD;
+  r := d.%B0;
+END_PROGRAM
+",
     &[(1, 0xDD)],
 );
 
@@ -25,7 +34,16 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_read_byte_3_from_dword_then_correct,
     opts(),
-    "PROGRAM main VAR d : DWORD; r : BYTE; END_VAR d := DWORD#16#AABBCCDD; r := d.%B3; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    d : DWORD;
+    r : BYTE;
+  END_VAR
+  d := DWORD#16#AABBCCDD;
+  r := d.%B3;
+END_PROGRAM
+",
     &[(1, 0xAA)],
 );
 
@@ -33,7 +51,16 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_read_byte_from_lword_then_correct,
     opts(),
-    "PROGRAM main VAR l : LWORD; r : BYTE; END_VAR l := LWORD#16#0102030405060708; r := l.%B7; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    l : LWORD;
+    r : BYTE;
+  END_VAR
+  l := LWORD#16#0102030405060708;
+  r := l.%B7;
+END_PROGRAM
+",
     &[(1, 0x01)],
 );
 
@@ -43,7 +70,16 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_read_word_0_from_dword_then_correct,
     opts(),
-    "PROGRAM main VAR d : DWORD; r : WORD; END_VAR d := DWORD#16#AABBCCDD; r := d.%W0; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    d : DWORD;
+    r : WORD;
+  END_VAR
+  d := DWORD#16#AABBCCDD;
+  r := d.%W0;
+END_PROGRAM
+",
     &[(1, 0xCCDD)],
 );
 
@@ -51,7 +87,16 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_read_word_1_from_dword_then_correct,
     opts(),
-    "PROGRAM main VAR d : DWORD; r : WORD; END_VAR d := DWORD#16#AABBCCDD; r := d.%W1; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    d : DWORD;
+    r : WORD;
+  END_VAR
+  d := DWORD#16#AABBCCDD;
+  r := d.%W1;
+END_PROGRAM
+",
     &[(1, 0xAABB)],
 );
 
@@ -59,7 +104,16 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_read_word_from_lword_then_correct,
     opts(),
-    "PROGRAM main VAR l : LWORD; r : WORD; END_VAR l := LWORD#16#0102030405060708; r := l.%W2; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    l : LWORD;
+    r : WORD;
+  END_VAR
+  l := LWORD#16#0102030405060708;
+  r := l.%W2;
+END_PROGRAM
+",
     &[(1, 0x0304)],
 );
 
@@ -69,7 +123,16 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_read_dword_1_from_lword_then_correct,
     opts(),
-    "PROGRAM main VAR l : LWORD; r : DWORD; END_VAR l := LWORD#16#AABBCCDD11223344; r := l.%D1; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    l : LWORD;
+    r : DWORD;
+  END_VAR
+  l := LWORD#16#AABBCCDD11223344;
+  r := l.%D1;
+END_PROGRAM
+",
     &[(1, 0xAABBCCDDu32 as i32)],
 );
 
@@ -79,14 +142,34 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_write_byte_1_to_dword_then_preserves_others,
     opts(),
-    "PROGRAM main VAR d : DWORD; r : DWORD; END_VAR d := DWORD#16#AABBCCDD; d.%B1 := BYTE#16#FF; r := d; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    d : DWORD;
+    r : DWORD;
+  END_VAR
+  d := DWORD#16#AABBCCDD;
+  d.%B1 := BYTE#16#FF;
+  r := d;
+END_PROGRAM
+",
     &[(1, 0xAABBFFDDu32 as i32)],
 );
 
 e2e_i32_with!(
     end_to_end_when_write_byte_0_to_dword_then_correct,
     opts(),
-    "PROGRAM main VAR d : DWORD; r : DWORD; END_VAR d := DWORD#16#AABB0000; d.%B0 := BYTE#16#42; r := d; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    d : DWORD;
+    r : DWORD;
+  END_VAR
+  d := DWORD#16#AABB0000;
+  d.%B0 := BYTE#16#42;
+  r := d;
+END_PROGRAM
+",
     &[(1, 0xAABB0042u32 as i32)],
 );
 
@@ -116,14 +199,33 @@ END_PROGRAM
 e2e_i32_with!(
     end_to_end_when_read_byte_from_dword_array_then_correct,
     opts(),
-    "PROGRAM main VAR arr : ARRAY[0..1] OF DWORD; r : BYTE; END_VAR arr[0] := DWORD#16#AABBCCDD; r := arr[0].%B2; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    arr : ARRAY[0..1] OF DWORD;
+    r : BYTE;
+  END_VAR
+  arr[0] := DWORD#16#AABBCCDD;
+  r := arr[0].%B2;
+END_PROGRAM
+",
     &[(1, 0xBB)],
 );
 
 e2e_i32_with!(
     end_to_end_when_write_byte_to_dword_array_then_correct,
     opts(),
-    "PROGRAM main VAR arr : ARRAY[0..0] OF DWORD; r : DWORD; END_VAR arr[0] := DWORD#16#00000000; arr[0].%B3 := BYTE#16#FF; r := arr[0]; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    arr : ARRAY[0..0] OF DWORD;
+    r : DWORD;
+  END_VAR
+  arr[0] := DWORD#16#00000000;
+  arr[0].%B3 := BYTE#16#FF;
+  r := arr[0];
+END_PROGRAM
+",
     &[(1, 0xFF000000u32 as i32)],
 );
 
@@ -133,7 +235,21 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_read_byte_from_struct_field_then_correct,
     opts(),
-    "TYPE MY_STRUCT : STRUCT value : DWORD; END_STRUCT; END_TYPE PROGRAM main VAR s : MY_STRUCT; r : BYTE; END_VAR s.value := DWORD#16#12345678; r := s.value.%B1; END_PROGRAM",
+    "
+TYPE MY_STRUCT : STRUCT
+    value : DWORD;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MY_STRUCT;
+    r : BYTE;
+  END_VAR
+  s.value := DWORD#16#12345678;
+  r := s.value.%B1;
+END_PROGRAM
+",
     &[(1, 0x56)],
 );
 
@@ -141,7 +257,22 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_write_byte_to_struct_field_then_correct,
     opts(),
-    "TYPE MY_STRUCT : STRUCT value : DWORD; END_STRUCT; END_TYPE PROGRAM main VAR s : MY_STRUCT; r : DWORD; END_VAR s.value := DWORD#16#12345678; s.value.%B2 := BYTE#16#FF; r := s.value; END_PROGRAM",
+    "
+TYPE MY_STRUCT : STRUCT
+    value : DWORD;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    s : MY_STRUCT;
+    r : DWORD;
+  END_VAR
+  s.value := DWORD#16#12345678;
+  s.value.%B2 := BYTE#16#FF;
+  r := s.value;
+END_PROGRAM
+",
     &[(1, 0x12FF5678u32 as i32)],
 );
 

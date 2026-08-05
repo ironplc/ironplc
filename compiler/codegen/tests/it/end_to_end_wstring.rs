@@ -128,20 +128,50 @@ END_PROGRAM
 // a = var0, b = var1, eq = var2, ne = var3. BOOL true = 1, false = 0.
 e2e_i32!(
     wstring_when_compared_equal_then_eq_true_and_ne_false,
-    "PROGRAM main VAR a : WSTRING[10] := \"abc\"; b : WSTRING[10] := \"abc\"; eq : BOOL; ne : BOOL; END_VAR eq := a = b; ne := a <> b; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    a : WSTRING[10] := \"abc\";
+    b : WSTRING[10] := \"abc\";
+    eq : BOOL;
+    ne : BOOL;
+  END_VAR
+  eq := a = b;
+  ne := a <> b;
+END_PROGRAM
+",
     &[(2, 1), (3, 0)],
 );
 
 e2e_i32!(
     wstring_when_compared_different_then_eq_false_and_ne_true,
-    "PROGRAM main VAR a : WSTRING[10] := \"abc\"; b : WSTRING[10] := \"abd\"; eq : BOOL; ne : BOOL; END_VAR eq := a = b; ne := a <> b; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    a : WSTRING[10] := \"abc\";
+    b : WSTRING[10] := \"abd\";
+    eq : BOOL;
+    ne : BOOL;
+  END_VAR
+  eq := a = b;
+  ne := a <> b;
+END_PROGRAM
+",
     &[(2, 0), (3, 1)],
 );
 
 // ws = var0, n = var1. LEN counts code units, not bytes.
 e2e_i32!(
     wstring_when_len_then_returns_code_unit_count,
-    "PROGRAM main VAR ws : WSTRING[10] := \"hello\"; n : DINT; END_VAR n := LEN(ws); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    ws : WSTRING[10] := \"hello\";
+    n : DINT;
+  END_VAR
+  n := LEN(ws);
+END_PROGRAM
+",
     &[(1, 5)],
 );
 
@@ -196,7 +226,16 @@ END_PROGRAM
 // hay = var0, needle = var1, pos = var2. FIND is 1-based by code unit.
 e2e_i32!(
     wstring_when_find_substring_then_returns_code_unit_position,
-    "PROGRAM main VAR hay : WSTRING[20] := \"abcdef\"; needle : WSTRING[20] := \"cd\"; pos : DINT; END_VAR pos := FIND(hay, needle); END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    hay : WSTRING[20] := \"abcdef\";
+    needle : WSTRING[20] := \"cd\";
+    pos : DINT;
+  END_VAR
+  pos := FIND(hay, needle);
+END_PROGRAM
+",
     &[(2, 3)],
 );
 

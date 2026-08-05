@@ -8,7 +8,14 @@ use ironplc_parser::options::{CompilerOptions, Dialect};
 e2e_i32_with!(
     end_to_end_when_array_of_ref_to_declared_then_compiles_and_runs,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    "PROGRAM main VAR data : ARRAY[0..3] OF REF_TO BYTE; x : INT := 42; END_VAR END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    data : ARRAY[0..3] OF REF_TO BYTE;
+    x : INT := 42;
+  END_VAR
+END_PROGRAM
+",
     &[(1, 42)],
 );
 
@@ -16,7 +23,17 @@ e2e_i32_with!(
 e2e_i32_with!(
     end_to_end_when_array_of_ref_to_store_ref_then_roundtrips,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    "PROGRAM main VAR val : INT := 77; refs : ARRAY[0..2] OF REF_TO INT; result : INT; END_VAR refs[0] := REF(val); result := refs[0]^; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    val : INT := 77;
+    refs : ARRAY[0..2] OF REF_TO INT;
+    result : INT;
+  END_VAR
+  refs[0] := REF(val);
+  result := refs[0]^;
+END_PROGRAM
+",
     &[(2, 77)],
 );
 

@@ -93,11 +93,22 @@ impl Visitor<Diagnostic> for RuleStructElementNamesUnique {
 mod tests {
     rule_ok!(
         apply_when_structure_has_unique_names_then_ok,
-        "TYPE CUSTOM_STRUCT : STRUCT NAME: BOOL; END_STRUCT; END_TYPE"
+        "
+TYPE
+    CUSTOM_STRUCT : STRUCT
+        NAME: BOOL;
+    END_STRUCT;
+END_TYPE"
     );
 
     rule_err!(
         apply_when_structure_has_duplicated_names_then_error,
-        "TYPE CUSTOM_STRUCT : STRUCT NAME: BOOL; NAME: BOOL; END_STRUCT; END_TYPE"
+        "
+TYPE
+    CUSTOM_STRUCT : STRUCT
+        NAME: BOOL;
+        NAME: BOOL;
+    END_STRUCT;
+END_TYPE"
     );
 }

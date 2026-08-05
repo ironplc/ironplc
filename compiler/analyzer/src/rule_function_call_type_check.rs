@@ -446,65 +446,230 @@ mod tests {
 
     rule_ctx_ok!(
         apply_when_matching_types_then_ok,
-        "FUNCTION ADD_INTS : INT VAR_INPUT A : INT; B : INT; END_VAR ADD_INTS := A + B; END_FUNCTION PROGRAM main VAR result : INT; a : INT; b : INT; END_VAR result := ADD_INTS(a, b); END_PROGRAM"
+        "
+FUNCTION ADD_INTS : INT
+VAR_INPUT
+    A : INT;
+    B : INT;
+END_VAR
+    ADD_INTS := A + B;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    a : INT;
+    b : INT;
+END_VAR
+    result := ADD_INTS(a, b);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_int_arg_to_real_param_lossless_then_ok,
-        "FUNCTION DOUBLE_REAL : REAL VAR_INPUT A : REAL; END_VAR DOUBLE_REAL := A; END_FUNCTION PROGRAM main VAR result : REAL; x : INT; END_VAR result := DOUBLE_REAL(x); END_PROGRAM"
+        "
+FUNCTION DOUBLE_REAL : REAL
+VAR_INPUT
+    A : REAL;
+END_VAR
+    DOUBLE_REAL := A;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+    x : INT;
+END_VAR
+    result := DOUBLE_REAL(x);
+END_PROGRAM"
     );
 
     rule_ctx_err1!(
         apply_when_dint_arg_to_real_param_lossy_then_error,
-        "FUNCTION DOUBLE_REAL : REAL VAR_INPUT A : REAL; END_VAR DOUBLE_REAL := A; END_FUNCTION PROGRAM main VAR result : REAL; x : DINT; END_VAR result := DOUBLE_REAL(x); END_PROGRAM",
+        "
+FUNCTION DOUBLE_REAL : REAL
+VAR_INPUT
+    A : REAL;
+END_VAR
+    DOUBLE_REAL := A;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+    x : DINT;
+END_VAR
+    result := DOUBLE_REAL(x);
+END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
     rule_ctx_ok!(
         apply_when_stdlib_function_then_skipped,
-        "PROGRAM main VAR result : REAL; x : INT; END_VAR result := INT_TO_REAL(x); END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    result : REAL;
+    x : INT;
+END_VAR
+    result := INT_TO_REAL(x);
+END_PROGRAM"
     );
 
     rule_ctx_err1!(
         apply_when_multiple_args_one_mismatch_then_one_error,
-        "FUNCTION MY_FUNC : INT VAR_INPUT A : INT; B : SINT; END_VAR MY_FUNC := A; END_FUNCTION PROGRAM main VAR result : INT; x : INT; END_VAR result := MY_FUNC(x, x); END_PROGRAM",
+        "
+FUNCTION MY_FUNC : INT
+VAR_INPUT
+    A : INT;
+    B : SINT;
+END_VAR
+    MY_FUNC := A;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    x : INT;
+END_VAR
+    result := MY_FUNC(x, x);
+END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
     rule_ctx_err1!(
         apply_when_return_type_mismatch_then_error,
-        "FUNCTION GET_VALUE : REAL VAR_INPUT A : REAL; END_VAR GET_VALUE := A; END_FUNCTION PROGRAM main VAR result : INT; x : REAL; END_VAR result := GET_VALUE(x); END_PROGRAM",
+        "
+FUNCTION GET_VALUE : REAL
+VAR_INPUT
+    A : REAL;
+END_VAR
+    GET_VALUE := A;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    x : REAL;
+END_VAR
+    result := GET_VALUE(x);
+END_PROGRAM",
         Problem::FunctionCallReturnTypeMismatch
     );
 
     rule_ctx_ok!(
         apply_when_nested_function_call_types_match_then_ok,
-        "FUNCTION DOUBLE : INT VAR_INPUT A : INT; END_VAR DOUBLE := A + A; END_FUNCTION PROGRAM main VAR result : INT; x : INT; END_VAR result := DOUBLE(DOUBLE(x)); END_PROGRAM"
+        "
+FUNCTION DOUBLE : INT
+VAR_INPUT
+    A : INT;
+END_VAR
+    DOUBLE := A + A;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    x : INT;
+END_VAR
+    result := DOUBLE(DOUBLE(x));
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_all_args_match_then_ok,
-        "FUNCTION ADD3 : DINT VAR_INPUT A : DINT; B : DINT; C : DINT; END_VAR ADD3 := A + B + C; END_FUNCTION PROGRAM main VAR result : DINT; a : DINT; b : DINT; c : DINT; END_VAR result := ADD3(a, b, c); END_PROGRAM"
+        "
+FUNCTION ADD3 : DINT
+VAR_INPUT
+    A : DINT;
+    B : DINT;
+    C : DINT;
+END_VAR
+    ADD3 := A + B + C;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    a : DINT;
+    b : DINT;
+    c : DINT;
+END_VAR
+    result := ADD3(a, b, c);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_return_type_matches_then_ok,
-        "FUNCTION GET_REAL : REAL VAR_INPUT A : REAL; END_VAR GET_REAL := A; END_FUNCTION PROGRAM main VAR result : REAL; x : REAL; END_VAR result := GET_REAL(x); END_PROGRAM"
+        "
+FUNCTION GET_REAL : REAL
+VAR_INPUT
+    A : REAL;
+END_VAR
+    GET_REAL := A;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+    x : REAL;
+END_VAR
+    result := GET_REAL(x);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_bare_literal_arg_to_int_param_then_ok,
-        "FUNCTION ADD_ONE : INT VAR_INPUT x : INT; END_VAR ADD_ONE := x + 1; END_FUNCTION PROGRAM main VAR result : INT; END_VAR result := ADD_ONE(5); END_PROGRAM"
+        "
+FUNCTION ADD_ONE : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    ADD_ONE := x + 1;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+END_VAR
+    result := ADD_ONE(5);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_bare_literal_arg_to_sint_param_then_ok,
-        "FUNCTION INC : SINT VAR_INPUT x : SINT; END_VAR INC := x; END_FUNCTION PROGRAM main VAR result : SINT; END_VAR result := INC(5); END_PROGRAM"
+        "
+FUNCTION INC : SINT
+VAR_INPUT
+    x : SINT;
+END_VAR
+    INC := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : SINT;
+END_VAR
+    result := INC(5);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_bare_real_literal_arg_to_lreal_param_then_ok,
-        "FUNCTION DBL : LREAL VAR_INPUT x : LREAL; END_VAR DBL := x; END_FUNCTION PROGRAM main VAR result : LREAL; END_VAR result := DBL(3.14); END_PROGRAM"
+        "
+FUNCTION DBL : LREAL
+VAR_INPUT
+    x : LREAL;
+END_VAR
+    DBL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : LREAL;
+END_VAR
+    result := DBL(3.14);
+END_PROGRAM"
     );
 
     // REAL -> LREAL is lossless, standard widening (unlike the bare
@@ -513,7 +678,21 @@ mod tests {
     // ElementaryTypeName::can_widen_to()).
     rule_ctx_ok!(
         apply_when_typed_real_var_arg_to_lreal_param_then_ok,
-        "FUNCTION DBL : LREAL VAR_INPUT x : LREAL; END_VAR DBL := x; END_FUNCTION PROGRAM main VAR input : REAL; result : LREAL; END_VAR result := DBL(input); END_PROGRAM"
+        "
+FUNCTION DBL : LREAL
+VAR_INPUT
+    x : LREAL;
+END_VAR
+    DBL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    input : REAL;
+    result : LREAL;
+END_VAR
+    result := DBL(input);
+END_PROGRAM"
     );
 
     // The reverse direction (LREAL -> REAL) is narrowing and must
@@ -521,18 +700,59 @@ mod tests {
     // directions.
     rule_ctx_err!(
         apply_when_typed_lreal_var_arg_to_real_param_then_error,
-        "FUNCTION SNGL : REAL VAR_INPUT x : REAL; END_VAR SNGL := x; END_FUNCTION PROGRAM main VAR input : LREAL; result : REAL; END_VAR result := SNGL(input); END_PROGRAM"
+        "
+FUNCTION SNGL : REAL
+VAR_INPUT
+    x : REAL;
+END_VAR
+    SNGL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    input : LREAL;
+    result : REAL;
+END_VAR
+    result := SNGL(input);
+END_PROGRAM"
     );
 
     rule_ctx_err1!(
         apply_when_typed_dint_literal_arg_to_int_param_then_error,
-        "FUNCTION ADD_ONE : INT VAR_INPUT x : INT; END_VAR ADD_ONE := x; END_FUNCTION PROGRAM main VAR result : INT; END_VAR result := ADD_ONE(DINT#5); END_PROGRAM",
+        "
+FUNCTION ADD_ONE : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    ADD_ONE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+END_VAR
+    result := ADD_ONE(DINT#5);
+END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
     rule_ctx_err1!(
         apply_when_dint_var_arg_to_int_param_then_error,
-        "FUNCTION ADD_ONE : INT VAR_INPUT x : INT; END_VAR ADD_ONE := x; END_FUNCTION PROGRAM main VAR result : INT; y : DINT; END_VAR result := ADD_ONE(y); END_PROGRAM",
+        "
+FUNCTION ADD_ONE : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    ADD_ONE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : DINT;
+END_VAR
+    result := ADD_ONE(y);
+END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
@@ -618,64 +838,232 @@ mod tests {
 
     rule_ctx_ok!(
         apply_when_bare_int_literal_arg_to_real_param_then_ok,
-        "FUNCTION TAKES_REAL : REAL VAR_INPUT x : REAL; END_VAR TAKES_REAL := x; END_FUNCTION PROGRAM main VAR result : REAL; END_VAR result := TAKES_REAL(0); END_PROGRAM"
+        "
+FUNCTION TAKES_REAL : REAL
+VAR_INPUT
+    x : REAL;
+END_VAR
+    TAKES_REAL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+END_VAR
+    result := TAKES_REAL(0);
+END_PROGRAM
+"
     );
 
     rule_ctx_ok!(
         apply_when_bare_int_literal_arg_to_lreal_param_then_ok,
-        "FUNCTION TAKES_LREAL : LREAL VAR_INPUT x : LREAL; END_VAR TAKES_LREAL := x; END_FUNCTION PROGRAM main VAR result : LREAL; END_VAR result := TAKES_LREAL(42); END_PROGRAM"
+        "
+FUNCTION TAKES_LREAL : LREAL
+VAR_INPUT
+    x : LREAL;
+END_VAR
+    TAKES_LREAL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : LREAL;
+END_VAR
+    result := TAKES_LREAL(42);
+END_PROGRAM
+"
     );
 
     // --- Implicit integer widening tests (ADR-0029) ---
 
     rule_ctx_ok!(
         apply_when_sint_arg_to_int_param_then_ok,
-        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : SINT; END_VAR result := TAKES_INT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : SINT;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_int_arg_to_dint_param_then_ok,
-        "FUNCTION TAKES_DINT : DINT VAR_INPUT x : DINT; END_VAR TAKES_DINT := x; END_FUNCTION PROGRAM main VAR result : DINT; y : INT; END_VAR result := TAKES_DINT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_DINT : DINT
+VAR_INPUT
+    x : DINT;
+END_VAR
+    TAKES_DINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    y : INT;
+END_VAR
+    result := TAKES_DINT(y);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_sint_arg_to_lint_param_then_ok,
-        "FUNCTION TAKES_LINT : LINT VAR_INPUT x : LINT; END_VAR TAKES_LINT := x; END_FUNCTION PROGRAM main VAR result : LINT; y : SINT; END_VAR result := TAKES_LINT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_LINT : LINT
+VAR_INPUT
+    x : LINT;
+END_VAR
+    TAKES_LINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : LINT;
+    y : SINT;
+END_VAR
+    result := TAKES_LINT(y);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_usint_arg_to_uint_param_then_ok,
-        "FUNCTION TAKES_UINT : UINT VAR_INPUT x : UINT; END_VAR TAKES_UINT := x; END_FUNCTION PROGRAM main VAR result : UINT; y : USINT; END_VAR result := TAKES_UINT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_UINT : UINT
+VAR_INPUT
+    x : UINT;
+END_VAR
+    TAKES_UINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : UINT;
+    y : USINT;
+END_VAR
+    result := TAKES_UINT(y);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_usint_arg_to_int_param_then_ok,
-        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : USINT; END_VAR result := TAKES_INT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : USINT;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_uint_arg_to_dint_param_then_ok,
-        "FUNCTION TAKES_DINT : DINT VAR_INPUT x : DINT; END_VAR TAKES_DINT := x; END_FUNCTION PROGRAM main VAR result : DINT; y : UINT; END_VAR result := TAKES_DINT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_DINT : DINT
+VAR_INPUT
+    x : DINT;
+END_VAR
+    TAKES_DINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    y : UINT;
+END_VAR
+    result := TAKES_DINT(y);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_sint_return_to_dint_var_then_ok,
-        "FUNCTION GET_SINT : SINT VAR_INPUT x : SINT; END_VAR GET_SINT := x; END_FUNCTION PROGRAM main VAR result : DINT; y : SINT; END_VAR result := GET_SINT(y); END_PROGRAM"
+        "
+FUNCTION GET_SINT : SINT
+VAR_INPUT
+    x : SINT;
+END_VAR
+    GET_SINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : DINT;
+    y : SINT;
+END_VAR
+    result := GET_SINT(y);
+END_PROGRAM"
     );
 
     rule_ctx_err!(
         apply_when_dint_arg_to_int_param_then_error,
-        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : DINT; END_VAR result := TAKES_INT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : DINT;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM"
     );
 
     rule_ctx_err!(
         apply_when_int_arg_to_uint_param_then_error,
-        "FUNCTION TAKES_UINT : UINT VAR_INPUT x : UINT; END_VAR TAKES_UINT := x; END_FUNCTION PROGRAM main VAR result : UINT; y : INT; END_VAR result := TAKES_UINT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_UINT : UINT
+VAR_INPUT
+    x : UINT;
+END_VAR
+    TAKES_UINT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : UINT;
+    y : INT;
+END_VAR
+    result := TAKES_UINT(y);
+END_PROGRAM"
     );
 
     rule_ctx_err!(
         apply_when_byte_arg_to_int_param_then_error,
-        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : BYTE; END_VAR result := TAKES_INT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : BYTE;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM"
     );
 
     #[test]
@@ -734,27 +1122,97 @@ mod tests {
 
     rule_ctx_ok!(
         apply_when_int_arg_to_real_param_then_ok,
-        "FUNCTION TAKES_REAL : REAL VAR_INPUT x : REAL; END_VAR TAKES_REAL := x; END_FUNCTION PROGRAM main VAR result : REAL; y : INT; END_VAR result := TAKES_REAL(y); END_PROGRAM"
+        "
+FUNCTION TAKES_REAL : REAL
+VAR_INPUT
+    x : REAL;
+END_VAR
+    TAKES_REAL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+    y : INT;
+END_VAR
+    result := TAKES_REAL(y);
+END_PROGRAM"
     );
 
     rule_ctx_err!(
         apply_when_dint_arg_to_real_param_then_error,
-        "FUNCTION TAKES_REAL : REAL VAR_INPUT x : REAL; END_VAR TAKES_REAL := x; END_FUNCTION PROGRAM main VAR result : REAL; y : DINT; END_VAR result := TAKES_REAL(y); END_PROGRAM"
+        "
+FUNCTION TAKES_REAL : REAL
+VAR_INPUT
+    x : REAL;
+END_VAR
+    TAKES_REAL := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : REAL;
+    y : DINT;
+END_VAR
+    result := TAKES_REAL(y);
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_byte_arg_to_word_param_then_ok,
-        "FUNCTION TAKES_WORD : WORD VAR_INPUT x : WORD; END_VAR TAKES_WORD := x; END_FUNCTION PROGRAM main VAR result : WORD; y : BYTE; END_VAR result := TAKES_WORD(y); END_PROGRAM"
+        "
+FUNCTION TAKES_WORD : WORD
+VAR_INPUT
+    x : WORD;
+END_VAR
+    TAKES_WORD := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : WORD;
+    y : BYTE;
+END_VAR
+    result := TAKES_WORD(y);
+END_PROGRAM"
     );
 
     rule_ctx_err!(
         apply_when_word_arg_to_byte_param_then_error,
-        "FUNCTION TAKES_BYTE : BYTE VAR_INPUT x : BYTE; END_VAR TAKES_BYTE := x; END_FUNCTION PROGRAM main VAR result : BYTE; y : WORD; END_VAR result := TAKES_BYTE(y); END_PROGRAM"
+        "
+FUNCTION TAKES_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    TAKES_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : BYTE;
+    y : WORD;
+END_VAR
+    result := TAKES_BYTE(y);
+END_PROGRAM"
     );
 
     rule_ctx_err!(
         apply_when_real_arg_to_int_param_then_error,
-        "FUNCTION TAKES_INT : INT VAR_INPUT x : INT; END_VAR TAKES_INT := x; END_FUNCTION PROGRAM main VAR result : INT; y : REAL; END_VAR result := TAKES_INT(y); END_PROGRAM"
+        "
+FUNCTION TAKES_INT : INT
+VAR_INPUT
+    x : INT;
+END_VAR
+    TAKES_INT := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : REAL;
+END_VAR
+    result := TAKES_INT(y);
+END_PROGRAM"
     );
 
     // --- Cross-family widening tests (ADR-0031, requires flag) ---
@@ -812,7 +1270,20 @@ END_PROGRAM";
 
     rule_ctx_err!(
         apply_when_literal_zero_to_byte_param_without_flag_then_error,
-        "FUNCTION TAKES_BYTE : BYTE VAR_INPUT x : BYTE; END_VAR TAKES_BYTE := x; END_FUNCTION PROGRAM main VAR result : BYTE; END_VAR result := TAKES_BYTE(0); END_PROGRAM"
+        "
+FUNCTION TAKES_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    TAKES_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : BYTE;
+END_VAR
+    result := TAKES_BYTE(0);
+END_PROGRAM"
     );
 
     #[test]
@@ -843,7 +1314,21 @@ END_PROGRAM";
 
     rule_ctx_err!(
         apply_when_byte_return_to_int_var_without_flag_then_error,
-        "FUNCTION GET_BYTE : BYTE VAR_INPUT x : BYTE; END_VAR GET_BYTE := x; END_FUNCTION PROGRAM main VAR result : INT; y : BYTE; END_VAR result := GET_BYTE(y); END_PROGRAM"
+        "
+FUNCTION GET_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    GET_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : BYTE;
+END_VAR
+    result := GET_BYTE(y);
+END_PROGRAM"
     );
 
     #[test]
@@ -877,56 +1362,118 @@ END_PROGRAM";
 
     rule_ctx_err_code!(
         apply_when_stdlib_sin_arg_is_bool_then_arg_type_error,
-        "PROGRAM main VAR b : BOOL; r : REAL; END_VAR r := SIN(b); END_PROGRAM",
+        "
+PROGRAM main
+VAR
+    b : BOOL;
+    r : REAL;
+END_VAR
+    r := SIN(b);
+END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
     rule_ctx_ok!(
         apply_when_stdlib_sin_arg_is_real_then_ok,
-        "PROGRAM main VAR x : REAL; r : REAL; END_VAR r := SIN(x); END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    x : REAL;
+    r : REAL;
+END_VAR
+    r := SIN(x);
+END_PROGRAM"
     );
 
     // UINT_TO_REAL expects UINT, but the argument is UDINT.
     rule_ctx_err1!(
         apply_when_wrong_conversion_function_arg_then_arg_type_error,
-        "PROGRAM main VAR u : UDINT; r : REAL; END_VAR r := UINT_TO_REAL(u); END_PROGRAM",
+        "
+PROGRAM main
+VAR
+    u : UDINT;
+    r : REAL;
+END_VAR
+    r := UINT_TO_REAL(u);
+END_PROGRAM",
         Problem::FunctionCallArgTypeMismatch
     );
 
     rule_ctx_ok!(
         apply_when_correct_conversion_function_arg_then_ok,
-        "PROGRAM main VAR u : UDINT; r : REAL; END_VAR r := UDINT_TO_REAL(u); END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    u : UDINT;
+    r : REAL;
+END_VAR
+    r := UDINT_TO_REAL(u);
+END_PROGRAM"
     );
 
     // ABS accepts ANY_NUM; a bare integer literal is accepted.
     rule_ctx_ok!(
         apply_when_stdlib_int_literal_arg_to_real_param_then_ok,
-        "PROGRAM main VAR r : REAL; END_VAR r := SQRT(2.0); END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    r : REAL;
+END_VAR
+    r := SQRT(2.0);
+END_PROGRAM"
     );
 
     // --- Assignment statement type checks (P4035) ---
 
     rule_ctx_err1!(
         apply_when_bool_target_assigned_real_expr_then_error,
-        "PROGRAM main VAR b : BOOL; x : REAL; END_VAR b := x * 2.0; END_PROGRAM",
+        "
+PROGRAM main
+VAR
+    b : BOOL;
+    x : REAL;
+END_VAR
+    b := x * 2.0;
+END_PROGRAM",
         Problem::AssignmentTypeMismatch
     );
 
     rule_ctx_err1!(
         apply_when_int_target_assigned_real_var_then_error,
-        "PROGRAM main VAR i : INT; r : REAL; END_VAR i := r; END_PROGRAM",
+        "
+PROGRAM main
+VAR
+    i : INT;
+    r : REAL;
+END_VAR
+    i := r;
+END_PROGRAM",
         Problem::AssignmentTypeMismatch
     );
 
     // INT widens losslessly to REAL, so this assignment is valid.
     rule_ctx_ok!(
         apply_when_real_target_assigned_int_var_then_ok,
-        "PROGRAM main VAR i : INT; r : REAL; END_VAR r := i; END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    i : INT;
+    r : REAL;
+END_VAR
+    r := i;
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_matching_assignment_then_ok,
-        "PROGRAM main VAR i : INT; j : INT; END_VAR i := j + 1; END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    i : INT;
+    j : INT;
+END_VAR
+    i := j + 1;
+END_PROGRAM"
     );
 
     #[test]
@@ -972,7 +1519,14 @@ END_PROGRAM";
 
     rule_ctx_err!(
         apply_when_dword_target_assigned_udint_var_without_flag_then_error,
-        "PROGRAM main VAR dwFromUdint : DWORD; udValue : UDINT; END_VAR dwFromUdint := udValue; END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    dwFromUdint : DWORD;
+    udValue : UDINT;
+END_VAR
+    dwFromUdint := udValue;
+END_PROGRAM"
     );
 
     #[test]
@@ -999,7 +1553,14 @@ END_PROGRAM";
     // Temporal short/long widths are treated as one family.
     rule_ctx_ok!(
         apply_when_ltime_target_assigned_time_var_then_ok,
-        "PROGRAM main VAR lt : LTIME; t : TIME; END_VAR lt := t; END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    lt : LTIME;
+    t : TIME;
+END_VAR
+    lt := t;
+END_PROGRAM"
     );
 
     // --- are_types_compatible: generic expected (stdlib parameters) ---

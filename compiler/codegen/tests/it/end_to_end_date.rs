@@ -59,12 +59,42 @@ END_PROGRAM
 
 e2e_i32!(
     end_to_end_when_date_comparison_then_correct,
-    "PROGRAM main VAR a : DATE; b : DATE; result : DINT; END_VAR a := D#2024-06-15; b := D#2024-01-01; IF a > b THEN result := 1; ELSE result := 0; END_IF; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    a : DATE;
+    b : DATE;
+    result : DINT;
+  END_VAR
+  a := D#2024-06-15;
+  b := D#2024-01-01;
+  IF a > b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+",
     &[(2, 1)],
 );
 
 e2e_i32!(
     end_to_end_when_tod_comparison_then_correct,
-    "PROGRAM main VAR a : TIME_OF_DAY; b : TIME_OF_DAY; result : DINT; END_VAR a := TOD#18:00:00; b := TOD#09:00:00; IF a > b THEN result := 1; ELSE result := 0; END_IF; END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    a : TIME_OF_DAY;
+    b : TIME_OF_DAY;
+    result : DINT;
+  END_VAR
+  a := TOD#18:00:00;
+  b := TOD#09:00:00;
+  IF a > b THEN
+    result := 1;
+  ELSE
+    result := 0;
+  END_IF;
+END_PROGRAM
+",
     &[(2, 1)],
 );

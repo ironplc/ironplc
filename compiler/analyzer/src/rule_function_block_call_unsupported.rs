@@ -104,11 +104,30 @@ END_FUNCTION_BLOCK";
 
     rule_ok!(
         apply_when_fb_member_init_then_ok,
-        "FUNCTION_BLOCK FB_Comm VAR_INPUT retries : INT; END_VAR END_FUNCTION_BLOCK FUNCTION_BLOCK FB_Example VAR comm : FB_Comm := (retries := 3); END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Comm
+VAR_INPUT
+    retries : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm := (retries := 3);
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     rule_ok!(
         apply_when_bare_fb_decl_then_ok,
-        "FUNCTION_BLOCK FB_Comm END_FUNCTION_BLOCK FUNCTION_BLOCK FB_Example VAR comm : FB_Comm; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Comm
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Example
+VAR
+    comm : FB_Comm;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 }

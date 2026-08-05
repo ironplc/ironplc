@@ -129,25 +129,57 @@ mod tests {
     rule_err1_with!(
         apply_when_abstract_fb_instantiated_then_error,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK ABSTRACT FB_Base END_FUNCTION_BLOCK FUNCTION_BLOCK FB_User VAR inst : FB_Base; END_VAR END_FUNCTION_BLOCK",
+        "
+FUNCTION_BLOCK ABSTRACT FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_User
+VAR
+    inst : FB_Base;
+END_VAR
+END_FUNCTION_BLOCK",
         Problem::AbstractFunctionBlockInstantiated
     );
 
     rule_ok_with!(
         apply_when_non_abstract_fb_instantiated_then_ok,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK FB_Base END_FUNCTION_BLOCK FUNCTION_BLOCK FB_User VAR inst : FB_Base; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_User
+VAR
+    inst : FB_Base;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     rule_ok_with!(
         apply_when_concrete_subclass_of_abstract_instantiated_then_ok,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK ABSTRACT FB_Base END_FUNCTION_BLOCK FUNCTION_BLOCK FB_Concrete EXTENDS FB_Base END_FUNCTION_BLOCK FUNCTION_BLOCK FB_User VAR inst : FB_Concrete; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK ABSTRACT FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Concrete EXTENDS FB_Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_User
+VAR
+    inst : FB_Concrete;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 
     rule_ok_with!(
         apply_when_no_abstract_fb_in_library_then_ok,
         opts_with_fb_inheritance(),
-        "FUNCTION_BLOCK FB_Plain VAR x : INT; END_VAR END_FUNCTION_BLOCK"
+        "
+FUNCTION_BLOCK FB_Plain
+VAR
+    x : INT;
+END_VAR
+END_FUNCTION_BLOCK"
     );
 }

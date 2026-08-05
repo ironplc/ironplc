@@ -42,6 +42,13 @@ END_PROGRAM
 e2e_i32_with!(
     end_to_end_when_ref_to_array_declared_then_runs,
     CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    "PROGRAM main VAR data : REF_TO ARRAY[0..3] OF INT; x : INT := 99; END_VAR END_PROGRAM",
+    "
+PROGRAM main
+  VAR
+    data : REF_TO ARRAY[0..3] OF INT;
+    x : INT := 99;
+  END_VAR
+END_PROGRAM
+",
     &[(1, 99)],
 );

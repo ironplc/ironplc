@@ -11,7 +11,21 @@ use crate::common::parse_and_run_rounds;
 
 e2e_i32!(
     end_to_end_when_user_fb_simple_input_output_then_computes_result,
-    "FUNCTION_BLOCK DOUBLER VAR_INPUT x : DINT; END_VAR VAR_OUTPUT y : DINT; END_VAR y := x * 2; END_FUNCTION_BLOCK PROGRAM main VAR fb : DOUBLER; result : DINT; END_VAR fb(x := 7, y => result); END_PROGRAM",
+    "
+FUNCTION_BLOCK DOUBLER
+  VAR_INPUT x : DINT; END_VAR
+  VAR_OUTPUT y : DINT; END_VAR
+  y := x * 2;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    fb : DOUBLER;
+    result : DINT;
+  END_VAR
+  fb(x := 7, y => result);
+END_PROGRAM
+",
     &[(1, 14)],
 );
 
@@ -130,7 +144,22 @@ END_PROGRAM
 // Mirror of the DOUBLER test using dot-access instead of `Q => result`.
 e2e_i32!(
     end_to_end_when_user_fb_dot_access_read_then_returns_output,
-    "FUNCTION_BLOCK DOUBLER VAR_INPUT x : DINT; END_VAR VAR_OUTPUT y : DINT; END_VAR y := x * 2; END_FUNCTION_BLOCK PROGRAM main VAR fb : DOUBLER; result : DINT; END_VAR fb(x := 7); result := fb.y; END_PROGRAM",
+    "
+FUNCTION_BLOCK DOUBLER
+  VAR_INPUT x : DINT; END_VAR
+  VAR_OUTPUT y : DINT; END_VAR
+  y := x * 2;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    fb : DOUBLER;
+    result : DINT;
+  END_VAR
+  fb(x := 7);
+  result := fb.y;
+END_PROGRAM
+",
     &[(1, 14)],
 );
 
@@ -182,7 +211,23 @@ END_PROGRAM
 // before the bare FB call.
 e2e_i32!(
     end_to_end_when_user_fb_dot_access_write_then_input_set,
-    "FUNCTION_BLOCK DOUBLER VAR_INPUT x : DINT; END_VAR VAR_OUTPUT y : DINT; END_VAR y := x * 2; END_FUNCTION_BLOCK PROGRAM main VAR fb : DOUBLER; result : DINT; END_VAR fb.x := 7; fb(); result := fb.y; END_PROGRAM",
+    "
+FUNCTION_BLOCK DOUBLER
+  VAR_INPUT x : DINT; END_VAR
+  VAR_OUTPUT y : DINT; END_VAR
+  y := x * 2;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+  VAR
+    fb : DOUBLER;
+    result : DINT;
+  END_VAR
+  fb.x := 7;
+  fb();
+  result := fb.y;
+END_PROGRAM
+",
     &[(1, 14)],
 );
 

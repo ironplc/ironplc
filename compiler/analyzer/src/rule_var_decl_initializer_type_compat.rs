@@ -135,65 +135,125 @@ mod test {
 
     rule_ctx_ok!(
         apply_when_int_var_with_integer_literal_then_ok,
-        "PROGRAM main VAR x : INT := 10; END_VAR END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    x : INT := 10;
+END_VAR
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_real_var_with_real_literal_then_ok,
-        "PROGRAM main VAR x : REAL := 10.0; END_VAR END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    x : REAL := 10.0;
+END_VAR
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_real_var_with_integer_literal_then_ok,
-        "PROGRAM main VAR x : REAL := 10; END_VAR END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    x : REAL := 10;
+END_VAR
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_bool_var_with_boolean_literal_then_ok,
-        "PROGRAM main VAR x : BOOL := TRUE; END_VAR END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    x : BOOL := TRUE;
+END_VAR
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_no_initializer_then_ok,
-        "PROGRAM main VAR x : INT; END_VAR END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    x : INT;
+END_VAR
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_uint_var_with_integer_literal_then_ok,
-        "PROGRAM main VAR x : UINT := 5; END_VAR END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    x : UINT := 5;
+END_VAR
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_int_var_with_negative_integer_literal_then_ok,
-        "PROGRAM main VAR x : INT := -10; END_VAR END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    x : INT := -10;
+END_VAR
+END_PROGRAM"
     );
 
     rule_ctx_ok!(
         apply_when_real_var_with_negative_real_literal_then_ok,
-        "PROGRAM main VAR x : REAL := -10.0; END_VAR END_PROGRAM"
+        "
+PROGRAM main
+VAR
+    x : REAL := -10.0;
+END_VAR
+END_PROGRAM"
     );
 
     rule_ctx_err1!(
         apply_when_int_var_with_real_literal_then_error,
-        "PROGRAM main VAR dummy : INT := 10.0; END_VAR END_PROGRAM",
+        "
+PROGRAM main
+VAR
+    dummy : INT := 10.0;
+END_VAR
+END_PROGRAM",
         Problem::InitializerTypeMismatch
     );
 
     rule_ctx_err1!(
         apply_when_bool_var_with_integer_literal_then_error,
-        "PROGRAM main VAR x : BOOL := 1; END_VAR END_PROGRAM",
+        "
+PROGRAM main
+VAR
+    x : BOOL := 1;
+END_VAR
+END_PROGRAM",
         Problem::InitializerTypeMismatch
     );
 
     rule_ctx_err1!(
         apply_when_real_var_with_boolean_literal_then_error,
-        "PROGRAM main VAR x : REAL := TRUE; END_VAR END_PROGRAM",
+        "
+PROGRAM main
+VAR
+    x : REAL := TRUE;
+END_VAR
+END_PROGRAM",
         Problem::InitializerTypeMismatch
     );
 
     rule_ctx_err1!(
         apply_when_int_var_with_string_literal_then_error,
-        "PROGRAM main VAR x : INT := 'hello'; END_VAR END_PROGRAM",
+        "
+PROGRAM main
+VAR
+    x : INT := 'hello';
+END_VAR
+END_PROGRAM",
         Problem::InitializerTypeMismatch
     );
 
