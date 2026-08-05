@@ -50,6 +50,7 @@
 
 pub mod discovery;
 pub mod file_type;
+pub mod libraries;
 pub mod parsers;
 pub mod project;
 pub mod source;
@@ -60,6 +61,14 @@ pub use file_type::FileType;
 pub use parsers::parse_source;
 pub use project::SourceProject;
 pub use source::Source;
+
+// Spec conformance testing infrastructure (test-only).
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;
 
 #[cfg(test)]
 #[ctor::ctor(unsafe)]

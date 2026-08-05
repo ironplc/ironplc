@@ -128,19 +128,32 @@ source**, so a user declaration shadows a library declaration of the same name
 
 ### Phase 1 — The `Tc2_Math` library (PI), package format, explicit activation *(early)*
 - [x] Write plan and add `REQ-CL-*` / `REQ-LF-*` markers to the design docs
-- [ ] Implement the on-disk package format per [compatibility-library-format.md](../design/compatibility-library-format.md): package layout (version subdirectories), manifest schema, and name resolution; libraries read from disk at runtime — **REQ-LF-sources-001**, **002**, **004**
-- [ ] Manifest identity validated on load (`name`, `vendor`, `default_version`) — **REQ-CL-sources-002**
-- [ ] Add the bundled `Tc2_Math` library defining `PI`
-- [ ] Implement the library loader + registry (name → `Library`) in `sources`
-- [ ] Carry an activated-library set on the project; add `--library <name>` to the CLI — **REQ-CL-sources-006**
-- [ ] Inject activated libraries into the analyze merge, base → library → user — **REQ-CL-analyzer-001**
-- [ ] Resolve library symbols flat under exact vendor names — **REQ-CL-analyzer-002**
-- [ ] `PI` resolves as a constant and folds in a `VAR` initializer — **REQ-CL-analyzer-003**
-- [ ] A user declaration shadows a library declaration of the same name — **REQ-CL-analyzer-004**
-- [ ] Activated set derives only from explicit activation; never inferred from source — **REQ-CL-sources-005**
-- [ ] Selecting a dialect does not activate any library (dialect ≠ vendor) — **REQ-CL-analyzer-006**
-- [ ] Wire `sources` `build.rs` (both design docs) + `analyzer` `build.rs`; add `spec_conformance` + meta-tests; `#[spec_test]` the markers above; `#[ignore]` sources-001/003/004/007 for now
-- [ ] `cd compiler && just` green
+- [x] Implement the on-disk package format per [compatibility-library-format.md](../design/compatibility-library-format.md): package layout (version subdirectories), manifest schema, and name resolution; libraries read from disk at runtime — **REQ-LF-sources-001**, **002**, **004**
+- [x] Manifest identity validated on load (`name`, `vendor`, `default_version`) — **REQ-CL-sources-002**
+- [x] Add the bundled `Tc2_Math` library defining `PI`
+- [x] Implement the library loader + registry (name → `Library`) in `sources`
+- [x] Carry an activated-library set on the project; add `--library <name>` to the CLI — **REQ-CL-sources-006**
+- [x] Inject activated libraries into the analyze merge, base → library → user — **REQ-CL-analyzer-001**
+- [x] Resolve library symbols flat under exact vendor names — **REQ-CL-analyzer-002**
+- [x] `PI` resolves as a constant and folds in a `VAR` initializer — **REQ-CL-analyzer-003**
+- [x] A user declaration shadows a library declaration of the same name — **REQ-CL-analyzer-004**
+- [x] Activated set derives only from explicit activation; never inferred from source — **REQ-CL-sources-005**
+- [x] Selecting a dialect does not activate any library (dialect ≠ vendor) — **REQ-CL-analyzer-006**
+- [x] Wire `sources` `build.rs` (both design docs) + `analyzer` `build.rs`; add `spec_conformance` + meta-tests; `#[spec_test]` the markers above; `#[ignore]` sources-001/003/004/007 for now
+- [x] `cd compiler && just` green
+
+> **Note on the guard-forced scope.** The workspace orphan guard
+> (`compiler/test/tests/spec_conformance_guard.rs`) requires *every* slug in an
+> enforced doc to be claimed by a listing crate. Listing
+> `compatibility-libraries.md` therefore also required wiring the `plc2plc` and
+> `playground` `build.rs` in Phase 1, with their single markers
+> (`REQ-CL-plc2plc-001`, `REQ-CL-playground-001`) as `#[ignore]`d `#[spec_test]`
+> placeholders (real behavior lands in Phase 3). Injection is done in the
+> `project` crate's `run_semantic_analysis` (prepending the loaded libraries to
+> the analyze slice) rather than by changing the `analyze` signature — merge
+> collection precedes folding, so slice order (library before user) is
+> sufficient for precedence, and the analyzer owns dormancy via its
+> `#[spec_test]`s.
 
 ### Phase 2 — Read the library list from `.plcproj` *(early)*
 - [ ] In the twincat detector, parse `<PlaceholderReference>` and `<LibraryReference>` elements inside `<ItemGroup>` (MSBuild `xmlns`), extracting `Include`, `Namespace`, and (for placeholders) `DefaultResolution` — **REQ-CL-sources-001**

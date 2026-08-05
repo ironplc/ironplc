@@ -1,0 +1,38 @@
+=====
+P6010
+=====
+
+.. problem-summary:: P6010
+
+This error occurs when a bundled compatibility library's ``library.toml``
+manifest is malformed or is missing one of its required fields (``name``,
+``vendor``, ``default_version``, or ``references``).
+
+Compatibility libraries reproduce a vendor's interface (for example
+``Tc2_Math``) so that source written for that vendor compiles unchanged. Each
+library is a directory containing a ``library.toml`` manifest and one
+subdirectory per version. The manifest must declare the library's identity and
+record the public references it was authored from.
+
+Example
+-------
+
+A manifest that omits a required field triggers this error:
+
+.. code-block:: toml
+
+   # Missing the required `default_version` field
+   name = "Tc2_Math"
+   vendor = "Beckhoff Automation GmbH"
+   references = [ "https://example.com/reference" ]
+
+To fix this error, ensure the manifest declares every required field:
+
+.. code-block:: toml
+
+   name = "Tc2_Math"
+   vendor = "Beckhoff Automation GmbH"
+   default_version = "1.0.0"
+   references = [
+     "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/ — Global constants",
+   ]

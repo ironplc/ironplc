@@ -198,6 +198,14 @@ struct FileArgs {
     /// extension not part of the IEC 61131-3 standard.
     #[arg(long)]
     allow_fb_inheritance: bool,
+
+    /// Activate a bundled compatibility library by name (repeatable), e.g.
+    /// `--library Tc2_Math`. Activation injects the library's declarations
+    /// (such as the TwinCAT `PI` constant) so they resolve under their exact
+    /// vendor names. Use for source that has no project context; a discovered
+    /// project file activates its referenced libraries automatically.
+    #[arg(long = "library")]
+    libraries: Vec<String>,
 }
 
 impl FileArgs {
@@ -292,21 +300,31 @@ pub fn main() -> Result<(), String> {
 
     match args.action {
         Action::Lsp { stdio: _ } => lsp::start(),
-        Action::Check { file_args } => {
-            cli::check(&file_args.files, file_args.compiler_options(), false)
-        }
+        Action::Check { file_args } => cli::check(
+            &file_args.files,
+            file_args.compiler_options(),
+            &file_args.libraries,
+            false,
+        ),
         Action::Compile { file_args, output } => cli::compile(
             &file_args.files,
             &output,
             file_args.compiler_options(),
+            &file_args.libraries,
             false,
         ),
-        Action::Echo { file_args } => {
-            cli::echo(&file_args.files, file_args.compiler_options(), false)
-        }
-        Action::Tokenize { file_args } => {
-            cli::tokenize(&file_args.files, file_args.compiler_options(), false)
-        }
+        Action::Echo { file_args } => cli::echo(
+            &file_args.files,
+            file_args.compiler_options(),
+            &file_args.libraries,
+            false,
+        ),
+        Action::Tokenize { file_args } => cli::tokenize(
+            &file_args.files,
+            file_args.compiler_options(),
+            &file_args.libraries,
+            false,
+        ),
         Action::Dialects => {
             print!("{}", describe_dialects());
             Ok(())

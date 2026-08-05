@@ -2,10 +2,11 @@
 
 use std::{collections::HashMap, path::Path};
 
-use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
+use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
 use ironplc_parser::options::CompilerOptions;
 use log::{info, trace};
 
+use crate::libraries::LibraryRegistry;
 use crate::source::Source;
 
 /// A project consisting of one or more source files
@@ -14,6 +15,12 @@ pub struct SourceProject {
     sources: HashMap<FileId, Source>,
     /// Parse options applied to all sources
     compiler_options: CompilerOptions,
+    /// Names of the activated compatibility libraries, in activation order.
+    ///
+    /// The active set comes only from explicit activation (a project-file
+    /// reference or an explicit CLI/playground request) and is never inferred
+    /// from source content (`REQ-CL-sources-005`).
+    activated_libraries: Vec<String>,
 }
 
 impl Default for SourceProject {
@@ -28,6 +35,7 @@ impl SourceProject {
         SourceProject {
             sources: HashMap::new(),
             compiler_options: CompilerOptions::default(),
+            activated_libraries: Vec::new(),
         }
     }
 
@@ -36,7 +44,42 @@ impl SourceProject {
         SourceProject {
             sources: HashMap::new(),
             compiler_options,
+            activated_libraries: Vec::new(),
         }
+    }
+
+    /// Set the activated compatibility libraries by name (in activation order).
+    ///
+    /// Replaces any previously activated set. Activation is out of band — it
+    /// never touches source text — and comes only from an explicit channel such
+    /// as a project-file reference or a `--library` request.
+    pub fn set_activated_libraries(&mut self, names: Vec<String>) {
+        self.activated_libraries = names;
+    }
+
+    /// The names of the activated compatibility libraries, in activation order.
+    pub fn activated_libraries(&self) -> &[String] {
+        &self.activated_libraries
+    }
+
+    /// Load the activated compatibility libraries from the bundled registry.
+    ///
+    /// Returns the parsed [`Library`] for each activated library that resolves,
+    /// plus one diagnostic per library that could not be loaded (unshipped name
+    /// or malformed manifest). The libraries are returned in activation order,
+    /// which callers inject ahead of user source so a user declaration shadows
+    /// a library declaration of the same name.
+    pub fn load_activated_libraries(&self) -> (Vec<Library>, Vec<Diagnostic>) {
+        let registry = LibraryRegistry::bundled();
+        let mut libraries = Vec::new();
+        let mut diagnostics = Vec::new();
+        for name in &self.activated_libraries {
+            match registry.load(name) {
+                Ok(loaded) => libraries.push(loaded.library),
+                Err(diagnostic) => diagnostics.push(diagnostic),
+            }
+        }
+        (libraries, diagnostics)
     }
 
     /// Add a source file to the project by file ID

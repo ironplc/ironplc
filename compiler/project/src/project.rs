@@ -33,6 +33,14 @@ fn run_semantic_analysis(
     let mut all_libraries = vec![];
     let mut all_diagnostics: Vec<Diagnostic> = vec![];
 
+    // Load the activated compatibility libraries first. Any that fail to load
+    // (an unshipped name or malformed manifest) contribute a diagnostic but do
+    // not prevent the rest of analysis. These declarations are injected ahead
+    // of user source (base stdlib -> library -> user), so a user declaration
+    // shadows a library declaration of the same name.
+    let (compat_libraries, compat_diagnostics) = source_project.load_activated_libraries();
+    all_diagnostics.extend(compat_diagnostics);
+
     // Sources are backed by a HashMap, so iteration order is randomized
     // per-process by its hasher's random seed. Merging them in that order
     // made the combined Library's declaration order -- and therefore
@@ -63,7 +71,14 @@ fn run_semantic_analysis(
         }
     }
 
-    match analyze(&all_libraries, compiler_options) {
+    // Activation order: the compatibility libraries precede user source in the
+    // merge (the base stdlib is seeded inside `analyze`).
+    let analyze_input: Vec<&Library> = compat_libraries
+        .iter()
+        .chain(all_libraries.iter().copied())
+        .collect();
+
+    match analyze(&analyze_input, compiler_options) {
         Ok((library, context)) => {
             debug!("Semantic analysis completed {context:?}");
             all_diagnostics.extend(context.diagnostics().iter().cloned());
@@ -193,6 +208,22 @@ impl FileBackedProject {
     pub fn get(&self, file_id: &FileId) -> Option<&Source> {
         self.source_project.get_source(file_id)
     }
+
+    /// Activate the named compatibility libraries (replacing any current set).
+    ///
+    /// Activation is out of band — it never modifies source — and comes only
+    /// from an explicit channel such as a `--library` request.
+    pub fn set_activated_libraries(&mut self, names: Vec<String>) {
+        self.source_project.set_activated_libraries(names);
+    }
+
+    /// Load the activated compatibility libraries from the bundled registry.
+    ///
+    /// Returns the parsed declarations to inject ahead of user source, plus one
+    /// diagnostic per library that could not be loaded.
+    pub fn load_activated_libraries(&self) -> (Vec<Library>, Vec<Diagnostic>) {
+        self.source_project.load_activated_libraries()
+    }
 }
 
 impl Project for FileBackedProject {
@@ -300,6 +331,11 @@ impl MemoryBackedProject {
     pub fn add_source(&mut self, file_id: FileId, content: String) {
         self.source_project.add_source(file_id, content);
     }
+
+    /// Activate the named compatibility libraries (replacing any current set).
+    pub fn set_activated_libraries(&mut self, names: Vec<String>) {
+        self.source_project.set_activated_libraries(names);
+    }
 }
 
 impl Project for MemoryBackedProject {
@@ -383,6 +419,64 @@ mod test {
     fn compilation_set_when_empty_then_ok() {
         let project = FileBackedProject::default();
         assert_eq!(0, project.sources().len());
+    }
+
+    // -----------------------------------------------------------------
+    // Compatibility-library activation.
+    // See specs/plans/2026-08-04-compatibility-libraries.md (Phase 1).
+    // -----------------------------------------------------------------
+
+    fn library_options() -> CompilerOptions {
+        CompilerOptions {
+            allow_top_level_var_global: true,
+            allow_constant_initializer_expressions: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    const PI_PROGRAM: &str =
+        "FUNCTION_BLOCK FB_Angle VAR d2r : LREAL := PI/180.0; END_VAR END_FUNCTION_BLOCK";
+
+    #[test]
+    fn semantic_when_library_not_activated_then_pi_undefined() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.add_source(FileId::from_string("main.st"), PI_PROGRAM.to_owned());
+
+        // Dormant by default: PI does not resolve without activation.
+        let result = project.semantic();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn semantic_when_tc2_math_activated_then_pi_resolves() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec!["Tc2_Math".to_string()]);
+        project.add_source(FileId::from_string("main.st"), PI_PROGRAM.to_owned());
+
+        // Activating Tc2_Math injects the global PI, so the initializer folds.
+        let result = project.semantic();
+        assert!(
+            result.is_ok(),
+            "expected clean analysis, got: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn semantic_when_unshipped_library_activated_then_diagnostic() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec!["DoesNotExist".to_string()]);
+        project.add_source(
+            FileId::from_string("main.st"),
+            "FUNCTION_BLOCK FB VAR x : INT; END_VAR END_FUNCTION_BLOCK".to_owned(),
+        );
+
+        let result = project.semantic();
+        let diagnostics = result.expect_err("an unshipped library must produce a diagnostic");
+        assert!(
+            diagnostics.iter().any(|d| d.code == "P6011"),
+            "expected P6011 naming the missing library, got: {diagnostics:?}"
+        );
     }
 
     #[test]
