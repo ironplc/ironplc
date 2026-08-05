@@ -190,23 +190,6 @@ fn diagnostic_info(diag: &Diagnostic, source: &str) -> DiagnosticInfo {
     }
 }
 
-/// Build an `INTERNAL` [`DiagnosticInfo`] for a playground-side failure that has
-/// no user-source location (e.g. a malformed library payload from the host).
-fn internal_diagnostic(message: String) -> DiagnosticInfo {
-    DiagnosticInfo {
-        code: "INTERNAL".to_string(),
-        message,
-        label: String::new(),
-        help: Vec::new(),
-        start_line: 1,
-        start_column: 1,
-        end_line: 1,
-        end_column: 1,
-        compiler_file: String::new(),
-        compiler_line: 0,
-    }
-}
-
 /// A structured runtime error surfaced across the WASM boundary.
 ///
 /// Carries a human-readable `message` and, for VM traps, the trap's stable
