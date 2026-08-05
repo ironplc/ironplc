@@ -2,85 +2,28 @@
 //! First Steps structural fixtures.
 
 use super::common::*;
+use rstest::rstest;
 
-#[test]
-fn parse_variable_declarations() {
-    let res = parse_resource("var_decl.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_inout_variable_declarations() {
-    let res = parse_resource("inout_var_decl.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_input_variable_declarations() {
-    let res = parse_resource("input_var_decl.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_strings() {
-    let res = parse_resource("strings.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_type_decl() {
-    let res = parse_resource("type_decl.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_textual() {
-    let res = parse_resource("textual.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_conditional() {
-    let res = parse_resource("conditional.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_oscat() {
-    // OSCAT files have a header that as far as I can tell is not valid
-    // but it is common.
-    let res = parse_resource("oscat.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_expressions() {
-    let res = parse_resource("expressions.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_array() {
-    let res = parse_resource("array.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_nested() {
-    let res: Result<Library, Diagnostic> = parse_resource("nested.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_configuration() {
-    let res: Result<Library, Diagnostic> = parse_resource("configuration.st");
-    assert!(res.is_ok())
-}
-
-#[test]
-fn parse_program_then_ok() {
-    let res: Result<Library, Diagnostic> = parse_resource("program.st");
-    assert!(res.is_ok())
+/// Every corpus `.st` resource must parse without error. One `#[case]` per
+/// resource; add a new sample by adding a single line here.
+#[rstest]
+#[case::var_decl("var_decl.st")]
+#[case::inout_var_decl("inout_var_decl.st")]
+#[case::input_var_decl("input_var_decl.st")]
+#[case::strings("strings.st")]
+#[case::type_decl("type_decl.st")]
+#[case::textual("textual.st")]
+#[case::conditional("conditional.st")]
+// OSCAT files have a header that as far as I can tell is not valid but it is common.
+#[case::oscat("oscat.st")]
+#[case::expressions("expressions.st")]
+#[case::array("array.st")]
+#[case::nested("nested.st")]
+#[case::configuration("configuration.st")]
+#[case::program("program.st")]
+fn parse_when_corpus_resource_then_ok(#[case] name: &'static str) {
+    let res = parse_resource(name);
+    assert!(res.is_ok());
 }
 
 #[test]
