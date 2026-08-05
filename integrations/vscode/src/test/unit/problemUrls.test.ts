@@ -15,6 +15,7 @@ suite('problemUrls', () => {
   test('problemHelpUrl_when_compiler_or_runtime_code_then_section_matches_prefix', () => {
     assert.ok(problemHelpUrl('P0001', '1.0.0').includes('/reference/compiler/problems/P0001.html'));
     assert.ok(problemHelpUrl('V6008', '1.0.0').includes('/reference/runtime/problems/V6008.html'));
+    assert.ok(problemHelpUrl('H1001', '1.0.0').includes('/reference/playground/problems/H1001.html'));
   });
 
   test('problemHelpUrl_when_version_has_special_chars_then_encoded', () => {
