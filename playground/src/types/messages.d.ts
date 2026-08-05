@@ -18,12 +18,17 @@ export interface DialectOption {
   is_default: boolean;
 }
 
+// A JSON array of plain-text compatibility-library sources to activate — the
+// served `.st` files the browser fetched. Omitted (or "") activates none.
+export type Libraries = string;
+
 export interface CompileRequest {
   id: number;
   command: "compile";
   source: string;
   dialect?: Dialect;
   allows?: string;
+  libraries?: Libraries;
 }
 
 export interface RunRequest {
@@ -40,6 +45,7 @@ export interface RunSourceRequest {
   scans: number;
   dialect?: Dialect;
   allows?: string;
+  libraries?: Libraries;
 }
 
 export interface LoadProgramRequest {
@@ -49,6 +55,7 @@ export interface LoadProgramRequest {
   cycleTimeUs: number;
   dialect?: Dialect;
   allows?: string;
+  libraries?: Libraries;
 }
 
 export interface StepRequest {
