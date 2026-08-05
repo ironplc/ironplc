@@ -150,6 +150,25 @@ impl LibraryRegistry {
         self.has_exact_dir(name) && self.manifest_path(name).is_file()
     }
 
+    /// Every bundled library available under the registry root.
+    ///
+    /// A library is an immediate subdirectory that holds a `library.toml`
+    /// manifest; the returned names are sorted so a walk over them is stable.
+    /// Used by the provenance conformance test to enforce the authoring policy
+    /// across every bundled manifest (`REQ-CL-sources-007`).
+    pub fn library_names(&self) -> Vec<LibraryName> {
+        let mut names: Vec<LibraryName> = match fs::read_dir(&self.root) {
+            Ok(entries) => entries
+                .filter_map(Result::ok)
+                .filter(|entry| entry.path().join("library.toml").is_file())
+                .filter_map(|entry| entry.file_name().to_str().map(LibraryName::from))
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+        names.sort();
+        names
+    }
+
     fn manifest_path(&self, name: &LibraryName) -> PathBuf {
         self.root.join(name.as_str()).join("library.toml")
     }

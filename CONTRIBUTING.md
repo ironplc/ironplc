@@ -24,6 +24,7 @@ steering files under `specs/steering/`. These apply to all contributors:
 * **[Compiler Architecture](specs/steering/compiler-architecture.md)** - Patterns for implementing language features and semantic analysis
 * **[Problem Code Management](specs/steering/problem-code-management.md)** - Guidelines for error handling and diagnostic creation
 * **[IEC 61131-3 Compliance](specs/steering/iec-61131-3-compliance.md)** - Standards compliance and validation rules
+* **[Compatibility Library Authoring](specs/steering/compatibility-library-authoring.md)** - Licensing risk tiers, allowed/forbidden inputs, and the clean-room provenance record required for bundled compatibility libraries
 * **[Common Tasks](specs/steering/common-tasks.md)** - Full command reference for day-to-day development
 
 The steering files provide the detailed implementation guidance; this
