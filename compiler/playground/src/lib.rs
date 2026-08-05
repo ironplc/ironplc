@@ -190,23 +190,6 @@ fn diagnostic_info(diag: &Diagnostic, source: &str) -> DiagnosticInfo {
     }
 }
 
-/// Build an `INTERNAL` [`DiagnosticInfo`] for a playground-side failure that has
-/// no user-source location (e.g. a malformed library payload from the host).
-fn internal_diagnostic(message: String) -> DiagnosticInfo {
-    DiagnosticInfo {
-        code: "INTERNAL".to_string(),
-        message,
-        label: String::new(),
-        help: Vec::new(),
-        start_line: 1,
-        start_column: 1,
-        end_line: 1,
-        end_column: 1,
-        compiler_file: String::new(),
-        compiler_line: 0,
-    }
-}
-
 /// A structured runtime error surfaced across the WASM boundary.
 ///
 /// Carries a human-readable `message` and, for VM traps, the trap's stable
@@ -215,14 +198,77 @@ fn internal_diagnostic(message: String) -> DiagnosticInfo {
 /// compiler diagnostic (which likewise has a message and a code) and render
 /// both through one path. This shape is also the natural fit as the playground
 /// moves toward JSON-RPC.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct RunError {
     /// Human-readable message including task and instance context for traps.
     message: String,
-    /// The trap's stable v-code (e.g. `"V4001"`). Absent for non-trap errors
-    /// such as a decode failure or a missing stepping session.
+    /// The error's stable code — a VM trap's v-code (e.g. `"V4001"`) or, for a
+    /// host/embedding-layer illegal state, `"P9998"` (the internal-error code).
+    /// Every error site populates this, so it is only absent on values
+    /// deserialized from an older payload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     code: Option<String>,
+    /// For a `P9998` internal error, the WASM host `file`/`line` where the
+    /// illegal state was detected — the same `compiler_file`/`compiler_line`
+    /// contract a P9xxx [`DiagnosticInfo`] carries, so the front end ranks host
+    /// bugs by location just like compiler ones. Empty for VM traps.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    compiler_file: String,
+    /// The host source line paired with `compiler_file`. Zero when absent.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    compiler_line: u32,
+}
+
+/// Builds a `P9998` internal-error [`RunError`] stamped with the WASM host
+/// `file`/`line` of the call site.
+///
+/// Host/embedding-layer illegal states — frontend↔WASM contract violations and
+/// failures that should never occur in normal use — are bugs, not distinct user
+/// conditions. Rather than mint a bespoke code and doc page per site, they all
+/// share the existing internal-error code and are told apart by the recorded
+/// location, mirroring how the compiler records `file#Lline` for its own P9998
+/// diagnostics (see [`Diagnostic::internal_error`]).
+#[track_caller]
+fn internal_run_error(message: String) -> RunError {
+    let loc = std::panic::Location::caller();
+    // Derive the stable code from the shared diagnostic constructor rather than
+    // hard-coding "P9998", so it tracks the compiler's internal-error code.
+    let code = Diagnostic::internal_error(loc.file(), loc.line()).code;
+    RunError {
+        message,
+        code: Some(code),
+        compiler_file: loc.file().to_string(),
+        compiler_line: loc.line(),
+    }
+}
+
+/// Serializes a fallback [`RunError`] for the serde-to-JSON error path. The full
+/// result already failed to serialize, but this tiny error object does not; the
+/// static literal is a last-ditch guard should even that fail.
+fn fallback_error_json(err: &RunError) -> String {
+    serde_json::to_string(err)
+        .unwrap_or_else(|_| r#"{"message":"Serialization error","code":"P9998"}"#.to_string())
+}
+
+/// The [`DiagnosticInfo`] counterpart of [`internal_run_error`], for host
+/// illegal states on the compile path (which report through `diagnostics`
+/// rather than a `RunError`). Same `P9998` + `file#Lline` contract.
+#[track_caller]
+fn internal_diagnostic(message: String) -> DiagnosticInfo {
+    let loc = std::panic::Location::caller();
+    let code = Diagnostic::internal_error(loc.file(), loc.line()).code;
+    DiagnosticInfo {
+        code,
+        message,
+        label: String::new(),
+        help: Vec::new(),
+        start_line: 1,
+        start_column: 1,
+        end_line: 1,
+        end_column: 1,
+        compiler_file: loc.file().to_string(),
+        compiler_line: loc.line(),
+    }
 }
 
 /// Result of executing bytecode.
@@ -527,7 +573,11 @@ struct StepResult {
 pub fn compile(source: &str, dialect: &str, allows: &str, libraries: &str) -> String {
     let result = compile_inner(source, dialect, allows, libraries);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[{{"code":"INTERNAL","message":"Serialization error: {e}","label":"","start_line":1,"start_column":1,"end_line":1,"end_column":1}}]}}"#)
+        // Even the full result failed to serialize; the tiny internal-error
+        // diagnostic still serializes, so build the fallback payload from it.
+        let diag = serde_json::to_string(&internal_diagnostic(format!("Serialization error: {e}")))
+            .unwrap_or_else(|_| r#"{"code":"P9998","message":"Serialization error"}"#.to_string());
+        format!(r#"{{"ok":false,"diagnostics":[{diag}]}}"#)
     })
 }
 
@@ -655,18 +705,9 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
         return CompileResult {
             ok: false,
             bytecode: None,
-            diagnostics: vec![DiagnosticInfo {
-                code: "INTERNAL".to_string(),
-                message: format!("Failed to serialize bytecode: {e}"),
-                label: String::new(),
-                help: Vec::new(),
-                start_line: 1,
-                start_column: 1,
-                end_line: 1,
-                end_column: 1,
-                compiler_file: String::new(),
-                compiler_line: 0,
-            }],
+            diagnostics: vec![internal_diagnostic(format!(
+                "Failed to serialize bytecode: {e}"
+            ))],
         };
     }
 
@@ -687,7 +728,8 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
 pub fn run(bytecode_base64: &str, scans: u32) -> String {
     let result = run_inner(bytecode_base64, scans);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"variables":[],"scans_completed":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
+        let error = fallback_error_json(&internal_run_error(format!("Serialization error: {e}")));
+        format!(r#"{{"ok":false,"variables":[],"scans_completed":0,"error":{error}}}"#)
     })
 }
 
@@ -699,10 +741,7 @@ fn run_inner(bytecode_base64: &str, scans: u32) -> RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(RunError {
-                    message: format!("Invalid base64: {e}"),
-                    code: None,
-                }),
+                error: Some(internal_run_error(format!("Invalid base64: {e}"))),
             };
         }
     };
@@ -718,10 +757,9 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                 ok: false,
                 variables: vec![],
                 scans_completed: 0,
-                error: Some(RunError {
-                    message: format!("Invalid bytecode container: {e}"),
-                    code: None,
-                }),
+                error: Some(internal_run_error(format!(
+                    "Invalid bytecode container: {e}"
+                ))),
             };
         }
     };
@@ -741,6 +779,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                         ctx.trap, ctx.task_id, ctx.instance_id
                     ),
                     code: Some(ctx.trap.v_code().to_string()),
+                    ..Default::default()
                 }),
             };
         }
@@ -776,6 +815,7 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
                         faulted.instance_id()
                     ),
                     code: Some(faulted.trap().v_code().to_string()),
+                    ..Default::default()
                 }),
             };
         }
@@ -808,7 +848,10 @@ pub fn run_source(
 ) -> String {
     let result = run_source_inner(source, scans, dialect, allows, libraries);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"scans_completed":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
+        let error = fallback_error_json(&internal_run_error(format!("Serialization error: {e}")));
+        format!(
+            r#"{{"ok":false,"diagnostics":[],"variables":[],"scans_completed":0,"error":{error}}}"#
+        )
     })
 }
 
@@ -931,7 +974,8 @@ pub fn load_program(
 ) -> String {
     let result = load_program_inner(source, cycle_time_us, dialect, allows, libraries);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
+        let error = fallback_error_json(&internal_run_error(format!("Serialization error: {e}")));
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":{error}}}"#)
     })
 }
 
@@ -964,10 +1008,7 @@ fn load_program_inner(
                 diagnostics: vec![],
                 variables: vec![],
                 total_scans: 0,
-                error: Some(RunError {
-                    message: format!("Failed to load bytecode: {e}"),
-                    code: None,
-                }),
+                error: Some(internal_run_error(format!("Failed to load bytecode: {e}"))),
             };
         }
     };
@@ -989,6 +1030,7 @@ fn load_program_inner(
                 error: Some(RunError {
                     message: format!("VM init trap: {}", ctx.trap),
                     code: Some(ctx.trap.v_code().to_string()),
+                    ..Default::default()
                 }),
             };
         }
@@ -1022,7 +1064,8 @@ fn load_program_inner(
 pub fn step(scans: u32) -> String {
     let result = step_inner(scans);
     serde_json::to_string(&result).unwrap_or_else(|e| {
-        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":{{"message":"Serialization error: {e}"}}}}"#)
+        let error = fallback_error_json(&internal_run_error(format!("Serialization error: {e}")));
+        format!(r#"{{"ok":false,"diagnostics":[],"variables":[],"total_scans":0,"error":{error}}}"#)
     })
 }
 
@@ -1037,10 +1080,9 @@ fn step_inner(scans: u32) -> StepResult {
                     diagnostics: vec![],
                     variables: vec![],
                     total_scans: 0,
-                    error: Some(RunError {
-                        message: "No program loaded. Call load_program first.".to_string(),
-                        code: None,
-                    }),
+                    error: Some(internal_run_error(
+                        "No program loaded. Call load_program first.".to_string(),
+                    )),
                 };
             }
         };
@@ -1051,10 +1093,9 @@ fn step_inner(scans: u32) -> StepResult {
                 diagnostics: vec![],
                 variables: vec![],
                 total_scans: 0,
-                error: Some(RunError {
-                    message: "Session is faulted. Call reset_session to start over.".to_string(),
-                    code: None,
-                }),
+                error: Some(internal_run_error(
+                    "Session is faulted. Call reset_session to start over.".to_string(),
+                )),
             };
         }
 
@@ -1066,10 +1107,7 @@ fn step_inner(scans: u32) -> StepResult {
                     diagnostics: vec![],
                     variables: vec![],
                     total_scans: 0,
-                    error: Some(RunError {
-                        message: format!("Failed to load bytecode: {e}"),
-                        code: None,
-                    }),
+                    error: Some(internal_run_error(format!("Failed to load bytecode: {e}"))),
                 };
             }
         };
@@ -1166,6 +1204,7 @@ fn run_vm_scans(
                     faulted.instance_id()
                 ),
                 code: Some(faulted.trap().v_code().to_string()),
+                ..Default::default()
             };
             return (variables, total_scans, Some(error));
         }
@@ -1298,18 +1337,27 @@ END_PROGRAM
     }
 
     #[test]
-    fn run_when_invalid_base64_then_returns_error() {
-        let result: RunResult = serde_json::from_str(&run("not-valid-base64!!!", 1)).unwrap();
+    fn run_when_invalid_base64_then_error_is_internal_with_location() {
+        let json = run("not-valid-base64!!!", 1);
+        let result: RunResult = serde_json::from_str(&json).unwrap();
         assert!(!result.ok);
-        assert!(result.error.is_some());
+        let error = result.error.expect("expected a host error");
+        // Host illegal states share the internal-error code and are told apart
+        // by the recorded call-site location, not by a bespoke per-error code.
+        assert_eq!(error.code.as_deref(), Some("P9998"));
+        assert!(error.compiler_file.ends_with("lib.rs"));
+        assert!(error.compiler_line > 0);
+        assert!(json.contains("\"code\":\"P9998\""));
     }
 
     #[test]
-    fn run_when_invalid_container_then_returns_error() {
+    fn run_when_invalid_container_then_error_is_internal() {
         let bytes = BASE64.encode(b"not a container");
         let result: RunResult = serde_json::from_str(&run(&bytes, 1)).unwrap();
         assert!(!result.ok);
-        assert!(result.error.is_some());
+        let error = result.error.expect("expected a host error");
+        assert_eq!(error.code.as_deref(), Some("P9998"));
+        assert!(error.compiler_line > 0);
     }
 
     #[test]
@@ -1434,7 +1482,10 @@ END_PROGRAM
         reset_session();
         let result: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!result.ok);
-        assert!(result.error.unwrap().message.contains("No program loaded"));
+        let error = result.error.unwrap();
+        assert!(error.message.contains("No program loaded"));
+        assert_eq!(error.code.as_deref(), Some("P9998"));
+        assert!(error.compiler_line > 0);
     }
 
     #[test]
@@ -1521,7 +1572,9 @@ END_PROGRAM
         // Subsequent step should report faulted session
         let r2: StepResult = serde_json::from_str(&step(1)).unwrap();
         assert!(!r2.ok);
-        assert!(r2.error.unwrap().message.contains("faulted"));
+        let error = r2.error.unwrap();
+        assert!(error.message.contains("faulted"));
+        assert_eq!(error.code.as_deref(), Some("P9998"));
     }
 
     #[test]
