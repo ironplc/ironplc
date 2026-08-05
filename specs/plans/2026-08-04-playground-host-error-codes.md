@@ -1,84 +1,65 @@
-# Assign stable error codes to playground host/embedding-layer errors
+# Playground host/embedding-layer errors: reuse P9998
 
 Closes #1201. Follow-up to #1200.
 
 ## Goal
 
 Give every host/embedding-layer error surfaced by the playground WASM wrapper
-(`compiler/playground/src/lib.rs`) a stable, documented error code, so that
-every UI-visible error carries a code (analytics aggregation, doc anchors) and
-the empty-code special-case in `renderDiagnostics` can be removed.
+(`compiler/playground/src/lib.rs`) a stable code so that every UI-visible error
+carries one, and the empty-code special-case in `renderDiagnostics` can be
+removed.
 
-## Decision: the `H####` (Host) family
+## Decision (revised)
 
-The existing taxonomies do not fit: `P####` are compiler problems, `E####` are
-editor problems, `V####` are VM traps. Host/embedding-layer errors are a new
-category, so they get a new family `H####` generated through the same
-`resources/problem-codes.csv` → `build.rs` → `docs/reference/.../problems/*.rst`
-pipeline the V-codes use.
+The issue proposed a new `H####` family with a code + doc page per error. That
+premise is wrong for these errors: **they are all illegal states (bugs), not
+distinct user conditions.** In real playground use the bytecode base64 never
+leaves the WASM boundary — the user edits *source*, which yields `P####`/`V####`
+codes — so `Invalid base64`, `Invalid container`, `No program loaded`,
+`Session is faulted`, and the serialization fallbacks are all "should never
+happen" host bugs.
 
-Split by audience, mirroring the V4xxx (user) / V9xxx (internal) convention:
+Bugs do not each deserve a stable code and a doc page. They should share **one**
+internal-error code and be told apart by a **source-location reference**, which
+is exactly the mechanism the compiler already has:
 
-- **`H1xxx` — user-facing.** The caller supplied input the host cannot process;
-  the user can act on it.
-- **`H9xxx` — internal / contract violation.** A frontend↔WASM contract
-  violation or an internal failure that should never reach an end user.
+- `P9998 InternalError` — "Internal error indicating a bug in the compiler".
+- `Diagnostic::internal_error(file, line)` stamps `file#Lline` into
+  `source_file`/`source_line`, surfaced across the boundary as
+  `compiler_file`/`compiler_line` and ranked on the existing P9xxx path.
 
-### Assignments
-
-| Code  | Name                  | Class    | Site(s) in `lib.rs`                                   |
-|-------|-----------------------|----------|------------------------------------------------------|
-| H1001 | InvalidBase64         | user     | `run_inner` base64 decode failure                    |
-| H1002 | InvalidContainer      | user     | `run_bytes` container read (user-supplied `.iplc`)   |
-| H9001 | BytecodeLoadFailed    | internal | `load_program_inner` + `step_inner` container read of host-produced bytes |
-| H9002 | NoProgramLoaded       | internal | `step_inner` with no session                         |
-| H9003 | SessionFaulted        | internal | `step_inner` after a fault                           |
-| H9004 | SerializationError    | internal | serde-to-JSON fallback in every `#[wasm_bindgen]` entry point (incl. the `compile` fallback that currently uses the `"INTERNAL"` pseudo-code) |
-| H9005 | BytecodeSerializeFailed | internal | `compile_inner` `container.write_to` failure (currently `"INTERNAL"`) |
-
-The undocumented `"INTERNAL"` pseudo-code is removed entirely so the taxonomy is
-complete.
+So the whole `H####` family is dropped and every host illegal state reuses
+`P9998`, carrying the WASM host `file`/`line` of the call site.
 
 ## Architecture
 
-- New `compiler/playground/resources/problem-codes.csv` (`Code,Name,Message`),
-  same shape as the vm-cli I/O-code CSV.
-- New `compiler/playground/build.rs` generating `host_codes.rs` with
-  `pub const <SCREAMING_SNAKE>: &str = "H####";` constants (PascalCase→SNAKE, as
-  vm-cli does). Included via a `host_codes` module in `lib.rs`.
-- `lib.rs` populates `RunError.code` / `DiagnosticInfo.code` at each site using
-  the generated constants.
-- Docs: new `reference/playground/` section (`index`, `problems/index` with
-  `.. problem-index:: H`, and one page per code). `ironplc_problemcode.py` learns
-  the `playground` section + `H` prefix.
-- Front end: `renderDiagnostics` gains an `H####` → `playground` section link and
-  drops the empty-code special-case; `RunError.code` is now always present.
+- **No new family**: no CSV, no `build.rs`, no docs section, no new `docs_section`
+  / `sectionForCode` / `renderDiagnostics` arms. `P9998` already maps to the
+  `compiler` docs section everywhere.
+- Two `#[track_caller]` helpers in `lib.rs`:
+  - `internal_run_error(message) -> RunError` — for the run/step path.
+  - `internal_diagnostic(message) -> DiagnosticInfo` — for the compile path.
+  Both derive the code from `Diagnostic::internal_error(loc.file(), loc.line())`
+  (no hard-coded `"P9998"`) and record the location.
+- `RunError` gains `compiler_file` / `compiler_line` (mirroring `DiagnosticInfo`)
+  so runtime internal errors rank by location like compile-time ones; VM-trap
+  literals fill them via `..Default::default()`.
+- Front end: `RunError` type + `runErrorToDiagnostic` carry the location through;
+  the empty-code special-case in `renderDiagnostics` is dropped (every error now
+  carries a code). This is the one surviving piece of #1201.
 
 ## File map
 
-- create `compiler/playground/resources/problem-codes.csv`
-- create `compiler/playground/build.rs`
-- modify `compiler/playground/Cargo.toml` (`[build-dependencies] csv`)
-- modify `compiler/playground/src/lib.rs`
-- create `docs/reference/playground/index.rst`
-- create `docs/reference/playground/problems/index.rst`
-- create `docs/reference/playground/problems/H1001.rst` … `H9005.rst`
-- modify `docs/reference/index.rst` (add Playground to toctree)
-- modify `docs/extensions/ironplc_problemcode.py` (section + prefix)
-- modify `playground/src/app.ts` (`renderDiagnostics`)
+- modify `compiler/playground/src/lib.rs` (helpers + all seven sites + tests)
+- modify `playground/src/app.ts` (`runErrorToDiagnostic`, `renderDiagnostics`)
+- modify `playground/src/types/messages.d.ts` (`RunError` location fields)
 
-## Tasks
-
-- [ ] Commit this plan
-- [ ] Add CSV + build.rs + Cargo build-dep
-- [ ] Wire generated constants into `lib.rs` at every error site
-- [ ] Add lib.rs tests asserting each host error carries its code
-- [ ] Create docs section, index, and per-code pages
-- [ ] Update `ironplc_problemcode.py` and `reference/index.rst`
-- [ ] Update `renderDiagnostics` (add H link, drop empty-code case)
-- [ ] `cd compiler && just` + docs build green; commit and push
+(The earlier `H####` scaffolding — CSV, `build.rs`, `docs/reference/playground/`,
+and the `H`/`playground` arms in `docs_section`, `sectionForCode`, the Sphinx
+extension, and `renderDiagnostics` — is reverted.)
 
 ## Validation
 
 - `cd compiler && just` (build, coverage ≥85%, clippy, fmt)
-- `cd docs && just ci` (Sphinx `-W -n`, thin-page check)
+- `cd docs && just ci` (Sphinx `-W -n`)
+- VS Code extension `just ci` (unit tests, lint)

@@ -1,8 +1,0 @@
-Code,Name,Message
-H1001,InvalidBase64,Bytecode input is not valid base64
-H1002,InvalidContainer,Bytecode container could not be decoded
-H9001,BytecodeLoadFailed,Internal error decoding freshly compiled bytecode
-H9002,NoProgramLoaded,step was called before load_program
-H9003,SessionFaulted,step was called after a fault without reset_session
-H9004,SerializationError,Internal error serializing the result to JSON
-H9005,BytecodeSerializeFailed,Internal error serializing compiled bytecode

@@ -6,7 +6,7 @@
 
 /**
  * The www.ironplc.com reference section a problem code documents into:
- * `P####` → compiler, `V####` → runtime, `E####` → editor, `H####` → playground.
+ * `P####` → compiler, `V####` → runtime, `E####` → editor.
  *
  * Returns `'unknown'` for any unrecognized prefix rather than guessing a
  * section, so a new code family produces an honest 404 instead of a
@@ -21,8 +21,6 @@ function sectionForCode(code: string): string {
       return 'runtime';
     case 'E':
       return 'editor';
-    case 'H':
-      return 'playground';
     default:
       return 'unknown';
   }

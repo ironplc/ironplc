@@ -377,7 +377,6 @@ pub fn docs_section(code: &str) -> &'static str {
         Some('P') => "compiler",
         Some('V') => "runtime",
         Some('E') => "editor",
-        Some('H') => "playground",
         _ => "unknown",
     }
 }
@@ -510,7 +509,6 @@ mod tests {
         assert_eq!(docs_section("P0001"), "compiler");
         assert_eq!(docs_section("V6008"), "runtime");
         assert_eq!(docs_section("E0001"), "editor");
-        assert_eq!(docs_section("H1001"), "playground");
     }
 
     #[test]

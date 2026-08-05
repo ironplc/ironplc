@@ -231,16 +231,21 @@ function markModified(): void {
   registerSuper({ program_modified: true });
 }
 
-// A runtime failure (a VM trap, or an infrastructure error like a decode
-// failure) carries the same message/code shape as a compiler diagnostic, so
-// present it as one. Runtime errors have no source location, so the line/column
-// fields are 0 — renderDiagnostics omits the location line when they are.
+// A runtime failure (a VM trap, or a host illegal state like a decode failure)
+// carries the same message/code shape as a compiler diagnostic, so present it as
+// one. Runtime errors have no *program* source location, so the line/column
+// fields are 0 — renderDiagnostics omits the location line when they are. A host
+// illegal state (P9998) instead carries the WASM host's own file/line in
+// compiler_file/compiler_line, exactly as a P9xxx compiler diagnostic does, so
+// it ranks by location on the same reporting path.
 function runErrorToDiagnostic(error: RunError): Diagnostic {
   return {
     code: error.code ?? "",
     message: error.message,
     start_line: 0,
     start_column: 0,
+    compiler_file: error.compiler_file,
+    compiler_line: error.compiler_line,
   };
 }
 
@@ -985,17 +990,16 @@ function renderDiagnostics(diagnostics: Diagnostic[]): void {
     // Every diagnostic — compiler, VM trap, or host/embedding-layer error —
     // now carries a code, so the chip always renders.
     const code = escapeHtml(d.code);
-    // P#### are compiler problems, V#### are runtime (VM) problems, and H####
-    // are host/embedding-layer errors; each has a documentation page under a
-    // different section of the reference site. Codes outside these families
-    // render as plain, unlinked chips.
+    // P#### are compiler problems and V#### are runtime (VM) problems; each has
+    // a documentation page under a different section of the reference site.
+    // Host/embedding-layer illegal states reuse the P9998 internal-error code,
+    // so they link to the compiler section like any other P####. Codes outside
+    // these families render as plain, unlinked chips.
     const section = /^P\d{4}$/.test(d.code)
       ? "compiler"
       : /^V\d{4}$/.test(d.code)
         ? "runtime"
-        : /^H\d{4}$/.test(d.code)
-          ? "playground"
-          : null;
+        : null;
     if (section) {
       // channel=playground attributes the arrival to the playground; version
       // stays for the out-of-date banner in docs/_static/version-check.js.
