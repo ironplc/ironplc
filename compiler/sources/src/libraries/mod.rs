@@ -69,11 +69,28 @@ impl LibraryRegistry {
 
     /// Whether a library with this exact, case-sensitive name is bundled.
     pub fn contains(&self, name: &str) -> bool {
-        self.manifest_path(name).is_file()
+        self.has_exact_dir(name) && self.manifest_path(name).is_file()
     }
 
     fn manifest_path(&self, name: &str) -> PathBuf {
         self.root.join(name).join("library.toml")
+    }
+
+    /// Whether an immediate subdirectory named exactly (byte-for-byte) `name`
+    /// exists under the registry root.
+    ///
+    /// Name matching must be strict and case-sensitive (`REQ-CL-sources-003`),
+    /// but `Path::is_file`/`is_dir` resolve case-insensitively on macOS (APFS)
+    /// and Windows, so `tc2_math` would match a `Tc2_Math` directory there.
+    /// Confirming the real on-disk entry name makes the match case-sensitive on
+    /// every platform.
+    fn has_exact_dir(&self, name: &str) -> bool {
+        match fs::read_dir(&self.root) {
+            Ok(entries) => entries
+                .filter_map(Result::ok)
+                .any(|entry| entry.file_name().to_str() == Some(name) && entry.path().is_dir()),
+            Err(_) => false,
+        }
     }
 
     /// Load a bundled library by its exact, case-sensitive name.
@@ -88,7 +105,10 @@ impl LibraryRegistry {
         let manifest_path = self.manifest_path(name);
         let manifest_file_id = FileId::from_path(&manifest_path);
 
-        if !manifest_path.is_file() {
+        // Strict, case-sensitive name match (`REQ-CL-sources-003`): the exact
+        // directory-entry check guards against case-insensitive filesystems
+        // that would otherwise bind e.g. `tc2_math` to `Tc2_Math`.
+        if !self.has_exact_dir(name) || !manifest_path.is_file() {
             return Err(Diagnostic::problem(
                 Problem::LibraryNotFound,
                 Label::file(
