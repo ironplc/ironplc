@@ -28,7 +28,8 @@ Supported Dialects
    :doc:`REF </reference/language/data-types/derived/reference-types>`, and
    :doc:`NULL </reference/language/data-types/derived/reference-types>`. No extensions.
 
-   **Enables:** Edition 3 keywords, plus ``--allow-partial-access-syntax``.
+   **Enables:** ``--allow-long-time-types`` and ``--allow-ref-to`` (the
+   Edition 3 keywords), plus ``--allow-partial-access-syntax``.
 
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
@@ -192,10 +193,21 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    Required for OSCAT compatibility where ``TIME()`` reads the PLC system
    clock.
 
+``--allow-long-time-types``
+   Allow the IEC 61131-3:2013 long-time-type keywords
+   :doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDATE </reference/language/data-types/elementary/ldate>`,
+   :doc:`LTIME_OF_DAY </reference/language/data-types/elementary/ltime-of-day>`
+   (``LTOD``), and
+   :doc:`LDATE_AND_TIME </reference/language/data-types/elementary/ldate-and-time>`
+   (``LDT``). Without this flag those words remain available as ordinary
+   identifiers, so Edition 2 code may use them as names.
+
 ``--allow-ref-to``
-   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
-   Edition 3. This is useful when you need references but want to keep
-   Edition 2 keyword handling for the rest of your code. See
+   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax (standardized in
+   IEC 61131-3:2013) without enabling the rest of Edition 3. This is useful
+   when you need references but want to keep Edition 2 keyword handling for the
+   rest of your code. See
    :doc:`/reference/language/data-types/derived/reference-types`.
 
 ``--allow-reference-to``
