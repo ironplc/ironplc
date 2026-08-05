@@ -34,10 +34,10 @@ library, containing a `library.toml` manifest and one subdirectory per version,
 each named by the version and holding that version's `.st` declaration files:
 
 ```
-Tc2_Math/
+Tc2_System/
 ├── library.toml
 └── 1.0.0/
-    └── Tc2_Math.st        # one or more .st files
+    └── Tc2_System.st        # one or more .st files
 ```
 
 The directory name is the library's identity — what a project reference or
@@ -50,7 +50,7 @@ The directory name is the library's identity — what a project reference or
 
 | Requirement | Field | Type | Required | Meaning |
 |-------------|-------|------|----------|---------|
-| **REQ-LF-sources-002** | `name` | string | yes | Library identity; equals the directory name and the vendor library name (e.g. `Tc2_Math`). |
+| **REQ-LF-sources-002** | `name` | string | yes | Library identity; equals the directory name and the vendor library name (e.g. `Tc2_System`). |
 | | `vendor` | string | yes | Whose interface the library mirrors (e.g. `Beckhoff Automation GmbH`), or `IronPLC` for own libraries. Nominative — see *Non-affiliation*. |
 | | `default_version` | string | yes | The version used when a reference does not pin one; names one of the version subdirectories. |
 | **REQ-LF-sources-004** | `references` | array of string | yes | The **public references** the library was authored from — documentation URLs/citations. Facts, not a legal judgment. Non-empty. |
@@ -58,11 +58,11 @@ The directory name is the library's identity — what a project reference or
 Example:
 
 ```toml
-name = "Tc2_Math"
+name = "Tc2_System"
 vendor = "Beckhoff Automation GmbH"
 default_version = "1.0.0"
 references = [
-  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/ — Global constants",
+  "https://infosys.beckhoff.com/english.php?content=../content/1033/tcplclib_tc2_system/31084171.html&id= — PI global constant",
 ]
 ```
 
@@ -70,7 +70,7 @@ references = [
 
 Declarations are IEC 61131-3 Structured Text in the `.st` files under a version's
 subdirectory. In the first increment every declaration is fully defined ST — for
-`Tc2_Math`, `PI` is a `VAR_GLOBAL CONSTANT`.
+`Tc2_System`, `PI` is a `VAR_GLOBAL CONSTANT`.
 
 ## Versioning
 

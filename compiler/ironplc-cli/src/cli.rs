@@ -24,6 +24,7 @@ use std::{
 
 use ironplc_dsl::common::Library;
 use ironplc_parser::options::CompilerOptions;
+use ironplc_sources::LibraryName;
 
 use ironplc_project::tokenizer;
 use ironplc_project::{FileBackedProject, Project};
@@ -32,9 +33,10 @@ use ironplc_project::{FileBackedProject, Project};
 pub fn check(
     paths: &[PathBuf],
     compiler_options: CompilerOptions,
+    libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<(), String> {
-    let mut project = create_project(paths, compiler_options, suppress_output)?;
+    let mut project = create_project(paths, compiler_options, libraries, suppress_output)?;
 
     // Analyze the set
     if let Err(err) = project.semantic() {
@@ -51,7 +53,8 @@ pub fn echo(
     compiler_options: CompilerOptions,
     suppress_output: bool,
 ) -> Result<(), String> {
-    let mut project = create_project(paths, compiler_options, suppress_output)?;
+    // Echo renders parsed source; it runs no analysis, so no library activation.
+    let mut project = create_project(paths, compiler_options, &[], suppress_output)?;
 
     // Collect the results and output after because getting the results may change
     // the project itself
@@ -95,7 +98,8 @@ pub fn tokenize(
     compiler_options: CompilerOptions,
     suppress_output: bool,
 ) -> Result<(), String> {
-    let project = create_project(paths, compiler_options, suppress_output)?;
+    // Tokenize only lexes each source; library activation is irrelevant here.
+    let project = create_project(paths, compiler_options, &[], suppress_output)?;
 
     for src in project.sources() {
         tokenizer::tokenize_source(src, &project, suppress_output, &handle_diagnostics)?;
@@ -112,9 +116,10 @@ pub fn compile(
     paths: &[PathBuf],
     output: &Path,
     compiler_options: CompilerOptions,
+    libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<(), String> {
-    let mut project = create_project(paths, compiler_options, suppress_output)?;
+    let mut project = create_project(paths, compiler_options, libraries, suppress_output)?;
 
     // Refuse to write the container over a loaded source file. `File::create`
     // truncates immediately, so this must run before any output is opened to
@@ -143,10 +148,24 @@ pub fn compile(
         }
     }
 
+    // Load any activated compatibility libraries and inject them ahead of user
+    // source (base stdlib -> library -> user), so their declarations resolve
+    // under their exact vendor names. A library that fails to load (unshipped
+    // name or malformed manifest) is a hard error for compilation.
+    let (compat_libraries, compat_diagnostics) = project.load_activated_libraries();
+    if !compat_diagnostics.is_empty() {
+        handle_diagnostics(&compat_diagnostics, Some(&project), suppress_output);
+        return Err(String::from("Error activating compatibility libraries"));
+    }
+    let analyze_input: Vec<&Library> = compat_libraries
+        .iter()
+        .chain(std::iter::once(&combined))
+        .collect();
+
     // Run full analysis: type resolution + semantic checks (e.g. undeclared
     // function calls, type mismatches). This must happen before codegen so
     // that semantic errors are reported with proper problem codes.
-    let (analyzed, context) = ironplc_analyzer::stages::analyze(&[&combined], &compiler_options)
+    let (analyzed, context) = ironplc_analyzer::stages::analyze(&analyze_input, &compiler_options)
         .map_err(|errs| {
             handle_diagnostics(&errs, Some(&project), suppress_output);
             String::from("Error during analysis")
@@ -207,15 +226,25 @@ impl ironplc_codegen::SourceLookup for HashMapSourceLookup {
 fn create_project(
     paths: &[PathBuf],
     compiler_options: CompilerOptions,
+    libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<FileBackedProject, String> {
     trace!("Reading paths {paths:?}");
     let mut files: Vec<PathBuf> = vec![];
+    // Explicit `--library` activation, plus any libraries discovered project
+    // files reference. The explicit set is applied first so it takes
+    // precedence in ordering; discovered libraries are appended, deduplicated.
+    let mut activated_libraries: Vec<LibraryName> = libraries.to_vec();
     let mut had_error = false;
 
     for path in paths {
-        let (mut resolved, diagnostics) = enumerate_files(path);
+        let (mut resolved, discovered_libraries, diagnostics) = enumerate_files(path);
         files.append(&mut resolved);
+        for library in discovered_libraries {
+            if !activated_libraries.contains(&library) {
+                activated_libraries.push(library);
+            }
+        }
         if !diagnostics.is_empty() {
             handle_diagnostics(&diagnostics, None, suppress_output);
             had_error = true;
@@ -224,6 +253,7 @@ fn create_project(
 
     // Create the project
     let mut project = FileBackedProject::with_options(compiler_options);
+    project.set_activated_libraries(activated_libraries);
     let mut errors: Vec<Diagnostic> = vec![];
 
     for file_path in files {
@@ -260,12 +290,13 @@ fn create_project(
 /// files DID resolve, rather than aborting enumeration entirely -- but
 /// they are still genuine errors: the caller must still fail the overall
 /// command if this returns any diagnostics.
-fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<Diagnostic>) {
+fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagnostic>) {
     // Get the canonical path so that error messages are unambiguous
     let path = match canonicalize(path) {
         Ok(path) => path,
         Err(e) => {
             return (
+                vec![],
                 vec![],
                 diagnostic(
                     Problem::CannotCanonicalizePath,
@@ -282,26 +313,38 @@ fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<Diagnostic>) {
         Err(e) => {
             return (
                 vec![],
+                vec![],
                 diagnostic(Problem::CannotReadMetadata, &path, e.to_string()),
             );
         }
     };
     if metadata.is_dir() {
         return match ironplc_sources::discovery::discover(&path) {
-            Ok(project) => (project.files, project.errors),
-            Err(e) => (vec![], vec![e]),
+            Ok(project) => {
+                // Auto-activate the libraries a discovered project file
+                // references, alongside any files it declares. Referenced but
+                // unshipped libraries contribute a diagnostic naming them.
+                let (libraries, library_diagnostics) =
+                    ironplc_sources::libraries::LibraryRegistry::bundled()
+                        .resolve_references(&project.library_references);
+                let mut diagnostics = project.errors;
+                diagnostics.extend(library_diagnostics);
+                (project.files, libraries, diagnostics)
+            }
+            Err(e) => (vec![], vec![], vec![e]),
         };
     }
     if metadata.is_file() {
-        return (vec![path.to_path_buf()], vec![]);
+        return (vec![path.to_path_buf()], vec![], vec![]);
     }
     if metadata.is_symlink() {
         return (
             vec![],
+            vec![],
             diagnostic(Problem::SymlinkUnsupported, &path, String::from("")),
         );
     }
-    (vec![], vec![])
+    (vec![], vec![], vec![])
 }
 
 /// Converts an IronPLC diagnostic into the
@@ -463,7 +506,7 @@ mod tests {
     #[test]
     fn check_first_steps_when_invalid_syntax_then_error() {
         let paths = vec![shared_resource_path("first_steps_semantic_error.st")];
-        let result = check(&paths, CompilerOptions::default(), true);
+        let result = check(&paths, CompilerOptions::default(), &[], true);
         assert!(result.is_err())
     }
 
@@ -490,14 +533,14 @@ mod tests {
     #[test]
     fn check_first_steps_when_valid_syntax_then_ok() {
         let paths = vec![shared_resource_path("first_steps.st")];
-        let result = check(&paths, CompilerOptions::default(), true);
+        let result = check(&paths, CompilerOptions::default(), &[], true);
         assert!(result.is_ok())
     }
 
     #[test]
     fn check_first_steps_dir_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("set")];
-        let result = check(&paths, CompilerOptions::default(), true);
+        let result = check(&paths, CompilerOptions::default(), &[], true);
         assert!(result.is_ok())
     }
 
@@ -519,7 +562,7 @@ mod tests {
         .unwrap();
 
         let paths = vec![dir.path().to_path_buf()];
-        let result = check(&paths, CompilerOptions::default(), true);
+        let result = check(&paths, CompilerOptions::default(), &[], true);
         assert!(result.is_err())
     }
 
@@ -542,14 +585,14 @@ mod tests {
         .unwrap();
 
         let paths = vec![dir.path().to_path_buf()];
-        let result = check(&paths, CompilerOptions::default(), true);
+        let result = check(&paths, CompilerOptions::default(), &[], true);
         assert!(result.is_err())
     }
 
     #[test]
     fn echo_first_steps_when_invalid_syntax_then_error() {
         let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
-        let result = check(&paths, CompilerOptions::default(), true);
+        let result = check(&paths, CompilerOptions::default(), &[], true);
         assert!(result.is_err())
     }
 
@@ -578,7 +621,7 @@ mod tests {
     fn compile_when_steel_thread_then_creates_output() {
         let paths = vec![shared_resource_path("steel_thread.st")];
         let output = tempfile::NamedTempFile::new().unwrap();
-        let result = compile(&paths, output.path(), CompilerOptions::default(), true);
+        let result = compile(&paths, output.path(), CompilerOptions::default(), &[], true);
         assert!(result.is_ok());
         assert!(output.path().metadata().unwrap().len() > 0);
     }
@@ -587,7 +630,7 @@ mod tests {
     fn compile_when_syntax_error_then_error() {
         let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
         let output = tempfile::NamedTempFile::new().unwrap();
-        let result = compile(&paths, output.path(), CompilerOptions::default(), true);
+        let result = compile(&paths, output.path(), CompilerOptions::default(), &[], true);
         assert!(result.is_err());
     }
 
@@ -595,7 +638,7 @@ mod tests {
     fn compile_when_output_is_valid_container_then_roundtrips() {
         let paths = vec![shared_resource_path("steel_thread.st")];
         let output = tempfile::NamedTempFile::new().unwrap();
-        compile(&paths, output.path(), CompilerOptions::default(), true).unwrap();
+        compile(&paths, output.path(), CompilerOptions::default(), &[], true).unwrap();
 
         // Verify the output is a valid container by reading it back
         let mut file = std::fs::File::open(output.path()).unwrap();
@@ -635,6 +678,7 @@ mod tests {
             &[source.path().to_path_buf()],
             output.path(),
             CompilerOptions::default(),
+            &[],
             true,
         );
         assert!(result.is_err());

@@ -12,7 +12,7 @@ auditable record* rather than an unprovable claim.
 ## Applies To
 
 Anyone — human or AI — adding or modifying a bundled compatibility library under
-`compiler/sources/resources/compat-libraries/`. See the design in
+`compiler/sources/resources/libs/`. See the design in
 [specs/design/compatibility-libraries.md](../design/compatibility-libraries.md).
 
 ## Why This Exists

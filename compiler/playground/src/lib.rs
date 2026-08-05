@@ -1152,6 +1152,14 @@ pub fn reset_session() -> String {
     r#"{"ok":true}"#.to_string()
 }
 
+// Spec conformance testing infrastructure (test-only).
+#[cfg(test)]
+mod spec_requirements {
+    include!(concat!(env!("OUT_DIR"), "/spec_requirements.rs"));
+}
+#[cfg(test)]
+mod spec_conformance;
+
 #[cfg(test)]
 mod tests {
     use super::*;

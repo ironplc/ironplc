@@ -205,7 +205,7 @@ pub enum TokenType {
 
     // Function-block inheritance syntax. Demoted to
     // Identifier unless `allow_fb_inheritance` is set — see
-    // xform_demote_oop_keywords.rs.
+    // xform_demote_keywords.rs.
     #[token("EXTENDS", ignore(case))]
     Extends,
     #[token("IMPLEMENTS", ignore(case))]
@@ -452,7 +452,7 @@ pub enum TokenType {
     And,
     // CODESYS/TwinCAT short-circuit boolean operator (Beckhoff/CODESYS
     // origin). Demoted to Identifier unless `allow_short_circuit_operators`
-    // is set -- see xform_demote_short_circuit_operators.rs.
+    // is set -- see xform_demote_keywords.rs.
     #[token("AND_THEN", ignore(case))]
     AndThen,
     #[token("=")]

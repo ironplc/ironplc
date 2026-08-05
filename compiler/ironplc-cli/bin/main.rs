@@ -6,6 +6,7 @@ use ironplc_cli::cli;
 use ironplc_cli::logger;
 use ironplc_cli::lsp;
 use ironplc_parser::options::{describe_dialects, CompilerOptions, Dialect};
+use ironplc_sources::LibraryName;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -242,6 +243,15 @@ enum Action {
     Check {
         #[command(flatten)]
         file_args: FileArgs,
+
+        /// Activate a compatibility library by name (repeatable), e.g.
+        /// `--library Tc2_System`. Activation injects the library's declarations
+        /// (such as the TwinCAT `PI` constant) so they resolve under their
+        /// exact vendor names. Use for source that has no project context; a
+        /// discovered project file activates its referenced libraries
+        /// automatically.
+        #[arg(long = "library")]
+        libraries: Vec<LibraryName>,
     },
     /// Compiles source files into a bytecode container (.iplc) file.
     ///
@@ -254,6 +264,11 @@ enum Action {
         /// Output file path for the compiled bytecode container (.iplc).
         #[arg(short, long)]
         output: PathBuf,
+
+        /// Activate a compatibility library by name (repeatable), e.g.
+        /// `--library Tc2_System`. See `check --library`.
+        #[arg(long = "library")]
+        libraries: Vec<LibraryName>,
     },
     /// The echo action reads (parses) the libraries and writes the context to the
     /// standard output.
@@ -292,13 +307,24 @@ pub fn main() -> Result<(), String> {
 
     match args.action {
         Action::Lsp { stdio: _ } => lsp::start(),
-        Action::Check { file_args } => {
-            cli::check(&file_args.files, file_args.compiler_options(), false)
-        }
-        Action::Compile { file_args, output } => cli::compile(
+        Action::Check {
+            file_args,
+            libraries,
+        } => cli::check(
+            &file_args.files,
+            file_args.compiler_options(),
+            &libraries,
+            false,
+        ),
+        Action::Compile {
+            file_args,
+            output,
+            libraries,
+        } => cli::compile(
             &file_args.files,
             &output,
             file_args.compiler_options(),
+            &libraries,
             false,
         ),
         Action::Echo { file_args } => {

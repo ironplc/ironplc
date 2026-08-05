@@ -1,0 +1,10 @@
+name = "Tc2_System"
+vendor = "Beckhoff Automation GmbH"
+default_version = "1.0.0"
+# `PI` mirrors the TwinCAT Tc2_System global constant of the same name. Its
+# value is the mathematical constant pi -- a Tier A, math-dictated fact rather
+# than a copied expression -- authored to LREAL precision. See the authoring
+# policy at specs/steering/compatibility-library-authoring.md.
+references = [
+  "https://infosys.beckhoff.com/english.php?content=../content/1033/tcplclib_tc2_system/31084171.html&id= -- TwinCAT Tc2_System PLC library: PI global constant",
+]
