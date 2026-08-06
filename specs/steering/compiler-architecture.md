@@ -106,18 +106,33 @@ use ironplc_vm::Vm;
 
 #### Codegen crate (`compiler/codegen/tests/`)
 
-Two layers of external tests — bytecode-level and end-to-end:
+Codegen behavior is tested **end-to-end** (parse → compile → VM run → check
+variable values). A wrong opcode, offset, or layout produces a wrong runtime
+result, which the end-to-end test catches — so a separate per-operator bytecode
+test is redundant for *behavior*.
 
 | File pattern | Purpose | Example |
 |---|---|---|
-| `compile_<op>.rs` | Bytecode assertions (parse → compile → inspect bytecode) | `compile_add.rs`, `compile_mul.rs` |
-| `end_to_end_<op>.rs` | Runtime assertions (parse → compile → VM run → check variable values) | `end_to_end_add.rs`, `end_to_end_div.rs` |
+| `end_to_end_<op>.rs` | Runtime assertions — the primary behavioral layer | `end_to_end_add.rs`, `end_to_end_div.rs` |
 | `end_to_end.rs` | General infrastructure tests (assignment, scan behavior) | — |
+| `wire_format.rs` | **Backwards-compatibility guard**: pins every opcode's byte value + a completeness test | — |
+| `compile_<op>.rs` | Bytecode assertions — **only for structure end-to-end cannot localize** (jump/branch offsets, struct/array/frame offsets, operand widths, peephole) | `compile_loops.rs`, `compile_struct.rs`, `compile_array.rs` |
 | `common/mod.rs` | Shared helpers (`parse`, `parse_and_run`, `VmBuffers`) | — |
 
-Template for a new bytecode test file:
+**The one thing end-to-end cannot catch is a consistent opcode *renumber*** (the
+compiler emits and the VM reads the new value, so a from-source compile+run still
+passes) — that would silently break already-compiled `.iplc` containers.
+`wire_format.rs` is the single canonical guard: it pins every opcode's byte value
+and has a completeness test (backed by `container::opcode::is_assigned`) that fails
+if an opcode is added, removed, or renumbered without updating the pins. Do **not**
+add per-operator `compile_<op>.rs` files just to assert "the right opcode was
+emitted" — that is covered by `end_to_end_<op>.rs` + `wire_format.rs`. Add a
+`compile_<op>.rs` only when you need to pin *structure* (offsets/widths/peephole).
+
+Template for a structural bytecode test file:
 ```rust
-//! Bytecode-level integration tests for the <OP> operator compilation.
+//! Bytecode-level integration tests for <OP> — structure only
+//! (offsets/widths/peephole). Behavior is covered by end_to_end_<op>.rs.
 mod common;
 use common::parse;
 use ironplc_codegen::compile;

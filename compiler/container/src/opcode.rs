@@ -827,7 +827,24 @@ pub mod cmp_op {
 /// the emitter and the optimizer. Keeping one function prevents the two from
 /// diverging and producing misaligned instruction boundaries.
 pub fn instruction_size(op: Opcode) -> usize {
-    match op {
+    // Unassigned bytes advance by 1 so disassembly cannot get stuck.
+    instruction_size_opt(op).unwrap_or(1)
+}
+
+/// Returns `true` iff `op` is an assigned opcode with a defined encoding.
+///
+/// Derived from [`instruction_size_opt`] so it stays exhaustive automatically:
+/// a new opcode added there is immediately recognized here and by the
+/// wire-format completeness guard in `codegen/tests/it/wire_format.rs`, which
+/// fails until the new opcode's byte value is pinned.
+pub fn is_assigned(op: Opcode) -> bool {
+    instruction_size_opt(op).is_some()
+}
+
+/// Byte size of the instruction starting with `op`, or `None` for an unassigned
+/// byte. This match is the single enumeration of the opcode space.
+fn instruction_size_opt(op: Opcode) -> Option<usize> {
+    Some(match op {
         // 1-byte: arithmetic, logic, comparison, unary, stack, control.
         ADD_I32 | SUB_I32 | MUL_I32 | DIV_I32 | MOD_I32 | NEG_I32 | ADD_I64 | SUB_I64 | MUL_I64
         | DIV_I64 | MOD_I64 | NEG_I64 | DIV_U32 | MOD_U32 | DIV_U64 | MOD_U64 | ADD_F32
@@ -865,9 +882,9 @@ pub fn instruction_size(op: Opcode) -> usize {
         // 9-byte: opcode + u32 + u32.
         FIND_STR | REPLACE_STR | INSERT_STR | CONCAT_STR => 9,
 
-        // Unknown: advance by 1 byte to avoid infinite loops.
-        _ => 1,
-    }
+        // Unassigned byte.
+        _ => return None,
+    })
 }
 
 /// Built-in function IDs used with the BUILTIN opcode.
