@@ -5,9 +5,12 @@
 VAR_INPUT
     degrees : LREAL;
 END_VAR
+VAR CONSTANT
+    d2r : LREAL := PI/180.0;
+END_VAR
 ]]></Declaration>
     <Implementation>
-      <ST><![CDATA[F_DegreesToRadians := degrees * PI / 180.0;]]></ST>
+      <ST><![CDATA[F_DegreesToRadians := degrees * d2r;]]></ST>
     </Implementation>
   </POU>
 </TcPlcObject>

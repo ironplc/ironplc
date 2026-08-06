@@ -64,11 +64,23 @@ TurntableSolution/
       MAIN.TcPOU                          (PROGRAM calling the function)
 ```
 
-The function uses `PI` in a statement body (`degrees * PI / 180.0`) — the same
-unit-conversion shape as the issue's example, authored independently. Using it
-in a body rather than an initializer keeps the fixture valid under the plain
-`twincat` dialect (which does not enable
-`allow_constant_initializer_expressions`).
+The function mirrors the load-bearing shape of the issue's real project — a
+`VAR CONSTANT` initializer `d2r : LREAL := PI/180.0;` — with independently
+authored logic. This exercises `PI` resolving *and folding* in a constant
+expression, the exact worked example the design doc uses.
+
+The tests pass `--dialect codesys`, the invocation from the issue, not
+`--dialect twincat`: the `twincat` dialect does not (yet) enable
+`allow_constant_initializer_expressions`, so the real-world initializer form
+fails with P4037 under it before the library mechanism is reached. Verified
+against the actual `PiExample_sln` project from the issue: it checks clean
+under `--dialect codesys` and fails under `--dialect twincat` with P4037
+followed by a P9998 internal error from
+`rule_var_decl_const_initialized.rs` (the rule assumes
+`xform_fold_initializer_expressions` always normalizes `SimpleExpr`
+initializers, but the transform leaves them unfolded when it rejects with
+P4037). Both the dialect gap and the P9998 are pre-existing findings tracked
+separately, not addressed by this plan.
 
 ### 2. Tests in `compiler/ironplc-cli/tests/cli.rs`
 
