@@ -284,12 +284,6 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
 /// (`REQ-CL-sources-001`), so `PI` must resolve and fold in the constant
 /// initializer (`REQ-CL-analyzer-003`) with no `--library` flag — activation
 /// comes from the project file alone.
-///
-/// The dialect is `codesys` — the invocation from issue #1199 — rather than
-/// `twincat`, because the `twincat` dialect does not (yet) enable
-/// `allow_constant_initializer_expressions`, so the real-world `PI/180.0`
-/// initializer would fail with P4037 before the library mechanism is even
-/// exercised.
 #[test]
 fn check_when_twincat_solution_references_tc2_system_then_ok(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -297,7 +291,7 @@ fn check_when_twincat_solution_references_tc2_system_then_ok(
 
     cmd.arg("check")
         .arg("--dialect")
-        .arg("codesys")
+        .arg("twincat")
         .arg(path_to_test_resource("twincat_tc2_system_solution"));
     cmd.assert().success().stdout(predicate::str::is_empty());
 
@@ -305,10 +299,11 @@ fn check_when_twincat_solution_references_tc2_system_then_ok(
 }
 
 /// Negative control for the test above: the identical solution with the
-/// `<PlaceholderReference>` removed from the `.plcproj` must fail to resolve
-/// `PI` (P4007). Libraries are dormant by default (`REQ-CL-analyzer-001`), so
-/// this proves the passing test passes *because of* the library reference,
-/// not because `PI` is a compiler builtin.
+/// `<PlaceholderReference>` removed from the `.plcproj` must fail — the
+/// `PI/180.0` initializer no longer reduces to a constant (P4038) because
+/// `PI` is unknown. Libraries are dormant by default
+/// (`REQ-CL-analyzer-001`), so this proves the passing test passes *because
+/// of* the library reference, not because `PI` is a compiler builtin.
 #[test]
 fn check_when_twincat_solution_library_reference_removed_then_pi_undefined(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -341,11 +336,11 @@ fn check_when_twincat_solution_library_reference_removed_then_pi_undefined(
 
     cmd.arg("check")
         .arg("--dialect")
-        .arg("codesys")
+        .arg("twincat")
         .arg(temp.path());
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("P4007").and(predicate::str::contains("PI")));
+        .stderr(predicate::str::contains("P4038").and(predicate::str::contains("PI")));
 
     Ok(())
 }
