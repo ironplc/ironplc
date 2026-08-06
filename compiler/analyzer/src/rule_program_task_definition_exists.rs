@@ -86,39 +86,24 @@ impl Visitor<Diagnostic> for RuleProgramTaskDefinitionExists {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
-    use super::*;
-
-    #[test]
-    fn apply_when_task_not_defined_then_return_error() {
-        let program = "
+    rule_err!(
+        apply_when_task_not_defined_then_return_error,
+        "
         CONFIGURATION config
             RESOURCE resource1 ON PLC
                PROGRAM plc_task_instance WITH plc_task : plc_prg;
             END_RESOURCE
-        END_CONFIGURATION";
+        END_CONFIGURATION"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_task_defined_then_return_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_task_defined_then_return_ok,
+        "
         CONFIGURATION config
             RESOURCE resource1 ON PLC
                TASK plc_task(INTERVAL := T#100ms,PRIORITY := 1);
                PROGRAM plc_task_instance WITH plc_task : plc_prg;
             END_RESOURCE
-        END_CONFIGURATION";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+        END_CONFIGURATION"
+    );
 }

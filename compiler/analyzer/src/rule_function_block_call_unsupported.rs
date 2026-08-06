@@ -102,11 +102,9 @@ END_FUNCTION_BLOCK";
         assert_eq!(diagnostics[0].code, "P9999");
     }
 
-    #[test]
-    fn apply_when_fb_member_init_then_ok() {
-        // The `:= (member := value)` member-init form is a different
-        // construct and must not be flagged by this rule.
-        let program = "
+    rule_ok!(
+        apply_when_fb_member_init_then_ok,
+        "
 FUNCTION_BLOCK FB_Comm
 VAR_INPUT
     retries : INT;
@@ -117,19 +115,12 @@ FUNCTION_BLOCK FB_Example
 VAR
     comm : FB_Comm := (retries := 3);
 END_VAR
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_bare_fb_decl_then_ok() {
-        // A bare FB instance declaration must not be flagged.
-        let program = "
+    rule_ok!(
+        apply_when_bare_fb_decl_then_ok,
+        "
 FUNCTION_BLOCK FB_Comm
 END_FUNCTION_BLOCK
 
@@ -137,12 +128,6 @@ FUNCTION_BLOCK FB_Example
 VAR
     comm : FB_Comm;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let input = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 }

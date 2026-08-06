@@ -3,12 +3,12 @@
 use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_compile, parse_and_run, VmBuffers};
+use crate::common::{parse_and_compile, VmBuffers};
 use ironplc_vm::Vm;
 
-#[test]
-fn end_to_end_when_add_expression_then_variable_has_sum() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_add_expression_then_variable_has_sum,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -17,31 +17,26 @@ PROGRAM main
   x := 10;
   y := x + 32;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 10), (1, 42)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_chain_of_additions_then_variable_has_total() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_chain_of_additions_then_variable_has_total,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := 1 + 2 + 3;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 6)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 6);
-}
-
-#[test]
-fn end_to_end_when_multiple_assignments_then_all_variables_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_multiple_assignments_then_all_variables_correct,
+    "
 PROGRAM main
   VAR
     a : DINT;
@@ -52,14 +47,25 @@ PROGRAM main
   b := 200;
   c := a + b;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 100), (1, 200), (2, 300)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 100);
-    assert_eq!(bufs.vars[1].as_i32(), 200);
-    assert_eq!(bufs.vars[2].as_i32(), 300);
-}
+e2e_i32!(
+    end_to_end_when_deeply_nested_expression_then_correct_result,
+    "
+PROGRAM main
+  VAR
+    result : DINT;
+  END_VAR
+  result := 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;
+END_PROGRAM
+",
+    &[(0, 55)],
+);
 
+// Multi-scan test: the counter accumulates state across VM rounds, so it drives
+// the VM directly rather than using the single-scan `e2e_i32!` helper.
 #[test]
 fn end_to_end_when_counter_program_then_increments_across_scans() {
     let source = "
@@ -79,19 +85,4 @@ END_PROGRAM
     }
 
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 5);
-}
-
-#[test]
-fn end_to_end_when_deeply_nested_expression_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    result : DINT;
-  END_VAR
-  result := 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10;
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 55);
 }

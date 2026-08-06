@@ -3,12 +3,12 @@
 use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_compile, parse_and_run, VmBuffers};
+use crate::common::{parse_and_compile, VmBuffers};
 use ironplc_vm::Vm;
 
-#[test]
-fn end_to_end_when_sub_expression_then_variable_has_difference() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_sub_expression_then_variable_has_difference,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -17,61 +17,52 @@ PROGRAM main
   x := 10;
   y := x - 3;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 10), (1, 7)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-    assert_eq!(bufs.vars[1].as_i32(), 7);
-}
-
-#[test]
-fn end_to_end_when_sub_result_negative_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_sub_result_negative_then_correct,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := 3 - 10;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, -7)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), -7);
-}
-
-#[test]
-fn end_to_end_when_chain_of_subtractions_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_chain_of_subtractions_then_correct,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := 100 - 30 - 20 - 10;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 40)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 40);
-}
-
-#[test]
-fn end_to_end_when_mixed_add_sub_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_mixed_add_sub_then_correct,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := 10 + 5 - 3;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 12)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 12);
-}
-
-#[test]
-fn end_to_end_when_sub_with_variables_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_sub_with_variables_then_correct,
+    "
 PROGRAM main
   VAR
     a : DINT;
@@ -82,43 +73,35 @@ PROGRAM main
   b := 30;
   c := a - b;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 100), (1, 30), (2, 70)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 100);
-    assert_eq!(bufs.vars[1].as_i32(), 30);
-    assert_eq!(bufs.vars[2].as_i32(), 70);
-}
-
-#[test]
-fn end_to_end_when_sub_zero_then_identity() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_sub_zero_then_identity,
+    "
 PROGRAM main
   VAR
     x : DINT;
   END_VAR
   x := 42 - 0;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 42)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_sub_from_zero_then_negation() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_sub_from_zero_then_negation,
+    "
 PROGRAM main
   VAR
     x : DINT;
   END_VAR
   x := 0 - 7;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), -7);
-}
+",
+    &[(0, -7)],
+);
 
 #[test]
 fn end_to_end_when_countdown_program_then_decrements_across_scans() {
@@ -141,18 +124,16 @@ END_PROGRAM
     assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), -5);
 }
 
-#[test]
-fn end_to_end_when_sub_negative_constant_then_effective_addition() {
-    let source = "
+// 10 - (-5) = 15
+e2e_i32!(
+    end_to_end_when_sub_negative_constant_then_effective_addition,
+    "
 PROGRAM main
   VAR
     x : DINT;
   END_VAR
   x := 10 - -5;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // 10 - (-5) = 15
-    assert_eq!(bufs.vars[0].as_i32(), 15);
-}
+",
+    &[(0, 15)],
+);

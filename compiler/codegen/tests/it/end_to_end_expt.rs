@@ -1,33 +1,27 @@
 //! End-to-end integration tests for EXPT with DINT type.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_expt_then_correct_result() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_expt_then_correct_result,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := EXPT(2, 10);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 1024);
-}
+",
+    &[(0, 1024)],
+);
 
-#[test]
-fn end_to_end_when_expt_zero_exponent_then_one() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_expt_zero_exponent_then_one,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := EXPT(5, 0);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-}
+",
+    &[(0, 1)],
+);

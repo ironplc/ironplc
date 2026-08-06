@@ -1,12 +1,9 @@
 //! End-to-end integration tests for the MIN function with float types.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_min_real_then_returns_smaller() {
-    let source = "
+e2e_f32_near!(
+    end_to_end_when_min_real_then_returns_smaller,
+    1e-5,
+    "
 PROGRAM main
   VAR
     x : REAL;
@@ -15,16 +12,14 @@ PROGRAM main
   x := 7.5;
   y := MIN(x, 3.0);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(1, 3.0)],
+);
 
-    let y = bufs.vars[1].as_f32();
-    assert!((y - 3.0).abs() < 1e-5, "expected 3.0, got {y}");
-}
-
-#[test]
-fn end_to_end_when_min_real_first_smaller_then_returns_first() {
-    let source = "
+e2e_f32_near!(
+    end_to_end_when_min_real_first_smaller_then_returns_first,
+    1e-5,
+    "
 PROGRAM main
   VAR
     x : REAL;
@@ -33,16 +28,14 @@ PROGRAM main
   x := 2.0;
   y := MIN(x, 8.0);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(1, 2.0)],
+);
 
-    let y = bufs.vars[1].as_f32();
-    assert!((y - 2.0).abs() < 1e-5, "expected 2.0, got {y}");
-}
-
-#[test]
-fn end_to_end_when_min_lreal_then_returns_smaller() {
-    let source = "
+e2e_f64_near!(
+    end_to_end_when_min_lreal_then_returns_smaller,
+    1e-12,
+    "
 PROGRAM main
   VAR
     x : LREAL;
@@ -51,9 +44,6 @@ PROGRAM main
   x := 7.5;
   y := MIN(x, 3.0);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let y = bufs.vars[1].as_f64();
-    assert!((y - 3.0).abs() < 1e-12, "expected 3.0, got {y}");
-}
+",
+    &[(1, 3.0)],
+);

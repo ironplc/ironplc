@@ -4,9 +4,9 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run;
 
-#[test]
-fn end_to_end_when_real_to_int_then_truncates() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_real_to_int_then_truncates,
+    "
 PROGRAM main
   VAR
     x : REAL;
@@ -15,14 +15,13 @@ PROGRAM main
   x := 3.14;
   y := REAL_TO_INT(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 3);
-}
+",
+    &[(1, 3)],
+);
 
-#[test]
-fn end_to_end_when_real_to_dint_negative_then_truncates() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_real_to_dint_negative_then_truncates,
+    "
 PROGRAM main
   VAR
     x : REAL;
@@ -31,14 +30,13 @@ PROGRAM main
   x := -7.9;
   y := REAL_TO_DINT(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), -7);
-}
+",
+    &[(1, -7)],
+);
 
-#[test]
-fn end_to_end_when_lreal_to_lint_then_truncates() {
-    let source = "
+e2e_i64!(
+    end_to_end_when_lreal_to_lint_then_truncates,
+    "
 PROGRAM main
   VAR
     x : LREAL;
@@ -47,14 +45,13 @@ PROGRAM main
   x := 99.9;
   y := LREAL_TO_LINT(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64(), 99);
-}
+",
+    &[(1, 99)],
+);
 
-#[test]
-fn end_to_end_when_real_to_sint_then_truncates_to_range() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_real_to_sint_then_truncates_to_range,
+    "
 PROGRAM main
   VAR
     x : REAL;
@@ -63,11 +60,12 @@ PROGRAM main
   x := 50.7;
   y := REAL_TO_SINT(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 50);
-}
+",
+    &[(1, 50)],
+);
 
+// Reads the result as u32 (via a cast), so it stays hand-written rather than
+// using the plain `as_i32()` macro.
 #[test]
 fn end_to_end_when_lreal_to_udint_then_correct() {
     let source = "

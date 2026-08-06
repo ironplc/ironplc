@@ -57,9 +57,9 @@ END_PROGRAM
     assert_eq!(bufs.vars[0].as_i32() as u32, 1_704_112_200);
 }
 
-#[test]
-fn end_to_end_when_date_comparison_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_date_comparison_then_correct,
+    "
 PROGRAM main
   VAR
     a : DATE;
@@ -74,14 +74,13 @@ PROGRAM main
     result := 0;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_i32(), 1);
-}
+",
+    &[(2, 1)],
+);
 
-#[test]
-fn end_to_end_when_tod_comparison_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_tod_comparison_then_correct,
+    "
 PROGRAM main
   VAR
     a : TIME_OF_DAY;
@@ -96,7 +95,6 @@ PROGRAM main
     result := 0;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_i32(), 1);
-}
+",
+    &[(2, 1)],
+);

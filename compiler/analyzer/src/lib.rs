@@ -13,6 +13,13 @@ fn init_test_logger() {
         .try_init();
 }
 
+// Declared before the rule modules so the rule-test macros are in scope for
+// their inline `#[cfg(test)] mod tests`.
+#[cfg(test)]
+#[macro_use]
+#[allow(unused_macros)]
+mod test_macros;
+
 mod constant_folding;
 mod function_environment;
 pub mod intermediate_type;

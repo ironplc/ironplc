@@ -274,9 +274,9 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn apply_when_program_uses_function_block_instance_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_program_uses_function_block_instance_then_ok,
+        "
         FUNCTION_BLOCK COUNTER
             VAR
                 count : INT;
@@ -289,17 +289,12 @@ mod tests {
                 c : COUNTER;
             END_VAR
             c();
-        END_PROGRAM";
+        END_PROGRAM"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_function_block_uses_function_block_instance_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_function_block_uses_function_block_instance_then_ok,
+        "
         FUNCTION_BLOCK Callee
             VAR
                 IN1 : BOOL;
@@ -310,13 +305,8 @@ mod tests {
             VAR
                 CalleeInstance : Callee;
             END_VAR
-        END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
+        END_FUNCTION_BLOCK"
+    );
 
     #[test]
     fn apply_when_function_invokes_function_block_then_error() {

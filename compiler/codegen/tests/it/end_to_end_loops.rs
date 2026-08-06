@@ -1,12 +1,8 @@
 //! End-to-end integration tests for WHILE, REPEAT, and FOR loop statements.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_while_counts_down_then_correct_result() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_while_counts_down_then_correct_result,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -16,14 +12,14 @@ PROGRAM main
     x := x - 1;
   END_WHILE;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0);
-}
+",
+    &[(0, 0)],
+);
 
-#[test]
-fn end_to_end_when_while_false_then_body_not_executed() {
-    let source = "
+// y untouched
+e2e_i32!(
+    end_to_end_when_while_false_then_body_not_executed,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -34,15 +30,13 @@ PROGRAM main
     y := 99;
   END_WHILE;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0);
-    assert_eq!(bufs.vars[1].as_i32(), 0); // y untouched
-}
+",
+    &[(0, 0), (1, 0)],
+);
 
-#[test]
-fn end_to_end_when_repeat_counts_up_then_correct_result() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_repeat_counts_up_then_correct_result,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -52,16 +46,15 @@ PROGRAM main
   UNTIL x >= 5
   END_REPEAT;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-}
+",
+    &[(0, 5)],
+);
 
-#[test]
-fn end_to_end_when_repeat_then_executes_at_least_once() {
-    // Even though the condition is immediately true (0 >= 0),
-    // the body executes once because REPEAT checks AFTER the body.
-    let source = "
+// Even though the condition is immediately true (0 >= 0), the body executes
+// once because REPEAT checks AFTER the body. count = 1 (body ran once).
+e2e_i32!(
+    end_to_end_when_repeat_then_executes_at_least_once,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -72,14 +65,14 @@ PROGRAM main
   UNTIL count >= 1
   END_REPEAT;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 1); // count = 1 (body ran once)
-}
+",
+    &[(1, 1)],
+);
 
-#[test]
-fn end_to_end_when_for_1_to_5_then_sums_correctly() {
-    let source = "
+// 1+2+3+4+5
+e2e_i32!(
+    end_to_end_when_for_1_to_5_then_sums_correctly,
+    "
 PROGRAM main
   VAR
     i : DINT;
@@ -89,14 +82,14 @@ PROGRAM main
     sum := sum + i;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 15); // 1+2+3+4+5
-}
+",
+    &[(1, 15)],
+);
 
-#[test]
-fn end_to_end_when_for_5_to_1_by_neg1_then_sums_correctly() {
-    let source = "
+// 5+4+3+2+1
+e2e_i32!(
+    end_to_end_when_for_5_to_1_by_neg1_then_sums_correctly,
+    "
 PROGRAM main
   VAR
     i : DINT;
@@ -106,14 +99,14 @@ PROGRAM main
     sum := sum + i;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 15); // 5+4+3+2+1
-}
+",
+    &[(1, 15)],
+);
 
-#[test]
-fn end_to_end_when_for_with_step_2_then_iterates_correctly() {
-    let source = "
+// i=0,2,4,6,8,10 → 6 iterations
+e2e_i32!(
+    end_to_end_when_for_with_step_2_then_iterates_correctly,
+    "
 PROGRAM main
   VAR
     i : DINT;
@@ -123,15 +116,14 @@ PROGRAM main
     count := count + 1;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 6); // i=0,2,4,6,8,10 → 6 iterations
-}
+",
+    &[(1, 6)],
+);
 
-#[test]
-fn end_to_end_when_for_empty_range_then_body_not_executed() {
-    // FOR i := 10 TO 1 DO (positive step, from > to → no iterations)
-    let source = "
+// FOR i := 10 TO 1 DO (positive step, from > to → no iterations). y untouched.
+e2e_i32!(
+    end_to_end_when_for_empty_range_then_body_not_executed,
+    "
 PROGRAM main
   VAR
     i : DINT;
@@ -141,18 +133,17 @@ PROGRAM main
     y := 99;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 0); // y untouched
-}
+",
+    &[(1, 0)],
+);
 
 // FOR-loop TRUNC elision (specs/plans/2026-04-30-elide-for-loop-trunc.md):
 // the optimisation must preserve runtime behaviour for narrow integer types,
 // including at the type-range boundaries where TRUNC must remain.
 
-#[test]
-fn end_to_end_when_for_int_sums_then_correct_result() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_for_int_sums_then_correct_result,
+    "
 PROGRAM main
   VAR
     i : INT;
@@ -162,14 +153,13 @@ PROGRAM main
     sum := sum + 1;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 100);
-}
+",
+    &[(1, 100)],
+);
 
-#[test]
-fn end_to_end_when_for_sint_iterates_then_correct_count() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_for_sint_iterates_then_correct_count,
+    "
 PROGRAM main
   VAR
     i : SINT;
@@ -179,14 +169,13 @@ PROGRAM main
     count := count + 1;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 10);
-}
+",
+    &[(1, 10)],
+);
 
-#[test]
-fn end_to_end_when_for_uint_iterates_then_correct_count() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_for_uint_iterates_then_correct_count,
+    "
 PROGRAM main
   VAR
     i : UINT;
@@ -196,14 +185,13 @@ PROGRAM main
     count := count + 1;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 50);
-}
+",
+    &[(1, 50)],
+);
 
-#[test]
-fn end_to_end_when_for_int_negative_step_then_correct_count() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_for_int_negative_step_then_correct_count,
+    "
 PROGRAM main
   VAR
     i : INT;
@@ -213,7 +201,6 @@ PROGRAM main
     count := count + 1;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 100);
-}
+",
+    &[(1, 100)],
+);

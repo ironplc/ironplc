@@ -1071,6 +1071,7 @@ dependencies = [
  "ironplc-spec-requirements-gen",
  "ironplc-test",
  "paste",
+ "rstest",
  "spec_test_macro",
 ]
 

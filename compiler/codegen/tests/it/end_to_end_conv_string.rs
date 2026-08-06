@@ -268,9 +268,9 @@ END_PROGRAM
 // STRING_TO_INT
 // =========================================================================
 
-#[test]
-fn string_to_int_when_valid_then_parsed() {
-    let source = "
+e2e_i32!(
+    string_to_int_when_valid_then_parsed,
+    "
 PROGRAM main
   VAR
     s : STRING := '123';
@@ -278,10 +278,9 @@ PROGRAM main
   END_VAR
   x := STRING_TO_INT(s);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 123);
-}
+",
+    &[(1, 123)],
+);
 
 #[test]
 fn string_to_int_when_negative_then_parsed() {
@@ -299,9 +298,9 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32() as i16, -456);
 }
 
-#[test]
-fn string_to_int_when_invalid_then_zero() {
-    let source = "
+e2e_i32!(
+    string_to_int_when_invalid_then_zero,
+    "
 PROGRAM main
   VAR
     s : STRING := 'abc';
@@ -309,18 +308,17 @@ PROGRAM main
   END_VAR
   x := STRING_TO_INT(s);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
+",
+    &[(1, 0)],
+);
 
 // =========================================================================
 // STRING_TO_DINT
 // =========================================================================
 
-#[test]
-fn string_to_dint_when_large_then_correct() {
-    let source = "
+e2e_i32!(
+    string_to_dint_when_large_then_correct,
+    "
 PROGRAM main
   VAR
     s : STRING := '2147483647';
@@ -328,18 +326,18 @@ PROGRAM main
   END_VAR
   x := STRING_TO_DINT(s);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 2147483647);
-}
+",
+    &[(1, 2147483647)],
+);
 
 // =========================================================================
 // STRING_TO_REAL
 // =========================================================================
 
-#[test]
-fn string_to_real_when_valid_then_parsed() {
-    let source = "
+e2e_f32_near!(
+    string_to_real_when_valid_then_parsed,
+    1e-5,
+    "
 PROGRAM main
   VAR
     s : STRING := '2.5';
@@ -347,14 +345,13 @@ PROGRAM main
   END_VAR
   x := STRING_TO_REAL(s);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert!((bufs.vars[1].as_f32() - 2.5).abs() < 1e-5);
-}
+",
+    &[(1, 2.5)],
+);
 
-#[test]
-fn string_to_real_when_invalid_then_zero() {
-    let source = "
+e2e_f32!(
+    string_to_real_when_invalid_then_zero,
+    "
 PROGRAM main
   VAR
     s : STRING := 'xyz';
@@ -362,7 +359,6 @@ PROGRAM main
   END_VAR
   x := STRING_TO_REAL(s);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_f32(), 0.0);
-}
+",
+    &[(1, 0.0)],
+);
