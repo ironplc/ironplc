@@ -1,21 +1,23 @@
 (* End-to-end installer test fixture.
 
-   This program depends on the bundled `Tc2_System` compatibility library: `PI`
-   is a global constant that the library provides, not a language built-in. The
-   program therefore compiles only if the installer shipped the library files
-   (`resources/libs/Tc2_System/...`) beside the compiler binary and the compiler
-   resolves them from that installed location.
+   A minimal runnable program that depends on the bundled `Tc2_System`
+   compatibility library: `PI` is a global constant the library provides, not a
+   language built-in. The program compiles and runs only if the installer
+   shipped the library files (`resources/libs/Tc2_System/...`) beside the
+   compiler binary and the compiler resolves them from that installed location.
 
-   Compile with:
-     ironplcc check --dialect twincat \
-       --allow-constant-initializer-expressions \
-       --library Tc2_System tests/e2e/library/uses_pi.st
+   Compile, then run one scan and dump the variables:
+     ironplcc compile --dialect twincat --library Tc2_System \
+       --output prog.iplc tests/e2e/library/uses_pi.st
+     ironplcvm run prog.iplc --scans 1 --dump-vars -
 
-   `--dialect twincat` permits the library's top-level VAR_GLOBAL, and
-   `--allow-constant-initializer-expressions` permits the `PI / 180.0`
-   initializer. See the `library-e2e` recipe in the repository-root justfile. *)
-FUNCTION_BLOCK FB_Angle
+   After one scan `circumference` holds 2 * PI * 10.0 = 62.83185307179586, so the
+   dump proves the library `PI` resolved and the VM computed with it end to end.
+   `--dialect twincat` permits the library's top-level VAR_GLOBAL. See the
+   `library-e2e` recipe in the repository-root justfile. *)
+PROGRAM main
     VAR
-        degrees_to_radians : LREAL := PI / 180.0;
+        circumference : LREAL;
     END_VAR
-END_FUNCTION_BLOCK
+    circumference := 2.0 * PI * 10.0;
+END_PROGRAM
