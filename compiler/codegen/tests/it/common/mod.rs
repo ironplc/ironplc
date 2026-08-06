@@ -653,6 +653,64 @@ pub fn parse_and_run_rounds(
     f(&mut vm);
 }
 
+/// A single step in a function-block (`TON`/`CTU`/`R_TRIG`/`RS`/…) driver
+/// scenario.
+///
+/// The timer/counter/edge/bistable end-to-end tests all share the same shape:
+/// build a program, then drive the VM across several scan rounds, writing
+/// inputs and asserting outputs along the way. Rather than repeat that
+/// `load_and_start` + `run_round` + `read_variable` scaffold in every test,
+/// each scenario is expressed as a `&[FbStep]` table and executed by
+/// [`drive_fb`]. This keeps every original scenario as one `rstest` `#[case]`
+/// while the driver lives in exactly one place.
+#[derive(Clone, Copy)]
+pub enum FbStep {
+    /// Write `value` into the variable at `index` (no scan round runs).
+    Write(u16, i32),
+    /// Run one scan round at absolute VM time `time_us` (microseconds).
+    Run(u64),
+    /// Assert the variable at `index` currently reads `value`.
+    Expect(u16, i32),
+    /// Feed `n` rising edges on the variable at `var`: for each edge, write 1
+    /// and run a round, then write 0 and run a round. Rounds run at
+    /// `time_base + i*2` and `+1`. Edge/counter FBs are edge-triggered, so the
+    /// exact time values only need to increase monotonically.
+    Pulse { var: u16, n: u64, time_base: u64 },
+}
+
+/// Compiles `source` and drives the VM through `steps`, executing each
+/// [`FbStep`] in order. See [`FbStep`] for the step semantics.
+pub fn drive_fb(source: &str, options: &CompilerOptions, steps: &[FbStep]) {
+    use ironplc_container::VarIndex;
+    parse_and_run_rounds(source, options, |vm| {
+        for step in steps {
+            match *step {
+                FbStep::Write(index, value) => {
+                    vm.write_variable(VarIndex::new(index), value).unwrap();
+                }
+                FbStep::Run(time_us) => {
+                    vm.run_round(time_us).unwrap();
+                }
+                FbStep::Expect(index, value) => {
+                    assert_eq!(
+                        vm.read_variable(VarIndex::new(index)).unwrap(),
+                        value,
+                        "vars[{index}] mismatch"
+                    );
+                }
+                FbStep::Pulse { var, n, time_base } => {
+                    for i in 0..n {
+                        vm.write_variable(VarIndex::new(var), 1).unwrap();
+                        vm.run_round(time_base + i * 2).unwrap();
+                        vm.write_variable(VarIndex::new(var), 0).unwrap();
+                        vm.run_round(time_base + i * 2 + 1).unwrap();
+                    }
+                }
+            }
+        }
+    });
+}
+
 /// Runs `source` with default options and asserts each `(var_index, expected)`
 /// pair against the corresponding `vars[i].as_i32()` slot after one scan.
 ///
