@@ -4,6 +4,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
+use proptest::prelude::*;
 
 /// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -23,6 +24,20 @@ fn string_offset(preceding_max_lengths: &[u16]) -> usize {
         .map(|&ml| STRING_HEADER_BYTES + ml as usize)
         .sum()
 }
+
+/// Generates printable ASCII strings safe for IEC 61131-3 string literals.
+/// Excludes single quote (0x27) and dollar sign (0x24, the escape character).
+/// Length is bounded to 0..=127 so a combined two-string result stays <= 254
+/// and never triggers the STRING[254] truncation branch.
+fn safe_string_strategy() -> impl Strategy<Value = String> {
+    proptest::collection::vec(
+        (0x20u8..=0x7Eu8).prop_filter("exclude quote and dollar", |&b| b != b'\'' && b != b'$'),
+        0..=127,
+    )
+    .prop_map(|bytes| bytes.into_iter().map(|b| b as char).collect())
+}
+
+// --- Deterministic anchors ---
 
 #[test]
 fn end_to_end_when_replace_middle_then_correct_result() {
@@ -45,110 +60,6 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_replace_insert_only_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    s2 : STRING := 'XY';
-    result : STRING;
-  END_VAR
-  result := REPLACE(s1, s2, 0, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // L=0 means no deletion, just insert XY at position 3.
-    // Result: AB + XY + CDE = ABXYCDE
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABXYCDE");
-}
-
-#[test]
-fn end_to_end_when_replace_at_start_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello';
-    s2 : STRING := 'Hi';
-    result : STRING;
-  END_VAR
-  result := REPLACE(s1, s2, 5, 1);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Delete 5 chars from position 1 (all of 'Hello'), insert 'Hi'.
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hi");
-}
-
-#[test]
-fn end_to_end_when_replace_delete_only_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    s2 : STRING;
-    result : STRING;
-  END_VAR
-  result := REPLACE(s1, s2, 2, 2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Delete 2 chars at position 2 ('BC'), insert empty string.
-    // Result: A + DE = ADE
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ADE");
-}
-
-#[test]
-fn end_to_end_when_replace_at_end_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    s2 : STRING := 'XYZ';
-    result : STRING;
-  END_VAR
-  result := REPLACE(s1, s2, 2, 4);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Delete 2 chars at position 4 ('DE'), insert 'XYZ'.
-    // Result: ABC + XYZ = ABCXYZ
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABCXYZ");
-}
-
-#[test]
-fn end_to_end_when_replace_with_integer_vars_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello World';
-    s2 : STRING := 'Beautiful ';
-    n_len : INT := 0;
-    n_pos : INT := 7;
-    result : STRING;
-  END_VAR
-  result := REPLACE(s1, s2, n_len, n_pos);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Insert 'Beautiful ' at position 7, delete 0 chars.
-    // Result: Hello Beautiful World
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(
-        read_string(&bufs.data_region, result_offset),
-        "Hello Beautiful World"
-    );
-}
-
-#[test]
 fn end_to_end_when_replace_result_truncated_by_short_destination_then_truncates() {
     let source = "
 PROGRAM main
@@ -168,60 +79,46 @@ END_PROGRAM
     assert_eq!(read_string(&bufs.data_region, result_offset), "ABXXXX");
 }
 
-#[test]
-fn end_to_end_when_replace_result_fits_exactly_in_destination_then_no_truncation() {
-    let source = "
+// --- Property test: REPLACE(s1, s2, n, p) == replace n chars of s1 from
+// 1-based position p with s2. Inputs are bounded so the replaced range lies
+// fully inside s1 and the combined result stays <= 254 (no truncation). Oracle
+// is pure Rust. The truncation branch is pinned by the anchor above.
+proptest! {
+    #[test]
+    fn end_to_end_when_replace_of_arbitrary_strings_then_substitutes(
+        (s1, s2, n, p) in (safe_string_strategy(), safe_string_strategy())
+            .prop_filter("non-empty s1", |(s1, _)| !s1.is_empty())
+            .prop_flat_map(|(s1, s2)| {
+                let len = s1.chars().count();
+                (Just(s1), Just(s2), Just(len), 1usize..=len)
+            })
+            .prop_flat_map(|(s1, s2, len, p)| {
+                let max_n = len - p + 1;
+                (Just(s1), Just(s2), 0usize..=max_n, Just(p))
+            }),
+    ) {
+        let c: Vec<char> = s1.chars().collect();
+        let a = p - 1;
+        let b = a + n;
+        let expected: String = c[..a]
+            .iter()
+            .chain(s2.chars().collect::<Vec<char>>().iter())
+            .chain(c[b..].iter())
+            .collect();
+        let source = format!(
+            "
 PROGRAM main
   VAR
-    s1 : STRING := 'ABCDE';
-    s2 : STRING := 'XY';
-    result : STRING[6];
+    s1 : STRING := '{s1}';
+    s2 : STRING := '{s2}';
+    result : STRING;
   END_VAR
-  result := REPLACE(s1, s2, 1, 3);
+  result := REPLACE(s1, s2, {n}, {p});
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Result: AB + XY + DE = ABXYDE (6 chars) — fits exactly in STRING[6].
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABXYDE");
-}
-
-#[test]
-fn end_to_end_when_replace_result_exceeds_destination_by_one_then_truncates() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    s2 : STRING := 'XYZ';
-    result : STRING[6];
-  END_VAR
-  result := REPLACE(s1, s2, 1, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Result: AB + XYZ + DE = ABXYZDE (7 chars) — truncated to 'ABXYZD' (6 chars).
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABXYZD");
-}
-
-#[test]
-fn end_to_end_when_replace_into_very_short_destination_then_heavily_truncated() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello World';
-    s2 : STRING := 'Earth';
-    result : STRING[3];
-  END_VAR
-  result := REPLACE(s1, s2, 5, 7);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Full result would be 'Hello Earth' (11 chars).
-    // STRING[3] truncates to 'Hel'.
-    let result_offset = string_offset(&[254, 254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hel");
+"
+        );
+        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+        let result_offset = string_offset(&[254, 254]);
+        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+    }
 }

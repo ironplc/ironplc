@@ -4,6 +4,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
+use proptest::prelude::*;
 
 /// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -24,6 +25,18 @@ fn string_offset(preceding_max_lengths: &[u16]) -> usize {
         .sum()
 }
 
+/// Generates printable ASCII strings safe for IEC 61131-3 string literals.
+/// Excludes single quote (0x27) and dollar sign (0x24, the escape character).
+fn safe_string_strategy() -> impl Strategy<Value = String> {
+    proptest::collection::vec(
+        (0x20u8..=0x7Eu8).prop_filter("exclude quote and dollar", |&b| b != b'\'' && b != b'$'),
+        0..=254,
+    )
+    .prop_map(|bytes| bytes.into_iter().map(|b| b as char).collect())
+}
+
+// --- Deterministic anchors ---
+
 #[test]
 fn end_to_end_when_mid_beginning_then_correct_result() {
     let source = "
@@ -43,114 +56,6 @@ END_PROGRAM
 }
 
 #[test]
-fn end_to_end_when_mid_end_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello World';
-    result : STRING;
-  END_VAR
-  result := MID(s1, 5, 7);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // MID 5 chars starting at position 7 -> 'World'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "World");
-}
-
-#[test]
-fn end_to_end_when_mid_middle_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDEFGH';
-    result : STRING;
-  END_VAR
-  result := MID(s1, 3, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // MID 3 chars starting at position 3 -> 'CDE'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "CDE");
-}
-
-#[test]
-fn end_to_end_when_mid_exceeds_length_then_clamps() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := MID(s1, 100, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // MID 100 chars from position 3, but only 3 remain -> 'CDE'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "CDE");
-}
-
-#[test]
-fn end_to_end_when_mid_zero_length_then_empty() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := MID(s1, 0, 2);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "");
-}
-
-#[test]
-fn end_to_end_when_mid_single_char_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := MID(s1, 1, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "C");
-}
-
-#[test]
-fn end_to_end_when_mid_with_integer_vars_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello Beautiful World';
-    n_len : INT := 9;
-    n_pos : INT := 7;
-    result : STRING;
-  END_VAR
-  result := MID(s1, n_len, n_pos);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // MID 9 chars starting at position 7 -> 'Beautiful'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Beautiful");
-}
-
-#[test]
 fn end_to_end_when_mid_position_beyond_end_then_empty() {
     let source = "
 PROGRAM main
@@ -166,4 +71,41 @@ END_PROGRAM
     // Position 10 is beyond end of 3-char string -> empty
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "");
+}
+
+// --- Property test: MID(s, n, p) == n chars from 1-based position p ---
+// Inputs are bounded to the unambiguous in-range domain (non-empty s, p a valid
+// 1-based position, n within the remaining length). Oracle is pure Rust. The
+// out-of-range/clamp branch is pinned by the deterministic anchor above.
+proptest! {
+    #[test]
+    fn end_to_end_when_mid_of_arbitrary_string_then_takes_substring(
+        (s, n, p) in safe_string_strategy()
+            .prop_filter("non-empty", |s| !s.is_empty())
+            .prop_flat_map(|s| {
+                let len = s.chars().count();
+                (Just(s), 1usize..=len)
+            })
+            .prop_flat_map(|(s, p)| {
+                let len = s.chars().count();
+                let max_n = len - p + 1;
+                (Just(s), 0usize..=max_n, Just(p))
+            }),
+    ) {
+        let expected: String = s.chars().skip(p - 1).take(n).collect();
+        let source = format!(
+            "
+PROGRAM main
+  VAR
+    s1 : STRING := '{s}';
+    result : STRING;
+  END_VAR
+  result := MID(s1, {n}, {p});
+END_PROGRAM
+"
+        );
+        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+        let result_offset = string_offset(&[254]);
+        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+    }
 }
