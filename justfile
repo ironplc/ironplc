@@ -423,11 +423,12 @@ library-e2e compiler-version="":
 
 # Download + install the published compiler via the NSIS installer. The x86_64
 # asset name is hard-coded because the GitHub runner is x86_64; pass a different
-# version to target another release.
+# version to target another release. An empty version uses GitHub's
+# `latest/download` redirect, so no API call or tag resolution is needed.
 [windows]
 library-e2e-download compiler-version="":
-  # Resolve the release tag (empty -> latest) and download the NSIS installer.
-  $v="{{compiler-version}}"; $tag= if([string]::IsNullOrEmpty($v)){(Invoke-RestMethod -Uri "https://api.github.com/repos/ironplc/ironplc/releases/latest").tag_name}else{"v$v"}; Write-Host "Using release $tag"; Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/$tag/ironplcc-x86_64-windows.exe" -OutFile ironplcc-setup.exe
+  # Download the NSIS installer for the requested (or latest) release.
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/{{ if compiler-version == "" { "latest/download" } else { "download/v" + compiler-version } }}/ironplcc-x86_64-windows.exe" -OutFile ironplcc-setup.exe
   # Install silently.
   Start-Process ironplcc-setup.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 120
 
