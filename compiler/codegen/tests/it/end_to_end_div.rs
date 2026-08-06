@@ -2,12 +2,12 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_run, parse_and_try_run};
+use crate::common::parse_and_try_run;
 use ironplc_vm::error::Trap;
 
-#[test]
-fn end_to_end_when_div_expression_then_variable_has_quotient() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_div_expression_then_variable_has_quotient,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -16,28 +16,23 @@ PROGRAM main
   x := 12;
   y := x / 4;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 12), (1, 3)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 12);
-    assert_eq!(bufs.vars[1].as_i32(), 3);
-}
-
-#[test]
-fn end_to_end_when_chain_of_divisions_then_correct() {
-    let source = "
+// (100 / 5) / 2 = 10
+e2e_i32!(
+    end_to_end_when_chain_of_divisions_then_correct,
+    "
 PROGRAM main
   VAR
     x : DINT;
   END_VAR
   x := 100 / 5 / 2;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // (100 / 5) / 2 = 10
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-}
+",
+    &[(0, 10)],
+);
 
 #[test]
 fn end_to_end_when_integer_divide_by_zero_then_traps() {

@@ -131,28 +131,22 @@ impl Visitor<Diagnostic> for RuleFunctionCallDeclared<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::parse_and_resolve_types_with_context;
 
-    #[test]
-    fn apply_when_stdlib_function_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_stdlib_function_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : REAL;
     value : INT;
 END_VAR
     result := INT_TO_REAL(value);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_user_function_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_user_function_called_then_ok,
+        "
 FUNCTION ADD_INTS : INT
 VAR_INPUT
     A : INT;
@@ -166,112 +160,73 @@ VAR
     result : INT;
 END_VAR
     result := ADD_INTS(1, 2);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_function_not_declared_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_function_not_declared_then_error,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
 END_VAR
     result := NONEXISTENT_FUNC(1);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        Problem::FunctionCallUndeclared
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, Problem::FunctionCallUndeclared.code());
-    }
-
-    #[test]
-    fn apply_when_function_calls_undeclared_function_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_function_calls_undeclared_function_then_error,
+        "
 FUNCTION MY_FUNC : INT
 VAR_INPUT
     x : INT;
 END_VAR
     MY_FUNC := UNDEFINED_HELPER(x);
-END_FUNCTION";
+END_FUNCTION",
+        Problem::FunctionCallUndeclared
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, Problem::FunctionCallUndeclared.code());
-    }
-
-    #[test]
-    fn apply_when_wrong_arg_count_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_wrong_arg_count_then_error,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : REAL;
     value : INT;
 END_VAR
     result := INT_TO_REAL(value, value);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        Problem::FunctionCallWrongArgCount
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallWrongArgCount.code()
-        );
-    }
-
-    #[test]
-    fn apply_when_abs_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_abs_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
     value : INT;
 END_VAR
     result := ABS(value);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_sqrt_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_sqrt_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : REAL;
     value : REAL;
 END_VAR
     result := SQRT(value);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_min_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_min_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -279,17 +234,12 @@ VAR
     b : INT;
 END_VAR
     result := MIN(a, b);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_max_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_max_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -297,17 +247,12 @@ VAR
     b : INT;
 END_VAR
     result := MAX(a, b);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_limit_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_limit_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -316,17 +261,12 @@ VAR
     high : INT;
 END_VAR
     result := LIMIT(low, value, high);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_limit_called_with_wrong_arg_count_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_limit_called_with_wrong_arg_count_then_error,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -334,23 +274,13 @@ VAR
     b : INT;
 END_VAR
     result := LIMIT(a, b);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        Problem::FunctionCallWrongArgCount
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallWrongArgCount.code()
-        );
-    }
-
-    #[test]
-    fn apply_when_expt_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_expt_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -358,17 +288,12 @@ VAR
     exp : INT;
 END_VAR
     result := EXPT(base, exp);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_mux_called_with_3_args_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_mux_called_with_3_args_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -376,17 +301,12 @@ VAR
     b : INT;
 END_VAR
     result := MUX(0, a, b);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_mux_called_with_5_args_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_mux_called_with_5_args_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -396,40 +316,25 @@ VAR
     d : INT;
 END_VAR
     result := MUX(2, a, b, c, d);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_mux_called_with_too_few_args_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_mux_called_with_too_few_args_then_error,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
     a : INT;
 END_VAR
     result := MUX(0, a);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        Problem::FunctionCallWrongArgCount
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallWrongArgCount.code()
-        );
-    }
-
-    #[test]
-    fn apply_when_mux_called_with_17_args_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_mux_called_with_17_args_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -451,17 +356,12 @@ VAR
     p : INT;
 END_VAR
     result := MUX(0, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_mux_called_with_18_args_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_mux_called_with_18_args_then_error,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -484,23 +384,13 @@ VAR
     q : INT;
 END_VAR
     result := MUX(0, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        Problem::FunctionCallWrongArgCount
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallWrongArgCount.code()
-        );
-    }
-
-    #[test]
-    fn apply_when_too_few_args_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_too_few_args_then_error,
+        "
 FUNCTION ADD_INTS : INT
 VAR_INPUT
     A : INT;
@@ -514,25 +404,15 @@ VAR
     result : INT;
 END_VAR
     result := ADD_INTS(1);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK",
+        Problem::FunctionCallWrongArgCount
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-        let diagnostics = result.unwrap_err();
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::FunctionCallWrongArgCount.code()
-        );
-    }
-
-    #[test]
-    fn apply_when_arithmetic_function_called_then_ok() {
-        // Note: MOD is excluded because the parser treats it as a keyword (the MOD operator).
-        // MOD(a, b) requires parser changes to allow keywords in function call position.
-        let program = "
+    // Note: MOD is excluded because the parser treats it as a keyword (the MOD operator).
+    // MOD(a, b) requires parser changes to allow keywords in function call position.
+    rule_ctx_ok!(
+        apply_when_arithmetic_function_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : INT;
@@ -543,17 +423,12 @@ END_VAR
     result := SUB(a, b);
     result := MUL(a, b);
     result := DIV(a, b);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_comparison_function_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_comparison_function_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     result : BOOL;
@@ -566,17 +441,12 @@ END_VAR
     result := LE(a, b);
     result := LT(a, b);
     result := NE(a, b);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_bit_string_conversion_called_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_bit_string_conversion_called_then_ok,
+        "
 FUNCTION_BLOCK CALLER
 VAR
     b : BYTE;
@@ -596,17 +466,12 @@ END_VAR
     b := LWORD_TO_BYTE(l);
     w := LWORD_TO_WORD(l);
     d := LWORD_TO_DWORD(l);
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_shl_with_byte_to_word_conversion_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_shl_with_byte_to_word_conversion_then_ok,
+        "
 FUNCTION MY_SHIFT : WORD
 VAR_INPUT
     B : BYTE;
@@ -619,11 +484,6 @@ VAR
     result : WORD;
 END_VAR
     result := MY_SHIFT(B := BYTE#16#AB);
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_PROGRAM"
+    );
 }

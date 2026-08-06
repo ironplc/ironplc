@@ -46,7 +46,7 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
-    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    let oop = fb.oop.as_ref().unwrap();
     assert_eq!(oop.base, Some(TypeName::from("FB_Motor")));
     assert!(oop.implements.is_empty());
 }
@@ -61,7 +61,7 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
-    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    let oop = fb.oop.as_ref().unwrap();
     assert_eq!(oop.base, None);
     assert_eq!(oop.implements, vec![TypeName::from("I_Drivable")]);
 }
@@ -76,7 +76,7 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
-    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    let oop = fb.oop.as_ref().unwrap();
     assert_eq!(oop.base, Some(TypeName::from("FB_Motor")));
     assert_eq!(oop.implements, vec![TypeName::from("I_Drivable")]);
 }
@@ -92,7 +92,7 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
-    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    let oop = fb.oop.as_ref().unwrap();
     assert_eq!(
         oop.implements,
         vec![TypeName::from("I_Hydraulics"), TypeName::from("I_Brake")]
@@ -136,7 +136,7 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
-    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    let oop = fb.oop.as_ref().unwrap();
     assert!(oop.is_abstract);
     assert_eq!(oop.base, None);
     assert!(oop.implements.is_empty());
@@ -153,7 +153,7 @@ END_VAR
 END_FUNCTION_BLOCK";
     let library = parse_program(source, &FileId::default(), &opts_with_fb_inheritance()).unwrap();
     let fb = extract_fb(&library);
-    let oop = fb.oop.as_ref().expect("expected oop to be Some");
+    let oop = fb.oop.as_ref().unwrap();
     assert!(oop.is_abstract);
     assert_eq!(oop.base, Some(TypeName::from("FB_BaseAxis")));
     assert_eq!(oop.implements, vec![TypeName::from("I_Axis")]);
@@ -184,8 +184,7 @@ VAR
     bRunning : BOOL;
 END_VAR
 END_FUNCTION_BLOCK";
-    let library = parse_program(source, &FileId::default(), &CompilerOptions::default())
-        .expect("ABSTRACT must remain a valid identifier in standard mode");
+    let library = parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap();
     let fb = extract_fb(&library);
     assert_eq!(fb.name, TypeName::from("ABSTRACT"));
     assert!(fb.oop.is_none());

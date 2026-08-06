@@ -7,9 +7,11 @@ use crate::common::{parse_and_run, parse_and_try_run};
 use ironplc_parser::options::{CompilerOptions, Dialect};
 use ironplc_vm::error::Trap;
 
-#[test]
-fn end_to_end_when_ref_read_then_dereferences_value() {
-    let source = "
+// var layout: counter=0, r=1, value=2
+e2e_i32_with!(
+    end_to_end_when_ref_read_then_dereferences_value,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 PROGRAM main
   VAR
     counter : INT := 42;
@@ -18,18 +20,15 @@ PROGRAM main
   END_VAR
   value := r^;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // var layout: counter=0, r=1, value=2
-    assert_eq!(bufs.vars[2].as_i32(), 42);
-}
+",
+    &[(2, 42)],
+);
 
-#[test]
-fn end_to_end_when_ref_write_then_modifies_target() {
-    let source = "
+// counter (var[0]) should be 99 after writing through ref
+e2e_i32_with!(
+    end_to_end_when_ref_write_then_modifies_target,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 PROGRAM main
   VAR
     counter : INT := 0;
@@ -37,14 +36,9 @@ PROGRAM main
   END_VAR
   r^ := 99;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // counter (var[0]) should be 99 after writing through ref
-    assert_eq!(bufs.vars[0].as_i32(), 99);
-}
+",
+    &[(0, 99)],
+);
 
 #[test]
 fn end_to_end_when_null_deref_read_then_trap() {
@@ -103,10 +97,12 @@ END_PROGRAM
     assert_eq!(err.trap, Trap::NullDereference);
 }
 
-#[test]
-fn end_to_end_when_ref_aliasing_then_both_see_same_value() {
-    // Two references to the same variable — write through one, read through the other.
-    let source = "
+// Two references to the same variable — write through one, read through the other.
+// counter (var[0]) should be 55; result (var[3]) should also be 55 (read through r2)
+e2e_i32_with!(
+    end_to_end_when_ref_aliasing_then_both_see_same_value,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 PROGRAM main
   VAR
     counter : INT := 10;
@@ -117,21 +113,16 @@ PROGRAM main
   r1^ := 55;
   result := r2^;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // counter (var[0]) should be 55
-    assert_eq!(bufs.vars[0].as_i32(), 55);
-    // result (var[3]) should also be 55 (read through r2)
-    assert_eq!(bufs.vars[3].as_i32(), 55);
-}
+",
+    &[(0, 55), (3, 55)],
+);
 
-#[test]
-fn end_to_end_when_null_check_then_skips_deref() {
-    // NULL check with IF prevents dereference.
-    let source = "
+// NULL check with IF prevents dereference.
+// value (var[1]) should remain 0 since r is NULL
+e2e_i32_with!(
+    end_to_end_when_null_check_then_skips_deref,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 PROGRAM main
   VAR
     r : REF_TO INT := NULL;
@@ -141,19 +132,15 @@ PROGRAM main
     value := r^;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // value (var[1]) should remain 0 since r is NULL
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
+",
+    &[(1, 0)],
+);
 
-#[test]
-fn end_to_end_when_ref_init_with_ref_then_not_null() {
-    // REF_TO with REF(var) initializer should not be NULL.
-    let source = "
+// REF_TO with REF(var) initializer should not be NULL.
+e2e_i32_with!(
+    end_to_end_when_ref_init_with_ref_then_not_null,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 PROGRAM main
   VAR
     counter : INT := 7;
@@ -164,18 +151,16 @@ PROGRAM main
     is_not_null := 1;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    assert_eq!(bufs.vars[2].as_i32(), 1);
-}
+",
+    &[(2, 1)],
+);
 
-#[test]
-fn end_to_end_when_ref_reassign_then_points_to_new_target() {
-    // Reassign a reference to point to a different variable.
-    let source = "
+// Reassign a reference to point to a different variable.
+// result1 (var[3]) should be 10 (from a); result2 (var[4]) should be 20 (from b after reassign)
+e2e_i32_with!(
+    end_to_end_when_ref_reassign_then_points_to_new_target,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 PROGRAM main
   VAR
     a : INT := 10;
@@ -188,22 +173,17 @@ PROGRAM main
   r := REF(b);
   result2 := r^;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // result1 (var[3]) should be 10 (from a)
-    assert_eq!(bufs.vars[3].as_i32(), 10);
-    // result2 (var[4]) should be 20 (from b after reassign)
-    assert_eq!(bufs.vars[4].as_i32(), 20);
-}
+",
+    &[(3, 10), (4, 20)],
+);
 
 // --- REF_TO in FUNCTION context tests ---
 
-#[test]
-fn end_to_end_when_function_with_ref_to_input_then_reads_value() {
-    let source = "
+// var layout (globals): b=0, result=1
+e2e_i32_with!(
+    end_to_end_when_function_with_ref_to_input_then_reads_value,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 FUNCTION READ_REF : INT
   VAR_INPUT
     PT : REF_TO INT;
@@ -218,18 +198,15 @@ PROGRAM main
   END_VAR
   result := READ_REF(PT := REF(b));
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // var layout (globals): b=0, result=1
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
+",
+    &[(1, 42)],
+);
 
-#[test]
-fn end_to_end_when_function_with_ref_to_write_then_modifies_target() {
-    let source = "
+// b (var[0]) should be 99 after write through ref
+e2e_i32_with!(
+    end_to_end_when_function_with_ref_to_write_then_modifies_target,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 FUNCTION WRITE_REF : BOOL
   VAR_INPUT
     PT : REF_TO INT;
@@ -245,19 +222,16 @@ PROGRAM main
   END_VAR
   result := WRITE_REF(PT := REF(b));
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // b (var[0]) should be 99 after write through ref
-    assert_eq!(bufs.vars[0].as_i32(), 99);
-}
+",
+    &[(0, 99)],
+);
 
-#[test]
-fn end_to_end_when_function_with_ref_to_local_then_null_initialized() {
-    // REF_TO local variables in a function should default to NULL.
-    let source = "
+// REF_TO local variables in a function should default to NULL.
+// result should be TRUE (1) since local_ref is NULL
+e2e_i32_with!(
+    end_to_end_when_function_with_ref_to_local_then_null_initialized,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 FUNCTION CHECK_NULL : BOOL
   VAR_INPUT
     PT : REF_TO INT;
@@ -275,20 +249,17 @@ PROGRAM main
   END_VAR
   result := CHECK_NULL(PT := REF(b));
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // result should be TRUE (1) since local_ref is NULL
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
+",
+    &[(1, 1)],
+);
 
-#[test]
-fn end_to_end_when_function_with_multiple_ref_to_types_then_compiles() {
-    // Verifies that REF_TO works with different types (BYTE, DWORD)
-    // in both VAR_INPUT and VAR blocks of a FUNCTION.
-    let source = "
+// Verifies that REF_TO works with different types (BYTE, DWORD)
+// in both VAR_INPUT and VAR blocks of a FUNCTION.
+// result (var[0]) should be TRUE (1)
+e2e_i32_with!(
+    end_to_end_when_function_with_multiple_ref_to_types_then_compiles,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 FUNCTION TEST : BOOL
   VAR_INPUT
     PT : REF_TO BYTE;
@@ -306,21 +277,18 @@ PROGRAM main
   END_VAR
   result := TEST(PT := REF(b));
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // result (var[0]) should be TRUE (1)
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-}
+",
+    &[(0, 1)],
+);
 
-#[test]
-fn end_to_end_when_function_with_deref_array_subscript_then_writes_through_ref() {
-    // Verifies that PT^[0] syntax (dereference + array subscript) actually
-    // writes to the target array through the reference at runtime.
-    // Exercises the STORE_ARRAY_DEREF codegen and VM path.
-    let source = "
+// Verifies that PT^[0] syntax (dereference + array subscript) actually
+// writes to the target array through the reference at runtime.
+// Exercises the STORE_ARRAY_DEREF codegen and VM path.
+// result (var[1]) should be 1; check (var[2]) should be 42 (written through REF)
+e2e_i32_with!(
+    end_to_end_when_function_with_deref_array_subscript_then_writes_through_ref,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 FUNCTION write_array : INT
   VAR_INPUT
       PT : REF_TO ARRAY[0..10] OF BYTE;
@@ -338,22 +306,17 @@ END_VAR
     result := write_array(PT := REF(arr));
     check := arr[0];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // result (var[1]) should be 1 (function return value)
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-    // check (var[2]) should be 42 (written through REF)
-    assert_eq!(bufs.vars[2].as_i32(), 42);
-}
+",
+    &[(1, 1), (2, 42)],
+);
 
-#[test]
-fn end_to_end_when_function_with_local_ref_to_array_deref_subscript_then_writes_through_ref() {
-    // Verifies that a local REF_TO ARRAY variable (not a parameter) can be used
-    // with deref array subscript syntax (local_pt^[0]).
-    let source = "
+// Verifies that a local REF_TO ARRAY variable (not a parameter) can be used
+// with deref array subscript syntax (local_pt^[0]).
+// result (var[1]) should be 1; check (var[2]) should be 77 (written through local REF)
+e2e_i32_with!(
+    end_to_end_when_function_with_local_ref_to_array_deref_subscript_then_writes_through_ref,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 FUNCTION fill_first : INT
   VAR_INPUT
       arr_ref : REF_TO ARRAY[0..4] OF INT;
@@ -375,16 +338,9 @@ END_VAR
     result := fill_first(arr_ref := REF(arr));
     check := arr[0];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // result (var[1]) should be 1 (function return value)
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-    // check (var[2]) should be 77 (written through local REF)
-    assert_eq!(bufs.vars[2].as_i32(), 77);
-}
+",
+    &[(1, 1), (2, 77)],
+);
 
 #[test]
 fn end_to_end_when_program_ref_to_array_deref_subscript_then_reads_element() {
@@ -417,12 +373,14 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_f32(), 42.0);
 }
 
-#[test]
-fn end_to_end_when_ref_to_byte_array_deref_subscript_in_comparison_then_correct() {
-    // Verifies that pt^[i] used in a comparison context works end-to-end.
-    // This exercises the resolved_type on deref+array subscript expressions,
-    // which is needed for op_type() in comparison codegen.
-    let source = "
+// Verifies that pt^[i] used in a comparison context works end-to-end.
+// This exercises the resolved_type on deref+array subscript expressions,
+// which is needed for op_type() in comparison codegen.
+// b (var[1]) should be 42; found (var[2]) should be TRUE (42 > 0)
+e2e_i32_with!(
+    end_to_end_when_ref_to_byte_array_deref_subscript_in_comparison_then_correct,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 FUNCTION READ_ELEM : BYTE
 VAR_INPUT
     pt : REF_TO ARRAY[0..10] OF BYTE;
@@ -441,22 +399,17 @@ END_VAR
     b := READ_ELEM(pt := REF(arr), i := 0);
     found := b > BYTE#0;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // b (var[1]) should be 42
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-    // found (var[2]) should be TRUE (42 > 0)
-    assert_eq!(bufs.vars[2].as_i32(), 1);
-}
+",
+    &[(1, 42), (2, 1)],
+);
 
-#[test]
-fn end_to_end_when_fb_with_deref_array_subscript_then_writes_through_ref() {
-    // Verifies that PT^[0] syntax (dereference + array subscript) works
-    // inside a FUNCTION_BLOCK, not just inside a FUNCTION.
-    let source = "
+// Verifies that PT^[0] syntax (dereference + array subscript) works
+// inside a FUNCTION_BLOCK, not just inside a FUNCTION.
+// check (var[2]) should be 42 (written through REF in FB)
+e2e_i32_with!(
+    end_to_end_when_fb_with_deref_array_subscript_then_writes_through_ref,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 FUNCTION_BLOCK ARRAY_WRITER
   VAR_INPUT
       PT : REF_TO ARRAY[0..10] OF BYTE;
@@ -473,20 +426,17 @@ END_VAR
     fb(PT := REF(arr));
     check := arr[0];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // check (var[2]) should be 42 (written through REF in FB)
-    assert_eq!(bufs.vars[2].as_i32(), 42);
-}
+",
+    &[(2, 42)],
+);
 
-#[test]
-fn end_to_end_when_fb_with_local_ref_to_array_deref_subscript_then_writes_through_ref() {
-    // Verifies that a local REF_TO ARRAY variable inside a FUNCTION_BLOCK
-    // can be used with deref array subscript syntax (local_pt^[0]).
-    let source = "
+// Verifies that a local REF_TO ARRAY variable inside a FUNCTION_BLOCK
+// can be used with deref array subscript syntax (local_pt^[0]).
+// check (var[2]) should be 99 (written through local REF in FB)
+e2e_i32_with!(
+    end_to_end_when_fb_with_local_ref_to_array_deref_subscript_then_writes_through_ref,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 FUNCTION_BLOCK COPY_FB
   VAR_INPUT
       src : REF_TO ARRAY[0..4] OF INT;
@@ -507,11 +457,6 @@ END_VAR
     fb(src := REF(arr));
     check := arr[0];
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // check (var[2]) should be 99 (written through local REF in FB)
-    assert_eq!(bufs.vars[2].as_i32(), 99);
-}
+",
+    &[(2, 99)],
+);

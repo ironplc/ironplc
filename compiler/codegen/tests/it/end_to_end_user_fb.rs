@@ -7,12 +7,11 @@
 use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::parse_and_run;
 use crate::common::parse_and_run_rounds;
 
-#[test]
-fn end_to_end_when_user_fb_simple_input_output_then_computes_result() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_user_fb_simple_input_output_then_computes_result,
+    "
 FUNCTION_BLOCK DOUBLER
   VAR_INPUT x : DINT; END_VAR
   VAR_OUTPUT y : DINT; END_VAR
@@ -26,10 +25,9 @@ PROGRAM main
   END_VAR
   fb(x := 7, y => result);
 END_PROGRAM
-";
-    let (_container, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 14, "result should be 7 * 2 = 14");
-}
+",
+    &[(1, 14)],
+);
 
 #[test]
 fn end_to_end_when_user_fb_internal_state_then_persists_across_calls() {
@@ -140,14 +138,13 @@ PROGRAM main
   c();
 END_PROGRAM
 ";
-    let _ = crate::common::try_parse_and_compile(source, &CompilerOptions::default())
-        .expect("FB calling user function should compile");
+    let _ = crate::common::try_parse_and_compile(source, &CompilerOptions::default()).unwrap();
 }
 
-#[test]
-fn end_to_end_when_user_fb_dot_access_read_then_returns_output() {
-    // Mirror of the DOUBLER test using dot-access instead of `Q => result`.
-    let source = "
+// Mirror of the DOUBLER test using dot-access instead of `Q => result`.
+e2e_i32!(
+    end_to_end_when_user_fb_dot_access_read_then_returns_output,
+    "
 FUNCTION_BLOCK DOUBLER
   VAR_INPUT x : DINT; END_VAR
   VAR_OUTPUT y : DINT; END_VAR
@@ -162,14 +159,9 @@ PROGRAM main
   fb(x := 7);
   result := fb.y;
 END_PROGRAM
-";
-    let (_container, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(
-        bufs.vars[1].as_i32(),
-        14,
-        "result should be 7 * 2 = 14 via dot-access"
-    );
-}
+",
+    &[(1, 14)],
+);
 
 #[test]
 fn end_to_end_when_user_fb_dot_access_across_rounds_then_stack_stable() {
@@ -215,11 +207,11 @@ END_PROGRAM
     });
 }
 
-#[test]
-fn end_to_end_when_user_fb_dot_access_write_then_input_set() {
-    // Mirror of the DOUBLER test using dot-access write to set the input
-    // before the bare FB call.
-    let source = "
+// Mirror of the DOUBLER test using dot-access write to set the input
+// before the bare FB call.
+e2e_i32!(
+    end_to_end_when_user_fb_dot_access_write_then_input_set,
+    "
 FUNCTION_BLOCK DOUBLER
   VAR_INPUT x : DINT; END_VAR
   VAR_OUTPUT y : DINT; END_VAR
@@ -235,14 +227,9 @@ PROGRAM main
   fb();
   result := fb.y;
 END_PROGRAM
-";
-    let (_container, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(
-        bufs.vars[1].as_i32(),
-        14,
-        "result should be 7 * 2 = 14 via dot-access write+call+read"
-    );
-}
+",
+    &[(1, 14)],
+);
 
 #[test]
 fn end_to_end_when_user_fb_dot_access_write_unknown_field_then_diagnostic() {

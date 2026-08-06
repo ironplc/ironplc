@@ -541,8 +541,7 @@ mod tests {
         }];
         let resp = crate::tools::compile::build_response(&sources, &ed2_options(), false, cache);
         assert!(resp.ok, "compile failed: {:?}", resp.diagnostics);
-        resp.container_id
-            .expect("compile should return a container_id")
+        resp.container_id.unwrap()
     }
 
     const COUNTER_PROGRAM: &str = r#"

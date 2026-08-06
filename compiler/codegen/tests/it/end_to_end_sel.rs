@@ -1,42 +1,34 @@
 //! End-to-end integration tests for the SEL function.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_sel_false_then_returns_in0() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_sel_false_then_returns_in0,
+    "
 PROGRAM main
   VAR
     y : DINT;
   END_VAR
   y := SEL(0, 10, 20);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 10)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-}
-
-#[test]
-fn end_to_end_when_sel_true_then_returns_in1() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_sel_true_then_returns_in1,
+    "
 PROGRAM main
   VAR
     y : DINT;
   END_VAR
   y := SEL(1, 10, 20);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 20)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 20);
-}
-
-#[test]
-fn end_to_end_when_sel_with_variable_then_selects() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_sel_with_variable_then_selects,
+    "
 PROGRAM main
   VAR
     g : DINT;
@@ -45,9 +37,6 @@ PROGRAM main
   g := 1;
   y := SEL(g, 100, 200);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 200);
-}
+",
+    &[(0, 1), (1, 200)],
+);

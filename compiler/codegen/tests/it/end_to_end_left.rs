@@ -4,6 +4,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
+use proptest::prelude::*;
 
 /// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -23,6 +24,18 @@ fn string_offset(preceding_max_lengths: &[u16]) -> usize {
         .map(|&ml| STRING_HEADER_BYTES + ml as usize)
         .sum()
 }
+
+/// Generates printable ASCII strings safe for IEC 61131-3 string literals.
+/// Excludes single quote (0x27) and dollar sign (0x24, the escape character).
+fn safe_string_strategy() -> impl Strategy<Value = String> {
+    proptest::collection::vec(
+        (0x20u8..=0x7Eu8).prop_filter("exclude quote and dollar", |&b| b != b'\'' && b != b'$'),
+        0..=254,
+    )
+    .prop_map(|bytes| bytes.into_iter().map(|b| b as char).collect())
+}
+
+// --- Deterministic anchors ---
 
 #[test]
 fn end_to_end_when_left_partial_then_correct_result() {
@@ -60,88 +73,29 @@ END_PROGRAM
     assert_eq!(read_string(&bufs.data_region, result_offset), "Hi");
 }
 
-#[test]
-fn end_to_end_when_left_zero_then_empty_string() {
-    let source = "
+// --- Property test: LEFT(s, n) == first min(n, len(s)) characters ---
+// Oracle is Rust `chars().take(n)`, independent of the VM implementation. The
+// two anchors above pin the nominal and clamp branches deterministically.
+proptest! {
+    #[test]
+    fn end_to_end_when_left_of_arbitrary_string_then_takes_prefix(
+        s in safe_string_strategy(),
+        n in 0usize..=260,
+    ) {
+        let expected: String = s.chars().take(n).collect();
+        let source = format!(
+            "
 PROGRAM main
   VAR
-    s1 : STRING := 'Hello';
+    s1 : STRING := '{s}';
     result : STRING;
   END_VAR
-  result := LEFT(s1, 0);
+  result := LEFT(s1, {n});
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "");
-}
-
-#[test]
-fn end_to_end_when_left_single_char_then_first_char() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, 1);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "A");
-}
-
-#[test]
-fn end_to_end_when_left_exact_length_then_entire_string() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABCDE");
-}
-
-#[test]
-fn end_to_end_when_left_with_integer_var_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello World';
-    n : INT := 3;
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, n);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hel");
-}
-
-#[test]
-fn end_to_end_when_left_empty_string_then_empty() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING;
-    result : STRING;
-  END_VAR
-  result := LEFT(s1, 5);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "");
+"
+        );
+        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+        let result_offset = string_offset(&[254]);
+        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+    }
 }

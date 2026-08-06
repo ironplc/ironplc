@@ -315,7 +315,7 @@ END_PROGRAM",
         &FileId::default(),
         &options,
     );
-    let lib = result.expect("should parse");
+    let lib = result.unwrap();
     let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
     let spec = cast!(
         &prog.variables[0].initializer,

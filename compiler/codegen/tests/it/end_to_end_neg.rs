@@ -1,12 +1,8 @@
 //! End-to-end integration tests for the NEG unary operator.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_neg_variable_then_negated() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_neg_variable_then_negated,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -15,16 +11,13 @@ PROGRAM main
   x := 7;
   y := -x;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 7), (1, -7)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 7);
-    assert_eq!(bufs.vars[1].as_i32(), -7);
-}
-
-#[test]
-fn end_to_end_when_neg_negative_variable_then_positive() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_neg_negative_variable_then_positive,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -33,16 +26,13 @@ PROGRAM main
   x := -3;
   y := -x;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, -3), (1, 3)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), -3);
-    assert_eq!(bufs.vars[1].as_i32(), 3);
-}
-
-#[test]
-fn end_to_end_when_double_neg_then_original() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_double_neg_then_original,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -51,9 +41,6 @@ PROGRAM main
   x := 42;
   y := -(-x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
+",
+    &[(0, 42), (1, 42)],
+);

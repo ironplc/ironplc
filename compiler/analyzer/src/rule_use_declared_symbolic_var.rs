@@ -198,9 +198,9 @@ END_FUNCTION_BLOCK";
             .contains(&"variable=TRIG".to_owned()))
     }
 
-    #[test]
-    fn apply_when_function_block_all_symbol_declared_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_function_block_all_symbol_declared_then_ok,
+        "
 FUNCTION_BLOCK LOGGER
 VAR
 TRIG : BOOL;
@@ -208,18 +208,12 @@ TRIG0 : BOOL;
 END_VAR
          
 TRIG := TRIG0;
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_function_all_symbol_declared_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_function_all_symbol_declared_then_ok,
+        "
 FUNCTION LOGGER : REAL
 VAR_INPUT
 TRIG : BOOL;
@@ -227,18 +221,12 @@ TRIG0 : BOOL;
 END_VAR
          
 TRIG := TRIG0;
-END_FUNCTION";
+END_FUNCTION"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_program_all_symbol_declared_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_program_all_symbol_declared_then_ok,
+        "
 PROGRAM LOGGER
 VAR
 TRIG : BOOL;
@@ -246,18 +234,12 @@ TRIG0 : BOOL;
 END_VAR
          
 TRIG := TRIG0;
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_assign_enum_variant_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_assign_enum_variant_then_ok,
+        "
 TYPE
     MyColors: (Red, Green);
 END_TYPE
@@ -267,14 +249,8 @@ FUNCTION_BLOCK FB_EXAMPLE
         Color: MyColors := Red;
     END_VAR
     Color := Green;
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 
     #[test]
     fn apply_when_typo_in_variable_name_then_suggests_closest_match() {
@@ -325,9 +301,9 @@ END_FUNCTION_BLOCK";
             .any(|d| d.starts_with("did you mean")));
     }
 
-    #[test]
-    fn apply_when_enum_value_in_comparison_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_enum_value_in_comparison_then_ok,
+        "
 TYPE
     MotorState : (STOPPED, RUNNING, FAULTED);
 END_TYPE
@@ -339,14 +315,8 @@ FUNCTION_BLOCK FB_MotorControl
         Seal : BOOL;
     END_VAR
     CONTACTOR := (State = RUNNING) AND Seal;
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 
     #[test]
     fn apply_when_system_uptime_global_enabled_then_direct_access_ok() {
@@ -370,23 +340,17 @@ END_PROGRAM";
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn apply_when_system_uptime_global_disabled_then_direct_access_error() {
-        let program = "
+    rule_err!(
+        apply_when_system_uptime_global_disabled_then_direct_access_error,
+        "
 PROGRAM main
 VAR
     t : TIME;
 END_VAR
 
 t := __SYSTEM_UP_TIME;
-END_PROGRAM";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-    }
+END_PROGRAM"
+    );
 
     // ---------------------------------------------------------------------
     // EXTENDS field inheritance.

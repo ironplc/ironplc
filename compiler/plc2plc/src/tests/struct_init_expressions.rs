@@ -30,7 +30,6 @@ END_FUNCTION_BLOCK
     assert!(rendered.contains("pDevice"));
     assert!(rendered.contains("Delta"));
 
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options)
-        .expect("rendered output must parse under the same dialect");
+    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
     assert_eq!(library_original, library_rendered);
 }

@@ -5,9 +5,10 @@ use ironplc_parser::options::CompilerOptions;
 use crate::common::parse_and_run;
 use proptest::prelude::*;
 
-#[test]
-fn end_to_end_when_len_of_string_with_value_then_returns_length() {
-    let source = "
+// s is at variable slot 0, n is at variable slot 1.
+e2e_i32!(
+    end_to_end_when_len_of_string_with_value_then_returns_length,
+    "
 PROGRAM main
   VAR
     s : STRING := 'hello';
@@ -15,16 +16,13 @@ PROGRAM main
   END_VAR
   n := LEN(s);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(1, 5)],
+);
 
-    // s is at variable slot 0, n is at variable slot 1.
-    assert_eq!(bufs.vars[1].as_i32(), 5);
-}
-
-#[test]
-fn end_to_end_when_len_of_empty_string_then_returns_zero() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_len_of_empty_string_then_returns_zero,
+    "
 PROGRAM main
   VAR
     s : STRING;
@@ -32,15 +30,14 @@ PROGRAM main
   END_VAR
   n := LEN(s);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(1, 0)],
+);
 
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_len_of_string_with_max_length_then_returns_current_length() {
-    let source = "
+// Current length is 2 ('hi'), not the max length of 10.
+e2e_i32!(
+    end_to_end_when_len_of_string_with_max_length_then_returns_current_length,
+    "
 PROGRAM main
   VAR
     s : STRING[10] := 'hi';
@@ -48,16 +45,13 @@ PROGRAM main
   END_VAR
   n := LEN(s);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(1, 2)],
+);
 
-    // Current length is 2 ('hi'), not the max length of 10.
-    assert_eq!(bufs.vars[1].as_i32(), 2);
-}
-
-#[test]
-fn end_to_end_when_len_of_single_char_string_then_returns_one() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_len_of_single_char_string_then_returns_one,
+    "
 PROGRAM main
   VAR
     s : STRING := 'x';
@@ -65,11 +59,9 @@ PROGRAM main
   END_VAR
   n := LEN(s);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
+",
+    &[(1, 1)],
+);
 
 /// Generates printable ASCII strings safe for IEC 61131-3 string literals.
 /// Excludes single quote (0x27) and dollar sign (0x24, the escape character).

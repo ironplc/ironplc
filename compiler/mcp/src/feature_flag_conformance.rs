@@ -97,6 +97,15 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "FUNCTION TIME : INT\nVAR_INPUT x : INT; END_VAR\nTIME := x;\nEND_FUNCTION\nPROGRAM p\nEND_PROGRAM",
     },
+    // The IEC 61131-3:2013 long-time type LTIME and its literal. With the flag
+    // off, LTIME is demoted to an identifier, so the `LTIME#...` duration
+    // literal (which needs the LTIME keyword token) fails to parse; with it on,
+    // both the type and the literal are recognized.
+    FlagFixture {
+        key: "allow_long_time_types",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\nt : LTIME;\nEND_VAR\nt := LTIME#1000ms;\nEND_PROGRAM",
+    },
     // REF_TO / REF() without full Edition 3. With the flag off, REF_TO is
     // demoted to an identifier and the declaration fails to parse.
     FlagFixture {

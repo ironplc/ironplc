@@ -373,9 +373,7 @@ mod tests {
     #[test]
     fn load_when_tc2_system_then_provides_pi() {
         let registry = LibraryRegistry::bundled();
-        let loaded = registry
-            .load(&LibraryName::from("Tc2_System"))
-            .expect("Tc2_System loads");
+        let loaded = registry.load(&LibraryName::from("Tc2_System")).unwrap();
         assert_eq!(loaded.manifest.name, "Tc2_System");
         assert_eq!(loaded.manifest.default_version, "1.0.0");
         assert!(

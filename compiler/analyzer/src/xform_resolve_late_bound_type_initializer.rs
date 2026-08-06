@@ -515,7 +515,7 @@ END_FUNCTION_BLOCK
                 }
                 _ => None,
             })
-            .expect("FB_B should still be present");
+            .unwrap();
 
         assert!(matches!(
             &fb_b.variables[0].initializer,
@@ -559,7 +559,7 @@ END_FUNCTION_BLOCK
                 }
                 _ => None,
             })
-            .expect("FB_A should still be present");
+            .unwrap();
 
         assert!(matches!(
             &fb_a.variables[1].initializer,

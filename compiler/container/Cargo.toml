@@ -19,6 +19,7 @@ ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 
 [dev-dependencies]
 spec_test_macro = { path = "../spec_test_macro" }
+rstest = "0.26"
 
 [lints]
 workspace = true

@@ -14,10 +14,7 @@ use ironplc_parser::options::CompilerOptions;
 /// Resolves the `function_id` assigned to a user POU by looking it up in the
 /// FUNC_NAME table by name (case-insensitive). Panics if absent.
 fn function_id_of(container: &ironplc_container::Container, name: &str) -> FunctionId {
-    let debug = container
-        .debug_section
-        .as_ref()
-        .expect("debug section present");
+    let debug = container.debug_section.as_ref().unwrap();
     debug
         .func_names
         .iter()
@@ -28,10 +25,7 @@ fn function_id_of(container: &ironplc_container::Container, name: &str) -> Funct
 
 /// Collects the VAR_NAME entries owned by a given function id.
 fn vars_for(container: &ironplc_container::Container, owner: FunctionId) -> Vec<&VarNameEntry> {
-    let debug = container
-        .debug_section
-        .as_ref()
-        .expect("debug section present");
+    let debug = container.debug_section.as_ref().unwrap();
     debug
         .var_names
         .iter()

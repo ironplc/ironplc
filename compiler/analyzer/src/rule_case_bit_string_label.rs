@@ -90,9 +90,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn apply_when_hex_case_label_and_flag_disabled_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_hex_case_label_and_flag_disabled_then_error,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     x : DINT;
@@ -101,14 +101,8 @@ END_VAR
 CASE x OF
     16#D012: y := 1;
 END_CASE;
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-    }
+END_FUNCTION_BLOCK"
+    );
 
     #[test]
     fn apply_when_hex_case_label_and_flag_enabled_then_ok() {
@@ -148,16 +142,13 @@ END_FUNCTION_BLOCK";
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&library, &context, &CompilerOptions::default());
 
-        let diagnostics = result.expect_err("both bit-string labels must be flagged");
+        let diagnostics = result.unwrap_err();
         assert_eq!(diagnostics.len(), 2);
     }
 
-    #[test]
-    fn apply_when_plain_decimal_case_label_then_never_flagged() {
-        // A plain decimal label parses as SignedInteger, not BitStringLiteral,
-        // so it is standard syntax and must never be flagged regardless of the
-        // option.
-        let program = "
+    rule_ok!(
+        apply_when_plain_decimal_case_label_then_never_flagged,
+        "
 FUNCTION_BLOCK FB_Example
 VAR
     x : INT;
@@ -166,12 +157,6 @@ END_VAR
 CASE x OF
     5: y := 1;
 END_CASE;
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 }

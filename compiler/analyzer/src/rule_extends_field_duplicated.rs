@@ -103,8 +103,6 @@ pub fn apply(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types_with_options;
 
     fn opts_with_fb_inheritance() -> CompilerOptions {
         CompilerOptions {
@@ -113,9 +111,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn apply_when_derived_redeclares_base_field_same_type_then_error() {
-        let program = "
+    rule_err1_with!(
+        apply_when_derived_redeclares_base_field_same_type_then_error,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK FB_Base
 VAR
     state : INT;
@@ -126,20 +125,14 @@ FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
 VAR
     state : INT;
 END_VAR
-END_FUNCTION_BLOCK";
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
+END_FUNCTION_BLOCK",
+        Problem::ExtendsFieldNameDuplicated
+    );
 
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::ExtendsFieldNameDuplicated.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_derived_redeclares_base_field_different_type_then_error() {
-        let program = "
+    rule_err1_with!(
+        apply_when_derived_redeclares_base_field_different_type_then_error,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK FB_Base
 VAR
     state : INT;
@@ -150,20 +143,14 @@ FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
 VAR
     state : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
+END_FUNCTION_BLOCK",
+        Problem::ExtendsFieldNameDuplicated
+    );
 
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::ExtendsFieldNameDuplicated.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_derived_has_no_field_collision_then_ok() {
-        let program = "
+    rule_ok_with!(
+        apply_when_derived_has_no_field_collision_then_ok,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK FB_Base
 VAR
     state : INT;
@@ -174,21 +161,13 @@ FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
 VAR
     derivedState : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
+END_FUNCTION_BLOCK"
+    );
 
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_grandparent_field_collision_then_error() {
-        // The collision is with a grandparent's field, not the immediate
-        // parent's -- confirming collect_inherited_fields()'s transitive
-        // walk is actually consulted, not just the direct base.
-        let program = "
+    rule_err1_with!(
+        apply_when_grandparent_field_collision_then_error,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK FB_A
 VAR
     a : BOOL;
@@ -205,30 +184,18 @@ FUNCTION_BLOCK FB_C EXTENDS FB_B
 VAR
     a : INT;
 END_VAR
-END_FUNCTION_BLOCK";
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
+END_FUNCTION_BLOCK",
+        Problem::ExtendsFieldNameDuplicated
+    );
 
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(Problem::ExtendsFieldNameDuplicated.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_no_extends_then_ok() {
-        let program = "
+    rule_ok_with!(
+        apply_when_no_extends_then_ok,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK FB_Plain
 VAR
     x : INT;
 END_VAR
-END_FUNCTION_BLOCK";
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 }

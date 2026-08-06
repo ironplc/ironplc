@@ -576,7 +576,7 @@ END_PROGRAM
             let bc = container.code.get_function_bytecode(entry.function_id)?;
             bc.iter().position(|&b| b == opcode::CALL).map(|p| (bc, p))
         })
-        .expect("CALL opcode present in some function");
+        .unwrap();
     assert_eq!(opcode::instruction_size(opcode::CALL), 5);
     assert!(
         call_pos + 5 <= call_bc.len(),
@@ -610,10 +610,7 @@ END_PROGRAM
         .unwrap();
     // Find STR_INIT (0xB8). Validate the 7 trailing operand bytes
     // decode as LE u32 + LE u16 + u8.
-    let pos = init_bc
-        .iter()
-        .position(|&b| b == 0xB8)
-        .expect("STR_INIT opcode present in program init");
+    let pos = init_bc.iter().position(|&b| b == 0xB8).unwrap();
     assert_eq!(opcode::instruction_size(opcode::STR_INIT), 8);
     assert!(
         pos + 8 <= init_bc.len(),
@@ -648,10 +645,7 @@ PROGRAM main
 END_PROGRAM
 ",
     );
-    let pos = bc
-        .iter()
-        .position(|&b| b == 0xC4)
-        .expect("LEN_STR opcode present");
+    let pos = bc.iter().position(|&b| b == 0xC4).unwrap();
     assert_eq!(opcode::instruction_size(opcode::LEN_STR), 5);
     assert!(pos + 5 <= bc.len(), "LEN_STR has 4 trailing u32 bytes");
     let _data_offset = u32::from_le_bytes([bc[pos + 1], bc[pos + 2], bc[pos + 3], bc[pos + 4]]);
@@ -673,10 +667,7 @@ PROGRAM main
 END_PROGRAM
 ",
     );
-    let pos = bc
-        .iter()
-        .position(|&b| b == 0xC8)
-        .expect("FIND_STR opcode present");
+    let pos = bc.iter().position(|&b| b == 0xC8).unwrap();
     assert_eq!(opcode::instruction_size(opcode::FIND_STR), 9);
     assert!(pos + 9 <= bc.len(), "FIND_STR has 8 trailing u32 bytes");
     let _in1 = u32::from_le_bytes([bc[pos + 1], bc[pos + 2], bc[pos + 3], bc[pos + 4]]);

@@ -1,12 +1,9 @@
 //! End-to-end integration tests for the POW/EXPT operator.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_pow_expression_then_variable_has_power() {
-    let source = "
+// 3^4 = 81
+e2e_i32!(
+    end_to_end_when_pow_expression_then_variable_has_power,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -15,16 +12,14 @@ PROGRAM main
   x := 3;
   y := x ** 4;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 3), (1, 81)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 3);
-    assert_eq!(bufs.vars[1].as_i32(), 81); // 3^4 = 81
-}
-
-#[test]
-fn end_to_end_when_pow_with_zero_exponent_then_one() {
-    let source = "
+// 7^0 = 1
+e2e_i32!(
+    end_to_end_when_pow_with_zero_exponent_then_one,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -33,9 +28,6 @@ PROGRAM main
   x := 7;
   y := x ** 0;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 7);
-    assert_eq!(bufs.vars[1].as_i32(), 1); // 7^0 = 1
-}
+",
+    &[(0, 7), (1, 1)],
+);

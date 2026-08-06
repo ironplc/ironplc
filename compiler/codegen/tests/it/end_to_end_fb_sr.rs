@@ -3,11 +3,10 @@
 //! These tests verify the complete pipeline: parse IEC 61131-3 source with
 //! an SR function block instance, compile to bytecode, and execute on the VM.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
-use crate::common::parse_and_run;
-use crate::common::parse_and_run_rounds;
+use crate::common::{drive_fb, FbStep, FbStep::*};
 
 const SR_PROGRAM: &str = "
 PROGRAM main
@@ -21,69 +20,23 @@ PROGRAM main
 END_PROGRAM
 ";
 
-#[test]
-fn end_to_end_when_sr_both_false_then_q1_stays_false() {
-    let (_container, bufs) = parse_and_run(SR_PROGRAM, &CompilerOptions::default());
-    assert_eq!(bufs.vars[3].as_i32(), 0, "Q1 should be FALSE");
-}
-
-#[test]
-fn end_to_end_when_sr_set_then_q1_latches() {
-    parse_and_run_rounds(SR_PROGRAM, &CompilerOptions::default(), |vm| {
-        // Set S1 = TRUE
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            1,
-            "Q1 should be TRUE after set"
-        );
-
-        // Remove S1, Q1 should latch (stay TRUE)
-        vm.write_variable(VarIndex::new(1), 0).unwrap();
-        vm.run_round(1).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            1,
-            "Q1 should stay TRUE (latched)"
-        );
-    });
-}
-
-#[test]
-fn end_to_end_when_sr_reset_after_set_then_q1_is_false() {
-    parse_and_run_rounds(SR_PROGRAM, &CompilerOptions::default(), |vm| {
-        // Set
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            1,
-            "Q1 should be TRUE"
-        );
-
-        // Remove set, apply reset
-        vm.write_variable(VarIndex::new(1), 0).unwrap();
-        vm.write_variable(VarIndex::new(2), 1).unwrap();
-        vm.run_round(1).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            0,
-            "Q1 should be FALSE after reset"
-        );
-    });
-}
-
-#[test]
-fn end_to_end_when_sr_both_true_then_set_dominates() {
-    parse_and_run_rounds(SR_PROGRAM, &CompilerOptions::default(), |vm| {
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.write_variable(VarIndex::new(2), 1).unwrap();
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            1,
-            "Q1 should be TRUE (set dominates)"
-        );
-    });
+#[rstest]
+// Both inputs FALSE: Q1 stays FALSE.
+#[case::both_false(&[Run(0), Expect(3, 0)])]
+// S1 alone latches Q1 TRUE, and it stays TRUE after S1 is removed.
+#[case::set_latches(&[
+    Write(1, 1), Run(0), Expect(3, 1),
+    Write(1, 0), Run(1), Expect(3, 1),
+])]
+// Reset after set clears Q1.
+#[case::reset_after_set(&[
+    Write(1, 1), Run(0), Expect(3, 1),
+    Write(1, 0), Write(2, 1), Run(1), Expect(3, 0),
+])]
+// Both TRUE: set dominates for SR, so Q1 is TRUE.
+#[case::both_true_set_dominates(&[
+    Write(1, 1), Write(2, 1), Run(0), Expect(3, 1),
+])]
+fn end_to_end_fb_sr(#[case] steps: &[FbStep]) {
+    drive_fb(SR_PROGRAM, &CompilerOptions::default(), steps);
 }

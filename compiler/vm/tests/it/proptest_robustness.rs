@@ -70,3 +70,62 @@ proptest! {
         prop_assert_eq!(result, 0);
     }
 }
+
+// Cross-check the i32 arithmetic opcodes against plain Rust arithmetic over a
+// wide range of operands. Inputs are constrained so the result cannot overflow
+// i32, which keeps the oracle unambiguous (plain `a + b` / `a - b` / `a * b`)
+// regardless of the VM's implementation-defined overflow behaviour. This
+// complements the identity tests above, which only exercise `a op {0,1,a}`.
+proptest! {
+    #[test]
+    fn execute_when_add_i32_no_overflow_then_matches_rust(
+        a in -1_000_000_000_i32..=1_000_000_000,
+        b in -1_000_000_000_i32..=1_000_000_000,
+    ) {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
+            0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (b)
+            0x20,              // ADD_I32
+            0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+            0x8C,              // RET_VOID
+        ];
+        let result = crate::common::run_and_read_i32(&bytecode, 1, &[a, b]);
+        prop_assert_eq!(result, a + b);
+    }
+
+    #[test]
+    fn execute_when_sub_i32_no_overflow_then_matches_rust(
+        a in -1_000_000_000_i32..=1_000_000_000,
+        b in -1_000_000_000_i32..=1_000_000_000,
+    ) {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
+            0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (b)
+            0x24,              // SUB_I32
+            0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+            0x8C,              // RET_VOID
+        ];
+        let result = crate::common::run_and_read_i32(&bytecode, 1, &[a, b]);
+        prop_assert_eq!(result, a - b);
+    }
+
+    #[test]
+    fn execute_when_mul_i32_no_overflow_then_matches_rust(
+        // 46340^2 < i32::MAX, so the product always fits.
+        a in -46_340_i32..=46_340,
+        b in -46_340_i32..=46_340,
+    ) {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x00, 0x00, 0x00,  // LOAD_CONST_I32 pool[0]  (a)
+            0x00, 0x01, 0x00,  // LOAD_CONST_I32 pool[1]  (b)
+            0x28,              // MUL_I32
+            0x10, 0x00, 0x00,  // STORE_VAR_I32 var[0]
+            0x8C,              // RET_VOID
+        ];
+        let result = crate::common::run_and_read_i32(&bytecode, 1, &[a, b]);
+        prop_assert_eq!(result, a * b);
+    }
+}

@@ -1,12 +1,8 @@
 //! End-to-end integration tests for EXIT and RETURN statement compilation.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_exit_in_while_then_breaks_loop() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_exit_in_while_then_breaks_loop,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -18,14 +14,14 @@ PROGRAM main
     END_IF;
   END_WHILE;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 3);
-}
+",
+    &[(0, 3)],
+);
 
-#[test]
-fn end_to_end_when_exit_in_for_then_breaks_loop() {
-    let source = "
+// sum = 1 + 2 + 3 = 6 (exits when i=4, before adding)
+e2e_i32!(
+    end_to_end_when_exit_in_for_then_breaks_loop,
+    "
 PROGRAM main
   VAR
     i : DINT;
@@ -38,15 +34,13 @@ PROGRAM main
     sum := sum + i;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // sum = 1 + 2 + 3 = 6 (exits when i=4, before adding)
-    assert_eq!(bufs.vars[1].as_i32(), 6);
-}
+",
+    &[(1, 6)],
+);
 
-#[test]
-fn end_to_end_when_exit_in_repeat_then_breaks_loop() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_exit_in_repeat_then_breaks_loop,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -59,14 +53,15 @@ PROGRAM main
   UNTIL FALSE
   END_REPEAT;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 2);
-}
+",
+    &[(0, 2)],
+);
 
-#[test]
-fn end_to_end_when_exit_in_nested_loops_then_breaks_inner() {
-    let source = "
+// Inner loop runs j=1,2 then exits at j=3, for each of i=1,2,3
+// count = 3 * 2 = 6
+e2e_i32!(
+    end_to_end_when_exit_in_nested_loops_then_breaks_inner,
+    "
 PROGRAM main
   VAR
     i : DINT;
@@ -82,16 +77,14 @@ PROGRAM main
     END_FOR;
   END_FOR;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // Inner loop runs j=1,2 then exits at j=3, for each of i=1,2,3
-    // count = 3 * 2 = 6
-    assert_eq!(bufs.vars[2].as_i32(), 6);
-}
+",
+    &[(2, 6)],
+);
 
-#[test]
-fn end_to_end_when_return_then_skips_remaining() {
-    let source = "
+// vars[1] (y) is not assigned because RETURN skips it.
+e2e_i32!(
+    end_to_end_when_return_then_skips_remaining,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -101,15 +94,14 @@ PROGRAM main
   RETURN;
   y := 99;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-    assert_eq!(bufs.vars[1].as_i32(), 0); // y not assigned
-}
+",
+    &[(0, 42), (1, 0)],
+);
 
-#[test]
-fn end_to_end_when_return_in_if_then_exits_early() {
-    let source = "
+// vars[1] (y) is not assigned because the early RETURN skips it.
+e2e_i32!(
+    end_to_end_when_return_in_if_then_exits_early,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -121,18 +113,17 @@ PROGRAM main
   END_IF;
   y := 99;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 1);
-    assert_eq!(bufs.vars[1].as_i32(), 0); // y not assigned
-}
+",
+    &[(0, 1), (1, 0)],
+);
 
-#[test]
-fn end_to_end_when_early_return_in_function_then_caller_gets_assigned_value() {
-    // Regression: an early RETURN inside a value-returning FUNCTION used to
-    // emit RET_VOID, leaving the caller's stack empty and triggering a stack
-    // underflow when assigning the call result to a variable.
-    let source = "
+// Regression: an early RETURN inside a value-returning FUNCTION used to
+// emit RET_VOID, leaving the caller's stack empty and triggering a stack
+// underflow when assigning the call result to a variable.
+// vars[0] safe_result: early-return path; vars[1] normal_result: 10 / 3.
+e2e_i32!(
+    end_to_end_when_early_return_in_function_then_caller_gets_assigned_value,
+    "
 FUNCTION Divide : DINT
     VAR_INPUT
         numerator : DINT;
@@ -156,8 +147,6 @@ PROGRAM main
     safe_result := Divide(10, 0);
     normal_result := Divide(10, 3);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[0].as_i32(), 0); // safe_result: early-return path
-    assert_eq!(bufs.vars[1].as_i32(), 3); // normal_result: 10 / 3
-}
+",
+    &[(0, 0), (1, 3)],
+);

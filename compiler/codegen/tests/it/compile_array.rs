@@ -28,7 +28,7 @@ END_PROGRAM
     let load_array_pos = bytecode
         .iter()
         .position(|&b| b == opcode::LOAD_ARRAY)
-        .expect("LOAD_ARRAY opcode not found");
+        .unwrap();
     // Before LOAD_ARRAY should be LOAD_CONST_I32 with flat index 2
     assert!(load_array_pos >= 3);
     // Preceding byte should be LOAD_CONST_I32
@@ -65,7 +65,7 @@ END_PROGRAM
     let store_array_pos = bytecode
         .iter()
         .position(|&b| b == opcode::STORE_ARRAY)
-        .expect("STORE_ARRAY opcode not found");
+        .unwrap();
     // Before STORE_ARRAY should be LOAD_CONST_I32 with flat index 2
     assert!(store_array_pos >= 3);
     assert_eq!(bytecode[store_array_pos - 3], opcode::LOAD_CONST_I32); // LOAD_CONST_I32
@@ -158,7 +158,7 @@ END_PROGRAM
     let load_array_pos = bytecode
         .iter()
         .position(|&b| b == opcode::LOAD_ARRAY)
-        .expect("LOAD_ARRAY opcode not found");
+        .unwrap();
     assert!(load_array_pos >= 3);
     assert_eq!(bytecode[load_array_pos - 3], opcode::LOAD_CONST_I32); // LOAD_CONST_I32
     let const_idx =
@@ -193,7 +193,7 @@ END_PROGRAM
     let load_array_pos = bytecode
         .iter()
         .position(|&b| b == opcode::LOAD_ARRAY)
-        .expect("LOAD_ARRAY opcode not found");
+        .unwrap();
     assert!(load_array_pos >= 3);
     assert_eq!(bytecode[load_array_pos - 3], opcode::LOAD_CONST_I32); // LOAD_CONST_I32
     let const_idx =
@@ -263,11 +263,11 @@ END_PROGRAM
     let trunc_pos = bytecode
         .iter()
         .position(|&b| b == opcode::TRUNC_I8)
-        .expect("TRUNC_I8 not found");
+        .unwrap();
     let store_pos = bytecode
         .iter()
         .position(|&b| b == opcode::STORE_ARRAY)
-        .expect("STORE_ARRAY not found");
+        .unwrap();
     assert!(
         trunc_pos < store_pos,
         "TRUNC_I8 should come before STORE_ARRAY"
@@ -296,7 +296,7 @@ END_PROGRAM
     let load_array_pos = bytecode
         .iter()
         .position(|&b| b == opcode::LOAD_ARRAY)
-        .expect("LOAD_ARRAY not found");
+        .unwrap();
     // The TRUNC should appear after LOAD_ARRAY (for the final STORE_VAR), not before it.
     // There may or may not be a TRUNC — the key is LOAD_ARRAY itself doesn't truncate.
     // Just verify LOAD_ARRAY is present.

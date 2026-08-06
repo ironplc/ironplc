@@ -1,85 +1,63 @@
 //! End-to-end tests for real-to-integer type conversions.
+//!
+//! These stay parametrized tables rather than property tests: IEC truncation
+//! semantics do not map cleanly onto a single Rust `as` cast oracle.
 
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
 use crate::common::parse_and_run;
 
-#[test]
-fn end_to_end_when_real_to_int_then_truncates() {
-    let source = "
+/// REAL/LREAL -> integer conversions that read from a 32-bit slot. Fractional
+/// parts are truncated toward zero.
+#[rstest]
+#[case::real_to_int("REAL", "INT", "3.14", 3)]
+#[case::real_to_dint_negative("REAL", "DINT", "-7.9", -7)]
+#[case::real_to_sint("REAL", "SINT", "50.7", 50)]
+#[case::lreal_to_udint("LREAL", "UDINT", "1000.0", 1000)]
+fn end_to_end_real_to_int_i32(
+    #[case] src: &str,
+    #[case] tgt: &str,
+    #[case] value: &str,
+    #[case] expected: i32,
+) {
+    let source = format!(
+        "
 PROGRAM main
   VAR
-    x : REAL;
-    y : INT;
+    x : {src};
+    y : {tgt};
   END_VAR
-  x := 3.14;
-  y := REAL_TO_INT(x);
+  x := {value};
+  y := {src}_TO_{tgt}(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 3);
+"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), expected);
 }
 
-#[test]
-fn end_to_end_when_real_to_dint_negative_then_truncates() {
-    let source = "
+/// REAL/LREAL -> integer conversions that read from a 64-bit slot.
+#[rstest]
+#[case::lreal_to_lint("LREAL", "LINT", "99.9", 99)]
+fn end_to_end_real_to_int_i64(
+    #[case] src: &str,
+    #[case] tgt: &str,
+    #[case] value: &str,
+    #[case] expected: i64,
+) {
+    let source = format!(
+        "
 PROGRAM main
   VAR
-    x : REAL;
-    y : DINT;
+    x : {src};
+    y : {tgt};
   END_VAR
-  x := -7.9;
-  y := REAL_TO_DINT(x);
+  x := {value};
+  y := {src}_TO_{tgt}(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), -7);
-}
-
-#[test]
-fn end_to_end_when_lreal_to_lint_then_truncates() {
-    let source = "
-PROGRAM main
-  VAR
-    x : LREAL;
-    y : LINT;
-  END_VAR
-  x := 99.9;
-  y := LREAL_TO_LINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64(), 99);
-}
-
-#[test]
-fn end_to_end_when_real_to_sint_then_truncates_to_range() {
-    let source = "
-PROGRAM main
-  VAR
-    x : REAL;
-    y : SINT;
-  END_VAR
-  x := 50.7;
-  y := REAL_TO_SINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32(), 50);
-}
-
-#[test]
-fn end_to_end_when_lreal_to_udint_then_correct() {
-    let source = "
-PROGRAM main
-  VAR
-    x : LREAL;
-    y : UDINT;
-  END_VAR
-  x := 1000.0;
-  y := LREAL_TO_UDINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u32, 1000);
+"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i64(), expected);
 }

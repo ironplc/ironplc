@@ -113,14 +113,9 @@ impl Visitor<Diagnostic> for RuleExternalGlobalConst<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
-    use super::*;
-
-    #[test]
-    fn apply_when_global_const_external_not_const_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_global_const_external_not_const_then_error,
+        "
 CONFIGURATION config
     VAR_GLOBAL CONSTANT
         ResetCounterValue : INT := 17;
@@ -135,18 +130,12 @@ FUNCTION_BLOCK func
     VAR_EXTERNAL
         ResetCounterValue : INT;
     END_VAR
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn apply_when_global_const_external_const_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_global_const_external_const_then_ok,
+        "
 CONFIGURATION config
     VAR_GLOBAL CONSTANT
         ResetCounterValue : INT := 17;
@@ -163,12 +152,6 @@ FUNCTION_BLOCK func
         ResetCounterValue : INT;
     END_VAR
 
-END_FUNCTION_BLOCK";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok())
-    }
+END_FUNCTION_BLOCK"
+    );
 }

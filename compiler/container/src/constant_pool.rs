@@ -242,6 +242,7 @@ impl ConstantPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use std::io::Cursor;
     use std::vec::Vec;
 
@@ -333,74 +334,36 @@ mod tests {
         assert!(!pool.is_empty());
     }
 
-    #[test]
-    fn constant_pool_get_i32_when_type_mismatch_then_returns_error() {
+    // Each case stores one constant of the "wrong" type, then reads it through
+    // a typed accessor that should reject the type mismatch.
+    #[rstest]
+    #[case::i32_accessor_on_f32(
+        (|| ConstEntry::primitive_le(ConstType::F32, &1.0f32.to_le_bytes())) as fn() -> ConstEntry,
+        (|p: &ConstantPool| matches!(p.get_i32(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
+    )]
+    #[case::f32_accessor_on_i32(
+        (|| ConstEntry::primitive_le(ConstType::I32, &1i32.to_le_bytes())) as fn() -> ConstEntry,
+        (|p: &ConstantPool| matches!(p.get_f32(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
+    )]
+    #[case::f64_accessor_on_i32(
+        (|| ConstEntry::primitive_le(ConstType::I32, &1i32.to_le_bytes())) as fn() -> ConstEntry,
+        (|p: &ConstantPool| matches!(p.get_f64(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
+    )]
+    #[case::i64_accessor_on_f64(
+        (|| ConstEntry::primitive_le(ConstType::F64, &1.0f64.to_le_bytes())) as fn() -> ConstEntry,
+        (|p: &ConstantPool| matches!(p.get_i64(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
+    )]
+    #[case::str_accessor_on_i32(
+        (|| ConstEntry::primitive_le(ConstType::I32, &1i32.to_le_bytes())) as fn() -> ConstEntry,
+        (|p: &ConstantPool| matches!(p.get_str(ConstantIndex::new(0)), Err(ContainerError::InvalidConstantType(_)))) as fn(&ConstantPool) -> bool
+    )]
+    fn constant_pool_get_when_type_mismatch_then_returns_error(
+        #[case] make_entry: fn() -> ConstEntry,
+        #[case] accessor_errors: fn(&ConstantPool) -> bool,
+    ) {
         let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::F32,
-            &1.0f32.to_le_bytes(),
-        ));
-
-        assert!(matches!(
-            pool.get_i32(ConstantIndex::new(0)),
-            Err(ContainerError::InvalidConstantType(_))
-        ));
-    }
-
-    #[test]
-    fn constant_pool_get_f32_when_type_mismatch_then_returns_error() {
-        let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &1i32.to_le_bytes(),
-        ));
-
-        assert!(matches!(
-            pool.get_f32(ConstantIndex::new(0)),
-            Err(ContainerError::InvalidConstantType(_))
-        ));
-    }
-
-    #[test]
-    fn constant_pool_get_f64_when_type_mismatch_then_returns_error() {
-        let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &1i32.to_le_bytes(),
-        ));
-
-        assert!(matches!(
-            pool.get_f64(ConstantIndex::new(0)),
-            Err(ContainerError::InvalidConstantType(_))
-        ));
-    }
-
-    #[test]
-    fn constant_pool_get_i64_when_type_mismatch_then_returns_error() {
-        let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::F64,
-            &1.0f64.to_le_bytes(),
-        ));
-
-        assert!(matches!(
-            pool.get_i64(ConstantIndex::new(0)),
-            Err(ContainerError::InvalidConstantType(_))
-        ));
-    }
-
-    #[test]
-    fn constant_pool_get_str_when_type_mismatch_then_returns_error() {
-        let mut pool = ConstantPool::default();
-        pool.push(ConstEntry::primitive_le(
-            ConstType::I32,
-            &1i32.to_le_bytes(),
-        ));
-
-        assert!(matches!(
-            pool.get_str(ConstantIndex::new(0)),
-            Err(ContainerError::InvalidConstantType(_))
-        ));
+        pool.push(make_entry());
+        assert!(accessor_errors(&pool));
     }
 
     #[test]

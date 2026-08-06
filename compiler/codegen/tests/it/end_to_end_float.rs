@@ -110,16 +110,12 @@ e2e_f32_near!(
 
 // --- LREAL (f64) arithmetic ---
 
-#[test]
-fn end_to_end_when_lreal_assignment_then_correct() {
-    let source = "PROGRAM main VAR x : LREAL; END_VAR x := 3.141592653589793; END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let x = bufs.vars[0].as_f64();
-    assert!(
-        (x - std::f64::consts::PI).abs() < 1e-12,
-        "expected pi, got {x}"
-    );
-}
+e2e_f64_near!(
+    end_to_end_when_lreal_assignment_then_correct,
+    1e-12,
+    "PROGRAM main VAR x : LREAL; END_VAR x := 3.141592653589793; END_PROGRAM",
+    &[(0, std::f64::consts::PI)],
+);
 
 e2e_f64_near!(
     end_to_end_when_lreal_addition_then_correct,
@@ -212,16 +208,12 @@ e2e_f64_near!(
     &[(1, 1024.0)],
 );
 
-#[test]
-fn end_to_end_when_lreal_initial_value_then_variable_initialized() {
-    let source = "PROGRAM main VAR x : LREAL := 2.718281828459045; END_VAR END_PROGRAM";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    let x = bufs.vars[0].as_f64();
-    assert!(
-        (x - std::f64::consts::E).abs() < 1e-12,
-        "expected e, got {x}"
-    );
-}
+e2e_f64_near!(
+    end_to_end_when_lreal_initial_value_then_variable_initialized,
+    1e-12,
+    "PROGRAM main VAR x : LREAL := 2.718281828459045; END_VAR END_PROGRAM",
+    &[(0, std::f64::consts::E)],
+);
 
 // --- IEEE 754 edge cases: Inf, NaN ---
 
@@ -251,10 +243,11 @@ fn end_to_end_when_real_zero_divide_by_zero_then_nan() {
     assert!(y.is_nan(), "expected NaN, got {y}");
 }
 
-#[test]
-fn end_to_end_when_real_nan_comparison_then_all_false() {
-    // IEEE 754: NaN is not equal to anything, including itself.
-    let source = "
+// IEEE 754: NaN is not equal to anything, including itself.
+// NaN == NaN, NaN < 1.0, and NaN > 1.0 should all be false.
+e2e_i32!(
+    end_to_end_when_real_nan_comparison_then_all_false,
+    "
 PROGRAM main
   VAR
     x : REAL;
@@ -281,12 +274,9 @@ PROGRAM main
     gt_result := 0;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_i32(), 0, "NaN == NaN should be false");
-    assert_eq!(bufs.vars[3].as_i32(), 0, "NaN < 1.0 should be false");
-    assert_eq!(bufs.vars[4].as_i32(), 0, "NaN > 1.0 should be false");
-}
+",
+    &[(2, 0), (3, 0), (4, 0)],
+);
 
 e2e_i32!(
     end_to_end_when_real_nan_ne_then_true,
@@ -347,9 +337,10 @@ fn end_to_end_when_lreal_zero_divide_by_zero_then_nan() {
     assert!(y.is_nan(), "expected NaN, got {y}");
 }
 
-#[test]
-fn end_to_end_when_lreal_nan_comparison_then_all_false() {
-    let source = "
+// NaN == NaN, NaN < 1.0, and NaN > 1.0 should all be false.
+e2e_i32!(
+    end_to_end_when_lreal_nan_comparison_then_all_false,
+    "
 PROGRAM main
   VAR
     x : LREAL;
@@ -376,12 +367,9 @@ PROGRAM main
     gt_result := 0;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[2].as_i32(), 0, "NaN == NaN should be false");
-    assert_eq!(bufs.vars[3].as_i32(), 0, "NaN < 1.0 should be false");
-    assert_eq!(bufs.vars[4].as_i32(), 0, "NaN > 1.0 should be false");
-}
+",
+    &[(2, 0), (3, 0), (4, 0)],
+);
 
 e2e_i32!(
     end_to_end_when_lreal_nan_ne_then_true,

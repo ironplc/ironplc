@@ -123,11 +123,11 @@ mod tests {
 
         let map = build_var_debug_map(&container);
         assert_eq!(map.len(), 2);
-        let counter = map.get(&0).expect("var index 0 present");
+        let counter = map.get(&0).unwrap();
         assert_eq!(counter.name, "counter");
         assert_eq!(counter.type_name, "DINT");
         assert_eq!(counter.iec_type_tag, iec_type_tag::DINT);
-        let flag = map.get(&2).expect("var index 2 present");
+        let flag = map.get(&2).unwrap();
         assert_eq!(flag.name, "flag");
         assert_eq!(flag.type_name, "BOOL");
         assert_eq!(flag.iec_type_tag, iec_type_tag::BOOL);
