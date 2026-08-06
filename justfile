@@ -261,6 +261,20 @@ _install-script-smoke-verify:
   "$BIN/ironplcc" version
   "$BIN/ironplcc" help
 
+  # Compatibility libraries ship beside the binaries so the loader finds them at
+  # <bindir>/resources/libs. When present, verify a program reading the bundled
+  # Tc2_System `PI` constant actually compiles -- this exercises the shipped
+  # files, not the dev-tree fallback. The files are optional here because this
+  # recipe also runs against the latest published release, which predates library
+  # shipping; a release that ships them makes this a hard check on every later run.
+  if [ -f "$BIN/resources/libs/Tc2_System/library.toml" ]; then
+    _pi_src="$(mktemp -d)/pi.st"
+    printf '%s\n' 'FUNCTION_BLOCK FB_Angle VAR d2r : LREAL := PI/180.0; END_VAR END_FUNCTION_BLOCK' > "$_pi_src"
+    "$BIN/ironplcc" check --dialect twincat --allow-constant-initializer-expressions --library Tc2_System "$_pi_src"
+  else
+    echo "warning: compatibility libraries not installed (release predates library shipping); skipping PI check" >&2
+  fi
+
   # ironplcvm and ironplcmcp are optional (older releases may not include them).
   if [ -x "$BIN/ironplcmcp" ]; then
     # MCP handshake: initialize -> notifications/initialized -> tools/list.
@@ -276,6 +290,138 @@ _install-script-smoke-verify:
 install-script-smoke compiler-version="":
   @echo "install-script-smoke is Unix-only; use endtoend-smoke on Windows"
   exit 1
+
+# Library installer end-to-end test.
+#
+# Installs the published compiler with the *real* OS installer, then compiles AND
+# runs a program that depends on the bundled Tc2_System compatibility library:
+# it computes 2 * PI * 10.0 and the VM dumps the result after one scan. This is
+# the one test that proves the installer ships resources/libs beside the binary,
+# the compiler resolves library symbols (PI) from the *installed* location (not
+# the dev-tree fallback), and the whole toolchain (compile -> run) works on the
+# shipped binaries. Each OS installs differently, so the flow runs per OS:
+#   [unix]      -- tarball + install.sh          -> $HOME/.ironplc/bin
+#   [windows]   -- NSIS installer                -> %LOCALAPPDATA%\...\bin
+#   [macos]     -- Homebrew formula (library-e2e-brew) -> libexec (symlinked)
+#
+# Structured like endtoend-smoke: the top recipe orchestrates a `-download`
+# (acquire + install) step and a `-test` (compile + run + verify) step. Splitting
+# them lets you reinstall once and re-run the verification repeatedly. Install
+# lives in the download step because the Unix install.sh fuses fetch and install.
+#
+# Unlike install-script-smoke (which stays green against older releases), the
+# library check here is a HARD assertion: this test exists to catch a release
+# that fails to ship the libraries, so the target release must be one that does.
+#
+# NOT wired into CI yet -- run it manually, or from the Actions tab via
+# partial_library_e2e.yaml's workflow_dispatch.
+#
+# compiler-version: a required, bare release version like "0.234.0" (no leading
+#                   "v"). The version is always explicit -- never resolved to
+#                   "latest" -- so a run always targets a known release.
+[unix]
+library-e2e compiler-version:
+  @just library-e2e-download "{{compiler-version}}"
+  @just library-e2e-test
+
+# Download + install the published compiler via the tarball installer (install.sh).
+[unix]
+library-e2e-download compiler-version:
+  @just _install-script-smoke-clean
+  @just _install-script-smoke-run "{{compiler-version}}"
+
+# Compile the library-dependent program with the installed compiler, run one scan
+# on the installed VM, and assert it computed 2 * PI * 10.0 from the library PI.
+[unix]
+library-e2e-test:
+  #!/usr/bin/env sh
+  set -eu
+  BIN="$HOME/.ironplc/bin"
+  just _library-e2e-run-installed "$BIN/ironplcc" "$BIN/ironplcvm"
+
+# macOS additionally ships through Homebrew, whose formula installs to libexec and
+# symlinks the executables onto the PATH -- a different layout from the tarball.
+# This variant tests that path. It is named separately so macOS can run both the
+# tarball (library-e2e) and Homebrew (library-e2e-brew) installers.
+[macos]
+library-e2e-brew compiler-version:
+  @just library-e2e-brew-download "{{compiler-version}}"
+  @just library-e2e-brew-test
+
+# Fill the repository's Homebrew formula for the requested release and install it.
+# Homebrew has no way to pin a version on a plain tap, so we fill the formula
+# template with the release's tarball + checksum and install that. `sed` (not
+# `just publish`) avoids an envsubst/gettext dependency on macOS. The mac tarball
+# matches the runner architecture; the install logic under test is arch-agnostic.
+[macos]
+library-e2e-brew-download compiler-version:
+  #!/usr/bin/env sh
+  set -eu
+  case "$(uname -m)" in
+    arm64|aarch64) MAC="ironplcc-aarch64-macos.tar.gz" ;;
+    *)             MAC="ironplcc-x86_64-macos.tar.gz" ;;
+  esac
+  URL="https://github.com/ironplc/ironplc/releases/download/v{{compiler-version}}"
+  SHA="$(curl -fsSL "$URL/$MAC.sha256" | cut -d' ' -f1)"
+  sed -e "s#\${VERSION}#{{compiler-version}}#g" -e "s#\${MACFILENAME}#$MAC#g" \
+      -e "s#\${MACSHA256}#$SHA#g" -e "s#\${LINUXFILENAME}#$MAC#g" -e "s#\${LINUXSHA256}#$SHA#g" \
+      compiler/homebrew/Formula/ironplc.rb > /tmp/ironplc-e2e.rb
+  brew uninstall --force ironplc >/dev/null 2>&1 || true
+  brew install --formula /tmp/ironplc-e2e.rb
+
+# Compile + run against the Homebrew keg: binaries are symlinked into the keg bin
+# and current_exe() resolves them back to libexec, where resources/libs lives.
+[macos]
+library-e2e-brew-test:
+  #!/usr/bin/env sh
+  set -eu
+  PREFIX="$(brew --prefix ironplc)"
+  just _library-e2e-run-installed "$PREFIX/bin/ironplcc" "$PREFIX/bin/ironplcvm"
+
+# Shared verification (Unix + macOS): compile the fixture, run one scan, and
+# assert the VM computed 2 * PI * 10.0 = 62.8318... A release that failed to ship
+# the library would fail the compile here, so no separate file check is needed.
+[unix]
+_library-e2e-run-installed ironplcc ironplcvm:
+  #!/usr/bin/env sh
+  set -eu
+  WORK="$(mktemp -d)"
+  "{{ironplcc}}" compile --dialect twincat --library Tc2_System \
+    --output "$WORK/prog.iplc" tests/e2e/library/uses_pi.st
+  OUT="$("{{ironplcvm}}" run "$WORK/prog.iplc" --scans 1 --dump-vars -)"
+  echo "$OUT"
+  if ! echo "$OUT" | grep -q "62.8318"; then
+    echo "FAIL: VM did not compute 2 * PI * 10.0 from the library PI" >&2
+    exit 1
+  fi
+  echo "PASS: installed compiler + VM computed 2 * PI * 10.0 using the library PI"
+
+# Windows uses the NSIS installer, which installs to a fixed Program Files path.
+# Each line is a separate PowerShell process (set windows-shell), so each step is
+# a self-contained statement.
+[windows]
+library-e2e compiler-version:
+  @just library-e2e-download "{{compiler-version}}"
+  @just library-e2e-test
+
+# Download + install the published compiler via the NSIS installer. The x86_64
+# asset name is hard-coded because the GitHub runner is x86_64.
+[windows]
+library-e2e-download compiler-version:
+  # Download the NSIS installer for the requested release.
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/v{{compiler-version}}/ironplcc-x86_64-windows.exe" -OutFile ironplcc-setup.exe
+  # Install silently.
+  Start-Process ironplcc-setup.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 120
+
+# Compile the library-dependent program with the installed compiler, run one scan
+# on the installed VM, and assert it computed 2 * PI * 10.0 from the library PI.
+[windows]
+library-e2e-test:
+  # Compile the library-dependent program against the installed compiler.
+  &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcc.exe" compile --dialect twincat --library Tc2_System --output "$env:TEMP\prog.iplc" "tests\e2e\library\uses_pi.st"; if ($LASTEXITCODE -ne 0) { Write-Error "FAIL: installed compiler could not compile the library-dependent program"; exit 1 }
+  # Run one scan on the installed VM and assert it computed 2 * PI * 10.0.
+  $out = &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcvm.exe" run "$env:TEMP\prog.iplc" --scans 1 --dump-vars -; Write-Host $out; if ($out -notmatch "62.8318") { Write-Error "FAIL: VM did not compute 2 * PI * 10.0 from the library PI"; exit 1 }
+  Write-Host "PASS: installed compiler + VM computed 2 * PI * 10.0 using the library PI"
 
 # OpenCode integration end-to-end test - Unix only.
 #

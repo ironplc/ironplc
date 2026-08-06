@@ -86,8 +86,17 @@ Libraries are **installed on disk** as directories in this format and read by th
 compiler at runtime — they are *not* embedded into the compiler binary. The same
 files are served as plain text to the playground.
 
-The install location and the discovery/search mechanism are **not part of this
-format** and are defined separately when needed.
+The install location is `resources/libs/` **beside the compiler executable**
+(i.e. `<bindir>/resources/libs/<LibraryName>/…`); the loader
+(`installed_libraries_root`) reads from there and falls back to the crate source
+tree only for development and test builds. Every installer therefore ships
+`resources/libs/` next to the binaries: the Linux/macOS tarball carries it, the
+Windows NSIS installer writes it under `bin\resources\libs`, and the Homebrew
+formula keeps the binaries and `resources/libs` together in `libexec` and
+symlinks the executables onto the `PATH` (`current_exe()` resolves the symlink
+back to `libexec`, so the loader finds the libraries beside the real binary).
+The discovery/search mechanism beyond this fixed location is **not part of this
+format** and is defined separately when needed.
 
 ## Future
 
