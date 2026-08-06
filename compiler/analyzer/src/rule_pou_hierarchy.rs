@@ -179,27 +179,25 @@ mod tests {
         test_helpers::{parse_and_resolve_types, parse_only},
     };
     use ironplc_parser::options::CompilerOptions;
+    use rstest::rstest;
 
-    #[test]
-    fn apply_when_duplicate_function_name_then_error() {
-        let program = "
+    /// A duplicated POU name (across each declaration kind) is an error. Each
+    /// case parses without type resolution, applies the rule against a fresh
+    /// empty context, and expects an error; each row still runs as an
+    /// individually-named test.
+    #[rstest]
+    #[case::duplicate_function_name(
+        "
         FUNCTION Foo : BOOL
             Foo := FALSE;
         END_FUNCTION
 
         FUNCTION Foo : BOOL
             Foo := TRUE;
-        END_FUNCTION";
-
-        let library = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_duplicate_function_block_name_then_error() {
-        let program = "
+        END_FUNCTION"
+    )]
+    #[case::duplicate_function_block_name(
+        "
         FUNCTION_BLOCK Bar
             VAR
                 X : BOOL;
@@ -210,17 +208,10 @@ mod tests {
             VAR
                 Y : BOOL;
             END_VAR
-        END_FUNCTION_BLOCK";
-
-        let library = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_duplicate_program_name_then_error() {
-        let program = "
+        END_FUNCTION_BLOCK"
+    )]
+    #[case::duplicate_program_name(
+        "
         PROGRAM Baz
             VAR
                 X : BOOL;
@@ -231,17 +222,10 @@ mod tests {
             VAR
                 Y : BOOL;
             END_VAR
-        END_PROGRAM";
-
-        let library = parse_only(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn apply_when_duplicate_configuration_name_then_error() {
-        let program = "
+        END_PROGRAM"
+    )]
+    #[case::duplicate_configuration_name(
+        "
         FUNCTION_BLOCK Fb1
             VAR
                 X : BOOL;
@@ -266,8 +250,9 @@ mod tests {
                 TASK Main(INTERVAL := T#20ms, PRIORITY := 1);
                 PROGRAM P2 WITH Main : Prg1;
             END_RESOURCE
-        END_CONFIGURATION";
-
+        END_CONFIGURATION"
+    )]
+    fn apply_when_duplicate_pou_name_then_error(#[case] program: &str) {
         let library = parse_only(program);
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&library, &context, &CompilerOptions::default());
