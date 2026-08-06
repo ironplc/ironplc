@@ -316,16 +316,17 @@ install-script-smoke compiler-version="":
 # NOT wired into CI yet -- run it manually, or from the Actions tab via
 # partial_library_e2e.yaml's workflow_dispatch.
 #
-# compiler-version: empty to use the latest release; otherwise a bare version
-#                   like "0.234.0" (without the leading "v").
+# compiler-version: a required, bare release version like "0.234.0" (no leading
+#                   "v"). The version is always explicit -- never resolved to
+#                   "latest" -- so a run always targets a known release.
 [unix]
-library-e2e compiler-version="":
+library-e2e compiler-version:
   @just library-e2e-download "{{compiler-version}}"
   @just library-e2e-test
 
 # Download + install the published compiler via the tarball installer (install.sh).
 [unix]
-library-e2e-download compiler-version="":
+library-e2e-download compiler-version:
   @just _install-script-smoke-clean
   @just _install-script-smoke-run "{{compiler-version}}"
 
@@ -336,51 +337,37 @@ library-e2e-test:
   #!/usr/bin/env sh
   set -eu
   BIN="$HOME/.ironplc/bin"
-  just _library-e2e-run-installed "$BIN/ironplcc" "$BIN/ironplcvm" "$BIN/resources/libs/Tc2_System/library.toml"
+  just _library-e2e-run-installed "$BIN/ironplcc" "$BIN/ironplcvm"
 
 # macOS additionally ships through Homebrew, whose formula installs to libexec and
 # symlinks the executables onto the PATH -- a different layout from the tarball.
 # This variant tests that path. It is named separately so macOS can run both the
 # tarball (library-e2e) and Homebrew (library-e2e-brew) installers.
 [macos]
-library-e2e-brew compiler-version="":
+library-e2e-brew compiler-version:
   @just library-e2e-brew-download "{{compiler-version}}"
   @just library-e2e-brew-test
 
-# Fill the Homebrew formula for the target release and install from the local
-# file. Uses sed (not `just publish`) so it needs no envsubst/gettext on macOS;
-# the formula content is the same template the release tap publishes. The mac
-# tarball is chosen to match the runner architecture -- the formula's install
-# logic (libexec + symlinks + resources) is identical regardless of arch.
+# Fill the repository's Homebrew formula for the requested release and install it.
+# Homebrew has no way to pin a version on a plain tap, so we fill the formula
+# template with the release's tarball + checksum and install that. `sed` (not
+# `just publish`) avoids an envsubst/gettext dependency on macOS. The mac tarball
+# matches the runner architecture; the install logic under test is arch-agnostic.
 [macos]
-library-e2e-brew-download compiler-version="":
+library-e2e-brew-download compiler-version:
   #!/usr/bin/env sh
   set -eu
-  if [ -n "{{compiler-version}}" ]; then
-    VER="{{compiler-version}}"
-  else
-    VER="$(curl -fsSL https://api.github.com/repos/ironplc/ironplc/releases/latest \
-      | grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/')"
-  fi
-  echo "Using release v$VER"
   case "$(uname -m)" in
-    arm64|aarch64) MACFILE="ironplcc-aarch64-macos.tar.gz" ;;
-    *)             MACFILE="ironplcc-x86_64-macos.tar.gz" ;;
+    arm64|aarch64) MAC="ironplcc-aarch64-macos.tar.gz" ;;
+    *)             MAC="ironplcc-x86_64-macos.tar.gz" ;;
   esac
-  LINUXFILE="ironplcc-x86_64-linux-musl.tar.gz"
-  BASE="https://github.com/ironplc/ironplc/releases/download/v${VER}"
-  MACSHA="$(curl -fsSL "${BASE}/${MACFILE}.sha256" | cut -d' ' -f1)"
-  LINUXSHA="$(curl -fsSL "${BASE}/${LINUXFILE}.sha256" | cut -d' ' -f1)"
-  mkdir -p compiler/target/homebrew/Formula
-  sed -e "s#\${VERSION}#${VER}#g" \
-      -e "s#\${MACFILENAME}#${MACFILE}#g" \
-      -e "s#\${MACSHA256}#${MACSHA}#g" \
-      -e "s#\${LINUXFILENAME}#${LINUXFILE}#g" \
-      -e "s#\${LINUXSHA256}#${LINUXSHA}#g" \
-      compiler/homebrew/Formula/ironplc.rb > compiler/target/homebrew/Formula/ironplc.rb
-  # Reinstall cleanly so reruns start fresh.
+  URL="https://github.com/ironplc/ironplc/releases/download/v{{compiler-version}}"
+  SHA="$(curl -fsSL "$URL/$MAC.sha256" | cut -d' ' -f1)"
+  sed -e "s#\${VERSION}#{{compiler-version}}#g" -e "s#\${MACFILENAME}#$MAC#g" \
+      -e "s#\${MACSHA256}#$SHA#g" -e "s#\${LINUXFILENAME}#$MAC#g" -e "s#\${LINUXSHA256}#$SHA#g" \
+      compiler/homebrew/Formula/ironplc.rb > /tmp/ironplc-e2e.rb
   brew uninstall --force ironplc >/dev/null 2>&1 || true
-  brew install --formula compiler/target/homebrew/Formula/ironplc.rb
+  brew install --formula /tmp/ironplc-e2e.rb
 
 # Compile + run against the Homebrew keg: binaries are symlinked into the keg bin
 # and current_exe() resolves them back to libexec, where resources/libs lives.
@@ -389,19 +376,15 @@ library-e2e-brew-test:
   #!/usr/bin/env sh
   set -eu
   PREFIX="$(brew --prefix ironplc)"
-  just _library-e2e-run-installed "$PREFIX/bin/ironplcc" "$PREFIX/bin/ironplcvm" "$PREFIX/libexec/resources/libs/Tc2_System/library.toml"
+  just _library-e2e-run-installed "$PREFIX/bin/ironplcc" "$PREFIX/bin/ironplcvm"
 
-# Shared verification (Unix + macOS): assert the library shipped, compile the
-# fixture, run one scan, and assert the VM computed 2 * PI * 10.0 = 62.8318...
+# Shared verification (Unix + macOS): compile the fixture, run one scan, and
+# assert the VM computed 2 * PI * 10.0 = 62.8318... A release that failed to ship
+# the library would fail the compile here, so no separate file check is needed.
 [unix]
-_library-e2e-run-installed ironplcc ironplcvm libfile:
+_library-e2e-run-installed ironplcc ironplcvm:
   #!/usr/bin/env sh
   set -eu
-  if [ ! -f "{{libfile}}" ]; then
-    echo "FAIL: compatibility library not installed at {{libfile}}" >&2
-    echo "      (the target release must be one that ships the libraries)" >&2
-    exit 1
-  fi
   WORK="$(mktemp -d)"
   "{{ironplcc}}" compile --dialect twincat --library Tc2_System \
     --output "$WORK/prog.iplc" tests/e2e/library/uses_pi.st
@@ -417,18 +400,16 @@ _library-e2e-run-installed ironplcc ironplcvm libfile:
 # Each line is a separate PowerShell process (set windows-shell), so each step is
 # a self-contained statement.
 [windows]
-library-e2e compiler-version="":
+library-e2e compiler-version:
   @just library-e2e-download "{{compiler-version}}"
   @just library-e2e-test
 
 # Download + install the published compiler via the NSIS installer. The x86_64
-# asset name is hard-coded because the GitHub runner is x86_64; pass a different
-# version to target another release. An empty version uses GitHub's
-# `latest/download` redirect, so no API call or tag resolution is needed.
+# asset name is hard-coded because the GitHub runner is x86_64.
 [windows]
-library-e2e-download compiler-version="":
-  # Download the NSIS installer for the requested (or latest) release.
-  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/{{ if compiler-version == "" { "latest/download" } else { "download/v" + compiler-version } }}/ironplcc-x86_64-windows.exe" -OutFile ironplcc-setup.exe
+library-e2e-download compiler-version:
+  # Download the NSIS installer for the requested release.
+  Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/v{{compiler-version}}/ironplcc-x86_64-windows.exe" -OutFile ironplcc-setup.exe
   # Install silently.
   Start-Process ironplcc-setup.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 120
 
@@ -436,9 +417,7 @@ library-e2e-download compiler-version="":
 # on the installed VM, and assert it computed 2 * PI * 10.0 from the library PI.
 [windows]
 library-e2e-test:
-  # The installer must ship the library files beside the binary.
-  if (-not (Test-Path "{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\resources\libs\Tc2_System\library.toml")) { Write-Error "FAIL: compatibility library not installed (the target release must be one that ships the libraries)"; exit 1 }
-  # Compile the library-dependent program against the installed files.
+  # Compile the library-dependent program against the installed compiler.
   &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcc.exe" compile --dialect twincat --library Tc2_System --output "$env:TEMP\prog.iplc" "tests\e2e\library\uses_pi.st"; if ($LASTEXITCODE -ne 0) { Write-Error "FAIL: installed compiler could not compile the library-dependent program"; exit 1 }
   # Run one scan on the installed VM and assert it computed 2 * PI * 10.0.
   $out = &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcvm.exe" run "$env:TEMP\prog.iplc" --scans 1 --dump-vars -; Write-Host $out; if ($out -notmatch "62.8318") { Write-Error "FAIL: VM did not compute 2 * PI * 10.0 from the library PI"; exit 1 }

@@ -22,8 +22,8 @@ and the VM computed with it.
 
 ## Running it
 
-Each OS installs differently, so there are per-OS recipes (empty version = latest;
-must be a release that ships the libraries):
+Each OS installs differently, so there are per-OS recipes. The release version is
+required (no "latest" resolution) and must be one that ships the libraries:
 
 ```sh
 # Linux / macOS — tarball + install.sh
