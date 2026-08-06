@@ -1,177 +1,55 @@
 //! End-to-end tests for BOOL to integer type conversions.
 
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
 use crate::common::parse_and_run;
 
-#[test]
-fn end_to_end_when_bool_to_sint_true_then_returns_1() {
-    let source = "
+/// BOOL_TO_<T> for targets that fit in a 32-bit slot. TRUE -> 1, FALSE -> 0.
+#[rstest]
+#[case::sint_true("SINT", "TRUE", 1)]
+#[case::sint_false("SINT", "FALSE", 0)]
+#[case::int_true("INT", "TRUE", 1)]
+#[case::int_false("INT", "FALSE", 0)]
+#[case::dint_true("DINT", "TRUE", 1)]
+#[case::usint_true("USINT", "TRUE", 1)]
+#[case::uint_true("UINT", "TRUE", 1)]
+#[case::udint_true("UDINT", "TRUE", 1)]
+fn end_to_end_bool_to_int32(#[case] target: &str, #[case] input: &str, #[case] expected: i32) {
+    let source = format!(
+        "
 PROGRAM main
   VAR
     x : BOOL;
-    y : SINT;
+    y : {target};
   END_VAR
-  x := TRUE;
-  y := BOOL_TO_SINT(x);
+  x := {input};
+  y := BOOL_TO_{target}(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as i8, 1);
+"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), expected);
 }
 
-#[test]
-fn end_to_end_when_bool_to_sint_false_then_returns_0() {
-    let source = "
+/// BOOL_TO_<T> for 64-bit targets. TRUE -> 1, FALSE -> 0.
+#[rstest]
+#[case::lint_true("LINT", "TRUE", 1)]
+#[case::ulint_true("ULINT", "TRUE", 1)]
+#[case::ulint_false("ULINT", "FALSE", 0)]
+fn end_to_end_bool_to_int64(#[case] target: &str, #[case] input: &str, #[case] expected: i64) {
+    let source = format!(
+        "
 PROGRAM main
   VAR
     x : BOOL;
-    y : SINT;
+    y : {target};
   END_VAR
-  x := FALSE;
-  y := BOOL_TO_SINT(x);
+  x := {input};
+  y := BOOL_TO_{target}(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as i8, 0);
-}
-
-e2e_i32!(
-    end_to_end_when_bool_to_int_true_then_returns_1,
-    "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : INT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_INT(x);
-END_PROGRAM
-",
-    &[(1, 1)],
-);
-
-e2e_i32!(
-    end_to_end_when_bool_to_int_false_then_returns_0,
-    "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : INT;
-  END_VAR
-  x := FALSE;
-  y := BOOL_TO_INT(x);
-END_PROGRAM
-",
-    &[(1, 0)],
-);
-
-e2e_i32!(
-    end_to_end_when_bool_to_dint_true_then_returns_1,
-    "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : DINT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_DINT(x);
-END_PROGRAM
-",
-    &[(1, 1)],
-);
-
-e2e_i64!(
-    end_to_end_when_bool_to_lint_true_then_returns_1,
-    "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : LINT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_LINT(x);
-END_PROGRAM
-",
-    &[(1, 1)],
-);
-
-#[test]
-fn end_to_end_when_bool_to_usint_true_then_returns_1() {
-    let source = "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : USINT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_USINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u8, 1);
-}
-
-#[test]
-fn end_to_end_when_bool_to_uint_true_then_returns_1() {
-    let source = "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : UINT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_UINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u16, 1);
-}
-
-#[test]
-fn end_to_end_when_bool_to_udint_true_then_returns_1() {
-    let source = "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : UDINT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_UDINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u32, 1);
-}
-
-#[test]
-fn end_to_end_when_bool_to_ulint_true_then_returns_1() {
-    let source = "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : ULINT;
-  END_VAR
-  x := TRUE;
-  y := BOOL_TO_ULINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64() as u64, 1);
-}
-
-#[test]
-fn end_to_end_when_bool_to_ulint_false_then_returns_0() {
-    let source = "
-PROGRAM main
-  VAR
-    x : BOOL;
-    y : ULINT;
-  END_VAR
-  x := FALSE;
-  y := BOOL_TO_ULINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64() as u64, 0);
+"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i64(), expected);
 }

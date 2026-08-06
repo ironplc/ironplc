@@ -1,83 +1,36 @@
 //! End-to-end tests for integer narrowing type conversions.
 
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
 use crate::common::parse_and_run;
 
-e2e_i32!(
-    end_to_end_when_dint_to_int_then_narrows,
-    "
+/// <SRC>_TO_<TGT> narrowing conversions. The overflow case wraps into the
+/// target width (300 truncated to SINT = 300 mod 256 = 44).
+#[rstest]
+#[case::dint_to_int("DINT", "INT", "1000", 1000)]
+#[case::lint_to_dint("LINT", "DINT", "42", 42)]
+#[case::dint_to_sint_overflow("DINT", "SINT", "300", 44)]
+#[case::lint_to_sint("LINT", "SINT", "50", 50)]
+#[case::ulint_to_udint("ULINT", "UDINT", "1000", 1000)]
+fn end_to_end_int_narrowing(
+    #[case] src: &str,
+    #[case] tgt: &str,
+    #[case] value: &str,
+    #[case] expected: i32,
+) {
+    let source = format!(
+        "
 PROGRAM main
   VAR
-    x : DINT;
-    y : INT;
+    x : {src};
+    y : {tgt};
   END_VAR
-  x := 1000;
-  y := DINT_TO_INT(x);
+  x := {value};
+  y := {src}_TO_{tgt}(x);
 END_PROGRAM
-",
-    &[(1, 1000)],
-);
-
-e2e_i32!(
-    end_to_end_when_lint_to_dint_then_narrows,
-    "
-PROGRAM main
-  VAR
-    x : LINT;
-    y : DINT;
-  END_VAR
-  x := 42;
-  y := LINT_TO_DINT(x);
-END_PROGRAM
-",
-    &[(1, 42)],
-);
-
-#[test]
-fn end_to_end_when_dint_to_sint_overflow_then_wraps() {
-    let source = "
-PROGRAM main
-  VAR
-    x : DINT;
-    y : SINT;
-  END_VAR
-  x := 300;
-  y := DINT_TO_SINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // 300 mod 256 = 44 (wrapping to i8 range)
-    assert_eq!(bufs.vars[1].as_i32() as i8, 44);
-}
-
-e2e_i32!(
-    end_to_end_when_lint_to_sint_then_narrows,
-    "
-PROGRAM main
-  VAR
-    x : LINT;
-    y : SINT;
-  END_VAR
-  x := 50;
-  y := LINT_TO_SINT(x);
-END_PROGRAM
-",
-    &[(1, 50)],
-);
-
-#[test]
-fn end_to_end_when_ulint_to_udint_then_narrows() {
-    let source = "
-PROGRAM main
-  VAR
-    x : ULINT;
-    y : UDINT;
-  END_VAR
-  x := 1000;
-  y := ULINT_TO_UDINT(x);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i32() as u32, 1000);
+"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32(), expected);
 }

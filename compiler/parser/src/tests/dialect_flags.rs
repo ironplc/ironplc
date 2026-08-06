@@ -167,9 +167,15 @@ fn parse_with_dialect_flag_then_ok(
     assert!(result.is_ok());
 }
 
-#[test]
-fn parse_when_struct_without_trailing_semicolon_and_flag_disabled_then_err() {
-    let source = "TYPE MY_POINT :
+/// Dialect-flag rejection tests.
+///
+/// Each case: given a program that the default dialect rejects, parsing with
+/// the default (strict) options should fail because the corresponding
+/// `--allow-*` flag is not enabled; each row still runs as an
+/// individually-named test.
+#[rstest]
+#[case::struct_without_trailing_semicolon_and_flag_disabled(
+    "TYPE MY_POINT :
 STRUCT
     X : REAL;
     Y : REAL;
@@ -182,20 +188,17 @@ VAR
 END_VAR
     pt.X := 1.0;
     pt.Y := 2.0;
-END_PROGRAM";
-
-    let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
-    assert!(result.is_err());
-}
-
-#[test]
-fn parse_when_empty_var_in_function_without_flag_then_error() {
-    let source = "
+END_PROGRAM"
+)]
+#[case::empty_var_in_function_without_flag(
+    "
 FUNCTION myFunc : INT
 VAR
 END_VAR
     myFunc := 1;
-END_FUNCTION";
+END_FUNCTION"
+)]
+fn parse_without_dialect_flag_then_err(#[case] source: &str) {
     let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
     assert!(result.is_err());
 }

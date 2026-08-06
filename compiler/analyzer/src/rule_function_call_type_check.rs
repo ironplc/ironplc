@@ -443,6 +443,7 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
 mod tests {
     use super::*;
     use crate::test_helpers::parse_and_resolve_types_with_context;
+    use rstest::rstest;
 
     rule_ctx_ok!(
         apply_when_matching_types_then_ok,
@@ -1217,9 +1218,14 @@ END_PROGRAM"
 
     // --- Cross-family widening tests (ADR-0031, requires flag) ---
 
-    #[test]
-    fn apply_when_byte_arg_to_int_param_with_flag_then_ok() {
-        let program = "
+    /// Cross-family widening on function-call arguments/returns with
+    /// `--allow-cross-family-widening` enabled (ADR-0031), against a resolved
+    /// context. Each case resolves the program, applies the rule with the flag
+    /// on, and asserts the expected outcome; each row still runs as an
+    /// individually-named test.
+    #[rstest]
+    #[case::byte_arg_to_int_param_ok(
+        "
 FUNCTION TAKES_INT : INT
 VAR_INPUT
     x : INT;
@@ -1233,19 +1239,11 @@ VAR
     y : BYTE;
 END_VAR
     result := TAKES_INT(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let opts = CompilerOptions {
-            allow_cross_family_widening: true,
-            ..CompilerOptions::default()
-        };
-        let result = apply(&library, &context, &opts);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_literal_zero_to_byte_param_with_flag_then_ok() {
-        let program = "
+END_PROGRAM",
+        true
+    )]
+    #[case::literal_zero_to_byte_param_ok(
+        "
 FUNCTION TAKES_BYTE : BYTE
 VAR_INPUT
     x : BYTE;
@@ -1258,14 +1256,57 @@ VAR
     result : BYTE;
 END_VAR
     result := TAKES_BYTE(0);
-END_PROGRAM";
+END_PROGRAM",
+        true
+    )]
+    #[case::byte_return_to_int_var_ok(
+        "
+FUNCTION GET_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    GET_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : INT;
+    y : BYTE;
+END_VAR
+    result := GET_BYTE(y);
+END_PROGRAM",
+        true
+    )]
+    // Integer → bit-string is never allowed, even with flag.
+    #[case::int_arg_to_byte_param_error(
+        "
+FUNCTION TAKES_BYTE : BYTE
+VAR_INPUT
+    x : BYTE;
+END_VAR
+    TAKES_BYTE := x;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    result : BYTE;
+    y : INT;
+END_VAR
+    result := TAKES_BYTE(y);
+END_PROGRAM",
+        false
+    )]
+    fn apply_when_cross_family_widening_flag_on_call_then_matches_expectation(
+        #[case] program: &str,
+        #[case] expect_ok: bool,
+    ) {
         let (library, context) = parse_and_resolve_types_with_context(program);
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
             ..CompilerOptions::default()
         };
         let result = apply(&library, &context, &opts);
-        assert!(result.is_ok());
+        assert_eq!(result.is_ok(), expect_ok);
     }
 
     rule_ctx_err!(
@@ -1286,32 +1327,6 @@ END_VAR
 END_PROGRAM"
     );
 
-    #[test]
-    fn apply_when_byte_return_to_int_var_with_flag_then_ok() {
-        let program = "
-FUNCTION GET_BYTE : BYTE
-VAR_INPUT
-    x : BYTE;
-END_VAR
-    GET_BYTE := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : INT;
-    y : BYTE;
-END_VAR
-    result := GET_BYTE(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let opts = CompilerOptions {
-            allow_cross_family_widening: true,
-            ..CompilerOptions::default()
-        };
-        let result = apply(&library, &context, &opts);
-        assert!(result.is_ok());
-    }
-
     rule_ctx_err!(
         apply_when_byte_return_to_int_var_without_flag_then_error,
         "
@@ -1330,33 +1345,6 @@ END_VAR
     result := GET_BYTE(y);
 END_PROGRAM"
     );
-
-    #[test]
-    fn apply_when_int_arg_to_byte_param_with_flag_then_error() {
-        // Integer → bit-string is never allowed, even with flag
-        let program = "
-FUNCTION TAKES_BYTE : BYTE
-VAR_INPUT
-    x : BYTE;
-END_VAR
-    TAKES_BYTE := x;
-END_FUNCTION
-
-PROGRAM main
-VAR
-    result : BYTE;
-    y : INT;
-END_VAR
-    result := TAKES_BYTE(y);
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let opts = CompilerOptions {
-            allow_cross_family_widening: true,
-            ..CompilerOptions::default()
-        };
-        let result = apply(&library, &context, &opts);
-        assert!(result.is_err());
-    }
 
     // --- Standard-library argument type checks ---
 
@@ -1476,45 +1464,60 @@ END_VAR
 END_PROGRAM"
     );
 
-    #[test]
-    fn apply_when_dword_target_assigned_udint_var_with_flag_then_ok() {
-        // Verified permissive against real TcXaeShell despite equal width
-        // -- see twincat-status.md, "Resolved: UDINT -> DWORD implicit
-        // conversion".
-        let program = "
+    /// Cross-family widening on assignment statements with
+    /// `--allow-cross-family-widening` enabled (ADR-0031), against a resolved
+    /// context. Each case resolves the program, applies the rule with the flag
+    /// on, and asserts the expected outcome; each row still runs as an
+    /// individually-named test.
+    #[rstest]
+    // Verified permissive against real TcXaeShell despite equal width -- see
+    // twincat-status.md, "Resolved: UDINT -> DWORD implicit conversion".
+    #[case::dword_target_assigned_udint_var_ok(
+        "
 PROGRAM main
 VAR
     dwFromUdint : DWORD;
     udValue : UDINT;
 END_VAR
     dwFromUdint := udValue;
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let opts = CompilerOptions {
-            allow_cross_family_widening: true,
-            ..CompilerOptions::default()
-        };
-        let result = apply(&library, &context, &opts);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_udint_target_assigned_dword_var_with_flag_then_ok() {
-        let program = "
+END_PROGRAM",
+        true
+    )]
+    #[case::udint_target_assigned_dword_var_ok(
+        "
 PROGRAM main
 VAR
     udFromDword : UDINT;
     dwValue : DWORD;
 END_VAR
     udFromDword := dwValue;
-END_PROGRAM";
+END_PROGRAM",
+        true
+    )]
+    // Signed integer, equal width -- not part of the verified exception, must
+    // stay rejected even with the flag on.
+    #[case::dword_target_assigned_dint_var_error(
+        "
+PROGRAM main
+VAR
+    dwFromDint : DWORD;
+    diValue : DINT;
+END_VAR
+    dwFromDint := diValue;
+END_PROGRAM",
+        false
+    )]
+    fn apply_when_cross_family_widening_flag_on_assignment_then_matches_expectation(
+        #[case] program: &str,
+        #[case] expect_ok: bool,
+    ) {
         let (library, context) = parse_and_resolve_types_with_context(program);
         let opts = CompilerOptions {
             allow_cross_family_widening: true,
             ..CompilerOptions::default()
         };
         let result = apply(&library, &context, &opts);
-        assert!(result.is_ok());
+        assert_eq!(result.is_ok(), expect_ok);
     }
 
     rule_ctx_err!(
@@ -1528,27 +1531,6 @@ END_VAR
     dwFromUdint := udValue;
 END_PROGRAM"
     );
-
-    #[test]
-    fn apply_when_dword_target_assigned_dint_var_with_flag_then_error() {
-        // Signed integer, equal width -- not part of the verified
-        // exception, must stay rejected even with the flag on.
-        let program = "
-PROGRAM main
-VAR
-    dwFromDint : DWORD;
-    diValue : DINT;
-END_VAR
-    dwFromDint := diValue;
-END_PROGRAM";
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let opts = CompilerOptions {
-            allow_cross_family_widening: true,
-            ..CompilerOptions::default()
-        };
-        let result = apply(&library, &context, &opts);
-        assert!(result.is_err());
-    }
 
     // Temporal short/long widths are treated as one family.
     rule_ctx_ok!(

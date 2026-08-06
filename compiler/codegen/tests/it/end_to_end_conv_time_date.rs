@@ -1,67 +1,62 @@
 //! End-to-end tests for time/date type conversions.
 
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
 use crate::common::parse_and_run;
 
-#[test]
-fn end_to_end_when_time_to_dword_then_correct() {
-    let source = "
+/// Time/date reinterpret conversions with an exact expected result. TIME is
+/// milliseconds, TOD is milliseconds since midnight. These are reinterpret
+/// casts, so they stay a parametrized table rather than a property test.
+#[rstest]
+#[case::time_to_dword("t : TIME := T#5s", "DWORD", "TIME_TO_DWORD(t)", 5000)]
+#[case::dword_to_time("dw : DWORD := 3000", "TIME", "DWORD_TO_TIME(dw)", 3000)]
+#[case::time_to_dint("t : TIME := T#5s", "DINT", "TIME_TO_DINT(t)", 5000)]
+#[case::time_to_int("t : TIME := T#2s", "INT", "TIME_TO_INT(t)", 2000)]
+// 12:30:00 = 12*3600*1000 + 30*60*1000 = 45_000_000 ms since midnight
+#[case::tod_to_dword("t : TOD := TOD#12:30:00", "DWORD", "TOD_TO_DWORD(t)", 45_000_000)]
+fn time_date_exact(
+    #[case] src_decl: &str,
+    #[case] result_type: &str,
+    #[case] call: &str,
+    #[case] expected: i32,
+) {
+    let source = format!(
+        "
 PROGRAM main
   VAR
-    t : TIME := T#5s;
-    result : DWORD;
+    {src_decl};
+    result : {result_type};
   END_VAR
-  result := TIME_TO_DWORD(t);
+  result := {call};
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // T#5s = 5000 milliseconds
-    assert_eq!(bufs.vars[1].as_i32() as u32, 5000);
+"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    assert_eq!(bufs.vars[1].as_i32() as u32, expected as u32);
 }
 
-// 3000 milliseconds = T#3s
-e2e_i32!(
-    end_to_end_when_dword_to_time_then_correct,
-    "
+/// Date/datetime conversions stored as seconds since 1970-01-01; only their
+/// non-zero-ness is asserted (the absolute epoch value is not pinned).
+#[rstest]
+#[case::date_to_dword("d : DATE := D#2024-06-15", "DWORD", "DATE_TO_DWORD(d)")]
+#[case::date_to_udint("d : DATE := D#2024-06-15", "UDINT", "DATE_TO_UDINT(d)")]
+#[case::dt_to_dword("d : DT := DT#2024-06-15-12:30:00", "DWORD", "DT_TO_DWORD(d)")]
+fn time_date_nonzero(#[case] src_decl: &str, #[case] result_type: &str, #[case] call: &str) {
+    let source = format!(
+        "
 PROGRAM main
   VAR
-    dw : DWORD := 3000;
-    result : TIME;
+    {src_decl};
+    result : {result_type};
   END_VAR
-  result := DWORD_TO_TIME(dw);
+  result := {call};
 END_PROGRAM
-",
-    &[(1, 3000)],
-);
-
-e2e_i32!(
-    end_to_end_when_time_to_dint_then_correct,
-    "
-PROGRAM main
-  VAR
-    t : TIME := T#5s;
-    result : DINT;
-  END_VAR
-  result := TIME_TO_DINT(t);
-END_PROGRAM
-",
-    &[(1, 5000)],
-);
-
-e2e_i32!(
-    end_to_end_when_time_to_int_then_correct,
-    "
-PROGRAM main
-  VAR
-    t : TIME := T#2s;
-    result : INT;
-  END_VAR
-  result := TIME_TO_INT(t);
-END_PROGRAM
-",
-    &[(1, 2000)],
-);
+"
+    );
+    let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+    assert!(bufs.vars[1].as_i32() as u32 > 0);
+}
 
 e2e_f32_near!(
     end_to_end_when_time_to_real_then_correct,
@@ -77,67 +72,3 @@ END_PROGRAM
 ",
     &[(1, 5000.0)],
 );
-
-#[test]
-fn end_to_end_when_date_to_dword_then_correct() {
-    let source = "
-PROGRAM main
-  VAR
-    d : DATE := D#2024-06-15;
-    result : DWORD;
-  END_VAR
-  result := DATE_TO_DWORD(d);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // DATE is stored as unsigned seconds since 1970-01-01
-    assert!(bufs.vars[1].as_i32() as u32 > 0);
-}
-
-#[test]
-fn end_to_end_when_date_to_udint_then_correct() {
-    let source = "
-PROGRAM main
-  VAR
-    d : DATE := D#2024-06-15;
-    result : UDINT;
-  END_VAR
-  result := DATE_TO_UDINT(d);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert!(bufs.vars[1].as_i32() as u32 > 0);
-}
-
-#[test]
-fn end_to_end_when_tod_to_dword_then_correct() {
-    let source = "
-PROGRAM main
-  VAR
-    t : TOD := TOD#12:30:00;
-    result : DWORD;
-  END_VAR
-  result := TOD_TO_DWORD(t);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // TOD is stored as unsigned milliseconds since midnight
-    // 12:30:00 = 12*3600*1000 + 30*60*1000 = 45_000_000
-    assert_eq!(bufs.vars[1].as_i32() as u32, 45_000_000);
-}
-
-#[test]
-fn end_to_end_when_dt_to_dword_then_correct() {
-    let source = "
-PROGRAM main
-  VAR
-    d : DT := DT#2024-06-15-12:30:00;
-    result : DWORD;
-  END_VAR
-  result := DT_TO_DWORD(d);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    // DT is stored as unsigned seconds since 1970-01-01
-    assert!(bufs.vars[1].as_i32() as u32 > 0);
-}
