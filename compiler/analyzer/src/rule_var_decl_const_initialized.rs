@@ -37,7 +37,10 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    intermediate_type::IntermediateType, result::SemanticResult, semantic_context::SemanticContext,
+    intermediate_type::IntermediateType,
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -47,21 +50,24 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleConstantVarsInitialized {
-        type_environment: context.types(),
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleConstantVarsInitialized {
+            type_environment: context.types(),
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleConstantVarsInitialized<'a> {
     type_environment: &'a TypeEnvironment,
     diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for RuleConstantVarsInitialized<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {

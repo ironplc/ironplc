@@ -25,7 +25,11 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -33,19 +37,22 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleDeclSubrangeLimits {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleDeclSubrangeLimits {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleDeclSubrangeLimits {
     diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for RuleDeclSubrangeLimits {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl Visitor<Diagnostic> for RuleDeclSubrangeLimits {
