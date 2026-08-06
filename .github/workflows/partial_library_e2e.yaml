@@ -1,0 +1,55 @@
+name: Library Installer E2E
+# Extended end-to-end test for the compatibility-library installers. Installs the
+# published compiler with the real OS installer (tarball + install.sh on Unix, the
+# NSIS installer on Windows) and compiles a program that depends on the bundled
+# Tc2_System library. This verifies the installer ships resources/libs beside the
+# binary and the compiler resolves library symbols from the installed location.
+#
+# The installers place files differently per OS, so this runs on Linux, macOS, and
+# Windows. The bulk of the test lives in the `library-e2e` justfile recipe, so a
+# workflow_dispatch run exercises branch changes directly.
+#
+# NOTE: this partial is intentionally NOT wired into deployment.yaml or
+# integration.yaml yet. Run it manually via the Actions tab (workflow_dispatch) or
+# locally with `just library-e2e <version>`.
+on:
+  workflow_call:
+    inputs:
+      compiler-version:
+        required: true
+        type: string
+        description: 'The version number to test with (without the "v" prefix). Empty string uses the latest release.'
+  # Allow running manually against any branch from the Actions tab.
+  workflow_dispatch:
+    inputs:
+      compiler-version:
+        required: false
+        type: string
+        default: ""
+        description: 'The version number to test with (without the "v" prefix). Empty string uses the latest release. Must be a release that ships the compatibility libraries.'
+
+permissions:
+  contents: read
+
+jobs:
+  library-e2e:
+    name: Library Installer E2E (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-2025]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # Fetch the test fixture and justfile recipes.
+      - name: Checkout HEAD
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Configure the execution environment.
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+
+      # Install the published compiler with the real OS installer and compile a
+      # program that depends on the bundled Tc2_System library. The [unix] and
+      # [windows] variants of the recipe select the right installer per OS.
+      - name: Library installer end-to-end test
+        run: just library-e2e "${{ inputs.compiler-version }}"
