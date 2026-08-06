@@ -685,6 +685,7 @@ fn hex_string(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
     use ironplc_container::{ContainerBuilder, FunctionId};
+    use rstest::rstest;
     use std::io::Cursor;
     use std::io::Write;
     use tempfile::NamedTempFile;
@@ -992,120 +993,33 @@ mod tests {
     // decode_instructions: no-operand opcodes
     // ---------------------------------------------------------------
 
-    #[test]
-    fn decode_when_load_true_then_opcode_name_and_empty_operands() {
-        let instr = first_instruction(vec![opcode::LOAD_TRUE, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "LOAD_TRUE");
+    #[rstest]
+    #[case::load_true(opcode::LOAD_TRUE, "LOAD_TRUE")]
+    #[case::load_false(opcode::LOAD_FALSE, "LOAD_FALSE")]
+    #[case::sub_i32(opcode::SUB_I32, "SUB_I32")]
+    #[case::mul_i32(opcode::MUL_I32, "MUL_I32")]
+    #[case::div_i32(opcode::DIV_I32, "DIV_I32")]
+    #[case::mod_i32(opcode::MOD_I32, "MOD_I32")]
+    #[case::neg_i32(opcode::NEG_I32, "NEG_I32")]
+    #[case::eq_i32(opcode::EQ_I32, "EQ_I32")]
+    #[case::ne_i32(opcode::NE_I32, "NE_I32")]
+    #[case::lt_i32(opcode::LT_I32, "LT_I32")]
+    #[case::le_i32(opcode::LE_I32, "LE_I32")]
+    #[case::gt_i32(opcode::GT_I32, "GT_I32")]
+    #[case::ge_i32(opcode::GE_I32, "GE_I32")]
+    #[case::bool_and(opcode::BOOL_AND, "BOOL_AND")]
+    #[case::bool_or(opcode::BOOL_OR, "BOOL_OR")]
+    #[case::bool_xor(opcode::BOOL_XOR, "BOOL_XOR")]
+    #[case::bool_not(opcode::BOOL_NOT, "BOOL_NOT")]
+    #[case::dup(opcode::DUP, "DUP")]
+    #[case::swap(opcode::SWAP, "SWAP")]
+    fn decode_when_no_operand_opcode_then_opcode_name_and_empty_operands(
+        #[case] opcode_byte: u8,
+        #[case] expected_name: &str,
+    ) {
+        let instr = first_instruction(vec![opcode_byte, opcode::RET_VOID]);
+        assert_eq!(instr["opcode"], expected_name);
         assert_eq!(instr["operands"], "");
-    }
-
-    #[test]
-    fn decode_when_load_false_then_opcode_name_and_empty_operands() {
-        let instr = first_instruction(vec![opcode::LOAD_FALSE, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "LOAD_FALSE");
-        assert_eq!(instr["operands"], "");
-    }
-
-    #[test]
-    fn decode_when_sub_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::SUB_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "SUB_I32");
-    }
-
-    #[test]
-    fn decode_when_mul_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::MUL_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "MUL_I32");
-    }
-
-    #[test]
-    fn decode_when_div_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::DIV_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "DIV_I32");
-    }
-
-    #[test]
-    fn decode_when_mod_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::MOD_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "MOD_I32");
-    }
-
-    #[test]
-    fn decode_when_neg_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::NEG_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "NEG_I32");
-    }
-
-    #[test]
-    fn decode_when_eq_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::EQ_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "EQ_I32");
-    }
-
-    #[test]
-    fn decode_when_ne_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::NE_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "NE_I32");
-    }
-
-    #[test]
-    fn decode_when_lt_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::LT_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "LT_I32");
-    }
-
-    #[test]
-    fn decode_when_le_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::LE_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "LE_I32");
-    }
-
-    #[test]
-    fn decode_when_gt_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::GT_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "GT_I32");
-    }
-
-    #[test]
-    fn decode_when_ge_i32_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::GE_I32, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "GE_I32");
-    }
-
-    #[test]
-    fn decode_when_bool_and_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::BOOL_AND, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "BOOL_AND");
-    }
-
-    #[test]
-    fn decode_when_bool_or_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::BOOL_OR, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "BOOL_OR");
-    }
-
-    #[test]
-    fn decode_when_bool_xor_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::BOOL_XOR, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "BOOL_XOR");
-    }
-
-    #[test]
-    fn decode_when_bool_not_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::BOOL_NOT, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "BOOL_NOT");
-    }
-
-    #[test]
-    fn decode_when_dup_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::DUP, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "DUP");
-    }
-
-    #[test]
-    fn decode_when_swap_then_opcode_name() {
-        let instr = first_instruction(vec![opcode::SWAP, opcode::RET_VOID]);
-        assert_eq!(instr["opcode"], "SWAP");
     }
 
     // ---------------------------------------------------------------
@@ -1149,105 +1063,39 @@ mod tests {
         first_instruction(vec![opcode::BUILTIN, id[0], id[1], opcode::RET_VOID])
     }
 
-    #[test]
-    fn decode_when_builtin_expt_i32_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::EXPT_I32);
-        assert_eq!(instr["operands"], "EXPT_I32 (0x0340)");
+    #[rstest]
+    #[case::expt_i32(opcode::builtin::EXPT_I32, "EXPT_I32 (0x0340)")]
+    #[case::abs_i32(opcode::builtin::ABS_I32, "ABS_I32 (0x0343)")]
+    #[case::min_i32(opcode::builtin::MIN_I32, "MIN_I32 (0x0344)")]
+    #[case::max_f64(opcode::builtin::MAX_F64, "MAX_F64 (0x0359)")]
+    #[case::limit_f32(opcode::builtin::LIMIT_F32, "LIMIT_F32 (0x035A)")]
+    #[case::sel_i32(opcode::builtin::SEL_I32, "SEL_I32 (0x0347)")]
+    #[case::shl_i32(opcode::builtin::SHL_I32, "SHL_I32 (0x0348)")]
+    #[case::rol_u8(opcode::builtin::ROL_U8, "ROL_U8 (0x0350)")]
+    #[case::bcd_to_int_32(opcode::builtin::BCD_TO_INT_32, "BCD_TO_INT_32 (0x0393)")]
+    #[case::int_to_bcd_64(opcode::builtin::INT_TO_BCD_64, "INT_TO_BCD_64 (0x0398)")]
+    #[case::sqrt_f32(opcode::builtin::SQRT_F32, "SQRT_F32 (0x035E)")]
+    #[case::unknown_id(0x00FF, "0x00FF")]
+    fn decode_when_builtin_then_operand_shows_name(
+        #[case] func_id: u16,
+        #[case] expected_operands: &str,
+    ) {
+        let instr = builtin_instruction(func_id);
+        assert_eq!(instr["operands"], expected_operands);
     }
 
-    #[test]
-    fn decode_when_builtin_abs_i32_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::ABS_I32);
-        assert_eq!(instr["operands"], "ABS_I32 (0x0343)");
-    }
-
-    #[test]
-    fn decode_when_builtin_min_i32_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::MIN_I32);
-        assert_eq!(instr["operands"], "MIN_I32 (0x0344)");
-    }
-
-    #[test]
-    fn decode_when_builtin_max_f64_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::MAX_F64);
-        assert_eq!(instr["operands"], "MAX_F64 (0x0359)");
-    }
-
-    #[test]
-    fn decode_when_builtin_limit_f32_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::LIMIT_F32);
-        assert_eq!(instr["operands"], "LIMIT_F32 (0x035A)");
-    }
-
-    #[test]
-    fn decode_when_builtin_sel_i32_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::SEL_I32);
-        assert_eq!(instr["operands"], "SEL_I32 (0x0347)");
-    }
-
-    #[test]
-    fn decode_when_builtin_shl_i32_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::SHL_I32);
-        assert_eq!(instr["operands"], "SHL_I32 (0x0348)");
-    }
-
-    #[test]
-    fn decode_when_builtin_rol_u8_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::ROL_U8);
-        assert_eq!(instr["operands"], "ROL_U8 (0x0350)");
-    }
-
-    #[test]
-    fn decode_when_builtin_bcd_to_int_32_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::BCD_TO_INT_32);
-        assert_eq!(instr["operands"], "BCD_TO_INT_32 (0x0393)");
-    }
-
-    #[test]
-    fn decode_when_builtin_int_to_bcd_64_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::INT_TO_BCD_64);
-        assert_eq!(instr["operands"], "INT_TO_BCD_64 (0x0398)");
-    }
-
-    #[test]
-    fn decode_when_builtin_sqrt_f32_then_operand_shows_name() {
-        let instr = builtin_instruction(opcode::builtin::SQRT_F32);
-        assert_eq!(instr["operands"], "SQRT_F32 (0x035E)");
-    }
-
-    #[test]
-    fn decode_when_builtin_mux_i32_then_operand_shows_width_and_n() {
-        // MUX_I32_BASE + 3 = MUX with 3 inputs
-        let instr = builtin_instruction(opcode::builtin::MUX_I32_BASE + 3);
+    #[rstest]
+    #[case::mux_i32(opcode::builtin::MUX_I32_BASE + 3, "MUX_I32(3)")]
+    #[case::mux_i64(opcode::builtin::MUX_I64_BASE + 2, "MUX_I64(2)")]
+    #[case::mux_f32(opcode::builtin::MUX_F32_BASE + 4, "MUX_F32(4)")]
+    #[case::mux_f64(opcode::builtin::MUX_F64_BASE + 5, "MUX_F64(5)")]
+    fn decode_when_builtin_mux_then_operand_shows_width_and_n(
+        #[case] func_id: u16,
+        #[case] expected_prefix: &str,
+    ) {
+        let instr = builtin_instruction(func_id);
         let operands = instr["operands"].as_str().unwrap();
-        assert!(operands.starts_with("MUX_I32(3)"), "got: {operands}");
-    }
-
-    #[test]
-    fn decode_when_builtin_mux_i64_then_operand_shows_width_and_n() {
-        let instr = builtin_instruction(opcode::builtin::MUX_I64_BASE + 2);
-        let operands = instr["operands"].as_str().unwrap();
-        assert!(operands.starts_with("MUX_I64(2)"), "got: {operands}");
-    }
-
-    #[test]
-    fn decode_when_builtin_mux_f32_then_operand_shows_width_and_n() {
-        let instr = builtin_instruction(opcode::builtin::MUX_F32_BASE + 4);
-        let operands = instr["operands"].as_str().unwrap();
-        assert!(operands.starts_with("MUX_F32(4)"), "got: {operands}");
-    }
-
-    #[test]
-    fn decode_when_builtin_mux_f64_then_operand_shows_width_and_n() {
-        let instr = builtin_instruction(opcode::builtin::MUX_F64_BASE + 5);
-        let operands = instr["operands"].as_str().unwrap();
-        assert!(operands.starts_with("MUX_F64(5)"), "got: {operands}");
-    }
-
-    #[test]
-    fn decode_when_builtin_unknown_id_then_operand_shows_hex() {
-        let instr = builtin_instruction(0x00FF);
-        assert_eq!(instr["operands"], "0x00FF");
+        assert!(operands.starts_with(expected_prefix), "got: {operands}");
     }
 
     // ---------------------------------------------------------------

@@ -312,6 +312,7 @@ mod tests {
     use crate::test_helpers::parse_and_resolve_types_with_context;
     use ironplc_dsl::core::FileId;
     use ironplc_parser::{options::CompilerOptions, parse_program};
+    use rstest::rstest;
 
     use super::*;
 
@@ -332,353 +333,68 @@ mod tests {
         );
     }
 
-    // --- BYTE (8 bits): valid range 0..7 ---
+    // --- Bit access boundary tests across all bit-sized types ---
+    //
+    // For each type: the highest valid bit index is OK, and one past the
+    // highest is an error. BYTE additionally covers bit 0 as the low bound.
 
-    #[test]
-    fn apply_when_byte_bit_0_then_ok() {
-        assert_bit_access_ok(
+    #[rstest]
+    // BYTE (8 bits): valid range 0..7
+    #[case::byte_bit_0("BYTE", 0, true)]
+    #[case::byte_bit_7("BYTE", 7, true)]
+    #[case::byte_bit_8("BYTE", 8, false)]
+    // WORD (16 bits): valid range 0..15
+    #[case::word_bit_15("WORD", 15, true)]
+    #[case::word_bit_16("WORD", 16, false)]
+    // DWORD (32 bits): valid range 0..31
+    #[case::dword_bit_31("DWORD", 31, true)]
+    #[case::dword_bit_32("DWORD", 32, false)]
+    // LWORD (64 bits): valid range 0..63
+    #[case::lword_bit_63("LWORD", 63, true)]
+    #[case::lword_bit_64("LWORD", 64, false)]
+    // SINT (8 bits): valid range 0..7
+    #[case::sint_bit_7("SINT", 7, true)]
+    #[case::sint_bit_8("SINT", 8, false)]
+    // INT (16 bits): valid range 0..15
+    #[case::int_bit_15("INT", 15, true)]
+    #[case::int_bit_16("INT", 16, false)]
+    // DINT (32 bits): valid range 0..31
+    #[case::dint_bit_31("DINT", 31, true)]
+    #[case::dint_bit_32("DINT", 32, false)]
+    // LINT (64 bits): valid range 0..63
+    #[case::lint_bit_63("LINT", 63, true)]
+    #[case::lint_bit_64("LINT", 64, false)]
+    // USINT (8 bits): valid range 0..7
+    #[case::usint_bit_7("USINT", 7, true)]
+    #[case::usint_bit_8("USINT", 8, false)]
+    // UINT (16 bits): valid range 0..15
+    #[case::uint_bit_15("UINT", 15, true)]
+    #[case::uint_bit_16("UINT", 16, false)]
+    // UDINT (32 bits): valid range 0..31
+    #[case::udint_bit_31("UDINT", 31, true)]
+    #[case::udint_bit_32("UDINT", 32, false)]
+    // ULINT (64 bits): valid range 0..63
+    #[case::ulint_bit_63("ULINT", 63, true)]
+    #[case::ulint_bit_64("ULINT", 64, false)]
+    fn apply_when_bit_index_at_boundary_then_ok_or_err(
+        #[case] type_name: &str,
+        #[case] bit: u32,
+        #[case] expected_ok: bool,
+    ) {
+        let program = format!(
             "FUNCTION_BLOCK FB1
 VAR
-    x : BYTE;
+    x : {type_name};
     y : BOOL;
 END_VAR
-    y := x.0;
-END_FUNCTION_BLOCK",
+    y := x.{bit};
+END_FUNCTION_BLOCK"
         );
-    }
-
-    #[test]
-    fn apply_when_byte_bit_7_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : BYTE;
-    y : BOOL;
-END_VAR
-    y := x.7;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_byte_bit_8_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : BYTE;
-    y : BOOL;
-END_VAR
-    y := x.8;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- WORD (16 bits): valid range 0..15 ---
-
-    #[test]
-    fn apply_when_word_bit_15_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : WORD;
-    y : BOOL;
-END_VAR
-    y := x.15;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_word_bit_16_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : WORD;
-    y : BOOL;
-END_VAR
-    y := x.16;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- DWORD (32 bits): valid range 0..31 ---
-
-    #[test]
-    fn apply_when_dword_bit_31_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : DWORD;
-    y : BOOL;
-END_VAR
-    y := x.31;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_dword_bit_32_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : DWORD;
-    y : BOOL;
-END_VAR
-    y := x.32;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- LWORD (64 bits): valid range 0..63 ---
-
-    #[test]
-    fn apply_when_lword_bit_63_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : LWORD;
-    y : BOOL;
-END_VAR
-    y := x.63;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_lword_bit_64_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : LWORD;
-    y : BOOL;
-END_VAR
-    y := x.64;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- SINT (8 bits): valid range 0..7 ---
-
-    #[test]
-    fn apply_when_sint_bit_7_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : SINT;
-    y : BOOL;
-END_VAR
-    y := x.7;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_sint_bit_8_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : SINT;
-    y : BOOL;
-END_VAR
-    y := x.8;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- INT (16 bits): valid range 0..15 ---
-
-    #[test]
-    fn apply_when_int_bit_15_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : INT;
-    y : BOOL;
-END_VAR
-    y := x.15;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_int_bit_16_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : INT;
-    y : BOOL;
-END_VAR
-    y := x.16;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- DINT (32 bits): valid range 0..31 ---
-
-    #[test]
-    fn apply_when_dint_bit_31_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : DINT;
-    y : BOOL;
-END_VAR
-    y := x.31;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_dint_bit_32_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : DINT;
-    y : BOOL;
-END_VAR
-    y := x.32;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- LINT (64 bits): valid range 0..63 ---
-
-    #[test]
-    fn apply_when_lint_bit_63_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : LINT;
-    y : BOOL;
-END_VAR
-    y := x.63;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_lint_bit_64_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : LINT;
-    y : BOOL;
-END_VAR
-    y := x.64;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- USINT (8 bits): valid range 0..7 ---
-
-    #[test]
-    fn apply_when_usint_bit_7_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : USINT;
-    y : BOOL;
-END_VAR
-    y := x.7;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_usint_bit_8_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : USINT;
-    y : BOOL;
-END_VAR
-    y := x.8;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- UINT (16 bits): valid range 0..15 ---
-
-    #[test]
-    fn apply_when_uint_bit_15_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : UINT;
-    y : BOOL;
-END_VAR
-    y := x.15;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_uint_bit_16_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : UINT;
-    y : BOOL;
-END_VAR
-    y := x.16;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- UDINT (32 bits): valid range 0..31 ---
-
-    #[test]
-    fn apply_when_udint_bit_31_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : UDINT;
-    y : BOOL;
-END_VAR
-    y := x.31;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_udint_bit_32_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : UDINT;
-    y : BOOL;
-END_VAR
-    y := x.32;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    // --- ULINT (64 bits): valid range 0..63 ---
-
-    #[test]
-    fn apply_when_ulint_bit_63_then_ok() {
-        assert_bit_access_ok(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : ULINT;
-    y : BOOL;
-END_VAR
-    y := x.63;
-END_FUNCTION_BLOCK",
-        );
-    }
-
-    #[test]
-    fn apply_when_ulint_bit_64_then_err() {
-        assert_bit_access_err(
-            "FUNCTION_BLOCK FB1
-VAR
-    x : ULINT;
-    y : BOOL;
-END_VAR
-    y := x.64;
-END_FUNCTION_BLOCK",
-        );
+        if expected_ok {
+            assert_bit_access_ok(&program);
+        } else {
+            assert_bit_access_err(&program);
+        }
     }
 
     // --- Bit access on assignment target ---

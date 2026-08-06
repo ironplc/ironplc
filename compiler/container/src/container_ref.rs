@@ -326,6 +326,7 @@ impl<'a> ContainerRef<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use std::vec;
     use std::vec::Vec;
 
@@ -365,25 +366,73 @@ mod tests {
         assert_eq!(cref.header().max_stack_depth, 2);
     }
 
-    #[test]
-    fn container_ref_from_slice_when_invalid_magic_then_error() {
-        let mut data = steel_thread_bytes();
-        // Corrupt magic bytes
-        data[0] = 0xFF;
-        data[1] = 0xFF;
-        data[2] = 0xFF;
-        data[3] = 0xFF;
+    // A corruption applied to the steel-thread bytes, and a predicate that
+    // recognizes the error `from_slice` should return for that corruption.
+    #[rstest]
+    #[case::invalid_magic(
+        (|mut data: Vec<u8>| { data[0..4].copy_from_slice(&[0xFF; 4]); data }) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::InvalidMagic)) as fn(&ContainerError) -> bool
+    )]
+    #[case::truncated(
+        (|_: Vec<u8>| vec![0u8; 100]) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::const_section_offset_past_end(
+        (|data: Vec<u8>| { let n = data.len() as u32; with_tampered_header(&data, |h| h.const_section_size = n * 2) }) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::code_section_offset_past_end(
+        (|data: Vec<u8>| { let n = data.len() as u32; with_tampered_header(&data, |h| h.code_section_size = n * 2) }) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::func_dir_larger_than_code(
+        (|data: Vec<u8>| with_tampered_header(&data, |h| h.num_functions = 999)) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::task_section_offset_past_end(
+        (|data: Vec<u8>| { let n = data.len() as u32; with_tampered_header(&data, |h| h.task_section_size = n * 2) }) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::const_section_only_one_byte(
+        (|data: Vec<u8>| with_tampered_header(&data, |h| h.const_section_size = 1)) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::const_section_truncates_entry_header(
+        (|data: Vec<u8>| with_tampered_header(&data, |h| h.const_section_size = 5)) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::const_section_entry_value_truncated(
+        (|data: Vec<u8>| with_tampered_header(&data, |h| h.const_section_size = 6)) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::task_section_smaller_than_header(
+        (|data: Vec<u8>| with_tampered_header(&data, |h| h.task_section_size = 3)) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    #[case::const_entry_value_size_bytes_corrupted(
+        (|data: Vec<u8>| {
+            let header =
+                FileHeader::read_from(&mut std::io::Cursor::new(&data[..HEADER_SIZE])).unwrap();
+            let const_start = header.const_section_offset as usize;
+            let mut data = data;
+            // Const section layout: [count: u16][entry0: type(1) reserved(1) size(2) value(n)].
+            // Blow up the declared value size so it overruns the const pool.
+            let size_offset = const_start + 2 + 2;
+            data[size_offset] = 0xFF;
+            data[size_offset + 1] = 0xFF;
+            data
+        }) as fn(Vec<u8>) -> Vec<u8>,
+        (|e: &ContainerError| matches!(e, ContainerError::SectionSizeMismatch)) as fn(&ContainerError) -> bool
+    )]
+    fn container_ref_from_slice_when_corrupted_then_error(
+        #[case] tamper: fn(Vec<u8>) -> Vec<u8>,
+        #[case] expect_err: fn(&ContainerError) -> bool,
+    ) {
+        let data = tamper(steel_thread_bytes());
         let mut offsets = vec![0u32; 16];
         let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::InvalidMagic)));
-    }
-
-    #[test]
-    fn container_ref_from_slice_when_truncated_then_error() {
-        let data = vec![0u8; 100];
-        let mut offsets = vec![0u32; 16];
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
+        let err = result.expect_err("expected corruption to be rejected");
+        assert!(expect_err(&err), "unexpected error: {err:?}");
     }
 
     #[test]
@@ -508,80 +557,6 @@ mod tests {
     }
 
     #[test]
-    fn container_ref_from_slice_when_const_section_offset_past_end_then_errors() {
-        let mut data = steel_thread_bytes();
-
-        // Inflate const_section_size so const_end > data.len().
-        let mut header =
-            FileHeader::read_from(&mut std::io::Cursor::new(&data[..HEADER_SIZE])).unwrap();
-        header.const_section_size = data.len() as u32 * 2;
-
-        let mut tampered = Vec::with_capacity(data.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&data[HEADER_SIZE..]);
-        data = tampered;
-
-        let mut offsets = vec![0u32; 16];
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
-    }
-
-    #[test]
-    fn container_ref_from_slice_when_code_section_offset_past_end_then_errors() {
-        let mut data = steel_thread_bytes();
-
-        let mut header =
-            FileHeader::read_from(&mut std::io::Cursor::new(&data[..HEADER_SIZE])).unwrap();
-        header.code_section_size = data.len() as u32 * 2;
-
-        let mut tampered = Vec::with_capacity(data.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&data[HEADER_SIZE..]);
-        data = tampered;
-
-        let mut offsets = vec![0u32; 16];
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
-    }
-
-    #[test]
-    fn container_ref_from_slice_when_func_dir_larger_than_code_then_errors() {
-        let mut data = steel_thread_bytes();
-
-        let mut header =
-            FileHeader::read_from(&mut std::io::Cursor::new(&data[..HEADER_SIZE])).unwrap();
-        // Inflate num_functions so func_dir_size > code_section.len().
-        header.num_functions = 999;
-
-        let mut tampered = Vec::with_capacity(data.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&data[HEADER_SIZE..]);
-        data = tampered;
-
-        let mut offsets = vec![0u32; 16];
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
-    }
-
-    #[test]
-    fn container_ref_from_slice_when_task_section_offset_past_end_then_errors() {
-        let mut data = steel_thread_bytes();
-
-        let mut header =
-            FileHeader::read_from(&mut std::io::Cursor::new(&data[..HEADER_SIZE])).unwrap();
-        header.task_section_size = data.len() as u32 * 2;
-
-        let mut tampered = Vec::with_capacity(data.len());
-        header.write_to(&mut tampered).unwrap();
-        tampered.extend_from_slice(&data[HEADER_SIZE..]);
-        data = tampered;
-
-        let mut offsets = vec![0u32; 16];
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
-    }
-
-    #[test]
     fn container_ref_get_i32_constant_when_type_mismatch_then_errors() {
         let data = f32_constant_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
@@ -695,57 +670,6 @@ mod tests {
     }
 
     #[test]
-    fn container_ref_from_slice_when_const_section_only_one_byte_then_errors() {
-        // Set const_section_size = 1 so const_section.len() < 2 and the
-        // count-read bounds check returns SectionSizeMismatch.
-        let data = with_tampered_header(&steel_thread_bytes(), |h| {
-            h.const_section_size = 1;
-        });
-        let mut offsets = vec![0u32; 4];
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
-    }
-
-    #[test]
-    fn container_ref_from_slice_when_const_section_truncates_entry_header_then_errors() {
-        // Original const section has 2 entries; clip the section_size so the
-        // entry-header bounds check fails during the pre-scan loop.
-        let data = with_tampered_header(&steel_thread_bytes(), |h| {
-            // 2 (count) + 3 bytes = less than one full 4-byte entry header.
-            h.const_section_size = 5;
-        });
-        let mut offsets = vec![0u32; 4];
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
-    }
-
-    #[test]
-    fn container_ref_from_slice_when_const_section_entry_value_truncated_then_errors() {
-        // Header claims an entry larger than the remaining const section,
-        // so the "pos > const_pool_bytes.len()" check after advancing fires.
-        let data = with_tampered_header(&steel_thread_bytes(), |h| {
-            // Just enough for the count and the first entry header, but the
-            // declared value size will overrun the truncated section.
-            h.const_section_size = 6;
-        });
-        let mut offsets = vec![0u32; 4];
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
-    }
-
-    #[test]
-    fn container_ref_from_slice_when_task_section_smaller_than_header_then_errors() {
-        // A non-zero but tiny task_section_size forces the header-length
-        // bounds check in from_slice to return SectionSizeMismatch.
-        let data = with_tampered_header(&steel_thread_bytes(), |h| {
-            h.task_section_size = 3;
-        });
-        let mut offsets = vec![0u32; 4];
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
-    }
-
-    #[test]
     fn container_ref_num_programs_and_shared_globals_when_valid_then_return_fields() {
         let data = steel_thread_bytes();
         let count = ContainerRef::const_count(&data).unwrap();
@@ -770,30 +694,5 @@ mod tests {
         assert_eq!(cref.num_tasks(), 0);
         assert_eq!(cref.num_programs(), 0);
         assert_eq!(cref.shared_globals_size(), 0);
-    }
-
-    #[test]
-    fn container_ref_get_i32_constant_when_value_bytes_truncated_then_errors() {
-        // Tamper the container so the first constant's declared value length
-        // would run past the end of the const pool bytes. The pre-scan
-        // already validates this, so we need a direct-crafted buffer.
-        let base = steel_thread_bytes();
-        // Locate the const section by rereading the header.
-        let header =
-            FileHeader::read_from(&mut std::io::Cursor::new(&base[..HEADER_SIZE])).unwrap();
-        let const_start = header.const_section_offset as usize;
-
-        let mut data = base.clone();
-        // Set the first entry's declared value size to a huge number.
-        // Const section layout: [count: u16][entry0: type(1) reserved(1) size(2) value(n)]
-        let size_offset = const_start + 2 + 2;
-        data[size_offset] = 0xFF;
-        data[size_offset + 1] = 0xFF;
-
-        let mut offsets = vec![0u32; 4];
-        // from_slice itself will detect the overrun and error, exercising the
-        // same bounds-check code path.
-        let result = ContainerRef::from_slice(&data, &mut offsets);
-        assert!(matches!(result, Err(ContainerError::SectionSizeMismatch)));
     }
 }
