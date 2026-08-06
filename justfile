@@ -301,6 +301,12 @@ install-script-smoke compiler-version="":
 # the dev-tree fallback. The two installers place files differently, so the check
 # runs per OS via the [unix]/[windows] recipe variants below.
 #
+# Structured like endtoend-smoke: the top recipe orchestrates a `-download`
+# (acquire + install) step and a `-test` (verify) step. Splitting them lets you
+# reinstall once and re-run the verification repeatedly. Install lives in the
+# download step because the Unix install.sh fuses fetch and install; the test
+# step is then pure verification on both platforms.
+#
 # Unlike install-script-smoke (which stays green against older releases), the
 # library check here is a HARD assertion: this test exists to catch a release
 # that fails to ship the libraries, so the target release must be one that does.
@@ -312,12 +318,18 @@ install-script-smoke compiler-version="":
 #                   like "0.234.0" (without the leading "v").
 [unix]
 library-e2e compiler-version="":
+  @just library-e2e-download "{{compiler-version}}"
+  @just library-e2e-test
+
+# Download + install the published compiler via the tarball installer (install.sh).
+[unix]
+library-e2e-download compiler-version="":
   @just _install-script-smoke-clean
   @just _install-script-smoke-run "{{compiler-version}}"
-  @just _library-e2e-verify-unix
 
+# Verify the installed compiler resolves the bundled library.
 [unix]
-_library-e2e-verify-unix:
+library-e2e-test:
   #!/usr/bin/env sh
   set -eu
   BIN="$HOME/.ironplc/bin"
@@ -334,15 +346,26 @@ _library-e2e-verify-unix:
   echo "PASS: installed compiler resolved Tc2_System PI from the installed library"
 
 # Windows uses the NSIS installer, which installs to a fixed Program Files path.
-# The x86_64 asset name is hard-coded because the GitHub runner is x86_64; pass a
-# different version to target another release. Each line is a separate PowerShell
-# process (set windows-shell), so each step is a self-contained statement.
+# Each line is a separate PowerShell process (set windows-shell), so each step is
+# a self-contained statement.
 [windows]
 library-e2e compiler-version="":
+  @just library-e2e-download "{{compiler-version}}"
+  @just library-e2e-test
+
+# Download + install the published compiler via the NSIS installer. The x86_64
+# asset name is hard-coded because the GitHub runner is x86_64; pass a different
+# version to target another release.
+[windows]
+library-e2e-download compiler-version="":
   # Resolve the release tag (empty -> latest) and download the NSIS installer.
   $v="{{compiler-version}}"; $tag= if([string]::IsNullOrEmpty($v)){(Invoke-RestMethod -Uri "https://api.github.com/repos/ironplc/ironplc/releases/latest").tag_name}else{"v$v"}; Write-Host "Using release $tag"; Invoke-WebRequest -Uri "https://github.com/ironplc/ironplc/releases/download/$tag/ironplcc-x86_64-windows.exe" -OutFile ironplcc-setup.exe
   # Install silently.
   Start-Process ironplcc-setup.exe -ArgumentList "/S" -PassThru | Wait-Process -Timeout 120
+
+# Verify the installed compiler resolves the bundled library.
+[windows]
+library-e2e-test:
   # The installer must ship the library files beside the binary.
   if (-not (Test-Path "{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\resources\libs\Tc2_System\library.toml")) { Write-Error "FAIL: compatibility library not installed (the target release must be one that ships the libraries)"; exit 1 }
   # A program that depends on the library must compile against the installed files.

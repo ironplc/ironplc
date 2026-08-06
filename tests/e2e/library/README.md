@@ -26,6 +26,14 @@ just library-e2e 0.234.0
 The recipe installs the real OS installer, asserts the library files landed
 beside the binary, then compiles `uses_pi.st` against the installed compiler.
 
+Like the VS Code `endtoend-smoke` test, it is split into a download step and a
+test step, so you can install once and re-run the verification repeatedly:
+
+```sh
+just library-e2e-download 0.234.0   # acquire + install
+just library-e2e-test               # verify (repeatable)
+```
+
 In CI this is `partial_library_e2e.yaml`, runnable from the Actions tab
 (`workflow_dispatch`) across Linux, macOS, and Windows. It is intentionally not
 wired into the release or PR pipelines yet.
