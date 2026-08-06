@@ -981,6 +981,7 @@ version = "0.233.0"
 dependencies = [
  "blake3",
  "ironplc-spec-requirements-gen",
+ "rstest",
  "spec_test_macro",
 ]
 
@@ -994,6 +995,7 @@ dependencies = [
  "logos",
  "paste",
  "regex",
+ "rstest",
  "time",
 ]
 
@@ -1095,6 +1097,7 @@ dependencies = [
  "ironplc-problems",
  "ironplc-sources",
  "log",
+ "rstest",
  "serde_json",
  "tempfile",
 ]
@@ -1136,6 +1139,7 @@ dependencies = [
  "ironplc-spec-requirements-gen",
  "ironplc-vm",
  "proptest",
+ "rstest",
  "spec_test_macro",
 ]
 

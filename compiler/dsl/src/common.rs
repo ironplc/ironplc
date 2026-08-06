@@ -3628,302 +3628,78 @@ mod tests {
         assert_eq!(si.value.value, 7);
     }
 
-    #[test]
-    fn can_widen_to_when_sint_to_int_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::INT));
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::sint_to_int(ElementaryTypeName::SINT, ElementaryTypeName::INT, true)]
+    #[case::sint_to_dint(ElementaryTypeName::SINT, ElementaryTypeName::DINT, true)]
+    #[case::sint_to_lint(ElementaryTypeName::SINT, ElementaryTypeName::LINT, true)]
+    #[case::int_to_dint(ElementaryTypeName::INT, ElementaryTypeName::DINT, true)]
+    #[case::dint_to_lint(ElementaryTypeName::DINT, ElementaryTypeName::LINT, true)]
+    #[case::usint_to_uint(ElementaryTypeName::USINT, ElementaryTypeName::UINT, true)]
+    #[case::usint_to_ulint(ElementaryTypeName::USINT, ElementaryTypeName::ULINT, true)]
+    #[case::uint_to_udint(ElementaryTypeName::UINT, ElementaryTypeName::UDINT, true)]
+    #[case::usint_to_int(ElementaryTypeName::USINT, ElementaryTypeName::INT, true)]
+    #[case::uint_to_dint(ElementaryTypeName::UINT, ElementaryTypeName::DINT, true)]
+    #[case::udint_to_lint(ElementaryTypeName::UDINT, ElementaryTypeName::LINT, true)]
+    #[case::dint_to_int(ElementaryTypeName::DINT, ElementaryTypeName::INT, false)]
+    #[case::lint_to_dint(ElementaryTypeName::LINT, ElementaryTypeName::DINT, false)]
+    #[case::int_to_uint(ElementaryTypeName::INT, ElementaryTypeName::UINT, false)]
+    #[case::int_to_int(ElementaryTypeName::INT, ElementaryTypeName::INT, false)]
+    #[case::uint_to_int(ElementaryTypeName::UINT, ElementaryTypeName::INT, false)]
+    #[case::sint_to_real(ElementaryTypeName::SINT, ElementaryTypeName::REAL, true)]
+    #[case::int_to_real(ElementaryTypeName::INT, ElementaryTypeName::REAL, true)]
+    #[case::usint_to_real(ElementaryTypeName::USINT, ElementaryTypeName::REAL, true)]
+    #[case::uint_to_real(ElementaryTypeName::UINT, ElementaryTypeName::REAL, true)]
+    #[case::dint_to_real(ElementaryTypeName::DINT, ElementaryTypeName::REAL, false)]
+    #[case::lint_to_real(ElementaryTypeName::LINT, ElementaryTypeName::REAL, false)]
+    #[case::udint_to_real(ElementaryTypeName::UDINT, ElementaryTypeName::REAL, false)]
+    #[case::ulint_to_real(ElementaryTypeName::ULINT, ElementaryTypeName::REAL, false)]
+    #[case::sint_to_lreal(ElementaryTypeName::SINT, ElementaryTypeName::LREAL, true)]
+    #[case::lint_to_lreal(ElementaryTypeName::LINT, ElementaryTypeName::LREAL, true)]
+    #[case::ulint_to_lreal(ElementaryTypeName::ULINT, ElementaryTypeName::LREAL, true)]
+    #[case::real_to_int(ElementaryTypeName::REAL, ElementaryTypeName::INT, false)]
+    #[case::lreal_to_dint(ElementaryTypeName::LREAL, ElementaryTypeName::DINT, false)]
+    #[case::real_to_lreal(ElementaryTypeName::REAL, ElementaryTypeName::LREAL, true)]
+    #[case::lreal_to_real(ElementaryTypeName::LREAL, ElementaryTypeName::REAL, false)]
+    #[case::real_to_real(ElementaryTypeName::REAL, ElementaryTypeName::REAL, false)]
+    #[case::byte_to_word(ElementaryTypeName::BYTE, ElementaryTypeName::WORD, true)]
+    #[case::byte_to_dword(ElementaryTypeName::BYTE, ElementaryTypeName::DWORD, true)]
+    #[case::byte_to_lword(ElementaryTypeName::BYTE, ElementaryTypeName::LWORD, true)]
+    #[case::word_to_dword(ElementaryTypeName::WORD, ElementaryTypeName::DWORD, true)]
+    #[case::dword_to_lword(ElementaryTypeName::DWORD, ElementaryTypeName::LWORD, true)]
+    #[case::word_to_byte(ElementaryTypeName::WORD, ElementaryTypeName::BYTE, false)]
+    #[case::byte_to_byte(ElementaryTypeName::BYTE, ElementaryTypeName::BYTE, false)]
+    #[case::bool_to_byte(ElementaryTypeName::BOOL, ElementaryTypeName::BYTE, false)]
+    #[case::byte_to_int(ElementaryTypeName::BYTE, ElementaryTypeName::INT, false)]
+    #[case::int_to_byte(ElementaryTypeName::INT, ElementaryTypeName::BYTE, false)]
+    fn can_widen_to_when_source_and_target_then_matches_expected(
+        #[case] from: ElementaryTypeName,
+        #[case] to: ElementaryTypeName,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(from.can_widen_to(&to), expected);
     }
 
-    #[test]
-    fn can_widen_to_when_sint_to_dint_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_sint_to_lint_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::LINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_dint_then_true() {
-        assert!(ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_dint_to_lint_then_true() {
-        assert!(ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::LINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_usint_to_uint_then_true() {
-        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::UINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_usint_to_ulint_then_true() {
-        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::ULINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_uint_to_udint_then_true() {
-        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::UDINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_usint_to_int_then_true() {
-        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_uint_to_dint_then_true() {
-        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_udint_to_lint_then_true() {
-        assert!(ElementaryTypeName::UDINT.can_widen_to(&ElementaryTypeName::LINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_dint_to_int_then_false() {
-        assert!(!ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_lint_to_dint_then_false() {
-        assert!(!ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_uint_then_false() {
-        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::UINT));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_int_then_false() {
-        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_uint_to_int_then_false() {
-        assert!(!ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    // Integer → REAL (lossless: ≤16-bit integers)
-
-    #[test]
-    fn can_widen_to_when_sint_to_real_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_real_then_true() {
-        assert!(ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_usint_to_real_then_true() {
-        assert!(ElementaryTypeName::USINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_uint_to_real_then_true() {
-        assert!(ElementaryTypeName::UINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_dint_to_real_then_false() {
-        assert!(!ElementaryTypeName::DINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_lint_to_real_then_false() {
-        assert!(!ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_udint_to_real_then_false() {
-        assert!(!ElementaryTypeName::UDINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_ulint_to_real_then_false() {
-        assert!(!ElementaryTypeName::ULINT.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    // Integer → LREAL (always lossless)
-
-    #[test]
-    fn can_widen_to_when_sint_to_lreal_then_true() {
-        assert!(ElementaryTypeName::SINT.can_widen_to(&ElementaryTypeName::LREAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_lint_to_lreal_then_true() {
-        assert!(ElementaryTypeName::LINT.can_widen_to(&ElementaryTypeName::LREAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_ulint_to_lreal_then_true() {
-        assert!(ElementaryTypeName::ULINT.can_widen_to(&ElementaryTypeName::LREAL));
-    }
-
-    // Real → Integer: never allowed
-
-    #[test]
-    fn can_widen_to_when_real_to_int_then_false() {
-        assert!(!ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_lreal_to_dint_then_false() {
-        assert!(!ElementaryTypeName::LREAL.can_widen_to(&ElementaryTypeName::DINT));
-    }
-
-    // REAL <-> LREAL: widening allowed, narrowing not
-
-    #[test]
-    fn can_widen_to_when_real_to_lreal_then_true() {
-        assert!(ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::LREAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_lreal_to_real_then_false() {
-        assert!(!ElementaryTypeName::LREAL.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    #[test]
-    fn can_widen_to_when_real_to_real_then_false() {
-        assert!(!ElementaryTypeName::REAL.can_widen_to(&ElementaryTypeName::REAL));
-    }
-
-    // Bit-string widening within ANY_BIT
-
-    #[test]
-    fn can_widen_to_when_byte_to_word_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::WORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_byte_to_dword_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::DWORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_byte_to_lword_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::LWORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_word_to_dword_then_true() {
-        assert!(ElementaryTypeName::WORD.can_widen_to(&ElementaryTypeName::DWORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_dword_to_lword_then_true() {
-        assert!(ElementaryTypeName::DWORD.can_widen_to(&ElementaryTypeName::LWORD));
-    }
-
-    #[test]
-    fn can_widen_to_when_word_to_byte_then_false() {
-        assert!(!ElementaryTypeName::WORD.can_widen_to(&ElementaryTypeName::BYTE));
-    }
-
-    #[test]
-    fn can_widen_to_when_byte_to_byte_then_false() {
-        assert!(!ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::BYTE));
-    }
-
-    #[test]
-    fn can_widen_to_when_bool_to_byte_then_false() {
-        assert!(!ElementaryTypeName::BOOL.can_widen_to(&ElementaryTypeName::BYTE));
-    }
-
-    // Cross-family: not allowed in standard can_widen_to
-
-    #[test]
-    fn can_widen_to_when_byte_to_int_then_false() {
-        assert!(!ElementaryTypeName::BYTE.can_widen_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_to_when_int_to_byte_then_false() {
-        assert!(!ElementaryTypeName::INT.can_widen_to(&ElementaryTypeName::BYTE));
-    }
-
-    // Cross-family widening (separate method, requires flag)
-
-    #[test]
-    fn can_widen_cross_family_to_when_byte_to_int_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_cross_family_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_byte_to_uint_then_true() {
-        assert!(ElementaryTypeName::BYTE.can_widen_cross_family_to(&ElementaryTypeName::UINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_word_to_dint_then_true() {
-        assert!(ElementaryTypeName::WORD.can_widen_cross_family_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_dword_to_lint_then_true() {
-        assert!(ElementaryTypeName::DWORD.can_widen_cross_family_to(&ElementaryTypeName::LINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_byte_to_sint_then_false() {
-        // Same width, not strictly wider
-        assert!(!ElementaryTypeName::BYTE.can_widen_cross_family_to(&ElementaryTypeName::SINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_word_to_int_then_false() {
-        // Same width, not strictly wider
-        assert!(!ElementaryTypeName::WORD.can_widen_cross_family_to(&ElementaryTypeName::INT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_int_to_byte_then_false() {
-        // Integer → bit-string: never allowed
-        assert!(!ElementaryTypeName::INT.can_widen_cross_family_to(&ElementaryTypeName::BYTE));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_udint_to_dword_then_true() {
-        // Verified permissive against real TcXaeShell despite equal width
-        // and despite Beckhoff's own docs -- see twincat-status.md.
-        assert!(ElementaryTypeName::UDINT.can_widen_cross_family_to(&ElementaryTypeName::DWORD));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_dword_to_udint_then_true() {
-        assert!(ElementaryTypeName::DWORD.can_widen_cross_family_to(&ElementaryTypeName::UDINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_dint_to_dword_then_false() {
-        // Signed integer, equal width -- not verified, must stay rejected.
-        assert!(!ElementaryTypeName::DINT.can_widen_cross_family_to(&ElementaryTypeName::DWORD));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_dword_to_dint_then_false() {
-        assert!(!ElementaryTypeName::DWORD.can_widen_cross_family_to(&ElementaryTypeName::DINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_word_to_uint_then_false() {
-        // Different pair, same width class -- not verified, must stay
-        // rejected. The UDINT<->DWORD exception is scoped to that exact
-        // pair, not generalized to every equal-width bit-string/unsigned-
-        // integer pair.
-        assert!(!ElementaryTypeName::WORD.can_widen_cross_family_to(&ElementaryTypeName::UINT));
-    }
-
-    #[test]
-    fn can_widen_cross_family_to_when_uint_to_word_then_false() {
-        assert!(!ElementaryTypeName::UINT.can_widen_cross_family_to(&ElementaryTypeName::WORD));
+    #[rstest]
+    #[case::byte_to_int(ElementaryTypeName::BYTE, ElementaryTypeName::INT, true)]
+    #[case::byte_to_uint(ElementaryTypeName::BYTE, ElementaryTypeName::UINT, true)]
+    #[case::word_to_dint(ElementaryTypeName::WORD, ElementaryTypeName::DINT, true)]
+    #[case::dword_to_lint(ElementaryTypeName::DWORD, ElementaryTypeName::LINT, true)]
+    #[case::byte_to_sint(ElementaryTypeName::BYTE, ElementaryTypeName::SINT, false)]
+    #[case::word_to_int(ElementaryTypeName::WORD, ElementaryTypeName::INT, false)]
+    #[case::int_to_byte(ElementaryTypeName::INT, ElementaryTypeName::BYTE, false)]
+    #[case::udint_to_dword(ElementaryTypeName::UDINT, ElementaryTypeName::DWORD, true)]
+    #[case::dword_to_udint(ElementaryTypeName::DWORD, ElementaryTypeName::UDINT, true)]
+    #[case::dint_to_dword(ElementaryTypeName::DINT, ElementaryTypeName::DWORD, false)]
+    #[case::dword_to_dint(ElementaryTypeName::DWORD, ElementaryTypeName::DINT, false)]
+    #[case::word_to_uint(ElementaryTypeName::WORD, ElementaryTypeName::UINT, false)]
+    #[case::uint_to_word(ElementaryTypeName::UINT, ElementaryTypeName::WORD, false)]
+    fn can_widen_cross_family_to_when_source_and_target_then_matches_expected(
+        #[case] from: ElementaryTypeName,
+        #[case] to: ElementaryTypeName,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(from.can_widen_cross_family_to(&to), expected);
     }
 }
