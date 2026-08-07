@@ -202,9 +202,15 @@ pub fn resolve_types(
     // back into ordinary literal initializers, or diagnose. Must run before
     // any other pass touches `InitialValueAssignmentKind::SimpleExpr` — see
     // specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
+    // Recoverable: a diagnosed initializer is still normalized, so the
+    // transformed library must be kept even when diagnostics are present —
+    // reverting would leak `SimpleExpr` nodes to later passes.
     let fallback = library.clone();
     match xform_fold_initializer_expressions::apply(library, options) {
-        Ok(result) => library = result,
+        Ok((result, errs)) => {
+            library = result;
+            diagnostics.extend(errs);
+        }
         Err(errs) => {
             diagnostics.extend(errs);
             library = fallback;
@@ -417,6 +423,40 @@ END_FUNCTION_BLOCK";
     fn parse_shared_library(name: &'static str) -> Library {
         let src = read_shared_resource(name);
         parse_program(&src, &FileId::default(), &CompilerOptions::default()).unwrap()
+    }
+
+    // ---------------------------------------------------------------------
+    // A diagnosed constant-expression initializer must report only its own
+    // problem. The initializer-fold transform used to be reverted when it
+    // diagnosed, leaking `SimpleExpr` nodes to later rules and raising a
+    // P9998 internal error after every legitimate P4037. See
+    // specs/plans/2026-08-06-twincat-initializer-dialect-and-fold-revert-fixes.md.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn analyze_when_initializer_expression_and_flag_disabled_then_p4037_only() {
+        let program = "
+FUNCTION func : LREAL
+VAR CONSTANT
+d2r : LREAL := 3.0/180.0;
+END_VAR
+func := d2r;
+END_FUNCTION";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        let codes: Vec<&str> = context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert!(codes.contains(&"P4037"), "expected P4037, got: {codes:?}");
+        // No internal error from a rule observing an unfolded initializer.
+        assert!(!codes.contains(&"P9998"), "unexpected P9998 in: {codes:?}");
+        // No cascaded "constant must have initializer" — the declaration
+        // does carry an initializer, it was merely diagnosed.
+        assert!(!codes.contains(&"P4008"), "unexpected P4008 in: {codes:?}");
     }
 
     // ---------------------------------------------------------------------
