@@ -47,7 +47,10 @@ use crate::scoped_table::{ScopedTable, Value};
 
 impl Value for ConstantKind {}
 
-pub fn apply(lib: Library, options: &CompilerOptions) -> Result<Library, Vec<Diagnostic>> {
+pub fn apply(
+    lib: Library,
+    options: &CompilerOptions,
+) -> Result<(Library, Vec<Diagnostic>), Vec<Diagnostic>> {
     let (constants, diagnostics) = collect_constants(&lib);
 
     let mut folder = InitializerFolder {
@@ -56,13 +59,20 @@ pub fn apply(lib: Library, options: &CompilerOptions) -> Result<Library, Vec<Dia
         diagnostics,
     };
 
-    let result = folder.fold_library(lib).map_err(|e| vec![e]);
-
-    if !folder.diagnostics.is_empty() {
-        return Err(folder.diagnostics);
+    // Diagnostics ride along with the normalized library rather than failing
+    // the transform: every `SimpleExpr` is normalized away even when it is
+    // diagnosed, so later passes must run over this result. Reverting to the
+    // pre-transform library on a per-declaration diagnostic would leak
+    // `SimpleExpr` nodes downstream (P9998 in
+    // rule_var_decl_const_initialized).
+    match folder.fold_library(lib) {
+        Ok(result) => Ok((result, folder.diagnostics)),
+        Err(e) => {
+            let mut diagnostics = folder.diagnostics;
+            diagnostics.push(e);
+            Err(diagnostics)
+        }
     }
-
-    result
 }
 
 /// Scan the library for top-level (`VAR_GLOBAL`) constant declarations with
@@ -213,9 +223,22 @@ impl InitializerFolder<'_> {
                 )
                 .with_context("type", &se.type_name.to_string()),
             );
+            // Still fold when possible: the P4037 above already fails the
+            // build, but keeping a foldable value prevents a misleading
+            // cascade on `VAR CONSTANT` declarations, which would otherwise
+            // be diagnosed as *uninitialized* when they plainly carry an
+            // initializer.
+            let type_name = se.type_name;
+            let initial_value = match substitute_and_fold(se.initial_value, &mut self.constants) {
+                Ok(folded) => match folded.kind {
+                    ExprKind::Const(c) => Some(c),
+                    _ => None,
+                },
+                Err(_) => None,
+            };
             return InitialValueAssignmentKind::Simple(SimpleInitializer {
-                type_name: se.type_name,
-                initial_value: None,
+                type_name,
+                initial_value,
             });
         }
 
@@ -330,6 +353,23 @@ mod tests {
         panic!("Variable '{}' not found", var_name);
     }
 
+    /// Applies the transform expecting no diagnostics; returns the library.
+    fn apply_clean(lib: Library, options: &CompilerOptions) -> Library {
+        let (lib, diagnostics) = apply(lib, options).unwrap();
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+        lib
+    }
+
+    /// Applies the transform expecting diagnostics; returns them.
+    fn apply_expect_diagnostics(lib: Library, options: &CompilerOptions) -> Vec<Diagnostic> {
+        let (_, diagnostics) = apply(lib, options).unwrap();
+        assert!(!diagnostics.is_empty(), "expected diagnostics");
+        diagnostics
+    }
+
     fn real_value(var: &VarDecl) -> f64 {
         let simple = cast!(&var.initializer, InitialValueAssignmentKind::Simple);
         let lit = cast!(
@@ -345,7 +385,7 @@ mod tests {
             "PROGRAM main VAR d2r : LREAL := 4.25/180.0; END_VAR END_PROGRAM",
             &opts(),
         );
-        let lib = apply(lib, &opts()).unwrap();
+        let lib = apply_clean(lib, &opts());
         let var = find_var_decl(&lib, "d2r");
         assert!((real_value(var) - (4.25 / 180.0)).abs() < f64::EPSILON);
     }
@@ -365,7 +405,7 @@ mod tests {
         ",
             &opts(),
         );
-        let lib = apply(lib, &opts()).unwrap();
+        let lib = apply_clean(lib, &opts());
         let var = find_var_decl(&lib, "d2r");
         assert!((real_value(var) - (4.25 / 180.0)).abs() < f64::EPSILON);
     }
@@ -385,7 +425,7 @@ mod tests {
         ",
             &opts(),
         );
-        let lib = apply(lib, &opts()).unwrap();
+        let lib = apply_clean(lib, &opts());
         let var = find_var_decl(&lib, "asec2r");
         assert!((real_value(var) - (4.25 / (180.0 * 3600.0))).abs() < f64::EPSILON);
     }
@@ -410,10 +450,8 @@ mod tests {
         ",
             &opts(),
         );
-        let result = apply(lib, &opts());
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
+        let diagnostics = apply_expect_diagnostics(lib, &opts());
+        assert!(diagnostics
             .iter()
             .any(|d| d.code == Problem::DefinitionNameDuplicated.code()));
     }
@@ -437,7 +475,7 @@ mod tests {
         ",
             &opts(),
         );
-        let lib = apply(lib, &opts()).unwrap();
+        let lib = apply_clean(lib, &opts());
         let var = find_var_decl(&lib, "d2r");
         assert!((real_value(var) - (2.0 * 180.0)).abs() < f64::EPSILON);
     }
@@ -455,8 +493,10 @@ mod tests {
         ",
             &opts(),
         );
-        let result = apply(lib, &opts());
-        assert!(result.is_err());
+        let diagnostics = apply_expect_diagnostics(lib, &opts());
+        assert!(diagnostics
+            .iter()
+            .all(|d| d.code == Problem::InitializerNotConstantExpression.code()));
     }
 
     #[test]
@@ -465,8 +505,15 @@ mod tests {
             "PROGRAM main VAR d2r : LREAL := 4.25/180.0; END_VAR END_PROGRAM",
             &opts(),
         );
-        let result = apply(lib, &CompilerOptions::default());
-        assert!(result.is_err());
+        let (lib, diagnostics) = apply(lib, &CompilerOptions::default()).unwrap();
+        assert!(diagnostics
+            .iter()
+            .any(|d| d.code == Problem::ConstantInitializerExpressionNotAllowed.code()));
+        // The initializer is still folded best-effort so that a `VAR
+        // CONSTANT` declaration is not additionally (and misleadingly)
+        // diagnosed as uninitialized by a downstream rule.
+        let var = find_var_decl(&lib, "d2r");
+        assert!((real_value(var) - (4.25 / 180.0)).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -475,7 +522,7 @@ mod tests {
             "PROGRAM main VAR x : LREAL := 4.25; END_VAR END_PROGRAM",
             &opts(),
         );
-        let lib = apply(lib, &opts()).unwrap();
+        let lib = apply_clean(lib, &opts());
         let var = find_var_decl(&lib, "x");
         assert!((real_value(var) - 4.25).abs() < f64::EPSILON);
     }
@@ -496,7 +543,7 @@ mod tests {
         ",
             &opts(),
         );
-        let lib = apply(lib, &opts()).unwrap();
+        let lib = apply_clean(lib, &opts());
         let var = find_var_decl(&lib, "d2r");
         assert!((real_value(var) - (2.0 * 180.0)).abs() < f64::EPSILON);
     }
@@ -518,8 +565,10 @@ mod tests {
         ",
             &opts(),
         );
-        let result = apply(lib, &opts());
-        assert!(result.is_err());
+        let diagnostics = apply_expect_diagnostics(lib, &opts());
+        assert!(diagnostics
+            .iter()
+            .all(|d| d.code == Problem::InitializerNotConstantExpression.code()));
     }
 
     #[test]
@@ -544,9 +593,8 @@ mod tests {
         ",
             &opts(),
         );
-        let result = apply(lib, &opts());
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().len(), 3);
+        let diagnostics = apply_expect_diagnostics(lib, &opts());
+        assert_eq!(diagnostics.len(), 3);
     }
 
     #[test]
@@ -572,9 +620,7 @@ mod tests {
         ",
             &opts(),
         );
-        let result = apply(lib, &opts());
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
+        let errors = apply_expect_diagnostics(lib, &opts());
         // One diagnostic for A's own initializer, one for x referencing A.
         assert_eq!(errors.len(), 2);
         assert!(errors
@@ -599,9 +645,7 @@ mod tests {
         ",
             &opts(),
         );
-        let result = apply(lib, &opts());
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
+        let errors = apply_expect_diagnostics(lib, &opts());
         assert_eq!(errors.len(), 3);
         assert!(errors
             .iter()
@@ -614,7 +658,7 @@ mod tests {
             "PROGRAM main VAR x : DINT := 2+3; END_VAR END_PROGRAM",
             &opts(),
         );
-        let lib = apply(lib, &opts()).unwrap();
+        let lib = apply_clean(lib, &opts());
         let var = find_var_decl(&lib, "x");
         let simple = cast!(&var.initializer, InitialValueAssignmentKind::Simple);
         let lit = cast!(
@@ -633,10 +677,8 @@ mod tests {
             "PROGRAM main VAR x : LREAL := 1.0/0.0; END_VAR END_PROGRAM",
             &opts(),
         );
-        let result = apply(lib, &opts());
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
+        let diagnostics = apply_expect_diagnostics(lib, &opts());
+        assert!(diagnostics
             .iter()
             .all(|d| d.code == Problem::ConstantExpressionDivisionByZero.code()));
     }
@@ -647,10 +689,8 @@ mod tests {
             "PROGRAM main VAR x : LINT := 170141183460469231731687303715884105727 * 2; END_VAR END_PROGRAM",
             &opts(),
         );
-        let result = apply(lib, &opts());
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
+        let diagnostics = apply_expect_diagnostics(lib, &opts());
+        assert!(diagnostics
             .iter()
             .all(|d| d.code == Problem::ConstantExpressionOverflow.code()));
     }

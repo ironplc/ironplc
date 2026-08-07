@@ -35,6 +35,7 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::result::SemanticResult;
+use crate::rule_support::{run_rule, DiagnosticVisitor};
 use crate::semantic_context::SemanticContext;
 use ironplc_parser::options::CompilerOptions;
 
@@ -43,24 +44,25 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleStringEncodingCompat {
-        diagnostics: vec![],
-        string_vars: HashMap::new(),
-    };
-
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if visitor.diagnostics.is_empty() {
-        Ok(())
-    } else {
-        Err(visitor.diagnostics)
-    }
+    run_rule(
+        RuleStringEncodingCompat {
+            diagnostics: vec![],
+            string_vars: HashMap::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleStringEncodingCompat {
     diagnostics: Vec<Diagnostic>,
     /// Declared encoding of each named string variable in the current POU.
     string_vars: HashMap<Id, StringType>,
+}
+
+impl DiagnosticVisitor for RuleStringEncodingCompat {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 /// Returns the declared string encoding of a simple named variable, if it is a
