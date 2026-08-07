@@ -25,7 +25,11 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashSet;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -33,13 +37,7 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleTaskNamesUnique::new();
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(RuleTaskNamesUnique::new(), lib)
 }
 
 struct RuleTaskNamesUnique {
@@ -77,6 +75,12 @@ impl Visitor<Diagnostic> for RuleTaskNamesUnique {
         }
 
         Ok(())
+    }
+}
+
+impl DiagnosticVisitor for RuleTaskNamesUnique {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
     }
 }
 
