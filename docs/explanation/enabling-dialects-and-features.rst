@@ -104,6 +104,7 @@ Supported Dialects
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
+   ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
    ``--allow-fb-inheritance``.
