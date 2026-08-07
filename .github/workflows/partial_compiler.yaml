@@ -160,23 +160,33 @@ jobs:
         working-directory: ./compiler
     strategy:
       fail-fast: true
+      # `verify` marks legs whose rust_target the build host can execute, so
+      # the packaged release binaries can be smoke-tested in place. Only the
+      # aarch64 Windows cross-build cannot run on its x86_64 host (the x86_64
+      # macOS build runs on the arm64 host via Rosetta 2); that leg is covered
+      # by the post-release smoke tests instead.
       matrix:
         include:
           - os: windows-2025
             artifact: ironplcc-x86_64-windows.exe
             rust_target: x86_64-pc-windows-msvc
+            verify: true
           - os: windows-2025
             artifact: ironplcc-aarch64-windows.exe
             rust_target: aarch64-pc-windows-msvc
+            verify: false
           - os: ubuntu-latest
             artifact: ironplcc-x86_64-linux-musl.tar.gz
             rust_target: x86_64-unknown-linux-musl
+            verify: true
           - os: macos-latest
             artifact: ironplcc-x86_64-macos.tar.gz
             rust_target: x86_64-apple-darwin
+            verify: true
           - os: macos-latest
             artifact: ironplcc-aarch64-macos.tar.gz
             rust_target: aarch64-apple-darwin
+            verify: true
 
     steps:
       # Checkout the repository/fetch input artifacts
@@ -231,6 +241,14 @@ jobs:
       # cross-platform test suite runs in parallel in compiler-test.
       - name: Create installer package
         run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
+
+      # Run the exact release binaries that were packed into the installer:
+      # compile and execute the bundled-library fixture on the shipped
+      # compiler + VM. This tests the bytes we ship -- something the previous
+      # in-job `just test` (a debug-profile host build) never did.
+      - name: Verify packaged release binaries
+        if: ${{ matrix.verify }}
+        run: just verify-package ${{ matrix.rust_target }}
 
       # Save output artifacts. Uploaded unconditionally (not gated on
       # gh-release-tag) so a deployment dry run still produces them and the

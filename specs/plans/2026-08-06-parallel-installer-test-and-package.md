@@ -49,6 +49,28 @@ download SBOM, `just package`, upload artifacts. Per leg the wall-clock drops
 from `test + package` to `package`, and the stage's wall-clock from roughly
 `sbom + test + package` to `max(test, sbom + package)`.
 
+### Verify the shipped bytes in each package leg
+
+Moving `just test` out of the package legs surfaced that it never tested the
+shipped code anyway: `cargo test` is a debug-profile build for the host, while
+the installer packs a release-profile build for `matrix.rust_target`. To test
+what we actually ship, add a `verify-package` recipe that runs the **packaged
+release binaries** from `target/<target>/release`: `ironplcc version`, then
+compile and execute the bundled-library fixture (`uses_pi.st`) on the shipped
+compiler + VM, asserting the `2 * PI * 10.0` result (mirroring
+`library-e2e`). This exercises the shipped compiler, VM, and staged
+compatibility libraries together — coverage the old in-job test run never
+provided.
+
+The recipe runs on the 4 legs whose target the build host can execute
+(`verify: true` in the matrix): x86_64 Windows, x86_64 Linux, and both macOS
+targets (the x86_64 macOS build runs on the arm64 runner via Rosetta 2, which
+the recipe installs if absent). The aarch64 Windows cross-build cannot run on
+its x86_64 host and remains covered by the post-release smoke tests. On
+Windows the release directory lacks `resources/libs` (the NSIS installer
+copies `sources\resources\libs` at install time), so the recipe performs the
+same copy `setup.nsi` does before running the check.
+
 ### Cache the SBOM tooling
 
 Add `Swatinem/rust-cache` to `compiler-sbom` (it caches `~/.cargo/bin`, so
@@ -84,13 +106,17 @@ shrinks the same serial edge.
 ## File map
 
 - `.github/workflows/partial_compiler.yaml` — add `compiler-test` (3-host
-  matrix, `just test`); remove the test step from `compiler-package`; add
+  matrix, `just test`); remove the test step from `compiler-package`; add a
+  `Verify packaged release binaries` step gated by `matrix.verify`; add
   `rust-cache` to `compiler-sbom`.
+- `compiler/justfile` — add `verify-package` and per-OS implementations.
 
 ## Tasks
 
 - [x] Add `compiler-test` job (3 unique hosts, `just test`, no `needs`).
 - [x] Remove `Run tests` from `compiler-package`; update comments that said
       cross-platform tests run there.
+- [x] Add `verify-package` recipe and run it on the 4 host-runnable legs
+      after `just package`.
 - [x] Add `Swatinem/rust-cache` to `compiler-sbom`.
 - [x] Verify workflow YAML parses and callers are unaffected.
