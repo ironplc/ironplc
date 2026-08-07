@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<TcSmProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TcSmVersion="1.0" TcVersion="3.1.4024.0">
+	<Project ProjectGUID="{8F0F2E44-9A31-4E6F-BE41-4C57C24C1D01}" Target64Bit="true" ShowHideConfigurations="#x106">
+		<System>
+			<Tasks>
+				<Task Id="3" Priority="20" CycleTime="100000" AmsPort="350" AdtTasks="true">
+					<Name>PlcTask</Name>
+				</Task>
+			</Tasks>
+		</System>
+		<Plc>
+			<Project GUID="{4C7C2E19-6D01-4E64-8A6E-0B5A0D9C2A17}" Name="PlcTurntable" PrjFilePath="PlcTurntable\PlcTurntable.plcproj" TmcFilePath="" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e" SymbolicMapping="true"/>
+		</Plc>
+	</Project>
+</TcSmProject>

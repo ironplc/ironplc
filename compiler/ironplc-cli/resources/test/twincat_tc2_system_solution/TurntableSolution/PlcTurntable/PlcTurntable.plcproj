@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <FileVersion>1.0.0.0</FileVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{4c7c2e19-6d01-4e64-8a6e-0b5a0d9c2a17}</ProjectGuid>
+    <SubObjectsSortedByName>True</SubObjectsSortedByName>
+    <DownloadApplicationInfo>true</DownloadApplicationInfo>
+    <DefaultNamespace>PlcTurntable</DefaultNamespace>
+    <Name>PlcTurntable</Name>
+    <ProgramVersion>3.1.4024.0</ProgramVersion>
+    <Application>{0edb1799-2088-4a09-97b6-8c9b52a63f65}</Application>
+    <TypeSystem>{a5b34f24-1a13-4f83-a136-2f2df66ff1e4}</TypeSystem>
+    <Implicit_Task_Info>{86bb1c1b-7cf4-4c8b-8a5e-4c1a5f26fc95}</Implicit_Task_Info>
+    <Implicit_KindOfTask>{54885ba4-0ba0-4b30-8be9-1d58bdfae1b0}</Implicit_KindOfTask>
+    <Implicit_Jitter_Distribution>{4a9d1e19-3c53-40c7-9b69-06f8c7b2a2ef}</Implicit_Jitter_Distribution>
+    <LibraryReferences>{2782facd-1032-4c40-9e2b-1b0e02e2c1cf}</LibraryReferences>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="POUs\F_DegreesToRadians.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="POUs\MAIN.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <PlaceholderReference Include="Tc2_System">
+      <DefaultResolution>Tc2_System, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc2_System</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+  <ProjectExtensions>
+    <PlcProjectOptions>
+      <XmlArchive>
+        <Data/>
+        <TypeList/>
+      </XmlArchive>
+    </PlcProjectOptions>
+  </ProjectExtensions>
+</Project>
