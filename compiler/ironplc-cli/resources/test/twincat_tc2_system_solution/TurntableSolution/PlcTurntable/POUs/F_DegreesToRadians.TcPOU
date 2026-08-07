@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="F_DegreesToRadians" Id="{3d0a6c4b-52de-4f0a-92d1-6d4be1b0c7a3}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION F_DegreesToRadians : LREAL
+VAR_INPUT
+    degrees : LREAL;
+END_VAR
+VAR CONSTANT
+    d2r : LREAL := PI/180.0;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[F_DegreesToRadians := degrees * d2r;]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>
