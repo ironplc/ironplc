@@ -260,6 +260,91 @@ fn compile_when_missing_output_then_err() -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+/// Copies a directory tree, used to derive a modified variant of a checked-in
+/// fixture without mutating the fixture itself.
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// End-to-end validation of the compatibility-library mechanism against a
+/// realistic TwinCAT solution layout (`.sln` -> `.tsproj` -> `.plcproj` ->
+/// `POUs/*.TcPOU`), modeled on the minimal real project provided on issue
+/// #1199 (same structure and `VAR CONSTANT ... := PI/180.0` shape,
+/// independently authored logic). The `.plcproj` references `Tc2_System`
+/// (`REQ-CL-sources-001`), so `PI` must resolve and fold in the constant
+/// initializer (`REQ-CL-analyzer-003`) with no `--library` flag — activation
+/// comes from the project file alone.
+#[test]
+fn check_when_twincat_solution_references_tc2_system_then_ok(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg("--dialect")
+        .arg("twincat")
+        .arg(path_to_test_resource("twincat_tc2_system_solution"));
+    cmd.assert().success().stdout(predicate::str::is_empty());
+
+    Ok(())
+}
+
+/// Negative control for the test above: the identical solution with the
+/// `<PlaceholderReference>` removed from the `.plcproj` must fail — the
+/// `PI/180.0` initializer no longer reduces to a constant (P4038) because
+/// `PI` is unknown. Libraries are dormant by default
+/// (`REQ-CL-analyzer-001`), so this proves the passing test passes *because
+/// of* the library reference, not because `PI` is a compiler builtin.
+#[test]
+fn check_when_twincat_solution_library_reference_removed_then_pi_undefined(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    copy_dir_recursive(
+        &path_to_test_resource("twincat_tc2_system_solution"),
+        temp.path(),
+    )?;
+
+    let plcproj = temp
+        .path()
+        .join("TurntableSolution")
+        .join("PlcTurntable")
+        .join("PlcTurntable.plcproj");
+    let content = std::fs::read_to_string(&plcproj)?;
+    let start = content
+        .find("<PlaceholderReference")
+        .expect("fixture .plcproj must contain a PlaceholderReference element");
+    let end_tag = "</PlaceholderReference>";
+    let end = content
+        .find(end_tag)
+        .expect("fixture .plcproj must close the PlaceholderReference element")
+        + end_tag.len();
+    std::fs::write(
+        &plcproj,
+        format!("{}{}", &content[..start], &content[end..]),
+    )?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg("--dialect")
+        .arg("twincat")
+        .arg(temp.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("P4038").and(predicate::str::contains("PI")));
+
+    Ok(())
+}
+
 #[test]
 fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));

@@ -172,10 +172,12 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                     return Err(Diagnostic::internal_error(file!(), line!()))
                 }
                 InitialValueAssignmentKind::SimpleExpr(_) => {
-                    // Always normalized to `Simple` by
-                    // xform_fold_initializer_expressions before semantic
-                    // rules run; reaching here indicates a compiler bug.
-                    return Err(Diagnostic::internal_error(file!(), line!()));
+                    // A constant-expression initializer — normalized to
+                    // `Simple` by xform_fold_initializer_expressions before
+                    // semantic rules run, so this is only observable if that
+                    // transform failed hard and was reverted. Either way the
+                    // declaration carries an initializer, so there is
+                    // nothing to diagnose here.
                 }
             },
             // Do not care about the following qualifiers
