@@ -2,9 +2,10 @@
 Extension Library
 =================
 
-IronPLC provides vendor extension functions, function blocks, and variables
-that go beyond the IEC 61131-3 standard. These extensions are commonly
-supported by other PLC environments such as CODESYS, TwinCAT, and RuSTy.
+IronPLC provides extension functions, function blocks, and variables
+that go beyond the IEC 61131-3 standard. Some of these extensions are commonly
+supported by other PLC environments such as CODESYS, TwinCAT, and RuSTy, while
+others (such as the ``__SYSTEM_UP_TIME`` globals) are IronPLC's own conventions.
 
 .. tip::
 
@@ -27,7 +28,7 @@ Functions
 Function Blocks
 ---------------
 
-No vendor extension function blocks are currently defined.
+No extension function blocks are currently defined.
 
 Variables
 ---------

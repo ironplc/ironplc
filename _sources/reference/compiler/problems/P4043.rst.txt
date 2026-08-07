@@ -15,7 +15,7 @@ The IEC 61131-3 standard grammar for a structured initializer value
 enumerated_value | array_initialization | structure_initialization)``. A
 general expression -- and in particular a pointer dereference plus member
 access like ``pDevice^.Delta`` -- is not one of those productions, so
-accepting it is a vendor extension used by TwinCAT and CODESYS, where such a
+accepting it is an extension used by TwinCAT and CODESYS, where such a
 value is computed at instantiation time rather than being a compile-time
 constant.
 
@@ -46,7 +46,7 @@ To fix this error, either use a constant value:
    END_VAR
    END_FUNCTION_BLOCK
 
-Or enable the vendor extension:
+Or enable the extension:
 
 .. |flag| replace:: ``--allow-struct-initializer-expressions``
 .. include:: /includes/enabled-by-flag.rst

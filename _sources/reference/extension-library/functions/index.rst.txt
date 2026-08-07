@@ -2,7 +2,7 @@
 Functions
 =========
 
-Vendor extension functions provided by IronPLC. These are not part of the
+Extension functions provided by IronPLC. These are not part of the
 IEC 61131-3 standard but are widely supported across PLC environments.
 
 .. list-table::

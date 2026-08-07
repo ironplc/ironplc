@@ -43,10 +43,10 @@ Example
 Multi-dimensional arrays use comma-separated ranges in the index
 specification.
 
-Constant Bounds (Vendor Extension)
-----------------------------------
+Constant Bounds (Language Extension)
+------------------------------------
 
-.. include:: ../../../../includes/requires-vendor-extension.rst
+.. include:: ../../../../includes/requires-dialect-extension.rst
 
 Many PLC vendors allow global constants in place of literal values for
 array bounds. IronPLC supports this with the ``--allow-constant-type-params``

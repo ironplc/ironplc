@@ -335,6 +335,16 @@ install_binaries() {
         fi
     done
 
+    # Compatibility libraries ship beside the binaries; the compiler reads them
+    # from <bindir>/resources/libs at runtime. Replace any prior copy so a
+    # reinstall does not leave stale library files behind.
+    if [ -d "${_tmp}/resources" ]; then
+        rm -rf "${INSTALL_DIR}/bin/resources"
+        mv -f "${_tmp}/resources" "${INSTALL_DIR}/bin/resources"
+    else
+        warn "archive does not include compatibility libraries (released before they existed); skipping"
+    fi
+
     # macOS may set com.apple.quarantine on extracted binaries. Best-effort removal.
     if [ "$PLATFORM_OS" = "macos" ] && have xattr; then
         xattr -dr com.apple.quarantine "${INSTALL_DIR}/bin" 2>/dev/null || true

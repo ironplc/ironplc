@@ -2,7 +2,7 @@
 Variables
 =========
 
-Vendor extension variables provided by IronPLC. These are implicit global
+Extension variables provided by IronPLC. These are implicit global
 variables injected by the compiler and updated by the VM at runtime.
 
 .. list-table::
