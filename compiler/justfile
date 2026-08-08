@@ -91,6 +91,60 @@ _package-linux version filename target:
   tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json resources
   sha256sum {{filename}} > {{filename}}.sha256
 
+# Smoke-test the release binaries that were just packaged: run the exact bytes
+# that went into the installer/tarball (target/<target>/release), not a test
+# build. Compiles and runs the bundled-library fixture so the check exercises
+# the shipped compiler, VM, and compatibility libraries together. Run after
+# `just package`; only meaningful when the runner can execute <target>.
+verify-package target:
+  just _verify-package-{{os()}} {{target}}
+
+_verify-package-linux target:
+  just _verify-package-unix {{target}}
+
+_verify-package-macos target:
+  #!/usr/bin/env sh
+  set -eu
+  # Running the x86_64 build on the arm64 runner needs Rosetta 2. The install
+  # is a no-op when already present; failure falls through to the real check,
+  # which then fails loudly if the binary truly cannot execute.
+  if [ "$(uname -m)" = "arm64" ]; then
+    sudo softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || true
+  fi
+  just _verify-package-unix {{target}}
+
+# The unix package recipes stage resources/libs beside the binaries before
+# tarring, so the release directory already has the installed layout.
+_verify-package-unix target:
+  #!/usr/bin/env sh
+  set -eu
+  BIN="target/{{target}}/release"
+  "$BIN/ironplcc" version
+  WORK="$(mktemp -d)"
+  "$BIN/ironplcc" compile --dialect twincat --library Tc2_System --output "$WORK/prog.iplc" ../tests/e2e/library/uses_pi.st
+  OUT="$("$BIN/ironplcvm" run "$WORK/prog.iplc" --scans 1 --dump-vars -)"
+  echo "$OUT"
+  if ! echo "$OUT" | grep -q "62.8318"; then
+    echo "FAIL: packaged ironplcvm did not compute 2 * PI * 10.0 from the library PI" >&2
+    exit 1
+  fi
+  echo "PASS: packaged release binaries compiled and ran the library fixture"
+
+_verify-package-windows target:
+  # The NSIS installer copies sources\resources\libs to <bindir>\resources\libs
+  # at install time (setup.nsi); stage the same layout beside the release
+  # binaries so the check runs against what an install produces.
+  if (Test-Path "target\{{target}}\release\resources\libs") { Remove-Item -Recurse -Force "target\{{target}}\release\resources\libs" }
+  New-Item -ItemType Directory -Force "target\{{target}}\release\resources" | Out-Null
+  Copy-Item -Recurse "sources\resources\libs" "target\{{target}}\release\resources\libs"
+  &"target\{{target}}\release\ironplcc.exe" version; if ($LASTEXITCODE -ne 0) { exit 1 }
+  &"target\{{target}}\release\ironplcc.exe" compile --dialect twincat --library Tc2_System --output "$env:TEMP\verify-prog.iplc" "..\tests\e2e\library\uses_pi.st"; if ($LASTEXITCODE -ne 0) { Write-Error "FAIL: packaged ironplcc could not compile the library fixture"; exit 1 }
+  # PowerShell captures command output as an array of lines, and -notmatch on an
+  # array FILTERS (returns non-matching lines, truthy when any line lacks the
+  # text) instead of testing the whole output. Join to one string first.
+  $out = (&"target\{{target}}\release\ironplcvm.exe" run "$env:TEMP\verify-prog.iplc" --scans 1 --dump-vars -) -join "`n"; Write-Host $out; if ($out -notmatch "62.8318") { Write-Error "FAIL: packaged ironplcvm did not compute 2 * PI * 10.0 from the library PI"; exit 1 }
+  Write-Host "PASS: packaged release binaries compiled and ran the library fixture"
+
 # Builds the Homebrew repository to release for Mac and Linux
 publish $VERSION $MACFILENAME $LINUXFILENAME:
   # Use actual releases in order to build the Homebrew tap.
