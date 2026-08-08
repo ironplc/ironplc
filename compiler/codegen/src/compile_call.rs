@@ -28,109 +28,131 @@ use super::compile_string::{
 };
 use crate::emit::Emitter;
 
+/// Builds the opcode for a builtin defined across all four operation widths
+/// (both integer widths and both float widths), independent of signedness.
+///
+/// Used for the identically-shaped EXPT/ABS/SEL arms of [`lookup_builtin`].
+macro_rules! numeric_builtin {
+    ($op_width:expr, $i32_op:path, $i64_op:path, $f32_op:path, $f64_op:path) => {
+        Some(match $op_width {
+            OpWidth::W32 => $i32_op,
+            OpWidth::W64 => $i64_op,
+            OpWidth::F32 => $f32_op,
+            OpWidth::F64 => $f64_op,
+        })
+    };
+}
+
+/// Builds the opcode for a builtin whose integer variants distinguish
+/// signedness but whose float variants do not.
+///
+/// Used for the identically-shaped MIN/MAX/LIMIT arms of [`lookup_builtin`].
+macro_rules! signed_numeric_builtin {
+    ($op_width:expr, $signedness:expr,
+     $i32_op:path, $u32_op:path, $i64_op:path, $u64_op:path,
+     $f32_op:path, $f64_op:path) => {
+        Some(match ($op_width, $signedness) {
+            (OpWidth::W32, Signedness::Signed) => $i32_op,
+            (OpWidth::W32, Signedness::Unsigned) => $u32_op,
+            (OpWidth::W64, Signedness::Signed) => $i64_op,
+            (OpWidth::W64, Signedness::Unsigned) => $u64_op,
+            (OpWidth::F32, _) => $f32_op,
+            (OpWidth::F64, _) => $f64_op,
+        })
+    };
+}
+
+/// Builds the opcode for a float-only (transcendental) builtin. The integer
+/// operation widths have no variant and yield `None`.
+///
+/// Used for the many identically-shaped SQRT/LN/.../ATAN2 arms of
+/// [`lookup_builtin`].
+macro_rules! float_builtin {
+    ($op_width:expr, $f32_op:path, $f64_op:path) => {
+        match $op_width {
+            OpWidth::F32 => Some($f32_op),
+            OpWidth::F64 => Some($f64_op),
+            OpWidth::W32 | OpWidth::W64 => None,
+        }
+    };
+}
+
 /// Returns the builtin opcode for a named standard library function, if known.
 ///
 /// The `op_width` selects the correct width variant and `signedness` selects
 /// the signed/unsigned variant for functions that distinguish them.
+///
+/// The arms delegate to the `*_builtin!` macros above, which each capture one
+/// recurring arm shape (all-widths, signed/unsigned, float-only). The opcode
+/// identifiers are still written verbatim per arm — the workspace has no
+/// `paste` crate to concatenate them, and spelling them out keeps every opcode
+/// greppable — while the macros remove the ~55 lines of duplicated `match`
+/// scaffolding the arms would otherwise repeat.
 pub(crate) fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedness) -> Option<u16> {
+    use opcode::builtin;
     match name.to_uppercase().as_str() {
-        "EXPT" => Some(match op_width {
-            OpWidth::W32 => opcode::builtin::EXPT_I32,
-            OpWidth::W64 => opcode::builtin::EXPT_I64,
-            OpWidth::F32 => opcode::builtin::EXPT_F32,
-            OpWidth::F64 => opcode::builtin::EXPT_F64,
-        }),
-        "ABS" => Some(match op_width {
-            OpWidth::W32 => opcode::builtin::ABS_I32,
-            OpWidth::W64 => opcode::builtin::ABS_I64,
-            OpWidth::F32 => opcode::builtin::ABS_F32,
-            OpWidth::F64 => opcode::builtin::ABS_F64,
-        }),
-        "MIN" => Some(match (op_width, signedness) {
-            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MIN_I32,
-            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MIN_U32,
-            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MIN_I64,
-            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MIN_U64,
-            (OpWidth::F32, _) => opcode::builtin::MIN_F32,
-            (OpWidth::F64, _) => opcode::builtin::MIN_F64,
-        }),
-        "MAX" => Some(match (op_width, signedness) {
-            (OpWidth::W32, Signedness::Signed) => opcode::builtin::MAX_I32,
-            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::MAX_U32,
-            (OpWidth::W64, Signedness::Signed) => opcode::builtin::MAX_I64,
-            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::MAX_U64,
-            (OpWidth::F32, _) => opcode::builtin::MAX_F32,
-            (OpWidth::F64, _) => opcode::builtin::MAX_F64,
-        }),
-        "LIMIT" => Some(match (op_width, signedness) {
-            (OpWidth::W32, Signedness::Signed) => opcode::builtin::LIMIT_I32,
-            (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::LIMIT_U32,
-            (OpWidth::W64, Signedness::Signed) => opcode::builtin::LIMIT_I64,
-            (OpWidth::W64, Signedness::Unsigned) => opcode::builtin::LIMIT_U64,
-            (OpWidth::F32, _) => opcode::builtin::LIMIT_F32,
-            (OpWidth::F64, _) => opcode::builtin::LIMIT_F64,
-        }),
-        "SEL" => Some(match op_width {
-            OpWidth::W32 => opcode::builtin::SEL_I32,
-            OpWidth::W64 => opcode::builtin::SEL_I64,
-            OpWidth::F32 => opcode::builtin::SEL_F32,
-            OpWidth::F64 => opcode::builtin::SEL_F64,
-        }),
-        "SQRT" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::SQRT_F32),
-            OpWidth::F64 => Some(opcode::builtin::SQRT_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "LN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::LN_F32),
-            OpWidth::F64 => Some(opcode::builtin::LN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "LOG" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::LOG_F32),
-            OpWidth::F64 => Some(opcode::builtin::LOG_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "EXP" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::EXP_F32),
-            OpWidth::F64 => Some(opcode::builtin::EXP_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "SIN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::SIN_F32),
-            OpWidth::F64 => Some(opcode::builtin::SIN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "COS" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::COS_F32),
-            OpWidth::F64 => Some(opcode::builtin::COS_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "TAN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::TAN_F32),
-            OpWidth::F64 => Some(opcode::builtin::TAN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ASIN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ASIN_F32),
-            OpWidth::F64 => Some(opcode::builtin::ASIN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ACOS" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ACOS_F32),
-            OpWidth::F64 => Some(opcode::builtin::ACOS_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ATAN" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ATAN_F32),
-            OpWidth::F64 => Some(opcode::builtin::ATAN_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
-        "ATAN2" => match op_width {
-            OpWidth::F32 => Some(opcode::builtin::ATAN2_F32),
-            OpWidth::F64 => Some(opcode::builtin::ATAN2_F64),
-            OpWidth::W32 | OpWidth::W64 => None,
-        },
+        "EXPT" => numeric_builtin!(
+            op_width,
+            builtin::EXPT_I32,
+            builtin::EXPT_I64,
+            builtin::EXPT_F32,
+            builtin::EXPT_F64
+        ),
+        "ABS" => numeric_builtin!(
+            op_width,
+            builtin::ABS_I32,
+            builtin::ABS_I64,
+            builtin::ABS_F32,
+            builtin::ABS_F64
+        ),
+        "SEL" => numeric_builtin!(
+            op_width,
+            builtin::SEL_I32,
+            builtin::SEL_I64,
+            builtin::SEL_F32,
+            builtin::SEL_F64
+        ),
+        "MIN" => signed_numeric_builtin!(
+            op_width,
+            signedness,
+            builtin::MIN_I32,
+            builtin::MIN_U32,
+            builtin::MIN_I64,
+            builtin::MIN_U64,
+            builtin::MIN_F32,
+            builtin::MIN_F64
+        ),
+        "MAX" => signed_numeric_builtin!(
+            op_width,
+            signedness,
+            builtin::MAX_I32,
+            builtin::MAX_U32,
+            builtin::MAX_I64,
+            builtin::MAX_U64,
+            builtin::MAX_F32,
+            builtin::MAX_F64
+        ),
+        "LIMIT" => signed_numeric_builtin!(
+            op_width,
+            signedness,
+            builtin::LIMIT_I32,
+            builtin::LIMIT_U32,
+            builtin::LIMIT_I64,
+            builtin::LIMIT_U64,
+            builtin::LIMIT_F32,
+            builtin::LIMIT_F64
+        ),
+        "SQRT" => float_builtin!(op_width, builtin::SQRT_F32, builtin::SQRT_F64),
+        "LN" => float_builtin!(op_width, builtin::LN_F32, builtin::LN_F64),
+        "LOG" => float_builtin!(op_width, builtin::LOG_F32, builtin::LOG_F64),
+        "EXP" => float_builtin!(op_width, builtin::EXP_F32, builtin::EXP_F64),
+        "SIN" => float_builtin!(op_width, builtin::SIN_F32, builtin::SIN_F64),
+        "COS" => float_builtin!(op_width, builtin::COS_F32, builtin::COS_F64),
+        "TAN" => float_builtin!(op_width, builtin::TAN_F32, builtin::TAN_F64),
+        "ASIN" => float_builtin!(op_width, builtin::ASIN_F32, builtin::ASIN_F64),
+        "ACOS" => float_builtin!(op_width, builtin::ACOS_F32, builtin::ACOS_F64),
+        "ATAN" => float_builtin!(op_width, builtin::ATAN_F32, builtin::ATAN_F64),
+        "ATAN2" => float_builtin!(op_width, builtin::ATAN2_F32, builtin::ATAN2_F64),
         _ => None,
     }
 }
@@ -1377,5 +1399,96 @@ pub(crate) fn compile_string_conversion(
             emit_truncation(emitter, target);
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lookup_builtin_when_all_width_numeric_then_selects_by_width() {
+        // EXPT/ABS/SEL are defined for every op width, independent of sign.
+        assert_eq!(
+            lookup_builtin("ABS", OpWidth::W32, Signedness::Signed),
+            Some(opcode::builtin::ABS_I32)
+        );
+        assert_eq!(
+            lookup_builtin("ABS", OpWidth::W64, Signedness::Unsigned),
+            Some(opcode::builtin::ABS_I64)
+        );
+        assert_eq!(
+            lookup_builtin("EXPT", OpWidth::F32, Signedness::Signed),
+            Some(opcode::builtin::EXPT_F32)
+        );
+        assert_eq!(
+            lookup_builtin("SEL", OpWidth::F64, Signedness::Signed),
+            Some(opcode::builtin::SEL_F64)
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_signed_numeric_then_selects_by_width_and_sign() {
+        assert_eq!(
+            lookup_builtin("MIN", OpWidth::W32, Signedness::Signed),
+            Some(opcode::builtin::MIN_I32)
+        );
+        assert_eq!(
+            lookup_builtin("MIN", OpWidth::W32, Signedness::Unsigned),
+            Some(opcode::builtin::MIN_U32)
+        );
+        assert_eq!(
+            lookup_builtin("MAX", OpWidth::W64, Signedness::Unsigned),
+            Some(opcode::builtin::MAX_U64)
+        );
+        // Float variants ignore signedness.
+        assert_eq!(
+            lookup_builtin("LIMIT", OpWidth::F32, Signedness::Unsigned),
+            Some(opcode::builtin::LIMIT_F32)
+        );
+        assert_eq!(
+            lookup_builtin("LIMIT", OpWidth::F64, Signedness::Signed),
+            Some(opcode::builtin::LIMIT_F64)
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_float_only_and_float_width_then_selects_variant() {
+        assert_eq!(
+            lookup_builtin("SIN", OpWidth::F32, Signedness::Signed),
+            Some(opcode::builtin::SIN_F32)
+        );
+        assert_eq!(
+            lookup_builtin("ATAN2", OpWidth::F64, Signedness::Signed),
+            Some(opcode::builtin::ATAN2_F64)
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_float_only_and_integer_width_then_none() {
+        assert_eq!(
+            lookup_builtin("SIN", OpWidth::W32, Signedness::Signed),
+            None
+        );
+        assert_eq!(
+            lookup_builtin("SQRT", OpWidth::W64, Signedness::Unsigned),
+            None
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_case_insensitive_then_matches() {
+        assert_eq!(
+            lookup_builtin("sin", OpWidth::F32, Signedness::Signed),
+            Some(opcode::builtin::SIN_F32)
+        );
+    }
+
+    #[test]
+    fn lookup_builtin_when_unknown_name_then_none() {
+        assert_eq!(
+            lookup_builtin("NOT_A_BUILTIN", OpWidth::F32, Signedness::Signed),
+            None
+        );
     }
 }

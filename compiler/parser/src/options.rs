@@ -322,7 +322,7 @@ define_compiler_options! {
 
     "Allow constant expressions (not just bare literals) in VAR initializers, e.g. SCALE*4.0",
     "--allow-constant-initializer-expressions",
-    [Rusty, Codesys],
+    [Rusty, Codesys, TwinCat],
     allow_constant_initializer_expressions,
 
     "Allow hex/binary/octal bit-string literals (16#D012, 2#1010) as CASE labels",
@@ -529,6 +529,7 @@ mod tests {
                 "allow_pragmas",
                 "allow_short_circuit_operators",
                 "allow_mixed_located_var_declarations",
+                "allow_constant_initializer_expressions",
                 "allow_bit_string_case_labels",
                 "allow_paren_string_length",
                 "allow_struct_initializer_expressions",

@@ -26,7 +26,10 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    result::SemanticResult, semantic_context::SemanticContext, stdlib::is_unsupported_standard_type,
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+    stdlib::is_unsupported_standard_type,
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -35,15 +38,12 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleUnsupportedStdLibType {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleUnsupportedStdLibType {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleUnsupportedStdLibType {
@@ -64,6 +64,12 @@ impl Visitor<Diagnostic> for RuleUnsupportedStdLibType {
             ));
         }
         node.recurse_visit(self)
+    }
+}
+
+impl DiagnosticVisitor for RuleUnsupportedStdLibType {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
     }
 }
 

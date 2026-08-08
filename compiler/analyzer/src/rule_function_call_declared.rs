@@ -34,7 +34,11 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -42,23 +46,24 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleFunctionCallDeclared {
-        context,
-        diagnostics: vec![],
-    };
-
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if visitor.diagnostics.is_empty() {
-        Ok(())
-    } else {
-        Err(visitor.diagnostics)
-    }
+    run_rule(
+        RuleFunctionCallDeclared {
+            context,
+            diagnostics: vec![],
+        },
+        lib,
+    )
 }
 
 struct RuleFunctionCallDeclared<'a> {
     context: &'a SemanticContext,
     diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for RuleFunctionCallDeclared<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl Visitor<Diagnostic> for RuleFunctionCallDeclared<'_> {

@@ -10,7 +10,7 @@ use std::fmt;
 
 use crate::fold::Fold;
 use crate::visitor::Visitor;
-use dsl_macro_derive::Recurse;
+use dsl_macro_derive::{Located, Recurse};
 
 /// A body of a function bock (one of the possible types).
 ///
@@ -131,8 +131,9 @@ impl Variable {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct NamedVariable {
+    #[located(delegate)]
     pub name: Id,
 }
 
@@ -142,15 +143,10 @@ impl fmt::Display for NamedVariable {
     }
 }
 
-impl Located for NamedVariable {
-    fn span(&self) -> SourceSpan {
-        self.name.span()
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct ArrayVariable {
     /// The variable that is being accessed by subscript (the array).
+    #[located(delegate)]
     pub subscripted_variable: Box<SymbolicVariableKind>,
     /// The ordered set of subscripts. These should be expressions that
     /// evaluate to an index.
@@ -167,12 +163,6 @@ impl fmt::Display for ArrayVariable {
             write!(f, "{subscript}")?;
         }
         write!(f, "]")
-    }
-}
-
-impl Located for ArrayVariable {
-    fn span(&self) -> SourceSpan {
-        self.subscripted_variable.as_ref().span()
     }
 }
 
@@ -283,9 +273,10 @@ impl Located for PartialAccessVariable {
 /// accessed (e.g., `PT^[0]` or `PT^.field`).
 ///
 /// See section B.1.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct DerefVariable {
     /// The variable being dereferenced.
+    #[located(delegate)]
     pub variable: Box<SymbolicVariableKind>,
 }
 
@@ -295,28 +286,16 @@ impl fmt::Display for DerefVariable {
     }
 }
 
-impl Located for DerefVariable {
-    fn span(&self) -> SourceSpan {
-        self.variable.span()
-    }
-}
-
 /// Function block invocation.
 ///
 /// See section 3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct FbCall {
     /// Name of the variable that is associated with the function block
     /// call.
     pub var_name: Id,
     pub params: Vec<ParamAssignmentKind>,
     pub position: SourceSpan,
-}
-
-impl Located for FbCall {
-    fn span(&self) -> SourceSpan {
-        self.position.clone()
-    }
 }
 
 /// A binary expression that produces a Boolean result by comparing operands.
@@ -380,8 +359,9 @@ impl fmt::Display for LateBound {
 ///
 /// The `resolved_type` field is populated by a later analysis pass. During
 /// parsing and initial construction, it is always `None`.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct Expr {
+    #[located(delegate)]
     pub kind: ExprKind,
     #[recurse(ignore)]
     pub resolved_type: Option<TypeName>,
@@ -408,12 +388,6 @@ impl Expr {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.kind)
-    }
-}
-
-impl Located for Expr {
-    fn span(&self) -> SourceSpan {
-        self.kind.span()
     }
 }
 
@@ -825,7 +799,7 @@ impl StmtKind {
 /// Assigns a variable as the evaluation of an expression.
 ///
 /// See section 3.3.2.1.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct Assignment {
     pub target: Variable,
     #[recurse(ignore)]
@@ -838,31 +812,21 @@ pub struct Assignment {
     #[recurse(ignore)]
     pub ref_bind: bool,
     pub value: Expr,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for Assignment {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 /// If selection statement.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct If {
     pub expr: Expr,
     pub body: Vec<StmtKind>,
     pub else_ifs: Vec<ElseIf>,
     pub else_body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for If {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 #[derive(Debug, PartialEq, Clone, Recurse)]
@@ -874,19 +838,14 @@ pub struct ElseIf {
 /// Case selection statement.
 ///
 /// See section 3.3.2.3.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct Case {
     /// An expression, the result of which is used to select a particular case.
     pub selector: Expr,
     pub statement_groups: Vec<CaseStatementGroup>,
     pub else_body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for Case {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 /// A group of statements that can be selected within a case.
@@ -915,7 +874,7 @@ pub enum CaseSelectionKind {
 /// The for loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct For {
     /// The variable that is assigned and contains the value for each loop iteration.
     pub control: Id,
@@ -923,45 +882,30 @@ pub struct For {
     pub to: Expr,
     pub step: Option<Expr>,
     pub body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for For {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 /// The while loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct While {
     pub condition: Expr,
     pub body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for While {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 /// The repeat loop statement.
 ///
 /// See section 3.3.2.4.
-#[derive(Debug, PartialEq, Clone, Recurse)]
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct Repeat {
     pub until: Expr,
     pub body: Vec<StmtKind>,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for Repeat {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 #[cfg(test)]
