@@ -1,0 +1,19 @@
+[package]
+name = "container_derive"
+description = "Derive macros for the IronPLC bytecode container newtype identifiers"
+version = "0.234.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "3.0", features = ["extra-traits", "derive"]}
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[lints]
+workspace = true
