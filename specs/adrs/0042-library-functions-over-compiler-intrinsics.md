@@ -26,8 +26,20 @@ function, which mechanism must it use?
 
 ## Decision Drivers
 
-* **No IronPLC dialect** ([ADR-0036](0036-no-ironplc-dialect.md)) — an
-  always-on vendor name would create a configuration no real toolchain accepts
+* **Compatibility** — the library mechanism's promise is that a name is in
+  scope exactly when the corresponding real-world library is activated, so
+  code that compiles in IronPLC also compiles in the environment it targets.
+  An always-on vendor name in the compiler breaks that promise in both
+  directions. (Dialect — syntax, [ADR-0036](0036-no-ironplc-dialect.md) — is
+  a separate axis: IronPLC has no dialect of its own, but it may well ship
+  its own libraries; the manifest format already admits `vendor = "IronPLC"`.
+  What is decided is that such names arrive *as libraries*, with the same
+  activation model, never as unconditional compiler names.)
+* **Per-vendor behavior divergence** — different vendors give the same
+  function name different signatures or behavior (TwinCAT's `FLOOR` takes
+  `LREAL`, unlike base IEC; rounding and edge-case conventions differ). A
+  library captures each vendor's behavior in that vendor's package; a single
+  compiler intrinsic would have to pick one vendor's behavior for everyone
 * **Scalability** — vendor runtimes define hundreds of functions; per-function
   compiler tables and flags do not scale, libraries-as-data do
 * **Auditability and provenance** — library content carries manifest
@@ -36,12 +48,16 @@ function, which mechanism must it use?
   compiler tables carry neither
 * **Wire-format stability** — every `BUILTIN` func_id is a permanent
   compiler/VM ABI commitment pinned by wire-format tests; ST bodies are not
-* **Behavioral fidelity** — some semantics (hardware access, IEEE-754
-  operations like floating truncation/modulo) cannot be expressed in IEC
-  61131-3 source and require a native implementation
+* **Behavioral fidelity** — some semantics cannot be expressed in IEC 61131-3
+  source at all and require a native implementation; the inexpressible set is
+  small and enumerable (see *What IEC 61131-3 source cannot express* below)
 * **Simplicity of contribution** — adding an ST function to a library touches
   no Rust; adding an intrinsic touches the analyzer, codegen, VM,
   disassembler, and wire-format tests
+* **Testability** — the trade-off runs the other way: an intrinsic is
+  directly unit-testable in Rust, while a library ST body is testable only
+  end-to-end (activate → compile → run in the VM). Choosing libraries
+  obligates the project to keep that end-to-end harness cheap to use
 
 ## Considered Options
 
@@ -104,8 +120,14 @@ Existing compiler-seeded standard functions are conformant (they are IEC
 * Bad, because a library ST body is interpreted bytecode, slower than a native
   builtin — acceptable until profiling shows otherwise, and revisable per
   function by adding a binding without changing the library's interface
+* Bad, because library functions are harder to test than intrinsics: an
+  intrinsic gets a direct Rust unit test, while a library body is exercised
+  only through the full activate → compile → VM-run path — mitigated by the
+  existing end-to-end test harness (`codegen/tests/it/`) and conformance
+  tests that load every bundled library
 * Bad, because "cannot be expressed in IEC 61131-3 source" requires judgment;
-  the review checklist below is the tiebreaker
+  *What IEC 61131-3 source cannot express* below bounds the categories, and
+  the review checklist is the tiebreaker
 
 ### Confirmation
 
@@ -163,6 +185,43 @@ Ship the IEC 61131-3 standard functions themselves as a bundled library.
   by the four-step rule being mechanical for the common cases
 
 ## More Information
+
+### What IEC 61131-3 source cannot express
+
+The set of behaviors that genuinely cannot be written as an ST function body
+is small and falls into four categories. Anything outside them is expressible
+— "laborious to write in ST" is not inexpressible, and defaults to an ST body.
+
+1. **Arithmetic primitives absent from the operator/stdlib surface.**
+   LREAL-preserving truncation (`TRUNC` clamps to `ANY_INT`, so the fractional
+   cut cannot be taken without leaving `LREAL`'s range guarantees) and
+   floating modulo (`MOD` is integer-only). These two are the motivating
+   builtins here (`trunc_lreal`, `fmod_lreal`) — and once they exist, the
+   category is essentially closed: `MODABS`, `FRAC`, `CEIL`, `FLOOR`, and
+   round-half-away variants are all math-dictated compositions of them.
+2. **Bit-level reinterpretation across type families.** Reading an `LREAL`'s
+   bits as a `LWORD` (or back) without numeric conversion has no ST
+   construct. Needed by checksum, serialization, and float-inspection
+   functions some vendor libraries provide.
+3. **Compile-time knowledge.** `SIZEOF`, `ADR`/`BITADR`/`INDEXOF`, and any
+   type/layout introspection require the compiler's symbol and layout tables.
+   These are not functions at all — they are function-like operators on the
+   dialect axis (rule 4).
+4. **Runtime-service access.** Wall-clock and system time, hardware I/O,
+   file/persistence access, task control — anything that reaches outside the
+   program's own data (e.g. `Tc2_System`'s file and event functions). These
+   need VM or runtime services: FB-shaped ones follow
+   [ADR-0003](0003-plc-standard-function-blocks-as-intrinsics.md) intrinsics;
+   function-shaped ones need bindings.
+
+Borderline case worth recording: numeric-to-string *formatting* with runtime
+precision (`LREAL_TO_FMTSTR`) is expressible in principle (integer math plus
+the string stdlib) but numerically-faithful float formatting is subtle enough
+that neither medium is chosen yet — the plan lands it declare-only, and the
+follow-up decides ST versus a formatting builtin on fidelity grounds, not
+convenience.
+
+### Related decisions
 
 * [ADR-0003](0003-plc-standard-function-blocks-as-intrinsics.md) — the same
   principle for function blocks: intrinsics are a VM dispatch detail behind
