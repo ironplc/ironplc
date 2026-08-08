@@ -16,7 +16,10 @@ use std::collections::HashMap;
 use ironplc_parser::options::CompilerOptions;
 
 use crate::{
-    result::SemanticResult, semantic_context::SemanticContext, type_environment::TypeEnvironment,
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+    type_environment::TypeEnvironment,
 };
 
 pub fn apply(
@@ -24,22 +27,19 @@ pub fn apply(
     context: &SemanticContext,
     options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleRefTo {
-        type_environment: context.types(),
-        var_types: HashMap::new(),
-        var_classes: HashMap::new(),
-        pou_kind: PouKind::Program,
-        allow_ref_arithmetic: options.allow_ref_arithmetic,
-        diagnostics: Vec::new(),
-        allow_ref_stack_variables: options.allow_ref_stack_variables,
-        allow_ref_type_punning: options.allow_ref_type_punning,
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleRefTo {
+            type_environment: context.types(),
+            var_types: HashMap::new(),
+            var_classes: HashMap::new(),
+            pou_kind: PouKind::Program,
+            allow_ref_arithmetic: options.allow_ref_arithmetic,
+            diagnostics: Vec::new(),
+            allow_ref_stack_variables: options.allow_ref_stack_variables,
+            allow_ref_type_punning: options.allow_ref_type_punning,
+        },
+        lib,
+    )
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -64,6 +64,12 @@ struct RuleRefTo<'a> {
     allow_ref_stack_variables: bool,
     /// When true, suppress P2032 type mismatch for REF_TO type punning.
     allow_ref_type_punning: bool,
+}
+
+impl DiagnosticVisitor for RuleRefTo<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 /// Extracts a span from a Variable, falling back to default.

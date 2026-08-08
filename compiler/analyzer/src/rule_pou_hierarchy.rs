@@ -42,7 +42,11 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -50,13 +54,7 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut hierarchy_visitor = HierarchyVisitor::new();
-    hierarchy_visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !hierarchy_visitor.problems.is_empty() {
-        return Err(hierarchy_visitor.problems);
-    }
-    Ok(())
+    run_rule(HierarchyVisitor::new(), lib)
 }
 
 #[derive(Debug)]
@@ -80,6 +78,12 @@ impl HierarchyVisitor {
             problems: Vec::new(),
             context_type: None,
         }
+    }
+}
+
+impl DiagnosticVisitor for HierarchyVisitor {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.problems
     }
 }
 
