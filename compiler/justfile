@@ -139,7 +139,10 @@ _verify-package-windows target:
   Copy-Item -Recurse "sources\resources\libs" "target\{{target}}\release\resources\libs"
   &"target\{{target}}\release\ironplcc.exe" version; if ($LASTEXITCODE -ne 0) { exit 1 }
   &"target\{{target}}\release\ironplcc.exe" compile --dialect twincat --library Tc2_System --output "$env:TEMP\verify-prog.iplc" "..\tests\e2e\library\uses_pi.st"; if ($LASTEXITCODE -ne 0) { Write-Error "FAIL: packaged ironplcc could not compile the library fixture"; exit 1 }
-  $out = &"target\{{target}}\release\ironplcvm.exe" run "$env:TEMP\verify-prog.iplc" --scans 1 --dump-vars -; Write-Host $out; if ($out -notmatch "62.8318") { Write-Error "FAIL: packaged ironplcvm did not compute 2 * PI * 10.0 from the library PI"; exit 1 }
+  # PowerShell captures command output as an array of lines, and -notmatch on an
+  # array FILTERS (returns non-matching lines, truthy when any line lacks the
+  # text) instead of testing the whole output. Join to one string first.
+  $out = (&"target\{{target}}\release\ironplcvm.exe" run "$env:TEMP\verify-prog.iplc" --scans 1 --dump-vars -) -join "`n"; Write-Host $out; if ($out -notmatch "62.8318") { Write-Error "FAIL: packaged ironplcvm did not compute 2 * PI * 10.0 from the library PI"; exit 1 }
   Write-Host "PASS: packaged release binaries compiled and ran the library fixture"
 
 # Builds the Homebrew repository to release for Mac and Linux

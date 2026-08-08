@@ -420,7 +420,10 @@ library-e2e-test:
   # Compile the library-dependent program against the installed compiler.
   &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcc.exe" compile --dialect twincat --library Tc2_System --output "$env:TEMP\prog.iplc" "tests\e2e\library\uses_pi.st"; if ($LASTEXITCODE -ne 0) { Write-Error "FAIL: installed compiler could not compile the library-dependent program"; exit 1 }
   # Run one scan on the installed VM and assert it computed 2 * PI * 10.0.
-  $out = &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcvm.exe" run "$env:TEMP\prog.iplc" --scans 1 --dump-vars -; Write-Host $out; if ($out -notmatch "62.8318") { Write-Error "FAIL: VM did not compute 2 * PI * 10.0 from the library PI"; exit 1 }
+  # PowerShell captures command output as an array of lines, and -notmatch on an
+  # array FILTERS (returns non-matching lines, truthy when any line lacks the
+  # text) instead of testing the whole output. Join to one string first.
+  $out = (&"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcvm.exe" run "$env:TEMP\prog.iplc" --scans 1 --dump-vars -) -join "`n"; Write-Host $out; if ($out -notmatch "62.8318") { Write-Error "FAIL: VM did not compute 2 * PI * 10.0 from the library PI"; exit 1 }
   Write-Host "PASS: installed compiler + VM computed 2 * PI * 10.0 using the library PI"
 
 # OpenCode integration end-to-end test - Unix only.
