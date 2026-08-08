@@ -13,6 +13,7 @@ std = ["dep:blake3"]
 
 [dependencies]
 blake3 = { version = "1", optional = true }
+container_derive = { path = "../container_derive" }
 
 [build-dependencies]
 ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }

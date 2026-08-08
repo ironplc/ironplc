@@ -4,6 +4,7 @@ members = [
     "benchmarks",
     "codegen",
     "container",
+    "container_derive",
     "ironplc-cli",
     "mcp",
     "project",
