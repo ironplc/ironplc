@@ -21,6 +21,7 @@ mod compile_dup;
 mod compile_exit_return;
 mod compile_func_forms;
 mod compile_if;
+mod compile_library_bindings;
 mod compile_loops;
 mod compile_mux;
 mod compile_shift;

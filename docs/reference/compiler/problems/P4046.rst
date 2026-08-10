@@ -1,0 +1,38 @@
+=====
+P4046
+=====
+
+.. problem-summary:: P4046
+
+This error occurs when a program *calls* a compatibility library
+function that the library declares as ``declare-only`` — the function's
+signature exists so the library's surface is complete, but its
+implementation has not been built yet. Rather than generating code whose
+behavior IronPLC cannot reproduce (or trapping at runtime), the compiler
+refuses to compile the call.
+
+Note that ``check`` (semantic analysis) still passes for the same
+source: the declaration resolves and type-checks like any other
+function. Only bytecode compilation of an actual call site fails.
+
+Example
+-------
+
+Suppose an activated compatibility library declares a function
+``SOME_FUNC`` as declare-only — the declaration exists, but no
+implementation is bound. The following code checks cleanly but generates
+error P4046 when compiled:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       x : LREAL;
+   END_VAR
+       x := SOME_FUNC(1.5);
+   END_PROGRAM
+
+To fix this error, remove or replace the call to the unimplemented
+function. If you need the function, check for a newer IronPLC release
+where the library binds it to an implementation, or file a feature
+request naming the function.

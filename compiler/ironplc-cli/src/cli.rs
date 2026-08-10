@@ -181,9 +181,16 @@ pub fn compile(
     }
 
     // Generate bytecode, skipping user-defined functions not reachable from
-    // the PROGRAM root to reduce container size.
+    // the PROGRAM root to reduce container size. The activated libraries'
+    // bindings ride along so codegen can lower intrinsic-bound calls and
+    // reject declare-only calls (the analyzer never saw the bindings).
+    let mut library_bindings = ironplc_dsl::bindings::LibraryBindings::new();
+    for compat in &compat_libraries {
+        library_bindings.merge(compat.bindings.clone());
+    }
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: compiler_options.allow_system_uptime_global,
+        library_bindings,
     };
     // Build a SourceLookup that hands codegen the exact bytes the
     // parser saw for each FileId. The container's debug section

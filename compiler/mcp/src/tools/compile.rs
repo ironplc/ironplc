@@ -135,6 +135,7 @@ pub fn build_response(
     // Run codegen
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: compiler_options.allow_system_uptime_global,
+        ..Default::default()
     };
     let container = match ironplc_codegen::compile(
         library,

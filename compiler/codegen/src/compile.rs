@@ -209,6 +209,12 @@ pub struct CodegenOptions {
     /// When `true`, inject `__SYSTEM_UP_TIME` (TIME) and `__SYSTEM_UP_LTIME`
     /// (LTIME) as implicit globals at the start of the variable table.
     pub system_uptime_global: bool,
+    /// Bindings of the activated compatibility libraries (see
+    /// `ironplc_dsl::bindings`). The default is empty, so consumers that
+    /// never activate a library are unaffected — and an intrinsic-bound call
+    /// reaching codegen without its bindings fails closed (generic-builtin
+    /// lookup fails) rather than ever lowering wrongly.
+    pub library_bindings: ironplc_dsl::bindings::LibraryBindings,
 }
 
 pub fn compile(
@@ -243,14 +249,28 @@ pub fn compile(
 
     let reachable = context.reachable();
 
-    // Collect user-defined function declarations from the library,
-    // filtering to only reachable functions.
+    // Pre-resolve the activated libraries' bindings (intrinsic names →
+    // func_ids, parameter op types from the library declarations) for call
+    // lowering; an unresolvable intrinsic name is a packaging error (P6010).
+    let resolved_bindings =
+        crate::compile_library::resolve_bindings(library, &options.library_bindings)?;
+
+    // Collect user-defined function declarations from the library, filtering
+    // to only reachable functions and skipping bound library POUs — their `;`
+    // bodies are never compiled; calls lower through the binding instead. The
+    // FileId check inside `is_bound_library_function` preserves user
+    // shadowing: a user function with a bound name still compiles.
     let func_decls: Vec<&FunctionDeclaration> = library
         .elements
         .iter()
         .filter_map(|e| {
             if let LibraryElementKind::FunctionDeclaration(f) = e {
-                reachable.contains(&f.name).then_some(f)
+                (reachable.contains(&f.name)
+                    && !crate::compile_library::is_bound_library_function(
+                        f,
+                        &options.library_bindings,
+                    ))
+                .then_some(f)
             } else {
                 None
             }
@@ -284,6 +304,7 @@ pub fn compile(
         context.types(),
         enum_map,
         sources,
+        resolved_bindings,
     )?;
 
     if options.system_uptime_global {
@@ -431,6 +452,7 @@ fn compile_program_with_functions(
     types: &TypeEnvironment,
     enum_map: crate::compile_enum::EnumOrdinalMap,
     sources: &dyn crate::source_lookup::SourceLookup,
+    library_bindings: crate::compile_library::ResolvedBindings,
 ) -> Result<Container, Diagnostic> {
     let ProgramInputs {
         program,
@@ -440,6 +462,7 @@ fn compile_program_with_functions(
     } = inputs;
     let mut ctx = CompileContext::new();
     ctx.enum_map = enum_map;
+    ctx.library_bindings = library_bindings;
     let mut builder = ContainerBuilder::new();
 
     // Register every top-level POU's source file with the debug
@@ -882,6 +905,10 @@ pub(crate) struct CompileContext {
     pub(crate) debug_source_files: crate::source_lookup::SourceFileRegistry,
     /// Maps user-defined function name (lowercase) to compilation metadata.
     pub(crate) user_functions: HashMap<String, UserFunctionInfo>,
+    /// Pre-resolved compatibility-library bindings for call lowering.
+    /// Checked after `user_functions` in `compile_function_call`, so user
+    /// shadowing needs no extra mechanism.
+    pub(crate) library_bindings: crate::compile_library::ResolvedBindings,
     /// Maps user-defined FB type name (uppercase) to compilation metadata.
     pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
     /// Next available type ID for user-defined function blocks.
@@ -940,6 +967,7 @@ impl CompileContext {
             debug_string_layouts: Vec::new(),
             debug_source_files: crate::source_lookup::SourceFileRegistry::new(),
             user_functions: HashMap::new(),
+            library_bindings: crate::compile_library::ResolvedBindings::default(),
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),
