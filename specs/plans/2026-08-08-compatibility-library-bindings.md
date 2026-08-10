@@ -13,8 +13,24 @@ in the compiler only where IEC 61131-3 source cannot express the semantics.
 The primitives, from the deferred *Future Goals* of the
 [Compatibility Libraries design](../design/compatibility-libraries.md):
 
-1. **Bindings** — a per-version `library.toml` table mapping a library POU to
-   a **VM builtin** or to **declare-only**.
+1. **Bindings** — a way for a library to declare a POU whose implementation
+   is *not* an ordinary ST body. Today the loader can only compile
+   fully-defined ST, so a function like `LTRUNC` — whose semantics cannot be
+   written in ST — cannot ship in a library at all. A binding is an entry in
+   the library's `library.toml`, per version, that marks such a POU as either
+   **backed by a native VM builtin** (the `.st` file still declares the full
+   signature, so `check` and type-checking work unchanged; codegen lowers
+   calls to the named builtin instead of a `CALL`):
+
+   ```toml
+   ["1.0.0".bindings]
+   LTRUNC = { intrinsic = "trunc_lreal" }
+   ```
+
+   or **declare-only** (`POU = "declare-only"`): the signature exists so the
+   library's surface can land ahead of its implementation, and *calling* it
+   is a compile error. This is the mechanism the compatibility-libraries
+   design defers under *Future Goals* ("bindings"); this plan builds it.
 2. **Fail-if-unimplemented** — a call to a declare-only POU is a dedicated
    compile error (new problem code), never silently-wrong codegen and never a
    runtime trap. `check` still passes (the declaration resolves), matching the
