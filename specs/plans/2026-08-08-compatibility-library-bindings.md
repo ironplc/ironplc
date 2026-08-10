@@ -48,6 +48,7 @@ Under the ADR-0042 rule each function lands as:
 | `LTRUNC(IN: LREAL): LREAL` | `Tc2_Math` POU bound to new `trunc_lreal` VM builtin — `TRUNC` clamps to `ANY_INT`, so LREAL-preserving truncation is inexpressible in ST |
 | `LMOD(IN1: LREAL, IN2: LREAL): LREAL` | `Tc2_Math` POU bound to new `fmod_lreal` VM builtin — no floating modulo exists in ST (`MOD` is integer) |
 | `MODABS(IN: LREAL, IM: LREAL): LREAL` | `Tc2_Math` POU with a math-dictated **ST body** calling `LMOD` — no builtin |
+| `FRAC(IN: LREAL): LREAL` | `Tc2_Math` POU with a math-dictated **ST body**: `FRAC := IN - LTRUNC(IN);` — no builtin (reviewer-requested addition; not in the original PRs) |
 | `BOOL_TO_STRING(IN: BOOL): STRING` | library **ST body** (`IF IN THEN BOOL_TO_STRING := 'TRUE'; ELSE ... 'FALSE'`) — trivially expressible, so no intrinsic and no func_id |
 | `LREAL_TO_FMTSTR(in: LREAL, iPrecision: INT, bRound: BOOL): STRING(255)` | `Tc2_Utilities` POU, **declare-only** — surface lands now, calls fail compile with the new code; native formatting is a follow-up plan |
 | `ADR` | **non-goal** — a function-like operator on the dialect axis, deferred to the future `POINTER TO` family work (interacts with ADR-0017/ADR-0021; a declared signature today would have to lie about its return type) |
@@ -137,7 +138,7 @@ declare-only compatibility library function", naming the library and POU.
 - `specs/design/library-interfaces/tc2-math.md`, `tc2-utilities.md`, `bool-to-string.md` — clean-room interface specs from public Beckhoff InfoSys docs, each merged as its own non-squashed commit *before* implementation (authoring policy).
 - `compiler/dsl/src/bindings.rs` — `PouBinding`, `LibraryBindings` (+ `lib.rs` export).
 - `compiler/codegen/src/compile_library.rs` — bound-function pre-resolution and lowering helpers (`compile_call.rs` is at the 1000-line cap).
-- `compiler/sources/resources/libs/Tc2_Math/{library.toml, 1.0.0/Tc2_Math.st}` — LTRUNC/LMOD (bound, `;` bodies), MODABS (ST body).
+- `compiler/sources/resources/libs/Tc2_Math/{library.toml, 1.0.0/Tc2_Math.st}` — LTRUNC/LMOD (bound, `;` bodies), MODABS and FRAC (ST bodies).
 - `compiler/sources/resources/libs/Tc2_Utilities/{library.toml, 1.0.0/Tc2_Utilities.st}` — LREAL_TO_FMTSTR (declare-only).
 - `docs/reference/compiler/problems/P4046.rst` (+ index entry).
 
@@ -167,6 +168,7 @@ declare-only compatibility library function", naming the library and POU.
 - VM: `f64::trunc` ±, fmod negatives, fmod-by-zero → NaN not trap.
 - End-to-end (`codegen/tests/it/`, VM-run, epsilon asserts):
   `LMOD(400.56, 360.0) ≈ 40.56`, `MODABS(-400.56, 360.0) ≈ 319.44`,
+  `FRAC(3.7) ≈ 0.7`, `FRAC(-3.7) ≈ -0.7`,
   `LTRUNC(3.7) = 3.0`, `LTRUNC(-3.7) = -3.0`, `BOOL_TO_STRING(TRUE) = 'TRUE'`;
   a `.plcproj`-driven activation test (the exact contributor scenario);
   `plc2plc` round-trip of a file calling `LTRUNC` is byte-identical.
@@ -180,7 +182,7 @@ declare-only compatibility library function", naming the library and POU.
 - [ ] ADR-0042 and this plan committed and PR opened
 
 ### Phase 1 — Clean-room interface specs + design-doc promotion (docs)
-- [ ] `library-interfaces/` specs from public Beckhoff references, each its own non-squashed commit (LMOD pinned to fmod sign-of-dividend; `LMOD(x, 0.0)` → NaN; `MODABS(-400.56, 360) = 319.44`; `BOOL_TO_STRING` → `'TRUE'`/`'FALSE'`)
+- [ ] `library-interfaces/` specs from public Beckhoff references, each its own non-squashed commit (LMOD pinned to fmod sign-of-dividend; `LMOD(x, 0.0)` → NaN; `MODABS(-400.56, 360) = 319.44`; `FRAC` keeps the sign of its input, `FRAC(-3.7) = -0.7`; `BOOL_TO_STRING` → `'TRUE'`/`'FALSE'`)
 - [ ] Promote §Bindings in both design docs; add `REQ-LF-sources-005..007`, `REQ-CL-codegen-001/002`, `REQ-CL-analyzer-007`
 
 ### Phase 2 — Container + VM primitives
@@ -202,7 +204,7 @@ declare-only compatibility library function", naming the library and POU.
 - [ ] `cd compiler && just` green
 
 ### Phase 5 — Ship `Tc2_Math` + `Tc2_Utilities`; `BOOL_TO_STRING`; end-to-end
-- [ ] `Tc2_Math` package (manifest references per function; MODABS ST body `MODABS := LMOD(IN, IM); IF MODABS < 0.0 THEN MODABS := MODABS + ABS(IM); END_IF;`)
+- [ ] `Tc2_Math` package (manifest references per function; MODABS ST body `MODABS := LMOD(IN, IM); IF MODABS < 0.0 THEN MODABS := MODABS + ABS(IM); END_IF;`; FRAC ST body `FRAC := IN - LTRUNC(IN);`)
 - [ ] `Tc2_Utilities` package (LREAL_TO_FMTSTR declare-only)
 - [ ] `BOOL_TO_STRING` ST function — **placement to confirm in review**: recommend the bundled `Tc2_System` library (TwinCAT treats it as a compiler operator, so no vendor library is its true home; `Tc2_System` is referenced by real projects by default, so it lights up on the paved path)
 - [ ] End-to-end VM-run tests; `.plcproj` activation test; plc2plc round-trip
