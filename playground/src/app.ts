@@ -404,16 +404,20 @@ const librariesParam = (params.get("libraries") || "")
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
 
-// The served library sources, once fetched: a JSON array of `.st` file
-// contents ready to hand to the WASM compile path. Empty until fetched (and
-// when no library is activated), which the compiler treats as "no library".
-let activatedLibrarySources: string[] = [];
+// One activated library package as the WASM compile path expects it: the
+// manifest text (whose bindings tell codegen how intrinsic-bound and
+// declare-only POUs compile) plus the version's `.st` file contents.
+type LibraryPackage = { manifest: string; files: string[] };
+
+// The served library packages, once fetched. Empty until fetched (and when no
+// library is activated), which the compiler treats as "no library".
+let activatedLibraryPackages: LibraryPackage[] = [];
 
 // Index of the served compatibility libraries, generated at build time and
-// served at `libs/index.json`: library name -> the paths of its `.st` files
-// (relative to the app root). A static index avoids relying on directory
-// listing, which static hosts do not provide.
-type LibraryIndex = Record<string, string[]>;
+// served at `libs/index.json`: library name -> its `library.toml` path and
+// the paths of its `.st` files (relative to the app root). A static index
+// avoids relying on directory listing, which static hosts do not provide.
+type LibraryIndex = Record<string, { manifest: string; files: string[] }>;
 
 // Fetch and load the activated libraries' plain-text files. Best-effort: a
 // missing index or file leaves the affected library inactive (its symbols stay
@@ -433,31 +437,45 @@ async function loadActivatedLibraries(): Promise<void> {
     return;
   }
 
-  const sources: string[] = [];
+  const packages: LibraryPackage[] = [];
   for (const name of librariesParam) {
-    const files = index[name];
-    if (!files) {
+    const entry = index[name];
+    if (!entry) {
       continue;
     }
-    for (const path of files) {
+    let manifest: string;
+    try {
+      const response = await fetch(entry.manifest);
+      if (!response.ok) {
+        // Without the manifest the library's bindings are unknown, so leave
+        // the whole library inactive rather than activating it half-wired.
+        continue;
+      }
+      manifest = await response.text();
+    } catch {
+      continue;
+    }
+    const files: string[] = [];
+    for (const path of entry.files) {
       try {
         const response = await fetch(path);
         if (response.ok) {
-          sources.push(await response.text());
+          files.push(await response.text());
         }
       } catch {
         // Skip a file that fails to load; its symbols stay undefined.
       }
     }
+    packages.push({ manifest, files });
   }
-  activatedLibrarySources = sources;
+  activatedLibraryPackages = packages;
 }
 
-// The activated library sources as the WASM compile path expects them: a JSON
-// array of `.st` file contents, or "" when none are active.
+// The activated library packages as the WASM compile path expects them: a
+// JSON array of `{ manifest, files }` objects, or "" when none are active.
 function getLibraries(): string {
-  return activatedLibrarySources.length > 0
-    ? JSON.stringify(activatedLibrarySources)
+  return activatedLibraryPackages.length > 0
+    ? JSON.stringify(activatedLibraryPackages)
     : "";
 }
 

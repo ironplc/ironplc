@@ -56,3 +56,53 @@ fn playground_spec_req_cl_001_activates_library_from_served_files() {
         "loading the served library file must make PI resolve"
     );
 }
+
+/// The `Tc2_Math`-shaped package payload: manifest with an intrinsic binding
+/// plus the version's `.st` declaration, as `app.ts` now sends them
+/// (`{ manifest, files }`).
+#[test]
+fn compile_when_package_payload_with_intrinsic_binding_then_bound_call_compiles() {
+    let manifest = "name = \"Tc2_Math\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n[\"1.0.0\".bindings]\nLTRUNC = { intrinsic = \"trunc_lreal\" }\n";
+    let declaration =
+        "FUNCTION LTRUNC : LREAL\nVAR_INPUT\n    IN : LREAL;\nEND_VAR\n;\nEND_FUNCTION\n";
+    let libraries = serde_json::json!([{ "manifest": manifest, "files": [declaration] }]);
+    let program = "PROGRAM main
+VAR
+    x : LREAL;
+END_VAR
+    x := LTRUNC(3.7);
+END_PROGRAM";
+
+    assert!(
+        compile_ok(program, &libraries.to_string()),
+        "an intrinsic-bound call must compile when the package payload carries the manifest"
+    );
+    // Without the library, the same call must not compile.
+    assert!(!compile_ok(program, ""));
+}
+
+/// A declare-only binding in the package payload fails compilation of a call
+/// with P4046 (never wrong codegen), matching the CLI behavior.
+#[test]
+fn compile_when_package_payload_with_declare_only_then_call_fails_p4046() {
+    let manifest = "name = \"Tc2_Utilities\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n[\"1.0.0\".bindings]\nLREAL_TO_FMTSTR = \"declare-only\"\n";
+    let declaration = "FUNCTION LREAL_TO_FMTSTR : STRING[255]\nVAR_INPUT\n    in : LREAL;\n    iPrecision : INT;\n    bRound : BOOL;\nEND_VAR\n;\nEND_FUNCTION\n";
+    let libraries = serde_json::json!([{ "manifest": manifest, "files": [declaration] }]);
+    let program = "PROGRAM main
+VAR
+    s : STRING[255];
+END_VAR
+    s := LREAL_TO_FMTSTR(1.5, 2, TRUE);
+END_PROGRAM";
+
+    let json = crate::compile(program, "", "", &libraries.to_string());
+    let value: Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(value["ok"], Value::Bool(false));
+    let codes: Vec<&str> = value["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|d| d["code"].as_str())
+        .collect();
+    assert_eq!(codes, ["P4046"]);
+}

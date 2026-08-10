@@ -35,17 +35,23 @@ function stFiles(dir) {
   return out;
 }
 
-// name -> [ "libs/<Name>/<version>/<file>.st", ... ], paths relative to the
-// served app root so the browser can fetch them directly.
+// name -> { manifest: "libs/<Name>/library.toml",
+//           files: [ "libs/<Name>/<version>/<file>.st", ... ] },
+// paths relative to the served app root so the browser can fetch them
+// directly. The manifest rides along because its bindings tell the compiler
+// how intrinsic-bound and declare-only POUs compile.
 const index = {};
 for (const name of readdirSync(libsDir)) {
   const full = join(libsDir, name);
   if (!statSync(full).isDirectory()) {
     continue;
   }
-  index[name] = stFiles(full)
-    .map((path) => relative(root, path))
-    .sort();
+  index[name] = {
+    manifest: relative(root, join(full, "library.toml")),
+    files: stFiles(full)
+      .map((path) => relative(root, path))
+      .sort(),
+  };
 }
 
 writeFileSync(join(libsDir, "index.json"), `${JSON.stringify(index, null, 2)}\n`);

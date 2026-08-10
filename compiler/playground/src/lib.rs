@@ -581,45 +581,109 @@ pub fn compile(source: &str, dialect: &str, allows: &str, libraries: &str) -> St
     })
 }
 
+/// One activated library in the `libraries` payload: either the full package
+/// (`{ "manifest": "<library.toml text>", "files": ["<st text>", …] }`) or —
+/// the older form, still accepted — a bare `.st` source string, which carries
+/// no manifest and therefore no bindings.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum LibraryPayload {
+    Package { manifest: String, files: Vec<String> },
+    Source(String),
+}
+
 /// Parse the activated compatibility libraries from their served plain-text
-/// sources (`REQ-CL-playground-001`).
+/// files (`REQ-CL-playground-001`).
 ///
-/// `libraries` is a JSON array of ST source strings — the plain-text library
-/// files the browser fetched from the app's served assets. Each is parsed into
-/// a [`Library`] to be injected ahead of user source in analysis, so its
-/// symbols (e.g. `Tc2_System`'s `PI`) resolve under their exact vendor names.
-/// An empty or blank string activates no library.
+/// `libraries` is a JSON array of [`LibraryPayload`] entries the browser
+/// fetched from the app's served assets. Each entry's `.st` files are parsed
+/// into a [`Library`] to be injected ahead of user source in analysis, so its
+/// symbols (e.g. `Tc2_System`'s `PI`) resolve under their exact vendor names;
+/// a package entry's manifest additionally contributes its bindings so
+/// codegen can lower intrinsic-bound calls (e.g. `Tc2_Math`'s `LTRUNC`) and
+/// reject declare-only calls. An empty or blank string activates no library.
 fn parse_activated_libraries(
     libraries: &str,
     options: &CompilerOptions,
-) -> Result<Vec<Library>, CompileResult> {
+) -> Result<(Vec<Library>, ironplc_dsl::bindings::LibraryBindings), CompileResult> {
+    let mut bindings = ironplc_dsl::bindings::LibraryBindings::new();
     if libraries.trim().is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), bindings));
     }
 
-    let sources: Vec<String> = serde_json::from_str(libraries).map_err(|e| CompileResult {
-        ok: false,
-        bytecode: None,
-        diagnostics: vec![internal_diagnostic(format!(
-            "Failed to parse library sources: {e}"
-        ))],
-    })?;
+    let payloads: Vec<LibraryPayload> =
+        serde_json::from_str(libraries).map_err(|e| CompileResult {
+            ok: false,
+            bytecode: None,
+            diagnostics: vec![internal_diagnostic(format!(
+                "Failed to parse library sources: {e}"
+            ))],
+        })?;
 
-    let mut parsed = Vec::with_capacity(sources.len());
-    for source in &sources {
-        let file_type = FileType::from_content(source);
-        match parse_source(file_type, source, &FileId::default(), options) {
-            Ok(lib) => parsed.push(lib),
-            Err(diag) => {
-                return Err(CompileResult {
-                    ok: false,
-                    bytecode: None,
-                    diagnostics: vec![diagnostic_info(&diag, source)],
-                });
+    let mut parsed = Vec::with_capacity(payloads.len());
+    for (library_index, payload) in payloads.iter().enumerate() {
+        match payload {
+            LibraryPayload::Source(source) => {
+                parsed.push(parse_library_file(source, FileId::default(), options)?);
+            }
+            LibraryPayload::Package { manifest, files } => {
+                let manifest_file = FileId::from_string("library.toml");
+                let manifest =
+                    ironplc_sources::libraries::manifest::LibraryManifest::from_toml(
+                        manifest,
+                        &manifest_file,
+                    )
+                    .map_err(|diag| CompileResult {
+                        ok: false,
+                        bytecode: None,
+                        diagnostics: vec![diagnostic_info(&diag, "")],
+                    })?;
+
+                if let Some(version_bindings) = manifest.bindings.get(&manifest.default_version)
+                {
+                    for (pou_name, binding) in version_bindings {
+                        bindings.insert(
+                            pou_name,
+                            ironplc_dsl::bindings::BoundPou {
+                                library: manifest.name.clone(),
+                                manifest_file: manifest_file.clone(),
+                                binding: binding.clone(),
+                            },
+                        );
+                    }
+                }
+
+                for (file_index, source) in files.iter().enumerate() {
+                    // A distinct FileId per library file is what lets codegen
+                    // tell library declarations from user source (which
+                    // parses as `FileId::default()`), preserving user
+                    // shadowing of bound names.
+                    let file_id = FileId::from_string(&format!(
+                        "library:{}:{library_index}:{file_index}",
+                        manifest.name
+                    ));
+                    bindings.add_library_file(file_id.clone());
+                    parsed.push(parse_library_file(source, file_id, options)?);
+                }
             }
         }
     }
-    Ok(parsed)
+    Ok((parsed, bindings))
+}
+
+/// Parses one library source file, mapping a parse failure to the error
+/// payload shape.
+fn parse_library_file(
+    source: &str,
+    file_id: FileId,
+    options: &CompilerOptions,
+) -> Result<Library, CompileResult> {
+    let file_type = FileType::from_content(source);
+    parse_source(file_type, source, &file_id, options).map_err(|diag| CompileResult {
+        ok: false,
+        bytecode: None,
+        diagnostics: vec![diagnostic_info(&diag, source)],
+    })
 }
 
 fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> CompileResult {
@@ -630,10 +694,11 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
     // files. They are injected ahead of user source (base stdlib -> library ->
     // user), so a user declaration shadows a library declaration of the same
     // name (`REQ-CL-playground-001`).
-    let compat_libraries = match parse_activated_libraries(libraries, &options) {
-        Ok(libs) => libs,
-        Err(result) => return result,
-    };
+    let (compat_libraries, library_bindings) =
+        match parse_activated_libraries(libraries, &options) {
+            Ok(libs) => libs,
+            Err(result) => return result,
+        };
 
     let library = match parse_source(file_type, source, &FileId::default(), &options) {
         Ok(lib) => lib,
@@ -683,7 +748,7 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
 
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: options.allow_system_uptime_global,
-        ..Default::default()
+        library_bindings,
     };
     let container = match codegen_compile(
         &library,
