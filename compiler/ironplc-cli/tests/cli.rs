@@ -345,6 +345,101 @@ fn check_when_twincat_solution_library_reference_removed_then_pi_undefined(
     Ok(())
 }
 
+/// The contributor scenario behind the `Tc2_Math` library: a real TwinCAT
+/// project layout whose `.plcproj` references `Tc2_Math`, with source calling
+/// `LTRUNC`/`LMOD`/`MODABS`/`FRAC`. Activation comes from the project file
+/// alone (`REQ-CL-sources-001`) — no `--library` flag — and both `check` and
+/// `compile` succeed, so the intrinsic-bound functions work on the paved path.
+#[test]
+fn compile_when_plcproj_references_tc2_math_then_ok() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    std::fs::write(
+        temp.path().join("MAIN.st"),
+        "PROGRAM MAIN
+VAR
+    angle : LREAL := 400.56;
+    wrapped : LREAL;
+    truncated : LREAL;
+    fraction : LREAL;
+END_VAR
+    wrapped := MODABS(angle, 360.0);
+    truncated := LTRUNC(angle);
+    fraction := FRAC(angle);
+END_PROGRAM
+",
+    )?;
+    std::fs::write(
+        temp.path().join("project.plcproj"),
+        r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="MAIN.st" />
+    <PlaceholderReference Include="Tc2_Math">
+      <DefaultResolution>Tc2_Math, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc2_Math</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#,
+    )?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("check").arg(temp.path());
+    cmd.assert().success();
+
+    let output = NamedTempFile::with_suffix(".iplc")?;
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("compile")
+        .arg(temp.path())
+        .arg("--output")
+        .arg(output.path());
+    cmd.assert().success();
+    assert!(output.path().metadata()?.len() > 0);
+
+    Ok(())
+}
+
+/// The check/compile split for a declare-only library function
+/// (`REQ-CL-analyzer-007` vs `REQ-CL-codegen-002` at the CLI level):
+/// `Tc2_Utilities`' `LREAL_TO_FMTSTR` is declared but unimplemented, so
+/// `check` passes — the corpus-check use case — while `compile` of a call
+/// fails with P4046 rather than generating wrong code.
+#[test]
+fn check_passes_but_compile_fails_p4046_when_declare_only_function_called(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut source = NamedTempFile::with_suffix(".st")?;
+    use std::io::Write;
+    write!(
+        source,
+        "PROGRAM main
+VAR
+    s : STRING[255];
+END_VAR
+    s := LREAL_TO_FMTSTR(1.5, 2, TRUE);
+END_PROGRAM
+"
+    )?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("check")
+        .arg("--library")
+        .arg("Tc2_Utilities")
+        .arg(source.path());
+    cmd.assert().success();
+
+    let output = NamedTempFile::with_suffix(".iplc")?;
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("compile")
+        .arg("--library")
+        .arg("Tc2_Utilities")
+        .arg(source.path())
+        .arg("--output")
+        .arg(output.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("P4046").and(predicate::str::contains("LREAL_TO_FMTSTR")));
+
+    Ok(())
+}
+
 #[test]
 fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));

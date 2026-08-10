@@ -3,8 +3,14 @@ vendor = "Beckhoff Automation GmbH"
 default_version = "1.0.0"
 # `PI` mirrors the TwinCAT Tc2_System global constant of the same name. Its
 # value is the mathematical constant pi -- a Tier A, math-dictated fact rather
-# than a copied expression -- authored to LREAL precision. See the authoring
+# than a copied expression -- authored to LREAL precision. `BOOL_TO_STRING`
+# mirrors TwinCAT's implicit BOOL-to-STRING conversion operator ('TRUE' /
+# 'FALSE'); it lives here because ADR-0042 keeps vendor names out of the
+# compiler tables and Tc2_System is the library real TwinCAT projects
+# reference by default (clean-room spec:
+# specs/design/library-interfaces/bool-to-string.md). See the authoring
 # policy at specs/steering/compatibility-library-authoring.md.
 references = [
   "https://infosys.beckhoff.com/english.php?content=../content/1033/tcplclib_tc2_system/31084171.html&id= -- TwinCAT Tc2_System PLC library: PI global constant",
+  "https://infosys.beckhoff.com/content/1033/tcplccontrol/925577611.html -- TwinCAT BOOL_TO conversions: result is 'TRUE' / 'FALSE'",
 ]

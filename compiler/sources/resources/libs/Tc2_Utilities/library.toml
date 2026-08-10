@@ -1,0 +1,16 @@
+name = "Tc2_Utilities"
+vendor = "Beckhoff Automation GmbH"
+default_version = "1.0.0"
+# LREAL_TO_FMTSTR mirrors the *interface* of Beckhoff's TwinCAT Tc2_Utilities
+# function of the same name, authored from the public documentation below per
+# the clean-room spec at specs/design/library-interfaces/tc2-utilities.md. It
+# is declare-only: the surface lands so real projects check cleanly, and a
+# call fails compilation with P4046 until the native formatting
+# implementation arrives. See the authoring policy at
+# specs/steering/compatibility-library-authoring.md.
+references = [
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_utilities/35143691.html -- TwinCAT Tc2_Utilities PLC library: LREAL_TO_FMTSTR",
+]
+
+["1.0.0".bindings]
+LREAL_TO_FMTSTR = "declare-only"

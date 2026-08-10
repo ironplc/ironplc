@@ -8,3 +8,19 @@
 VAR_GLOBAL CONSTANT
     PI : LREAL := 3.1415926535897932384626433832795;
 END_VAR
+
+(* Converts a BOOL to its string representation: 'TRUE' or 'FALSE'. In
+   TwinCAT this is an implicit BOOL_TO_* conversion operator; IronPLC adds
+   no vendor names to its compiler tables (ADR-0042), so it ships here --
+   the library real TwinCAT projects reference by default. Authored from the
+   clean-room spec at specs/design/library-interfaces/bool-to-string.md. *)
+FUNCTION BOOL_TO_STRING : STRING
+VAR_INPUT
+    IN : BOOL;
+END_VAR
+    IF IN THEN
+        BOOL_TO_STRING := 'TRUE';
+    ELSE
+        BOOL_TO_STRING := 'FALSE';
+    END_IF;
+END_FUNCTION

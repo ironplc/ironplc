@@ -1,0 +1,20 @@
+name = "Tc2_Math"
+vendor = "Beckhoff Automation GmbH"
+default_version = "1.0.0"
+# These functions mirror the *interface* of Beckhoff's TwinCAT Tc2_Math
+# library, authored from the public documentation below per the clean-room
+# spec at specs/design/library-interfaces/tc2-math.md. LTRUNC and LMOD have
+# semantics IEC 61131-3 source cannot express (LREAL-preserving truncation,
+# floating modulo), so they bind to unnamed VM builtins; MODABS and FRAC are
+# Tier A math-dictated ST compositions of them. See the authoring policy at
+# specs/steering/compatibility-library-authoring.md.
+references = [
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68446347.html -- TwinCAT Tc2_Math PLC library: LTRUNC",
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68444811.html -- TwinCAT Tc2_Math PLC library: LMOD",
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68447883.html -- TwinCAT Tc2_Math PLC library: MODABS",
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68443275.html -- TwinCAT Tc2_Math PLC library: FRAC",
+]
+
+["1.0.0".bindings]
+LTRUNC = { intrinsic = "trunc_lreal" }
+LMOD = { intrinsic = "fmod_lreal" }

@@ -20,6 +20,7 @@ ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 [dev-dependencies]
 ironplc-analyzer = { path = "../analyzer", version = "0.234.0" }
 ironplc-parser = { path = "../parser", version = "0.234.0" }
+ironplc-sources = { path = "../sources", version = "0.234.0" }
 ironplc-vm = { path = "../vm", version = "0.234.0", features = ["test-support"] }
 spec_test_macro = { path = "../spec_test_macro" }
 proptest = "1"
