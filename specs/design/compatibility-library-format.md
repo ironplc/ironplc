@@ -69,8 +69,57 @@ references = [
 ## Declarations
 
 Declarations are IEC 61131-3 Structured Text in the `.st` files under a version's
-subdirectory. In the first increment every declaration is fully defined ST — for
-`Tc2_System`, `PI` is a `VAR_GLOBAL CONSTANT`.
+subdirectory. By default every declaration is fully defined ST — for
+`Tc2_System`, `PI` is a `VAR_GLOBAL CONSTANT` — and a POU's ST body is its
+implementation. A POU whose implementation is *not* an ordinary ST body is
+declared the same way but marked in the manifest's *Bindings* table (below).
+
+## Bindings
+
+A **binding** maps a POU in a specific version to a non-default
+implementation. Bindings exist for the two cases
+[ADR-0042](../adrs/0042-library-functions-over-compiler-intrinsics.md)
+carves out of the ST-body default: semantics that cannot be expressed in IEC
+61131-3 source (backed by an *unnamed* native VM builtin), and declarations
+whose implementation has not landed yet (*declare-only*).
+
+**REQ-LF-sources-005** A manifest may carry a per-version bindings table,
+keyed by the version, mapping a POU name to a binding. The version key must
+be quoted — `["1.0.0".bindings]`; the unquoted form `[1.0.0.bindings]` is
+three nested TOML tables and is rejected. A binding value is one of exactly
+two forms:
+
+- `{ intrinsic = "<name>" }` — calls to the POU lower to the named native VM
+  builtin. The name is an internal compiler/VM identifier, not a callable
+  name: the builtin adds no name to any scope, and the library is the only
+  way to reach it (ADR-0042 rule 3).
+- `"declare-only"` — the POU's declared signature exists so the library's
+  surface can land ahead of its implementation; *calling* the POU is a
+  compile error (see
+  [Compatibility Libraries](compatibility-libraries.md) *fail-if-unimplemented*).
+
+```toml
+["1.0.0".bindings]
+LTRUNC = { intrinsic = "trunc_lreal" }
+LMOD   = { intrinsic = "fmod_lreal" }
+```
+
+**REQ-LF-sources-006** A malformed bindings entry — a version key whose
+value is not a table, a `bindings` value that is not a table, a binding
+value that is neither the `intrinsic` inline-table form nor the string
+`"declare-only"`, or an unquoted dotted version key producing nested tables
+— is rejected with `P6010` anchored on the manifest file. Shape validation
+covers **every** version table in the manifest, not only the
+`default_version`, so the unquoted-key mistake cannot hide in an inactive
+version.
+
+**REQ-LF-sources-007** A bound or declare-only POU still appears in its
+version's `.st` files with its full interface (name, parameters, return
+type) and a body of exactly `;` (an empty statement). The declaration is
+what makes `check` and type resolution work unchanged; the `;` body is
+never the implementation — codegen either lowers calls to the bound builtin
+or rejects calls to a declare-only POU (see
+[Compatibility Libraries](compatibility-libraries.md)).
 
 ## Versioning
 
@@ -97,14 +146,6 @@ symlinks the executables onto the `PATH` (`current_exe()` resolves the symlink
 back to `libexec`, so the loader finds the libraries beside the real binary).
 The discovery/search mechanism beyond this fixed location is **not part of this
 format** and is defined separately when needed.
-
-## Future
-
-- **Bindings.** A per-version table keyed by the version — e.g.
-  `[1.0.0.bindings]` — mapping a POU to a non-default implementation (a VM
-  intrinsic, or declare-only). The fail-if-unimplemented rule (a call to a
-  declare-only POU is a compile error) arrives with bindings; see
-  [Compatibility Libraries](compatibility-libraries.md).
 
 ## References
 

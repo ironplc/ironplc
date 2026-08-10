@@ -77,10 +77,9 @@ reproduce. This is a safety requirement, not a convenience one. Concretely:
   into something with undefined behavior; the failure mode is fixed — "does not
   compile," never "compiles and misbehaves."
 
-The first increment ships only constants (`Tc2_System`'s `PI`), so there are no
-callable library POUs that could be unimplemented. The concrete enforcement — a
-call to a declare-only POU is a compile error — arrives with *bindings* (see
-*Future Goals*).
+The concrete enforcement is the **fail-if-unimplemented rule**: a call to a
+declare-only library POU is a dedicated compile error (`P4046`), never
+silently-wrong codegen and never a runtime trap (see *Bodies and bindings*).
 
 ## Goals
 
@@ -118,9 +117,6 @@ call to a declare-only POU is a compile error — arrives with *bindings* (see
   authoring*).
 - Collision resolution between simultaneously-active libraries — deferred (see
   *Future Goals*).
-- Bindings, non-ST implementations (VM intrinsics), and the declare-only state —
-  deferred with the bindings mechanism (see *Future Goals*). The first increment
-  ships only fully-defined ST.
 
 ## Current State
 
@@ -281,20 +277,45 @@ records its references — is a conformance test; whether the references are hon
 and complete is confirmed at review. The test checks the record's *shape*; the
 reviewer checks its *truth*.
 
-### Bodies (first increment) and the future bindings mechanism
+### Bodies and bindings
 
-The first increment ships only fully-defined ST — for `Tc2_System`, `PI` as a
-`VAR_GLOBAL CONSTANT`. There is no partial/declare-only state and no non-ST
+The default implementation medium is fully-defined ST — for `Tc2_System`,
+`PI` as a `VAR_GLOBAL CONSTANT`; for a function like `BOOL_TO_STRING`, an
+ordinary ST body compiled like user code. Per
+[ADR-0042](../adrs/0042-library-functions-over-compiler-intrinsics.md), ST
+is also the preferred medium: a library function gets a non-ST
+implementation only when its semantics cannot be expressed in IEC 61131-3
+source.
+
+For those cases the manifest carries **bindings** (a per-version table; the
+on-disk shape and its `REQ-LF-sources-005..007` requirements are specified
+in [Compatibility Library Format §Bindings](compatibility-library-format.md)).
+A binding maps a POU to a **VM intrinsic** — an *unnamed* native builtin
+reached exclusively through the binding, adding no name to any scope — or
+marks it **declare-only** so a library's surface can land ahead of its
 implementation.
 
-A later increment adds **bindings** (a per-version manifest table; see
-[Compatibility Library Format §Future](compatibility-library-format.md)) so a POU
-can map to a **VM intrinsic** — for native functions like `Tc2_Math` numerics,
-where we *desire* the same numeric behavior as the vendor (feasibility TBD) — or
-be **declare-only**. Per *Safety first*, once that exists a *call* to a
-declare-only POU is a **compile error** (a dedicated problem code, not a runtime
-trap), so a large library's surface can land ahead of its bodies without letting
-an unimplemented function reach execution.
+The analyzer never sees bindings: a bound or declare-only POU's `.st`
+declaration carries its full interface, so `check` and type resolution work
+unchanged. Codegen consumes them:
+
+- **REQ-CL-codegen-001** A call to a library POU bound to an intrinsic
+  compiles to the bound native builtin invocation (`BUILTIN func_id` per
+  [ADR-0008](../adrs/0008-unified-builtin-opcode.md)), not to a call of the
+  POU's (empty) ST body; the empty body of a bound library POU is never
+  compiled.
+- **REQ-CL-codegen-002** Per *Safety first*, a *call* to a declare-only
+  library POU fails compilation with the dedicated diagnostic `P4046`
+  (`LibraryFunctionNotImplemented`), naming the library and POU — never
+  silently-wrong codegen, never a runtime trap.
+- **REQ-CL-analyzer-007** A program that *calls* a declare-only library POU
+  still passes `check` (semantic analysis) cleanly: the declaration
+  resolves and type-checks like any other, so the surface of a partially
+  implemented library is usable for corpus checking ahead of its bodies.
+
+User shadowing is preserved (**REQ-CL-analyzer-004**): a user-defined POU
+with the same name as a bound library POU compiles as the user's function —
+binding lowering applies only to the library's own declaration.
 
 ### Referenced-but-unshipped libraries
 
@@ -378,11 +399,6 @@ distribution mechanism, out of scope here.
   diagnostic on genuine ambiguity), faithfully reproducing the host's behavior.
   The `FLOOR`-override case above depends on this.
 - **Cross-library / cross-vendor mixing** as a supported configuration.
-- **Bindings** — a per-version manifest table (see
-  [Compatibility Library Format §Future](compatibility-library-format.md)) mapping
-  a POU to a **VM intrinsic** or **declare-only**, plus the fail-if-unimplemented
-  rule (a call to a declare-only POU is a compile error). Omitted from the first
-  increment, which ships only fully-defined ST.
 - **Accept source-written namespace qualifiers** (`Tc2_Standard.TON`), mapping the
   qualifier to its library. Needed only if some library requires the qualified
   form; no known Tier A/B library does.
@@ -412,7 +428,7 @@ Prior open questions are now decided:
 
 - **Manifest format** and installation — specified in
   [Compatibility Library Format](compatibility-library-format.md). The
-  **fail-if-unimplemented rule** — *Bodies and the fail-if-unimplemented rule*.
+  **fail-if-unimplemented rule** — *Bodies and bindings*.
 - **Provenance** — the manifest records the public references used; the reviewer
   and clean-room spec are recorded by git history, not manifest fields
   (*Licensing, provenance, and clean-room authoring*).
