@@ -499,6 +499,74 @@ mod test {
         );
     }
 
+    const BOOL_TO_STRING_PROGRAM: &str =
+        "PROGRAM main VAR s : STRING; END_VAR s := BOOL_TO_STRING(TRUE); END_PROGRAM";
+
+    /// Implicit activation (`REQ-CL-sources-008`): a `.plcproj` with **no**
+    /// library references still activates the implicit `Tc2_BuiltIns`, so
+    /// `BOOL_TO_STRING` resolves -- mirroring TwinCAT, where the built-in
+    /// conversion operators exist in every project.
+    #[test]
+    fn semantic_when_plcproj_has_no_references_then_bool_to_string_resolves() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), BOOL_TO_STRING_PROGRAM).unwrap();
+        fs::write(
+            dir.path().join("proj.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="main.st" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let mut project = FileBackedProject::with_options(library_options());
+        let errors = project.initialize(dir.path());
+        assert!(errors.is_empty(), "unexpected discovery errors: {errors:?}");
+
+        let result = project.semantic();
+        assert!(
+            result.is_ok(),
+            "expected clean analysis, got: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn semantic_when_bare_source_then_bool_to_string_undefined() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.add_source(
+            FileId::from_string("main.st"),
+            BOOL_TO_STRING_PROGRAM.to_owned(),
+        );
+
+        // Dormant by default: no project context, no implicit activation.
+        let result = project.semantic();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn semantic_when_tc2_builtins_activated_explicitly_then_bool_to_string_resolves() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec![LibraryName::from("Tc2_BuiltIns")]);
+        project.add_source(
+            FileId::from_string("main.st"),
+            BOOL_TO_STRING_PROGRAM.to_owned(),
+        );
+
+        // The CLI `--library Tc2_BuiltIns` path: explicit activation works for
+        // source with no project context.
+        let result = project.semantic();
+        assert!(
+            result.is_ok(),
+            "expected clean analysis, got: {:?}",
+            result.err()
+        );
+    }
+
     #[test]
     fn semantic_when_unshipped_library_activated_then_diagnostic() {
         let mut project = MemoryBackedProject::new(library_options());

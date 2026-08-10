@@ -169,6 +169,29 @@ impl LibraryRegistry {
         names
     }
 
+    /// Every bundled library whose manifest marks it implicit
+    /// (`REQ-LF-sources-008`): the vendor environment provides it to every
+    /// project without a reference, so it activates automatically when a
+    /// TwinCAT project is discovered (`REQ-CL-sources-008`).
+    ///
+    /// Reads manifests only (no `.st` parsing). A manifest that fails to parse
+    /// contributes nothing here — it is diagnosed by `load` when activation
+    /// reaches it, and bundled manifests are kept valid by the provenance
+    /// conformance test.
+    pub fn implicit_library_names(&self) -> Vec<LibraryName> {
+        self.library_names()
+            .into_iter()
+            .filter(|name| {
+                let manifest_path = self.manifest_path(name);
+                let file_id = FileId::from_path(&manifest_path);
+                fs::read_to_string(&manifest_path)
+                    .ok()
+                    .and_then(|content| LibraryManifest::from_toml(&content, &file_id).ok())
+                    .is_some_and(|manifest| manifest.implicit)
+            })
+            .collect()
+    }
+
     fn manifest_path(&self, name: &LibraryName) -> PathBuf {
         self.root.join(name.as_str()).join("library.toml")
     }
@@ -368,6 +391,31 @@ mod tests {
         let registry = LibraryRegistry::bundled();
         assert!(registry.contains(&LibraryName::from("Tc2_System")));
         assert!(!registry.contains(&LibraryName::from("DoesNotExist")));
+    }
+
+    #[test]
+    fn implicit_library_names_when_bundled_then_contains_tc2_builtins() {
+        let registry = LibraryRegistry::bundled();
+        let implicit = registry.implicit_library_names();
+        assert!(implicit.contains(&LibraryName::from("Tc2_BuiltIns")));
+        // Tc2_System is reference-activated, never implicit.
+        assert!(!implicit.contains(&LibraryName::from("Tc2_System")));
+    }
+
+    #[test]
+    fn implicit_library_names_when_no_manifest_flag_then_empty() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let version_dir = dir.path().join("Plain").join("1.0.0");
+        fs::create_dir_all(&version_dir).unwrap();
+        fs::write(
+            dir.path().join("Plain").join("library.toml"),
+            "name = \"Plain\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n",
+        )
+        .unwrap();
+        fs::write(version_dir.join("Plain.st"), "").unwrap();
+
+        let registry = LibraryRegistry::with_root(dir.path());
+        assert!(registry.implicit_library_names().is_empty());
     }
 
     #[test]

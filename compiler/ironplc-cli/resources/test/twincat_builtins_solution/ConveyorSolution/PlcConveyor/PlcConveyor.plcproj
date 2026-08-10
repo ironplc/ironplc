@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <FileVersion>1.0.0.0</FileVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{6e1f3ac9-5b72-4d0e-8b4f-9c2a7d51e8c3}</ProjectGuid>
+    <SubObjectsSortedByName>True</SubObjectsSortedByName>
+    <DownloadApplicationInfo>true</DownloadApplicationInfo>
+    <DefaultNamespace>PlcConveyor</DefaultNamespace>
+    <Name>PlcConveyor</Name>
+    <ProgramVersion>3.1.4024.0</ProgramVersion>
+    <Application>{5d8a1c37-92b4-4f6e-a1d0-3b7f28c9e6a4}</Application>
+    <TypeSystem>{b93c47f1-8e25-4d9a-b7c6-1f0e5a82d4b9}</TypeSystem>
+    <Implicit_Task_Info>{7a4e92d5-1c68-4b3f-9e07-6d2b8f31c5a0}</Implicit_Task_Info>
+    <Implicit_KindOfTask>{2f8b63a9-4d17-4e82-b5c3-9a06e74d1f28}</Implicit_KindOfTask>
+    <Implicit_Jitter_Distribution>{c61d84b7-3f92-4a05-8d1e-b42f96c7a3d5}</Implicit_Jitter_Distribution>
+    <LibraryReferences>{9e35a71c-6b48-4f20-a8d9-5c13f82e6b74}</LibraryReferences>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="POUs\MAIN.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <ProjectExtensions>
+    <PlcProjectOptions>
+      <XmlArchive>
+        <Data/>
+        <TypeList/>
+      </XmlArchive>
+    </PlcProjectOptions>
+  </ProjectExtensions>
+</Project>
