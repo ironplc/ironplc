@@ -1211,6 +1211,22 @@ pub mod builtin {
     /// Pushes -1 (left < right), 0 (equal), or +1 (left > right) as i32.
     pub const CMP_STR: u16 = 0x03A2;
 
+    /// Resolves a manifest `intrinsic` binding name to its func_id.
+    ///
+    /// This is the single name→func_id table for library-bound builtins
+    /// (ADR-0042 rule 3): `sources` validates manifest names against it and
+    /// codegen lowers bound calls through it. The names are internal
+    /// compiler/VM identifiers, never callable names in any scope. Returns
+    /// `None` for unknown names, which codegen treats as a packaging error
+    /// in the library.
+    pub fn intrinsic_func_id(name: &str) -> Option<u16> {
+        match name {
+            "sqrt_lreal" => Some(SQRT_F64),
+            "abs_lreal" => Some(ABS_F64),
+            _ => None,
+        }
+    }
+
     // =========================================================================
     // MUX (multiplexer) range-based opcodes
     //
@@ -1352,5 +1368,24 @@ mod tests {
     #[should_panic(expected = "unknown builtin function ID")]
     fn arg_count_when_unknown_function_id_then_panics() {
         let _ = builtin::arg_count(0xFFFF);
+    }
+
+    #[test]
+    fn intrinsic_func_id_when_known_name_then_resolves() {
+        assert_eq!(
+            builtin::intrinsic_func_id("sqrt_lreal"),
+            Some(builtin::SQRT_F64)
+        );
+        assert_eq!(
+            builtin::intrinsic_func_id("abs_lreal"),
+            Some(builtin::ABS_F64)
+        );
+    }
+
+    #[test]
+    fn intrinsic_func_id_when_unknown_name_then_none() {
+        assert_eq!(builtin::intrinsic_func_id("no_such_builtin"), None);
+        // Uppercase POU names are not intrinsic names.
+        assert_eq!(builtin::intrinsic_func_id("MY_SQRT"), None);
     }
 }
