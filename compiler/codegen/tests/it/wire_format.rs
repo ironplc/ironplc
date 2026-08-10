@@ -215,6 +215,23 @@ fn opcode_constants_when_builtin_then_pinned_byte() {
 }
 
 #[test]
+fn builtin_func_ids_when_library_bound_builtins_then_pinned_values() {
+    // Library-bound (unnamed) builtins are permanent compiler/VM ABI:
+    // manifests reach them via `intrinsic_func_id`, so both the id values
+    // and the binding names are wire-format commitments.
+    assert_eq!(opcode::builtin::TRUNC_F64, 0x03A3);
+    assert_eq!(opcode::builtin::MOD_F64, 0x03A4);
+    assert_eq!(
+        opcode::builtin::intrinsic_func_id("trunc_lreal"),
+        Some(0x03A3)
+    );
+    assert_eq!(
+        opcode::builtin::intrinsic_func_id("fmod_lreal"),
+        Some(0x03A4)
+    );
+}
+
+#[test]
 fn opcode_constants_when_fb_family_then_pinned_bytes() {
     assert_eq!(opcode::FB_LOAD_INSTANCE, 0x98);
     assert_eq!(opcode::FB_STORE_PARAM, 0x9C);
