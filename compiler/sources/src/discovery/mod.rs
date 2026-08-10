@@ -41,12 +41,16 @@ pub struct DiscoveredProject {
     pub root_dir: PathBuf,
     /// The source files to load, in deterministic order
     pub files: Vec<PathBuf>,
-    /// The compatibility libraries the project declares it references, in
-    /// declaration order and deduplicated by name. Read from a `.plcproj`'s
+    /// The compatibility libraries the project references, in declaration
+    /// order and deduplicated by name. Read from a `.plcproj`'s
     /// `<PlaceholderReference>` / `<LibraryReference>` elements
     /// (`REQ-CL-sources-001`); system libraries (`<SystemLibrary>true`) are
-    /// skipped. Empty for project types that carry no library references.
-    /// Callers resolve these against the bundled registry
+    /// skipped. For a TwinCAT project this also carries the implicit
+    /// [`TWINCAT_BUILTINS_LIBRARY`] reference -- TwinCAT's built-in operator
+    /// surface belongs to no library there, so no real `.plcproj` declares
+    /// it, yet it is unconditionally available in the environment the
+    /// `.plcproj` targets. Empty for project types that carry no library
+    /// references. Callers resolve these against the bundled registry
     /// ([`crate::libraries::LibraryRegistry::resolve_references`]) to decide
     /// which libraries to activate.
     pub library_references: Vec<LibraryReference>,
@@ -60,6 +64,25 @@ pub struct DiscoveredProject {
     /// behavior of e.g. MSBuild's `CS2001`).
     pub errors: Vec<Diagnostic>,
 }
+
+/// The bundled library mirroring TwinCAT's built-in operator surface --
+/// implicit conversion operators such as `BOOL_TO_STRING` that TwinCAT's
+/// compiler always has in scope and that belong to no vendor library there.
+///
+/// IronPLC does not add vendor names to its compiler tables (ADR-0042 rule
+/// 1), so these operator-surface names ship in the `Tc2_BuiltIns`
+/// compatibility library instead. Because the operators are unconditionally
+/// available in the environment a `.plcproj` targets, discovering a
+/// `.plcproj` activates this library implicitly -- that preserves the
+/// portability promise in both directions: TwinCAT code using
+/// `BOOL_TO_STRING` compiles in IronPLC unchanged, and code that compiles in
+/// IronPLC against a TwinCAT project works in TwinCAT. This is not
+/// source-sniffing: the `.plcproj` itself is the project's explicit statement
+/// of the TwinCAT target (the "never sniff, never guess" rule in
+/// `specs/design/compatibility-libraries.md` forbids inferring a library from
+/// POU *source content*, `REQ-CL-sources-005`). Bare directories of `.st`
+/// files and Beremiz projects never get this implicit reference.
+pub const TWINCAT_BUILTINS_LIBRARY: &str = "Tc2_BuiltIns";
 
 /// Discover the project structure in a directory.
 ///
@@ -254,6 +277,23 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
             }
         }
         merged_errors.extend(project.errors);
+    }
+
+    // The `.plcproj` is the project's explicit statement of the TwinCAT
+    // target, and TwinCAT's built-in operators (e.g. BOOL_TO_STRING) are
+    // unconditionally in scope in that environment without any library
+    // reference -- so every discovered TwinCAT project implicitly references
+    // the bundled library that mirrors them (see TWINCAT_BUILTINS_LIBRARY).
+    // Guarded by the same dedup set as declared references, so a (never
+    // observed in practice) explicit reference to the same name wins.
+    let builtins = LibraryName::from(TWINCAT_BUILTINS_LIBRARY);
+    if seen_libraries.insert(builtins.clone()) {
+        merged_library_references.push(LibraryReference {
+            name: builtins,
+            version: None,
+            namespace: None,
+            declared_in: FileId::from_path(&plcproj_paths[0]),
+        });
     }
 
     Some(Ok(DiscoveredProject {
@@ -649,7 +689,9 @@ mod tests {
 
         let result = discover(dir.path()).unwrap();
 
-        assert_eq!(result.library_references.len(), 2);
+        // Declared references first (in declaration order), then the implicit
+        // built-in operator-surface reference every TwinCAT project gets.
+        assert_eq!(result.library_references.len(), 3);
         assert_eq!(result.library_references[0].name.as_str(), "Tc2_System");
         assert_eq!(result.library_references[0].version.as_deref(), Some("*"));
         assert_eq!(
@@ -660,6 +702,10 @@ mod tests {
         assert_eq!(
             result.library_references[1].version.as_deref(),
             Some("3.3.7.0")
+        );
+        assert_eq!(
+            result.library_references[2].name.as_str(),
+            TWINCAT_BUILTINS_LIBRARY
         );
     }
 
@@ -679,7 +725,18 @@ mod tests {
         .unwrap();
 
         let result = discover(dir.path()).unwrap();
-        assert!(result.library_references.is_empty());
+
+        // The skipped system library contributes nothing; only the implicit
+        // TwinCAT built-in operator-surface reference remains.
+        assert!(!result
+            .library_references
+            .iter()
+            .any(|reference| reference.name.as_str() == "VisuElems"));
+        assert_eq!(result.library_references.len(), 1);
+        assert_eq!(
+            result.library_references[0].name.as_str(),
+            TWINCAT_BUILTINS_LIBRARY
+        );
     }
 
     #[test]
@@ -719,8 +776,70 @@ mod tests {
         .unwrap();
 
         let result = discover(dir.path()).unwrap();
-        assert_eq!(result.library_references.len(), 1);
+
+        // Tc2_System deduplicated across the two sub-projects, plus the
+        // implicit TwinCAT built-in operator-surface reference.
+        assert_eq!(result.library_references.len(), 2);
         assert_eq!(result.library_references[0].name.as_str(), "Tc2_System");
+        assert_eq!(
+            result.library_references[1].name.as_str(),
+            TWINCAT_BUILTINS_LIBRARY
+        );
+    }
+
+    // -- Implicit Tc2_BuiltIns activation on .plcproj discovery --
+
+    #[test]
+    fn discover_when_plcproj_has_no_library_references_then_implicit_tc2_builtins() {
+        // No real .plcproj ever references Tc2_BuiltIns -- TwinCAT's built-in
+        // operators belong to no library there -- yet discovering the
+        // .plcproj (the explicit statement of the TwinCAT target) implies it.
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.library_references.len(), 1);
+        assert_eq!(
+            result.library_references[0].name.as_str(),
+            TWINCAT_BUILTINS_LIBRARY
+        );
+    }
+
+    #[test]
+    fn discover_when_beremiz_project_then_no_implicit_tc2_builtins() {
+        // The implicit reference is a statement about the TwinCAT
+        // environment; a Beremiz project makes no such statement.
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("plc.xml"), "<project/>").unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::Beremiz);
+        assert!(result.library_references.is_empty());
+    }
+
+    #[test]
+    fn discover_when_bare_st_directory_then_no_implicit_tc2_builtins() {
+        // A bare directory of .st files has no project context at all, so
+        // nothing is activated (libraries stay dormant, REQ-CL-analyzer-001).
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), "PROGRAM Main END_PROGRAM").unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::Unstructured);
+        assert!(result.library_references.is_empty());
     }
 
     #[test]

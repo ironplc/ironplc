@@ -84,6 +84,7 @@ mod end_to_end_insert;
 mod end_to_end_ldate;
 mod end_to_end_left;
 mod end_to_end_len;
+mod end_to_end_library_tc2_builtins;
 mod end_to_end_limit;
 mod end_to_end_limit_float;
 mod end_to_end_limit_lint;

@@ -363,11 +363,37 @@ mod tests {
         })
     }
 
+    /// Whether the library declares a FUNCTION with the given name.
+    fn library_declares_function(library: &Library, name: &str) -> bool {
+        library.elements.iter().any(|element| {
+            matches!(element, LibraryElementKind::FunctionDeclaration(function)
+                if function.name.original() == name)
+        })
+    }
+
     #[test]
     fn bundled_registry_contains_tc2_system() {
         let registry = LibraryRegistry::bundled();
         assert!(registry.contains(&LibraryName::from("Tc2_System")));
         assert!(!registry.contains(&LibraryName::from("DoesNotExist")));
+    }
+
+    #[test]
+    fn bundled_registry_contains_tc2_builtins() {
+        let registry = LibraryRegistry::bundled();
+        assert!(registry.contains(&LibraryName::from("Tc2_BuiltIns")));
+    }
+
+    #[test]
+    fn load_when_tc2_builtins_then_provides_bool_to_string() {
+        let registry = LibraryRegistry::bundled();
+        let loaded = registry.load(&LibraryName::from("Tc2_BuiltIns")).unwrap();
+        assert_eq!(loaded.manifest.name, "Tc2_BuiltIns");
+        assert_eq!(loaded.manifest.default_version, "1.0.0");
+        assert!(
+            library_declares_function(&loaded.library, "BOOL_TO_STRING"),
+            "Tc2_BuiltIns must declare the function BOOL_TO_STRING"
+        );
     }
 
     #[test]

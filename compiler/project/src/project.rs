@@ -499,6 +499,72 @@ mod test {
         );
     }
 
+    // -----------------------------------------------------------------
+    // Implicit Tc2_BuiltIns activation for TwinCAT projects.
+    //
+    // TwinCAT's built-in conversion operators (e.g. BOOL_TO_STRING) are
+    // always in scope there and belong to no library, so no real .plcproj
+    // references them -- discovering the .plcproj itself (the explicit
+    // statement of the TwinCAT target) activates the bundled Tc2_BuiltIns
+    // library that mirrors them.
+    // -----------------------------------------------------------------
+
+    const BOOL_TO_STRING_PROGRAM: &str = "FUNCTION_BLOCK FB_Report VAR flag : BOOL; s : STRING; END_VAR s := BOOL_TO_STRING(flag); END_FUNCTION_BLOCK";
+
+    #[test]
+    fn semantic_when_plcproj_discovered_then_tc2_builtins_auto_activates() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), BOOL_TO_STRING_PROGRAM).unwrap();
+        // Note: NO library reference of any kind in the .plcproj.
+        fs::write(
+            dir.path().join("proj.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="main.st" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let mut project = FileBackedProject::default();
+        let errors = project.initialize(dir.path());
+        assert!(errors.is_empty(), "unexpected discovery errors: {errors:?}");
+
+        // The .plcproj's presence alone activated Tc2_BuiltIns, so
+        // BOOL_TO_STRING resolves.
+        let result = project.semantic();
+        assert!(
+            result.is_ok(),
+            "expected clean analysis, got: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn semantic_when_bare_st_directory_then_bool_to_string_dormant() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Negative control: the identical source without a .plcproj makes no
+        // statement of a TwinCAT target, so Tc2_BuiltIns stays dormant and
+        // BOOL_TO_STRING does not resolve.
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), BOOL_TO_STRING_PROGRAM).unwrap();
+
+        let mut project = FileBackedProject::default();
+        let errors = project.initialize(dir.path());
+        assert!(errors.is_empty(), "unexpected discovery errors: {errors:?}");
+
+        let result = project.semantic();
+        assert!(
+            result.is_err(),
+            "BOOL_TO_STRING must not resolve without activation"
+        );
+    }
+
     #[test]
     fn semantic_when_unshipped_library_activated_then_diagnostic() {
         let mut project = MemoryBackedProject::new(library_options());

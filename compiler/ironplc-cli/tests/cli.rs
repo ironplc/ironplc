@@ -345,6 +345,106 @@ fn check_when_twincat_solution_library_reference_removed_then_pi_undefined(
     Ok(())
 }
 
+/// A source using TwinCAT's built-in `BOOL_TO_STRING` conversion operator,
+/// which IronPLC serves from the bundled `Tc2_BuiltIns` library (never from
+/// the compiler tables — ADR-0042 rule 1).
+const BOOL_TO_STRING_SOURCE: &str = "PROGRAM main
+VAR
+    flag : BOOL;
+    s : STRING;
+END_VAR
+    s := BOOL_TO_STRING(flag);
+END_PROGRAM
+";
+
+/// Discovering a `.plcproj` — the project's explicit statement of the TwinCAT
+/// target — auto-activates `Tc2_BuiltIns`, even though the `.plcproj` carries
+/// no library reference at all (in TwinCAT the built-in operators belong to
+/// no library, so there is nothing to reference).
+#[test]
+fn check_when_plcproj_discovered_then_tc2_builtins_auto_activates(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    std::fs::write(dir.path().join("main.st"), BOOL_TO_STRING_SOURCE)?;
+    std::fs::write(
+        dir.path().join("project.plcproj"),
+        r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="main.st" />
+  </ItemGroup>
+</Project>"#,
+    )?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("check").arg(dir.path());
+    cmd.assert().success().stdout(predicate::str::is_empty());
+
+    Ok(())
+}
+
+/// Negative control: the identical source compiled as a bare `.st` file (no
+/// `.plcproj`, no `--library`) fails — `Tc2_BuiltIns` is dormant by default,
+/// so `BOOL_TO_STRING` does not resolve. This proves the test above passes
+/// *because of* the `.plcproj` discovery, not because `BOOL_TO_STRING` is a
+/// compiler builtin.
+#[test]
+fn check_when_bare_st_file_then_bool_to_string_dormant() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let source = dir.path().join("main.st");
+    std::fs::write(&source, BOOL_TO_STRING_SOURCE)?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("check").arg(&source);
+    // P4017: FunctionCallUndeclared -- BOOL_TO_STRING is not in scope.
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("P4017"));
+
+    Ok(())
+}
+
+/// Explicit activation for source with no project context: `--library
+/// Tc2_BuiltIns` brings the operator surface into scope for `check`.
+#[test]
+fn check_when_library_flag_tc2_builtins_then_ok() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let source = dir.path().join("main.st");
+    std::fs::write(&source, BOOL_TO_STRING_SOURCE)?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("check")
+        .arg("--library")
+        .arg("Tc2_BuiltIns")
+        .arg(&source);
+    cmd.assert().success().stdout(predicate::str::is_empty());
+
+    Ok(())
+}
+
+/// Explicit activation also carries through `compile`: the library's ST body
+/// is compiled like user code into the output container.
+#[test]
+fn compile_when_library_flag_tc2_builtins_then_creates_output(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let source = dir.path().join("main.st");
+    std::fs::write(&source, BOOL_TO_STRING_SOURCE)?;
+    let output = NamedTempFile::new()?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+    cmd.arg("compile")
+        .arg("--library")
+        .arg("Tc2_BuiltIns")
+        .arg(&source)
+        .arg("--output")
+        .arg(output.path());
+    cmd.assert().success().stdout(predicate::str::is_empty());
+
+    assert!(output.path().metadata()?.len() > 0);
+
+    Ok(())
+}
+
 #[test]
 fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));

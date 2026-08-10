@@ -1,0 +1,18 @@
+name = "Tc2_BuiltIns"
+vendor = "Beckhoff Automation GmbH"
+default_version = "1.0.0"
+# This library mirrors TwinCAT's *built-in* operator surface: implicit
+# conversion operators such as BOOL_TO_STRING that are always in scope in a
+# TwinCAT project and belong to no vendor library there. IronPLC does not add
+# vendor names to its compiler tables (ADR-0042 rule 1), so these
+# operator-surface names ship here as ordinary library ST instead. Because the
+# operators are unconditionally available in the environment a `.plcproj`
+# targets, discovering a `.plcproj` auto-activates this library; it can also
+# be activated explicitly via `--library Tc2_BuiltIns`. The `vendor` field is
+# nominative (whose interface this mirrors), not a claim of affiliation. See
+# specs/steering/compatibility-library-authoring.md and
+# specs/design/library-interfaces/bool-to-string.md.
+references = [
+  "https://infosys.beckhoff.com/content/1033/tcplccontrol/925577611.html -- BOOL_TO conversions (result is 'TRUE' / 'FALSE')",
+  "https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529047435.html -- Boolean conversion (TwinCAT 3)",
+]
