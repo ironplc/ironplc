@@ -1,9 +1,10 @@
 name: Library Installer E2E
 # Extended end-to-end test for the compatibility-library installers. Installs the
 # published compiler with the real OS installer (tarball + install.sh on Unix, the
-# NSIS installer on Windows) and compiles a program that depends on the bundled
-# Tc2_System library. This verifies the installer ships resources/libs beside the
-# binary and the compiler resolves library symbols from the installed location.
+# NSIS installer on Windows) and compiles programs that depend on the bundled
+# Tc2_System and Tc2_BuiltIns libraries. This verifies the installer ships
+# resources/libs beside the binary and the compiler resolves library symbols
+# from the installed location.
 #
 # The installers place files differently per OS, so this runs on Linux, macOS, and
 # Windows. The bulk of the test lives in the `library-e2e` justfile recipe, so a
@@ -18,14 +19,14 @@ on:
       compiler-version:
         required: true
         type: string
-        description: 'Bare release version to test, without the "v" prefix (e.g. 0.234.0). Must be a release that ships the compatibility libraries.'
+        description: 'Bare release version to test, without the "v" prefix (e.g. 0.234.0). Must be a release that ships both bundled compatibility libraries (Tc2_System and Tc2_BuiltIns).'
   # Allow running manually against any branch from the Actions tab.
   workflow_dispatch:
     inputs:
       compiler-version:
         required: true
         type: string
-        description: 'Bare release version to test, without the "v" prefix (e.g. 0.234.0). Must be a release that ships the compatibility libraries.'
+        description: 'Bare release version to test, without the "v" prefix (e.g. 0.234.0). Must be a release that ships both bundled compatibility libraries (Tc2_System and Tc2_BuiltIns).'
 
 permissions:
   contents: read
