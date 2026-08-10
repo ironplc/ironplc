@@ -187,7 +187,7 @@ fn sources_spec_req_cl_006_explicit_activation_activates_library() {
     );
     assert_eq!(libraries.len(), 1);
     assert!(
-        declares_pi(&libraries[0]),
+        declares_pi(&libraries[0].library),
         "activated Tc2_System must provide the global constant PI"
     );
 }

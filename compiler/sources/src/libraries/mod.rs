@@ -16,6 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use ironplc_dsl::bindings::{BoundPou, LibraryBindings};
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -107,6 +108,11 @@ pub struct CompatLibrary {
     pub manifest: LibraryManifest,
     /// The merged declarations parsed from the selected version's `.st` files.
     pub library: Library,
+    /// The selected version's POU bindings plus this library's source
+    /// `FileId`s, for codegen (the analyzer never sees bindings). Empty when
+    /// the version declares no bindings — the file set is still populated so
+    /// codegen can tell library declarations from user declarations.
+    pub bindings: LibraryBindings,
 }
 
 /// A registry of compatibility libraries rooted at a directory.
@@ -229,9 +235,33 @@ impl LibraryRegistry {
             .root
             .join(name.as_str())
             .join(&manifest.default_version);
-        let library = load_version_library(&version_dir, &manifest_file_id)?;
+        let (library, library_files) = load_version_library(&version_dir, &manifest_file_id)?;
 
-        Ok(CompatLibrary { manifest, library })
+        // Assemble the side-table codegen consumes: the selected (default)
+        // version's bindings, each carrying the library name and manifest file
+        // for diagnostics, plus every library source `FileId`.
+        let mut bindings = LibraryBindings::new();
+        if let Some(version_bindings) = manifest.bindings.get(&manifest.default_version) {
+            for (pou_name, binding) in version_bindings {
+                bindings.insert(
+                    pou_name,
+                    BoundPou {
+                        library: manifest.name.clone(),
+                        manifest_file: manifest_file_id.clone(),
+                        binding: binding.clone(),
+                    },
+                );
+            }
+        }
+        for file_id in library_files {
+            bindings.add_library_file(file_id);
+        }
+
+        Ok(CompatLibrary {
+            manifest,
+            library,
+            bindings,
+        })
     }
 
     /// Resolve project-declared library references to the set of bundled library
@@ -294,7 +324,10 @@ fn installed_libraries_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/libs")
 }
 
-/// Parse and merge every `.st` file in a version subdirectory into one Library.
+/// Parse and merge every `.st` file in a version subdirectory into one
+/// Library, returning the merged declarations plus the `FileId` of each
+/// parsed file (the library-source set that preserves user shadowing at
+/// codegen).
 ///
 /// Files are parsed with permissive options so a bundled library's declarations
 /// always produce an AST; policy rules (e.g. the top-level `VAR_GLOBAL` gate)
@@ -302,7 +335,7 @@ fn installed_libraries_root() -> PathBuf {
 fn load_version_library(
     version_dir: &Path,
     manifest_file_id: &FileId,
-) -> Result<Library, Diagnostic> {
+) -> Result<(Library, Vec<FileId>), Diagnostic> {
     let read_dir = fs::read_dir(version_dir).map_err(|e| {
         Diagnostic::problem(
             Problem::LibraryManifestInvalid,
@@ -321,6 +354,7 @@ fn load_version_library(
 
     let options = CompilerOptions::default();
     let mut library = Library::new();
+    let mut file_ids = Vec::new();
     for path in paths {
         let is_st = path
             .extension()
@@ -337,8 +371,9 @@ fn load_version_library(
         })?;
         let parsed = parse_program(&content, &file_id, &options)?;
         library = library.extend(parsed);
+        file_ids.push(file_id);
     }
-    Ok(library)
+    Ok((library, file_ids))
 }
 
 #[cfg(test)]

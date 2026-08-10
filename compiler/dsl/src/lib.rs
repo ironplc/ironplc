@@ -1,6 +1,7 @@
 //! Provides definitions of objects from the IEC 61131-3 language elements
 //! and base implementations of common patterns for working with libraries.
 
+pub mod bindings;
 pub mod common;
 pub mod configuration;
 pub mod core;

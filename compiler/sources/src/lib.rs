@@ -58,7 +58,7 @@ pub mod xml;
 
 // Re-export main types for convenience
 pub use file_type::FileType;
-pub use libraries::LibraryName;
+pub use libraries::{CompatLibrary, LibraryName};
 pub use parsers::parse_source;
 pub use project::SourceProject;
 pub use source::Source;
