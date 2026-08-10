@@ -34,7 +34,10 @@ fn fmod_bytecode() -> Vec<u8> {
 
 #[test]
 fn execute_when_trunc_f64_positive_then_truncates_toward_zero() {
-    assert_eq!(crate::common::run_and_read_f64(&trunc_bytecode(), 1, &[3.7]), 3.0);
+    assert_eq!(
+        crate::common::run_and_read_f64(&trunc_bytecode(), 1, &[3.7]),
+        3.0
+    );
 }
 
 #[test]
@@ -59,7 +62,10 @@ fn execute_when_trunc_f64_beyond_i64_range_then_stays_lreal() {
 #[test]
 fn execute_when_mod_f64_positive_then_fractional_remainder() {
     let r = crate::common::run_and_read_f64(&fmod_bytecode(), 1, &[400.56, 360.0]);
-    assert!((r - 40.56).abs() < 1e-9, "LMOD(400.56, 360) = 40.56, got {r}");
+    assert!(
+        (r - 40.56).abs() < 1e-9,
+        "LMOD(400.56, 360) = 40.56, got {r}"
+    );
 }
 
 #[test]

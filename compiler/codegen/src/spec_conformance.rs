@@ -993,8 +993,7 @@ fn codegen_spec_req_cl_001_intrinsic_bound_call_lowers_to_builtin() {
         .windows(3)
         .position(|w| {
             w[0] == ironplc_container::opcode::BUILTIN
-                && u16::from_le_bytes([w[1], w[2]])
-                    == ironplc_container::opcode::builtin::TRUNC_F64
+                && u16::from_le_bytes([w[1], w[2]]) == ironplc_container::opcode::builtin::TRUNC_F64
         })
         .expect("scan bytecode must contain BUILTIN TRUNC_F64");
     assert!(builtin_pos > 0);
@@ -1045,19 +1044,15 @@ END_PROGRAM
 ";
     // No library declaration merged at all: everything is user source.
     let options = CompilerOptions::default();
-    let user = ironplc_parser::parse_program(
-        user_source,
-        &FileId::from_string("user.st"),
-        &options,
-    )
-    .unwrap();
+    let user =
+        ironplc_parser::parse_program(user_source, &FileId::from_string("user.st"), &options)
+            .unwrap();
     let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&user], &options).unwrap();
     let codegen_options = crate::CodegenOptions {
         library_bindings: bindings,
         ..Default::default()
     };
-    let container =
-        crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
+    let container = crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
 
     // The user body compiled (init + scan + the user function) and the call
     // lowered to CALL, not to the bound builtin.
@@ -1070,8 +1065,7 @@ END_PROGRAM
     assert!(
         !scan.windows(3).any(|w| {
             w[0] == ironplc_container::opcode::BUILTIN
-                && u16::from_le_bytes([w[1], w[2]])
-                    == ironplc_container::opcode::builtin::TRUNC_F64
+                && u16::from_le_bytes([w[1], w[2]]) == ironplc_container::opcode::builtin::TRUNC_F64
         }),
         "a shadowing user function must not lower to the bound builtin"
     );

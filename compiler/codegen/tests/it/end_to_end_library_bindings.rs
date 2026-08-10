@@ -15,10 +15,12 @@ use ironplc_vm::VmBuffers;
 
 /// Loads the named bundled libraries, merges them ahead of `user_source`,
 /// and compiles with the libraries' bindings threaded into codegen.
+///
+/// The boxed `Err` keeps the return slim (clippy::result_large_err).
 fn compile_with_bundled_libraries(
     library_names: &[&str],
     user_source: &str,
-) -> Result<Container, ironplc_dsl::diagnostic::Diagnostic> {
+) -> Result<Container, Box<ironplc_dsl::diagnostic::Diagnostic>> {
     let options = CompilerOptions::default();
     let registry = LibraryRegistry::bundled();
 
@@ -33,8 +35,10 @@ fn compile_with_bundled_libraries(
     let user =
         ironplc_parser::parse_program(user_source, &FileId::from_string("user.st"), &options)
             .unwrap();
-    let analyze_input: Vec<&ironplc_dsl::common::Library> =
-        compat_libraries.iter().chain(std::iter::once(&user)).collect();
+    let analyze_input: Vec<&ironplc_dsl::common::Library> = compat_libraries
+        .iter()
+        .chain(std::iter::once(&user))
+        .collect();
     let (analyzed, ctx) =
         ironplc_analyzer::stages::resolve_types(&analyze_input, &options).unwrap();
 
@@ -42,7 +46,13 @@ fn compile_with_bundled_libraries(
         library_bindings: bindings,
         ..Default::default()
     };
-    ironplc_codegen::compile(&analyzed, &ctx, &codegen_options, &ironplc_codegen::EmptyLookup)
+    ironplc_codegen::compile(
+        &analyzed,
+        &ctx,
+        &codegen_options,
+        &ironplc_codegen::EmptyLookup,
+    )
+    .map_err(Box::new)
 }
 
 /// Compiles with the bundled libraries and runs one scan cycle.
@@ -176,8 +186,7 @@ fn bundled_libraries_when_intrinsic_bindings_then_all_resolve() {
     for name in names {
         let loaded = registry.load(&name).unwrap();
         for (pou, bound) in loaded.bindings.iter() {
-            if let ironplc_dsl::bindings::PouBinding::Intrinsic { name: intrinsic } =
-                &bound.binding
+            if let ironplc_dsl::bindings::PouBinding::Intrinsic { name: intrinsic } = &bound.binding
             {
                 assert!(
                     ironplc_container::opcode::builtin::intrinsic_func_id(intrinsic).is_some(),

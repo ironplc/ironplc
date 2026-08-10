@@ -588,7 +588,10 @@ pub fn compile(source: &str, dialect: &str, allows: &str, libraries: &str) -> St
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 enum LibraryPayload {
-    Package { manifest: String, files: Vec<String> },
+    Package {
+        manifest: String,
+        files: Vec<String>,
+    },
     Source(String),
 }
 
@@ -628,19 +631,17 @@ fn parse_activated_libraries(
             }
             LibraryPayload::Package { manifest, files } => {
                 let manifest_file = FileId::from_string("library.toml");
-                let manifest =
-                    ironplc_sources::libraries::manifest::LibraryManifest::from_toml(
-                        manifest,
-                        &manifest_file,
-                    )
-                    .map_err(|diag| CompileResult {
-                        ok: false,
-                        bytecode: None,
-                        diagnostics: vec![diagnostic_info(&diag, "")],
-                    })?;
+                let manifest = ironplc_sources::libraries::manifest::LibraryManifest::from_toml(
+                    manifest,
+                    &manifest_file,
+                )
+                .map_err(|diag| CompileResult {
+                    ok: false,
+                    bytecode: None,
+                    diagnostics: vec![diagnostic_info(&diag, "")],
+                })?;
 
-                if let Some(version_bindings) = manifest.bindings.get(&manifest.default_version)
-                {
+                if let Some(version_bindings) = manifest.bindings.get(&manifest.default_version) {
                     for (pou_name, binding) in version_bindings {
                         bindings.insert(
                             pou_name,
@@ -694,11 +695,11 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
     // files. They are injected ahead of user source (base stdlib -> library ->
     // user), so a user declaration shadows a library declaration of the same
     // name (`REQ-CL-playground-001`).
-    let (compat_libraries, library_bindings) =
-        match parse_activated_libraries(libraries, &options) {
-            Ok(libs) => libs,
-            Err(result) => return result,
-        };
+    let (compat_libraries, library_bindings) = match parse_activated_libraries(libraries, &options)
+    {
+        Ok(libs) => libs,
+        Err(result) => return result,
+    };
 
     let library = match parse_source(file_type, source, &FileId::default(), &options) {
         Ok(lib) => lib,

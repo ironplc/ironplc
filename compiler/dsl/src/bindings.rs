@@ -155,7 +155,10 @@ mod tests {
         a.add_library_file(FileId::from_string("a.st"));
 
         let mut b = LibraryBindings::new();
-        b.insert("LREAL_TO_FMTSTR", bound("Tc2_Utilities", PouBinding::DeclareOnly));
+        b.insert(
+            "LREAL_TO_FMTSTR",
+            bound("Tc2_Utilities", PouBinding::DeclareOnly),
+        );
         b.add_library_file(FileId::from_string("b.st"));
 
         a.merge(b);
