@@ -369,3 +369,45 @@ fn analyzer_spec_req_cl_006_dialect_does_not_activate_library() {
         "selecting a dialect must not activate the library"
     );
 }
+
+/// REQ-CL-analyzer-007: A program that *calls* a declare-only library POU
+/// still passes `check` cleanly — the analyzer never sees bindings, so the
+/// declaration resolves and type-checks like any other function. (Rejecting
+/// the call is codegen's job: P4046, REQ-CL-codegen-002.)
+#[spec_test(REQ_CL_analyzer_007)]
+fn analyzer_spec_req_cl_007_declare_only_call_passes_check() {
+    let options = CompilerOptions::default();
+    // The library declaration as it appears in a version's `.st`: the full
+    // interface with a body of exactly `;`. The binding itself rides a
+    // side-table to codegen and is invisible here.
+    let library = parse_program(
+        "FUNCTION LREAL_TO_FMTSTR : STRING[255]
+VAR_INPUT
+    in         : LREAL;
+    iPrecision : INT;
+    bRound     : BOOL;
+END_VAR
+;
+END_FUNCTION",
+        &FileId::from_string("lib.st"),
+        &options,
+    )
+    .unwrap();
+    let user = parse_program(
+        "PROGRAM main
+VAR
+    s : STRING[255];
+END_VAR
+    s := LREAL_TO_FMTSTR(in := 1.5, iPrecision := 2, bRound := TRUE);
+END_PROGRAM",
+        &FileId::from_string("user.st"),
+        &options,
+    )
+    .unwrap();
+    let (_lib, ctx) = analyze(&[&library, &user], &options).unwrap();
+    assert!(
+        !ctx.has_diagnostics(),
+        "a declare-only call must pass check: {:?}",
+        ctx.diagnostics()
+    );
+}

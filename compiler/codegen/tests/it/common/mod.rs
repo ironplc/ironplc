@@ -587,6 +587,7 @@ pub fn try_parse_and_compile(
     let (library, context) = parse(source, options);
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: options.allow_system_uptime_global,
+        ..Default::default()
     };
     compile(
         &library,
@@ -612,6 +613,7 @@ pub fn parse_and_try_run(
     let (library, context) = parse(source, options);
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: options.allow_system_uptime_global,
+        ..Default::default()
     };
     let container = compile(
         &library,
@@ -640,6 +642,7 @@ pub fn parse_and_run_rounds(
     let (library, context) = parse(source, options);
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: options.allow_system_uptime_global,
+        ..Default::default()
     };
     let container = compile(
         &library,

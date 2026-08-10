@@ -237,9 +237,17 @@ pub(crate) fn compile_function_call(
         "mul_time" => compile_mul_div_time(emitter, ctx, func, true),
         "div_time" => compile_mul_div_time(emitter, ctx, func, false),
         _ => {
-            // Check user-defined functions first.
+            // Check user-defined functions first — a user function shadowing
+            // a bound library name compiles as the user's function with no
+            // extra mechanism (`REQ-CL-analyzer-004`). Library bindings come
+            // next: intrinsic-bound calls lower to BUILTIN, declare-only
+            // calls fail with P4046.
             if let Some(func_info) = ctx.user_functions.get(name.as_str()).cloned() {
                 compile_user_function_call(emitter, ctx, func, &func_info)
+            } else if let Some(result) =
+                crate::compile_library::compile_bound_call(emitter, ctx, func)
+            {
+                result
             } else if let Some(conv) = parse_string_conversion(name) {
                 compile_string_conversion(emitter, ctx, func, conv)
             } else if let Some((source, target)) = parse_type_conversion(name) {

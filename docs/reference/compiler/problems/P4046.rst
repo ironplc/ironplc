@@ -1,0 +1,37 @@
+=====
+P4046
+=====
+
+.. problem-summary:: P4046
+
+This error occurs when a program *calls* a compatibility library
+function that the library declares as ``declare-only`` — the function's
+signature exists so the library's surface is complete, but its
+implementation has not been built yet. Rather than generating code whose
+behavior IronPLC cannot reproduce (or trapping at runtime), the compiler
+refuses to compile the call.
+
+Note that ``check`` (semantic analysis) still passes for the same
+source: the declaration resolves and type-checks like any other
+function. Only bytecode compilation of an actual call site fails.
+
+Example
+-------
+
+With the ``Tc2_Utilities`` library activated, the following code checks
+cleanly but generates error P4046 when compiled, because
+``LREAL_TO_FMTSTR`` is declare-only:
+
+.. code-block::
+
+   PROGRAM main
+   VAR
+       s : STRING[255];
+   END_VAR
+       s := LREAL_TO_FMTSTR(in := 1.5, iPrecision := 2, bRound := TRUE);
+   END_PROGRAM
+
+To fix this error, remove or replace the call to the unimplemented
+function. If you need the function, check for a newer IronPLC release
+where the library binds it to an implementation, or file a feature
+request naming the function.

@@ -903,3 +903,176 @@ END_PROGRAM
     // vars: x=0, r=1, y=2. `r + 2` must use r's dereferenced value (40 + 2).
     assert_eq!(bufs.vars[2].as_i32(), 42);
 }
+
+// ---------------------------------------------------------------------------
+// Compatibility-library bindings (REQ-CL-codegen-*)
+// See specs/design/compatibility-libraries.md §Bodies and bindings and
+// specs/plans/2026-08-08-compatibility-library-bindings.md.
+// ---------------------------------------------------------------------------
+
+/// A `LibraryBindings` fixture: `pou` bound as `binding`, declared in the
+/// library file `lib.st`.
+fn library_bindings_fixture(
+    pou: &str,
+    binding: ironplc_dsl::bindings::PouBinding,
+) -> ironplc_dsl::bindings::LibraryBindings {
+    let mut bindings = ironplc_dsl::bindings::LibraryBindings::new();
+    bindings.insert(
+        pou,
+        ironplc_dsl::bindings::BoundPou {
+            library: "Tc2_Math".to_string(),
+            manifest_file: FileId::from_string("library.toml"),
+            binding,
+        },
+    );
+    bindings.add_library_file(FileId::from_string("lib.st"));
+    bindings
+}
+
+/// Parses `library_source` as a library file (`lib.st`) and `user_source` as
+/// user source, analyzes them merged, and compiles with `bindings` threaded.
+fn compile_with_bindings(
+    library_source: &str,
+    user_source: &str,
+    bindings: ironplc_dsl::bindings::LibraryBindings,
+) -> Result<ironplc_container::Container, ironplc_dsl::diagnostic::Diagnostic> {
+    let options = CompilerOptions::default();
+    let lib =
+        ironplc_parser::parse_program(library_source, &FileId::from_string("lib.st"), &options)
+            .unwrap();
+    let user =
+        ironplc_parser::parse_program(user_source, &FileId::from_string("user.st"), &options)
+            .unwrap();
+    let (analyzed, ctx) =
+        ironplc_analyzer::stages::resolve_types(&[&lib, &user], &options).unwrap();
+    let codegen_options = crate::CodegenOptions {
+        library_bindings: bindings,
+        ..Default::default()
+    };
+    crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup)
+}
+
+const LTRUNC_DECLARATION: &str = "FUNCTION LTRUNC : LREAL
+VAR_INPUT
+    IN : LREAL;
+END_VAR
+;
+END_FUNCTION
+";
+
+const LTRUNC_CALLER: &str = "PROGRAM main
+VAR
+    x : LREAL;
+END_VAR
+    x := LTRUNC(3.7);
+END_PROGRAM
+";
+
+/// REQ-CL-codegen-001: A call to a library POU bound to an intrinsic compiles
+/// to `BUILTIN func_id` — not to a CALL of the POU's (empty) ST body, which is
+/// never compiled.
+#[spec_test(REQ_CL_codegen_001)]
+fn codegen_spec_req_cl_001_intrinsic_bound_call_lowers_to_builtin() {
+    let bindings = library_bindings_fixture(
+        "LTRUNC",
+        ironplc_dsl::bindings::PouBinding::Intrinsic {
+            name: "trunc_lreal".to_string(),
+        },
+    );
+    let container = compile_with_bindings(LTRUNC_DECLARATION, LTRUNC_CALLER, bindings).unwrap();
+
+    // The bound `;` body was never compiled: only init (0) and scan (1).
+    assert_eq!(container.code.functions.len(), 2);
+
+    // The call site lowered to BUILTIN TRUNC_F64 and no CALL was emitted.
+    let scan = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+    let builtin_pos = scan
+        .windows(3)
+        .position(|w| {
+            w[0] == ironplc_container::opcode::BUILTIN
+                && u16::from_le_bytes([w[1], w[2]])
+                    == ironplc_container::opcode::builtin::TRUNC_F64
+        })
+        .expect("scan bytecode must contain BUILTIN TRUNC_F64");
+    assert!(builtin_pos > 0);
+    assert!(
+        !scan.contains(&ironplc_container::opcode::CALL),
+        "an intrinsic-bound call must not emit CALL"
+    );
+}
+
+/// REQ-CL-codegen-002: A call to a declare-only library POU fails compilation
+/// with the dedicated diagnostic P4046, naming the library and POU.
+#[spec_test(REQ_CL_codegen_002)]
+fn codegen_spec_req_cl_002_declare_only_call_fails_with_p4046() {
+    let bindings =
+        library_bindings_fixture("LTRUNC", ironplc_dsl::bindings::PouBinding::DeclareOnly);
+    let err = compile_with_bindings(LTRUNC_DECLARATION, LTRUNC_CALLER, bindings).unwrap_err();
+    assert_eq!(err.code, "P4046");
+    assert!(err.primary.message.contains("Tc2_Math"));
+    assert!(err.primary.message.contains("LTRUNC"));
+}
+
+/// User shadowing (REQ-CL-analyzer-004 at the codegen layer): a user-defined
+/// function with the same name as a bound library POU compiles as the user's
+/// function — binding lowering applies only to the library's declaration.
+#[test]
+fn codegen_when_user_function_shadows_bound_name_then_user_body_compiles() {
+    let bindings = library_bindings_fixture(
+        "LTRUNC",
+        ironplc_dsl::bindings::PouBinding::Intrinsic {
+            name: "trunc_lreal".to_string(),
+        },
+    );
+    // The user declares their own LTRUNC (in user.st, not a library file)
+    // with a real body.
+    let user_source = "FUNCTION LTRUNC : LREAL
+VAR_INPUT
+    IN : LREAL;
+END_VAR
+    LTRUNC := IN;
+END_FUNCTION
+
+PROGRAM main
+VAR
+    x : LREAL;
+END_VAR
+    x := LTRUNC(3.7);
+END_PROGRAM
+";
+    // No library declaration merged at all: everything is user source.
+    let options = CompilerOptions::default();
+    let user = ironplc_parser::parse_program(
+        user_source,
+        &FileId::from_string("user.st"),
+        &options,
+    )
+    .unwrap();
+    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&user], &options).unwrap();
+    let codegen_options = crate::CodegenOptions {
+        library_bindings: bindings,
+        ..Default::default()
+    };
+    let container =
+        crate::compile(&analyzed, &ctx, &codegen_options, &crate::EmptyLookup).unwrap();
+
+    // The user body compiled (init + scan + the user function) and the call
+    // lowered to CALL, not to the bound builtin.
+    assert_eq!(container.code.functions.len(), 3);
+    let scan = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+    assert!(scan.contains(&ironplc_container::opcode::CALL));
+    assert!(
+        !scan.windows(3).any(|w| {
+            w[0] == ironplc_container::opcode::BUILTIN
+                && u16::from_le_bytes([w[1], w[2]])
+                    == ironplc_container::opcode::builtin::TRUNC_F64
+        }),
+        "a shadowing user function must not lower to the bound builtin"
+    );
+}

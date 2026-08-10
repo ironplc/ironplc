@@ -683,6 +683,7 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
 
     let codegen_options = ironplc_codegen::CodegenOptions {
         system_uptime_global: options.allow_system_uptime_global,
+        ..Default::default()
     };
     let container = match codegen_compile(
         &library,
