@@ -368,10 +368,7 @@ references = [ 1, 2, 3 ]
                 name: "sqrt_lreal".to_string()
             })
         );
-        assert_eq!(
-            bindings.get("MY_DECL_ONLY"),
-            Some(&PouBinding::DeclareOnly)
-        );
+        assert_eq!(bindings.get("MY_DECL_ONLY"), Some(&PouBinding::DeclareOnly));
     }
 
     #[test]
@@ -415,7 +412,8 @@ references = [ 1, 2, 3 ]
 
     #[test]
     fn from_toml_when_intrinsic_name_empty_then_error() {
-        let content = format!("{IDENTITY}\n[\"1.0.0\".bindings]\nMY_SQRT = {{ intrinsic = \"\" }}\n");
+        let content =
+            format!("{IDENTITY}\n[\"1.0.0\".bindings]\nMY_SQRT = {{ intrinsic = \"\" }}\n");
         let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
         assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
     }

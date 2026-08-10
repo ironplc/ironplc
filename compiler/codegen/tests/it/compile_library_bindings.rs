@@ -43,7 +43,7 @@ fn compile_with_bindings(
     library_source: &str,
     user_source: &str,
     bindings: LibraryBindings,
-) -> Result<Container, Diagnostic> {
+) -> Result<Container, Box<Diagnostic>> {
     let options = CompilerOptions::default();
     let lib =
         ironplc_parser::parse_program(library_source, &FileId::from_string("lib.st"), &options)
@@ -51,12 +51,13 @@ fn compile_with_bindings(
     let user =
         ironplc_parser::parse_program(user_source, &FileId::from_string("user.st"), &options)
             .unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&lib, &user], &options).unwrap();
+    let (analyzed, ctx) =
+        ironplc_analyzer::stages::resolve_types(&[&lib, &user], &options).unwrap();
     let codegen_options = CodegenOptions {
         library_bindings: bindings,
         ..Default::default()
     };
-    compile(&analyzed, &ctx, &codegen_options, &EmptyLookup)
+    compile(&analyzed, &ctx, &codegen_options, &EmptyLookup).map_err(Box::new)
 }
 
 /// True when the bytecode contains `BUILTIN` with the given func_id operand.
