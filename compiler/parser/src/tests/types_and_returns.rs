@@ -45,6 +45,27 @@ fn parse_when_function_with_any_num_return_type_then_parses() {
 }
 
 #[test]
+fn parse_when_function_body_is_lone_semicolon_then_empty_statement_list() {
+    // The compatibility-library bindings format relies on this idiom: a
+    // bound or declare-only POU declares its full interface with a body of
+    // exactly `;`, which must parse to an *empty* statement list (see
+    // specs/design/compatibility-library-format.md §Bindings).
+    let lib = parse_text(
+        "FUNCTION LTRUNC : LREAL
+            VAR_INPUT
+                IN : LREAL;
+            END_VAR
+            ;
+            END_FUNCTION",
+    );
+
+    assert_eq!(lib.elements.len(), 1);
+    let func = cast!(&lib.elements[0], LibraryElementKind::FunctionDeclaration);
+    assert_eq!(func.variables.len(), 1);
+    assert!(func.body.is_empty());
+}
+
+#[test]
 fn parse_when_variable_with_any_int_type_then_parses() {
     let lib = parse_text(
         "FUNCTION TEST : INT

@@ -13,7 +13,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::{options::CompilerOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
-use ironplc_sources::{LibraryName, Source, SourceProject};
+use ironplc_sources::{CompatLibrary, LibraryName, Source, SourceProject};
 use log::{debug, trace};
 
 /// Runs semantic analysis on the given source project and compiler options.
@@ -72,9 +72,12 @@ fn run_semantic_analysis(
     }
 
     // Activation order: the compatibility libraries precede user source in the
-    // merge (the base stdlib is seeded inside `analyze`).
+    // merge (the base stdlib is seeded inside `analyze`). Only the parsed
+    // declarations participate in analysis; the bindings side-table is for
+    // codegen and the analyzer never sees it.
     let analyze_input: Vec<&Library> = compat_libraries
         .iter()
+        .map(|compat| &compat.library)
         .chain(all_libraries.iter().copied())
         .collect();
 
@@ -219,9 +222,10 @@ impl FileBackedProject {
 
     /// Load the activated compatibility libraries from the bundled registry.
     ///
-    /// Returns the parsed declarations to inject ahead of user source, plus one
-    /// diagnostic per library that could not be loaded.
-    pub fn load_activated_libraries(&self) -> (Vec<Library>, Vec<Diagnostic>) {
+    /// Returns the loaded libraries — parsed declarations plus the bindings
+    /// side-table — to inject ahead of user source, plus one diagnostic per
+    /// library that could not be loaded.
+    pub fn load_activated_libraries(&self) -> (Vec<CompatLibrary>, Vec<Diagnostic>) {
         self.source_project.load_activated_libraries()
     }
 }

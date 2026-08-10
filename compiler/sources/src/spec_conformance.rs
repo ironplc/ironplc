@@ -15,6 +15,7 @@
 
 use std::fs;
 
+use ironplc_dsl::bindings::PouBinding;
 use ironplc_dsl::common::{Library, LibraryElementKind};
 use ironplc_dsl::core::FileId;
 use ironplc_problems::Problem;
@@ -124,6 +125,119 @@ fn sources_spec_req_lf_004_manifest_records_references() {
     assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
 }
 
+/// REQ-LF-sources-005: A manifest may carry a per-version bindings table
+/// (quoted version key) mapping a POU name to `{ intrinsic = "<name>" }` or
+/// `"declare-only"`.
+#[spec_test(REQ_LF_sources_005)]
+fn sources_spec_req_lf_005_bindings_table_parses_both_value_forms() {
+    let file_id = FileId::from_string("library.toml");
+    let manifest = LibraryManifest::from_toml(
+        "name = \"Tc2_Math\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n\
+         [\"1.0.0\".bindings]\nLTRUNC = { intrinsic = \"trunc_lreal\" }\nLREAL_TO_FMTSTR = \"declare-only\"\n",
+        &file_id,
+    )
+    .unwrap();
+    let bindings = manifest.bindings.get("1.0.0").unwrap();
+    assert_eq!(
+        bindings.get("LTRUNC"),
+        Some(&PouBinding::Intrinsic {
+            name: "trunc_lreal".to_string()
+        })
+    );
+    assert_eq!(
+        bindings.get("LREAL_TO_FMTSTR"),
+        Some(&PouBinding::DeclareOnly)
+    );
+}
+
+/// REQ-LF-sources-006: A malformed bindings entry — including the unquoted
+/// dotted version key, which parses as nested tables — is rejected with
+/// P6010, and validation covers every version table, not only the default
+/// version.
+#[spec_test(REQ_LF_sources_006)]
+fn sources_spec_req_lf_006_malformed_bindings_rejected_in_any_version() {
+    let file_id = FileId::from_string("library.toml");
+    let identity = "name = \"Tc2_Math\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n";
+
+    // The unquoted-key trap: `[1.0.0.bindings]` is three nested tables.
+    let err = LibraryManifest::from_toml(
+        &format!("{identity}[1.0.0.bindings]\nLTRUNC = \"declare-only\"\n"),
+        &file_id,
+    )
+    .unwrap_err();
+    assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+
+    // An unknown binding value form is rejected.
+    let err = LibraryManifest::from_toml(
+        &format!("{identity}[\"1.0.0\".bindings]\nLTRUNC = \"native\"\n"),
+        &file_id,
+    )
+    .unwrap_err();
+    assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+
+    // A malformed table for a *non-default* version is still rejected.
+    let err = LibraryManifest::from_toml(
+        &format!("{identity}[\"2.0.0\".bindings]\nLTRUNC = 42\n"),
+        &file_id,
+    )
+    .unwrap_err();
+    assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+}
+
+/// REQ-LF-sources-007: A bound or declare-only POU still appears in its
+/// version's `.st` files with its full interface and a body of exactly `;`;
+/// the loader exposes the declaration for analysis and the binding in the
+/// side-table.
+#[spec_test(REQ_LF_sources_007)]
+fn sources_spec_req_lf_007_bound_pou_declared_with_empty_body() {
+    let dir = TempDir::new().unwrap();
+    let version_dir = dir.path().join("Fixture").join("1.0.0");
+    fs::create_dir_all(&version_dir).unwrap();
+    fs::write(
+        dir.path().join("Fixture").join("library.toml"),
+        "name = \"Fixture\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n\
+         [\"1.0.0\".bindings]\nLTRUNC = { intrinsic = \"trunc_lreal\" }\n",
+    )
+    .unwrap();
+    fs::write(
+        version_dir.join("Fixture.st"),
+        "FUNCTION LTRUNC : LREAL\nVAR_INPUT\n    IN : LREAL;\nEND_VAR\n;\nEND_FUNCTION\n",
+    )
+    .unwrap();
+
+    let registry = LibraryRegistry::with_root(dir.path());
+    let loaded = registry.load(&LibraryName::from("Fixture")).unwrap();
+
+    // The full interface is declared (so `check` and type resolution work
+    // unchanged) with an empty statement list for the `;` body.
+    let function = loaded
+        .library
+        .elements
+        .iter()
+        .find_map(|element| match element {
+            LibraryElementKind::FunctionDeclaration(f) if f.name.original() == "LTRUNC" => Some(f),
+            _ => None,
+        })
+        .expect("bound POU must be declared in the version's .st");
+    assert_eq!(function.variables.len(), 1);
+    assert!(
+        function.body.is_empty(),
+        "the `;` body parses to an empty statement list and is never the implementation"
+    );
+
+    // The binding rides the side-table, along with the library file set.
+    let bound = loaded.bindings.get("LTRUNC").expect("binding recorded");
+    assert_eq!(bound.library, "Fixture");
+    assert_eq!(
+        bound.binding,
+        PouBinding::Intrinsic {
+            name: "trunc_lreal".to_string()
+        }
+    );
+    let library_file = FileId::from_path(&version_dir.join("Fixture.st"));
+    assert!(loaded.bindings.is_library_file(&library_file));
+}
+
 // ---------------------------------------------------------------------------
 // Loader / activation behavior (REQ-CL-sources-*)
 // ---------------------------------------------------------------------------
@@ -187,7 +301,7 @@ fn sources_spec_req_cl_006_explicit_activation_activates_library() {
     );
     assert_eq!(libraries.len(), 1);
     assert!(
-        declares_pi(&libraries[0]),
+        declares_pi(&libraries[0].library),
         "activated Tc2_System must provide the global constant PI"
     );
 }

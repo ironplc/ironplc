@@ -159,6 +159,7 @@ pub fn compile(
     }
     let analyze_input: Vec<&Library> = compat_libraries
         .iter()
+        .map(|compat| &compat.library)
         .chain(std::iter::once(&combined))
         .collect();
 

@@ -6,15 +6,18 @@
 //! behavioral requirements the loader enforces are in
 //! `specs/design/compatibility-libraries.md` (`REQ-CL-sources-002`).
 
+use std::collections::HashMap;
+
+use ironplc_dsl::bindings::PouBinding;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
 
 /// A parsed and validated `library.toml` manifest.
 ///
-/// Every field is required. `vendor` is nominative — it records whose
-/// interface the library mirrors, not a claim of endorsement (see the format
-/// design's *Non-affiliation* section).
+/// Every field is required except the per-version bindings tables. `vendor`
+/// is nominative — it records whose interface the library mirrors, not a
+/// claim of endorsement (see the format design's *Non-affiliation* section).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryManifest {
     /// Library identity; equals the directory name and the vendor library name.
@@ -26,6 +29,9 @@ pub struct LibraryManifest {
     pub default_version: String,
     /// The public references the library was authored from. Non-empty.
     pub references: Vec<String>,
+    /// Per-version bindings: version → uppercased POU name → binding
+    /// (`REQ-LF-sources-005`). Versions without a bindings table are absent.
+    pub bindings: HashMap<String, HashMap<String, PouBinding>>,
 }
 
 impl LibraryManifest {
@@ -72,12 +78,120 @@ impl LibraryManifest {
             references.push(reference.to_string());
         }
 
+        let bindings = Self::parse_version_bindings(&table, file_id)?;
+
         Ok(LibraryManifest {
             name,
             vendor,
             default_version,
             references,
+            bindings,
         })
+    }
+
+    /// Parse and shape-validate every per-version bindings table
+    /// (`REQ-LF-sources-005`, `REQ-LF-sources-006`).
+    ///
+    /// A version table is any top-level key whose value is a table (the
+    /// scalar identity/reference fields are handled above). Validation covers
+    /// *every* version table, not only the `default_version`, so a malformed
+    /// table cannot hide in an inactive version. The unquoted-key trap —
+    /// `[1.0.0.bindings]` parses as three nested tables `1 → 0 → 0` — is
+    /// caught because the nested tables carry keys other than `bindings`.
+    fn parse_version_bindings(
+        table: &toml::Table,
+        file_id: &FileId,
+    ) -> Result<HashMap<String, HashMap<String, PouBinding>>, Diagnostic> {
+        const SCALAR_FIELDS: [&str; 4] = ["name", "vendor", "default_version", "references"];
+
+        let mut all_bindings = HashMap::new();
+        for (key, value) in table {
+            if SCALAR_FIELDS.contains(&key.as_str()) {
+                continue;
+            }
+            let version_table = value.as_table().ok_or_else(|| {
+                Self::invalid(
+                    file_id,
+                    format!("manifest key `{key}` must be a version table"),
+                )
+            })?;
+            for nested_key in version_table.keys() {
+                if nested_key != "bindings" {
+                    return Err(Self::invalid(
+                        file_id,
+                        format!(
+                            "version table `{key}` contains unknown key `{nested_key}`; \
+                             only `bindings` is allowed (a dotted version key must be \
+                             quoted: `[\"1.0.0\".bindings]`, not `[1.0.0.bindings]`)"
+                        ),
+                    ));
+                }
+            }
+            let Some(bindings_value) = version_table.get("bindings") else {
+                continue;
+            };
+            let bindings_table = bindings_value.as_table().ok_or_else(|| {
+                Self::invalid(
+                    file_id,
+                    format!("`bindings` of version `{key}` must be a table"),
+                )
+            })?;
+
+            let mut version_bindings = HashMap::new();
+            for (pou, binding_value) in bindings_table {
+                let binding = Self::parse_binding(key, pou, binding_value, file_id)?;
+                version_bindings.insert(pou.to_uppercase(), binding);
+            }
+            all_bindings.insert(key.clone(), version_bindings);
+        }
+        Ok(all_bindings)
+    }
+
+    /// Parse one binding value: `"declare-only"` or `{ intrinsic = "<name>" }`.
+    fn parse_binding(
+        version: &str,
+        pou: &str,
+        value: &toml::Value,
+        file_id: &FileId,
+    ) -> Result<PouBinding, Diagnostic> {
+        match value {
+            toml::Value::String(text) if text == "declare-only" => Ok(PouBinding::DeclareOnly),
+            toml::Value::Table(binding_table) => {
+                let keys: Vec<&String> = binding_table.keys().collect();
+                if keys.len() != 1 || keys[0] != "intrinsic" {
+                    return Err(Self::invalid(
+                        file_id,
+                        format!(
+                            "binding for `{pou}` in version `{version}` must be \
+                             `{{ intrinsic = \"<name>\" }}` or `\"declare-only\"`"
+                        ),
+                    ));
+                }
+                let name = binding_table
+                    .get("intrinsic")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| {
+                        Self::invalid(
+                            file_id,
+                            format!(
+                                "binding for `{pou}` in version `{version}`: `intrinsic` \
+                                 must be a non-empty string"
+                            ),
+                        )
+                    })?;
+                Ok(PouBinding::Intrinsic {
+                    name: name.to_string(),
+                })
+            }
+            _ => Err(Self::invalid(
+                file_id,
+                format!(
+                    "binding for `{pou}` in version `{version}` must be \
+                     `{{ intrinsic = \"<name>\" }}` or `\"declare-only\"`"
+                ),
+            )),
+        }
     }
 
     /// Read a required, non-empty string field from the manifest table.
@@ -225,6 +339,109 @@ references = [ 1, 2, 3 ]
         let content = "this is not = valid toml {{{";
         let err = LibraryManifest::from_toml(content, &file_id()).unwrap_err();
         assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+    }
+
+    // -----------------------------------------------------------------
+    // Per-version bindings tables.
+    // See specs/design/compatibility-library-format.md §Bindings and
+    // specs/plans/2026-08-08-compatibility-library-bindings.md.
+    // -----------------------------------------------------------------
+
+    const IDENTITY: &str = "name = \"Tc2_Math\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n";
+
+    #[test]
+    fn from_toml_when_no_bindings_then_empty_map() {
+        let manifest = LibraryManifest::from_toml(IDENTITY, &file_id()).unwrap();
+        assert!(manifest.bindings.is_empty());
+    }
+
+    #[test]
+    fn from_toml_when_bindings_table_then_parses_both_forms() {
+        let content = format!(
+            "{IDENTITY}\n[\"1.0.0\".bindings]\nLTRUNC = {{ intrinsic = \"trunc_lreal\" }}\nLREAL_TO_FMTSTR = \"declare-only\"\n"
+        );
+        let manifest = LibraryManifest::from_toml(&content, &file_id()).unwrap();
+        let bindings = manifest.bindings.get("1.0.0").unwrap();
+        assert_eq!(
+            bindings.get("LTRUNC"),
+            Some(&PouBinding::Intrinsic {
+                name: "trunc_lreal".to_string()
+            })
+        );
+        assert_eq!(
+            bindings.get("LREAL_TO_FMTSTR"),
+            Some(&PouBinding::DeclareOnly)
+        );
+    }
+
+    #[test]
+    fn from_toml_when_binding_pou_lowercase_then_key_uppercased() {
+        let content = format!("{IDENTITY}\n[\"1.0.0\".bindings]\nltrunc = \"declare-only\"\n");
+        let manifest = LibraryManifest::from_toml(&content, &file_id()).unwrap();
+        assert!(manifest.bindings["1.0.0"].contains_key("LTRUNC"));
+    }
+
+    #[test]
+    fn from_toml_when_unquoted_version_key_then_error() {
+        // `[1.0.0.bindings]` is three nested TOML tables, not a version
+        // table -- the nested key `0` is not `bindings`, so shape
+        // validation rejects it.
+        let content = format!("{IDENTITY}\n[1.0.0.bindings]\nLTRUNC = \"declare-only\"\n");
+        let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
+        assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+    }
+
+    #[test]
+    fn from_toml_when_unknown_key_in_version_table_then_error() {
+        let content = format!("{IDENTITY}\n[\"1.0.0\"]\nnot_bindings = 1\n");
+        let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
+        assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+    }
+
+    #[test]
+    fn from_toml_when_binding_value_unknown_string_then_error() {
+        let content = format!("{IDENTITY}\n[\"1.0.0\".bindings]\nLTRUNC = \"native\"\n");
+        let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
+        assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+    }
+
+    #[test]
+    fn from_toml_when_binding_table_has_unknown_key_then_error() {
+        let content =
+            format!("{IDENTITY}\n[\"1.0.0\".bindings]\nLTRUNC = {{ builtin = \"trunc_lreal\" }}\n");
+        let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
+        assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+    }
+
+    #[test]
+    fn from_toml_when_intrinsic_name_empty_then_error() {
+        let content = format!("{IDENTITY}\n[\"1.0.0\".bindings]\nLTRUNC = {{ intrinsic = \"\" }}\n");
+        let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
+        assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+    }
+
+    #[test]
+    fn from_toml_when_binding_value_wrong_type_then_error() {
+        let content = format!("{IDENTITY}\n[\"1.0.0\".bindings]\nLTRUNC = 42\n");
+        let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
+        assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+    }
+
+    #[test]
+    fn from_toml_when_non_default_version_malformed_then_error() {
+        // Shape validation covers every version table, not only the
+        // default version.
+        let content = format!("{IDENTITY}\n[\"2.0.0\".bindings]\nLTRUNC = \"nope\"\n");
+        let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
+        assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
+    }
+
+    #[test]
+    fn from_toml_when_non_default_version_valid_then_inert_but_parsed() {
+        let content = format!("{IDENTITY}\n[\"2.0.0\".bindings]\nLTRUNC = \"declare-only\"\n");
+        let manifest = LibraryManifest::from_toml(&content, &file_id()).unwrap();
+        assert!(manifest.bindings.contains_key("2.0.0"));
+        assert!(!manifest.bindings.contains_key("1.0.0"));
     }
 
     #[test]

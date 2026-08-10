@@ -2,11 +2,11 @@
 
 use std::{collections::HashMap, path::Path};
 
-use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
+use ironplc_dsl::{core::FileId, diagnostic::Diagnostic};
 use ironplc_parser::options::CompilerOptions;
 use log::{debug, info, trace};
 
-use crate::libraries::{LibraryName, LibraryRegistry};
+use crate::libraries::{CompatLibrary, LibraryName, LibraryRegistry};
 use crate::source::Source;
 
 /// A project consisting of one or more source files
@@ -64,18 +64,19 @@ impl SourceProject {
 
     /// Load the activated compatibility libraries from the bundled registry.
     ///
-    /// Returns the parsed [`Library`] for each activated library that resolves,
-    /// plus one diagnostic per library that could not be loaded (unshipped name
+    /// Returns the loaded [`CompatLibrary`] — parsed declarations plus the
+    /// bindings side-table — for each activated library that resolves, plus
+    /// one diagnostic per library that could not be loaded (unshipped name
     /// or malformed manifest). The libraries are returned in activation order,
     /// which callers inject ahead of user source so a user declaration shadows
     /// a library declaration of the same name.
-    pub fn load_activated_libraries(&self) -> (Vec<Library>, Vec<Diagnostic>) {
+    pub fn load_activated_libraries(&self) -> (Vec<CompatLibrary>, Vec<Diagnostic>) {
         let registry = LibraryRegistry::bundled();
         let mut libraries = Vec::new();
         let mut diagnostics = Vec::new();
         for name in &self.activated_libraries {
             match registry.load(name) {
-                Ok(loaded) => libraries.push(loaded.library),
+                Ok(loaded) => libraries.push(loaded),
                 Err(diagnostic) => diagnostics.push(diagnostic),
             }
         }
