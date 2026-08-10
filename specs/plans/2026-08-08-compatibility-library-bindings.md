@@ -24,7 +24,7 @@ The primitives, from the deferred *Future Goals* of the
 
    ```toml
    ["1.0.0".bindings]
-   LTRUNC = { intrinsic = "trunc_lreal" }
+   LTRUNC = { intrinsic = "trunc_f64" }
    ```
 
    or **declare-only** (`POU = "declare-only"`): the signature exists so the
@@ -45,8 +45,8 @@ Under the ADR-0042 rule each function lands as:
 
 | Function | Mechanism |
 |---|---|
-| `LTRUNC(IN: LREAL): LREAL` | `Tc2_Math` POU bound to new `trunc_lreal` VM builtin — `TRUNC` clamps to `ANY_INT`, so LREAL-preserving truncation is inexpressible in ST |
-| `LMOD(IN1: LREAL, IN2: LREAL): LREAL` | `Tc2_Math` POU bound to new `fmod_lreal` VM builtin — no floating modulo exists in ST (`MOD` is integer) |
+| `LTRUNC(IN: LREAL): LREAL` | `Tc2_Math` POU bound to new `trunc_f64` VM builtin — `TRUNC` clamps to `ANY_INT`, so LREAL-preserving truncation is inexpressible in ST |
+| `LMOD(IN1: LREAL, IN2: LREAL): LREAL` | `Tc2_Math` POU bound to new `mod_f64` VM builtin — no floating modulo exists in ST (`MOD` is integer) |
 | `MODABS(IN: LREAL, IM: LREAL): LREAL` | `Tc2_Math` POU with a math-dictated **ST body** calling `LMOD` — no builtin |
 | `FRAC(IN: LREAL): LREAL` | `Tc2_Math` POU with a math-dictated **ST body**: `FRAC := IN - LTRUNC(IN);` — no builtin (reviewer-requested addition; not in the original PRs) |
 | `BOOL_TO_STRING(IN: BOOL): STRING` | library **ST body** (`IF IN THEN BOOL_TO_STRING := 'TRUE'; ELSE ... 'FALSE'`) — trivially expressible, so no intrinsic and no func_id |
@@ -62,9 +62,17 @@ the first consumers because TwinCAT is a target.
   plan adds a formatting builtin and flips the binding).
 - Collision/precedence between libraries or vs. the base stdlib (design
   *Future Goals*; none of these names collide).
-- F32/REAL variants of the new builtins — Beckhoff signatures are LREAL-only
-  ([ADR-0022](../adrs/0022-exact-type-matching-for-function-arguments.md)
-  exact matching); ADR-0004 permits adding F32 func_ids later.
+- F32/REAL variants of the new builtins, and `ANY_REAL` signatures for the
+  library functions. `ANY_REAL` is a generic category that exists only in the
+  compiler-seeded stdlib tables — a library `.st` declaration must use
+  concrete types, so a generic `FRAC` would have to move back into the
+  compiler, against ADR-0042. It would also diverge from Beckhoff, whose
+  `Tc2_Math` signatures are LREAL-only: TwinCAT accepts `FRAC(someReal)` by
+  implicitly widening the *argument* REAL→LREAL (result stays LREAL), not by
+  a generic signature (which would make the result REAL). That call-site
+  widening is its own planned work
+  ([2026-07-27-twincat-real-to-lreal-widening.md](2026-07-27-twincat-real-to-lreal-widening.md))
+  and serves every LREAL-taking function uniformly.
 - Migrating any existing compiler-seeded standard function to a library
   (ADR-0042 governs additions only).
 
@@ -85,8 +93,8 @@ is three nested TOML tables and is rejected by shape validation):
 
 ```toml
 ["1.0.0".bindings]
-LTRUNC = { intrinsic = "trunc_lreal" }
-LMOD   = { intrinsic = "fmod_lreal" }
+LTRUNC = { intrinsic = "trunc_f64" }
+LMOD   = { intrinsic = "mod_f64" }
 ```
 
 or `POU = "declare-only"`. A bound or declare-only POU still appears in the
@@ -120,7 +128,7 @@ with P6010 anchored on the manifest file.
 
 **New VM builtins** (next free func_ids; pure-stack, so they go in
 `vm/src/builtin.rs::dispatch`, not the inline string region):
-`TRUNC_F64 = 0x03A3` (`f64::trunc`) and `FMOD_F64 = 0x03A4` (Rust `%`,
+`TRUNC_F64 = 0x03A3` (`f64::trunc`) and `MOD_F64 = 0x03A4` (Rust `%`,
 IEEE-754 sign-of-dividend; `x % 0.0` is NaN, not a trap — pinned in the
 clean-room spec). Plus `arg_count` arms, disassembler arms, and wire-format
 pins.
@@ -183,7 +191,7 @@ declare-only compatibility library function", naming the library and POU.
 - [ ] Promote §Bindings in both design docs; add `REQ-LF-sources-005..007`, `REQ-CL-codegen-001/002`, `REQ-CL-analyzer-007`
 
 ### Phase 2 — Container + VM primitives
-- [ ] `TRUNC_F64`/`FMOD_F64` func_ids, `arg_count`, `intrinsic_func_id` table
+- [ ] `TRUNC_F64`/`MOD_F64` func_ids, `arg_count`, `intrinsic_func_id` table
 - [ ] `vm/builtin.rs` arms; disassembler arms; wire-format pins; VM unit tests
 - [ ] Verify STRING return from user-defined functions (needed by `BOOL_TO_STRING`'s ST body); implement as a general codegen capability if missing
 - [ ] `cd compiler && just` green
@@ -220,7 +228,7 @@ declare-only compatibility library function", naming the library and POU.
   never silently wrong.
 - Risk: `MODABS`-via-ST assumes function-name return assignment works in
   library bodies (believed supported by `compile_user_function`); verify at
-  the start of Phase 5 — fallback is a `modabs_lreal` builtin at `0x03A5`.
+  the start of Phase 5 — fallback is a `modabs_f64` builtin at `0x03A5`.
 - Risk: STRING-returning user functions may be unimplemented in codegen; if
   so it becomes a Phase 2 general capability (benefits every future library),
   and `BOOL_TO_STRING` ships declare-only until it lands — never a builtin.
