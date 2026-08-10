@@ -3,8 +3,8 @@ vendor = "Beckhoff Automation GmbH"
 default_version = "1.0.0"
 # TwinCAT provides this surface (the built-in conversion operators) to every
 # PLC project with no library reference in the .plcproj, so this library is
-# implicit: it activates automatically when a TwinCAT project is discovered.
-implicit = true
+# implicit: discovering a TwinCAT project always activates it (hard-coded in
+# the discovery module's TWINCAT_IMPLICIT_LIBRARIES list).
 # `BOOL_TO_STRING` mirrors the documented TwinCAT Boolean-conversion operator:
 # TRUE -> 'TRUE', FALSE -> 'FALSE'. The body is IronPLC-authored ST dictated by
 # that documented result table. Authored per

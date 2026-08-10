@@ -12,9 +12,9 @@ use ironplc_problems::Problem;
 
 /// A parsed and validated `library.toml` manifest.
 ///
-/// Every field is required except `implicit`. `vendor` is nominative — it
-/// records whose interface the library mirrors, not a claim of endorsement
-/// (see the format design's *Non-affiliation* section).
+/// Every field is required. `vendor` is nominative — it records whose
+/// interface the library mirrors, not a claim of endorsement (see the format
+/// design's *Non-affiliation* section).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryManifest {
     /// Library identity; equals the directory name and the vendor library name.
@@ -26,10 +26,6 @@ pub struct LibraryManifest {
     pub default_version: String,
     /// The public references the library was authored from. Non-empty.
     pub references: Vec<String>,
-    /// Whether the vendor environment provides this library to every project
-    /// without a reference (`REQ-LF-sources-008`). Implicit bundled libraries
-    /// activate automatically when a TwinCAT project is discovered.
-    pub implicit: bool,
 }
 
 impl LibraryManifest {
@@ -76,19 +72,11 @@ impl LibraryManifest {
             references.push(reference.to_string());
         }
 
-        let implicit = match table.get("implicit") {
-            None => false,
-            Some(value) => value.as_bool().ok_or_else(|| {
-                Self::invalid(file_id, "manifest field `implicit` must be a boolean")
-            })?,
-        };
-
         Ok(LibraryManifest {
             name,
             vendor,
             default_version,
             references,
-            implicit,
         })
     }
 
@@ -150,33 +138,6 @@ references = [ "https://example.com/reference" ]
         assert_eq!(manifest.vendor, "Beckhoff Automation GmbH");
         assert_eq!(manifest.default_version, "1.0.0");
         assert_eq!(manifest.references, vec!["https://example.com/reference"]);
-        assert!(!manifest.implicit);
-    }
-
-    #[test]
-    fn from_toml_when_implicit_true_then_parses() {
-        let content = r#"
-name = "Tc2_BuiltIns"
-vendor = "Beckhoff Automation GmbH"
-default_version = "1.0.0"
-implicit = true
-references = [ "https://example.com/reference" ]
-"#;
-        let manifest = LibraryManifest::from_toml(content, &file_id()).unwrap();
-        assert!(manifest.implicit);
-    }
-
-    #[test]
-    fn from_toml_when_implicit_not_boolean_then_error() {
-        let content = r#"
-name = "Tc2_BuiltIns"
-vendor = "Beckhoff Automation GmbH"
-default_version = "1.0.0"
-implicit = "yes"
-references = [ "https://example.com/reference" ]
-"#;
-        let err = LibraryManifest::from_toml(content, &file_id()).unwrap_err();
-        assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
     }
 
     #[test]

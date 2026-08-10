@@ -19,7 +19,19 @@ use ironplc_problems::Problem;
 use log::{info, trace};
 
 use crate::file_type::FileType;
-use crate::libraries::{LibraryName, LibraryReference, LibraryRegistry};
+use crate::libraries::{LibraryName, LibraryReference};
+
+/// Bundled libraries TwinCAT provides to every PLC project without a
+/// reference anywhere in the `.plcproj` — the built-in (compiler-operator)
+/// surface. Discovering a TwinCAT project always activates these
+/// (`REQ-CL-sources-008`); there is no way to opt out, because there is no
+/// TwinCAT project without them.
+///
+/// Deliberately a hard-coded list for now: a manifest-driven "implicit"
+/// marker would need to express *which vendor's* project format implies the
+/// library, and that mechanism does not exist yet. When a second vendor
+/// project discovery arrives, replace this with the real mechanism.
+const TWINCAT_IMPLICIT_LIBRARIES: &[&str] = &["Tc2_BuiltIns"];
 
 /// The type of PLC project that was detected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -265,7 +277,6 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
     // reference joins the merged list before downstream resolution and is
     // deduped against any real reference of the same name.
     append_implicit_references(
-        &LibraryRegistry::bundled(),
         &mut merged_library_references,
         &mut seen_libraries,
         &plcproj_paths[0],
@@ -280,19 +291,20 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
     }))
 }
 
-/// Append a synthetic reference for every implicit bundled library the
-/// project does not already reference (`REQ-CL-sources-008`).
+/// Append a synthetic reference for every library in
+/// [`TWINCAT_IMPLICIT_LIBRARIES`] the project does not already reference
+/// (`REQ-CL-sources-008`).
 ///
-/// The vendor environment provides implicit libraries to every project, so
-/// the discovered project file itself is the activation signal; `declared_in`
-/// anchors any downstream diagnostic on that project file.
+/// TwinCAT provides implicit libraries to every project, so the discovered
+/// project file itself is the activation signal; `declared_in` anchors any
+/// downstream diagnostic on that project file.
 fn append_implicit_references(
-    registry: &LibraryRegistry,
     references: &mut Vec<LibraryReference>,
     seen: &mut HashSet<LibraryName>,
     declared_in: &Path,
 ) {
-    for name in registry.implicit_library_names() {
+    for name in TWINCAT_IMPLICIT_LIBRARIES {
+        let name = LibraryName::from(*name);
         if seen.insert(name.clone()) {
             references.push(LibraryReference {
                 name,
@@ -511,13 +523,12 @@ mod tests {
     use tempfile::TempDir;
 
     /// The references the project itself declared, excluding the synthetic
-    /// entries injected for implicit bundled libraries — so assertions about
-    /// declared references stay stable as bundled implicit libraries change.
+    /// entries injected for implicit libraries — so assertions about declared
+    /// references stay stable as the implicit list changes.
     fn without_implicit(references: &[LibraryReference]) -> Vec<&LibraryReference> {
-        let implicit = LibraryRegistry::bundled().implicit_library_names();
         references
             .iter()
-            .filter(|reference| !implicit.contains(&reference.name))
+            .filter(|reference| !TWINCAT_IMPLICIT_LIBRARIES.contains(&reference.name.as_str()))
             .collect()
     }
 
@@ -573,18 +584,14 @@ mod tests {
     }
 
     #[test]
-    fn append_implicit_references_when_registry_has_no_implicit_then_appends_nothing() {
-        let dir = TempDir::new().unwrap();
-        let registry = LibraryRegistry::with_root(dir.path());
+    fn append_implicit_references_when_already_seen_then_appends_nothing() {
         let mut references = Vec::new();
-        let mut seen = HashSet::new();
+        let mut seen: HashSet<LibraryName> = TWINCAT_IMPLICIT_LIBRARIES
+            .iter()
+            .map(|name| LibraryName::from(*name))
+            .collect();
 
-        append_implicit_references(
-            &registry,
-            &mut references,
-            &mut seen,
-            Path::new("project.plcproj"),
-        );
+        append_implicit_references(&mut references, &mut seen, Path::new("project.plcproj"));
 
         assert!(references.is_empty());
     }

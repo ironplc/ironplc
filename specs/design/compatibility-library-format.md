@@ -54,7 +54,6 @@ The directory name is the library's identity — what a project reference or
 | | `vendor` | string | yes | Whose interface the library mirrors (e.g. `Beckhoff Automation GmbH`), or `IronPLC` for own libraries. Nominative — see *Non-affiliation*. |
 | | `default_version` | string | yes | The version used when a reference does not pin one; names one of the version subdirectories. |
 | **REQ-LF-sources-004** | `references` | array of string | yes | The **public references** the library was authored from — documentation URLs/citations. Facts, not a legal judgment. Non-empty. |
-| **REQ-LF-sources-008** | `implicit` | boolean | no (default `false`) | Marks a library the vendor environment provides to every project without a reference (built-in surface). An implicit bundled library activates automatically when a TwinCAT project (`.plcproj`) is discovered — see [Compatibility Libraries §Activation channels](compatibility-libraries.md). A non-boolean value is a manifest error. |
 
 Example:
 
@@ -106,6 +105,12 @@ format** and is defined separately when needed.
   intrinsic, or declare-only). The fail-if-unimplemented rule (a call to a
   declare-only POU is a compile error) arrives with bindings; see
   [Compatibility Libraries](compatibility-libraries.md).
+- **An `implicit` manifest marker.** Implicit (vendor built-in) libraries are
+  currently a hard-coded list in the discovery module (see
+  [Compatibility Libraries §Activation channels](compatibility-libraries.md)).
+  A manifest-driven marker would need to express *which vendor's project
+  format* implies the library — per-vendor implicit sets — and is deferred
+  until a second vendor project discovery exists to shape it.
 
 ## References
 

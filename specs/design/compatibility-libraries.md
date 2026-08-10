@@ -187,15 +187,17 @@ A dormant library is activated **only** out of band, through one of:
    (repeatable) for source that has no project context.
 3. **Implicit (vendor built-in) libraries.** Some names are available in a
    vendor environment in *every* project, with no library reference anywhere —
-   TwinCAT's built-in conversion operators are the motivating case. A bundled
-   library whose manifest marks it `implicit`
-   (see [Compatibility Library Format](compatibility-library-format.md))
-   activates automatically whenever a TwinCAT project (`.plcproj`) is
-   discovered. The trigger is the *project file's presence* — the same
-   explicit, out-of-band artifact channel 1 reads — never the POU source. This
-   is the vendor's own statement too: by choosing the project format, the
-   project states it compiles in an environment where these names always
-   exist.
+   TwinCAT's built-in conversion operators are the motivating case. Discovering
+   a TwinCAT project (`.plcproj`) automatically activates the bundled
+   `Tc2_BuiltIns` library; there is no way to opt out, because there is no
+   TwinCAT project without these names. The trigger is the *project file's
+   presence* — the same explicit, out-of-band artifact channel 1 reads — never
+   the POU source. This is the vendor's own statement too: by choosing the
+   project format, the project states it compiles in an environment where
+   these names always exist. Which libraries a project format implies is a
+   hard-coded list in the discovery module for now; a manifest-driven,
+   per-vendor mechanism is deferred (see
+   [Compatibility Library Format §Future](compatibility-library-format.md)).
 
 In the playground, the same libraries are served as plain-text files and loaded
 as additional sources, so a library can be activated in the browser too.
@@ -210,10 +212,10 @@ Neither channel modifies POU source, preserving the portability invariant.
   that has no project context.
 - **REQ-CL-playground-001** The playground activates a library by loading it from
   the plain-text library files served alongside the app.
-- **REQ-CL-sources-008** A bundled library whose manifest marks it implicit is
-  activated automatically when a TwinCAT project (`.plcproj`) is discovered,
-  without a project-file library reference; it is not activated for bare,
-  context-free source.
+- **REQ-CL-sources-008** The bundled `Tc2_BuiltIns` library is activated
+  automatically when a TwinCAT project (`.plcproj`) is discovered, without a
+  project-file library reference; it is not activated for bare, context-free
+  source.
 
 **Never sniff, never guess.** The active library set comes *only* from
 out-of-band signals: a project-file reference, explicit CLI/playground

@@ -14,12 +14,13 @@ mirrors the implicit surface.
 
 Two deliverables:
 
-1. **Implicit activation** — a third activation channel: a bundled library whose
-   manifest is marked `implicit = true` activates automatically whenever a
-   TwinCAT project (`.plcproj`) is discovered, mirroring TwinCAT's own behavior
-   where these names are in scope in every project. The `.plcproj` itself is the
-   explicit signal; nothing is ever inferred from POU source content, so the
-   *never sniff, never guess* rule is preserved.
+1. **Implicit activation** — a third activation channel: discovering a TwinCAT
+   project (`.plcproj`) automatically activates `Tc2_BuiltIns`, mirroring
+   TwinCAT's own behavior where these names are in scope in every project. The
+   `.plcproj` itself is the explicit signal; nothing is ever inferred from POU
+   source content, so the *never sniff, never guess* rule is preserved. (See
+   the *Revision* note below: the implicit set is hard-coded in discovery, not
+   manifest data, for now.)
 2. **The `Tc2_BuiltIns` library** — first content: `BOOL_TO_STRING(IN: BOOL):
    STRING` with a math/spec-dictated ST body (`'TRUE'` / `'FALSE'`). Verified
    empirically before this plan: a STRING-returning user function with this name
@@ -44,10 +45,11 @@ IronPLC because discovery lights the library up automatically.
 - The wider `*_TO_*` conversion family. Only `BOOL_TO_STRING` is known-missing
   from the compiler-seeded standard surface; others are added here later only
   when a corpus shows a gap.
-- Implicit activation for non-TwinCAT project formats. `implicit = true` today
-  means "activated on TwinCAT `.plcproj` discovery" because that is the only
-  vendor project discovery IronPLC has; when a second vendor project format
-  arrives, the field grows a qualifier.
+- Implicit activation for non-TwinCAT project formats, and any manifest-driven
+  implicit marker. The implicit set is hard-coded for TwinCAT because that is
+  the only vendor project discovery IronPLC has; a real mechanism must express
+  per-vendor implicit sets and is deferred until a second vendor project
+  format shapes it.
 - Playground changes: the playground has no project context, so implicit
   activation does not apply there; explicit `?libraries=Tc2_BuiltIns` already
   works via the generic mechanism.
@@ -56,45 +58,35 @@ IronPLC because discovery lights the library up automatically.
 
 [compatibility-libraries.md](../design/compatibility-libraries.md) — new
 **REQ-CL-sources-008** (implicit activation channel), amended *Activation
-channels* and REQ-CL-sources-005 wording.
-[compatibility-library-format.md](../design/compatibility-library-format.md) —
-new **REQ-LF-sources-008** (optional `implicit` manifest field). LF-005..007
-stay reserved for the bindings plan. Owning crate slug: `sources`.
+channels* and REQ-CL-sources-005 wording. LF-005..007 stay reserved for the
+bindings plan. Owning crate slug: `sources`.
+
+> **Revision (same PR).** The first cut carried the implicit marker in the
+> manifest (`implicit = true`, a proposed REQ-LF-sources-008). Review judged
+> that premature: a manifest-driven marker must express *which vendor's
+> project format* implies the library (per-vendor implicit sets), and that
+> mechanism doesn't exist yet. Until it does, the implicit set is a
+> **hard-coded list in the discovery module** — deliberately a short-term
+> hack; the manifest field was removed and the format doc records the future
+> mechanism under *Future*.
 
 ## Architecture
 
-**The manifest carries the flag** (libraries are data, not code — no hard-coded
-name list in the loader):
-
-```toml
-name = "Tc2_BuiltIns"
-vendor = "Beckhoff Automation GmbH"
-default_version = "1.0.0"
-implicit = true
-references = [ ... ]
-```
-
-`implicit` is optional, defaults to `false`; a non-boolean value is a P6010
-manifest error like any other shape violation.
+**Discovery owns a hard-coded implicit list.**
+`TWINCAT_IMPLICIT_LIBRARIES = ["Tc2_BuiltIns"]` in
+`sources/src/discovery/mod.rs`: TwinCAT provides these names to every project,
+so loading a `.plcproj` always activates them — there is no opt-out, because
+there is no TwinCAT project without them.
 
 **Discovery injects the reference.** `detect_twincat`
 (`sources/src/discovery/mod.rs`) already merges `<PlaceholderReference>` /
 `<LibraryReference>` entries across sub-projects with name dedup. After that
-merge, it appends a synthetic `LibraryReference` for each bundled implicit
-library not already referenced (`version: None`, `namespace: None`,
-`declared_in` = the first `.plcproj`'s `FileId`). Everything downstream —
-`resolve_references`, activation in `SourceProject::discover_and_add` and
-`cli::enumerate_files`, dedup against explicit `--library` — is untouched, and
-both the CLI and LSP paths get the behavior from the single discovery hook. The
-registry lookup is a small helper (`append_implicit_references(registry, ...)`)
-taking `&LibraryRegistry` so unit tests can drive it with a temp root;
-`detect_twincat` calls it with `LibraryRegistry::bundled()`.
-
-**Registry reads manifests only.** New
-`LibraryRegistry::implicit_library_names()` iterates the bundled library
-directories and parses each `library.toml` (no `.st` parsing); malformed
-manifests are skipped there — they are diagnosed on load by the existing path,
-and the bundled-provenance conformance test keeps bundled manifests valid.
+merge, it appends a synthetic `LibraryReference` for each implicit library not
+already referenced (`version: None`, `namespace: None`, `declared_in` = the
+first `.plcproj`'s `FileId`). Everything downstream — `resolve_references`,
+activation in `SourceProject::discover_and_add` and `cli::enumerate_files`,
+dedup against explicit `--library` — is untouched, and both the CLI and LSP
+paths get the behavior from the single discovery hook.
 
 **The library itself** is ordinary data under
 `compiler/sources/resources/libs/Tc2_BuiltIns/`:
@@ -131,11 +123,10 @@ playground's `gen-libs-index.mjs` enumerates directories generically.
 - `specs/design/compatibility-libraries.md` — implicit channel +
   **REQ-CL-sources-008**; REQ-CL-sources-005 reworded to name the three
   explicit channels.
-- `specs/design/compatibility-library-format.md` — `implicit` field row +
-  **REQ-LF-sources-008**.
-- `compiler/sources/src/libraries/manifest.rs` — parse optional `implicit`.
-- `compiler/sources/src/libraries/mod.rs` — `implicit_library_names()`.
-- `compiler/sources/src/discovery/mod.rs` — synthetic-reference injection.
+- `specs/design/compatibility-library-format.md` — future `implicit` marker
+  recorded under *Future*.
+- `compiler/sources/src/discovery/mod.rs` — `TWINCAT_IMPLICIT_LIBRARIES` list
+  and synthetic-reference injection.
 - `compiler/sources/src/spec_conformance.rs` — `#[spec_test]`s for the two new
   markers.
 - `compiler/project/src/project.rs` — semantic-level test (implicit activation
@@ -144,10 +135,7 @@ playground's `gen-libs-index.mjs` enumerates directories generically.
 
 ## Testing strategy
 
-- Manifest: `implicit = true`, absent (defaults false), and non-boolean →
-  P6010. (`manifest.rs` unit tests.)
-- Registry: `implicit_library_names` returns `Tc2_BuiltIns` for the bundled
-  root and respects a temp root without the flag.
+- Registry: the bundled root contains `Tc2_BuiltIns`.
 - Discovery: a `.plcproj` with no references yields the implicit reference; a
   `.plcproj` already referencing an implicit library does not duplicate it.
 - Semantic (project crate): program calling `BOOL_TO_STRING` in a `.plcproj`
@@ -170,8 +158,7 @@ playground's `gen-libs-index.mjs` enumerates directories generically.
 
 - [ ] Clean-room interface spec (own commit, before implementation)
 - [ ] Design-doc amendments (implicit channel, manifest field, REQ markers)
-- [ ] Manifest `implicit` parse + registry `implicit_library_names()`
-- [ ] Discovery synthetic-reference injection
+- [ ] Discovery `TWINCAT_IMPLICIT_LIBRARIES` + synthetic-reference injection
 - [ ] `Tc2_BuiltIns` package (manifest + ST)
 - [ ] Unit, spec-conformance, semantic, and CLI e2e tests
 - [ ] `cd compiler && just` green

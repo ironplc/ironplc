@@ -334,32 +334,10 @@ fn sources_spec_req_cl_004_diagnoses_unshipped_library() {
     );
 }
 
-/// REQ-LF-sources-008: The manifest's optional `implicit` field is a boolean
-/// (default `false`); a non-boolean value is a manifest error.
-#[spec_test(REQ_LF_sources_008)]
-fn sources_spec_req_lf_008_manifest_implicit_field_is_optional_boolean() {
-    let file_id = FileId::from_string("library.toml");
-    let base = "name = \"Tc2_BuiltIns\"\nvendor = \"ACME\"\ndefault_version = \"1.0.0\"\nreferences = [\"https://example.com\"]\n";
-
-    // Absent: defaults to false.
-    let manifest = LibraryManifest::from_toml(base, &file_id).unwrap();
-    assert!(!manifest.implicit);
-
-    // Present as a boolean: parsed.
-    let manifest =
-        LibraryManifest::from_toml(&format!("{base}implicit = true\n"), &file_id).unwrap();
-    assert!(manifest.implicit);
-
-    // Present as a non-boolean: rejected like any other shape violation.
-    let err =
-        LibraryManifest::from_toml(&format!("{base}implicit = \"yes\"\n"), &file_id).unwrap_err();
-    assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
-}
-
-/// REQ-CL-sources-008: A bundled library whose manifest marks it implicit is
-/// activated automatically when a TwinCAT project (`.plcproj`) is discovered,
-/// without a project-file library reference; it is not activated for bare,
-/// context-free source.
+/// REQ-CL-sources-008: The bundled `Tc2_BuiltIns` library is activated
+/// automatically when a TwinCAT project (`.plcproj`) is discovered, without a
+/// project-file library reference; it is not activated for bare, context-free
+/// source.
 #[spec_test(REQ_CL_sources_008)]
 fn sources_spec_req_cl_008_implicit_library_activates_on_plcproj_discovery() {
     // A TwinCAT project that references no libraries at all.
