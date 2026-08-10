@@ -522,16 +522,6 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    /// The references the project itself declared, excluding the synthetic
-    /// entries injected for implicit libraries — so assertions about declared
-    /// references stay stable as the implicit list changes.
-    fn without_implicit(references: &[LibraryReference]) -> Vec<&LibraryReference> {
-        references
-            .iter()
-            .filter(|reference| !TWINCAT_IMPLICIT_LIBRARIES.contains(&reference.name.as_str()))
-            .collect()
-    }
-
     #[test]
     fn discover_when_plcproj_has_no_references_then_implicit_libraries_added() {
         let dir = TempDir::new().unwrap();
@@ -553,7 +543,7 @@ mod tests {
             .iter()
             .map(|reference| reference.name.as_str())
             .collect();
-        assert!(names.contains(&"Tc2_BuiltIns"));
+        assert_eq!(names, ["Tc2_BuiltIns"]);
     }
 
     #[test]
@@ -774,13 +764,17 @@ mod tests {
 
         let result = discover(dir.path()).unwrap();
 
-        let declared = without_implicit(&result.library_references);
-        assert_eq!(declared.len(), 2);
-        assert_eq!(declared[0].name.as_str(), "Tc2_System");
-        assert_eq!(declared[0].version.as_deref(), Some("*"));
-        assert_eq!(declared[0].namespace.as_deref(), Some("Tc2_System"));
-        assert_eq!(declared[1].name.as_str(), "Tc2_Utilities");
-        assert_eq!(declared[1].version.as_deref(), Some("3.3.7.0"));
+        // The two declared references in declaration order, then the implicit
+        // Tc2_BuiltIns every TwinCAT project gets.
+        let references = &result.library_references;
+        assert_eq!(references.len(), 3);
+        assert_eq!(references[0].name.as_str(), "Tc2_System");
+        assert_eq!(references[0].version.as_deref(), Some("*"));
+        assert_eq!(references[0].namespace.as_deref(), Some("Tc2_System"));
+        assert_eq!(references[1].name.as_str(), "Tc2_Utilities");
+        assert_eq!(references[1].version.as_deref(), Some("3.3.7.0"));
+        assert_eq!(references[2].name.as_str(), "Tc2_BuiltIns");
+        assert_eq!(references[2].version, None);
     }
 
     #[test]
@@ -799,7 +793,15 @@ mod tests {
         .unwrap();
 
         let result = discover(dir.path()).unwrap();
-        assert!(without_implicit(&result.library_references).is_empty());
+
+        // The system library is skipped; only the implicit Tc2_BuiltIns
+        // every TwinCAT project gets remains.
+        let names: Vec<&str> = result
+            .library_references
+            .iter()
+            .map(|reference| reference.name.as_str())
+            .collect();
+        assert_eq!(names, ["Tc2_BuiltIns"]);
     }
 
     #[test]
@@ -839,9 +841,15 @@ mod tests {
         .unwrap();
 
         let result = discover(dir.path()).unwrap();
-        let declared = without_implicit(&result.library_references);
-        assert_eq!(declared.len(), 1);
-        assert_eq!(declared[0].name.as_str(), "Tc2_System");
+
+        // The shared reference is deduplicated to one entry, followed by the
+        // implicit Tc2_BuiltIns every TwinCAT project gets.
+        let names: Vec<&str> = result
+            .library_references
+            .iter()
+            .map(|reference| reference.name.as_str())
+            .collect();
+        assert_eq!(names, ["Tc2_System", "Tc2_BuiltIns"]);
     }
 
     #[test]
