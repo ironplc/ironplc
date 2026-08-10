@@ -185,6 +185,17 @@ A dormant library is activated **only** out of band, through one of:
    new.
 2. **Explicit command-line activation.** `--library <name>[@<version>]`
    (repeatable) for source that has no project context.
+3. **Implicit (vendor built-in) libraries.** Some names are available in a
+   vendor environment in *every* project, with no library reference anywhere —
+   TwinCAT's built-in conversion operators are the motivating case. A bundled
+   library whose manifest marks it `implicit`
+   (see [Compatibility Library Format](compatibility-library-format.md))
+   activates automatically whenever a TwinCAT project (`.plcproj`) is
+   discovered. The trigger is the *project file's presence* — the same
+   explicit, out-of-band artifact channel 1 reads — never the POU source. This
+   is the vendor's own statement too: by choosing the project format, the
+   project states it compiles in an environment where these names always
+   exist.
 
 In the playground, the same libraries are served as plain-text files and loaded
 as additional sources, so a library can be activated in the browser too.
@@ -199,14 +210,21 @@ Neither channel modifies POU source, preserving the portability invariant.
   that has no project context.
 - **REQ-CL-playground-001** The playground activates a library by loading it from
   the plain-text library files served alongside the app.
+- **REQ-CL-sources-008** A bundled library whose manifest marks it implicit is
+  activated automatically when a TwinCAT project (`.plcproj`) is discovered,
+  without a project-file library reference; it is not activated for bare,
+  context-free source.
 
-**Never sniff, never guess.** The active library set comes *only* from an
-explicit project-file reference or explicit CLI/playground activation. Guessing
-wrong would silently change behavior, which the portability promise forbids.
+**Never sniff, never guess.** The active library set comes *only* from
+out-of-band signals: a project-file reference, explicit CLI/playground
+activation, or a discovered vendor project file activating its implicit
+libraries. Guessing wrong would silently change behavior, which the
+portability promise forbids.
 
-- **REQ-CL-sources-005** The active library set derives only from explicit
-  activation (a project-file reference or explicit CLI/playground activation);
-  the compiler never infers a library from POU source content.
+- **REQ-CL-sources-005** The active library set derives only from out-of-band
+  activation (a project-file reference, explicit CLI/playground activation, or
+  implicit activation keyed on a discovered vendor project file); the compiler
+  never infers a library from POU source content.
 
 **"Dormant by default" and "just works by default" are not in tension.**
 Libraries are off for *bare, context-free source*, but on *automatically when a
