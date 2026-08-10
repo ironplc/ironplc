@@ -6,7 +6,7 @@ Deliver the support primitives that let the stalled vendor-function PRs
 ([#1217](https://github.com/ironplc/ironplc/pull/1217) `LTRUNC`/`LMOD`,
 [#1218](https://github.com/ironplc/ironplc/pull/1218) `MODABS`,
 [#1246](https://github.com/ironplc/ironplc/pull/1246)
-`BOOL_TO_STRING`/`LREAL_TO_FMTSTR`/`ADR`) be resolved the way review asked:
+`BOOL_TO_STRING`/`LREAL_TO_FMTSTR`) be resolved the way review asked:
 vendor functions **externalized as compatibility libraries**, with native code
 in the compiler only where IEC 61131-3 source cannot express the semantics.
 
@@ -51,7 +51,6 @@ Under the ADR-0042 rule each function lands as:
 | `FRAC(IN: LREAL): LREAL` | `Tc2_Math` POU with a math-dictated **ST body**: `FRAC := IN - LTRUNC(IN);` — no builtin (reviewer-requested addition; not in the original PRs) |
 | `BOOL_TO_STRING(IN: BOOL): STRING` | library **ST body** (`IF IN THEN BOOL_TO_STRING := 'TRUE'; ELSE ... 'FALSE'`) — trivially expressible, so no intrinsic and no func_id |
 | `LREAL_TO_FMTSTR(in: LREAL, iPrecision: INT, bRound: BOOL): STRING(255)` | `Tc2_Utilities` POU, **declare-only** — surface lands now, calls fail compile with the new code; native formatting is a follow-up plan |
-| `ADR` | **non-goal** — a function-like operator on the dialect axis, deferred to the future `POINTER TO` family work (interacts with ADR-0017/ADR-0021; a declared signature today would have to lie about its return type) |
 
 The mechanism is not TwinCAT-specific: bindings, declare-only, and the new
 problem code are generic library-format capabilities. The Tc2 libraries are
@@ -59,8 +58,6 @@ the first consumers because TwinCAT is a target.
 
 ## Non-goals
 
-- The `ADR` address operator and the `POINTER TO` family (dialect axis; its
-  own future design).
 - A native `LREAL_TO_FMTSTR` implementation (declare-only now; follow-up
   plan adds a formatting builtin and flips the binding).
 - Collision/precedence between libraries or vs. the base stdlib (design
@@ -228,5 +225,5 @@ declare-only compatibility library function", naming the library and POU.
   so it becomes a Phase 2 general capability (benefits every future library),
   and `BOOL_TO_STRING` ships declare-only until it lands — never a builtin.
 - Once the phases land, PRs #1217/#1218/#1246 are superseded: same names,
-  same behavior, delivered per ADR-0042 (`ADR` deferred to the `POINTER TO`
-  work; native `LREAL_TO_FMTSTR` as a follow-up plan).
+  same behavior, delivered per ADR-0042 (native `LREAL_TO_FMTSTR` as a
+  follow-up plan).
