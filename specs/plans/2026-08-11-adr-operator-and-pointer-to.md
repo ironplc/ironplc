@@ -221,11 +221,11 @@ It supersedes the "out of scope" notes in
 - [x] `cd compiler && just` — all checks pass
 
 ### Phase 2 — `ADR`
-- [ ] Analyzer rewrite `ADR(var)` → `ExprKind::Ref` gated by `allow_adr`; arity/operand diagnostics; verify `rule_ref_to` gating admits it without `allow_ref_to`
-- [ ] Negative tests: `ADR` of array element / struct field / literal / call result → P2028/P2030; flag off → P4017
-- [ ] End-to-end tests in `end_to_end_adr.rs`: Goal example runs (deref yields 5); `p^ := v` store-through; FB instance address; `NULL` compare
-- [ ] Dialect test: TwinCAT + CODESYS presets compile the Goal example with no explicit flags
-- [ ] `cd compiler && just` — all checks pass
+- [x] Analyzer rewrite `ADR(var)` → `ExprKind::Ref` gated by `allow_adr` (new `xform_resolve_adr`); arity/operand diagnostics; `rule_ref_to` runs unconditionally so the rewritten node is validated without `allow_ref_to`
+- [x] Negative tests: `ADR` of array element / struct field / literal / call result → P2028/P2030; flag off → P4017 (`analyzer/src/spec_conformance_adr.rs`)
+- [x] End-to-end tests in `end_to_end_adr.rs`: Goal example runs (deref yields 5 — assigned in the body, since FB member initial values are not yet applied to instances); `p^ := v` store-through; per-instance FB member addressing; `NULL` compare
+- [x] Dialect test: TwinCAT + CODESYS presets compile the Goal example with no explicit flags
+- [x] `cd compiler && just` — all checks pass
 
 ### Phase 3 — docs
 - [ ] Docs + stale-comment sweep per Phase 3 file map

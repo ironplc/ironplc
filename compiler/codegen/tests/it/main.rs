@@ -31,6 +31,7 @@ mod end_to_end_abs;
 mod end_to_end_abs_float;
 mod end_to_end_abs_lint;
 mod end_to_end_add;
+mod end_to_end_adr;
 mod end_to_end_any_int_literals;
 mod end_to_end_array;
 mod end_to_end_array_ref_to;
