@@ -216,11 +216,13 @@ fn opcode_constants_when_builtin_then_pinned_byte() {
 
 #[test]
 fn builtin_func_ids_when_unnamed_arithmetic_builtins_then_pinned_values() {
-    // Unnamed LREAL builtins are permanent compiler/VM ABI: containers
-    // encode these func_ids directly, so the values are wire-format
-    // commitments and must never change.
+    // The __TRUNC/__MOD lowering targets are permanent compiler/VM ABI:
+    // containers encode these func_ids directly, so the values are
+    // wire-format commitments and must never change.
     assert_eq!(opcode::builtin::TRUNC_F64, 0x03A3);
     assert_eq!(opcode::builtin::MOD_F64, 0x03A4);
+    assert_eq!(opcode::builtin::TRUNC_F32, 0x03A5);
+    assert_eq!(opcode::builtin::MOD_F32, 0x03A6);
 }
 
 #[test]
