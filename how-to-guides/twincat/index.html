@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/how-to-guides/twincat/index.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="These guides are for engineers who already use Beckhoff TwinCAT 3 and want to use IronPLC alongside it. IronPLC can read TwinCAT project files (.plcproj,.TcPOU,.TcGVL) directly, so you can get a se..." />
-<meta name="description" content="These guides are for engineers who already use Beckhoff TwinCAT 3 and want to use IronPLC alongside it. IronPLC can read TwinCAT project files (.plcproj,.TcPOU,.TcGVL) directly, so you can get a se..." />
+<meta property="og:description" content="These guides are for engineers who already use Beckhoff TwinCAT 3 and want to use IronPLC alongside it. IronPLC reads your TwinCAT solution as-is — the.sln,.tsproj, and.plcproj project files and th..." />
+<meta name="description" content="These guides are for engineers who already use Beckhoff TwinCAT 3 and want to use IronPLC alongside it. IronPLC reads your TwinCAT solution as-is — the.sln,.tsproj, and.plcproj project files and th..." />
 <link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html"><link rel="next" title="Check TwinCAT 3 Projects" href="check-twincat-projects.html"><link rel="prev" title="Check Beremiz Projects" href="../beremiz/check-beremiz-projects.html">
         <link rel="canonical" href="https://www.ironplc.com/how-to-guides/twincat/index.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.235.0">
+<meta name="ironplc-version" content="0.236.0">
 </head>
   <body>
     
@@ -200,7 +200,7 @@
           <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
         </button>
       </div>
-      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
         <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
       </label>
     </div>
@@ -241,6 +241,8 @@
 </li>
 <li class="toctree-l2 current has-children current-page"><a class="current reference internal" href="#">Coming from TwinCAT</a><input aria-label="Toggle navigation of Coming from TwinCAT" checked="" class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" role="switch" type="checkbox"/><label for="toctree-checkbox-5"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="check-twincat-projects.html">Check TwinCAT 3 Projects</a></li>
+<li class="toctree-l3"><a class="reference internal" href="run-twincat-projects.html">Run TwinCAT 3 Projects Without a PLC</a></li>
+<li class="toctree-l3"><a class="reference internal" href="use-beckhoff-libraries.html">Use Beckhoff Libraries</a></li>
 </ul>
 </li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../ai-agents/index.html">Using AI Agents</a><input aria-label="Toggle navigation of Using AI Agents" class="toctree-checkbox" id="toctree-checkbox-6" name="toctree-checkbox-6" role="switch" type="checkbox"/><label for="toctree-checkbox-6"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -430,6 +432,7 @@
 </li>
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/extension-library/index.html">Extension Library</a><input aria-label="Toggle navigation of Extension Library" class="toctree-checkbox" id="toctree-checkbox-19" name="toctree-checkbox-19" role="switch" type="checkbox"/><label for="toctree-checkbox-19"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../reference/extension-library/functions/index.html">Functions</a><input aria-label="Toggle navigation of Functions" class="toctree-checkbox" id="toctree-checkbox-20" name="toctree-checkbox-20" role="switch" type="checkbox"/><label for="toctree-checkbox-20"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="../../reference/extension-library/functions/adr.html">ADR</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/extension-library/functions/sizeof.html">SIZEOF</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/extension-library/functions/isvalidref.html">__ISVALIDREF</a></li>
 </ul>
@@ -441,16 +444,23 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/compatibility-libraries/index.html">Compatibility Libraries</a><input aria-label="Toggle navigation of Compatibility Libraries" class="toctree-checkbox" id="toctree-checkbox-22" name="toctree-checkbox-22" role="switch" type="checkbox"/><label for="toctree-checkbox-22"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../reference/compatibility-libraries/tc2-system.html">Tc2_System</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../reference/compatibility-libraries/tc2-math.html">Tc2_Math</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../reference/compatibility-libraries/tc2-utilities.html">Tc2_Utilities</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../reference/compatibility-libraries/tc2-builtins.html">Tc2_BuiltIns</a></li>
+</ul>
+</li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/compiler/index.html">Compiler</a><input aria-label="Toggle navigation of Compiler" class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/compiler/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/compiler/ironplcc.html">Command Reference</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../reference/compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-23" name="toctree-checkbox-23" role="switch" type="checkbox"/><label for="toctree-checkbox-23"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../reference/compiler/source-formats/index.html">Source Formats</a><input aria-label="Toggle navigation of Source Formats" class="toctree-checkbox" id="toctree-checkbox-24" name="toctree-checkbox-24" role="switch" type="checkbox"/><label for="toctree-checkbox-24"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/source-formats/text.html">Text</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/source-formats/plcopen-xml.html">PLCopen XML</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/source-formats/twincat.html">TwinCAT</a></li>
 </ul>
 </li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../reference/compiler/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-24" name="toctree-checkbox-24" role="switch" type="checkbox"/><label for="toctree-checkbox-24"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../reference/compiler/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" role="switch" type="checkbox"/><label for="toctree-checkbox-25"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P0001.html">P0001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P0002.html">P0002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P0003.html">P0003</a></li>
@@ -563,10 +573,10 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-25" name="toctree-checkbox-25" role="switch" type="checkbox"/><label for="toctree-checkbox-25"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/runtime/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/runtime/ironplcvm.html">Command Reference</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../reference/runtime/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../reference/runtime/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" role="switch" type="checkbox"/><label for="toctree-checkbox-27"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/runtime/problems/V4001.html">V4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/runtime/problems/V4002.html">V4002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/runtime/problems/V4003.html">V4003</a></li>
@@ -603,18 +613,18 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/mcp/index.html">MCP Server</a><input aria-label="Toggle navigation of MCP Server" class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" role="switch" type="checkbox"/><label for="toctree-checkbox-27"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/mcp/index.html">MCP Server</a><input aria-label="Toggle navigation of MCP Server" class="toctree-checkbox" id="toctree-checkbox-28" name="toctree-checkbox-28" role="switch" type="checkbox"/><label for="toctree-checkbox-28"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/mcp/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/mcp/ironplcmcp.html">Command Reference</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/mcp/tools.html">Tool Reference</a></li>
 </ul>
 </li>
-<li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-28" name="toctree-checkbox-28" role="switch" type="checkbox"/><label for="toctree-checkbox-28"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../reference/editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-29" name="toctree-checkbox-29" role="switch" type="checkbox"/><label for="toctree-checkbox-29"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/editor/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/editor/build-tasks.html">Build Tasks</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/editor/bytecode-viewer.html">Bytecode Viewer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../reference/editor/settings.html">Settings</a></li>
-<li class="toctree-l3 has-children"><a class="reference internal" href="../../reference/editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-29" name="toctree-checkbox-29" role="switch" type="checkbox"/><label for="toctree-checkbox-29"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="../../reference/editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-30" name="toctree-checkbox-30" role="switch" type="checkbox"/><label for="toctree-checkbox-30"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/editor/problems/E0001.html">E0001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/editor/problems/E0002.html">E0002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/editor/problems/E0003.html">E0003</a></li>
@@ -666,7 +676,7 @@
               <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
             </button>
           </div>
-          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
             <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
           </label>
         </div>
@@ -675,14 +685,35 @@
 <h1>Coming from TwinCAT<a class="headerlink" href="#coming-from-twincat" title="Link to this heading">¶</a></h1>
 <p>These guides are for engineers who already use Beckhoff TwinCAT 3 and want
 to use IronPLC alongside it.</p>
-<p>IronPLC can read TwinCAT project files (<code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code>, <code class="file docutils literal notranslate"><span class="pre">.TcPOU</span></code>,
-<code class="file docutils literal notranslate"><span class="pre">.TcGVL</span></code>) directly, so you can get a second opinion on your code
-without changing your workflow.</p>
+<p>IronPLC reads your TwinCAT solution as-is — the <code class="file docutils literal notranslate"><span class="pre">.sln</span></code>,
+<code class="file docutils literal notranslate"><span class="pre">.tsproj</span></code>, and <code class="file docutils literal notranslate"><span class="pre">.plcproj</span></code> project files and the
+<code class="file docutils literal notranslate"><span class="pre">.TcPOU</span></code>, <code class="file docutils literal notranslate"><span class="pre">.TcGVL</span></code>, <code class="file docutils literal notranslate"><span class="pre">.TcDUT</span></code>, and <code class="file docutils literal notranslate"><span class="pre">.TcIO</span></code> source
+files that TwinCAT XAE created. Without changing your project or your
+workflow, you can:</p>
+<ul class="simple">
+<li><p><strong>check</strong> your project for problems and get a second opinion on your code,</p></li>
+<li><p><strong>run</strong> your control logic on any computer — no TwinCAT runtime, license,
+or PLC hardware required, and</p></li>
+<li><p>keep using the <strong>Beckhoff libraries</strong> your project references, backed by
+IronPLC’s bundled compatibility libraries.</p></li>
+</ul>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="check-twincat-projects.html">Check TwinCAT 3 Projects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="run-twincat-projects.html">Run TwinCAT 3 Projects Without a PLC</a></li>
+<li class="toctree-l1"><a class="reference internal" href="use-beckhoff-libraries.html">Use Beckhoff Libraries</a></li>
 </ul>
 </div>
+<section id="what-works-today">
+<h2>What Works Today<a class="headerlink" href="#what-works-today" title="Link to this heading">¶</a></h2>
+<p>IronPLC checks and executes Structured Text (the language behind most
+TwinCAT PLC code); graphical languages are not supported. Library support
+is early: IronPLC bundles compatibility implementations for a growing set
+of the most common <code class="docutils literal notranslate"><span class="pre">Tc2_*</span></code> libraries. See
+<a class="reference internal" href="../../reference/compiler/source-formats/twincat.html"><span class="doc">TwinCAT</span></a> for the supported file
+formats and <a class="reference internal" href="../../reference/compatibility-libraries/index.html"><span class="doc">Compatibility Libraries</span></a> for exactly
+which library functions are available.</p>
+</section>
 </section>
 
         </article>
@@ -736,8 +767,27 @@ without changing your workflow.</p>
         
       </footer>
     </div>
-    <aside class="toc-drawer no-toc">
+    <aside class="toc-drawer">
       
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Coming from TwinCAT</a><ul>
+<li><a class="reference internal" href="#what-works-today">What Works Today</a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
       
       
     </aside>
