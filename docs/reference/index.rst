@@ -10,6 +10,7 @@ Technical reference material for IronPLC tools.
    Language <language/index>
    Standard Library <standard-library/index>
    Extension Library <extension-library/index>
+   Compatibility Libraries <compatibility-libraries/index>
    Compiler <compiler/index>
    Runtime <runtime/index>
    MCP Server <mcp/index>
