@@ -1211,21 +1211,23 @@ pub mod builtin {
     /// Pushes -1 (left < right), 0 (equal), or +1 (left > right) as i32.
     pub const CMP_STR: u16 = 0x03A2;
 
-    /// Resolves a manifest `intrinsic` binding name to its func_id.
-    ///
-    /// This is the single name→func_id table for library-bound builtins
-    /// (ADR-0042 rule 3): `sources` validates manifest names against it and
-    /// codegen lowers bound calls through it. The names are internal
-    /// compiler/VM identifiers, never callable names in any scope. Returns
-    /// `None` for unknown names, which codegen treats as a packaging error
-    /// in the library.
-    pub fn intrinsic_func_id(name: &str) -> Option<u16> {
-        match name {
-            "sqrt_lreal" => Some(SQRT_F64),
-            "abs_lreal" => Some(ABS_F64),
-            _ => None,
-        }
-    }
+    // =========================================================================
+    // Unnamed arithmetic builtins
+    //
+    // These func_ids have no compiler-seeded name: they implement LREAL
+    // semantics that IEC 61131-3 source cannot express (ADR-0042) and are
+    // intended to be reached only through compatibility-library bindings.
+    // =========================================================================
+
+    /// LREAL-preserving truncation toward zero (`f64::trunc`): pops one f64,
+    /// pushes its integer part as f64. The result stays f64, so values beyond
+    /// any integer range are preserved exactly rather than clamped.
+    pub const TRUNC_F64: u16 = 0x03A3;
+
+    /// Floating-point modulo with the sign of the dividend (Rust `%` on f64,
+    /// i.e. fmod; `x % 0.0` is NaN, not a trap): pops divisor then dividend,
+    /// pushes the remainder.
+    pub const MOD_F64: u16 = 0x03A4;
 
     // =========================================================================
     // MUX (multiplexer) range-based opcodes
@@ -1290,11 +1292,11 @@ pub mod builtin {
             | BCD_TO_INT_16 | BCD_TO_INT_32 | BCD_TO_INT_64 | INT_TO_BCD_8 | INT_TO_BCD_16
             | INT_TO_BCD_32 | INT_TO_BCD_64 | CONV_I32_TO_BOOL | CONV_I64_TO_BOOL
             | CONV_I32_TO_STR | CONV_U32_TO_STR | CONV_STR_TO_I32 | CONV_F32_TO_STR
-            | CONV_STR_TO_F32 => 1,
+            | CONV_STR_TO_F32 | TRUNC_F64 => 1,
             EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
             | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
             | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
-            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 | ATAN2_F32 | ATAN2_F64 | CMP_STR => 2,
+            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 | ATAN2_F32 | ATAN2_F64 | CMP_STR | MOD_F64 => 2,
             LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | LIMIT_I64 | LIMIT_U32 | LIMIT_U64 | SEL_I32
             | SEL_F32 | SEL_F64 | SEL_I64 => 3,
             id if is_mux(id) => {
@@ -1371,21 +1373,8 @@ mod tests {
     }
 
     #[test]
-    fn intrinsic_func_id_when_known_name_then_resolves() {
-        assert_eq!(
-            builtin::intrinsic_func_id("sqrt_lreal"),
-            Some(builtin::SQRT_F64)
-        );
-        assert_eq!(
-            builtin::intrinsic_func_id("abs_lreal"),
-            Some(builtin::ABS_F64)
-        );
-    }
-
-    #[test]
-    fn intrinsic_func_id_when_unknown_name_then_none() {
-        assert_eq!(builtin::intrinsic_func_id("no_such_builtin"), None);
-        // Uppercase POU names are not intrinsic names.
-        assert_eq!(builtin::intrinsic_func_id("MY_SQRT"), None);
+    fn arg_count_when_unnamed_arithmetic_builtins_then_counts_match_dispatch() {
+        assert_eq!(builtin::arg_count(builtin::TRUNC_F64), 1);
+        assert_eq!(builtin::arg_count(builtin::MOD_F64), 2);
     }
 }

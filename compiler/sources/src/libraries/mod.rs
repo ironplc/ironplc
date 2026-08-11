@@ -406,6 +406,12 @@ mod tests {
     }
 
     #[test]
+    fn bundled_registry_contains_tc2_builtins() {
+        let registry = LibraryRegistry::bundled();
+        assert!(registry.contains(&LibraryName::from("Tc2_BuiltIns")));
+    }
+
+    #[test]
     fn load_when_tc2_system_then_provides_pi() {
         let registry = LibraryRegistry::bundled();
         let loaded = registry.load(&LibraryName::from("Tc2_System")).unwrap();
