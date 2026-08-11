@@ -512,6 +512,8 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                     }
                     opcode::builtin::TRUNC_F64 => format!("TRUNC_F64 (0x{:04X})", func_id),
                     opcode::builtin::MOD_F64 => format!("MOD_F64 (0x{:04X})", func_id),
+                    opcode::builtin::TRUNC_F32 => format!("TRUNC_F32 (0x{:04X})", func_id),
+                    opcode::builtin::MOD_F32 => format!("MOD_F32 (0x{:04X})", func_id),
                     id if opcode::builtin::is_mux(id) => {
                         let n = opcode::builtin::mux_info(id).unwrap();
                         let width = if id >= opcode::builtin::MUX_F64_BASE {
