@@ -153,6 +153,11 @@ pub(crate) fn lookup_builtin(name: &str, op_width: OpWidth, signedness: Signedne
         "ACOS" => float_builtin!(op_width, builtin::ACOS_F32, builtin::ACOS_F64),
         "ATAN" => float_builtin!(op_width, builtin::ATAN_F32, builtin::ATAN_F64),
         "ATAN2" => float_builtin!(op_width, builtin::ATAN2_F32, builtin::ATAN2_F64),
+        // Compiler intrinsics (reserved `__` namespace): real-preserving
+        // truncation and floating modulo, ANY_REAL with the width selecting
+        // the F32/F64 builtin variant.
+        "__TRUNC" => float_builtin!(op_width, builtin::TRUNC_F32, builtin::TRUNC_F64),
+        "__MOD" => float_builtin!(op_width, builtin::MOD_F32, builtin::MOD_F64),
         _ => None,
     }
 }

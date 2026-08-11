@@ -329,6 +329,19 @@ pub fn dispatch(func_id: u16, stack: &mut OperandStack) -> Result<(), Trap> {
             stack.push(Slot::from_f64(a % b))?;
             Ok(())
         }
+        opcode::builtin::TRUNC_F32 => {
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a.trunc()))?;
+            Ok(())
+        }
+        opcode::builtin::MOD_F32 => {
+            // IEEE-754 remainder with the sign of the dividend (fmod).
+            // a % 0.0 is NaN, not a trap.
+            let b = stack.pop()?.as_f32();
+            let a = stack.pop()?.as_f32();
+            stack.push(Slot::from_f32(a % b))?;
+            Ok(())
+        }
         opcode::builtin::EXPT_I64 => {
             let b = stack.pop()?.as_i64();
             let a = stack.pop()?.as_i64();
