@@ -15,6 +15,7 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 - **[Problem Code Management](specs/steering/problem-code-management.md)** - Problem codes, diagnostics, and `compiler/problems/` workflows
 - **[Extension Testing Requirements](specs/steering/extension-testing-requirements.md)** - VS Code extension CI gates and invariants (especially relevant for `integrations/vscode/**`)
 - **[Steering File Guidelines](specs/steering/steering-file-guidelines.md)** - How IronPLC maintains steering docs and the pointer pattern
+- **[Coming-from Guide Authoring](specs/steering/coming-from-guide-authoring.md)** - Standard page set, slugs, URL-stability policy, and content rules for the "Coming from X" how-to sections of the docs website (especially relevant for `docs/how-to-guides/**` files)
 
 ## Skills (Slash Commands) — Claude Code
 

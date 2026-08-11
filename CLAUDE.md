@@ -13,6 +13,7 @@ Before making changes, read the relevant steering files in `specs/steering/`:
 - **[PLCopen XML Module](specs/steering/plcopen-xml-module.md)** - Architecture and patterns for the PLCopen XML parsing module (especially relevant for `compiler/sources/src/xml/` files)
 - **[Syntax Support Guide](specs/steering/syntax-support-guide.md)** - Checklist and patterns for adding new syntax support, including `--allow-x` flags, plc2plc round-trip tests, and end-to-end execution tests (especially relevant for `**/parser/**`, `**/codegen/**`, `**/plc2plc/**` files)
 - **[Compatibility Library Authoring](specs/steering/compatibility-library-authoring.md)** - Licensing risk tiers, allowed/forbidden inputs, and the clean-room-with-AI workflow for authoring bundled compatibility libraries (especially relevant for `compiler/sources/resources/compat-libraries/` files)
+- **[Coming-from Guide Authoring](specs/steering/coming-from-guide-authoring.md)** - Standard page set, slugs, URL-stability policy, and content rules for the "Coming from X" how-to sections of the docs website (especially relevant for `docs/how-to-guides/**` files)
 
 ## Skills (Slash Commands)
 
