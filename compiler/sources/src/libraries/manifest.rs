@@ -164,7 +164,6 @@ impl LibraryManifest {
         Ok(all_bindings)
     }
 
-
     /// Read a required, non-empty string field from the manifest table.
     fn required_string(
         table: &toml::Table,
@@ -374,8 +373,9 @@ references = [ 1, 2, 3 ]
         // A manifest cannot select a native implementation -- data files
         // must never direct code emission. The rejected earlier design's
         // `{ intrinsic = "..." }` form is malformed.
-        let content =
-            format!("{IDENTITY}\n[\"1.0.0\".bindings]\nMY_SQRT = {{ intrinsic = \"sqrt_lreal\" }}\n");
+        let content = format!(
+            "{IDENTITY}\n[\"1.0.0\".bindings]\nMY_SQRT = {{ intrinsic = \"sqrt_lreal\" }}\n"
+        );
         let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
         assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
     }

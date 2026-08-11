@@ -34,7 +34,8 @@ fn compile_with_bindings(
     let user =
         ironplc_parser::parse_program(user_source, &FileId::from_string("user.st"), &options)
             .unwrap();
-    let (analyzed, ctx) = ironplc_analyzer::stages::resolve_types(&[&lib, &user], &options).unwrap();
+    let (analyzed, ctx) =
+        ironplc_analyzer::stages::resolve_types(&[&lib, &user], &options).unwrap();
     let codegen_options = ironplc_codegen::CodegenOptions {
         library_bindings: bindings,
         ..Default::default()
@@ -124,9 +125,13 @@ END_PROGRAM
         library_bindings: library_bindings_fixture("MY_FMT"),
         ..Default::default()
     };
-    let container =
-        ironplc_codegen::compile(&analyzed, &ctx, &codegen_options, &ironplc_codegen::EmptyLookup)
-            .unwrap();
+    let container = ironplc_codegen::compile(
+        &analyzed,
+        &ctx,
+        &codegen_options,
+        &ironplc_codegen::EmptyLookup,
+    )
+    .unwrap();
 
     // The user body compiled (init + scan + the user function) and the call
     // site is a CALL.

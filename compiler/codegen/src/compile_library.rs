@@ -51,7 +51,9 @@ pub(crate) fn compile_bound_call(
     ctx: &CompileContext,
     func: &Function,
 ) -> Option<Result<(), Diagnostic>> {
-    let library = ctx.library_bindings.get_declare_only(func.name.original())?;
+    let library = ctx
+        .library_bindings
+        .get_declare_only(func.name.original())?;
     Some(Err(Diagnostic::problem(
         Problem::LibraryFunctionNotImplemented,
         Label::span(
