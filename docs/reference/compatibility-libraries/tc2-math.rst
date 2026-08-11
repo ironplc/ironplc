@@ -43,6 +43,11 @@ Example
 
    angle := MODABS(IN := rawAngle, IM := 360.0);
 
+Independence
+------------
+
+.. include:: ../../includes/compat-library-independence.rst
+
 See Also
 --------
 

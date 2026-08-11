@@ -32,6 +32,11 @@ Example
    F_DegreesToRadians := degrees * PI / 180.0;
    END_FUNCTION
 
+Independence
+------------
+
+.. include:: ../../includes/compat-library-independence.rst
+
 See Also
 --------
 

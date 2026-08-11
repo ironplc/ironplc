@@ -13,9 +13,9 @@ testing control logic on a laptop or in a CI/CD pipeline.
 Compile the Solution
 -------------------------------------------
 
-Compile your solution into a bytecode container. The command takes the
-same input as ``check`` — point it at the solution directory and select
-the ``twincat`` dialect:
+Compile your solution into a bytecode container: point
+:program:`ironplcc` at the solution directory and select the ``twincat``
+dialect:
 
 .. code-block:: shell
 

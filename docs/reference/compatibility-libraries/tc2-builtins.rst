@@ -30,6 +30,11 @@ Example
 
    statusText := BOOL_TO_STRING(running);
 
+Independence
+------------
+
+.. include:: ../../includes/compat-library-independence.rst
+
 See Also
 --------
 

@@ -25,9 +25,8 @@ Functions
        rendered (NaN, infinities, magnitudes of 2\ :sup:`63` or more)
        return an empty string.
 
-The formal parameter names (``in``, ``iPrecision``, ``bRound``) match the
-vendor's documented names, so source that passes arguments by name
-resolves unchanged.
+The formal parameter names (``in``, ``iPrecision``, ``bRound``) match
+the vendor's documented names.
 
 Example
 -------
@@ -36,6 +35,11 @@ Example
 
    text := LREAL_TO_FMTSTR(in := 3.14159, iPrecision := 2, bRound := TRUE);
    (* text = '3.14' *)
+
+Independence
+------------
+
+.. include:: ../../includes/compat-library-independence.rst
 
 See Also
 --------

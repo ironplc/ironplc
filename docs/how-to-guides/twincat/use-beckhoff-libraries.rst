@@ -97,11 +97,7 @@ library's source must be present in the directory you check.
 About the Compatibility Libraries
 -------------------------------------------
 
-IronPLC is an independent open-source project and is not affiliated with,
-endorsed by, or sponsored by Beckhoff Automation. The bundled
-compatibility libraries are authored independently to reproduce the
-documented interfaces of the corresponding Beckhoff libraries so that
-your code works in both environments; they contain no Beckhoff code.
+.. include:: ../../includes/compat-library-independence.rst
 
 -------------------------------------------
 See Also
