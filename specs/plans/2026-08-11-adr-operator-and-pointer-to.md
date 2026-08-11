@@ -228,8 +228,8 @@ It supersedes the "out of scope" notes in
 - [x] `cd compiler && just` — all checks pass
 
 ### Phase 3 — docs
-- [ ] Docs + stale-comment sweep per Phase 3 file map
-- [ ] `cd compiler && just` — all checks pass
+- [x] Docs + stale-comment sweep per Phase 3 file map — `adr.rst` feature doc with vendor references; `POINTER TO` section + vendor references in `reference-types.rst`; stale `--allow-pointer-arithmetic` mentions corrected to `--allow-ref-arithmetic`; editor settings, steering dialect table, and `reference-to-twincat.md` deferral note updated. (`integrations/vscode/package.json` needed no change — its dialect description was already accurate; the `enabling-dialects-and-features.rst` / `ironplcc.rst` entries landed with Phase 2 since the website build enforces them.)
+- [x] `cd compiler && just` — all checks pass
 
 ## Out of scope
 
