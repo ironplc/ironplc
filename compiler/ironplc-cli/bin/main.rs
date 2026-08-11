@@ -117,6 +117,12 @@ struct FileArgs {
     #[arg(long)]
     allow_reference_to: bool,
 
+    /// Allow the Beckhoff TwinCAT/CODESYS `POINTER TO` pointer type with
+    /// explicit dereference (^). This is an extension; the `twincat` and
+    /// `codesys` dialects enable it.
+    #[arg(long)]
+    allow_pointer_to: bool,
+
     /// Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types.
     /// This is an extension not part of the IEC 61131-3 standard.
     #[arg(long)]
@@ -220,6 +226,7 @@ impl FileArgs {
         options.allow_long_time_types |= self.allow_long_time_types;
         options.allow_ref_to |= self.allow_ref_to;
         options.allow_reference_to |= self.allow_reference_to;
+        options.allow_pointer_to |= self.allow_pointer_to;
         options.allow_ref_arithmetic |= self.allow_ref_arithmetic;
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;

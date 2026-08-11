@@ -74,7 +74,19 @@ Consequently:
 
 ## Status & handoff notes
 
-- Nothing is implemented yet; this plan is the first commit on the branch.
+- **Phase 1 is implemented** (flags, `POINTER TO` parsing/semantics/round-trip,
+  design doc `specs/design/adr-and-pointer-to.md`). Two deviations from the
+  original sketch below:
+  - `allow_adr` is **not** added in Phase 1. The MCP
+    `feature_flag_conformance` suite requires every declared flag to have a
+    behavioral reject→accept fixture ("no escape hatch for declared but not
+    yet enforced"), and `ADR`'s behavior only exists once the Phase 2 rewrite
+    lands — so the flag lands together with that rewrite.
+  - `POINTER` is a demoted keyword token (a `Pointer` token plus an
+    `xform_demote_keywords` arm), not an identifier-sequence match: the
+    parser has no access to `CompilerOptions`, so token demotion is the only
+    gating mechanism — the same way `REFERENCE` is actually implemented.
+    `POINTER` still remains usable as an identifier when the flag is off.
 - Line anchors below are guides that will have drifted — re-locate by
   symbol, not line number.
 - Automatically wired surfaces when a flag is added via
@@ -199,14 +211,14 @@ It supersedes the "out of scope" notes in
 ## Tasks
 
 ### Phase 1 — `POINTER TO`
-- [ ] Write `specs/design/adr-and-pointer-to.md` with REQ-PTR requirement IDs (own commit, before implementation)
-- [ ] Add `allow_pointer_to` + `allow_adr` flags; update exact-set dialect tests (`twincat_...`, `codesys_...`)
-- [ ] Wire CLI + LSP surfaces; add `feature_flag_conformance` fixtures
-- [ ] `RefSyntax::PointerTo` in dsl + parser grammar + plc2plc renderer
-- [ ] Parser tests: `pointer_to_when_flag_enabled_then_parses`, `pointer_to_when_flag_disabled_then_rejected`
-- [ ] Analyzer: explicit-deref semantics; exclude from implicit-deref xform; type-mismatch (P2032) and deref (P2031) coverage
-- [ ] plc2plc round-trip fixture + test
-- [ ] `cd compiler && just` — all checks pass
+- [x] Write `specs/design/adr-and-pointer-to.md` with REQ-PTR requirement IDs (own commit, before implementation)
+- [x] Add `allow_pointer_to` flag; update exact-set dialect tests (`twincat_...`, `codesys_...`) — `allow_adr` moved to Phase 2, see handoff notes
+- [x] Wire CLI + LSP surfaces; add `feature_flag_conformance` fixture
+- [x] `RefSyntax::PointerTo` in dsl + parser grammar + plc2plc renderer
+- [x] Parser tests: `pointer_to_when_flag_enabled_then_parses`, `pointer_to_when_flag_disabled_then_rejected`
+- [x] Analyzer: explicit-deref semantics; exclude from implicit-deref xform; type-mismatch (P2032) and deref (P2031) coverage
+- [x] plc2plc round-trip fixture + test
+- [x] `cd compiler && just` — all checks pass
 
 ### Phase 2 — `ADR`
 - [ ] Analyzer rewrite `ADR(var)` → `ExprKind::Ref` gated by `allow_adr`; arity/operand diagnostics; verify `rule_ref_to` gating admits it without `allow_ref_to`
