@@ -422,6 +422,12 @@ mod tests {
         assert!(registry.contains(&LibraryName::from("Tc2_Math")));
     }
 
+    #[test]
+    fn bundled_registry_contains_tc2_utilities() {
+        let registry = LibraryRegistry::bundled();
+        assert!(registry.contains(&LibraryName::from("Tc2_Utilities")));
+    }
+
     /// The names of the `FUNCTION` declarations in a library, as written.
     fn function_names(library: &Library) -> Vec<String> {
         library
@@ -446,6 +452,15 @@ mod tests {
             function_names(&loaded.library),
             ["LTRUNC", "LMOD", "MODABS", "FRAC"]
         );
+    }
+
+    #[test]
+    fn load_when_tc2_utilities_then_provides_lreal_to_fmtstr() {
+        let registry = LibraryRegistry::bundled();
+        let loaded = registry.load(&LibraryName::from("Tc2_Utilities")).unwrap();
+        assert_eq!(loaded.manifest.name, "Tc2_Utilities");
+        assert_eq!(loaded.manifest.default_version, "1.0.0");
+        assert_eq!(function_names(&loaded.library), ["LREAL_TO_FMTSTR"]);
     }
 
     #[test]

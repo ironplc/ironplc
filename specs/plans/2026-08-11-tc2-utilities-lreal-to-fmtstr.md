@@ -50,9 +50,19 @@ which is the **sole input** to this implementation per the
    round (`+ 0.5` then `LREAL_TO_LINT`) or truncate (`LREAL_TO_LINT`).
 5. Carry: fraction `n = 10^p` increments the integer part and zeroes `n`.
 6. Render: sign (`in < 0.0`; negative zero renders unsigned), integer digits
-   by repeated `MOD 10` / `/ 10` with `MID('0123456789', 1, digit + 1)`
-   character lookup, then `'.'` plus the fraction left-padded to exactly `p`
-   digits (a `FOR i := 1 TO p` render of `n` naturally zero-pads).
+   by exact 64-bit `/ 10^k` / `MOD 10` arithmetic with
+   `MID('0123456789', 1, digit + 1)` character lookup, then `'.'` plus the
+   fraction rendered to exactly `p` digits (rendering `n` at fixed weights
+   `10^(p-1) … 10^0` left-pads with zeros).
+
+**Digit rendering is unrolled, not looped.** The VM sizes its temporary
+string-buffer pool by statically counting string-operation call sites and
+releases buffers only on function return, so a `CONCAT`/`MID` inside a loop
+allocates per iteration and exhausts the pool (`TempBufferExhausted` trap).
+Unrolled — one block per decimal weight, 19 for the integer part (intVal <
+2^63 < 10^19) and 15 for the fraction, each guarded so it executes at most
+once per call — the runtime allocation count is bounded by the static site
+count, which is exactly the model the pool is sized for.
 
 ## File map
 
@@ -70,14 +80,14 @@ which is the **sole input** to this implementation per the
 
 ## Tasks
 
-- [ ] Commit this plan
-- [ ] Author `library.toml` and `Tc2_Utilities.st` from the spec
-- [ ] Loader tests: bundled registry contains and loads `Tc2_Utilities`
+- [x] Commit this plan
+- [x] Author `library.toml` and `Tc2_Utilities.st` from the spec
+- [x] Loader tests: bundled registry contains and loads `Tc2_Utilities`
       (criterion 1)
-- [ ] End-to-end vector tests (criterion 2): every vector, exact string
+- [x] End-to-end vector tests (criterion 2): every vector, exact string
       equality; NaN/∞ constructed arithmetically per the spec
-- [ ] Shadowing end-to-end test (criterion 4)
-- [ ] `.plcproj` activation fixture + positive/negative CLI tests
+- [x] Shadowing end-to-end test (criterion 4)
+- [x] `.plcproj` activation fixture + positive/negative CLI tests
       (criterion 3)
-- [ ] `plc2plc` round-trip test (criterion 5)
-- [ ] Full CI green (`cd compiler && just`) (criterion 6)
+- [x] `plc2plc` round-trip test (criterion 5)
+- [x] Full CI green (`cd compiler && just`) (criterion 6)

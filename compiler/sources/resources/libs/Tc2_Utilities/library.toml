@@ -1,0 +1,15 @@
+name = "Tc2_Utilities"
+vendor = "Beckhoff Automation GmbH"
+default_version = "1.0.0"
+# One function mirroring the TwinCAT Tc2_Utilities PLC library interface:
+# LREAL_TO_FMTSTR, fixed-point decimal formatting with clamped precision
+# 0..15 and a round-or-truncate switch. The body is IronPLC-authored ST
+# authored per specs/steering/compatibility-library-authoring.md from the
+# clean-room spec at specs/design/library-interfaces/tc2-utilities.md,
+# which is the sole input to this implementation. Reference-activated only
+# (a .plcproj reference or --library Tc2_Utilities), matching how real
+# TwinCAT projects declare their Tc2_Utilities dependency. No bindings
+# table.
+references = [
+  "https://infosys.beckhoff.com/ -- TwinCAT Tc2_Utilities PLC library: LREAL_TO_FMTSTR function page (section TwinCAT 3 -> PLC libraries -> Tc2_Utilities -> Functions -> Formatting)",
+]
