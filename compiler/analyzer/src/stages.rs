@@ -31,7 +31,7 @@ use crate::{
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
     xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_named_to_positional_args,
-    xform_resolve_constant_expressions, xform_resolve_expr_types,
+    xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_expr_types,
     xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
     xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
     xform_resolve_type_decl_environment, xform_toposort_declarations,
@@ -192,6 +192,24 @@ pub fn resolve_types(
     let fallback = library.clone();
     match xform_insert_implicit_deref::apply(library, options) {
         Ok(result) => library = result,
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
+
+    // Rewrite the `ADR(x)` address-of operator into `ExprKind::Ref` when
+    // `allow_adr` is set. Runs after implicit-deref (so a `REFERENCE TO`
+    // operand is not mis-addressed) and before symbol/function resolution
+    // (so a recognized `ADR` is not reported as an undeclared function).
+    // Recoverable: a diagnosed call is lowered to a placeholder, so the
+    // transformed library is kept even when diagnostics are present.
+    let fallback = library.clone();
+    match xform_resolve_adr::apply(library, options) {
+        Ok((result, errs)) => {
+            library = result;
+            diagnostics.extend(errs);
+        }
         Err(errs) => {
             diagnostics.extend(errs);
             library = fallback;

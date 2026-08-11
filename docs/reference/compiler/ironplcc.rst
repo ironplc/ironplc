@@ -155,6 +155,10 @@ Options
    Allow the Beckhoff TwinCAT / CODESYS ``POINTER TO`` pointer type with
    explicit dereference (``^``).
 
+``--allow-adr``
+   Allow the ``ADR()`` address-of operator, which returns a typed pointer to
+   a variable for assignment to a ``POINTER TO`` variable.
+
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``

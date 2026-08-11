@@ -269,6 +269,11 @@ define_compiler_options! {
     [Codesys, TwinCat],
     allow_pointer_to,
 
+    "Allow the ADR() address-of operator (returns a typed pointer to a variable)",
+    "--allow-adr",
+    [Codesys, TwinCat],
+    allow_adr,
+
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
     "--allow-ref-arithmetic",
     [Rusty, Codesys],
@@ -485,6 +490,7 @@ mod tests {
                 "allow_ref_to",
                 "allow_reference_to",
                 "allow_pointer_to",
+                "allow_adr",
                 "allow_ref_arithmetic",
                 "allow_ref_stack_variables",
                 "allow_ref_type_punning",
@@ -529,6 +535,7 @@ mod tests {
                 "allow_long_time_types",
                 "allow_reference_to",
                 "allow_pointer_to",
+                "allow_adr",
                 "allow_int_to_bool_initializer",
                 "allow_sizeof",
                 "allow_cross_family_widening",
