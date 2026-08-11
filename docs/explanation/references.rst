@@ -105,7 +105,7 @@ runtime work together to enforce the following guarantees:
 References identify variables, not raw memory addresses. By default, you
 cannot add, subtract, or use ordering comparisons on a reference. If you need
 pointer arithmetic for compatibility with other PLC environments, you can
-enable it with ``--allow-pointer-arithmetic``.
+enable it with ``--allow-ref-arithmetic``.
 
 **Type safety.**
 A ``REF_TO INT`` can only point to an ``INT``. Assigning it to a
@@ -214,7 +214,7 @@ References in IronPLC have intentional limits that keep programs predictable:
   well-defined location in the variable table.
 - By default, only ``=`` and ``<>`` comparisons are allowed on references.
   Arithmetic and ordering comparisons can be enabled with
-  ``--allow-pointer-arithmetic``.
+  ``--allow-ref-arithmetic``.
 
 For the complete list of restrictions and related compiler diagnostics, see
 :doc:`/reference/language/data-types/derived/reference-types`.
