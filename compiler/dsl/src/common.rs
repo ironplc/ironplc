@@ -1351,12 +1351,13 @@ impl ReferenceTarget {
 
 /// The surface syntax that produced a reference declaration or initializer.
 ///
-/// References share a single backend (a variable-table index), but two
+/// References share a single backend (a variable-table index), but three
 /// keywords produce them: the IEC 61131-3 `REF_TO` and the Beckhoff
-/// TwinCAT / CODESYS `REFERENCE TO`. This tag records which one appeared in
-/// the source so the renderer can reproduce it and so per-declaration
-/// dereference behavior can be keyed on it. See
-/// `specs/design/reference-to-twincat.md`.
+/// TwinCAT / CODESYS `REFERENCE TO` and `POINTER TO`. This tag records which
+/// one appeared in the source so the renderer can reproduce it and so
+/// per-declaration dereference behavior can be keyed on it. See
+/// `specs/design/reference-to-twincat.md` and
+/// `specs/design/adr-and-pointer-to.md`.
 ///
 /// This is a leaf tag, always carried behind a `#[recurse(ignore)]` field, so
 /// it deliberately does not derive `Recurse`.
@@ -1366,6 +1367,10 @@ pub enum RefSyntax {
     RefTo,
     /// Beckhoff TwinCAT / CODESYS `REFERENCE TO`.
     ReferenceTo,
+    /// Beckhoff TwinCAT / CODESYS `POINTER TO`. Same backend as `REF_TO`
+    /// with explicit `^` dereference. See
+    /// `specs/design/adr-and-pointer-to.md`.
+    PointerTo,
 }
 
 /// Reference type declaration (`REF_TO` or `REFERENCE TO`).

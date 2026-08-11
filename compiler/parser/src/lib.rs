@@ -37,6 +37,8 @@ mod spec_requirements {
 }
 #[cfg(test)]
 mod spec_conformance;
+#[cfg(test)]
+mod spec_conformance_pointer_to;
 pub mod token;
 
 /// Tokenize a IEC 61131 program.

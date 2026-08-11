@@ -1035,12 +1035,14 @@ parser! {
         }
       }).collect()
     }
-    // Matches either the IEC `REF_TO` keyword or the TwinCAT/CODESYS
-    // `REFERENCE TO` keyword pair, returning which surface syntax matched.
-    // See `specs/design/reference-to-twincat.md`.
+    // Matches the IEC `REF_TO` keyword or one of the TwinCAT/CODESYS
+    // `REFERENCE TO` / `POINTER TO` keyword pairs, returning which surface
+    // syntax matched. See `specs/design/reference-to-twincat.md` and
+    // `specs/design/adr-and-pointer-to.md`.
     rule ref_to_keyword() -> RefSyntax =
       tok(TokenType::RefTo) { RefSyntax::RefTo }
       / tok(TokenType::Reference) _ tok(TokenType::To) { RefSyntax::ReferenceTo }
+      / tok(TokenType::Pointer) _ tok(TokenType::To) { RefSyntax::PointerTo }
     // Matches the TwinCAT/CODESYS `REF=` binding operator, returning the `=`
     // token (used for the assignment span). The `=` must immediately follow
     // `REF` with no intervening whitespace (no `_`), so `REF =` is not a binding

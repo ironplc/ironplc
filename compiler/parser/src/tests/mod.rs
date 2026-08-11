@@ -17,6 +17,7 @@ mod fb_inheritance;
 mod function_calls;
 mod literals;
 mod partial_access;
+mod pointer_to;
 mod pragmas;
 mod reference_to;
 mod short_circuit;

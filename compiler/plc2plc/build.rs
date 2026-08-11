@@ -5,5 +5,8 @@ fn main() {
         // source renders unchanged and injected library declarations are never
         // emitted.
         "compatibility-libraries.md",
+        // plc2plc owns the POINTER TO rendering requirements
+        // (`REQ-PTR-plc2plc-*`).
+        "adr-and-pointer-to.md",
     ]);
 }
