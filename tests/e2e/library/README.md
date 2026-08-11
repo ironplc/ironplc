@@ -20,6 +20,13 @@ The test installs with the real OS installer, then:
 That end-to-end path proves the library `PI` resolved from the installed location
 and the VM computed with it.
 
+The same flow then repeats for `uses_bool_to_string.st` with
+`--library Tc2_BuiltIns`, asserting `okTrue`/`okFalse` are both `TRUE` — proving
+the `Tc2_BuiltIns` library's `BOOL_TO_STRING` function body shipped, resolved,
+and executed correctly (`--dump-vars` does not render STRING contents, so the
+fixture folds the results into BOOLs via string comparison). The target release
+must ship both bundled libraries.
+
 ## Running it
 
 Each OS installs differently, so there are per-OS recipes. The release version is
