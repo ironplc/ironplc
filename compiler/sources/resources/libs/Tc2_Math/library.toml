@@ -1,0 +1,18 @@
+name = "Tc2_Math"
+vendor = "Beckhoff Automation GmbH"
+default_version = "1.0.0"
+# The four functions mirror the TwinCAT Tc2_Math PLC library interface
+# (LREAL-only signatures). Bodies are IronPLC-authored ST calling the
+# __TRUNC/__MOD compiler intrinsics; MODABS and FRAC are math-dictated
+# compositions. Authored per specs/steering/compatibility-library-authoring.md
+# from the clean-room spec at specs/design/library-interfaces/tc2-math.md,
+# which is the sole input to this implementation. Reference-activated only
+# (a .plcproj reference or --library Tc2_Math), matching how real TwinCAT
+# projects declare their Tc2_Math dependency. No bindings table.
+references = [
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68446347.html -- TwinCAT Tc2_Math PLC library: LTRUNC",
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68444811.html -- TwinCAT Tc2_Math PLC library: LMOD",
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68447883.html -- TwinCAT Tc2_Math PLC library: MODABS",
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68443275.html -- TwinCAT Tc2_Math PLC library: FRAC",
+  "https://infosys.beckhoff.com/content/1033/tcplclib_tc2_math/68440331.html -- TwinCAT Tc2_Math PLC library: functions overview",
+]
