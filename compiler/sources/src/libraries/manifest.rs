@@ -8,7 +8,6 @@
 
 use std::collections::HashMap;
 
-use ironplc_dsl::bindings::PouBinding;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
@@ -29,9 +28,10 @@ pub struct LibraryManifest {
     pub default_version: String,
     /// The public references the library was authored from. Non-empty.
     pub references: Vec<String>,
-    /// Per-version bindings: version → uppercased POU name → binding
-    /// (`REQ-LF-sources-005`). Versions without a bindings table are absent.
-    pub bindings: HashMap<String, HashMap<String, PouBinding>>,
+    /// Per-version declare-only bindings: version → uppercased POU names
+    /// whose implementation has not been built, so a call is a compile
+    /// error. Versions without a bindings table are absent.
+    pub declare_only: HashMap<String, Vec<String>>,
 }
 
 impl LibraryManifest {
@@ -78,14 +78,14 @@ impl LibraryManifest {
             references.push(reference.to_string());
         }
 
-        let bindings = Self::parse_version_bindings(&table, file_id)?;
+        let declare_only = Self::parse_version_bindings(&table, file_id)?;
 
         Ok(LibraryManifest {
             name,
             vendor,
             default_version,
             references,
-            bindings,
+            declare_only,
         })
     }
 
@@ -101,7 +101,7 @@ impl LibraryManifest {
     fn parse_version_bindings(
         table: &toml::Table,
         file_id: &FileId,
-    ) -> Result<HashMap<String, HashMap<String, PouBinding>>, Diagnostic> {
+    ) -> Result<HashMap<String, Vec<String>>, Diagnostic> {
         const SCALAR_FIELDS: [&str; 4] = ["name", "vendor", "default_version", "references"];
 
         let mut all_bindings = HashMap::new();
@@ -137,62 +137,33 @@ impl LibraryManifest {
                 )
             })?;
 
-            let mut version_bindings = HashMap::new();
+            let mut version_bindings = Vec::new();
             for (pou, binding_value) in bindings_table {
-                let binding = Self::parse_binding(key, pou, binding_value, file_id)?;
-                version_bindings.insert(pou.to_uppercase(), binding);
+                // `"declare-only"` is the only binding form. In particular a
+                // manifest cannot select a native implementation: data files
+                // must never direct code emission, so native behavior is
+                // exposed as typed `__`-prefixed compiler intrinsics that
+                // library ST bodies call instead.
+                match binding_value {
+                    toml::Value::String(text) if text == "declare-only" => {
+                        version_bindings.push(pou.to_uppercase());
+                    }
+                    _ => {
+                        return Err(Self::invalid(
+                            file_id,
+                            format!(
+                                "binding for `{pou}` in version `{key}` must be \
+                                 `\"declare-only\"` (the only supported binding)"
+                            ),
+                        ));
+                    }
+                }
             }
             all_bindings.insert(key.clone(), version_bindings);
         }
         Ok(all_bindings)
     }
 
-    /// Parse one binding value: `"declare-only"` or `{ intrinsic = "<name>" }`.
-    fn parse_binding(
-        version: &str,
-        pou: &str,
-        value: &toml::Value,
-        file_id: &FileId,
-    ) -> Result<PouBinding, Diagnostic> {
-        match value {
-            toml::Value::String(text) if text == "declare-only" => Ok(PouBinding::DeclareOnly),
-            toml::Value::Table(binding_table) => {
-                let keys: Vec<&String> = binding_table.keys().collect();
-                if keys.len() != 1 || keys[0] != "intrinsic" {
-                    return Err(Self::invalid(
-                        file_id,
-                        format!(
-                            "binding for `{pou}` in version `{version}` must be \
-                             `{{ intrinsic = \"<name>\" }}` or `\"declare-only\"`"
-                        ),
-                    ));
-                }
-                let name = binding_table
-                    .get("intrinsic")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .ok_or_else(|| {
-                        Self::invalid(
-                            file_id,
-                            format!(
-                                "binding for `{pou}` in version `{version}`: `intrinsic` \
-                                 must be a non-empty string"
-                            ),
-                        )
-                    })?;
-                Ok(PouBinding::Intrinsic {
-                    name: name.to_string(),
-                })
-            }
-            _ => Err(Self::invalid(
-                file_id,
-                format!(
-                    "binding for `{pou}` in version `{version}` must be \
-                     `{{ intrinsic = \"<name>\" }}` or `\"declare-only\"`"
-                ),
-            )),
-        }
-    }
 
     /// Read a required, non-empty string field from the manifest table.
     fn required_string(
@@ -352,30 +323,26 @@ references = [ 1, 2, 3 ]
     #[test]
     fn from_toml_when_no_bindings_then_empty_map() {
         let manifest = LibraryManifest::from_toml(IDENTITY, &file_id()).unwrap();
-        assert!(manifest.bindings.is_empty());
+        assert!(manifest.declare_only.is_empty());
     }
 
     #[test]
-    fn from_toml_when_bindings_table_then_parses_both_forms() {
-        let content = format!(
-            "{IDENTITY}\n[\"1.0.0\".bindings]\nMY_SQRT = {{ intrinsic = \"sqrt_lreal\" }}\nMY_DECL_ONLY = \"declare-only\"\n"
-        );
+    fn from_toml_when_bindings_table_then_parses_declare_only() {
+        let content =
+            format!("{IDENTITY}\n[\"1.0.0\".bindings]\nMY_DECL_ONLY = \"declare-only\"\n");
         let manifest = LibraryManifest::from_toml(&content, &file_id()).unwrap();
-        let bindings = manifest.bindings.get("1.0.0").unwrap();
         assert_eq!(
-            bindings.get("MY_SQRT"),
-            Some(&PouBinding::Intrinsic {
-                name: "sqrt_lreal".to_string()
-            })
+            manifest.declare_only.get("1.0.0"),
+            Some(&vec!["MY_DECL_ONLY".to_string()])
         );
-        assert_eq!(bindings.get("MY_DECL_ONLY"), Some(&PouBinding::DeclareOnly));
     }
 
     #[test]
-    fn from_toml_when_binding_pou_lowercase_then_key_uppercased() {
-        let content = format!("{IDENTITY}\n[\"1.0.0\".bindings]\nmy_sqrt = \"declare-only\"\n");
+    fn from_toml_when_binding_pou_lowercase_then_name_uppercased() {
+        let content =
+            format!("{IDENTITY}\n[\"1.0.0\".bindings]\nmy_decl_only = \"declare-only\"\n");
         let manifest = LibraryManifest::from_toml(&content, &file_id()).unwrap();
-        assert!(manifest.bindings["1.0.0"].contains_key("MY_SQRT"));
+        assert!(manifest.declare_only["1.0.0"].contains(&"MY_DECL_ONLY".to_string()));
     }
 
     #[test]
@@ -403,17 +370,12 @@ references = [ 1, 2, 3 ]
     }
 
     #[test]
-    fn from_toml_when_binding_table_has_unknown_key_then_error() {
+    fn from_toml_when_binding_is_intrinsic_table_then_error() {
+        // A manifest cannot select a native implementation -- data files
+        // must never direct code emission. The rejected earlier design's
+        // `{ intrinsic = "..." }` form is malformed.
         let content =
-            format!("{IDENTITY}\n[\"1.0.0\".bindings]\nMY_SQRT = {{ builtin = \"sqrt_lreal\" }}\n");
-        let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
-        assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
-    }
-
-    #[test]
-    fn from_toml_when_intrinsic_name_empty_then_error() {
-        let content =
-            format!("{IDENTITY}\n[\"1.0.0\".bindings]\nMY_SQRT = {{ intrinsic = \"\" }}\n");
+            format!("{IDENTITY}\n[\"1.0.0\".bindings]\nMY_SQRT = {{ intrinsic = \"sqrt_lreal\" }}\n");
         let err = LibraryManifest::from_toml(&content, &file_id()).unwrap_err();
         assert_eq!(err.code, Problem::LibraryManifestInvalid.code());
     }
@@ -438,8 +400,8 @@ references = [ 1, 2, 3 ]
     fn from_toml_when_non_default_version_valid_then_inert_but_parsed() {
         let content = format!("{IDENTITY}\n[\"2.0.0\".bindings]\nMY_SQRT = \"declare-only\"\n");
         let manifest = LibraryManifest::from_toml(&content, &file_id()).unwrap();
-        assert!(manifest.bindings.contains_key("2.0.0"));
-        assert!(!manifest.bindings.contains_key("1.0.0"));
+        assert!(manifest.declare_only.contains_key("2.0.0"));
+        assert!(!manifest.declare_only.contains_key("1.0.0"));
     }
 
     #[test]

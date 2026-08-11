@@ -182,8 +182,8 @@ pub fn compile(
 
     // Generate bytecode, skipping user-defined functions not reachable from
     // the PROGRAM root to reduce container size. The activated libraries'
-    // bindings ride along so codegen can lower intrinsic-bound calls and
-    // reject declare-only calls (the analyzer never saw the bindings).
+    // bindings ride along so codegen can reject calls to declare-only
+    // library POUs with P4046 (the analyzer never saw the bindings).
     let mut library_bindings = ironplc_dsl::bindings::LibraryBindings::new();
     for compat in &compat_libraries {
         library_bindings.merge(compat.bindings.clone());

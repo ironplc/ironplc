@@ -249,17 +249,12 @@ pub fn compile(
 
     let reachable = context.reachable();
 
-    // Pre-resolve the activated libraries' bindings (intrinsic names →
-    // func_ids, parameter op types from the library declarations) for call
-    // lowering; an unresolvable intrinsic name is a packaging error (P6010).
-    let resolved_bindings =
-        crate::compile_library::resolve_bindings(library, &options.library_bindings)?;
-
     // Collect user-defined function declarations from the library, filtering
-    // to only reachable functions and skipping bound library POUs — their `;`
-    // bodies are never compiled; calls lower through the binding instead. The
-    // FileId check inside `is_bound_library_function` preserves user
-    // shadowing: a user function with a bound name still compiles.
+    // to only reachable functions and skipping declare-only library POUs —
+    // their `;` bodies are never compiled, so a call reaches the P4046
+    // check instead of a CALL to an empty body. The FileId check inside
+    // `is_bound_library_function` preserves user shadowing: a user function
+    // with a bound name still compiles.
     let func_decls: Vec<&FunctionDeclaration> = library
         .elements
         .iter()
@@ -304,7 +299,7 @@ pub fn compile(
         context.types(),
         enum_map,
         sources,
-        resolved_bindings,
+        options.library_bindings.clone(),
     )?;
 
     if options.system_uptime_global {
@@ -452,7 +447,7 @@ fn compile_program_with_functions(
     types: &TypeEnvironment,
     enum_map: crate::compile_enum::EnumOrdinalMap,
     sources: &dyn crate::source_lookup::SourceLookup,
-    library_bindings: crate::compile_library::ResolvedBindings,
+    library_bindings: ironplc_dsl::bindings::LibraryBindings,
 ) -> Result<Container, Diagnostic> {
     let ProgramInputs {
         program,
@@ -908,7 +903,7 @@ pub(crate) struct CompileContext {
     /// Pre-resolved compatibility-library bindings for call lowering.
     /// Checked after `user_functions` in `compile_function_call`, so user
     /// shadowing needs no extra mechanism.
-    pub(crate) library_bindings: crate::compile_library::ResolvedBindings,
+    pub(crate) library_bindings: ironplc_dsl::bindings::LibraryBindings,
     /// Maps user-defined FB type name (uppercase) to compilation metadata.
     pub(crate) user_fb_types: HashMap<String, UserFbTypeInfo>,
     /// Next available type ID for user-defined function blocks.
@@ -967,7 +962,7 @@ impl CompileContext {
             debug_string_layouts: Vec::new(),
             debug_source_files: crate::source_lookup::SourceFileRegistry::new(),
             user_functions: HashMap::new(),
-            library_bindings: crate::compile_library::ResolvedBindings::default(),
+            library_bindings: ironplc_dsl::bindings::LibraryBindings::default(),
             user_fb_types: HashMap::new(),
             next_user_fb_type_id: 0x1000,
             enum_map: crate::compile_enum::EnumOrdinalMap::default(),

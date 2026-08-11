@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use ironplc_dsl::bindings::{BoundPou, LibraryBindings};
+use ironplc_dsl::bindings::LibraryBindings;
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -238,19 +238,12 @@ impl LibraryRegistry {
         let (library, library_files) = load_version_library(&version_dir, &manifest_file_id)?;
 
         // Assemble the side-table codegen consumes: the selected (default)
-        // version's bindings, each carrying the library name and manifest file
-        // for diagnostics, plus every library source `FileId`.
+        // version's declare-only POUs, each carrying the library name for
+        // the P4046 diagnostic, plus every library source `FileId`.
         let mut bindings = LibraryBindings::new();
-        if let Some(version_bindings) = manifest.bindings.get(&manifest.default_version) {
-            for (pou_name, binding) in version_bindings {
-                bindings.insert(
-                    pou_name,
-                    BoundPou {
-                        library: manifest.name.clone(),
-                        manifest_file: manifest_file_id.clone(),
-                        binding: binding.clone(),
-                    },
-                );
+        if let Some(declare_only) = manifest.declare_only.get(&manifest.default_version) {
+            for pou_name in declare_only {
+                bindings.insert_declare_only(pou_name, manifest.name.clone());
             }
         }
         for file_id in library_files {
