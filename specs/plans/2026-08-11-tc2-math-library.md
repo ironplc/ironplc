@@ -61,13 +61,13 @@ which is the **sole input** to this implementation per the
 
 ## Tasks
 
-- [ ] Commit this plan
-- [ ] Author `library.toml` and `Tc2_Math.st` from the spec
-- [ ] Loader tests: bundled registry contains and loads `Tc2_Math` (criterion 1)
-- [ ] Shadowed-function filter in `sources`, applied in `project`; tests (criterion 4)
-- [ ] End-to-end vector tests (criterion 2): every vector, exact vs `1.0E-9`
+- [x] Commit this plan
+- [x] Author `library.toml` and `Tc2_Math.st` from the spec
+- [x] Loader tests: bundled registry contains and loads `Tc2_Math` (criterion 1)
+- [x] Shadowed-function filter in `sources`, applied in `project`; tests (criterion 4)
+- [x] End-to-end vector tests (criterion 2): every vector, exact vs `1.0E-9`
       per the spec tables; NaN rows assert `is_nan`, never a trap; shadowing
       end-to-end
-- [ ] `.plcproj` activation fixture + positive/negative CLI tests (criterion 3)
-- [ ] `plc2plc` round-trip test (criterion 5)
-- [ ] Full CI green (`cd compiler && just`) (criterion 6)
+- [x] `.plcproj` activation fixture + positive/negative CLI tests (criterion 3)
+- [x] `plc2plc` round-trip test (criterion 5)
+- [x] Full CI green (`cd compiler && just`) (criterion 6)

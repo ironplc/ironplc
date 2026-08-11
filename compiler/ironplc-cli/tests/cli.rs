@@ -393,6 +393,69 @@ fn check_when_bare_source_calls_bool_to_string_then_requires_library_flag(
     Ok(())
 }
 
+/// `Tc2_Math` activation from the project file alone: a realistic TwinCAT
+/// solution whose `.plcproj` declares a `<PlaceholderReference>` to
+/// `Tc2_Math`, whose `MAIN` calls all four library functions (`LTRUNC`,
+/// `LMOD`, `MODABS`, `FRAC`). The check passes with no `--library` flag —
+/// activation comes from the reference, matching how real TwinCAT projects
+/// state their `Tc2_Math` dependency.
+#[test]
+fn check_when_twincat_solution_references_tc2_math_then_ok(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg("--dialect")
+        .arg("twincat")
+        .arg(path_to_test_resource("twincat_tc2_math_solution"));
+    cmd.assert().success().stdout(predicate::str::is_empty());
+
+    Ok(())
+}
+
+/// Negative control for the test above: the identical solution with the
+/// `<PlaceholderReference>` removed must fail — `Tc2_Math` is
+/// reference-activated only (dormant by default, never implicit), so the
+/// four function names no longer resolve.
+#[test]
+fn check_when_twincat_solution_tc2_math_reference_removed_then_undefined(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    copy_dir_recursive(
+        &path_to_test_resource("twincat_tc2_math_solution"),
+        temp.path(),
+    )?;
+
+    let plcproj = temp
+        .path()
+        .join("AxisSolution")
+        .join("PlcAxis")
+        .join("PlcAxis.plcproj");
+    let content = std::fs::read_to_string(&plcproj)?;
+    let start = content
+        .find("<PlaceholderReference")
+        .expect("fixture .plcproj must contain a PlaceholderReference element");
+    let end_tag = "</PlaceholderReference>";
+    let end = content
+        .find(end_tag)
+        .expect("fixture .plcproj must close the PlaceholderReference element")
+        + end_tag.len();
+    std::fs::write(
+        &plcproj,
+        format!("{}{}", &content[..start], &content[end..]),
+    )?;
+
+    let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
+
+    cmd.arg("check")
+        .arg("--dialect")
+        .arg("twincat")
+        .arg(temp.path());
+    cmd.assert().failure();
+
+    Ok(())
+}
+
 #[test]
 fn version_then_ok() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));

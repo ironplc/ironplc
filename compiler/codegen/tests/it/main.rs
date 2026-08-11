@@ -131,6 +131,7 @@ mod end_to_end_struct;
 mod end_to_end_sub;
 mod end_to_end_subrange;
 mod end_to_end_system_uptime;
+mod end_to_end_tc2_math;
 mod end_to_end_time_function;
 mod end_to_end_time_functions;
 mod end_to_end_trig;
