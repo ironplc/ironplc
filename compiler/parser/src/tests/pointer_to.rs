@@ -40,7 +40,10 @@ VAR
 END_VAR
 END_PROGRAM";
     let result = parse_program(source, &FileId::default(), &CompilerOptions::default());
-    assert!(result.is_err(), "POINTER TO must be rejected without the flag");
+    assert!(
+        result.is_err(),
+        "POINTER TO must be rejected without the flag"
+    );
 }
 
 /// With the flag off, `POINTER` demotes to an identifier and remains usable
