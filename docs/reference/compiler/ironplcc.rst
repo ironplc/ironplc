@@ -44,13 +44,13 @@ Build Commands
    Compile source files into a bytecode container (``.iplc``) file. Requires
    the ``--output`` (``-o``) flag to specify the output file path.
 
-   .. warning::
+   .. note::
 
-      The compile command currently supports only trivial programs. Supported
-      features include: ``PROGRAM`` declarations, ``INT`` variable declarations,
-      assignment statements, integer literal constants, and the ``+`` (add)
-      operator. Programs using other features will produce a code generation
-      error.
+      The compile command supports Structured Text programs, including
+      functions, function blocks, the standard library, and activated
+      compatibility libraries. A program that uses a feature code
+      generation does not yet support produces a code generation error
+      rather than incorrect bytecode.
 
 Diagnostic Commands
 -------------------
@@ -98,6 +98,13 @@ Options
    override the dialect's defaults. Available values: ``iec61131-3-ed2``
    (default), ``iec61131-3-ed3``, ``rusty``, ``codesys``, ``twincat``. See
    :doc:`/explanation/enabling-dialects-and-features` for details.
+
+``--library`` *NAME*
+   Activate a :doc:`compatibility library </reference/compatibility-libraries/index>`
+   by name (for example ``--library Tc2_System``). Repeat the option to
+   activate several libraries. Applies to the ``check`` and ``compile``
+   commands. Libraries referenced by a discovered project file are
+   activated automatically and do not need this option.
 
 ``--allow-c-style-comments``
    Allow C-style comments (``//`` line comments and ``/* */`` block
