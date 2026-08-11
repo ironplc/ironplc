@@ -71,6 +71,12 @@ fn run_semantic_analysis(
         }
     }
 
+    // A user-declared function takes precedence over a library function of
+    // the same name (`REQ-CL-analyzer-004`): drop the shadowed library
+    // declarations so the merge carries exactly one.
+    let compat_libraries =
+        ironplc_sources::libraries::remove_shadowed_functions(compat_libraries, &all_libraries);
+
     // Activation order: the compatibility libraries precede user source in the
     // merge (the base stdlib is seeded inside `analyze`).
     let analyze_input: Vec<&Library> = compat_libraries
@@ -563,6 +569,58 @@ mod test {
         assert!(
             result.is_ok(),
             "expected clean analysis, got: {:?}",
+            result.err()
+        );
+    }
+
+    const TC2_MATH_PROGRAM: &str =
+        "PROGRAM main VAR a : LREAL; b : LREAL; c : LREAL; d : LREAL; END_VAR \
+         a := LTRUNC(2.8); b := LMOD(400.56, 360.0); c := MODABS(-400.56, 360.0); d := FRAC(2.8); \
+         END_PROGRAM";
+
+    #[test]
+    fn semantic_when_tc2_math_activated_then_all_four_functions_resolve() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec![LibraryName::from("Tc2_Math")]);
+        project.add_source(FileId::from_string("main.st"), TC2_MATH_PROGRAM.to_owned());
+
+        let result = project.semantic();
+        assert!(
+            result.is_ok(),
+            "expected clean analysis, got: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn semantic_when_bare_source_then_tc2_math_functions_undefined() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.add_source(FileId::from_string("main.st"), TC2_MATH_PROGRAM.to_owned());
+
+        // Reference-activated only: dormant with no project context and no
+        // explicit activation.
+        let result = project.semantic();
+        assert!(result.is_err());
+    }
+
+    /// `REQ-CL-analyzer-004` for functions: a user-defined function named
+    /// `LTRUNC` takes precedence over the activated library's -- redeclaring
+    /// it is shadowing, not a duplicate-name error.
+    #[test]
+    fn semantic_when_user_function_shadows_library_function_then_ok() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec![LibraryName::from("Tc2_Math")]);
+        project.add_source(
+            FileId::from_string("main.st"),
+            "FUNCTION LTRUNC : LREAL VAR_INPUT IN : LREAL; END_VAR LTRUNC := 123.0; END_FUNCTION \
+             PROGRAM main VAR a : LREAL; END_VAR a := LTRUNC(2.8); END_PROGRAM"
+                .to_owned(),
+        );
+
+        let result = project.semantic();
+        assert!(
+            result.is_ok(),
+            "shadowing a library function must not error: {:?}",
             result.err()
         );
     }

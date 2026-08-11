@@ -11,12 +11,13 @@
 
 pub mod manifest;
 
+use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use ironplc_dsl::common::Library;
+use ironplc_dsl::common::{Library, LibraryElementKind};
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_parser::options::CompilerOptions;
@@ -276,6 +277,45 @@ impl LibraryRegistry {
     }
 }
 
+/// Drops from each compatibility library any `FUNCTION` declaration whose
+/// name (case-insensitive, as IEC 61131-3 identifiers are) user source also
+/// declares as a function, so the user's declaration takes precedence
+/// (`REQ-CL-analyzer-004`).
+///
+/// Without this, the merged compilation unit would carry both declarations
+/// and the duplicate name would be rejected — shadowing a library function
+/// must not be an error. Callers apply this after parsing user source and
+/// before injecting the libraries ahead of it in the analysis input.
+pub fn remove_shadowed_functions(
+    compat_libraries: Vec<Library>,
+    user_libraries: &[&Library],
+) -> Vec<Library> {
+    let user_functions: HashSet<&String> = user_libraries
+        .iter()
+        .flat_map(|library| library.elements.iter())
+        .filter_map(|element| match element {
+            LibraryElementKind::FunctionDeclaration(function) => Some(function.name.lower_case()),
+            _ => None,
+        })
+        .collect();
+    if user_functions.is_empty() {
+        return compat_libraries;
+    }
+
+    compat_libraries
+        .into_iter()
+        .map(|mut library| {
+            library.elements.retain(|element| match element {
+                LibraryElementKind::FunctionDeclaration(function) => {
+                    !user_functions.contains(function.name.lower_case())
+                }
+                _ => true,
+            });
+            library
+        })
+        .collect()
+}
+
 /// The root directory holding installed compatibility libraries.
 ///
 /// Prefers `resources/libs` beside the running executable (the installed
@@ -374,6 +414,38 @@ mod tests {
     fn bundled_registry_contains_tc2_builtins() {
         let registry = LibraryRegistry::bundled();
         assert!(registry.contains(&LibraryName::from("Tc2_BuiltIns")));
+    }
+
+    #[test]
+    fn bundled_registry_contains_tc2_math() {
+        let registry = LibraryRegistry::bundled();
+        assert!(registry.contains(&LibraryName::from("Tc2_Math")));
+    }
+
+    /// The names of the `FUNCTION` declarations in a library, as written.
+    fn function_names(library: &Library) -> Vec<String> {
+        library
+            .elements
+            .iter()
+            .filter_map(|element| match element {
+                LibraryElementKind::FunctionDeclaration(function) => {
+                    Some(function.name.original().to_string())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn load_when_tc2_math_then_provides_the_four_functions() {
+        let registry = LibraryRegistry::bundled();
+        let loaded = registry.load(&LibraryName::from("Tc2_Math")).unwrap();
+        assert_eq!(loaded.manifest.name, "Tc2_Math");
+        assert_eq!(loaded.manifest.default_version, "1.0.0");
+        assert_eq!(
+            function_names(&loaded.library),
+            ["LTRUNC", "LMOD", "MODABS", "FRAC"]
+        );
     }
 
     #[test]
@@ -509,5 +581,50 @@ mod tests {
             registry.resolve_references(&[reference("Tc2_System"), reference("Tc2_System")]);
         assert_eq!(activated, [LibraryName::from("Tc2_System")]);
         assert!(diagnostics.is_empty());
+    }
+
+    // -----------------------------------------------------------------
+    // User-declaration shadowing of library functions (REQ-CL-analyzer-004).
+    // -----------------------------------------------------------------
+
+    fn parse(source: &str) -> Library {
+        parse_program(source, &FileId::default(), &CompilerOptions::default()).unwrap()
+    }
+
+    #[test]
+    fn remove_shadowed_functions_when_user_redeclares_then_library_function_dropped() {
+        let compat = parse(
+            "FUNCTION LTRUNC : LREAL VAR_INPUT IN : LREAL; END_VAR LTRUNC := IN; END_FUNCTION
+             FUNCTION FRAC : LREAL VAR_INPUT IN : LREAL; END_VAR FRAC := IN; END_FUNCTION",
+        );
+        // Case differs deliberately: IEC identifiers are case-insensitive.
+        let user = parse(
+            "FUNCTION ltrunc : LREAL VAR_INPUT IN : LREAL; END_VAR ltrunc := 0.0; END_FUNCTION",
+        );
+
+        let filtered = remove_shadowed_functions(vec![compat], &[&user]);
+        assert_eq!(function_names(&filtered[0]), ["FRAC"]);
+    }
+
+    #[test]
+    fn remove_shadowed_functions_when_no_user_functions_then_unchanged() {
+        let compat = parse(
+            "FUNCTION LTRUNC : LREAL VAR_INPUT IN : LREAL; END_VAR LTRUNC := IN; END_FUNCTION",
+        );
+        let user = parse("PROGRAM main VAR x : LREAL; END_VAR x := 0.0; END_PROGRAM");
+
+        let filtered = remove_shadowed_functions(vec![compat], &[&user]);
+        assert_eq!(function_names(&filtered[0]), ["LTRUNC"]);
+    }
+
+    #[test]
+    fn remove_shadowed_functions_when_non_function_elements_then_kept() {
+        // A user function must not drop a library's non-function declarations.
+        let compat = parse("VAR_GLOBAL CONSTANT PI : LREAL := 3.14; END_VAR");
+        let user =
+            parse("FUNCTION PI : LREAL VAR_INPUT IN : LREAL; END_VAR PI := IN; END_FUNCTION");
+
+        let filtered = remove_shadowed_functions(vec![compat], &[&user]);
+        assert_eq!(filtered[0].elements.len(), 1);
     }
 }
