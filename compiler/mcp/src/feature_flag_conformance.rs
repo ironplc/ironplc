@@ -120,6 +120,14 @@ const FLAG_FIXTURES: &[FlagFixture] = &[
         prereqs: &[],
         source: "PROGRAM main\nVAR\nx : REFERENCE TO INT;\nEND_VAR\nEND_PROGRAM",
     },
+    // TwinCAT/CODESYS POINTER TO: without the flag, POINTER is a demoted
+    // identifier and the declaration is a parse error; with it, the type
+    // parses.
+    FlagFixture {
+        key: "allow_pointer_to",
+        prereqs: &[],
+        source: "PROGRAM main\nVAR\np : POINTER TO INT;\nEND_VAR\nEND_PROGRAM",
+    },
     // Arithmetic on a REF_TO type (P2033). Needs REF_TO to parse at all.
     FlagFixture {
         key: "allow_ref_arithmetic",

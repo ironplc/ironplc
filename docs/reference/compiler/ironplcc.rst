@@ -144,6 +144,10 @@ Options
    ``REF=`` binding operator — the TwinCAT/CODESYS-facing alternative to
    ``--allow-ref-to``.
 
+``--allow-pointer-to``
+   Allow the Beckhoff TwinCAT / CODESYS ``POINTER TO`` pointer type with
+   explicit dereference (``^``).
+
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
    ``<=``, ``>=``) on ``REF_TO`` types. By default, only ``=`` and ``<>``

@@ -32,6 +32,8 @@ use crate::{
 ///   keeping `LDT` etc. available as identifiers.
 /// * **`REFERENCE`** — demoted unless `allow_reference_to` (TwinCAT/CODESYS
 ///   `REFERENCE TO`).
+/// * **`POINTER`** — demoted unless `allow_pointer_to` (TwinCAT/CODESYS
+///   `POINTER TO`).
 /// * **OOP keywords** (`EXTENDS`, `IMPLEMENTS`, `INTERFACE`, `END_INTERFACE`,
 ///   `ABSTRACT`) — demoted unless `allow_fb_inheritance`.
 /// * **`AND_THEN`** — demoted unless `allow_short_circuit_operators`.
@@ -42,6 +44,7 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
     let demote_time_types = !options.allow_long_time_types;
     let demote_ref = !options.allow_ref_to;
     let demote_reference = !options.allow_reference_to;
+    let demote_pointer = !options.allow_pointer_to;
     let demote_oop = !options.allow_fb_inheritance;
     let demote_and_then = !options.allow_short_circuit_operators;
 
@@ -52,6 +55,7 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
             }
             TokenType::RefTo | TokenType::Ref | TokenType::Null => demote_ref,
             TokenType::Reference => demote_reference,
+            TokenType::Pointer => demote_pointer,
             TokenType::Extends
             | TokenType::Implements
             | TokenType::Interface
