@@ -19,4 +19,5 @@ mod reference_to;
 mod short_circuit;
 mod struct_init_expressions;
 mod tc2_math_calls;
+mod tc2_utilities_calls;
 mod time_and_sizeof;
