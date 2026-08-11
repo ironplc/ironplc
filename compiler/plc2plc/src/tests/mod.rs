@@ -5,6 +5,7 @@
 
 mod common;
 
+mod adr;
 mod case;
 mod constant_initializers;
 mod corpus;

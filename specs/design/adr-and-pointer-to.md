@@ -70,15 +70,14 @@ The feature is delivered in phases, mirroring the plan:
   via the existing `REF()` initializer/assignment forms (available when
   `allow_ref_to` is also on, as in the `codesys` dialect) — `ADR` itself is
   Phase 2.
-- **Phase 2 — the `ADR()` operator and `allow_adr` flag.** An analyzer
-  rewrite of `Function("ADR", [expr])` → `ExprKind::Ref(variable)` when
-  `allow_adr` is on, with diagnostics for invalid operands. The `allow_adr`
-  flag lands together with the rewrite (not in Phase 1) because every
-  feature flag must gate real behavior the moment it is declared — the MCP
-  `feature_flag_conformance` suite has no "declared but not yet enforced"
-  escape hatch, and a flag whose behavior does not exist yet would be a dead
-  flag. Phase 2 adds its own requirement IDs (`4xx`–`5xx`) to this document
-  when it lands.
+- **Phase 2 — the `ADR()` operator and `allow_adr` flag (requirements
+  `4xx`–`5xx`).** An analyzer rewrite of `Function("ADR", [expr])` →
+  `ExprKind::Ref(variable)` when `allow_adr` is on, with diagnostics for
+  invalid operands. The `allow_adr` flag lands together with the rewrite
+  (not in Phase 1) because every feature flag must gate real behavior the
+  moment it is declared — the MCP `feature_flag_conformance` suite has no
+  "declared but not yet enforced" escape hatch, and a flag whose behavior
+  does not exist yet would be a dead flag.
 - **Phase 3 — documentation sweep.** User docs, dialect tables, and stale
   comments.
 
@@ -157,6 +156,56 @@ not treat `PointerTo` as auto-dereferencing.
 - **REQ-PTR-analyzer-302** Binding a `POINTER TO T` variable to a reference of a different base type is rejected (P2032) unless `allow_ref_type_punning` is set.
 - **REQ-PTR-analyzer-303** Arithmetic on a `POINTER TO` value is rejected (P2033) unless `allow_ref_arithmetic` is set.
 - **REQ-PTR-analyzer-304** `NULL` may be assigned to a `POINTER TO` variable (when the `NULL` keyword is available via `allow_ref_to`).
+
+## The `ADR()` operator (Phase 2)
+
+`ADR` needs no parser change: `ADR(x)` parses as an ordinary function call,
+exactly like `SIZEOF` (which is not a token), and plc2plc round-trips it for
+free. `ADR`'s return type depends on its argument (`POINTER TO typeof(x)`),
+which a stdlib `FunctionSignature` cannot express, so instead of registering
+a signature the analyzer rewrites the call early: when `allow_adr` is on, a
+transform rewrites `Function("ADR", [expr])` → `ExprKind::Ref(variable)`.
+All existing reference type inference, assignment checking (P2032), and
+codegen then apply unchanged.
+
+The rewrite does not require `allow_ref_to`: the reference semantic rules
+validate `ExprKind::Ref` nodes unconditionally, so an `ADR`-produced node is
+checked (and accepted) even when the `REF_TO`/`REF()`/`NULL` keywords are
+unavailable — as in the `twincat` dialect.
+
+Invalid operands reuse the `REF()` diagnostics: P2028 (operand must be a
+simple variable — covers literals, call results, struct fields, and wrong
+arity), P2029 (ephemeral/stack variable), and P2030 (array element). With
+the flag off, `ADR` stays an ordinary identifier and the call falls through
+to the normal undeclared-function diagnostic (P4017), matching `SIZEOF`
+behavior.
+
+### Options & dialects (Phase 2)
+
+- **REQ-PTR-parser-400** The `codesys` dialect preset enables `allow_adr`.
+- **REQ-PTR-parser-401** The `twincat` dialect preset enables `allow_adr`.
+- **REQ-PTR-parser-402** The `iec61131-3-ed2`, `iec61131-3-ed3`, and `rusty` dialect presets do not enable `allow_adr`.
+
+### Analyzer rewrite & diagnostics
+
+- **REQ-PTR-analyzer-410** With `allow_adr` on, `p := ADR(x);` binding a `POINTER TO T` variable to a variable of type `T` is accepted, without requiring `allow_ref_to`.
+- **REQ-PTR-analyzer-411** With `allow_adr` off, `ADR(x)` is reported as an undeclared function (P4017).
+- **REQ-PTR-analyzer-412** An `ADR` call with a number of arguments other than one is rejected (P2028).
+- **REQ-PTR-analyzer-413** An `ADR` operand that is not a variable (a literal or a call result) is rejected (P2028).
+- **REQ-PTR-analyzer-414** `ADR` of an array element is rejected (P2030); `ADR` of a structure field is rejected (P2028) — slot indices cannot name a sub-object.
+- **REQ-PTR-analyzer-415** Binding `ADR(x)` to a pointer whose target type differs from `typeof(x)` is rejected (P2032) unless `allow_ref_type_punning` is set.
+- **REQ-PTR-analyzer-416** `ADR` of a stack-allocated variable (`VAR_TEMP`) is rejected (P2029) unless `allow_ref_stack_variables` is set.
+
+### Execution (codegen)
+
+`ADR` lowers exactly like `REF()` — the rewrite happens before codegen, so
+codegen needs zero changes and these requirements pin the end-to-end
+behavior.
+
+- **REQ-PTR-codegen-500** The Goal example executes: inside a function-block instance called from a `PROGRAM`, `pNumber := ADR(iNumber1); iNumber2 := pNumber^;` yields the addressed member's value.
+- **REQ-PTR-codegen-501** Storing through an `ADR`-bound pointer (`p^ := v`) updates the addressed variable.
+- **REQ-PTR-codegen-502** An `ADR`-bound pointer compares non-equal to `NULL`, and an unbound pointer defaults to `NULL` (dereferencing it traps).
+- **REQ-PTR-codegen-510** The `twincat` and `codesys` dialect presets compile and run the Goal example with no explicit flags.
 
 ## Rendering (plc2plc)
 
