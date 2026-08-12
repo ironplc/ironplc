@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <FileVersion>1.0.0.0</FileVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{a17d5e48-92c6-4b3a-8f01-6d9b24e7c5f8}</ProjectGuid>
+    <SubObjectsSortedByName>True</SubObjectsSortedByName>
+    <DownloadApplicationInfo>true</DownloadApplicationInfo>
+    <DefaultNamespace>PlcAxis</DefaultNamespace>
+    <Name>PlcAxis</Name>
+    <ProgramVersion>3.1.4024.0</ProgramVersion>
+    <Application>{4B82F6D1-0E39-4C57-A2B8-7F15C9E04D63}</Application>
+    <TypeSystem>{D5C31A79-6F84-4E02-9B5D-8A26E1F7B340}</TypeSystem>
+    <Implicit_Task_Info>{1F60B8C4-93A7-4D25-8E9F-0C74D2A6B581}</Implicit_Task_Info>
+    <Implicit_KindOfTask>{8E24C7F0-5B16-4A93-B0D7-3F58A19E6C42}</Implicit_KindOfTask>
+    <Implicit_Jitter_Distribution>{6A93E5B8-2D40-4F71-9C86-B05F37D1E294}</Implicit_Jitter_Distribution>
+    <LibraryReferences>{0D57B2E9-84C3-4A16-BF08-92E6D45A7C31}</LibraryReferences>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="POUs\MAIN.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <PlaceholderReference Include="Tc2_Math">
+      <DefaultResolution>Tc2_Math, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc2_Math</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+  <ProjectExtensions>
+    <PlcProjectOptions>
+      <XmlArchive>
+        <Data/>
+        <TypeList/>
+      </XmlArchive>
+    </PlcProjectOptions>
+  </ProjectExtensions>
+</Project>

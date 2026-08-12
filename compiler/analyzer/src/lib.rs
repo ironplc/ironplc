@@ -68,6 +68,7 @@ mod xform_fold_initializer_expressions;
 mod xform_insert_implicit_deref;
 mod xform_int_to_bool_initializer;
 mod xform_named_to_positional_args;
+mod xform_resolve_adr;
 mod xform_resolve_constant_expressions;
 mod xform_resolve_expr_types;
 mod xform_resolve_late_bound_expr_kind;
@@ -103,3 +104,7 @@ mod spec_requirements {
 }
 #[cfg(test)]
 mod spec_conformance;
+#[cfg(test)]
+mod spec_conformance_adr;
+#[cfg(test)]
+mod spec_conformance_pointer_to;

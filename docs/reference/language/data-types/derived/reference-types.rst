@@ -33,6 +33,24 @@ variable.
       r := 99;                (* write through the reference (implicit deref) *)
       valid := __ISVALIDREF(r);  (* TRUE once bound, FALSE while unbound *)
 
+.. note::
+
+   Beckhoff TwinCAT and CODESYS also have a pointer type, spelled
+   ``POINTER TO`` and bound with the
+   :doc:`ADR() </reference/extension-library/functions/adr>` address-of
+   operator. Enable it with ``--allow-pointer-to`` and ``--allow-adr``, or a
+   dialect that includes them. A ``POINTER TO`` variable behaves like
+   ``REF_TO``: reading or writing the target requires the explicit
+   dereference operator ``^``, unlike the auto-dereferencing
+   ``REFERENCE TO``:
+
+   .. code-block::
+
+      p : POINTER TO INT;
+      p := ADR(counter);      (* point at counter *)
+      value := p^;            (* read through the pointer *)
+      p^ := 99;               (* write through the pointer *)
+
 .. list-table::
    :widths: 30 70
 
@@ -122,9 +140,9 @@ Restrictions
   are not allowed.
 - Nested references (``REF_TO REF_TO``) are not supported.
 - Arithmetic on references is not supported by default. Use
-  ``--allow-pointer-arithmetic`` to enable it.
+  ``--allow-ref-arithmetic`` to enable it.
 - Only ``=`` and ``<>`` comparison operators work with references by default.
-  Use ``--allow-pointer-arithmetic`` to enable ordering comparisons.
+  Use ``--allow-ref-arithmetic`` to enable ordering comparisons.
 
 Related Problem Codes
 ---------------------
@@ -134,9 +152,19 @@ Related Problem Codes
 - :doc:`/reference/compiler/problems/P2032` — Reference type mismatch
 - :doc:`/reference/compiler/problems/P2034` — NULL can only be assigned to REF_TO types
 
+External References
+-------------------
+
+- `Beckhoff TwinCAT: POINTER <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529453451.html>`__
+- `Beckhoff TwinCAT: REFERENCE <https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529458827.html>`__
+- `CODESYS: Data Type POINTER TO <https://content.helpme-codesys.com/en/CODESYS%20Development%20System/_cds_datatype_pointer.html>`__
+- `Schneider Machine Expert: Pointers <https://product-help.schneider-electric.com/Machine%20Expert/V1.1/en/SoMProg/SoMProg/Data_Types/Data_Types-8.htm>`__
+- `ABB: Pointers <https://help.plc.abb.com/AB270_en/_cds_datatype_pointer.html>`__
+
 See Also
 --------
 
+- :doc:`/reference/extension-library/functions/adr` — ``ADR``, the TwinCAT/CODESYS address-of operator
 - :doc:`/reference/extension-library/functions/isvalidref` — ``__ISVALIDREF``, the TwinCAT/CODESYS reference-validity builtin
 - :doc:`/reference/language/edition-support` — edition flags
 - :doc:`/reference/language/variables/scope` — variable scope keywords

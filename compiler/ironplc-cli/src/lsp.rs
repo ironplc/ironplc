@@ -936,6 +936,8 @@ mod test {
         // TwinCAT spells references/pointers REFERENCE TO / POINTER TO, not the
         // CODESYS REF_TO / REF() / NULL, so none of the REF_TO-family flags are
         // enabled.
+        assert!(options.allow_reference_to);
+        assert!(options.allow_pointer_to);
         assert!(!options.allow_ref_to);
         assert!(!options.allow_ref_arithmetic);
         assert!(!options.allow_ref_stack_variables);
@@ -1122,6 +1124,50 @@ mod test {
 
         let options = super::extract_compiler_options(&params);
         assert!(options.allow_reference_to);
+    }
+
+    #[test]
+    fn extract_compiler_options_when_allow_pointer_to_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowPointerTo": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(options.allow_pointer_to);
+    }
+
+    #[test]
+    fn extract_compiler_options_when_allow_adr_then_enables_flag() {
+        #[allow(deprecated)]
+        let params = InitializeParams {
+            process_id: None,
+            root_path: None,
+            root_uri: None,
+            initialization_options: Some(serde_json::json!({"allowAdr": true})),
+            capabilities: ClientCapabilities::default(),
+            trace: None,
+            workspace_folders: None,
+            client_info: None,
+            locale: None,
+            work_done_progress_params: WorkDoneProgressParams {
+                work_done_token: None,
+            },
+        };
+
+        let options = super::extract_compiler_options(&params);
+        assert!(options.allow_adr);
     }
 
     #[test]
