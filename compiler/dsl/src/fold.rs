@@ -313,6 +313,7 @@ pub trait Fold<E> {
 
     // 3.2.3
     dispatch!(FbCall);
+    dispatch!(MethodCall);
 
     // 3.2.3
     dispatch!(PositionalInput);
