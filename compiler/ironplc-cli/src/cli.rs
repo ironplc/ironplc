@@ -501,14 +501,14 @@ mod tests {
 
     use ironplc_parser::options::CompilerOptions;
 
-    use crate::{cli::check, cli::compile, cli::echo, cli::tokenize, test_helpers::resource_path};
+    use crate::{cli::check, cli::compile, cli::tokenize, test_helpers::resource_path};
 
-    #[test]
-    fn check_first_steps_when_invalid_syntax_then_error() {
-        let paths = vec![shared_resource_path("first_steps_semantic_error.st")];
-        let result = check(&paths, CompilerOptions::default(), &[], true);
-        assert!(result.is_err())
-    }
+    // The valid/syntax-error/semantic-error outcomes of check, echo, tokenize,
+    // and compile against the shared fixtures are asserted by the subprocess
+    // suite in tests/cli.rs, which also pins the exit-code and stdout/stderr
+    // contract. The tests here cover only paths the subprocess suite does not:
+    // directory input, .plcproj wiring, XML tokenize, container round-trip,
+    // codegen-stage error propagation, and help-URL formatting.
 
     #[test]
     fn problem_help_url_when_diagnostic_then_url_tagged_for_cli() {
@@ -528,13 +528,6 @@ mod tests {
         assert!(url.contains("&channel=cli"));
         assert!(url.contains("&file=compiler/analyzer/src/rule_example.rs"));
         assert!(url.contains("&line=42"));
-    }
-
-    #[test]
-    fn check_first_steps_when_valid_syntax_then_ok() {
-        let paths = vec![shared_resource_path("first_steps.st")];
-        let result = check(&paths, CompilerOptions::default(), &[], true);
-        assert!(result.is_ok())
     }
 
     #[test]
@@ -566,72 +559,15 @@ mod tests {
         assert!(result.is_err())
     }
 
-    #[test]
-    fn check_when_plcproj_has_valid_and_missing_entries_then_error_but_valid_file_still_checked() {
-        // The valid entry must still be loaded and checked (and would
-        // surface its own diagnostics if invalid) even though the
-        // command as a whole fails because of the missing entry.
-        let dir = tempfile::TempDir::new().unwrap();
-        std::fs::write(dir.path().join("A.st"), "PROGRAM A END_PROGRAM").unwrap();
-        std::fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="A.st" />
-    <Compile Include="MISSING.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let paths = vec![dir.path().to_path_buf()];
-        let result = check(&paths, CompilerOptions::default(), &[], true);
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn echo_first_steps_when_invalid_syntax_then_error() {
-        let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
-        let result = check(&paths, CompilerOptions::default(), &[], true);
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn echo_first_steps_when_valid_syntax_then_ok() {
-        let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(&paths, CompilerOptions::default(), true);
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn tokenize_first_steps_when_valid_syntax_then_ok() {
-        let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(&paths, CompilerOptions::default(), true);
-        assert!(result.is_ok())
-    }
+    // Discovery continuing past a bad `.plcproj` entry (and still loading the
+    // valid entries) is owned and tested by `ironplc_sources::discovery`; the
+    // test above only proves the resulting diagnostics fail `check`.
 
     #[test]
     fn tokenize_xml_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("simple.xml")];
         let result = tokenize(&paths, CompilerOptions::default(), true);
         assert!(result.is_ok())
-    }
-
-    #[test]
-    fn compile_when_steel_thread_then_creates_output() {
-        let paths = vec![shared_resource_path("steel_thread.st")];
-        let output = tempfile::NamedTempFile::new().unwrap();
-        let result = compile(&paths, output.path(), CompilerOptions::default(), &[], true);
-        assert!(result.is_ok());
-        assert!(output.path().metadata().unwrap().len() > 0);
-    }
-
-    #[test]
-    fn compile_when_syntax_error_then_error() {
-        let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
-        let output = tempfile::NamedTempFile::new().unwrap();
-        let result = compile(&paths, output.path(), CompilerOptions::default(), &[], true);
-        assert!(result.is_err());
     }
 
     #[test]
