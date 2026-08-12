@@ -36,13 +36,18 @@ pub fn check(
     libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<(), String> {
-    let mut project = create_project(paths, compiler_options, libraries, suppress_output)?;
+    let (mut project, had_discovery_error) =
+        create_project(paths, compiler_options, libraries, suppress_output);
 
     // Analyze the set
     if let Err(err) = project.semantic() {
         trace!("Errors {err:?}");
         handle_diagnostics(&err, Some(&project), suppress_output);
         return Err(String::from("Error during analysis"));
+    }
+
+    if had_discovery_error {
+        return Err(String::from("Error enumerating or reading source files"));
     }
 
     Ok(())
@@ -54,7 +59,8 @@ pub fn echo(
     suppress_output: bool,
 ) -> Result<(), String> {
     // Echo renders parsed source; it runs no analysis, so no library activation.
-    let mut project = create_project(paths, compiler_options, &[], suppress_output)?;
+    let (mut project, had_discovery_error) =
+        create_project(paths, compiler_options, &[], suppress_output);
 
     // Collect the results and output after because getting the results may change
     // the project itself
@@ -87,9 +93,10 @@ pub fn echo(
         }
     }
 
-    match has_error {
-        true => Err("Tokenize error".to_owned()),
-        false => Ok(()),
+    match (has_error, had_discovery_error) {
+        (true, _) => Err("Tokenize error".to_owned()),
+        (false, true) => Err(String::from("Error enumerating or reading source files")),
+        (false, false) => Ok(()),
     }
 }
 
@@ -99,10 +106,15 @@ pub fn tokenize(
     suppress_output: bool,
 ) -> Result<(), String> {
     // Tokenize only lexes each source; library activation is irrelevant here.
-    let project = create_project(paths, compiler_options, &[], suppress_output)?;
+    let (project, had_discovery_error) =
+        create_project(paths, compiler_options, &[], suppress_output);
 
     for src in project.sources() {
         tokenizer::tokenize_source(src, &project, suppress_output, &handle_diagnostics)?;
+    }
+
+    if had_discovery_error {
+        return Err(String::from("Error enumerating or reading source files"));
     }
 
     Ok(())
@@ -119,7 +131,8 @@ pub fn compile(
     libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<(), String> {
-    let mut project = create_project(paths, compiler_options, libraries, suppress_output)?;
+    let (mut project, had_discovery_error) =
+        create_project(paths, compiler_options, libraries, suppress_output);
 
     // Refuse to write the container over a loaded source file. `File::create`
     // truncates immediately, so this must run before any output is opened to
@@ -209,6 +222,10 @@ pub fn compile(
         .write_to(&mut out_file)
         .map_err(|e| format!("Failed to write output file: {e}"))?;
 
+    if had_discovery_error {
+        return Err(String::from("Error enumerating or reading source files"));
+    }
+
     Ok(())
 }
 
@@ -223,12 +240,24 @@ impl ironplc_codegen::SourceLookup for HashMapSourceLookup {
     }
 }
 
+/// Builds a project from `paths`, running discovery and loading every
+/// resolvable file.
+///
+/// The returned `bool` is `true` when discovery produced any diagnostic
+/// (an unresolvable `.plcproj` entry, a referenced-but-unbundled
+/// compatibility library, or an unreadable source file) -- these are
+/// already printed via [`handle_diagnostics`] before this returns. The
+/// project itself still contains every file that DID resolve: callers
+/// must still run their normal work (analysis, codegen, ...) against it
+/// so real diagnostics in the resolvable files are not hidden behind a
+/// discovery-time problem, then fold the returned `bool` into their own
+/// final result so the overall command still fails when it's `true`.
 fn create_project(
     paths: &[PathBuf],
     compiler_options: CompilerOptions,
     libraries: &[LibraryName],
     suppress_output: bool,
-) -> Result<FileBackedProject, String> {
+) -> (FileBackedProject, bool) {
     trace!("Reading paths {paths:?}");
     let mut files: Vec<PathBuf> = vec![];
     // Explicit `--library` activation, plus any libraries discovered project
@@ -271,11 +300,7 @@ fn create_project(
         had_error = true;
     }
 
-    if had_error {
-        return Err(String::from("Error enumerating or reading source files"));
-    }
-
-    Ok(project)
+    (project, had_error)
 }
 
 /// Enumerates all files at the path.
@@ -567,12 +592,22 @@ mod tests {
     }
 
     #[test]
-    fn check_when_plcproj_has_valid_and_missing_entries_then_error_but_valid_file_still_checked() {
-        // The valid entry must still be loaded and checked (and would
-        // surface its own diagnostics if invalid) even though the
-        // command as a whole fails because of the missing entry.
+    fn check_when_plcproj_has_valid_and_missing_entries_then_semantic_error_still_surfaces() {
+        // The valid entry must still be loaded and checked -- not just
+        // that the overall command fails (which a discovery-time-only
+        // failure would also produce), but specifically that
+        // project.semantic() actually ran against it. A.st here has a
+        // real semantic error (an undeclared variable): if analysis
+        // never ran, check() would still return Err, but with the
+        // discovery-stage message ("Error enumerating..."), not the
+        // analysis-stage one -- this is what distinguishes "aborted
+        // before checking" from "checked, and found a real bug".
         let dir = tempfile::TempDir::new().unwrap();
-        std::fs::write(dir.path().join("A.st"), "PROGRAM A END_PROGRAM").unwrap();
+        std::fs::write(
+            dir.path().join("A.st"),
+            "PROGRAM A\nVAR\n    x : INT;\nEND_VAR\n    x := UNDECLARED_VAR;\nEND_PROGRAM",
+        )
+        .unwrap();
         std::fs::write(
             dir.path().join("project.plcproj"),
             r#"<Project>
@@ -586,7 +621,35 @@ mod tests {
 
         let paths = vec![dir.path().to_path_buf()];
         let result = check(&paths, CompilerOptions::default(), &[], true);
-        assert!(result.is_err())
+        assert_eq!(result, Err(String::from("Error during analysis")));
+    }
+
+    #[test]
+    fn check_when_plcproj_references_unbundled_library_then_still_runs_analysis() {
+        // A project referencing a library IronPLC doesn't bundle (P6011)
+        // must not prevent analysis of the project's own files -- same
+        // reasoning as the missing-.plcproj-entry case above, for the
+        // other kind of discovery-time diagnostic.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("A.st"),
+            "PROGRAM A\nVAR\n    x : INT;\nEND_VAR\n    x := UNDECLARED_VAR;\nEND_PROGRAM",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="A.st" />
+    <PlaceholderReference Include="NotBundled" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().to_path_buf()];
+        let result = check(&paths, CompilerOptions::default(), &[], true);
+        assert_eq!(result, Err(String::from("Error during analysis")));
     }
 
     #[test]
@@ -632,6 +695,40 @@ mod tests {
         let output = tempfile::NamedTempFile::new().unwrap();
         let result = compile(&paths, output.path(), CompilerOptions::default(), &[], true);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn compile_when_plcproj_references_unbundled_library_and_unused_then_still_produces_container()
+    {
+        // A discovery-time diagnostic (P6011, unbundled library) must not
+        // stop the compile pipeline from running: the program here never
+        // calls anything from the unbundled library, so compilation is
+        // genuinely valid -- compile() must still produce a real
+        // container (proving analysis/codegen ran to completion) while
+        // still reporting overall failure via its Err return.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("A.st"),
+            "PROGRAM A\nVAR\n    x : INT;\nEND_VAR\n    x := 1;\nEND_PROGRAM",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="A.st" />
+    <PlaceholderReference Include="NotBundled" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().to_path_buf()];
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let result = compile(&paths, output.path(), CompilerOptions::default(), &[], true);
+
+        assert!(result.is_err());
+        assert!(output.path().metadata().unwrap().len() > 0);
     }
 
     #[test]
