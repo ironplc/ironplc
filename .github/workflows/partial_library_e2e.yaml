@@ -10,9 +10,9 @@ name: Library Installer E2E
 # Windows. The bulk of the test lives in the `library-e2e` justfile recipe, so a
 # workflow_dispatch run exercises branch changes directly.
 #
-# NOTE: this partial is intentionally NOT wired into deployment.yaml or
-# integration.yaml yet. Run it manually via the Actions tab (workflow_dispatch) or
-# locally with `just library-e2e <version>`.
+# Runs as part of deployment.yaml (in parallel with the other end-to-end tests,
+# gating publish-website). Can also be run manually via the Actions tab
+# (workflow_dispatch) or locally with `just library-e2e <version>`.
 on:
   workflow_call:
     inputs:
