@@ -549,66 +549,37 @@ impl SymbolEnvironment {
         accessible
     }
 
+    /// Iterate over every symbol in the environment: the global symbols
+    /// first, followed by every scoped symbol across all named scopes.
+    ///
+    /// This is the shared traversal used by the read-only lookups that need
+    /// to consider both global and scoped declarations.
+    fn all_symbols(&self) -> impl Iterator<Item = (&Id, &SymbolInfo)> {
+        self.global_symbols
+            .iter()
+            .chain(self.scoped_symbols.values().flat_map(|scope| scope.iter()))
+    }
+
     /// Get all enumeration values for a specific enumeration type
     pub fn get_enumeration_values_for_type(&self, enum_type: &TypeName) -> Vec<&Id> {
-        let mut values = Vec::new();
-
-        // Check global symbols
-        for (name, symbol) in &self.global_symbols {
-            if matches!(symbol.kind, SymbolKind::EnumerationValue) {
-                if let Some(ref symbol_enum_type) = symbol.enum_type {
-                    if symbol_enum_type == enum_type {
-                        values.push(name);
-                    }
-                }
-            }
-        }
-
-        // Check scoped symbols
-        for scope_symbols in self.scoped_symbols.values() {
-            for (name, symbol) in scope_symbols {
-                if matches!(symbol.kind, SymbolKind::EnumerationValue) {
-                    if let Some(ref symbol_enum_type) = symbol.enum_type {
-                        if symbol_enum_type == enum_type {
-                            values.push(name);
-                        }
-                    }
-                }
-            }
-        }
-
-        values
+        self.all_symbols()
+            .filter(|(_, symbol)| {
+                matches!(symbol.kind, SymbolKind::EnumerationValue)
+                    && symbol.enum_type.as_ref() == Some(enum_type)
+            })
+            .map(|(name, _)| name)
+            .collect()
     }
 
     /// Get all structure fields for a specific structure type
     pub fn get_structure_fields_for_type(&self, struct_type: &TypeName) -> Vec<&Id> {
-        let mut fields = Vec::new();
-
-        // Check global symbols
-        for (name, symbol) in &self.global_symbols {
-            if matches!(symbol.kind, SymbolKind::StructureElement) {
-                if let Some(ref symbol_struct_type) = symbol.struct_type {
-                    if symbol_struct_type == struct_type {
-                        fields.push(name);
-                    }
-                }
-            }
-        }
-
-        // Check scoped symbols
-        for scope_symbols in self.scoped_symbols.values() {
-            for (name, symbol) in scope_symbols {
-                if matches!(symbol.kind, SymbolKind::StructureElement) {
-                    if let Some(ref symbol_struct_type) = symbol.struct_type {
-                        if symbol_struct_type == struct_type {
-                            fields.push(name);
-                        }
-                    }
-                }
-            }
-        }
-
-        fields
+        self.all_symbols()
+            .filter(|(_, symbol)| {
+                matches!(symbol.kind, SymbolKind::StructureElement)
+                    && symbol.struct_type.as_ref() == Some(struct_type)
+            })
+            .map(|(name, _)| name)
+            .collect()
     }
 }
 
@@ -1067,6 +1038,79 @@ mod tests {
 
         let accessible = env.get_accessible_symbols(&empty_scope);
         assert_eq!(accessible.len(), 2); // Both global symbols (DUPLICATE_VAR and GLOBAL_ONLY)
+    }
+
+    #[test]
+    fn get_enumeration_values_for_type_when_values_in_global_and_scoped_then_returns_matching_only()
+    {
+        let mut env = SymbolEnvironment::new();
+        let enum_type = TypeName::from("COLOR");
+        let other_type = TypeName::from("SIZE");
+
+        // Global enumeration value of the requested type.
+        env.insert_enumeration_value(&Id::from("RED"), &enum_type, &ScopeKind::Global)
+            .unwrap();
+        // Scoped enumeration value of the requested type.
+        let scope = ScopeKind::Named(Id::from("FB"));
+        env.insert_enumeration_value(&Id::from("GREEN"), &enum_type, &scope)
+            .unwrap();
+        // Enumeration value of a different type (should be excluded).
+        env.insert_enumeration_value(&Id::from("SMALL"), &other_type, &ScopeKind::Global)
+            .unwrap();
+        // Non-enumeration symbol whose enum_type is None (should be excluded).
+        env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
+            .unwrap();
+
+        let values = env.get_enumeration_values_for_type(&enum_type);
+        assert_eq!(values.len(), 2);
+        assert!(values.iter().any(|id| **id == Id::from("RED")));
+        assert!(values.iter().any(|id| **id == Id::from("GREEN")));
+    }
+
+    #[test]
+    fn get_enumeration_values_for_type_when_no_matching_values_then_returns_empty() {
+        let mut env = SymbolEnvironment::new();
+        env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
+            .unwrap();
+
+        let values = env.get_enumeration_values_for_type(&TypeName::from("COLOR"));
+        assert!(values.is_empty());
+    }
+
+    #[test]
+    fn get_structure_fields_for_type_when_fields_in_global_and_scoped_then_returns_matching_only() {
+        let mut env = SymbolEnvironment::new();
+        let struct_type = TypeName::from("POINT");
+        let other_type = TypeName::from("LINE");
+
+        // Global structure field of the requested type.
+        env.insert_structure_field(&Id::from("X"), &struct_type, &ScopeKind::Global)
+            .unwrap();
+        // Scoped structure field of the requested type.
+        let scope = ScopeKind::Named(Id::from("FB"));
+        env.insert_structure_field(&Id::from("Y"), &struct_type, &scope)
+            .unwrap();
+        // Structure field of a different type (should be excluded).
+        env.insert_structure_field(&Id::from("START"), &other_type, &ScopeKind::Global)
+            .unwrap();
+        // Non-structure symbol whose struct_type is None (should be excluded).
+        env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
+            .unwrap();
+
+        let fields = env.get_structure_fields_for_type(&struct_type);
+        assert_eq!(fields.len(), 2);
+        assert!(fields.iter().any(|id| **id == Id::from("X")));
+        assert!(fields.iter().any(|id| **id == Id::from("Y")));
+    }
+
+    #[test]
+    fn get_structure_fields_for_type_when_no_matching_fields_then_returns_empty() {
+        let mut env = SymbolEnvironment::new();
+        env.insert(&Id::from("PLAIN"), SymbolKind::Variable, &ScopeKind::Global)
+            .unwrap();
+
+        let fields = env.get_structure_fields_for_type(&TypeName::from("POINT"));
+        assert!(fields.is_empty());
     }
 
     #[test]

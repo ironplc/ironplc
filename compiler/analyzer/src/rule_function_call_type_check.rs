@@ -56,7 +56,11 @@ use ironplc_dsl::{
 };
 use ironplc_problems::Problem;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 /// Returns true if `actual` is type-compatible with `expected`.
@@ -221,20 +225,15 @@ pub fn apply(
     context: &SemanticContext,
     options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleFunctionCallTypeCheck {
-        context,
-        options,
-        diagnostics: vec![],
-        var_types: HashMap::new(),
-    };
-
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if visitor.diagnostics.is_empty() {
-        Ok(())
-    } else {
-        Err(visitor.diagnostics)
-    }
+    run_rule(
+        RuleFunctionCallTypeCheck {
+            context,
+            options,
+            diagnostics: vec![],
+            var_types: HashMap::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleFunctionCallTypeCheck<'a> {
@@ -243,6 +242,12 @@ struct RuleFunctionCallTypeCheck<'a> {
     diagnostics: Vec<Diagnostic>,
     /// Maps variable name to declared type for the current scope.
     var_types: HashMap<Id, TypeName>,
+}
+
+impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl RuleFunctionCallTypeCheck<'_> {

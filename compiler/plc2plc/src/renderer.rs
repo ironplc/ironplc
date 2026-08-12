@@ -88,12 +88,17 @@ impl LibraryRenderer {
     }
 
     /// Writes the reference-type keyword for the given surface syntax:
-    /// `REF_TO` for IEC, `REFERENCE TO` for the TwinCAT/CODESYS variant.
+    /// `REF_TO` for IEC, `REFERENCE TO` / `POINTER TO` for the
+    /// TwinCAT/CODESYS variants.
     fn write_ref_keyword(&mut self, syntax: &RefSyntax) {
         match syntax {
             RefSyntax::RefTo => self.write_ws("REF_TO"),
             RefSyntax::ReferenceTo => {
                 self.write_ws("REFERENCE");
+                self.write_ws("TO");
+            }
+            RefSyntax::PointerTo => {
+                self.write_ws("POINTER");
                 self.write_ws("TO");
             }
         }

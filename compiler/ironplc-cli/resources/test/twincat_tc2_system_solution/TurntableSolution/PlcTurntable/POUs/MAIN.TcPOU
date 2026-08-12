@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="MAIN" Id="{9b7c31d2-8f04-4a35-b1d9-5a2ec0f5d8ae}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    commandedDegPerSec : LREAL;
+    commandedRadPerSec : LREAL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[commandedDegPerSec := 15.0;
+commandedRadPerSec := F_DegreesToRadians(degrees := commandedDegPerSec);]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

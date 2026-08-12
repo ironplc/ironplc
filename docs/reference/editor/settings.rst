@@ -98,8 +98,9 @@ and a default set of extensions.
   extensions that the CODESYS IDE accepts.
 * ``twincat``: TwinCAT-compatible — Edition 2 base with the extensions
   Beckhoff TwinCAT shares with CODESYS. Unlike ``codesys`` it does not enable
-  the ``REF_TO`` reference extensions, since TwinCAT uses ``REFERENCE TO`` /
-  ``POINTER TO`` (not yet parsed by IronPLC).
+  the ``REF_TO`` reference extensions, since TwinCAT uses ``REFERENCE TO``
+  (bound with ``REF=``) and ``POINTER TO`` (bound with ``ADR()``), which it
+  enables instead.
 
 This setting corresponds to the ``--dialect`` command-line option documented in
 :doc:`/reference/compiler/ironplcc`.

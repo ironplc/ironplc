@@ -360,6 +360,10 @@ pub enum TokenType {
     // (`--allow-reference-to`). Longest-match keeps this distinct from `REF`.
     #[token("REFERENCE", ignore(case))]
     Reference,
+    // Beckhoff TwinCAT / CODESYS `POINTER TO` pointer types
+    // (`--allow-pointer-to`).
+    #[token("POINTER", ignore(case))]
+    Pointer,
 
     #[token("DATE", ignore(case))]
     Date,
@@ -610,6 +614,7 @@ impl TokenType {
             TokenType::Ref => "'REF'",
             TokenType::Null => "'NULL'",
             TokenType::Reference => "'REFERENCE'",
+            TokenType::Pointer => "'POINTER'",
             TokenType::Date => "'DATE' | 'D'",
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",

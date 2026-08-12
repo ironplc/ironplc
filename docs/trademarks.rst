@@ -16,9 +16,14 @@ documentation, or its source code. All trademarks are the property of
 their respective owners.
 
 * **TwinCAT** is a trademark of Beckhoff Automation GmbH & Co. KG.
-  IronPLC reads ``.TcPOU``, ``.TcGVL``, and ``.TcDUT`` files, which are
-  PLCopen XML payloads produced by TwinCAT. IronPLC is not a product of,
-  affiliated with, or endorsed by Beckhoff Automation.
+  IronPLC reads ``.TcPOU``, ``.TcGVL``, ``.TcDUT``, and ``.TcIO`` files,
+  which are PLCopen XML payloads produced by TwinCAT, and the
+  ``.plcproj`` project files that organize them. IronPLC also bundles
+  independently authored compatibility libraries that reproduce
+  documented interfaces of TwinCAT PLC libraries (``Tc2_System``,
+  ``Tc2_Math``, ``Tc2_Utilities``, ``Tc2_BuiltIns``) for
+  interoperability. IronPLC is not a product of, affiliated with, or
+  endorsed by Beckhoff Automation.
 * **CODESYS** is a trademark of CODESYS GmbH. IronPLC provides a
   ``codesys`` dialect preset to read code written for CODESYS-based
   environments. IronPLC is not a product of, affiliated with, or endorsed

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <FileVersion>1.0.0.0</FileVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{f2a84d06-1c57-4b92-8e3d-a9605b7f1e48}</ProjectGuid>
+    <SubObjectsSortedByName>True</SubObjectsSortedByName>
+    <DownloadApplicationInfo>true</DownloadApplicationInfo>
+    <DefaultNamespace>PlcFormat</DefaultNamespace>
+    <Name>PlcFormat</Name>
+    <ProgramVersion>3.1.4024.0</ProgramVersion>
+    <Application>{6D24E8B1-4A70-4F35-92C8-0B57E3D9A162}</Application>
+    <TypeSystem>{B8F05C27-3E91-4D68-A74B-1F82C6E05D93}</TypeSystem>
+    <Implicit_Task_Info>{4C71D9E5-08B2-4F63-95A7-2E80B5C1F374}</Implicit_Task_Info>
+    <Implicit_KindOfTask>{9A35E7C0-6D14-4B82-B1E9-5C08F27A3D61}</Implicit_KindOfTask>
+    <Implicit_Jitter_Distribution>{2F80C4B6-7A53-4E29-8D07-C41B96E5F038}</Implicit_Jitter_Distribution>
+    <LibraryReferences>{5E29B7D4-91C6-4A38-BE02-83F7D0A64C15}</LibraryReferences>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="POUs\MAIN.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <PlaceholderReference Include="Tc2_Utilities">
+      <DefaultResolution>Tc2_Utilities, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc2_Utilities</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+  <ProjectExtensions>
+    <PlcProjectOptions>
+      <XmlArchive>
+        <Data/>
+        <TypeList/>
+      </XmlArchive>
+    </PlcProjectOptions>
+  </ProjectExtensions>
+</Project>

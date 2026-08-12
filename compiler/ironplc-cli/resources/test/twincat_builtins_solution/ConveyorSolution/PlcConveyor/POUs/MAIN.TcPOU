@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="MAIN" Id="{d47b2e91-5a08-4c36-b9f2-8e61c0a4d7b3}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    running : BOOL;
+    statusText : STRING;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[running := TRUE;
+statusText := BOOL_TO_STRING(running);]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

@@ -378,9 +378,11 @@ library-e2e-brew-test:
   PREFIX="$(brew --prefix ironplc)"
   just _library-e2e-run-installed "$PREFIX/bin/ironplcc" "$PREFIX/bin/ironplcvm"
 
-# Shared verification (Unix + macOS): compile the fixture, run one scan, and
-# assert the VM computed 2 * PI * 10.0 = 62.8318... A release that failed to ship
-# the library would fail the compile here, so no separate file check is needed.
+# Shared verification (Unix + macOS): compile each fixture, run one scan, and
+# assert the VM computed the library-provided results (2 * PI * 10.0 = 62.8318...
+# from Tc2_System; 'TRUE'/'FALSE' from Tc2_BuiltIns' BOOL_TO_STRING). A release
+# that failed to ship a library would fail the compile here, so no separate file
+# check is needed -- the target release must ship both bundled libraries.
 [unix]
 _library-e2e-run-installed ironplcc ironplcvm:
   #!/usr/bin/env sh
@@ -395,6 +397,19 @@ _library-e2e-run-installed ironplcc ironplcvm:
     exit 1
   fi
   echo "PASS: installed compiler + VM computed 2 * PI * 10.0 using the library PI"
+  "{{ironplcc}}" compile --dialect twincat --library Tc2_BuiltIns \
+    --output "$WORK/builtins.iplc" tests/e2e/library/uses_bool_to_string.st
+  OUT="$("{{ironplcvm}}" run "$WORK/builtins.iplc" --scans 1 --dump-vars -)"
+  echo "$OUT"
+  if ! echo "$OUT" | grep -q "okTrue: TRUE"; then
+    echo "FAIL: BOOL_TO_STRING(TRUE) did not return 'TRUE' from the library" >&2
+    exit 1
+  fi
+  if ! echo "$OUT" | grep -q "okFalse: TRUE"; then
+    echo "FAIL: BOOL_TO_STRING(FALSE) did not return 'FALSE' from the library" >&2
+    exit 1
+  fi
+  echo "PASS: installed compiler + VM computed BOOL_TO_STRING using the library"
 
 # Windows uses the NSIS installer, which installs to a fixed Program Files path.
 # Each line is a separate PowerShell process (set windows-shell), so each step is
@@ -422,6 +437,11 @@ library-e2e-test:
   # Run one scan on the installed VM and assert it computed 2 * PI * 10.0.
   $out = &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcvm.exe" run "$env:TEMP\prog.iplc" --scans 1 --dump-vars -; Write-Host $out; if ($out -notmatch "62.8318") { Write-Error "FAIL: VM did not compute 2 * PI * 10.0 from the library PI"; exit 1 }
   Write-Host "PASS: installed compiler + VM computed 2 * PI * 10.0 using the library PI"
+  # Compile the Tc2_BuiltIns-dependent program against the installed compiler.
+  &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcc.exe" compile --dialect twincat --library Tc2_BuiltIns --output "$env:TEMP\builtins.iplc" "tests\e2e\library\uses_bool_to_string.st"; if ($LASTEXITCODE -ne 0) { Write-Error "FAIL: installed compiler could not compile the Tc2_BuiltIns-dependent program"; exit 1 }
+  # Run one scan and assert BOOL_TO_STRING returned 'TRUE' and 'FALSE'.
+  $out = &"{{env_var('LOCALAPPDATA')}}\Programs\IronPLC Compiler\bin\ironplcvm.exe" run "$env:TEMP\builtins.iplc" --scans 1 --dump-vars -; Write-Host $out; if (($out -notmatch "okTrue: TRUE") -or ($out -notmatch "okFalse: TRUE")) { Write-Error "FAIL: BOOL_TO_STRING did not return 'TRUE'/'FALSE' from the library"; exit 1 }
+  Write-Host "PASS: installed compiler + VM computed BOOL_TO_STRING using the library"
 
 # OpenCode integration end-to-end test - Unix only.
 #
