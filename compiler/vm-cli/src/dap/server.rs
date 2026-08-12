@@ -36,7 +36,7 @@ use super::state::{self, Command, Phase};
 use super::types::{
     Breakpoint, Capabilities, ContinueResponseBody, Event, LaunchRequestArguments, Request,
     Response, Scope, ScopesResponseBody, SetBreakpointsArguments, SetBreakpointsResponseBody,
-    StackFrame, StackTraceResponseBody, StoppedEventBody, Thread, ThreadsResponseBody,
+    Source, StackFrame, StackTraceResponseBody, StoppedEventBody, Thread, ThreadsResponseBody,
     VariablesResponseBody,
 };
 
@@ -342,7 +342,7 @@ fn launched_session<R: BufRead, W: Write>(
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::StackTrace) if legal_here => {
-                let body = stack_trace_body(&running);
+                let body = stack_trace_body(&running, debug);
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::Scopes) if legal_here => {
@@ -411,8 +411,10 @@ fn stopped_event(seq: i64, reason: &'static str) -> Event {
 ///
 /// DAP `setBreakpoints` carries the full set for one source, so the table is
 /// cleared and rebuilt. v1 debugs a single source, so a table-wide clear is
-/// correct. Line→location resolution is delegated to [`debug_info`] (a
-/// passthrough until the Layer-1 line-map swap).
+/// correct. Line→location resolution is delegated to [`debug_info`], which
+/// snaps each breakpoint forward to the nearest executable line; the response
+/// echoes the *bound* line so the editor moves the marker to where the
+/// breakpoint actually took effect.
 fn set_breakpoints(
     request: &Request,
     debug: Option<&DebugSection>,
@@ -430,27 +432,27 @@ fn set_breakpoints(
     let resolved: Vec<Breakpoint> = args
         .breakpoints
         .iter()
-        .map(|bp| {
-            let locations = debug_info::resolve_breakpoint(debug, &source_path, bp.line);
-            if locations.is_empty() {
-                Breakpoint {
+        .map(
+            |bp| match debug_info::resolve_breakpoint(debug, &source_path, bp.line) {
+                Some(resolved) => {
+                    for (function_id, offset) in resolved.locations {
+                        breakpoints.add(function_id, offset);
+                    }
+                    Breakpoint {
+                        verified: true,
+                        line: Some(resolved.line),
+                        source: source.clone(),
+                        message: None,
+                    }
+                }
+                None => Breakpoint {
                     verified: false,
                     line: Some(bp.line),
                     source: source.clone(),
                     message: Some("no executable location for this line".to_string()),
-                }
-            } else {
-                for (function_id, offset) in locations {
-                    breakpoints.add(function_id, offset);
-                }
-                Breakpoint {
-                    verified: true,
-                    line: Some(bp.line),
-                    source: source.clone(),
-                    message: None,
-                }
-            }
-        })
+                },
+            },
+        )
         .collect();
 
     serde_json::to_value(SetBreakpointsResponseBody {
@@ -461,20 +463,26 @@ fn set_breakpoints(
 
 /// Builds the `stackTrace` response body from the paused instance's live
 /// frames. DAP orders frames innermost-first; [`VmRunning::debug_frames`] is
-/// outermost-first, so the walk is reversed. Frame names and lines are
-/// passthrough (function id, bytecode offset) until the Layer-1 swap.
-fn stack_trace_body(running: &VmRunning) -> Option<Value> {
+/// outermost-first, so the walk is reversed. Each frame is resolved by
+/// [`debug_info`] to its POU name and source location (FUNC_NAME + line map).
+fn stack_trace_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option<Value> {
     let frames = running.debug_frames();
     let stack_frames: Vec<StackFrame> = frames
         .iter()
         .enumerate()
         .rev()
-        .map(|(index, frame)| StackFrame {
-            id: index as i64,
-            name: format!("function {}", frame.function_id.raw()),
-            line: frame.pc as i64,
-            column: 0,
-            source: None,
+        .map(|(index, frame)| {
+            let info = debug_info::resolve_frame(debug, frame.function_id, frame.pc);
+            StackFrame {
+                id: index as i64,
+                name: info.name,
+                line: info.line,
+                column: info.column,
+                source: info.source.map(|(name, path)| Source {
+                    name: Some(name),
+                    path: Some(path),
+                }),
+            }
         })
         .collect();
     let total = stack_frames.len() as i64;
@@ -486,23 +494,27 @@ fn stack_trace_body(running: &VmRunning) -> Option<Value> {
 }
 
 /// Builds the `variables` response body: every program variable slot, rendered
-/// by [`debug_info`] (passthrough `var[i]` names until the Layer-1 swap).
+/// by [`debug_info`] with its VAR_NAME name/type and a value formatted per its
+/// IEC type tag (STRING values are read from the data region).
 fn variables_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option<Value> {
     let count = running.num_variables();
     let values: Vec<u64> = (0..count)
         .map(|i| running.read_variable_raw(VarIndex::new(i)).unwrap_or(0))
         .collect();
-    let variables = debug_info::render_variables(debug, &values);
+    let variables = debug_info::render_variables(debug, &values, running.data_region());
     serde_json::to_value(VariablesResponseBody { variables }).ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_container::debug_section::{iec_type_tag, var_section, VarNameEntry};
+    use ironplc_container::debug_section::{
+        iec_type_tag, var_section, VarNameEntry, SOURCE_FILE_HASH_LEN,
+    };
     use ironplc_container::{
-        ContainerBuilder, FunctionId, InstanceId, ProgramInstanceEntry, TaskEntry, TaskId,
-        TaskType, VarIndex,
+        ContainerBuilder, FuncNameEntry, FunctionId, InstanceId, LineMapEntry,
+        ProgramInstanceEntry, SourceColumn, SourceFileEntry, SourceFileId, SourceLine, TaskEntry,
+        TaskId, TaskType, VarIndex,
     };
     use serde_json::{json, Value};
     use std::io::Cursor;
@@ -515,6 +527,26 @@ mod tests {
             iec_type_tag: iec_type_tag::DINT,
             name: "x".into(),
             type_name: "DINT".into(),
+        }
+    }
+
+    /// The source file every fixture container claims to be compiled from.
+    fn demo_source_file() -> SourceFileEntry {
+        SourceFileEntry {
+            path: "demo.st".into(),
+            content_hash: [0u8; SOURCE_FILE_HASH_LEN],
+        }
+    }
+
+    /// A line-map entry for `demo.st` mapping `offset` in `function_id` to
+    /// `line` (column 1).
+    fn line_entry(function_id: FunctionId, offset: u16, line: u16) -> LineMapEntry {
+        LineMapEntry {
+            function_id,
+            bytecode_offset: offset,
+            file_id: SourceFileId::new(0),
+            source_line: SourceLine::new(line),
+            source_column: SourceColumn::new(1),
         }
     }
 
@@ -817,19 +849,26 @@ mod tests {
     // -- run/stop loop ------------------------------------------------------
 
     /// A single-instance container whose **scan** entry function is
-    /// [`FunctionId::SCAN`], matching the passthrough breakpoint resolver
-    /// (which keys line→offset breakpoints to `SCAN`). `init` is a bare
-    /// `RET_VOID`; `scan` runs `scan_bytecode`.
+    /// [`FunctionId::SCAN`] (named `MAIN`), running `scan_bytecode`; `init`
+    /// is a bare `RET_VOID`. The debug section maps each `(offset, line)`
+    /// pair in `line_map` to `demo.st`, so tests set breakpoints by source
+    /// line against it.
     fn scan_container_file(
         scan_bytecode: &[u8],
         max_stack: u16,
+        line_map: &[(u16, u16)],
     ) -> (tempfile::NamedTempFile, String) {
-        let container = ContainerBuilder::new()
+        let mut builder = ContainerBuilder::new()
             .num_variables(1)
             .add_function(FunctionId::INIT, &[0x8C], 0, 1, 0)
             .add_function(FunctionId::SCAN, scan_bytecode, max_stack, 1, 0)
             .max_call_depth(1)
             .add_var_name(a_var_name())
+            .add_func_name(FuncNameEntry {
+                function_id: FunctionId::SCAN,
+                name: "MAIN".into(),
+            })
+            .add_source_file(demo_source_file())
             .add_task(a_task(TaskId::new(0)))
             .add_program_instance(ProgramInstanceEntry {
                 instance_id: InstanceId::new(0),
@@ -840,23 +879,27 @@ mod tests {
                 fb_instance_offset: 0,
                 fb_instance_count: 0,
                 init_function_id: FunctionId::INIT,
-            })
-            .build();
+            });
+        for &(offset, line) in line_map {
+            builder = builder.add_line_map_entry(line_entry(FunctionId::SCAN, offset, line));
+        }
+        let container = builder.build();
         write_container_to_temp(&container)
     }
 
-    /// A single-instance container whose scan increments `var[0]` (a DINT) by
-    /// one each cycle, then `RET_VOID`. The store lands at bytecode offset 7 and
-    /// the `RET_VOID` at offset 10, so a breakpoint on line 10 pauses *after*
-    /// the increment — letting a test observe the variable evolve across scans.
+    /// A single-instance container whose scan increments `x` (`var[0]`, a
+    /// DINT) by one each cycle, then `RET_VOID`. The increment statement is
+    /// source line 10 (offset 0) and the `RET_VOID` line 11 (offset 10), so
+    /// a breakpoint on line 11 pauses *after* the increment — letting a test
+    /// observe the variable evolve across scans.
     fn incrementing_scan_container_file() -> (tempfile::NamedTempFile, String) {
         #[rustfmt::skip]
         let scan: Vec<u8> = vec![
-            0x0C, 0x00, 0x00, // LOAD_VAR_I32  var[0]
+            0x0C, 0x00, 0x00, // LOAD_VAR_I32  var[0]   (offset 0, line 10)
             0x00, 0x00, 0x00, // LOAD_CONST_I32 pool[0] (1)
             0x20,             // ADD_I32
             0x10, 0x00, 0x00, // STORE_VAR_I32 var[0]   (offset 7)
-            0x8C,             // RET_VOID               (offset 10)
+            0x8C,             // RET_VOID               (offset 10, line 11)
         ];
         let container = ContainerBuilder::new()
             .num_variables(1)
@@ -865,6 +908,13 @@ mod tests {
             .add_function(FunctionId::SCAN, &scan, 2, 1, 0)
             .max_call_depth(1)
             .add_var_name(a_var_name())
+            .add_func_name(FuncNameEntry {
+                function_id: FunctionId::SCAN,
+                name: "MAIN".into(),
+            })
+            .add_source_file(demo_source_file())
+            .add_line_map_entry(line_entry(FunctionId::SCAN, 0, 10))
+            .add_line_map_entry(line_entry(FunctionId::SCAN, 10, 11))
             .add_task(a_task(TaskId::new(0)))
             .add_program_instance(ProgramInstanceEntry {
                 instance_id: InstanceId::new(0),
@@ -904,7 +954,7 @@ mod tests {
         // With no breakpoint, `scanLimit` is what bounds the run: the loop keeps
         // scanning until `scan_count` reaches it (without a bound this program
         // would scan forever, as the single-threaded loop has no `pause`).
-        let (_file, path) = scan_container_file(&[0x8C], 0);
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
@@ -924,14 +974,14 @@ mod tests {
 
     #[test]
     fn serve_when_breakpoint_then_stops_inspects_continues_and_terminates() {
-        let (_file, path) = scan_container_file(&[0x8C], 0);
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path, "scanLimit": 1}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": 0}]}}),
+                                 "breakpoints": [{"line": 10}]}}),
             json!({"seq": 4, "type": "request", "command": "configurationDone"}),
             json!({"seq": 5, "type": "request", "command": "threads"}),
             json!({"seq": 6, "type": "request", "command": "stackTrace",
@@ -945,10 +995,10 @@ mod tests {
             json!({"seq": 10, "type": "request", "command": "disconnect"}),
         ]);
 
-        // The breakpoint is verified back to the client.
+        // The breakpoint is verified back to the client at its bound line.
         let sbp = responses(&out, "setBreakpoints");
         assert_eq!(sbp[0]["body"]["breakpoints"][0]["verified"], true);
-        assert_eq!(sbp[0]["body"]["breakpoints"][0]["line"], 0);
+        assert_eq!(sbp[0]["body"]["breakpoints"][0]["line"], 10);
 
         // The VM stops at the breakpoint before running to completion.
         let stopped = events(&out, "stopped");
@@ -959,10 +1009,13 @@ mod tests {
         // One synthetic thread.
         assert_eq!(responses(&out, "threads")[0]["body"]["threads"][0]["id"], 1);
 
-        // The stack has the single scan frame (function id 1 = SCAN).
+        // The stack has the single scan frame, resolved to its POU name and
+        // source location.
         let st = responses(&out, "stackTrace");
         assert_eq!(st[0]["body"]["stackFrames"].as_array().unwrap().len(), 1);
-        assert_eq!(st[0]["body"]["stackFrames"][0]["name"], "function 1");
+        assert_eq!(st[0]["body"]["stackFrames"][0]["name"], "MAIN");
+        assert_eq!(st[0]["body"]["stackFrames"][0]["line"], 10);
+        assert_eq!(st[0]["body"]["stackFrames"][0]["source"]["path"], "demo.st");
 
         // One scope, whose handle enumerates the variables.
         let sc = responses(&out, "scopes");
@@ -971,9 +1024,11 @@ mod tests {
             VARIABLES_REF
         );
 
-        // The single program variable is rendered (passthrough name).
+        // The single program variable is rendered with its source name and
+        // declared type.
         let vars = responses(&out, "variables");
-        assert_eq!(vars[0]["body"]["variables"][0]["name"], "var[0]");
+        assert_eq!(vars[0]["body"]["variables"][0]["name"], "x");
+        assert_eq!(vars[0]["body"]["variables"][0]["type"], "DINT");
 
         // Continue resumes, past the breakpoint, to completion.
         assert_eq!(
@@ -1000,10 +1055,10 @@ mod tests {
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path}}),
-            // Breakpoint on the RET_VOID (offset 10), after the increment store.
+            // Breakpoint on the RET_VOID line, after the increment statement.
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": 10}]}}),
+                                 "breakpoints": [{"line": 11}]}}),
             json!({"seq": 4, "type": "request", "command": "configurationDone"}),
             // Scan 1 paused: inspect, then continue to scan 2.
             json!({"seq": 5, "type": "request", "command": "variables",
@@ -1061,15 +1116,15 @@ mod tests {
 
     #[test]
     fn serve_when_setbreakpoints_line_unresolvable_then_reports_unverified() {
-        // The passthrough resolver rejects a negative line (no location).
-        let (_file, path) = scan_container_file(&[0x8C], 0);
+        // A line past the last executable line has nothing to snap to.
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": -1}]}}),
+                                 "breakpoints": [{"line": 9999}]}}),
             json!({"seq": 4, "type": "request", "command": "disconnect"}),
         ]);
         let sbp = responses(&out, "setBreakpoints");
@@ -1090,19 +1145,25 @@ mod tests {
         0x8C, // RET_VOID                          (offset 12)
     ];
 
+    /// Line map for [`MULTI_STATEMENT_SCAN`]: one source line per statement,
+    /// lines 10–14 of `demo.st`.
+    const MULTI_STATEMENT_LINES: [(u16, u16); 5] =
+        [(0, 10), (3, 11), (6, 12), (9, 13), (12, 14)];
+
     #[test]
     fn serve_when_step_over_then_advances_paused_pc_statement_by_statement() {
-        // From a breakpoint at offset 0, each `next` lands on the next statement
-        // (no CALL to step over, so step-over lands on the immediately-following
-        // instruction). The paused pc is read back via `stackTrace`.
-        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1);
+        // From a breakpoint on the first statement, each `next` lands on the
+        // next statement (no CALL to step over, so step-over lands on the
+        // immediately-following instruction). The paused source line is read
+        // back via `stackTrace`.
+        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1, &MULTI_STATEMENT_LINES);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": 0}]}}),
+                                 "breakpoints": [{"line": 10}]}}),
             json!({"seq": 4, "type": "request", "command": "configurationDone"}),
             json!({"seq": 5, "type": "request", "command": "stackTrace",
                    "arguments": {"threadId": 1}}),
@@ -1124,11 +1185,11 @@ mod tests {
         assert_eq!(stopped[1]["body"]["reason"], "step");
         assert_eq!(stopped[2]["body"]["reason"], "step");
 
-        // The paused pc advances one statement per step: 0 → 3 → 6.
+        // The paused line advances one statement per step: 10 → 11 → 12.
         let st = responses(&out, "stackTrace");
-        assert_eq!(st[0]["body"]["stackFrames"][0]["line"], 0);
-        assert_eq!(st[1]["body"]["stackFrames"][0]["line"], 3);
-        assert_eq!(st[2]["body"]["stackFrames"][0]["line"], 6);
+        assert_eq!(st[0]["body"]["stackFrames"][0]["line"], 10);
+        assert_eq!(st[1]["body"]["stackFrames"][0]["line"], 11);
+        assert_eq!(st[2]["body"]["stackFrames"][0]["line"], 12);
 
         for n in responses(&out, "next") {
             assert_eq!(n["success"], true);
@@ -1142,14 +1203,14 @@ mod tests {
         // has no shallower frame to reach, so it runs the scan to completion.
         // `scanLimit: 1` bounds the run so completing that scan terminates the
         // session (rather than continuing into the next scan).
-        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1);
+        let (_file, path) = scan_container_file(&MULTI_STATEMENT_SCAN, 1, &MULTI_STATEMENT_LINES);
         let out = run_server(&[
             json!({"seq": 1, "type": "request", "command": "initialize"}),
             json!({"seq": 2, "type": "request", "command": "launch",
                    "arguments": {"program": path, "scanLimit": 1}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": 0}]}}),
+                                 "breakpoints": [{"line": 10}]}}),
             json!({"seq": 4, "type": "request", "command": "configurationDone"}),
             json!({"seq": 5, "type": "request", "command": "stepIn",
                    "arguments": {"threadId": 1}}),
@@ -1160,13 +1221,14 @@ mod tests {
             json!({"seq": 8, "type": "request", "command": "disconnect"}),
         ]);
 
-        // Breakpoint stop, then a step stop from `stepIn` landing at offset 3.
+        // Breakpoint stop, then a step stop from `stepIn` landing on the
+        // second statement (line 11).
         let stopped = events(&out, "stopped");
         assert_eq!(stopped.len(), 2);
         assert_eq!(stopped[1]["body"]["reason"], "step");
         assert_eq!(
             responses(&out, "stackTrace")[0]["body"]["stackFrames"][0]["line"],
-            3
+            11
         );
 
         // stepOut from the top frame runs the scan to completion.
