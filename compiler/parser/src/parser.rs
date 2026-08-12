@@ -1308,7 +1308,27 @@ parser! {
     // or IMPLEMENTS tokens are recognized (allow_fb_inheritance), since
     // both are demoted to identifiers otherwise.
     rule type_name_list() -> Vec<TypeName> = names:type_name() ++ (_ tok(TokenType::Comma) _) { names }
-    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(t:tok(TokenType::Abstract) {t})? _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ end:tok(TokenType::EndFunctionBlock) {
+
+    // OOP extension: METHOD ... END_METHOD, declared on a function block.
+    // Only the textual inline form is parsed here; TwinCAT's `.TcPOU` XML
+    // form stores each method as a separate `<Method>` element and is
+    // transformed directly to `MethodDeclaration` in `ironplc-sources`
+    // without going through this grammar. See ADR-0041 Phase 1.
+    rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body() _ end:tok(TokenType::EndMethod) {
+      let decls = VarDeclarations::flatten(decls);
+      let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
+      let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
+      MethodDeclaration {
+        name,
+        return_type: rt,
+        variables,
+        edge_variables,
+        body,
+        span: SourceSpan::join(&start.span, &end.span),
+      }
+    }
+
+    rule function_block_declaration() -> FunctionBlockDeclaration = start:tok(TokenType::FunctionBlock) _ is_abstract:(t:tok(TokenType::Abstract) {t})? _ name:derived_function_block_name() _ extends:(e:tok(TokenType::Extends) _ t:type_name() {(e, t)})? _ implements:(i:tok(TokenType::Implements) _ names:type_name_list() {(i, names)})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_block_body() _ methods:(_ m:method_declaration() {m}) ** _ _ end:tok(TokenType::EndFunctionBlock) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
       let (edge_variables, _) = VarDeclarations::drain_edge_decl(remainder);
@@ -1352,6 +1372,7 @@ parser! {
         body,
         span: SourceSpan::join(&start.span, &end.span),
         oop,
+        methods,
       }
     }
 
