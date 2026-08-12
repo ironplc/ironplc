@@ -272,6 +272,7 @@ pub trait Visitor<E> {
 
     // OOP extension
     dispatch!(FunctionBlockOop);
+    dispatch!(MethodDeclaration);
 
     dispatch!(FunctionBlockBodyKind);
 

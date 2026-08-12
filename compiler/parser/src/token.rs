@@ -216,6 +216,10 @@ pub enum TokenType {
     EndInterface,
     #[token("ABSTRACT", ignore(case))]
     Abstract,
+    #[token("METHOD", ignore(case))]
+    Method,
+    #[token("END_METHOD", ignore(case))]
+    EndMethod,
 
     #[token("IF", ignore(case))]
     If,
@@ -553,6 +557,8 @@ impl TokenType {
             TokenType::Interface => "'INTERFACE'",
             TokenType::EndInterface => "'END_INTERFACE'",
             TokenType::Abstract => "'ABSTRACT'",
+            TokenType::Method => "'METHOD'",
+            TokenType::EndMethod => "'END_METHOD'",
             TokenType::If => "'IF'",
             TokenType::Then => "'THEN'",
             TokenType::Elsif => "'ELSIF'",
@@ -775,6 +781,8 @@ mod tests {
             (Interface, "INTERFACE"),
             (EndInterface, "END_INTERFACE"),
             (Abstract, "ABSTRACT"),
+            (Method, "METHOD"),
+            (EndMethod, "END_METHOD"),
             (If, "IF"),
             (Then, "THEN"),
             (Elsif, "ELSIF"),
