@@ -244,7 +244,8 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    ``ADR(x)`` in IronPLC has the type ``POINTER TO`` *typeof(x)* and is
    type-checked against the destination pointer's target type. Addresses of
    sub-objects (array elements, structure fields) and pointer arithmetic are
-   not supported and are rejected with a diagnostic.
+   not supported and are rejected with a diagnostic. See
+   :doc:`/reference/extension-library/functions/adr`.
 
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,
