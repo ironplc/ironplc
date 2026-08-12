@@ -298,6 +298,23 @@ pub struct FbCall {
     pub position: SourceSpan,
 }
 
+/// Method invocation, statement position only: `instance.MethodName(args);`
+/// (OOP extension, ADR-0041 Phase 1). Any return value is discarded, same
+/// restriction as `FbCall` for a plain FB invocation. Method calls in
+/// expression position (e.g. `IF fb.IsMoving() THEN`) are a follow-up
+/// slice — see
+/// `specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md`.
+#[derive(Debug, PartialEq, Clone, Recurse, Located)]
+pub struct MethodCall {
+    /// Name of the variable holding the function-block instance the
+    /// method is called on.
+    pub instance: Id,
+    /// Name of the method being called.
+    pub method: Id,
+    pub params: Vec<ParamAssignmentKind>,
+    pub position: SourceSpan,
+}
+
 /// A binary expression that produces a Boolean result by comparing operands.
 ///
 /// See section 3.3.1.
@@ -668,6 +685,7 @@ pub enum StmtKind {
     Assignment(Assignment),
     // Function and function block control
     FbCall(FbCall),
+    MethodCall(MethodCall),
     // Selection statements
     If(If),
     Case(Case),
@@ -687,6 +705,7 @@ impl Located for StmtKind {
         match self {
             StmtKind::Assignment(a) => a.span(),
             StmtKind::FbCall(f) => f.span(),
+            StmtKind::MethodCall(m) => m.span(),
             StmtKind::If(i) => i.span(),
             StmtKind::Case(c) => c.span(),
             StmtKind::For(f) => f.span(),

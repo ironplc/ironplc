@@ -435,6 +435,18 @@ fn compile_statement(
             Ok(())
         }
         StmtKind::FbCall(fb_call) => compile_fb_call(emitter, ctx, fb_call),
+        StmtKind::MethodCall(method_call) => {
+            // Method call codegen (receiver-pointer parameter, mangled
+            // symbol, call-site compilation) is a follow-up slice -- see
+            // specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md.
+            // Parsing, resolution, and diagnostics already work; only
+            // execution is not yet implemented.
+            Err(Diagnostic::todo_with_span(
+                method_call.position.clone(),
+                file!(),
+                line!(),
+            ))
+        }
         StmtKind::If(if_stmt) => compile_if(emitter, ctx, if_stmt),
         StmtKind::Case(case_stmt) => compile_case(emitter, ctx, case_stmt),
         StmtKind::For(for_stmt) => compile_for(emitter, ctx, for_stmt),

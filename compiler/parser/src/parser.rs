@@ -1834,11 +1834,26 @@ parser! {
       }
 
     // B.3.2.2 Subprogram control statements
-    rule subprogram_control_statement() -> StmtKind = fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
+    rule subprogram_control_statement() -> StmtKind = m:method_invocation() { m } / fb:fb_invocation() { fb } / tok(TokenType::Return) { StmtKind::Return }
     rule fb_invocation() -> StmtKind = name:fb_name() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
       let span = SourceSpan::join(&name.span, &end.span);
       StmtKind::FbCall(FbCall {
         var_name: name,
+        params,
+        position: span,
+      })
+    }
+    // OOP extension: `instance.MethodName(args);` (ADR-0041 Phase 1).
+    // Statement position only; a previously-syntax-error shape
+    // (identifier-dot-identifier followed directly by a call), so this
+    // is purely additive and needs no dialect gating of its own -- the
+    // METHOD declarations that would make such a call resolve are
+    // already gated by `allow_fb_inheritance` at the token level.
+    rule method_invocation() -> StmtKind = instance:identifier() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+      let span = SourceSpan::join(&instance.span, &end.span);
+      StmtKind::MethodCall(MethodCall {
+        instance,
+        method,
         params,
         position: span,
       })
