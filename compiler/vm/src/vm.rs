@@ -2404,6 +2404,71 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                     }
                 }
             }
+            opcode::METHOD_CALL => {
+                // OOP extension (ADR-0041 Phase 1 static dispatch).
+                // Deliberately simpler than FB_CALL: a method call is
+                // always user-defined, so no intrinsic-FB-type branch,
+                // and all addressing is given directly as operands (the
+                // caller already resolved the static type at compile
+                // time) rather than looked up by a type_id in the
+                // container's type_section.
+                let function_id = FunctionId::new(read_u16_le(bytecode, &mut pc)?);
+                let field_var_off = read_u16_le(bytecode, &mut pc)?;
+                let num_fields = read_u8(bytecode, &mut pc)?;
+                let param_var_off = read_u16_le(bytecode, &mut pc)?;
+
+                let func = container
+                    .code
+                    .get_function(function_id)
+                    .ok_or(Trap::InvalidFunctionId(function_id))?;
+
+                // Pop arguments into the method's own param slots (same
+                // convention as CALL) *before* reading fb_ref, since the
+                // args sit on top of fb_ref on the shared stack.
+                for i in (0..func.num_params).rev() {
+                    let val = stack.pop()?;
+                    variables.store(VarIndex::new(param_var_off + i), val)?;
+                }
+
+                let fb_ref = stack.peek()?.as_i32() as u32;
+                let instance_start = fb_ref as usize;
+
+                // Copy-in: data region fields -> the owning type's shared
+                // field scratch region (same mechanism FB_CALL uses).
+                for i in 0..num_fields as usize {
+                    let offset = instance_start + i * 8;
+                    if offset + 8 > data_region.len() {
+                        return Err(Trap::DataRegionOutOfBounds(offset as u32));
+                    }
+                    let mut buf = [0u8; 8];
+                    buf.copy_from_slice(&data_region[offset..offset + 8]);
+                    variables.store(
+                        VarIndex::new(field_var_off + i as u16),
+                        Slot::from_i64(i64::from_le_bytes(buf)),
+                    )?;
+                }
+
+                let func_scope = VariableScope {
+                    shared_globals_size: scope.shared_globals_size,
+                    instance_offset: field_var_off,
+                    instance_count: func.num_locals,
+                };
+
+                commit_pc(&mut frame_stack, pc);
+                hook.before_call(function_id);
+                frame_stack.push(Frame {
+                    function_id,
+                    pc: 0,
+                    scope: func_scope,
+                    temp_alloc_mark: temp_alloc.next(),
+                    fb_return: Some(FbCallReturn {
+                        instance_start,
+                        var_offset: field_var_off,
+                        num_fields,
+                    }),
+                })?;
+                pc_dirty = false;
+            }
             // --- Array opcodes ---
             opcode::LOAD_ARRAY => {
                 let var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);

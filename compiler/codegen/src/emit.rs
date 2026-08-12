@@ -804,6 +804,45 @@ impl Emitter {
         self.bytecode.extend_from_slice(&type_id.to_le_bytes());
     }
 
+    /// Emits METHOD_CALL (OOP extension, ADR-0041 Phase 1 static dispatch).
+    ///
+    /// `fb_ref` (pushed by a preceding [`Emitter::emit_fb_load_instance`])
+    /// remains on the stack, matching [`Emitter::emit_fb_call`]. Pops
+    /// `num_params` arguments from above `fb_ref`, then -- if the method
+    /// has a return type -- pushes the return value on top of `fb_ref`
+    /// (the caller is responsible for discarding both, in that order,
+    /// once done with the call).
+    #[allow(clippy::too_many_arguments)]
+    pub fn emit_method_call(
+        &mut self,
+        function_id: FunctionId,
+        field_var_off: VarIndex,
+        num_fields: u8,
+        param_var_off: VarIndex,
+        num_params: u16,
+        has_return_value: bool,
+        callee_max_stack: u16,
+    ) {
+        self.emit_opcode(opcode::METHOD_CALL);
+        self.bytecode.extend_from_slice(&function_id.to_le_bytes());
+        self.bytecode
+            .extend_from_slice(&field_var_off.to_le_bytes());
+        self.bytecode.push(num_fields);
+        self.bytecode
+            .extend_from_slice(&param_var_off.to_le_bytes());
+        if num_params > 0 {
+            self.pop_stack(num_params);
+        }
+        // Account for the callee's stack usage on the shared stack.
+        if callee_max_stack > 0 {
+            self.push_stack(callee_max_stack);
+            self.pop_stack(callee_max_stack);
+        }
+        if has_return_value {
+            self.push_stack(1);
+        }
+    }
+
     /// Emits CALL with a function ID and variable offset.
     /// Pops `num_params` arguments and pushes one return value.
     /// `var_offset` is the absolute variable table index where the

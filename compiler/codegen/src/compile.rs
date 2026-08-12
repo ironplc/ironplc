@@ -517,8 +517,61 @@ fn compile_program_with_functions(
                 function_id: FunctionId::new(next_function_id),
                 var_offset: 0, // updated after program vars are assigned
                 field_op_types,
+                methods: HashMap::new(),
             },
         );
+    }
+
+    // Pre-scan METHOD declarations (OOP extension, ADR-0041 Phase 1) to
+    // register their function IDs, parameter shapes, and return-value
+    // presence -- all knowable from the AST alone, same reasoning as the
+    // FB pre-scan above. Method function IDs continue the sequence after
+    // every FB body and every user FUNCTION, so they must be registered
+    // only after both counts are known; `param_var_off`/`max_stack_depth`
+    // stay `0` until the method is actually compiled (mirrors
+    // `UserFbTypeInfo::var_offset`).
+    let mut next_method_function_id = 2_u16 + fb_decls.len() as u16 + func_decls.len() as u16;
+    for fb_decl in fb_decls.iter() {
+        let fb_name = fb_decl.name.name.to_string().to_uppercase();
+        for method in &fb_decl.methods {
+            let method_name = method.name.to_string().to_lowercase();
+            let mut param_names_in_order: Vec<String> = Vec::new();
+            let mut param_op_types: Vec<OpType> = Vec::new();
+            for decl in &method.variables {
+                if !decl.var_type.is_input_compatible() {
+                    continue;
+                }
+                if let Some(id) = decl.identifier.symbolic_id() {
+                    param_names_in_order.push(id.to_string().to_lowercase());
+                }
+                let op_type = if let InitialValueAssignmentKind::Simple(simple) = &decl.initializer
+                {
+                    resolve_type_name(&simple.type_name.name)
+                        .map_or(DEFAULT_OP_TYPE, |vti| (vti.op_width, vti.signedness))
+                } else {
+                    DEFAULT_OP_TYPE
+                };
+                param_op_types.push(op_type);
+            }
+
+            let function_id = FunctionId::new(next_method_function_id);
+            next_method_function_id += 1;
+
+            if let Some(fb_info) = ctx.user_fb_types.get_mut(&fb_name) {
+                fb_info.methods.insert(
+                    method_name,
+                    UserMethodInfo {
+                        function_id,
+                        param_var_off: 0, // updated once the method is compiled
+                        num_params: param_names_in_order.len() as u16,
+                        param_names_in_order,
+                        param_op_types,
+                        has_return_value: method.return_type.is_some(),
+                        max_stack_depth: 0, // updated once the method is compiled
+                    },
+                );
+            }
+        }
     }
 
     // Collect program-local variables, skipping VAR_EXTERNAL declarations
@@ -565,17 +618,19 @@ fn compile_program_with_functions(
         compiled_functions.push(compiled);
     }
 
+    let mut compiled_methods: Vec<CompiledFunction> = Vec::new();
     for fb_decl in fb_decls {
         let fb_name = fb_decl.name.name.to_string().to_uppercase();
         let fb_func_id = ctx.user_fb_types[&fb_name].function_id;
+        let field_var_off = var_offset.raw();
 
         // Update the var_offset in the registered type info.
-        ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = var_offset.raw();
+        ctx.user_fb_types.get_mut(&fb_name).unwrap().var_offset = field_var_off;
 
-        let compiled = compile_user_function_block(
+        let (compiled, saved_scope) = compile_user_function_block(
             fb_decl,
             fb_func_id,
-            var_offset.raw(),
+            field_var_off,
             &mut ctx,
             &mut builder,
             types,
@@ -583,6 +638,29 @@ fn compile_program_with_functions(
         )?;
         var_offset = VarIndex::new(var_offset.raw() + compiled.num_locals);
         compiled_fb_bodies.push(compiled);
+
+        // Compile this type's methods (OOP extension, ADR-0041 Phase 1)
+        // while `ctx.variables` still holds this type's field mappings
+        // (that's the whole reason `compile_user_function_block` didn't
+        // restore them itself -- see its doc comment).
+        let methods = crate::compile_method::compile_user_fb_methods(
+            fb_decl,
+            &fb_name,
+            field_var_off,
+            &mut var_offset,
+            &mut ctx,
+            &mut builder,
+            types,
+        )?;
+        compiled_methods.extend(methods);
+
+        // Now restore the program-level view for the next FB type.
+        ctx.variables = saved_scope.variables;
+        ctx.var_types = saved_scope.var_types;
+        ctx.string_vars = saved_scope.string_vars;
+        ctx.array_vars = saved_scope.array_vars;
+        ctx.struct_vars = saved_scope.struct_vars;
+        ctx.fb_instances = saved_scope.fb_instances;
     }
 
     let total_variables = var_offset;
@@ -637,11 +715,13 @@ fn compile_program_with_functions(
         }
     }
 
-    // Compute the max stack depth needed by any user-defined FB body.
-    // The scan function's reported max_stack_depth must include the FB body's
-    // depth because FB_CALL recursively enters execute() on the shared stack.
+    // Compute the max stack depth needed by any user-defined FB body or
+    // METHOD. The scan function's reported max_stack_depth must include
+    // it because FB_CALL / METHOD_CALL recursively enter execute() on
+    // the shared stack.
     let max_fb_body_stack: u16 = compiled_fb_bodies
         .iter()
+        .chain(compiled_methods.iter())
         .map(|c| c.max_stack_depth)
         .max()
         .unwrap_or(0);
@@ -704,6 +784,21 @@ fn compile_program_with_functions(
         builder = add_line_map_entries(builder, compiled.function_id, &compiled.line_map);
     }
 
+    // Add METHOD bodies (OOP extension, ADR-0041 Phase 1). Function IDs
+    // are positional in the container, so these must be added last --
+    // registration assigned them `2 + fb_decls.len() + func_decls.len()..`,
+    // continuing directly after the user functions just added above.
+    for compiled in &compiled_methods {
+        builder = builder.add_function(
+            compiled.function_id,
+            &compiled.bytecode,
+            compiled.max_stack_depth,
+            compiled.num_locals,
+            compiled.num_params,
+        );
+        builder = add_line_map_entries(builder, compiled.function_id, &compiled.line_map);
+    }
+
     // Add the SOURCE_FILE_TABLE (tag 6). `ctx.debug_source_files`
     // accumulated one entry per POU source file; insertion order is
     // the file's SourceFileId, which the line-map entries above
@@ -747,6 +842,12 @@ fn compile_program_with_functions(
         });
     }
     for compiled in &compiled_functions {
+        builder = builder.add_func_name(FuncNameEntry {
+            function_id: compiled.function_id,
+            name: compiled.name.clone(),
+        });
+    }
+    for compiled in &compiled_methods {
         builder = builder.add_func_name(FuncNameEntry {
             function_id: compiled.function_id,
             name: compiled.name.clone(),
@@ -814,6 +915,22 @@ pub(crate) struct UserFunctionInfo {
     pub(crate) max_stack_depth: u16,
 }
 
+/// Snapshot of the program-level variable-mapping state, captured by
+/// `compile_user_function_block` before it repopulates `CompileContext`
+/// for a single FB type's own body (and, in the same scope, that type's
+/// methods -- OOP extension, ADR-0041 Phase 1). The caller restores from
+/// this once *both* the body and its methods have been compiled, since
+/// method bodies need the type's field mappings to still be visible in
+/// `ctx.variables` after the FB body compile returns.
+pub(crate) struct SavedFbScope {
+    pub(crate) variables: HashMap<Id, VarIndex>,
+    pub(crate) var_types: HashMap<Id, VarTypeInfo>,
+    pub(crate) string_vars: HashMap<Id, StringVarInfo>,
+    pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
+    pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
+    pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
+}
+
 /// Tracks state during compilation of a single program.
 /// Metadata for a function block instance variable.
 pub(crate) struct FbInstanceInfo {
@@ -841,6 +958,40 @@ pub(crate) struct UserFbTypeInfo {
     pub(crate) var_offset: u16,
     /// Maps field name (lowercase) to its op type for codegen at call sites.
     pub(crate) field_op_types: HashMap<String, OpType>,
+    /// Maps method name (lowercase) to compilation metadata (OOP
+    /// extension, ADR-0041 Phase 1). Populated in two steps: `function_id`,
+    /// `num_params`, `param_op_types`, and `has_return_value` are known
+    /// from the AST alone and set during the pre-scan registration pass;
+    /// `param_var_off` is set once the method body is actually compiled
+    /// and its scratch region is known (mirrors `var_offset` above).
+    pub(crate) methods: HashMap<String, UserMethodInfo>,
+}
+
+/// Compilation metadata for a single `METHOD` declared on a user-defined
+/// function block type (OOP extension, ADR-0041 Phase 1: static
+/// dispatch). A method shares its owning type's field scratch region
+/// (`UserFbTypeInfo::var_offset`/`num_fields`) for `self` access, and has
+/// its own additional, non-shared param/local scratch region allocated
+/// immediately after -- see `compile_method::compile_user_method`.
+pub(crate) struct UserMethodInfo {
+    /// Function ID of the compiled method body in the container.
+    pub(crate) function_id: FunctionId,
+    /// Variable table offset where this method's own param/local slots
+    /// start (immediately after the owning type's field region, or after
+    /// a previously-compiled sibling method's own region). `0` until the
+    /// method is actually compiled.
+    pub(crate) param_var_off: u16,
+    /// Number of VAR_INPUT/VAR_IN_OUT parameters, in declaration order.
+    pub(crate) num_params: u16,
+    /// Parameter names (lowercase) and op types, in declaration order --
+    /// used to resolve both positional and named call-site arguments.
+    pub(crate) param_names_in_order: Vec<String>,
+    pub(crate) param_op_types: Vec<OpType>,
+    pub(crate) has_return_value: bool,
+    /// Max operand-stack depth used by the method body. `0` until the
+    /// method is actually compiled; used for the scan function's
+    /// worst-case stack accounting, same as `max_fb_body_stack`.
+    pub(crate) max_stack_depth: u16,
 }
 
 pub(crate) struct CompileContext {
