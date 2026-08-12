@@ -608,35 +608,8 @@ mod test {
         assert_eq!(element_names(&mut forward), element_names(&mut reverse));
     }
 
-    #[test]
-    fn xml_file_returns_empty_library() {
-        let mut project = FileBackedProject::default();
-        let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://www.plcopen.org/xml/tc6_0201">
-  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
-  <contentHeader name="TestProject">
-    <coordinateInfo>
-      <fbd><scaling x="1" y="1"/></fbd>
-      <ld><scaling x="1" y="1"/></ld>
-      <sfc><scaling x="1" y="1"/></sfc>
-    </coordinateInfo>
-  </contentHeader>
-  <types>
-    <dataTypes/>
-    <pous/>
-  </types>
-</project>"#;
-
-        let file_id = FileId::from_string("test.xml");
-        project.change_text_document(&file_id, xml_content.to_owned());
-
-        let source = project.sources_mut().into_iter().next().unwrap();
-        let library_result = source.library();
-
-        assert!(library_result.is_ok());
-        let library = library_result.unwrap();
-        assert_eq!(0, library.elements.len()); // Should be empty
-    }
+    // XML source handling (empty-library, parse errors) is owned and tested by
+    // `ironplc_sources::source`; this crate only routes file content there.
 
     // MemoryBackedProject tests
 
@@ -740,6 +713,10 @@ END_CONFIGURATION
     // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
+    // Multi-directory merge semantics (clearing once, per-directory failures,
+    // zero directories) are owned and tested by
+    // `ironplc_sources::project::initialize_from_directories`; this test only
+    // proves `initialize_many` wires through to it.
     #[test]
     fn file_backed_initialize_many_when_two_directories_then_merges_both() {
         use std::fs;
@@ -756,15 +733,6 @@ END_CONFIGURATION
 
         assert!(diagnostics.is_empty());
         assert_eq!(project.sources().len(), 2);
-    }
-
-    #[test]
-    fn file_backed_initialize_many_when_zero_directories_then_no_op() {
-        let mut project = FileBackedProject::default();
-        let diagnostics = project.initialize_many(&[]);
-
-        assert!(diagnostics.is_empty());
-        assert_eq!(project.sources().len(), 0);
     }
 
     #[test]
