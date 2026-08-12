@@ -210,17 +210,35 @@ directly (likely yes, same pattern as `transform_function`/
 
 ## Tasks
 
-- [ ] `MethodDeclaration` AST node + `methods` field on `FunctionBlockDeclaration`
-- [ ] `dispatch!` entries (`visitor.rs`, `fold.rs`)
-- [ ] Method-call AST node (`textual.rs`)
-- [ ] Tokens (if missing) + `method_declaration()` parser rule + call-site grammar
-- [ ] plc2plc renderer support
-- [ ] Parser unit tests
-- [ ] Method resolution analyzer rule (own methods, then `EXTENDS` chain) + problem code
-- [ ] Method call arity/type-check (reuse `rule_function_call_type_check.rs` logic)
-- [ ] Codegen: compile method bodies with receiver param
-- [ ] Codegen: compile call sites
-- [ ] e2e test proving field mutation through a method call
-- [ ] Decide + implement (or explicitly defer) `.TcPOU` XML method wiring
-- [ ] Full CI clean
+- [x] `MethodDeclaration` AST node + `methods` field on `FunctionBlockDeclaration`
+- [x] `dispatch!` entries (`visitor.rs`, `fold.rs`)
+- [x] Method-call AST node (`textual.rs`) — `MethodCall`, statement position only (decided with Tim: ship statement-only first, expression-position calls are a follow-up)
+- [x] Tokens + `method_declaration()` parser rule + call-site grammar (`METHOD`/`END_METHOD` gated by `allow_fb_inheritance`, same as the other OOP keywords)
+- [x] plc2plc renderer support (also fixed a pre-existing gap: `FbCall` rendering had no trailing `;`, breaking round-trip for any FB-call statement followed by another statement — `MethodCall` shares the fix)
+- [x] Parser unit tests (`parser/src/tests/methods.rs`, 7 tests) + plc2plc round-trip tests (`plc2plc/src/tests/methods.rs`, 4 tests)
+- [x] Method resolution analyzer rule (own methods, then `EXTENDS` chain) + problem code P4046 `MethodNotFound` (`rule_method_call_declared.rs`)
+- [x] Method call arity/type-check (reuses the existing `FunctionCallMixedArgTypes`/`FunctionInvocationMissingInput`/`FunctionInvocationRequiresFormal`/`FunctionInvocationUndefinedOutput` diagnostics, same as `rule_function_block_invocation.rs` does for plain FB calls)
+- [ ] Codegen: compile method bodies with receiver param — **not started**. `compile_stmt.rs` currently returns `Diagnostic::todo` for `StmtKind::MethodCall`, so `ironplcc check`/analysis works end-to-end but `compile`/execution does not yet.
+- [ ] Codegen: compile call sites — not started, same as above
+- [ ] e2e test proving field mutation through a method call — blocked on codegen
+- [ ] Decide + implement (or explicitly defer) `.TcPOU` XML method wiring — not started; `transform.rs` currently always sets `methods: vec![]` for TwinCAT XML POUs
+- [x] Full CI clean (compile + all tests + clippy + fmt) as of each commit on `feature/twincat-oop-method-declarations`
 - [ ] Update `specs/plans/twincat-status.md`
+
+### Status (2026-08-12)
+
+Parsing, round-tripping, and semantic resolution/diagnostics for
+`METHOD` declarations and `instance.Method(args)` calls are complete,
+tested, and committed to `feature/twincat-oop-method-declarations`
+(3 commits). This means `ironplcc check` against real TwinCAT code that
+uses methods will now produce real diagnostics (P4046 for a genuinely
+missing method, or a clean pass) instead of a parse error — a real,
+shippable improvement even before codegen exists.
+
+Codegen (making method calls actually execute) is unstarted and is the
+largest, highest-risk remaining piece: it needs a receiver-pointer
+calling convention, symbol mangling that doesn't collide with existing
+conventions in `call_graph.rs`/`emit.rs`, and careful interaction with
+however FB instance memory layout already works in `compile.rs`. Given
+its size, it's its own slice/PR rather than something to rush behind the
+front-end work above.
