@@ -1147,8 +1147,7 @@ mod tests {
 
     /// Line map for [`MULTI_STATEMENT_SCAN`]: one source line per statement,
     /// lines 10–14 of `demo.st`.
-    const MULTI_STATEMENT_LINES: [(u16, u16); 5] =
-        [(0, 10), (3, 11), (6, 12), (9, 13), (12, 14)];
+    const MULTI_STATEMENT_LINES: [(u16, u16); 5] = [(0, 10), (3, 11), (6, 12), (9, 13), (12, 14)];
 
     #[test]
     fn serve_when_step_over_then_advances_paused_pc_statement_by_statement() {

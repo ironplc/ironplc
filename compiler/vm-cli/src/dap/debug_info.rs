@@ -134,7 +134,11 @@ fn file_name(path: &str) -> &str {
 /// `<= pc`). A frame with no FUNC_NAME entry keeps the `function {id}`
 /// fallback; one with no line map hit reports line `0` and no source, which
 /// clients render as a name-only frame.
-pub fn resolve_frame(debug: Option<&DebugSection>, function_id: FunctionId, pc: usize) -> FrameInfo {
+pub fn resolve_frame(
+    debug: Option<&DebugSection>,
+    function_id: FunctionId,
+    pc: usize,
+) -> FrameInfo {
     let name = debug
         .and_then(|d| d.func_names.iter().find(|f| f.function_id == function_id))
         .map(|f| f.name.clone())
@@ -387,9 +391,7 @@ mod tests {
     fn resolve_breakpoint_when_multiple_offsets_on_line_then_arms_statement_start() {
         let mut debug = a_debug_section();
         // A second, later offset on line 10: the earlier one is the start.
-        debug
-            .line_map
-            .push(line_entry(FunctionId::SCAN, 3, 0, 10));
+        debug.line_map.push(line_entry(FunctionId::SCAN, 3, 0, 10));
         let resolved = resolve_breakpoint(Some(&debug), "demo.st", 10).unwrap();
         assert_eq!(resolved.locations, vec![(FunctionId::SCAN, 0)]);
     }
@@ -397,9 +399,7 @@ mod tests {
     #[test]
     fn resolve_breakpoint_when_two_functions_on_line_then_arms_both() {
         let mut debug = a_debug_section();
-        debug
-            .line_map
-            .push(line_entry(FunctionId::INIT, 4, 0, 10));
+        debug.line_map.push(line_entry(FunctionId::INIT, 4, 0, 10));
         let resolved = resolve_breakpoint(Some(&debug), "demo.st", 10).unwrap();
         assert_eq!(resolved.locations.len(), 2);
         assert!(resolved.locations.contains(&(FunctionId::SCAN, 0)));
