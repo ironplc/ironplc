@@ -1,0 +1,51 @@
+=====
+P4046
+=====
+
+.. problem-summary:: P4046
+
+This error occurs when a method call (``instance.MethodName(args)``, the
+CODESYS/TwinCAT dialect extension) refers to a method that is not
+declared on the instance's function block type, nor on any function
+block reached by following that type's ``EXTENDS`` chain.
+
+Example
+-------
+
+The following code will generate error P4046:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+   VAR
+       bRunning : BOOL;
+   END_VAR
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+   VAR
+       m : FB_Motor;
+   END_VAR
+   m.Start();
+   END_PROGRAM
+
+To fix this error, declare the method on the function block (or on a
+base function block it ``EXTENDS``):
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_Motor
+   VAR
+       bRunning : BOOL;
+   END_VAR
+   METHOD Start
+       bRunning := TRUE;
+   END_METHOD
+   END_FUNCTION_BLOCK
+
+   PROGRAM main
+   VAR
+       m : FB_Motor;
+   END_VAR
+   m.Start();
+   END_PROGRAM
