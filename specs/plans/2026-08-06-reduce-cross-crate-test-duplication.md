@@ -232,16 +232,40 @@ its own plan/PR per item.
 
 ## Tasks
 
-- [ ] Stage A1–A3: vm-cli re-home + project/vm deletions (one PR)
-- [ ] Stage A4: mcp test_support + boilerplate collapse (one PR)
-- [ ] Stage A5: ironplc-cli dedup + miswired-test fixes (one PR)
-- [ ] Stage B1: codegen↔vm timer/string ownership pass
-- [ ] Stage B2–B4: parser corpus/reference_to reduction + guide update
-- [ ] Stage B5: playground dialect trim
+- [x] Stage A1–A3: vm-cli re-home + project/vm deletions (one PR)
+- [x] Stage A4: mcp test_support + boilerplate collapse (one PR)
+- [x] Stage A5: ironplc-cli dedup + miswired-test fixes (one PR)
+- [x] Stage B1: codegen↔vm timer/string ownership pass
+- [x] Stage B2–B4: parser corpus/reference_to reduction + guide update
+- [x] Stage B5: playground dialect trim
 - [ ] Stage C1: plan for single compile owner
 - [ ] Stage C2: shared fixtures in ironplc-test
 - [ ] Stage C3: shared container test builders
 - [ ] Stage C4: logger unification
+
+## Outcome of Stages A and B
+
+Where a per-test check disagreed with an estimate above, the check won. The
+estimates were derived from a survey; each deletion was then verified against
+its claimed owner individually, and several claims did not hold:
+
+| Cluster | Estimated | Actually deleted | Why the difference |
+|---|---|---|---|
+| codegen↔vm timers | ~15 | 9 | ET clamping, reset-from-expired, cold-start (IN never TRUE) and TP retrigger have no codegen twin |
+| codegen↔vm strings | ~10 | 11 | Traps, the STR_INIT header contract and a narrow-stride wide array descriptor stay; the function cases went |
+| parser `reference_to` | 6 | 3 | The `XOR` and `<> NULL` cases guard operator disambiguation and are not round-tripped |
+| playground dialect | ~6 | 1 | The off/on contrast pairs are the only proof the dialect/allows strings reach the compiler |
+| ironplc-cli `.plcproj` | 2 | 1 | Main's #1360 rewrote the second one to assert analysis still runs — a CLI-owned contract `sources` cannot test |
+
+Coverage held throughout. Stage A moved the total 91.549% → 91.530% purely by
+removing covered *test* lines; no production line lost coverage (uncovered
+counts per touched file were identical before and after). For Stage B the
+decisive check was that `vm/src/intrinsic.rs` stayed at 186/186 and
+`vm/src/string_ops.rs` at 225/225 after deleting 20 VM tests, confirming the
+codegen e2e suite genuinely exercises those paths.
+
+Lesson for Stage C: a "this is redundant" claim from a survey is a hypothesis.
+Before deleting, read both sides and name the specific assertion that survives.
 
 ## Verification
 
