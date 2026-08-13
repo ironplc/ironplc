@@ -4,10 +4,10 @@ P4046
 
 .. problem-summary:: P4046
 
-This error occurs when a method call (``instance.MethodName(args)``, the
-CODESYS/TwinCAT dialect extension) refers to a method that is not
-declared on the instance's function block type, nor on any function
-block reached by following that type's ``EXTENDS`` chain.
+This error occurs when a method call (``instance.MethodName(args)``,
+part of IEC 61131-3 Edition 3's OOP extension) refers to a method that
+is not declared on the instance's function block type, nor on any
+function block reached by following that type's ``EXTENDS`` chain.
 
 Example
 -------

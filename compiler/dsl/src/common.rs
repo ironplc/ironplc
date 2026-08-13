@@ -2790,6 +2790,13 @@ pub struct MethodDeclaration {
     pub name: Id,
     pub return_type: Option<FunctionReturnType>,
     pub variables: Vec<VarDecl>,
+    /// `R_EDGE`/`F_EDGE`-qualified `VAR` declarations (IEC 61131-3
+    /// §2.4.3). Not a TwinCAT-specific or OOP-specific capability: the
+    /// parser's `method_declaration()` rule reuses the exact same
+    /// standard variable-declaration grammar (`io_var_declarations()`/
+    /// `other_var_declarations()`) that `FunctionDeclaration` and
+    /// `FunctionBlockDeclaration` already use, so edge variables are
+    /// inherited for free, the same way a `VAR` block full stop is.
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: Vec<StmtKind>,
     #[located(position)]
