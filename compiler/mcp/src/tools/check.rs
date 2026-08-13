@@ -47,18 +47,10 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
     }
 
     // Run parse + full semantic analysis
-    match project.semantic() {
-        Ok(()) => CheckResponse {
-            ok: true,
-            diagnostics: vec![],
-        },
-        Err(diags) => {
-            let diagnostics = serialize_diagnostics(&diags);
-            CheckResponse {
-                ok: false,
-                diagnostics,
-            }
-        }
+    let diagnostics = serialize_diagnostics(&project.semantic());
+    CheckResponse {
+        ok: diagnostics.is_empty(),
+        diagnostics,
     }
 }
 
