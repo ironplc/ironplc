@@ -971,6 +971,7 @@ dependencies = [
  "ironplc-sources",
  "ironplc-spec-requirements-gen",
  "ironplc-vm",
+ "paste",
  "proptest",
  "rstest",
  "spec_test_macro",
