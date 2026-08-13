@@ -53,42 +53,6 @@ use ironplc_problems::Problem;
 use crate::{result::SemanticResult, semantic_context::SemanticContext};
 use ironplc_parser::options::CompilerOptions;
 
-/// Returns the first variable matching the specified name and one of the
-/// variable types or `None` if the owner does not contain a matching
-/// variable. Duplicated from `rule_function_block_invocation` rather than
-/// shared -- the two rules validate different call shapes (`FbCall` vs.
-/// `MethodCall`) and keeping them independent avoids coupling their
-/// evolution.
-fn find<'a>(
-    owner: &'a dyn HasVariables,
-    name: &'a Id,
-    types: &[VariableType],
-) -> Option<&'a VarDecl> {
-    owner
-        .variables()
-        .iter()
-        .find(|item| match item.identifier.symbolic_id() {
-            Some(n) => n.eq(name) && types.contains(&item.var_type),
-            None => false,
-        })
-}
-
-fn count_input_type(owner: &dyn HasVariables) -> usize {
-    owner
-        .variables()
-        .iter()
-        .filter(|item| item.var_type == VariableType::Input)
-        .count()
-}
-
-fn find_input_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
-    find(owner, name, &[VariableType::Input, VariableType::InOut])
-}
-
-fn find_output_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
-    find(owner, name, &[VariableType::Output])
-}
-
 pub fn apply(
     lib: &Library,
     _context: &SemanticContext,
@@ -164,65 +128,18 @@ impl<'a> RuleMethodCallDeclared<'a> {
         method: &MethodDeclaration,
         call: &MethodCall,
     ) -> Result<(), Diagnostic> {
-        let mut formal: Vec<&NamedInput> = vec![];
-        let mut non_formal: Vec<&PositionalInput> = vec![];
-        let mut outputs: Vec<&Output> = vec![];
-        for param in call.params.iter() {
-            match param {
-                ParamAssignmentKind::NamedInput(n) => formal.push(n),
-                ParamAssignmentKind::PositionalInput(p) => non_formal.push(p),
-                ParamAssignmentKind::Output(o) => outputs.push(o),
-            }
-        }
-
-        if !formal.is_empty() && !non_formal.is_empty() {
-            return Err(Diagnostic::problem(
-                Problem::FunctionCallMixedArgTypes,
-                Label::span(call.span(), "Method invocation"),
-            )
-            .with_context("method", &owner_label.to_string()));
-        }
-
-        if !formal.is_empty() {
-            for name in formal {
-                if find_input_type(method, &name.name).is_none() {
-                    return Err(Diagnostic::problem(
-                        Problem::FunctionInvocationMissingInput,
-                        Label::span(call.span(), "Method invocation"),
-                    )
-                    .with_context("method", &owner_label.to_string())
-                    .with_context_id("undefined input", &name.name)
-                    .with_secondary(Label::span(method.span(), "Method declaration")));
-                }
-            }
-        }
-
-        if !non_formal.is_empty() {
-            let num_required_inputs = count_input_type(method);
-            if non_formal.len() != num_required_inputs {
-                return Err(Diagnostic::problem(
-                    Problem::FunctionInvocationRequiresFormal,
-                    Label::span(call.span(), "Method invocation"),
-                )
-                .with_context("method", &owner_label.to_string())
-                .with_context("required", &format!("{num_required_inputs}"))
-                .with_context("actual", &format!("{}", non_formal.len())));
-            }
-        }
-
-        for output in outputs {
-            if find_output_type(method, &output.src).is_none() {
-                return Err(Diagnostic::problem(
-                    Problem::FunctionInvocationUndefinedOutput,
-                    Label::span(call.span(), "Method invocation"),
-                )
-                .with_context("method", &owner_label.to_string())
-                .with_context_id("source", &output.src)
-                .with_context("target", &output.tgt.to_string()));
-            }
-        }
-
-        Ok(())
+        crate::call_assignment_check::check_assignments(
+            method,
+            method.span(),
+            call.span(),
+            &call.params,
+            &crate::call_assignment_check::AssignmentCheckLabels {
+                call_label: "Method invocation",
+                context_key: "method",
+                owner_name: owner_label,
+                decl_label: "Method declaration",
+            },
+        )
     }
 }
 
