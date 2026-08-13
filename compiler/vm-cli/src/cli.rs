@@ -349,108 +349,37 @@ mod tests {
         assert_eq!(round3(0.0004), 0.0);
     }
 
-    /// REQ-VC-vm-cli-009: BOOL formats as TRUE/FALSE.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_bool_then_true_or_false() {
-        assert_eq!(format_variable_value(1, iec_type_tag::BOOL), "TRUE");
-        assert_eq!(format_variable_value(0, iec_type_tag::BOOL), "FALSE");
-        // Non-zero lower i32 bits → TRUE.
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF, iec_type_tag::BOOL),
-            "TRUE"
+    /// Renders one dump line for a variable named `v` with the given tag and raw value.
+    fn dump_line(tag: u8, raw: u64) -> String {
+        let mut debug_map: HashMap<u16, VarDebugInfo> = HashMap::new();
+        debug_map.insert(
+            0,
+            VarDebugInfo {
+                name: "v".into(),
+                type_name: String::new(),
+                iec_type_tag: tag,
+            },
         );
+        let mut buf = Vec::new();
+        assert!(write_variable_line(&mut buf, 0, raw, &debug_map).is_ok());
+        String::from_utf8(buf).unwrap()
     }
 
-    /// REQ-VC-vm-cli-009: signed IEC integer types decode as signed decimals at their widths.
+    /// REQ-VC-vm-cli-009: the dump line's `<value>` is formatted per the IEC type
+    /// tag from debug info — one representative per format family. Per-width
+    /// exhaustive cases are owned by `ironplc_container::debug_format`'s tests.
     #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_signed_int_then_signed_decimal() {
+    fn write_variable_line_when_debug_type_tag_then_formats_per_iec_type() {
+        assert_eq!(dump_line(iec_type_tag::BOOL, 1), "v: TRUE\n");
+        assert_eq!(dump_line(iec_type_tag::SINT, 0xFF), "v: -1\n");
+        assert_eq!(dump_line(iec_type_tag::USINT, 0xFF), "v: 255\n");
         assert_eq!(
-            format_variable_value(0xFF_u64, iec_type_tag::SINT),
-            "-1",
-            "SINT should sign-extend from 8 bits"
+            dump_line(iec_type_tag::REAL, 1.5_f32.to_bits() as u64),
+            "v: 1.5\n"
         );
-        assert_eq!(
-            format_variable_value(0xFFFF_u64, iec_type_tag::INT),
-            "-1",
-            "INT should sign-extend from 16 bits"
-        );
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF_u64, iec_type_tag::DINT),
-            "-1",
-            "DINT should sign-extend from 32 bits"
-        );
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF_FFFF_FFFF_u64, iec_type_tag::LINT),
-            "-1",
-            "LINT should interpret as signed 64-bit"
-        );
-    }
-
-    /// REQ-VC-vm-cli-009: unsigned IEC integer types decode as unsigned decimals at their widths.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_unsigned_int_then_unsigned_decimal() {
-        assert_eq!(format_variable_value(0xFF_u64, iec_type_tag::USINT), "255");
-        assert_eq!(
-            format_variable_value(0xFFFF_u64, iec_type_tag::UINT),
-            "65535"
-        );
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF_u64, iec_type_tag::UDINT),
-            "4294967295"
-        );
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF_FFFF_FFFF_u64, iec_type_tag::ULINT),
-            "18446744073709551615"
-        );
-    }
-
-    /// REQ-VC-vm-cli-009: REAL and LREAL reinterpret the raw bits as float/double.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_real_then_float_decimal() {
-        let raw32 = 1.5_f32.to_bits() as u64;
-        assert_eq!(format_variable_value(raw32, iec_type_tag::REAL), "1.5");
-        let raw64 = 2.25_f64.to_bits();
-        assert_eq!(format_variable_value(raw64, iec_type_tag::LREAL), "2.25");
-    }
-
-    /// REQ-VC-vm-cli-009: BYTE/WORD/DWORD/LWORD render in IEC `16#...` hex form at their widths.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_bit_string_then_iec_hex() {
-        assert_eq!(format_variable_value(0xAB, iec_type_tag::BYTE), "16#AB");
-        assert_eq!(format_variable_value(0x0F, iec_type_tag::BYTE), "16#0F");
-        assert_eq!(format_variable_value(0xABCD, iec_type_tag::WORD), "16#ABCD");
-        assert_eq!(
-            format_variable_value(0xDEAD_BEEF, iec_type_tag::DWORD),
-            "16#DEADBEEF"
-        );
-        assert_eq!(
-            format_variable_value(0x0000_0000_DEAD_BEEF, iec_type_tag::LWORD),
-            "16#00000000DEADBEEF"
-        );
-    }
-
-    /// REQ-VC-vm-cli-009: TIME/LTIME render with `T#` / `LTIME#` prefixes.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_time_then_iec_duration() {
-        assert_eq!(format_variable_value(250, iec_type_tag::TIME), "T#250ms");
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF, iec_type_tag::TIME),
-            "T#-1ms"
-        );
-        assert_eq!(
-            format_variable_value(10_000, iec_type_tag::LTIME),
-            "LTIME#10000ms"
-        );
-    }
-
-    /// REQ-VC-vm-cli-009: an unknown tag falls back to signed i32 decimal.
-    #[spec_test(REQ_VC_vm_cli_009)]
-    fn format_variable_value_when_unknown_tag_then_signed_i32_fallback() {
-        assert_eq!(format_variable_value(42, iec_type_tag::OTHER), "42");
-        assert_eq!(
-            format_variable_value(0xFFFF_FFFF, iec_type_tag::OTHER),
-            "-1"
-        );
+        assert_eq!(dump_line(iec_type_tag::WORD, 0xABCD), "v: 16#ABCD\n");
+        assert_eq!(dump_line(iec_type_tag::TIME, 250), "v: T#250ms\n");
+        assert_eq!(dump_line(iec_type_tag::OTHER, 0xFFFF_FFFF), "v: -1\n");
     }
 
     /// REQ-VC-vm-cli-008: without debug info, lines use the `var[i]: <i32>` fallback.
@@ -496,8 +425,7 @@ mod tests {
     fn write_variable_line_when_writer_errors_then_v6006() {
         let debug_map: HashMap<u16, VarDebugInfo> = HashMap::new();
         let mut sink = FailingWriter;
-        let err = write_variable_line(&mut sink, 0, 0, &debug_map)
-            .expect_err("writer failure should surface as VmError");
+        let err = write_variable_line(&mut sink, 0, 0, &debug_map).unwrap_err();
         assert!(
             err.to_string().starts_with("V6006"),
             "expected V6006 (dump write), got {err}"

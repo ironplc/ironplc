@@ -523,13 +523,10 @@ mod tests {
     use super::*;
     use crate::cache::{CachedContainer, ContainerCache};
     use crate::tools::common::SourceInput;
+    use crate::tools::test_support::ed2_options;
 
     fn make_cache() -> Mutex<ContainerCache> {
         Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024))
-    }
-
-    fn ed2_options() -> Value {
-        serde_json::json!({ "dialect": "iec61131-3-ed2" })
     }
 
     /// Compile a program via the `compile` tool to populate the cache with
@@ -541,8 +538,7 @@ mod tests {
         }];
         let resp = crate::tools::compile::build_response(&sources, &ed2_options(), false, cache);
         assert!(resp.ok, "compile failed: {:?}", resp.diagnostics);
-        resp.container_id
-            .expect("compile should return a container_id")
+        resp.container_id.unwrap()
     }
 
     const COUNTER_PROGRAM: &str = r#"

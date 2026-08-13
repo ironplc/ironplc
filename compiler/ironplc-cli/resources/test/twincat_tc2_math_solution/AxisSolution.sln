@@ -1,0 +1,17 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{B1E792BE-AA5F-4E3C-8C82-674BF9C0715B}") = "AxisSolution", "AxisSolution\AxisSolution.tsproj", "{3C9E6B12-7D45-4A80-B1F6-8E24D0A97C53}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|TwinCAT RT (x64) = Release|TwinCAT RT (x64)
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3C9E6B12-7D45-4A80-B1F6-8E24D0A97C53}.Release|TwinCAT RT (x64).ActiveCfg = Release|TwinCAT RT (x64)
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

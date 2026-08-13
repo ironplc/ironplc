@@ -704,7 +704,7 @@ fn compile_and_run_with(
     source: &str,
     options: &CompilerOptions,
 ) -> (ironplc_container::Container, VmBuffers) {
-    compile_and_try_run_with(source, options).expect("VM execution trapped unexpectedly")
+    compile_and_try_run_with(source, options).unwrap()
 }
 
 /// Like [`compile_and_run_with`] but returns `Err` on a VM trap.

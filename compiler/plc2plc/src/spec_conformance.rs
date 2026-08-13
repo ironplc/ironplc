@@ -26,8 +26,8 @@ fn all_spec_requirements_have_tests() {
 }
 
 fn render(source: &str, options: &CompilerOptions) -> String {
-    let library = parse_program(source, &FileId::default(), options).expect("program parses");
-    write_to_string(&library).expect("library renders")
+    let library = parse_program(source, &FileId::default(), options).unwrap();
+    write_to_string(&library).unwrap()
 }
 
 fn reference_to_options() -> CompilerOptions {
@@ -88,5 +88,64 @@ fn plc2plc_spec_req_rto_602_ref_to_still_renders() {
     assert!(
         !rendered.contains("REFERENCE"),
         "REF_TO must not render as REFERENCE TO:\n{rendered}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Compatibility libraries (plc2plc-owned requirement).
+//
+// See `specs/design/compatibility-libraries.md`. An activated library injects
+// its declarations into semantic analysis only — as a *separate* `Library`
+// that is merged for type resolution but never handed to `plc2plc`. `plc2plc`
+// renders exactly the library it is given, so rendering the user's source
+// reproduces it unchanged and never emits the injected declarations.
+// ---------------------------------------------------------------------------
+
+/// REQ-CL-plc2plc-001: `plc2plc` emits the user's source unchanged; declarations
+/// injected by an activated library are never rendered as user source.
+#[spec_test(REQ_CL_plc2plc_001)]
+fn plc2plc_spec_req_cl_001_injected_declarations_not_rendered() {
+    // A user POU that *uses* `PI`, exactly as a TwinCAT source would. `PI` is a
+    // constant the activated `Tc2_System` library provides; the user never
+    // writes its declaration.
+    let user_source = "PROGRAM main
+VAR
+    d2r : LREAL := PI / 180.0;
+END_VAR
+END_PROGRAM";
+
+    // The declarations an activated library injects: `Tc2_System`'s global
+    // constant `PI`. In a real compile these are parsed into a *separate*
+    // `Library` (see `ironplc_sources::libraries`) that is merged for analysis
+    // only; `plc2plc` is only ever handed the user's library.
+    let library_source =
+        "VAR_GLOBAL CONSTANT PI : LREAL := 3.1415926535897932384626433832795; END_VAR";
+
+    let options = CompilerOptions::default();
+
+    // Rendering the user's library round-trips its source: the *use* of `PI` is
+    // preserved...
+    let rendered_user = render(user_source, &options);
+    assert!(
+        rendered_user.contains("PI"),
+        "the user's use of PI must be preserved:\n{rendered_user}"
+    );
+    // ...but the injected library *declaration* is never emitted as user source.
+    assert!(
+        !rendered_user.contains("VAR_GLOBAL"),
+        "an injected VAR_GLOBAL declaration must not be rendered:\n{rendered_user}"
+    );
+    assert!(
+        !rendered_user.contains("3.1415926535897932384626433832795"),
+        "the injected PI constant value must not be rendered:\n{rendered_user}"
+    );
+
+    // The exclusion is a property of *what `plc2plc` is handed*, not an
+    // inability to render the declaration: handed the library, it renders the
+    // constant faithfully.
+    let rendered_library = render(library_source, &options);
+    assert!(
+        rendered_library.contains("PI") && rendered_library.contains("VAR_GLOBAL"),
+        "the library declaration must render when it is the input:\n{rendered_library}"
     );
 }

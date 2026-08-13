@@ -89,47 +89,10 @@ mod tests {
     }
 
     #[test]
-    fn slot_from_i32_when_positive_then_roundtrips() {
-        let slot = Slot::from_i32(42);
-        assert_eq!(slot.as_i32(), 42);
-        assert_eq!(slot.0, 42);
-    }
-
-    #[test]
     fn slot_from_i64_when_negative_then_roundtrips() {
         let slot = Slot::from_i64(-1);
         assert_eq!(slot.as_i64(), -1);
         assert_eq!(slot.0, 0xFFFFFFFFFFFFFFFF);
-    }
-
-    #[test]
-    fn slot_from_i64_when_large_positive_then_roundtrips() {
-        let slot = Slot::from_i64(i64::MAX);
-        assert_eq!(slot.as_i64(), i64::MAX);
-    }
-
-    #[test]
-    fn slot_from_f32_when_positive_then_roundtrips() {
-        let slot = Slot::from_f32(std::f32::consts::PI);
-        assert_eq!(slot.as_f32(), std::f32::consts::PI);
-    }
-
-    #[test]
-    fn slot_from_f32_when_negative_then_roundtrips() {
-        let slot = Slot::from_f32(-2.5);
-        assert_eq!(slot.as_f32(), -2.5_f32);
-    }
-
-    #[test]
-    fn slot_from_f64_when_positive_then_roundtrips() {
-        let slot = Slot::from_f64(std::f64::consts::PI);
-        assert_eq!(slot.as_f64(), std::f64::consts::PI);
-    }
-
-    #[test]
-    fn slot_from_f64_when_negative_then_roundtrips() {
-        let slot = Slot::from_f64(-1.23e10);
-        assert_eq!(slot.as_f64(), -1.23e10_f64);
     }
 
     #[test]

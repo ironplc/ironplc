@@ -15,6 +15,7 @@ use ironplc_dsl::textual::{
     StructuredVariable, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
+use paste::paste;
 
 use super::compile::{
     encode_string_literal, CompileContext, OpType, OpWidth, Signedness, VarTypeInfo,
@@ -1787,44 +1788,91 @@ pub(crate) fn emit_store_var(emitter: &mut Emitter, var_index: VarIndex, op_type
     }
 }
 
-pub(crate) fn emit_add(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_add_i32(),
-        OpWidth::W64 => emitter.emit_add_i64(),
-        OpWidth::F32 => emitter.emit_add_f32(),
-        OpWidth::F64 => emitter.emit_add_f64(),
-    }
+// The `emit_<op>` dispatch functions below map an operand `OpType` to the
+// matching typed `Emitter` method. They share a handful of identical shapes,
+// so the three `macro_rules!` generators fold each shape into a single
+// definition. Every generated function keeps the same `pub(crate)` name and
+// `(emitter, op_type)` signature that existing call sites and function-pointer
+// uses in `compile_call.rs` / `compile_stmt.rs` rely on.
+
+/// Generates a width-only dispatch `emit_<stem>` mapping the operand width to
+/// `emit_<stem>_{i32,i64,f32,f64}`. Used for operators whose signedness does
+/// not change the opcode.
+macro_rules! emit_width_op {
+    ($stem:ident) => {
+        paste! {
+            pub(crate) fn [<emit_ $stem>](emitter: &mut Emitter, op_type: OpType) {
+                match op_type.0 {
+                    OpWidth::W32 => emitter.[<emit_ $stem _i32>](),
+                    OpWidth::W64 => emitter.[<emit_ $stem _i64>](),
+                    OpWidth::F32 => emitter.[<emit_ $stem _f32>](),
+                    OpWidth::F64 => emitter.[<emit_ $stem _f64>](),
+                }
+            }
+        }
+    };
 }
 
-pub(crate) fn emit_sub(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_sub_i32(),
-        OpWidth::W64 => emitter.emit_sub_i64(),
-        OpWidth::F32 => emitter.emit_sub_f32(),
-        OpWidth::F64 => emitter.emit_sub_f64(),
-    }
+/// Generates a width+signedness dispatch `emit_<stem>` mapping
+/// `(OpWidth, Signedness)` to `emit_<stem>_{i32,u32,i64,u64,f32,f64}`. Integer
+/// widths pick signed/unsigned variants; float widths ignore signedness.
+macro_rules! emit_signed_op {
+    ($stem:ident) => {
+        paste! {
+            pub(crate) fn [<emit_ $stem>](emitter: &mut Emitter, op_type: OpType) {
+                match op_type {
+                    (OpWidth::W32, Signedness::Signed) => emitter.[<emit_ $stem _i32>](),
+                    (OpWidth::W32, Signedness::Unsigned) => emitter.[<emit_ $stem _u32>](),
+                    (OpWidth::W64, Signedness::Signed) => emitter.[<emit_ $stem _i64>](),
+                    (OpWidth::W64, Signedness::Unsigned) => emitter.[<emit_ $stem _u64>](),
+                    (OpWidth::F32, _) => emitter.[<emit_ $stem _f32>](),
+                    (OpWidth::F64, _) => emitter.[<emit_ $stem _f64>](),
+                }
+            }
+        }
+    };
 }
 
-pub(crate) fn emit_mul(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_mul_i32(),
-        OpWidth::W64 => emitter.emit_mul_i64(),
-        OpWidth::F32 => emitter.emit_mul_f32(),
-        OpWidth::F64 => emitter.emit_mul_f64(),
-    }
+/// Generates a logical/bitwise dispatch `emit_<stem>` for AND/OR/XOR. Unsigned
+/// integer operands emit the bitwise opcode (`emit_bit_<stem>_32/_64`); every
+/// other type (BOOL and signed integers) emits `emit_bool_<stem>`.
+macro_rules! emit_logical_op {
+    ($stem:ident) => {
+        paste! {
+            pub(crate) fn [<emit_ $stem>](emitter: &mut Emitter, op_type: OpType) {
+                match op_type {
+                    (OpWidth::W32, Signedness::Unsigned) => emitter.[<emit_bit_ $stem _32>](),
+                    (OpWidth::W64, Signedness::Unsigned) => emitter.[<emit_bit_ $stem _64>](),
+                    _ => emitter.[<emit_bool_ $stem>](),
+                }
+            }
+        }
+    };
 }
 
-pub(crate) fn emit_div(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_div_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_div_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_div_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_div_u64(),
-        (OpWidth::F32, _) => emitter.emit_div_f32(),
-        (OpWidth::F64, _) => emitter.emit_div_f64(),
-    }
-}
+emit_width_op!(add);
+emit_width_op!(sub);
+emit_width_op!(mul);
+emit_width_op!(neg);
+emit_width_op!(eq);
+emit_width_op!(ne);
 
+emit_signed_op!(div);
+emit_signed_op!(lt);
+emit_signed_op!(le);
+emit_signed_op!(gt);
+emit_signed_op!(ge);
+
+emit_logical_op!(and);
+emit_logical_op!(or);
+emit_logical_op!(xor);
+
+// Hand-written one-offs that do not fit the generated shapes above:
+
+/// MOD dispatch. Fits the width+signedness shape for integers, but IEC 61131-3
+/// MOD is integer-only, so the float arms are a no-op rather than a call to a
+/// (nonexistent) `emit_mod_f32`. The analyzer should reject float MOD before
+/// codegen.
 pub(crate) fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
     match op_type {
         (OpWidth::W32, Signedness::Signed) => emitter.emit_mod_i32(),
@@ -1837,106 +1885,13 @@ pub(crate) fn emit_mod(emitter: &mut Emitter, op_type: OpType) {
     }
 }
 
-pub(crate) fn emit_neg(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_neg_i32(),
-        OpWidth::W64 => emitter.emit_neg_i64(),
-        OpWidth::F32 => emitter.emit_neg_f32(),
-        OpWidth::F64 => emitter.emit_neg_f64(),
-    }
-}
-
+/// POW dispatch. Width-only shape, but emits `EXPT_*` builtins rather than
+/// dedicated `emit_pow_*` opcodes, so it stays hand-written.
 pub(crate) fn emit_pow(emitter: &mut Emitter, op_type: OpType) {
     match op_type.0 {
         OpWidth::W32 => emitter.emit_builtin(opcode::builtin::EXPT_I32),
         OpWidth::W64 => emitter.emit_builtin(opcode::builtin::EXPT_I64),
         OpWidth::F32 => emitter.emit_builtin(opcode::builtin::EXPT_F32),
         OpWidth::F64 => emitter.emit_builtin(opcode::builtin::EXPT_F64),
-    }
-}
-
-pub(crate) fn emit_and(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_and_32(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_and_64(),
-        _ => emitter.emit_bool_and(),
-    }
-}
-
-pub(crate) fn emit_or(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_or_32(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_or_64(),
-        _ => emitter.emit_bool_or(),
-    }
-}
-
-pub(crate) fn emit_xor(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_bit_xor_32(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_bit_xor_64(),
-        _ => emitter.emit_bool_xor(),
-    }
-}
-
-pub(crate) fn emit_eq(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_eq_i32(),
-        OpWidth::W64 => emitter.emit_eq_i64(),
-        OpWidth::F32 => emitter.emit_eq_f32(),
-        OpWidth::F64 => emitter.emit_eq_f64(),
-    }
-}
-
-pub(crate) fn emit_ne(emitter: &mut Emitter, op_type: OpType) {
-    match op_type.0 {
-        OpWidth::W32 => emitter.emit_ne_i32(),
-        OpWidth::W64 => emitter.emit_ne_i64(),
-        OpWidth::F32 => emitter.emit_ne_f32(),
-        OpWidth::F64 => emitter.emit_ne_f64(),
-    }
-}
-
-pub(crate) fn emit_lt(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_lt_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_lt_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_lt_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_lt_u64(),
-        (OpWidth::F32, _) => emitter.emit_lt_f32(),
-        (OpWidth::F64, _) => emitter.emit_lt_f64(),
-    }
-}
-
-pub(crate) fn emit_le(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_le_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_le_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_le_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_le_u64(),
-        (OpWidth::F32, _) => emitter.emit_le_f32(),
-        (OpWidth::F64, _) => emitter.emit_le_f64(),
-    }
-}
-
-pub(crate) fn emit_gt(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_gt_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_gt_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_gt_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_gt_u64(),
-        (OpWidth::F32, _) => emitter.emit_gt_f32(),
-        (OpWidth::F64, _) => emitter.emit_gt_f64(),
-    }
-}
-
-pub(crate) fn emit_ge(emitter: &mut Emitter, op_type: OpType) {
-    match op_type {
-        (OpWidth::W32, Signedness::Signed) => emitter.emit_ge_i32(),
-        (OpWidth::W32, Signedness::Unsigned) => emitter.emit_ge_u32(),
-        (OpWidth::W64, Signedness::Signed) => emitter.emit_ge_i64(),
-        (OpWidth::W64, Signedness::Unsigned) => emitter.emit_ge_u64(),
-        (OpWidth::F32, _) => emitter.emit_ge_f32(),
-        (OpWidth::F64, _) => emitter.emit_ge_f64(),
     }
 }

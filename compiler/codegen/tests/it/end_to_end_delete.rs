@@ -4,6 +4,7 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run;
 use ironplc_container::STRING_HEADER_BYTES;
+use proptest::prelude::*;
 
 /// Reads a STRING value from the data region at the given byte offset.
 fn read_string(data_region: &[u8], data_offset: usize) -> String {
@@ -24,6 +25,18 @@ fn string_offset(preceding_max_lengths: &[u16]) -> usize {
         .sum()
 }
 
+/// Generates printable ASCII strings safe for IEC 61131-3 string literals.
+/// Excludes single quote (0x27) and dollar sign (0x24, the escape character).
+fn safe_string_strategy() -> impl Strategy<Value = String> {
+    proptest::collection::vec(
+        (0x20u8..=0x7Eu8).prop_filter("exclude quote and dollar", |&b| b != b'\'' && b != b'$'),
+        0..=254,
+    )
+    .prop_map(|bytes| bytes.into_iter().map(|b| b as char).collect())
+}
+
+// --- Deterministic anchors ---
+
 #[test]
 fn end_to_end_when_delete_middle_then_correct_result() {
     let source = "
@@ -40,60 +53,6 @@ END_PROGRAM
     // Delete 6 chars starting at position 1: remove 'Hello ' -> 'World'
     let result_offset = string_offset(&[254]);
     assert_eq!(read_string(&bufs.data_region, result_offset), "World");
-}
-
-#[test]
-fn end_to_end_when_delete_at_end_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'Hello World';
-    result : STRING;
-  END_VAR
-  result := DELETE(s1, 6, 6);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Delete 6 chars starting at position 6: remove ' World' -> 'Hello'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello");
-}
-
-#[test]
-fn end_to_end_when_delete_all_then_empty_string() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := DELETE(s1, 5, 1);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Delete all 5 chars starting at position 1.
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "");
-}
-
-#[test]
-fn end_to_end_when_delete_zero_length_then_unchanged() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := DELETE(s1, 0, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Delete 0 chars: nothing changes.
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABCDE");
 }
 
 #[test]
@@ -114,40 +73,37 @@ END_PROGRAM
     assert_eq!(read_string(&bufs.data_region, result_offset), "AB");
 }
 
-#[test]
-fn end_to_end_when_delete_with_integer_vars_then_correct_result() {
-    let source = "
+// --- Property test: DELETE(s, n, p) == remove n chars from 1-based position p ---
+// Inputs are bounded to a non-empty s with a valid 1-based position p; n may
+// exceed the remaining length (the oracle clamps like the VM). Oracle is pure
+// Rust. The clamp branch is also pinned by the deterministic anchor above.
+proptest! {
+    #[test]
+    fn end_to_end_when_delete_of_arbitrary_string_then_removes_range(
+        (s, n, p) in safe_string_strategy()
+            .prop_filter("non-empty", |s| !s.is_empty())
+            .prop_flat_map(|s| {
+                let len = s.chars().count();
+                (Just(s), 0usize..=260, 1usize..=len)
+            }),
+    ) {
+        let c: Vec<char> = s.chars().collect();
+        let a = p - 1;
+        let b = (a + n).min(c.len());
+        let expected: String = c[..a].iter().chain(c[b..].iter()).collect();
+        let source = format!(
+            "
 PROGRAM main
   VAR
-    s1 : STRING := 'Hello Beautiful World';
-    n_len : INT := 10;
-    n_pos : INT := 6;
+    s1 : STRING := '{s}';
     result : STRING;
   END_VAR
-  result := DELETE(s1, n_len, n_pos);
+  result := DELETE(s1, {n}, {p});
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Delete 10 chars starting at position 6: remove 'Beautiful ' -> 'Hello World'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "Hello World");
-}
-
-#[test]
-fn end_to_end_when_delete_single_char_then_correct_result() {
-    let source = "
-PROGRAM main
-  VAR
-    s1 : STRING := 'ABCDE';
-    result : STRING;
-  END_VAR
-  result := DELETE(s1, 1, 3);
-END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Delete 1 char at position 3: remove 'C' -> 'ABDE'
-    let result_offset = string_offset(&[254]);
-    assert_eq!(read_string(&bufs.data_region, result_offset), "ABDE");
+"
+        );
+        let (_c, bufs) = parse_and_run(&source, &CompilerOptions::default());
+        let result_offset = string_offset(&[254]);
+        prop_assert_eq!(read_string(&bufs.data_region, result_offset), expected);
+    }
 }

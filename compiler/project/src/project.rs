@@ -13,25 +13,30 @@ use ironplc_dsl::{
 };
 use ironplc_parser::{options::CompilerOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
-use ironplc_sources::{Source, SourceProject};
+use ironplc_sources::{LibraryName, Source, SourceProject};
 use log::{debug, trace};
 
 /// Runs semantic analysis on the given source project and compiler options.
 ///
 /// This is the shared implementation used by both [`FileBackedProject`] and
 /// [`MemoryBackedProject`]. It parses each source into a library, merges them,
-/// runs the analyzer, and returns the collected diagnostics plus the semantic
-/// context (when type resolution succeeds).
+/// runs the analyzer, and returns the collected diagnostics (empty when the
+/// project is clean) plus the semantic context (when type resolution
+/// succeeds).
 fn run_semantic_analysis(
     source_project: &mut SourceProject,
     compiler_options: &CompilerOptions,
-) -> (
-    Result<(), Vec<Diagnostic>>,
-    Option<SemanticContext>,
-    Option<Library>,
-) {
+) -> (Vec<Diagnostic>, Option<SemanticContext>, Option<Library>) {
     let mut all_libraries = vec![];
     let mut all_diagnostics: Vec<Diagnostic> = vec![];
+
+    // Load the activated compatibility libraries first. Any that fail to load
+    // (an unshipped name or malformed manifest) contribute a diagnostic but do
+    // not prevent the rest of analysis. These declarations are injected ahead
+    // of user source (base stdlib -> library -> user), so a user declaration
+    // shadows a library declaration of the same name.
+    let (compat_libraries, compat_diagnostics) = source_project.load_activated_libraries();
+    all_diagnostics.extend(compat_diagnostics);
 
     // Sources are backed by a HashMap, so iteration order is randomized
     // per-process by its hasher's random seed. Merging them in that order
@@ -63,21 +68,29 @@ fn run_semantic_analysis(
         }
     }
 
-    match analyze(&all_libraries, compiler_options) {
+    // A user-declared function takes precedence over a library function of
+    // the same name (`REQ-CL-analyzer-004`): drop the shadowed library
+    // declarations so the merge carries exactly one.
+    let compat_libraries =
+        ironplc_sources::libraries::remove_shadowed_functions(compat_libraries, &all_libraries);
+
+    // Activation order: the compatibility libraries precede user source in the
+    // merge (the base stdlib is seeded inside `analyze`).
+    let analyze_input: Vec<&Library> = compat_libraries
+        .iter()
+        .chain(all_libraries.iter().copied())
+        .collect();
+
+    match analyze(&analyze_input, compiler_options) {
         Ok((library, context)) => {
             debug!("Semantic analysis completed {context:?}");
             all_diagnostics.extend(context.diagnostics().iter().cloned());
-            let result = if all_diagnostics.is_empty() {
-                Ok(())
-            } else {
-                Err(all_diagnostics)
-            };
-            (result, Some(context), Some(library))
+            (all_diagnostics, Some(context), Some(library))
         }
         Err(diagnostics) => {
             debug!("Semantic analysis errored {diagnostics:?}");
             all_diagnostics.extend(diagnostics);
-            (Err(all_diagnostics), None, None)
+            (all_diagnostics, None, None)
         }
     }
 }
@@ -120,17 +133,17 @@ pub trait Project {
 
     /// Requests semantic analysis for the project.
     ///
-    /// Returns `Ok(())` when analysis completes with no diagnostics.
-    /// Returns `Err(diagnostics)` when diagnostics are present. Note that the
-    /// semantic context may still be cached even when this returns `Err` — use
-    /// `semantic_context()` to check availability.
-    fn semantic(&mut self) -> Result<(), Vec<Diagnostic>>;
+    /// Analysis goes as far as it can and returns every diagnostic that
+    /// parsing and analysis produced — an empty vector means the project is
+    /// clean. The analyzed artifacts are cached and available through
+    /// `semantic_context()` and `analyzed_library()`.
+    fn semantic(&mut self) -> Vec<Diagnostic>;
 
     /// Gets the semantic context from the last analysis.
     ///
     /// Returns `Some` when the last call to `semantic()` succeeded in building
-    /// type, function, and symbol environments — even if `semantic()` returned
-    /// `Err` due to validation diagnostics. Returns `None` only if `semantic()`
+    /// type, function, and symbol environments — even if analysis reported
+    /// validation diagnostics. Returns `None` only if `semantic()`
     /// has not been called or if foundational type resolution failed.
     fn semantic_context(&self) -> Option<&SemanticContext>;
 
@@ -193,6 +206,22 @@ impl FileBackedProject {
     pub fn get(&self, file_id: &FileId) -> Option<&Source> {
         self.source_project.get_source(file_id)
     }
+
+    /// Activate the named compatibility libraries (replacing any current set).
+    ///
+    /// Activation is out of band — it never modifies source — and comes only
+    /// from an explicit channel such as a `--library` request.
+    pub fn set_activated_libraries(&mut self, names: Vec<LibraryName>) {
+        self.source_project.set_activated_libraries(names);
+    }
+
+    /// Load the activated compatibility libraries from the bundled registry.
+    ///
+    /// Returns the parsed declarations to inject ahead of user source, plus one
+    /// diagnostic per library that could not be loaded.
+    pub fn load_activated_libraries(&self) -> (Vec<Library>, Vec<Diagnostic>) {
+        self.source_project.load_activated_libraries()
+    }
 }
 
 impl Project for FileBackedProject {
@@ -236,14 +265,14 @@ impl Project for FileBackedProject {
         }
     }
 
-    fn semantic(&mut self) -> Result<(), Vec<Diagnostic>> {
+    fn semantic(&mut self) -> Vec<Diagnostic> {
         self.semantic_context = None;
         self.analyzed_library = None;
-        let (result, context, library) =
+        let (diagnostics, context, library) =
             run_semantic_analysis(&mut self.source_project, &self.compiler_options);
         self.semantic_context = context;
         self.analyzed_library = library;
-        result
+        diagnostics
     }
 
     fn semantic_context(&self) -> Option<&SemanticContext> {
@@ -300,6 +329,11 @@ impl MemoryBackedProject {
     pub fn add_source(&mut self, file_id: FileId, content: String) {
         self.source_project.add_source(file_id, content);
     }
+
+    /// Activate the named compatibility libraries (replacing any current set).
+    pub fn set_activated_libraries(&mut self, names: Vec<LibraryName>) {
+        self.source_project.set_activated_libraries(names);
+    }
 }
 
 impl Project for MemoryBackedProject {
@@ -332,14 +366,14 @@ impl Project for MemoryBackedProject {
         }
     }
 
-    fn semantic(&mut self) -> Result<(), Vec<Diagnostic>> {
+    fn semantic(&mut self) -> Vec<Diagnostic> {
         self.semantic_context = None;
         self.analyzed_library = None;
-        let (result, context, library) =
+        let (diagnostics, context, library) =
             run_semantic_analysis(&mut self.source_project, &self.compiler_options);
         self.semantic_context = context;
         self.analyzed_library = library;
-        result
+        diagnostics
     }
 
     fn semantic_context(&self) -> Option<&SemanticContext> {
@@ -369,7 +403,7 @@ mod test {
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use std::path::Path;
 
-    use super::{FileBackedProject, MemoryBackedProject, Project};
+    use super::{FileBackedProject, LibraryName, MemoryBackedProject, Project};
 
     #[test]
     fn change_text_document_when_overwrite_then_one_file() {
@@ -383,6 +417,221 @@ mod test {
     fn compilation_set_when_empty_then_ok() {
         let project = FileBackedProject::default();
         assert_eq!(0, project.sources().len());
+    }
+
+    // -----------------------------------------------------------------
+    // Compatibility-library activation.
+    // See specs/plans/2026-08-04-compatibility-libraries.md (Phase 1).
+    // -----------------------------------------------------------------
+
+    fn library_options() -> CompilerOptions {
+        CompilerOptions {
+            allow_top_level_var_global: true,
+            allow_constant_initializer_expressions: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    const PI_PROGRAM: &str =
+        "FUNCTION_BLOCK FB_Angle VAR d2r : LREAL := PI/180.0; END_VAR END_FUNCTION_BLOCK";
+
+    #[test]
+    fn semantic_when_library_not_activated_then_pi_undefined() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.add_source(FileId::from_string("main.st"), PI_PROGRAM.to_owned());
+
+        // Dormant by default: PI does not resolve without activation.
+        let result = project.semantic();
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn semantic_when_tc2_system_activated_then_pi_resolves() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec![LibraryName::from("Tc2_System")]);
+        project.add_source(FileId::from_string("main.st"), PI_PROGRAM.to_owned());
+
+        // Activating Tc2_System injects the global PI, so the initializer folds.
+        let result = project.semantic();
+        assert!(
+            result.is_empty(),
+            "expected clean analysis, got: {:?}",
+            result
+        );
+    }
+
+    /// End-to-end (Phase 2): activation comes *only* from a discovered
+    /// `.plcproj`'s library reference -- no `--library` flag and no source-level
+    /// directive -- yet `PI` resolves and the initializer folds.
+    #[test]
+    fn semantic_when_plcproj_references_tc2_system_then_pi_resolves() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), PI_PROGRAM).unwrap();
+        fs::write(
+            dir.path().join("proj.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="main.st" />
+    <PlaceholderReference Include="Tc2_System">
+      <DefaultResolution>Tc2_System, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc2_System</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let mut project = FileBackedProject::with_options(library_options());
+        let errors = project.initialize(dir.path());
+        assert!(errors.is_empty(), "unexpected discovery errors: {errors:?}");
+
+        // The .plcproj reference alone activated Tc2_System.
+        let result = project.semantic();
+        assert!(
+            result.is_empty(),
+            "expected clean analysis, got: {:?}",
+            result
+        );
+    }
+
+    const BOOL_TO_STRING_PROGRAM: &str =
+        "PROGRAM main VAR s : STRING; END_VAR s := BOOL_TO_STRING(TRUE); END_PROGRAM";
+
+    /// Implicit activation (`REQ-CL-sources-008`): a `.plcproj` with **no**
+    /// library references still activates the implicit `Tc2_BuiltIns`, so
+    /// `BOOL_TO_STRING` resolves -- mirroring TwinCAT, where the built-in
+    /// conversion operators exist in every project.
+    #[test]
+    fn semantic_when_plcproj_has_no_references_then_bool_to_string_resolves() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), BOOL_TO_STRING_PROGRAM).unwrap();
+        fs::write(
+            dir.path().join("proj.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="main.st" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let mut project = FileBackedProject::with_options(library_options());
+        let errors = project.initialize(dir.path());
+        assert!(errors.is_empty(), "unexpected discovery errors: {errors:?}");
+
+        let result = project.semantic();
+        assert!(
+            result.is_empty(),
+            "expected clean analysis, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn semantic_when_bare_source_then_bool_to_string_undefined() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.add_source(
+            FileId::from_string("main.st"),
+            BOOL_TO_STRING_PROGRAM.to_owned(),
+        );
+
+        // Dormant by default: no project context, no implicit activation.
+        let result = project.semantic();
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn semantic_when_tc2_builtins_activated_explicitly_then_bool_to_string_resolves() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec![LibraryName::from("Tc2_BuiltIns")]);
+        project.add_source(
+            FileId::from_string("main.st"),
+            BOOL_TO_STRING_PROGRAM.to_owned(),
+        );
+
+        // The CLI `--library Tc2_BuiltIns` path: explicit activation works for
+        // source with no project context.
+        let result = project.semantic();
+        assert!(
+            result.is_empty(),
+            "expected clean analysis, got: {:?}",
+            result
+        );
+    }
+
+    const TC2_MATH_PROGRAM: &str =
+        "PROGRAM main VAR a : LREAL; b : LREAL; c : LREAL; d : LREAL; END_VAR \
+         a := LTRUNC(2.8); b := LMOD(400.56, 360.0); c := MODABS(-400.56, 360.0); d := FRAC(2.8); \
+         END_PROGRAM";
+
+    #[test]
+    fn semantic_when_tc2_math_activated_then_all_four_functions_resolve() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec![LibraryName::from("Tc2_Math")]);
+        project.add_source(FileId::from_string("main.st"), TC2_MATH_PROGRAM.to_owned());
+
+        let result = project.semantic();
+        assert!(
+            result.is_empty(),
+            "expected clean analysis, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn semantic_when_bare_source_then_tc2_math_functions_undefined() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.add_source(FileId::from_string("main.st"), TC2_MATH_PROGRAM.to_owned());
+
+        // Reference-activated only: dormant with no project context and no
+        // explicit activation.
+        let result = project.semantic();
+        assert!(!result.is_empty());
+    }
+
+    /// `REQ-CL-analyzer-004` for functions: a user-defined function named
+    /// `LTRUNC` takes precedence over the activated library's -- redeclaring
+    /// it is shadowing, not a duplicate-name error.
+    #[test]
+    fn semantic_when_user_function_shadows_library_function_then_ok() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec![LibraryName::from("Tc2_Math")]);
+        project.add_source(
+            FileId::from_string("main.st"),
+            "FUNCTION LTRUNC : LREAL VAR_INPUT IN : LREAL; END_VAR LTRUNC := 123.0; END_FUNCTION \
+             PROGRAM main VAR a : LREAL; END_VAR a := LTRUNC(2.8); END_PROGRAM"
+                .to_owned(),
+        );
+
+        let result = project.semantic();
+        assert!(
+            result.is_empty(),
+            "shadowing a library function must not error: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn semantic_when_unshipped_library_activated_then_diagnostic() {
+        let mut project = MemoryBackedProject::new(library_options());
+        project.set_activated_libraries(vec![LibraryName::from("DoesNotExist")]);
+        project.add_source(
+            FileId::from_string("main.st"),
+            "FUNCTION_BLOCK FB VAR x : INT; END_VAR END_FUNCTION_BLOCK".to_owned(),
+        );
+
+        let result = project.semantic();
+        let diagnostics = result;
+        assert!(
+            diagnostics.iter().any(|d| d.code == "P6011"),
+            "expected P6011 naming the missing library, got: {diagnostics:?}"
+        );
     }
 
     #[test]
@@ -409,7 +658,7 @@ mod test {
 
         let result = project.semantic();
 
-        assert!(result.is_err());
+        assert!(!result.is_empty());
         assert!(project.semantic_context().is_some());
     }
 
@@ -429,7 +678,7 @@ mod test {
         fn element_names(source_project: &mut SourceProject) -> Vec<String> {
             let (_, _, library) =
                 super::run_semantic_analysis(source_project, &CompilerOptions::default());
-            let library = library.expect("valid project must produce a merged library");
+            let library = library.unwrap();
             library
                 .elements
                 .iter()
@@ -477,35 +726,8 @@ mod test {
         assert_eq!(element_names(&mut forward), element_names(&mut reverse));
     }
 
-    #[test]
-    fn xml_file_returns_empty_library() {
-        let mut project = FileBackedProject::default();
-        let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://www.plcopen.org/xml/tc6_0201">
-  <fileHeader companyName="Test" productName="Test" productVersion="1.0" creationDateTime="2024-01-01T00:00:00"/>
-  <contentHeader name="TestProject">
-    <coordinateInfo>
-      <fbd><scaling x="1" y="1"/></fbd>
-      <ld><scaling x="1" y="1"/></ld>
-      <sfc><scaling x="1" y="1"/></sfc>
-    </coordinateInfo>
-  </contentHeader>
-  <types>
-    <dataTypes/>
-    <pous/>
-  </types>
-</project>"#;
-
-        let file_id = FileId::from_string("test.xml");
-        project.change_text_document(&file_id, xml_content.to_owned());
-
-        let source = project.sources_mut().into_iter().next().unwrap();
-        let library_result = source.library();
-
-        assert!(library_result.is_ok());
-        let library = library_result.unwrap();
-        assert_eq!(0, library.elements.len()); // Should be empty
-    }
+    // XML source handling (empty-library, parse errors) is owned and tested by
+    // `ironplc_sources::source`; this crate only routes file content there.
 
     // MemoryBackedProject tests
 
@@ -550,11 +772,11 @@ END_CONFIGURATION
         project.add_source(FileId::from_string("main.st"), content.to_owned());
 
         let result = project.semantic();
-        assert!(result.is_ok());
+        assert!(result.is_empty());
     }
 
     #[test]
-    fn memory_semantic_when_syntax_error_then_err() {
+    fn memory_semantic_when_syntax_error_then_diagnostics() {
         let mut project = MemoryBackedProject::new(CompilerOptions::default());
         project.add_source(
             FileId::from_string("bad.st"),
@@ -562,17 +784,17 @@ END_CONFIGURATION
         );
 
         let result = project.semantic();
-        assert!(result.is_err());
+        assert!(!result.is_empty());
     }
 
     #[test]
-    fn memory_semantic_when_semantic_error_then_err_with_context() {
+    fn memory_semantic_when_semantic_error_then_diagnostics_with_context() {
         let mut project = MemoryBackedProject::new(CompilerOptions::default());
         let content = "TYPE\nINVALID_RANGE : INT(10..-10);\nEND_TYPE";
         project.add_source(FileId::from_string("test.st"), content.to_owned());
 
         let result = project.semantic();
-        assert!(result.is_err());
+        assert!(!result.is_empty());
         assert!(project.semantic_context().is_some());
     }
 
@@ -609,6 +831,10 @@ END_CONFIGURATION
     // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
+    // Multi-directory merge semantics (clearing once, per-directory failures,
+    // zero directories) are owned and tested by
+    // `ironplc_sources::project::initialize_from_directories`; this test only
+    // proves `initialize_many` wires through to it.
     #[test]
     fn file_backed_initialize_many_when_two_directories_then_merges_both() {
         use std::fs;
@@ -625,15 +851,6 @@ END_CONFIGURATION
 
         assert!(diagnostics.is_empty());
         assert_eq!(project.sources().len(), 2);
-    }
-
-    #[test]
-    fn file_backed_initialize_many_when_zero_directories_then_no_op() {
-        let mut project = FileBackedProject::default();
-        let diagnostics = project.initialize_many(&[]);
-
-        assert!(diagnostics.is_empty());
-        assert_eq!(project.sources().len(), 0);
     }
 
     #[test]
@@ -677,7 +894,7 @@ END_CONFIGURATION
         project.add_source(FileId::from_string("main.st"), content.to_owned());
 
         let result = project.semantic();
-        assert!(result.is_ok());
+        assert!(result.is_empty());
     }
 
     #[test]
@@ -711,7 +928,11 @@ END_CONFIGURATION
 
         // Counter FB from counter.st should be visible to main.st
         let result = project.semantic();
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+        assert!(
+            result.is_empty(),
+            "Expected no diagnostics, got: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -747,7 +968,7 @@ END_CONFIGURATION
         project.add_source(FileId::from_string("main.st"), content.to_owned());
 
         let result = project.semantic();
-        assert!(result.is_ok());
+        assert!(result.is_empty());
         assert!(project.analyzed_library().is_some());
     }
 
@@ -760,7 +981,7 @@ END_CONFIGURATION
         );
 
         let result = project.semantic();
-        assert!(result.is_err());
+        assert!(!result.is_empty());
         // Foundational analysis fails when parse produces no valid library elements,
         // so analyzed_library should be None.
         assert!(project.analyzed_library().is_none());
@@ -773,7 +994,7 @@ END_CONFIGURATION
         project.add_source(FileId::from_string("test.st"), content.to_owned());
 
         let result = project.semantic();
-        assert!(result.is_err());
+        assert!(!result.is_empty());
         // Type resolution succeeds even with semantic diagnostics, so
         // the analyzed library should be available.
         assert!(project.analyzed_library().is_some());

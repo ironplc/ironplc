@@ -28,7 +28,8 @@ Supported Dialects
    :doc:`REF </reference/language/data-types/derived/reference-types>`, and
    :doc:`NULL </reference/language/data-types/derived/reference-types>`. No extensions.
 
-   **Enables:** Edition 3 keywords, plus ``--allow-partial-access-syntax``.
+   **Enables:** ``--allow-long-time-types`` and ``--allow-ref-to`` (the
+   Edition 3 keywords), plus ``--allow-partial-access-syntax``.
 
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
@@ -51,10 +52,11 @@ Supported Dialects
    ``--allow-fb-inheritance``.
 
 **codesys**
-   CODESYS-compatible dialect. Uses Edition 2 as a base (so identifiers like
-   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
-   preserved) and enables
-   :doc:`REF_TO </reference/language/data-types/derived/reference-types>`
+   CODESYS-compatible dialect. Uses Edition 2 as a base and enables the
+   long-time-type keywords
+   (:doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>`, etc.)
+   and :doc:`REF_TO </reference/language/data-types/derived/reference-types>`
    together with the extensions that the CODESYS IDE accepts. The
    implicit :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound under this dialect, since they are an IronPLC
@@ -63,7 +65,10 @@ Supported Dialects
    **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
    ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
-   ``--allow-ref-to``, ``--allow-reference-to``, ``--allow-ref-arithmetic``,
+   ``--allow-long-time-types``,
+   ``--allow-ref-to``, ``--allow-reference-to``, ``--allow-pointer-to``,
+   ``--allow-adr``,
+   ``--allow-ref-arithmetic``,
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
    ``--allow-cross-family-widening``, ``--allow-partial-access-syntax``,
@@ -76,15 +81,18 @@ Supported Dialects
 
 **twincat**
    Beckhoff TwinCAT-compatible dialect. TwinCAT 3 is built on the CODESYS V3
-   runtime, so it uses an Edition 2 base (identifiers like
-   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>` are
-   preserved) and enables the extensions TwinCAT shares with CODESYS,
+   runtime, so it uses an Edition 2 base and enables the long-time-type
+   keywords
+   (:doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDT </reference/language/data-types/elementary/ldate-and-time>`, etc.)
+   along with the extensions TwinCAT shares with CODESYS,
    such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
    short-circuit operator. Unlike ``codesys``, it does **not** enable the
    ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
-   references ``REFERENCE TO`` (bound with ``REF=``), which this dialect
-   enables instead via ``--allow-reference-to``. (Pointer types —
-   ``POINTER TO`` with ``ADR()`` — are not parsed yet.) As with ``codesys``,
+   references ``REFERENCE TO`` (bound with ``REF=``) and pointers
+   ``POINTER TO`` (bound with ``ADR()``), which this dialect enables instead
+   via ``--allow-reference-to``, ``--allow-pointer-to``, and
+   ``--allow-adr``. As with ``codesys``,
    the implicit
    :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound, since they are an IronPLC runtime convention
@@ -93,11 +101,14 @@ Supported Dialects
    **Enables:** ``--allow-c-style-comments``, ``--allow-missing-semicolon``,
    ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
-   ``--allow-reference-to``, ``--allow-int-to-bool-initializer``,
+   ``--allow-long-time-types``,
+   ``--allow-reference-to``, ``--allow-pointer-to``, ``--allow-adr``,
+   ``--allow-int-to-bool-initializer``,
    ``--allow-sizeof``, ``--allow-cross-family-widening``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
+   ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
    ``--allow-fb-inheritance``.
@@ -192,10 +203,21 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    Required for OSCAT compatibility where ``TIME()`` reads the PLC system
    clock.
 
+``--allow-long-time-types``
+   Allow the IEC 61131-3:2013 long-time-type keywords
+   :doc:`LTIME </reference/language/data-types/elementary/ltime>`,
+   :doc:`LDATE </reference/language/data-types/elementary/ldate>`,
+   :doc:`LTIME_OF_DAY </reference/language/data-types/elementary/ltime-of-day>`
+   (``LTOD``), and
+   :doc:`LDATE_AND_TIME </reference/language/data-types/elementary/ldate-and-time>`
+   (``LDT``). Without this flag those words remain available as ordinary
+   identifiers, so Edition 2 code may use them as names.
+
 ``--allow-ref-to``
-   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
-   Edition 3. This is useful when you need references but want to keep
-   Edition 2 keyword handling for the rest of your code. See
+   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax (standardized in
+   IEC 61131-3:2013) without enabling the rest of Edition 3. This is useful
+   when you need references but want to keep Edition 2 keyword handling for the
+   rest of your code. See
    :doc:`/reference/language/data-types/derived/reference-types`.
 
 ``--allow-reference-to``
@@ -205,6 +227,25 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    different surface syntax. The compiler does not restrict flag combinations, so
    ``--allow-ref-to`` and ``--allow-reference-to`` may be set at once. See
    :doc:`/reference/language/data-types/derived/reference-types`.
+
+``--allow-pointer-to``
+   Allow the Beckhoff TwinCAT / CODESYS ``POINTER TO`` pointer type. A
+   ``POINTER TO`` variable behaves like a ``REF_TO`` reference: reading or
+   writing the target requires the explicit dereference operator (``^``),
+   unlike ``REFERENCE TO``, which dereferences implicitly. Pointers are
+   bound with the ``ADR()`` operator (``--allow-adr``) or the
+   ``REF()``/``NULL`` forms from ``--allow-ref-to``. See
+   :doc:`/reference/language/data-types/derived/reference-types`.
+
+``--allow-adr``
+   Allow the ``ADR()`` address-of operator, which returns a typed pointer to
+   a variable for assignment to a ``POINTER TO`` variable
+   (``--allow-pointer-to``). Unlike TwinCAT's untyped ``PVOID`` result,
+   ``ADR(x)`` in IronPLC has the type ``POINTER TO`` *typeof(x)* and is
+   type-checked against the destination pointer's target type. Addresses of
+   sub-objects (array elements, structure fields) and pointer arithmetic are
+   not supported and are rejected with a diagnostic. See
+   :doc:`/reference/extension-library/functions/adr`.
 
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,

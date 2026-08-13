@@ -10,26 +10,44 @@ declare module "*/pkg/ironplc_playground.js" {
   /** Installs a panic hook that forwards Rust panics to console.error. */
   export function init_panic_hook(): void;
 
-  /** Returns a JSON-encoded compilation result (diagnostics + bytecode). */
-  export function compile(source: string, dialect: string, allows: string): string;
+  /**
+   * Returns a JSON-encoded compilation result (diagnostics + bytecode).
+   *
+   * `libraries` is a JSON array of plain-text compatibility-library sources
+   * (the served `.st` files the browser fetched) to activate, or `""` for none.
+   */
+  export function compile(
+    source: string,
+    dialect: string,
+    allows: string,
+    libraries: string,
+  ): string;
 
   /** Runs previously compiled bytecode for `scans` cycles. Returns JSON. */
   export function run(bytecodeBase64: string, scans: number): string;
 
-  /** Compiles and runs source in one step. Returns JSON. */
+  /**
+   * Compiles and runs source in one step. Returns JSON. `libraries` is a JSON
+   * array of compatibility-library sources to activate, or `""` for none.
+   */
   export function run_source(
     source: string,
     scans: number,
     dialect: string,
     allows: string,
+    libraries: string,
   ): string;
 
-  /** Loads a program into the persistent session. Returns JSON. */
+  /**
+   * Loads a program into the persistent session. Returns JSON. `libraries` is a
+   * JSON array of compatibility-library sources to activate, or `""` for none.
+   */
   export function load_program(
     source: string,
     cycleTimeUs: number,
     dialect: string,
     allows: string,
+    libraries: string,
   ): string;
 
   /** Steps the current session by `scans` cycles. Returns JSON. */

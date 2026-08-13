@@ -1,27 +1,21 @@
 //! End-to-end integration tests for the MIN function.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_min_then_returns_smaller() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_min_then_returns_smaller,
+    "
 PROGRAM main
   VAR
     y : DINT;
   END_VAR
   y := MIN(10, 3);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 3)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 3);
-}
-
-#[test]
-fn end_to_end_when_min_with_variable_then_returns_smaller() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_min_with_variable_then_returns_smaller,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -30,9 +24,6 @@ PROGRAM main
   x := 5;
   y := MIN(x, 100);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-    assert_eq!(bufs.vars[1].as_i32(), 5);
-}
+",
+    &[(0, 5), (1, 5)],
+);

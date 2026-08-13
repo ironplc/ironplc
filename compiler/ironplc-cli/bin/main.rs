@@ -6,6 +6,7 @@ use ironplc_cli::cli;
 use ironplc_cli::logger;
 use ironplc_cli::lsp;
 use ironplc_parser::options::{describe_dialects, CompilerOptions, Dialect};
+use ironplc_sources::LibraryName;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -98,9 +99,15 @@ struct FileArgs {
     #[arg(long)]
     allow_c_style_comments: bool,
 
-    /// Allow REF_TO, REF(), and NULL syntax without enabling full Edition 3.
-    /// This is useful for libraries like OSCAT that use references but also
-    /// use Edition 3 type names (LDT, LTIME) as identifiers.
+    /// Allow the IEC 61131-3:2013 long-time-type keywords (LTIME, LDATE, LTOD,
+    /// LDT). Without this flag those words remain available as identifiers.
+    #[arg(long)]
+    allow_long_time_types: bool,
+
+    /// Allow REF_TO, REF(), and NULL syntax (standardized in IEC 61131-3:2013)
+    /// without enabling the rest of Edition 3. This is useful for libraries like
+    /// OSCAT that use references but also use Edition 3 type names (LDT, LTIME)
+    /// as identifiers.
     #[arg(long)]
     allow_ref_to: bool,
 
@@ -109,6 +116,18 @@ struct FileArgs {
     /// `--allow-ref-to`; the `twincat` and `codesys` dialects enable it.
     #[arg(long)]
     allow_reference_to: bool,
+
+    /// Allow the Beckhoff TwinCAT/CODESYS `POINTER TO` pointer type with
+    /// explicit dereference (^). This is an extension; the `twincat` and
+    /// `codesys` dialects enable it.
+    #[arg(long)]
+    allow_pointer_to: bool,
+
+    /// Allow the ADR() address-of operator, which returns a typed pointer to
+    /// a variable. This is an extension; the `twincat` and `codesys` dialects
+    /// enable it.
+    #[arg(long)]
+    allow_adr: bool,
 
     /// Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types.
     /// This is an extension not part of the IEC 61131-3 standard.
@@ -210,8 +229,11 @@ impl FileArgs {
         options.allow_empty_var_blocks |= self.allow_empty_var_blocks;
         options.allow_time_as_function_name |= self.allow_time_as_function_name;
         options.allow_c_style_comments |= self.allow_c_style_comments;
+        options.allow_long_time_types |= self.allow_long_time_types;
         options.allow_ref_to |= self.allow_ref_to;
         options.allow_reference_to |= self.allow_reference_to;
+        options.allow_pointer_to |= self.allow_pointer_to;
+        options.allow_adr |= self.allow_adr;
         options.allow_ref_arithmetic |= self.allow_ref_arithmetic;
         options.allow_ref_stack_variables |= self.allow_ref_stack_variables;
         options.allow_ref_type_punning |= self.allow_ref_type_punning;
@@ -242,6 +264,15 @@ enum Action {
     Check {
         #[command(flatten)]
         file_args: FileArgs,
+
+        /// Activate a compatibility library by name (repeatable), e.g.
+        /// `--library Tc2_System`. Activation injects the library's declarations
+        /// (such as the TwinCAT `PI` constant) so they resolve under their
+        /// exact vendor names. Use for source that has no project context; a
+        /// discovered project file activates its referenced libraries
+        /// automatically.
+        #[arg(long = "library")]
+        libraries: Vec<LibraryName>,
     },
     /// Compiles source files into a bytecode container (.iplc) file.
     ///
@@ -254,6 +285,11 @@ enum Action {
         /// Output file path for the compiled bytecode container (.iplc).
         #[arg(short, long)]
         output: PathBuf,
+
+        /// Activate a compatibility library by name (repeatable), e.g.
+        /// `--library Tc2_System`. See `check --library`.
+        #[arg(long = "library")]
+        libraries: Vec<LibraryName>,
     },
     /// The echo action reads (parses) the libraries and writes the context to the
     /// standard output.
@@ -292,13 +328,24 @@ pub fn main() -> Result<(), String> {
 
     match args.action {
         Action::Lsp { stdio: _ } => lsp::start(),
-        Action::Check { file_args } => {
-            cli::check(&file_args.files, file_args.compiler_options(), false)
-        }
-        Action::Compile { file_args, output } => cli::compile(
+        Action::Check {
+            file_args,
+            libraries,
+        } => cli::check(
+            &file_args.files,
+            file_args.compiler_options(),
+            &libraries,
+            false,
+        ),
+        Action::Compile {
+            file_args,
+            output,
+            libraries,
+        } => cli::compile(
             &file_args.files,
             &output,
             file_args.compiler_options(),
+            &libraries,
             false,
         ),
         Action::Echo { file_args } => {
@@ -393,12 +440,9 @@ mod tests {
         // The `enum` array must list exactly the dialect cli_names, in order.
         let enum_values: Vec<&str> = dialect["enum"]
             .as_array()
-            .expect("ironplc.dialect.enum must be an array")
+            .unwrap()
             .iter()
-            .map(|v| {
-                v.as_str()
-                    .expect("ironplc.dialect.enum entries must be strings")
-            })
+            .map(|v| v.as_str().unwrap())
             .collect();
         assert_eq!(
             enum_values, expected_names,
@@ -421,9 +465,7 @@ mod tests {
         }
 
         // The prose description must mention every dialect by cli_name.
-        let markdown = dialect["markdownDescription"]
-            .as_str()
-            .expect("ironplc.dialect.markdownDescription must be a string");
+        let markdown = dialect["markdownDescription"].as_str().unwrap();
         for name in &expected_names {
             assert!(
                 markdown.contains(name),

@@ -122,8 +122,8 @@ mod tests {
     }
 
     fn value_with(name: &str, explicit: i64) -> EnumeratedValue {
-        let explicit_value = SignedInteger::new(&explicit.to_string(), SourceSpan::default())
-            .expect("valid integer literal");
+        let explicit_value =
+            SignedInteger::new(&explicit.to_string(), SourceSpan::default()).unwrap();
         EnumeratedValue {
             explicit_value: Some(explicit_value),
             ..EnumeratedValue::new(name)

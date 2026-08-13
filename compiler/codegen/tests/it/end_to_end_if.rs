@@ -1,12 +1,8 @@
 //! End-to-end integration tests for IF/ELSIF/ELSE statements.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_if_true_then_executes_body() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_if_true_then_executes_body,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -17,16 +13,14 @@ PROGRAM main
     y := 1;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 5), (1, 1)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
-
-#[test]
-fn end_to_end_when_if_false_then_skips_body() {
-    let source = "
+// vars[1] is untouched.
+e2e_i32!(
+    end_to_end_when_if_false_then_skips_body,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -37,16 +31,13 @@ PROGRAM main
     y := 1;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, -5), (1, 0)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), -5);
-    assert_eq!(bufs.vars[1].as_i32(), 0); // untouched
-}
-
-#[test]
-fn end_to_end_when_if_else_true_then_executes_then() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_if_else_true_then_executes_then,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -59,16 +50,13 @@ PROGRAM main
     y := 2;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 5), (1, 1)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
-
-#[test]
-fn end_to_end_when_if_else_false_then_executes_else() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_if_else_false_then_executes_else,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -81,16 +69,13 @@ PROGRAM main
     y := 2;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, -5), (1, 2)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), -5);
-    assert_eq!(bufs.vars[1].as_i32(), 2);
-}
-
-#[test]
-fn end_to_end_when_if_elsif_else_first_true_then_executes_first() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_if_elsif_else_first_true_then_executes_first,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -105,16 +90,13 @@ PROGRAM main
     y := 3;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 10), (1, 1)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 10);
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
-
-#[test]
-fn end_to_end_when_if_elsif_else_second_true_then_executes_second() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_if_elsif_else_second_true_then_executes_second,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -129,16 +111,13 @@ PROGRAM main
     y := 3;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 3), (1, 2)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 3);
-    assert_eq!(bufs.vars[1].as_i32(), 2);
-}
-
-#[test]
-fn end_to_end_when_if_elsif_else_none_true_then_executes_else() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_if_elsif_else_none_true_then_executes_else,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -153,16 +132,14 @@ PROGRAM main
     y := 3;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, -5), (1, 3)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), -5);
-    assert_eq!(bufs.vars[1].as_i32(), 3);
-}
-
-#[test]
-fn end_to_end_when_if_literal_gt_var_true_then_executes_body() {
-    let source = "
+// n defaults to 0, so 2 > 0 is true.
+e2e_i32!(
+    end_to_end_when_if_literal_gt_var_true_then_executes_body,
+    "
 PROGRAM main
   VAR
     n : DINT;
@@ -172,16 +149,14 @@ PROGRAM main
     y := 1;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(1, 1)],
+);
 
-    // n defaults to 0, so 2 > 0 is true
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
-
-#[test]
-fn end_to_end_when_if_literal_gt_var_false_then_skips_body() {
-    let source = "
+// n is 5, so 2 > 5 is false.
+e2e_i32!(
+    end_to_end_when_if_literal_gt_var_false_then_skips_body,
+    "
 PROGRAM main
   VAR
     n : DINT;
@@ -192,17 +167,14 @@ PROGRAM main
     y := 1;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 5), (1, 0)],
+);
 
-    // n is 5, so 2 > 5 is false
-    assert_eq!(bufs.vars[0].as_i32(), 5);
-    assert_eq!(bufs.vars[1].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_if_literal_expr_gt_literal_false_then_skips_body() {
-    let source = "
+// 2 * 4 = 8, and 8 > 8 is false.
+e2e_i32!(
+    end_to_end_when_if_literal_expr_gt_literal_false_then_skips_body,
+    "
 PROGRAM main
   VAR
     y : DINT;
@@ -211,9 +183,6 @@ PROGRAM main
     y := 1;
   END_IF;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // 2 * 4 = 8, and 8 > 8 is false
-    assert_eq!(bufs.vars[0].as_i32(), 0);
-}
+",
+    &[(0, 0)],
+);

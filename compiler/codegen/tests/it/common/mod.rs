@@ -599,8 +599,7 @@ pub fn try_parse_and_compile(
 /// Parses, analyzes, compiles, and runs one scan cycle.
 /// Returns the container and buffers so callers can inspect variable values.
 pub fn parse_and_run(source: &str, options: &CompilerOptions) -> (Container, VmBuffers) {
-    let (container, bufs) =
-        parse_and_try_run(source, options).expect("VM execution trapped unexpectedly");
+    let (container, bufs) = parse_and_try_run(source, options).unwrap();
     (container, bufs)
 }
 
@@ -654,6 +653,64 @@ pub fn parse_and_run_rounds(
     f(&mut vm);
 }
 
+/// A single step in a function-block (`TON`/`CTU`/`R_TRIG`/`RS`/…) driver
+/// scenario.
+///
+/// The timer/counter/edge/bistable end-to-end tests all share the same shape:
+/// build a program, then drive the VM across several scan rounds, writing
+/// inputs and asserting outputs along the way. Rather than repeat that
+/// `load_and_start` + `run_round` + `read_variable` scaffold in every test,
+/// each scenario is expressed as a `&[FbStep]` table and executed by
+/// [`drive_fb`]. This keeps every original scenario as one `rstest` `#[case]`
+/// while the driver lives in exactly one place.
+#[derive(Clone, Copy)]
+pub enum FbStep {
+    /// Write `value` into the variable at `index` (no scan round runs).
+    Write(u16, i32),
+    /// Run one scan round at absolute VM time `time_us` (microseconds).
+    Run(u64),
+    /// Assert the variable at `index` currently reads `value`.
+    Expect(u16, i32),
+    /// Feed `n` rising edges on the variable at `var`: for each edge, write 1
+    /// and run a round, then write 0 and run a round. Rounds run at
+    /// `time_base + i*2` and `+1`. Edge/counter FBs are edge-triggered, so the
+    /// exact time values only need to increase monotonically.
+    Pulse { var: u16, n: u64, time_base: u64 },
+}
+
+/// Compiles `source` and drives the VM through `steps`, executing each
+/// [`FbStep`] in order. See [`FbStep`] for the step semantics.
+pub fn drive_fb(source: &str, options: &CompilerOptions, steps: &[FbStep]) {
+    use ironplc_container::VarIndex;
+    parse_and_run_rounds(source, options, |vm| {
+        for step in steps {
+            match *step {
+                FbStep::Write(index, value) => {
+                    vm.write_variable(VarIndex::new(index), value).unwrap();
+                }
+                FbStep::Run(time_us) => {
+                    vm.run_round(time_us).unwrap();
+                }
+                FbStep::Expect(index, value) => {
+                    assert_eq!(
+                        vm.read_variable(VarIndex::new(index)).unwrap(),
+                        value,
+                        "vars[{index}] mismatch"
+                    );
+                }
+                FbStep::Pulse { var, n, time_base } => {
+                    for i in 0..n {
+                        vm.write_variable(VarIndex::new(var), 1).unwrap();
+                        vm.run_round(time_base + i * 2).unwrap();
+                        vm.write_variable(VarIndex::new(var), 0).unwrap();
+                        vm.run_round(time_base + i * 2 + 1).unwrap();
+                    }
+                }
+            }
+        }
+    });
+}
+
 /// Runs `source` with default options and asserts each `(var_index, expected)`
 /// pair against the corresponding `vars[i].as_i32()` slot after one scan.
 ///
@@ -684,6 +741,30 @@ pub fn assert_run_i32_with(source: &str, options: &CompilerOptions, asserts: &[(
     let (_c, bufs) = parse_and_run(source, options);
     for (idx, expected) in asserts {
         assert_eq!(bufs.vars[*idx].as_i32(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Like [`assert_run_i64`] but with explicit [`CompilerOptions`].
+pub fn assert_run_i64_with(source: &str, options: &CompilerOptions, asserts: &[(usize, i64)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_i64(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Like [`assert_run_f32`] but with explicit [`CompilerOptions`].
+pub fn assert_run_f32_with(source: &str, options: &CompilerOptions, asserts: &[(usize, f32)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_f32(), *expected, "vars[{idx}] mismatch");
+    }
+}
+
+/// Like [`assert_run_f64`] but with explicit [`CompilerOptions`].
+pub fn assert_run_f64_with(source: &str, options: &CompilerOptions, asserts: &[(usize, f64)]) {
+    let (_c, bufs) = parse_and_run(source, options);
+    for (idx, expected) in asserts {
+        assert_eq!(bufs.vars[*idx].as_f64(), *expected, "vars[{idx}] mismatch");
     }
 }
 
@@ -778,6 +859,39 @@ macro_rules! e2e_i32_with {
         #[test]
         fn $name() {
             $crate::common::assert_run_i32_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32_with`] but reads slots as i64 (LINT/ULINT).
+macro_rules! e2e_i64_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_i64_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32_with`] but reads slots as f32 (REAL).
+macro_rules! e2e_f32_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_f32_with($source, &$opts, $asserts);
+        }
+    };
+}
+
+/// Same as [`e2e_i32_with`] but reads slots as f64 (LREAL).
+macro_rules! e2e_f64_with {
+    ($(#[$meta:meta])* $name:ident, $opts:expr, $source:literal, $asserts:expr $(,)?) => {
+        $(#[$meta])*
+        #[test]
+        fn $name() {
+            $crate::common::assert_run_f64_with($source, &$opts, $asserts);
         }
     };
 }

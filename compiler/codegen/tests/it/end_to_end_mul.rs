@@ -3,12 +3,12 @@
 use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{parse_and_compile, parse_and_run, VmBuffers};
+use crate::common::{parse_and_compile, VmBuffers};
 use ironplc_vm::Vm;
 
-#[test]
-fn end_to_end_when_mul_expression_then_variable_has_product() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_mul_expression_then_variable_has_product,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -17,91 +17,78 @@ PROGRAM main
   x := 7;
   y := x * 6;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 7), (1, 42)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 7);
-    assert_eq!(bufs.vars[1].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_mul_by_zero_then_zero() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_mul_by_zero_then_zero,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := 999 * 0;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 0)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 0);
-}
-
-#[test]
-fn end_to_end_when_mul_by_one_then_identity() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_mul_by_one_then_identity,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := 42 * 1;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 42)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_mul_negative_then_negative_result() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_mul_negative_then_negative_result,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := 7 * -6;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, -42)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), -42);
-}
-
-#[test]
-fn end_to_end_when_mul_two_negatives_then_positive() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_mul_two_negatives_then_positive,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := -7 * -6;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 42)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_chain_of_multiplications_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_chain_of_multiplications_then_correct,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := 2 * 3 * 4;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 24)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 24);
-}
-
-#[test]
-fn end_to_end_when_mul_with_variables_then_correct() {
-    let source = "
+e2e_i32!(
+    end_to_end_when_mul_with_variables_then_correct,
+    "
 PROGRAM main
   VAR
     a : DINT;
@@ -112,29 +99,23 @@ PROGRAM main
   b := 6;
   c := a * b;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(0, 7), (1, 6), (2, 42)],
+);
 
-    assert_eq!(bufs.vars[0].as_i32(), 7);
-    assert_eq!(bufs.vars[1].as_i32(), 6);
-    assert_eq!(bufs.vars[2].as_i32(), 42);
-}
-
-#[test]
-fn end_to_end_when_add_and_mul_precedence_then_correct() {
-    let source = "
+// Multiplication has higher precedence: 2 + (3 * 4) = 14
+e2e_i32!(
+    end_to_end_when_add_and_mul_precedence_then_correct,
+    "
 PROGRAM main
   VAR
     result : DINT;
   END_VAR
   result := 2 + 3 * 4;
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    // Multiplication has higher precedence: 2 + (3 * 4) = 14
-    assert_eq!(bufs.vars[0].as_i32(), 14);
-}
+",
+    &[(0, 14)],
+);
 
 #[test]
 fn end_to_end_when_mul_doubling_across_scans_then_accumulates() {

@@ -24,7 +24,11 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 use std::collections::HashSet;
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -32,19 +36,22 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleEnumerationValuesUnique {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleEnumerationValuesUnique {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleEnumerationValuesUnique {
     diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for RuleEnumerationValuesUnique {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
@@ -87,51 +94,28 @@ impl Visitor<Diagnostic> for RuleEnumerationValuesUnique {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types;
-
-    use super::*;
-
-    #[test]
-    fn apply_when_values_unique_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_values_unique_then_ok,
+        "
 TYPE
 LOGLEVEL : (CRITICAL, ERROR);
-END_TYPE";
+END_TYPE"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_typename_values_unique_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_typename_values_unique_then_ok,
+        "
 TYPE
 LOGLEVEL : (CRITICAL, ERROR);
 LOGLEVEL2 : LOGLEVEL;
-END_TYPE";
+END_TYPE"
+    );
 
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_value_duplicated_then_error() {
-        let program = "
+    rule_err!(
+        apply_when_value_duplicated_then_error,
+        "
 TYPE
 LOGLEVEL : (CRITICAL, CRITICAL);
-END_TYPE";
-
-        let library = parse_and_resolve_types(program);
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_err());
-    }
+END_TYPE"
+    );
 }

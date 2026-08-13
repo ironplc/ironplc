@@ -31,7 +31,10 @@ use ironplc_dsl::{
 use ironplc_problems::Problem;
 
 use crate::{
-    intermediate_type::IntermediateType, result::SemanticResult, semantic_context::SemanticContext,
+    intermediate_type::IntermediateType,
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -41,21 +44,24 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleInitializerTypeCompat {
-        type_environment: context.types(),
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleInitializerTypeCompat {
+            type_environment: context.types(),
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleInitializerTypeCompat<'a> {
     type_environment: &'a TypeEnvironment,
     diagnostics: Vec<Diagnostic>,
+}
+
+impl DiagnosticVisitor for RuleInitializerTypeCompat<'_> {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
 }
 
 /// Checks whether a constant literal is type-compatible with the target type.
@@ -127,197 +133,135 @@ impl Visitor<Diagnostic> for RuleInitializerTypeCompat<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::test_helpers::{
-        parse_and_resolve_types_with_context, parse_and_resolve_types_with_options,
-    };
+    use crate::test_helpers::parse_and_resolve_types_with_options;
 
     use super::*;
     use ironplc_parser::options::{CompilerOptions, Dialect};
     use ironplc_problems::Problem;
 
-    #[test]
-    fn apply_when_int_var_with_integer_literal_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_int_var_with_integer_literal_then_ok,
+        "
 PROGRAM main
 VAR
     x : INT := 10;
 END_VAR
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_real_var_with_real_literal_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_real_var_with_real_literal_then_ok,
+        "
 PROGRAM main
 VAR
     x : REAL := 10.0;
 END_VAR
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_real_var_with_integer_literal_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_real_var_with_integer_literal_then_ok,
+        "
 PROGRAM main
 VAR
     x : REAL := 10;
 END_VAR
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_bool_var_with_boolean_literal_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_bool_var_with_boolean_literal_then_ok,
+        "
 PROGRAM main
 VAR
     x : BOOL := TRUE;
 END_VAR
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_no_initializer_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_no_initializer_then_ok,
+        "
 PROGRAM main
 VAR
     x : INT;
 END_VAR
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_uint_var_with_integer_literal_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_uint_var_with_integer_literal_then_ok,
+        "
 PROGRAM main
 VAR
     x : UINT := 5;
 END_VAR
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_int_var_with_negative_integer_literal_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_int_var_with_negative_integer_literal_then_ok,
+        "
 PROGRAM main
 VAR
     x : INT := -10;
 END_VAR
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_real_var_with_negative_real_literal_then_ok() {
-        let program = "
+    rule_ctx_ok!(
+        apply_when_real_var_with_negative_real_literal_then_ok,
+        "
 PROGRAM main
 VAR
     x : REAL := -10.0;
 END_VAR
-END_PROGRAM";
+END_PROGRAM"
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_int_var_with_real_literal_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_int_var_with_real_literal_then_error,
+        "
 PROGRAM main
 VAR
     dummy : INT := 10.0;
 END_VAR
-END_PROGRAM";
+END_PROGRAM",
+        Problem::InitializerTypeMismatch
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_bool_var_with_integer_literal_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_bool_var_with_integer_literal_then_error,
+        "
 PROGRAM main
 VAR
     x : BOOL := 1;
 END_VAR
-END_PROGRAM";
+END_PROGRAM",
+        Problem::InitializerTypeMismatch
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_real_var_with_boolean_literal_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_real_var_with_boolean_literal_then_error,
+        "
 PROGRAM main
 VAR
     x : REAL := TRUE;
 END_VAR
-END_PROGRAM";
+END_PROGRAM",
+        Problem::InitializerTypeMismatch
+    );
 
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
-    }
-
-    #[test]
-    fn apply_when_int_var_with_string_literal_then_error() {
-        let program = "
+    rule_ctx_err1!(
+        apply_when_int_var_with_string_literal_then_error,
+        "
 PROGRAM main
 VAR
     x : INT := 'hello';
 END_VAR
-END_PROGRAM";
-
-        let (library, context) = parse_and_resolve_types_with_context(program);
-        let result = apply(&library, &context, &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let errors = result.unwrap_err();
-        assert_eq!(1, errors.len());
-        assert_eq!(Problem::InitializerTypeMismatch.code(), errors[0].code);
-    }
+END_PROGRAM",
+        Problem::InitializerTypeMismatch
+    );
 
     #[test]
     fn apply_when_bool_var_with_integer_one_and_rusty_dialect_then_ok() {

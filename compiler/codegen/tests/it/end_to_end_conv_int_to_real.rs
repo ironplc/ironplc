@@ -1,12 +1,9 @@
 //! End-to-end tests for integer-to-real type conversions.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_int_to_real_then_correct() {
-    let source = "
+e2e_f32_near!(
+    end_to_end_when_int_to_real_then_correct,
+    1e-5,
+    "
 PROGRAM main
   VAR
     x : INT;
@@ -15,14 +12,14 @@ PROGRAM main
   x := 42;
   y := INT_TO_REAL(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert!((bufs.vars[1].as_f32() - 42.0).abs() < 1e-5);
-}
+",
+    &[(1, 42.0)],
+);
 
-#[test]
-fn end_to_end_when_dint_to_lreal_then_correct() {
-    let source = "
+e2e_f64_near!(
+    end_to_end_when_dint_to_lreal_then_correct,
+    1e-12,
+    "
 PROGRAM main
   VAR
     x : DINT;
@@ -31,14 +28,14 @@ PROGRAM main
   x := -100;
   y := DINT_TO_LREAL(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert!((bufs.vars[1].as_f64() - (-100.0)).abs() < 1e-12);
-}
+",
+    &[(1, -100.0)],
+);
 
-#[test]
-fn end_to_end_when_sint_to_real_then_correct() {
-    let source = "
+e2e_f32_near!(
+    end_to_end_when_sint_to_real_then_correct,
+    1e-5,
+    "
 PROGRAM main
   VAR
     x : SINT;
@@ -47,14 +44,14 @@ PROGRAM main
   x := -7;
   y := SINT_TO_REAL(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert!((bufs.vars[1].as_f32() - (-7.0)).abs() < 1e-5);
-}
+",
+    &[(1, -7.0)],
+);
 
-#[test]
-fn end_to_end_when_lint_to_lreal_then_correct() {
-    let source = "
+e2e_f64_near!(
+    end_to_end_when_lint_to_lreal_then_correct,
+    1.0,
+    "
 PROGRAM main
   VAR
     x : LINT;
@@ -63,14 +60,14 @@ PROGRAM main
   x := 123456789;
   y := LINT_TO_LREAL(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert!((bufs.vars[1].as_f64() - 123456789.0).abs() < 1.0);
-}
+",
+    &[(1, 123456789.0)],
+);
 
-#[test]
-fn end_to_end_when_uint_to_real_then_correct() {
-    let source = "
+e2e_f32_near!(
+    end_to_end_when_uint_to_real_then_correct,
+    1.0,
+    "
 PROGRAM main
   VAR
     x : UINT;
@@ -79,7 +76,6 @@ PROGRAM main
   x := 40000;
   y := UINT_TO_REAL(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert!((bufs.vars[1].as_f32() - 40000.0).abs() < 1.0);
-}
+",
+    &[(1, 40000.0)],
+);

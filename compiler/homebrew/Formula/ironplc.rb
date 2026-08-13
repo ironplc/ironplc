@@ -28,8 +28,14 @@ class Ironplc < Formula
     end
   
     def install
-      bin.install "ironplcc"
-      bin.install "ironplcvm"
-      bin.install "ironplcmcp"
+      # Keep the binaries and their runtime resources together in libexec, then
+      # symlink the executables onto the PATH. The compiler reads its bundled
+      # compatibility libraries from <exedir>/resources/libs at runtime, and
+      # current_exe() resolves the bin symlink back to libexec -- so the
+      # libraries must sit beside the real binaries here, not in bin.
+      libexec.install "ironplcc", "ironplcvm", "ironplcmcp", "resources"
+      bin.install_symlink libexec/"ironplcc"
+      bin.install_symlink libexec/"ironplcvm"
+      bin.install_symlink libexec/"ironplcmcp"
     end
   end

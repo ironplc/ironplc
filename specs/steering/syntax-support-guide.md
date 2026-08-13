@@ -23,6 +23,10 @@ When adding new syntax, ensure every applicable item is complete:
 
 Not every syntax change requires all items. A new operator might not need new tokens. A token-level fix might not need codegen changes. Use judgment, but **always** include both round-trip and execution tests when the syntax produces executable code.
 
+Each test leg must assert something the others do not — a parser test that only
+checks "it parses" is subsumed by the round-trip test on the same snippet. See
+[Which leg asserts what](#which-leg-asserts-what-avoid-duplicate-tests).
+
 ## Test File Organization (avoid merge conflicts)
 
 Tests are split into **small, feature-focused files** so that two feature
@@ -44,6 +48,31 @@ Prefer a **new** file for a new sub-feature over appending to an existing
 one: appending puts every branch's new tests on the same trailing lines,
 which is exactly what causes the recurring conflicts. Only add to an
 existing file when the new tests genuinely extend that same narrow feature.
+
+### Which leg asserts what (avoid duplicate tests)
+
+A feature gets tests in several crates, and each leg must assert something
+the others do not. A round-trip test already parses the source with the same
+options, so a parser test that only asserts `is_ok()` on that same snippet
+adds no signal — it is subsumed. Keep the legs distinct:
+
+| Leg | Asserts | Do **not** write |
+|---|---|---|
+| **Parser** (`parser/src/tests/`) | The AST *shape*: the node variant, its fields, counts, nesting | A bare "it parses" on a snippet a plc2plc round-trip already covers |
+| **plc2plc** (`plc2plc/src/tests/`) | Text → AST → text fidelity against a golden file | A second assertion that the source parsed |
+| **Analyzer** (`analyzer/src/rule_*.rs`) | The semantic outcome (accepted, or a specific problem code) | Anything about parse success or failure |
+| **codegen `compile_*`** | The emitted instruction sequence / container structure | Run results |
+| **codegen `end_to_end_*`** | Run results — the nominal behavior matrix reachable from ST | — |
+| **VM** (`vm/tests/it/`) | Traps, overflow/wrap edges, and states codegen cannot emit | A nominal case its codegen twin already runs |
+
+Parser tests asserting only `is_ok()` are still right when there is **no**
+round-trip counterpart — a dialect-flag rejection, a pragma, or a corpus file
+plc2plc does not render. The rule is about the same snippet being asserted
+twice at the same strength, not about `is_ok()` itself.
+
+When a VM test and a codegen end-to-end test would cover the same behavior,
+the codegen test owns it and the VM file says so in its module header (see
+`vm/tests/it/execute_fb_ton.rs` or `execute_string_ops.rs` for the wording).
 
 ## Lexer and Token Patterns
 
@@ -69,27 +98,37 @@ Keywords are case-insensitive (`ignore(case)`). Identifiers have lower priority 
 
 **When to use**: When a keyword is only valid under certain conditions (e.g., Edition 3 mode, or an extension flag) and programs may use that keyword as an identifier otherwise.
 
-**How it works**: Define the token as a specific type in the lexer, then "demote" it to `TokenType::Identifier` in a transform pass when the feature is disabled.
+**How it works**: Define the token as a specific type in the lexer, then "demote" it to `TokenType::Identifier` when the feature is disabled. All flag-gated demotions live in **one** module, `parser/src/xform_demote_keywords.rs`, which is the single place that defines *which keyword demotes under which flag*.
 
-**Reference implementation**: `parser/src/xform_demote_edition3_keywords.rs`
+**Reference implementation**: `parser/src/xform_demote_keywords.rs`
+
+To add a demotion, precompute the gate once and add a `match` arm to `apply`:
 
 ```rust
 pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
-    let demote_time_types = !options.allow_iec_61131_3_2013;
-    let demote_ref = !options.allow_iec_61131_3_2013 && !options.allow_ref_to;
+    // Precompute each gate once. Demotion happens when the gate is `true`.
+    let demote_time_types = !options.allow_long_time_types;
+    let demote_ref = !options.allow_ref_to;
+    let demote_oop = !options.allow_fb_inheritance;
+    // ...one gate per feature...
 
     for tok in tokens.iter_mut() {
-        match tok.token_type {
-            TokenType::Ltime | TokenType::Ldate | TokenType::Ltod | TokenType::Ldt
-                if demote_time_types => {
-                tok.token_type = TokenType::Identifier;
+        let demote = match tok.token_type {
+            TokenType::Ltime | TokenType::Ldate | TokenType::Ltod | TokenType::Ldt => {
+                demote_time_types
             }
-            TokenType::RefTo | TokenType::Ref | TokenType::Null if demote_ref => {
-                tok.token_type = TokenType::Identifier;
-            }
-            _ => {}
+            TokenType::RefTo | TokenType::Ref | TokenType::Null => demote_ref,
+            TokenType::Extends | TokenType::Implements | TokenType::Interface
+                | TokenType::EndInterface | TokenType::Abstract => demote_oop,
+            // ...one arm per keyword group...
+            _ => false,
+        };
+        if demote {
+            tok.token_type = TokenType::Identifier;
         }
     }
+
+    apply_time(tokens, options); // context-sensitive cases stay separate
 }
 ```
 
@@ -97,7 +136,8 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
 - The transform runs between lexing and parsing
 - When the feature is enabled, tokens keep their specific type and the parser can match on them
 - When disabled, tokens become identifiers, so programs can use those names freely
-- Each demotion transform is its own `xform_*.rs` module in `parser/src/`
+- Adding a keyword is normally **one `match` arm plus one gate** in `xform_demote_keywords.rs` — no new module and no `lib.rs` registration
+- A **context-sensitive** demotion (one that depends on neighbouring tokens, like `TIME`) stays its own private function in that module (see `apply_time`), called from `apply`
 
 ### Validation Rule Pattern
 
@@ -196,7 +236,7 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 | IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
 | RuSTy | `rusty` | OFF | ON | all ON |
 | CODESYS | `codesys` | OFF | ON | all ON except `allow_system_uptime_global` |
-| TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`), plus `allow_reference_to` — TwinCAT uses `REFERENCE TO` (parsed) / `POINTER TO` (not yet parsed) |
+| TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`), plus `allow_reference_to`, `allow_pointer_to`, and `allow_adr` — TwinCAT spells references `REFERENCE TO` (bound with `REF=`) and pointers `POINTER TO` (bound with `ADR()`) |
 
 ### Grouping Guidance
 
@@ -472,7 +512,7 @@ The token processing pipeline in `parser/src/lib.rs` (`tokenize_program` functio
 1. **`preprocess()`** — normalize source text
 2. **`tokenize()`** — lexer produces raw tokens (via `logos`)
 3. **`insert_keyword_statement_terminators()`** — token transform (flag-gated)
-4. **`xform_demote_edition3_keywords::apply()`** — token demotion (edition-gated)
+4. **`xform_demote_keywords::apply()`** — token demotion (edition- and flag-gated)
 5. **`check_tokens()`** — runs validation rules (flag-gated)
 6. **`parse_library()`** — PEG parser consumes tokens, produces AST
 
@@ -494,7 +534,7 @@ fn check_tokens(tokens: &[Token], options: &CompilerOptions) -> Result<(), Vec<D
 }
 ```
 
-New demotion transforms must be called in `tokenize_program()` **before** `check_tokens()` and **before** `parse_library()`. The order matters: demotion must happen before parsing so the parser sees identifiers, not keywords.
+Keyword demotions are added as a `match` arm in `xform_demote_keywords::apply()` (already wired into `tokenize_program()`), not as new modules. That single pass runs **before** `check_tokens()` and **before** `parse_library()`: demotion must happen before parsing so the parser sees identifiers, not keywords.
 
 ## Common Mistakes
 
@@ -535,20 +575,14 @@ If the syntax uses a new keyword like `LIMIT`, add it to `parser/src/token.rs`:
 Limit,
 ```
 
-Then add a demotion transform so that `LIMIT` is treated as an identifier when the flag is off:
+Then add a demotion so that `LIMIT` is treated as an identifier when the flag is off — a gate plus a `match` arm in the existing `xform_demote_keywords::apply`:
 
 ```rust
-// In a new xform_demote_repeat_limit.rs
-pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
-    if options.allow_repeat_limit {
-        return;
-    }
-    for tok in tokens.iter_mut() {
-        if tok.token_type == TokenType::Limit {
-            tok.token_type = TokenType::Identifier;
-        }
-    }
-}
+// In xform_demote_keywords::apply, alongside the other gates:
+let demote_limit = !options.allow_repeat_limit;
+
+// ...and in the match inside the loop:
+TokenType::Limit => demote_limit,
 ```
 
 #### Step 4: Add Parser Rules

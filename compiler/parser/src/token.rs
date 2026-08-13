@@ -205,7 +205,7 @@ pub enum TokenType {
 
     // Function-block inheritance syntax. Demoted to
     // Identifier unless `allow_fb_inheritance` is set — see
-    // xform_demote_oop_keywords.rs.
+    // xform_demote_keywords.rs.
     #[token("EXTENDS", ignore(case))]
     Extends,
     #[token("IMPLEMENTS", ignore(case))]
@@ -360,6 +360,10 @@ pub enum TokenType {
     // (`--allow-reference-to`). Longest-match keeps this distinct from `REF`.
     #[token("REFERENCE", ignore(case))]
     Reference,
+    // Beckhoff TwinCAT / CODESYS `POINTER TO` pointer types
+    // (`--allow-pointer-to`).
+    #[token("POINTER", ignore(case))]
+    Pointer,
 
     #[token("DATE", ignore(case))]
     Date,
@@ -452,7 +456,7 @@ pub enum TokenType {
     And,
     // CODESYS/TwinCAT short-circuit boolean operator (Beckhoff/CODESYS
     // origin). Demoted to Identifier unless `allow_short_circuit_operators`
-    // is set -- see xform_demote_short_circuit_operators.rs.
+    // is set -- see xform_demote_keywords.rs.
     #[token("AND_THEN", ignore(case))]
     AndThen,
     #[token("=")]
@@ -610,6 +614,7 @@ impl TokenType {
             TokenType::Ref => "'REF'",
             TokenType::Null => "'NULL'",
             TokenType::Reference => "'REFERENCE'",
+            TokenType::Pointer => "'POINTER'",
             TokenType::Date => "'DATE' | 'D'",
             TokenType::TimeOfDay => "'TIME_OF_DAY' | 'TOD'",
             TokenType::DateAndTime => "'DATE_AND_TIME' | 'DT'",

@@ -1,12 +1,8 @@
 //! End-to-end integration tests for ABS with LINT type.
 
-use ironplc_parser::options::CompilerOptions;
-
-use crate::common::parse_and_run;
-
-#[test]
-fn end_to_end_when_abs_lint_negative_then_positive() {
-    let source = "
+e2e_i64!(
+    end_to_end_when_abs_lint_negative_then_positive,
+    "
 PROGRAM main
   VAR
     x : LINT;
@@ -15,7 +11,6 @@ PROGRAM main
   x := -7000000000;
   y := ABS(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-    assert_eq!(bufs.vars[1].as_i64(), 7_000_000_000);
-}
+",
+    &[(1, 7_000_000_000)],
+);

@@ -80,9 +80,6 @@ impl Visitor<Diagnostic> for RuleStructInitializerExpression {
 
 #[cfg(test)]
 mod tests {
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types_with_options;
-
     use super::*;
 
     fn opts_ref_to() -> CompilerOptions {
@@ -100,55 +97,27 @@ mod tests {
         }
     }
 
-    const SOURCE: &str = "
-FUNCTION_BLOCK FB_Device
-VAR_INPUT
-    Delta : INT;
-END_VAR
-END_FUNCTION_BLOCK
+    const SOURCE: &str = "FUNCTION_BLOCK FB_Device VAR_INPUT Delta : INT; END_VAR END_FUNCTION_BLOCK TYPE MyStruct : STRUCT x : INT; END_STRUCT; END_TYPE PROGRAM main VAR pDevice : REF_TO FB_Device; s : MyStruct := (x := pDevice^.Delta); END_VAR END_PROGRAM";
 
-TYPE MyStruct :
-STRUCT
-    x : INT;
-END_STRUCT;
-END_TYPE
+    rule_err1_with!(
+        apply_when_struct_init_expression_and_flag_disabled_then_error,
+        opts_ref_to(),
+        SOURCE,
+        Problem::StructInitializerExpressionNotAllowed
+    );
 
-PROGRAM main
-VAR
-    pDevice : REF_TO FB_Device;
-    s : MyStruct := (x := pDevice^.Delta);
-END_VAR
-END_PROGRAM";
+    rule_ok_with!(
+        apply_when_struct_init_expression_and_flag_enabled_then_ok,
+        opts_ref_to_and_flag(),
+        SOURCE
+    );
 
-    #[test]
-    fn apply_when_struct_init_expression_and_flag_disabled_then_error() {
-        let (library, _) = parse_and_resolve_types_with_options(SOURCE, &opts_ref_to());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &opts_ref_to());
-
-        let diagnostics = result.expect_err("expression-valued struct init must be flagged");
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(
-            diagnostics[0].code,
-            Problem::StructInitializerExpressionNotAllowed.code()
-        );
-    }
-
-    #[test]
-    fn apply_when_struct_init_expression_and_flag_enabled_then_ok() {
-        let (library, _) = parse_and_resolve_types_with_options(SOURCE, &opts_ref_to_and_flag());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &opts_ref_to_and_flag());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_plain_constant_struct_init_then_never_flagged() {
-        // A struct initializer whose value is an ordinary constant parses as
-        // StructInitialValueAssignmentKind::Constant, not Expression, so it is
-        // standard syntax and must never be flagged regardless of the option.
-        let source = "
+    // A struct initializer whose value is an ordinary constant parses as
+    // StructInitialValueAssignmentKind::Constant, not Expression, so it is
+    // standard syntax and must never be flagged regardless of the option.
+    rule_ok!(
+        apply_when_plain_constant_struct_init_then_never_flagged,
+        "
 TYPE MyStruct :
 STRUCT
     x : INT;
@@ -159,12 +128,6 @@ PROGRAM main
 VAR
     s : MyStruct := (x := 5);
 END_VAR
-END_PROGRAM";
-        let (library, _) =
-            parse_and_resolve_types_with_options(source, &CompilerOptions::default());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&library, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
+END_PROGRAM"
+    );
 }

@@ -1,7 +1,7 @@
 //! End-to-end integration tests for REF_TO ARRAY support.
 //! Compiles ST programs with references to array types and runs them through the VM.
 
-use crate::common::{parse_and_compile, parse_and_run};
+use crate::common::parse_and_compile;
 use ironplc_parser::options::{CompilerOptions, Dialect};
 
 #[test]
@@ -38,20 +38,17 @@ END_PROGRAM
     );
 }
 
-#[test]
-fn end_to_end_when_ref_to_array_declared_then_runs() {
-    let source = "
+// x is at var index 1 (data is var 0, x is var 1)
+e2e_i32_with!(
+    end_to_end_when_ref_to_array_declared_then_runs,
+    CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    "
 PROGRAM main
   VAR
     data : REF_TO ARRAY[0..3] OF INT;
     x : INT := 99;
   END_VAR
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(
-        source,
-        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
-    );
-    // x is at var index 1 (data is var 0, x is var 1)
-    assert_eq!(bufs.vars[1].as_i32(), 99);
-}
+",
+    &[(1, 99)],
+);

@@ -6,15 +6,13 @@
 //! TIME values are 32-bit signed integers in milliseconds.
 //! The VM cycle_time is in microseconds; timer intrinsics convert to ms internally.
 
-use ironplc_container::VarIndex;
 use ironplc_parser::options::CompilerOptions;
+use rstest::rstest;
 
-use crate::common::{parse_and_compile, VmBuffers};
-use ironplc_vm::test_support::load_and_start;
+use crate::common::{drive_fb, FbStep, FbStep::*};
 
-#[test]
-fn end_to_end_when_tof_in_true_then_q_is_true() {
-    let source = "
+// timer=var0, result=var1.
+const TOF_IN_TRUE: &str = "
 PROGRAM main
   VAR
     timer : TOF;
@@ -23,20 +21,9 @@ PROGRAM main
   timer(IN := TRUE, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
-        vm.run_round(0).unwrap();
-    }
 
-    // Q should be TRUE when IN is TRUE
-    assert_eq!(bufs.vars[1].as_i32(), 1);
-}
-
-#[test]
-fn end_to_end_when_tof_in_false_before_pt_then_q_is_true() {
-    let source = "
+// timer=var0, enable=var1, result=var2.
+const TOF_ENABLE: &str = "
 PROGRAM main
   VAR
     timer : TOF;
@@ -46,72 +33,9 @@ PROGRAM main
   timer(IN := enable, PT := T#5s, Q => result);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Round 1 at t=0: enable=TRUE
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "Q should be TRUE when IN is TRUE"
-        );
-
-        // Round 2 at t=1s: enable=FALSE, falling edge starts timing
-        vm.write_variable(VarIndex::new(1), 0).unwrap();
-        vm.run_round(1_000_000).unwrap();
-
-        // Round 3 at t=3s: 2s elapsed, still before PT (5s)
-        vm.run_round(3_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "Q should still be TRUE during off-delay"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_tof_in_false_after_pt_then_q_is_false() {
-    let source = "
-PROGRAM main
-  VAR
-    timer : TOF;
-    enable : BOOL;
-    result : BOOL;
-  END_VAR
-  timer(IN := enable, PT := T#5s, Q => result);
-END_PROGRAM
-";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
-
-        // Round 1: enable=TRUE
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.run_round(0).unwrap();
-
-        // Round 2: enable=FALSE, falling edge
-        vm.write_variable(VarIndex::new(1), 0).unwrap();
-        vm.run_round(1_000_000).unwrap();
-
-        // Round 3 at t=7s: 6s elapsed > 5s PT, Q should be FALSE
-        vm.run_round(7_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            0,
-            "Q should be FALSE after PT elapsed"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_tof_reads_et_then_elapsed_time_correct() {
-    let source = "
+// timer=var0, enable=var1, elapsed=var2.
+const TOF_ENABLE_ET: &str = "
 PROGRAM main
   VAR
     timer : TOF;
@@ -121,33 +45,9 @@ PROGRAM main
   timer(IN := enable, PT := T#10s, ET => elapsed);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Round 1: enable=TRUE
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.run_round(0).unwrap();
-
-        // Round 2: enable=FALSE, falling edge starts timing
-        vm.write_variable(VarIndex::new(1), 0).unwrap();
-        vm.run_round(1_000_000).unwrap();
-
-        // Round 3 at t=4s: ET should be 3000 ms (3 seconds)
-        // elapsed is var[2] (timer=var[0], enable=var[1], elapsed=var[2])
-        vm.run_round(4_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            3000,
-            "ET should be 3000 ms (3 seconds)"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_tof_in_rises_during_timing_then_resets() {
-    let source = "
+// timer=var0, enable=var1, result=var2, elapsed=var3.
+const TOF_ENABLE_Q_ET: &str = "
 PROGRAM main
   VAR
     timer : TOF;
@@ -158,106 +58,9 @@ PROGRAM main
   timer(IN := enable, PT := T#5s, Q => result, ET => elapsed);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Round 1 at t=0: enable=TRUE
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "Q should be TRUE"
-        );
-
-        // Round 2 at t=1s: enable=FALSE, falling edge
-        vm.write_variable(VarIndex::new(1), 0).unwrap();
-        vm.run_round(1_000_000).unwrap();
-
-        // Round 3 at t=3s: 2s elapsed, still timing
-        vm.run_round(3_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "Q should be TRUE during timing"
-        );
-
-        // Round 4 at t=4s: enable=TRUE again, reset
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.run_round(4_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "Q should be TRUE"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            0,
-            "ET should be 0 after reset"
-        );
-
-        // Round 5 at t=5s: enable=FALSE again, new falling edge
-        vm.write_variable(VarIndex::new(1), 0).unwrap();
-        vm.run_round(5_000_000).unwrap();
-
-        // Round 6 at t=8s: 3s since new falling edge, still before PT
-        vm.run_round(8_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            1,
-            "Q should be TRUE, only 3s since new falling edge"
-        );
-
-        // Round 7 at t=11s: 6s since new falling edge, past PT
-        vm.run_round(11_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            0,
-            "Q should be FALSE, past PT since new falling edge"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_tof_at_exact_pt_then_q_is_false() {
-    let source = "
-PROGRAM main
-  VAR
-    timer : TOF;
-    enable : BOOL;
-    result : BOOL;
-  END_VAR
-  timer(IN := enable, PT := T#5s, Q => result);
-END_PROGRAM
-";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
-
-        // Round 1: enable=TRUE
-        vm.write_variable(VarIndex::new(1), 1).unwrap();
-        vm.run_round(0).unwrap();
-
-        // Round 2 at t=1s: enable=FALSE, falling edge
-        vm.write_variable(VarIndex::new(1), 0).unwrap();
-        vm.run_round(1_000_000).unwrap();
-
-        // Round 3 at exactly t=6s: ET == PT (5s), Q should be FALSE
-        vm.run_round(6_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(2)).unwrap(),
-            0,
-            "Q should be FALSE when ET equals PT exactly"
-        );
-    }
-}
-
-#[test]
-fn end_to_end_when_two_tof_timers_then_independent() {
-    let source = "
+// timer1=var0, timer2=var1, enable=var2, q1=var3, q2=var4.
+const TOF_TWO: &str = "
 PROGRAM main
   VAR
     timer1 : TOF;
@@ -270,53 +73,51 @@ PROGRAM main
   timer2(IN := enable, PT := T#7s, Q => q2);
 END_PROGRAM
 ";
-    let container = parse_and_compile(source, &CompilerOptions::default());
-    let mut bufs = VmBuffers::from_container(&container);
-    {
-        let mut vm = load_and_start(&container, &mut bufs).unwrap();
 
-        // Round 1: enable=TRUE
-        vm.write_variable(VarIndex::new(2), 1).unwrap();
-        vm.run_round(0).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            1,
-            "q1 should be TRUE"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(4)).unwrap(),
-            1,
-            "q2 should be TRUE"
-        );
-
-        // Round 2 at t=1s: enable=FALSE, both start timing
-        vm.write_variable(VarIndex::new(2), 0).unwrap();
-        vm.run_round(1_000_000).unwrap();
-
-        // Round 3 at t=5s: timer1 (3s) done, timer2 (7s) still running
-        vm.run_round(5_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            0,
-            "q1 should be FALSE at t=5s"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(4)).unwrap(),
-            1,
-            "q2 should be TRUE at t=5s"
-        );
-
-        // Round 4 at t=9s: both done
-        vm.run_round(9_000_000).unwrap();
-        assert_eq!(
-            vm.read_variable(VarIndex::new(3)).unwrap(),
-            0,
-            "q1 should be FALSE at t=9s"
-        );
-        assert_eq!(
-            vm.read_variable(VarIndex::new(4)).unwrap(),
-            0,
-            "q2 should be FALSE at t=9s"
-        );
-    }
+#[rstest]
+// IN TRUE: Q is TRUE immediately.
+#[case::in_true(TOF_IN_TRUE, &[Run(0), Expect(1, 1)])]
+// After the falling edge, Q stays TRUE while still within PT.
+#[case::in_false_before_pt(TOF_ENABLE, &[
+    Write(1, 1), Run(0), Expect(2, 1),
+    Write(1, 0), Run(1_000_000),
+    Run(3_000_000), Expect(2, 1),
+])]
+// Past PT after the falling edge: Q goes FALSE.
+#[case::in_false_after_pt(TOF_ENABLE, &[
+    Write(1, 1), Run(0),
+    Write(1, 0), Run(1_000_000),
+    Run(7_000_000), Expect(2, 0),
+])]
+// ET reports 3s of off-delay elapsed.
+#[case::reads_et(TOF_ENABLE_ET, &[
+    Write(1, 1), Run(0),
+    Write(1, 0), Run(1_000_000),
+    Run(4_000_000), Expect(2, 3000),
+])]
+// IN rising during timing resets; a new falling edge restarts the delay.
+#[case::in_rises_resets(TOF_ENABLE_Q_ET, &[
+    Write(1, 1), Run(0), Expect(2, 1),
+    Write(1, 0), Run(1_000_000),
+    Run(3_000_000), Expect(2, 1),
+    Write(1, 1), Run(4_000_000), Expect(2, 1), Expect(3, 0),
+    Write(1, 0), Run(5_000_000),
+    Run(8_000_000), Expect(2, 1),
+    Run(11_000_000), Expect(2, 0),
+])]
+// ET == PT exactly: Q is FALSE.
+#[case::at_exact_pt(TOF_ENABLE, &[
+    Write(1, 1), Run(0),
+    Write(1, 0), Run(1_000_000),
+    Run(6_000_000), Expect(2, 0),
+])]
+// Two TOF timers with different PT run independently.
+#[case::two_timers(TOF_TWO, &[
+    Write(2, 1), Run(0), Expect(3, 1), Expect(4, 1),
+    Write(2, 0), Run(1_000_000),
+    Run(5_000_000), Expect(3, 0), Expect(4, 1),
+    Run(9_000_000), Expect(3, 0), Expect(4, 0),
+])]
+fn end_to_end_fb_tof(#[case] source: &str, #[case] steps: &[FbStep]) {
+    drive_fb(source, &CompilerOptions::default(), steps);
 }

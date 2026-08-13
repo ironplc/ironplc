@@ -106,10 +106,7 @@ pub fn build_response(
     }
 
     // Run semantic analysis
-    let mut diagnostics: Vec<serde_json::Value> = Vec::new();
-    if let Err(errs) = project.semantic() {
-        diagnostics = serialize_diagnostics(&errs);
-    }
+    let mut diagnostics = serialize_diagnostics(&project.semantic());
 
     // Check if we can proceed to codegen
     let has_errors = diagnostics
@@ -335,6 +332,7 @@ fn program_meta_from_config(prog: &ProgramConfiguration) -> ProgramMeta {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::test_support::ed2_options;
 
     fn make_cache() -> Mutex<ContainerCache> {
         Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024))
@@ -360,10 +358,6 @@ END_CONFIGURATION
 "#
             .into(),
         }]
-    }
-
-    fn ed2_options() -> serde_json::Value {
-        serde_json::json!({ "dialect": "iec61131-3-ed2" })
     }
 
     #[test]

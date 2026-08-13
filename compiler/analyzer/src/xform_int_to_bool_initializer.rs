@@ -118,7 +118,7 @@ mod tests {
 
         let mut finder = InitFinder { result: None };
         finder.walk(library).unwrap();
-        finder.result.expect("No initializer found")
+        finder.result.unwrap()
     }
 
     #[test]

@@ -44,13 +44,13 @@ Build Commands
    Compile source files into a bytecode container (``.iplc``) file. Requires
    the ``--output`` (``-o``) flag to specify the output file path.
 
-   .. warning::
+   .. note::
 
-      The compile command currently supports only trivial programs. Supported
-      features include: ``PROGRAM`` declarations, ``INT`` variable declarations,
-      assignment statements, integer literal constants, and the ``+`` (add)
-      operator. Programs using other features will produce a code generation
-      error.
+      The compile command supports Structured Text programs, including
+      functions, function blocks, the standard library, and activated
+      compatibility libraries. A program that uses a feature code
+      generation does not yet support produces a code generation error
+      rather than incorrect bytecode.
 
 Diagnostic Commands
 -------------------
@@ -99,6 +99,13 @@ Options
    (default), ``iec61131-3-ed3``, ``rusty``, ``codesys``, ``twincat``. See
    :doc:`/explanation/enabling-dialects-and-features` for details.
 
+``--library`` *NAME*
+   Activate a :doc:`compatibility library </reference/compatibility-libraries/index>`
+   by name (for example ``--library Tc2_System``). Repeat the option to
+   activate several libraries. Applies to the ``check`` and ``compile``
+   commands. Libraries referenced by a discovered project file are
+   activated automatically and do not need this option.
+
 ``--allow-c-style-comments``
    Allow C-style comments (``//`` line comments and ``/* */`` block
    comments). This is an extension not part of the IEC 61131-3
@@ -128,15 +135,29 @@ Options
    Required for OSCAT compatibility. This is an extension not part
    of the IEC 61131-3 standard.
 
+``--allow-long-time-types``
+   Allow the IEC 61131-3:2013 long-time-type keywords ``LTIME``, ``LDATE``,
+   ``LTIME_OF_DAY`` (``LTOD``), and ``LDATE_AND_TIME`` (``LDT``). Without this
+   flag those words remain available as ordinary identifiers.
+
 ``--allow-ref-to``
-   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax without enabling full
-   Edition 3. This is an extension useful when you need references
-   but want to keep Edition 2 keyword handling for the rest of your code.
+   Allow ``REF_TO``, ``REF()``, and ``NULL`` syntax (standardized in
+   IEC 61131-3:2013) without enabling the rest of Edition 3. This is useful
+   when you need references but want to keep Edition 2 keyword handling for the
+   rest of your code.
 
 ``--allow-reference-to``
    Allow the Beckhoff TwinCAT / CODESYS ``REFERENCE TO`` reference type and the
    ``REF=`` binding operator — the TwinCAT/CODESYS-facing alternative to
    ``--allow-ref-to``.
+
+``--allow-pointer-to``
+   Allow the Beckhoff TwinCAT / CODESYS ``POINTER TO`` pointer type with
+   explicit dereference (``^``).
+
+``--allow-adr``
+   Allow the ``ADR()`` address-of operator, which returns a typed pointer to
+   a variable for assignment to a ``POINTER TO`` variable.
 
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,

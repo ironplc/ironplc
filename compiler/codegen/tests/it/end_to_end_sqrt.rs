@@ -4,9 +4,10 @@ use ironplc_parser::options::CompilerOptions;
 
 use crate::common::parse_and_run;
 
-#[test]
-fn end_to_end_when_sqrt_real_perfect_square_then_correct() {
-    let source = "
+e2e_f32_near!(
+    end_to_end_when_sqrt_real_perfect_square_then_correct,
+    1e-5,
+    "
 PROGRAM main
   VAR
     x : REAL;
@@ -15,16 +16,14 @@ PROGRAM main
   x := 9.0;
   y := SQRT(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
+",
+    &[(1, 3.0)],
+);
 
-    let y = bufs.vars[1].as_f32();
-    assert!((y - 3.0).abs() < 1e-5, "expected 3.0, got {y}");
-}
-
-#[test]
-fn end_to_end_when_sqrt_real_zero_then_zero() {
-    let source = "
+e2e_f32_near!(
+    end_to_end_when_sqrt_real_zero_then_zero,
+    1e-5,
+    "
 PROGRAM main
   VAR
     x : REAL;
@@ -33,12 +32,9 @@ PROGRAM main
   x := 0.0;
   y := SQRT(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let y = bufs.vars[1].as_f32();
-    assert!((y - 0.0).abs() < 1e-5, "expected 0.0, got {y}");
-}
+",
+    &[(1, 0.0)],
+);
 
 #[test]
 fn end_to_end_when_sqrt_real_negative_then_nan() {
@@ -58,9 +54,10 @@ END_PROGRAM
     assert!(y.is_nan(), "expected NaN, got {y}");
 }
 
-#[test]
-fn end_to_end_when_sqrt_lreal_then_correct() {
-    let source = "
+e2e_f64_near!(
+    end_to_end_when_sqrt_lreal_then_correct,
+    1e-12,
+    "
 PROGRAM main
   VAR
     x : LREAL;
@@ -69,15 +66,9 @@ PROGRAM main
   x := 2.0;
   y := SQRT(x);
 END_PROGRAM
-";
-    let (_c, bufs) = parse_and_run(source, &CompilerOptions::default());
-
-    let y = bufs.vars[1].as_f64();
-    assert!(
-        (y - std::f64::consts::SQRT_2).abs() < 1e-12,
-        "expected sqrt(2), got {y}"
-    );
-}
+",
+    &[(1, std::f64::consts::SQRT_2)],
+);
 
 #[test]
 fn end_to_end_when_sqrt_lreal_negative_then_nan() {

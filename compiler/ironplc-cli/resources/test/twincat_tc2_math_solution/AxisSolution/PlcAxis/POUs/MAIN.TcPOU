@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="MAIN" Id="{9c48e1b7-2f60-4d35-a8b9-51e7d0c3f624}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    rawPosition : LREAL;
+    wrappedAngle : LREAL;
+    signedAngle : LREAL;
+    wholeTurns : LREAL;
+    turnFraction : LREAL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[rawPosition := rawPosition + 400.56;
+wrappedAngle := MODABS(rawPosition, 360.0);
+signedAngle := LMOD(rawPosition, 360.0);
+wholeTurns := LTRUNC(rawPosition / 360.0);
+turnFraction := FRAC(rawPosition / 360.0);]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

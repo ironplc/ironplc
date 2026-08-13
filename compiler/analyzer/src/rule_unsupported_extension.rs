@@ -25,7 +25,11 @@ use ironplc_dsl::{
     visitor::Visitor,
 };
 
-use crate::{result::SemanticResult, semantic_context::SemanticContext};
+use crate::{
+    result::SemanticResult,
+    rule_support::{run_rule, DiagnosticVisitor},
+    semantic_context::SemanticContext,
+};
 use ironplc_parser::options::CompilerOptions;
 
 pub fn apply(
@@ -33,31 +37,32 @@ pub fn apply(
     _context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut visitor = RuleUnsupportedExtension {
-        diagnostics: Vec::new(),
-    };
-    visitor.walk(lib).map_err(|e| vec![e])?;
-
-    if !visitor.diagnostics.is_empty() {
-        return Err(visitor.diagnostics);
-    }
-    Ok(())
+    run_rule(
+        RuleUnsupportedExtension {
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 struct RuleUnsupportedExtension {
     diagnostics: Vec<Diagnostic>,
 }
 
+impl DiagnosticVisitor for RuleUnsupportedExtension {
+    fn into_diagnostics(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
 impl RuleUnsupportedExtension {
     fn flag(&mut self, ext: &dyn LanguageExtension) {
-        let origins: Vec<&str> = ext.extension_origins().iter().map(|o| o.as_str()).collect();
         self.diagnostics
             .push(Diagnostic::not_implemented(Label::span(
                 ext.extension_span(),
                 format!(
-                    "{} ({} extension) is recognized but not yet supported by IronPLC",
+                    "{} is recognized but not yet supported by IronPLC",
                     ext.extension_name(),
-                    origins.join(", "),
                 ),
             )));
     }
@@ -111,29 +116,23 @@ mod tests {
         }
     }
 
-    #[test]
-    fn apply_when_plain_function_block_then_ok() {
-        let program = "
+    rule_ok!(
+        apply_when_plain_function_block_then_ok,
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     bRunning : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
+END_FUNCTION_BLOCK"
+    );
 
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &CompilerOptions::default());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &CompilerOptions::default());
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_plain_extends_then_ok() {
-        // Plain EXTENDS (no IMPLEMENTS, not ABSTRACT) no longer flags --
-        // field inheritance through the EXTENDS chain is fully resolved.
-        // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
-        let program = "
+    // Plain EXTENDS (no IMPLEMENTS, not ABSTRACT) no longer flags --
+    // field inheritance through the EXTENDS chain is fully resolved.
+    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
+    rule_ok_with!(
+        apply_when_plain_extends_then_ok,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK FB_Motor
 VAR
     bRunning : BOOL;
@@ -144,15 +143,8 @@ FUNCTION_BLOCK FB_AdvancedMotor EXTENDS FB_Motor
 VAR
     bTurbo : BOOL;
 END_VAR
-END_FUNCTION_BLOCK";
-
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 
     #[test]
     fn apply_when_implements_then_p9999() {

@@ -118,8 +118,6 @@ impl Visitor<Diagnostic> for RuleAbstractNotInstantiated {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::semantic_context::SemanticContextBuilder;
-    use crate::test_helpers::parse_and_resolve_types_with_options;
 
     fn opts_with_fb_inheritance() -> CompilerOptions {
         CompilerOptions {
@@ -128,9 +126,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn apply_when_abstract_fb_instantiated_then_error() {
-        let program = "
+    rule_err1_with!(
+        apply_when_abstract_fb_instantiated_then_error,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK ABSTRACT FB_Base
 END_FUNCTION_BLOCK
 
@@ -138,23 +137,14 @@ FUNCTION_BLOCK FB_User
 VAR
     inst : FB_Base;
 END_VAR
-END_FUNCTION_BLOCK";
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
+END_FUNCTION_BLOCK",
+        Problem::AbstractFunctionBlockInstantiated
+    );
 
-        let errors = result.unwrap_err();
-        assert_eq!(errors.len(), 1);
-        assert_eq!(
-            Problem::AbstractFunctionBlockInstantiated.code(),
-            errors[0].code
-        );
-    }
-
-    #[test]
-    fn apply_when_non_abstract_fb_instantiated_then_ok() {
-        let program = "
+    rule_ok_with!(
+        apply_when_non_abstract_fb_instantiated_then_ok,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK FB_Base
 END_FUNCTION_BLOCK
 
@@ -162,20 +152,13 @@ FUNCTION_BLOCK FB_User
 VAR
     inst : FB_Base;
 END_VAR
-END_FUNCTION_BLOCK";
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
+END_FUNCTION_BLOCK"
+    );
 
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_concrete_subclass_of_abstract_instantiated_then_ok() {
-        // A concrete FB that EXTENDS an abstract base can itself still
-        // be instantiated -- only the abstract type is flagged.
-        let program = "
+    rule_ok_with!(
+        apply_when_concrete_subclass_of_abstract_instantiated_then_ok,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK ABSTRACT FB_Base
 END_FUNCTION_BLOCK
 
@@ -186,28 +169,17 @@ FUNCTION_BLOCK FB_User
 VAR
     inst : FB_Concrete;
 END_VAR
-END_FUNCTION_BLOCK";
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
+END_FUNCTION_BLOCK"
+    );
 
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn apply_when_no_abstract_fb_in_library_then_ok() {
-        let program = "
+    rule_ok_with!(
+        apply_when_no_abstract_fb_in_library_then_ok,
+        opts_with_fb_inheritance(),
+        "
 FUNCTION_BLOCK FB_Plain
 VAR
     x : INT;
 END_VAR
-END_FUNCTION_BLOCK";
-        let (input, _context) =
-            parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
-        let context = SemanticContextBuilder::new().build().unwrap();
-        let result = apply(&input, &context, &opts_with_fb_inheritance());
-
-        assert!(result.is_ok());
-    }
+END_FUNCTION_BLOCK"
+    );
 }

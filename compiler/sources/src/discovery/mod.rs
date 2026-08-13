@@ -19,6 +19,19 @@ use ironplc_problems::Problem;
 use log::{info, trace};
 
 use crate::file_type::FileType;
+use crate::libraries::{LibraryName, LibraryReference};
+
+/// Bundled libraries TwinCAT provides to every PLC project without a
+/// reference anywhere in the `.plcproj` — the built-in (compiler-operator)
+/// surface. Discovering a TwinCAT project always activates these
+/// (`REQ-CL-sources-008`); there is no way to opt out, because there is no
+/// TwinCAT project without them.
+///
+/// Deliberately a hard-coded list for now: a manifest-driven "implicit"
+/// marker would need to express *which vendor's* project format implies the
+/// library, and that mechanism does not exist yet. When a second vendor
+/// project discovery arrives, replace this with the real mechanism.
+const TWINCAT_IMPLICIT_LIBRARIES: &[&str] = &["Tc2_BuiltIns"];
 
 /// The type of PLC project that was detected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +53,18 @@ pub struct DiscoveredProject {
     pub root_dir: PathBuf,
     /// The source files to load, in deterministic order
     pub files: Vec<PathBuf>,
+    /// The compatibility libraries the project declares it references, in
+    /// declaration order and deduplicated by name. Read from a `.plcproj`'s
+    /// `<PlaceholderReference>` / `<LibraryReference>` elements
+    /// (`REQ-CL-sources-001`); system libraries (`<SystemLibrary>true`) are
+    /// skipped. For a TwinCAT project the list additionally carries a
+    /// synthetic reference per implicit bundled library (`REQ-CL-sources-008`),
+    /// appended after the declared references. Empty for project types that
+    /// carry no library references.
+    /// Callers resolve these against the bundled registry
+    /// ([`crate::libraries::LibraryRegistry::resolve_references`]) to decide
+    /// which libraries to activate.
+    pub library_references: Vec<LibraryReference>,
     /// Problems found during discovery that should not abort discovery of
     /// the rest of the project -- currently just `.plcproj`
     /// `<Compile Include="...">` entries that don't resolve to a real
@@ -103,6 +128,7 @@ fn detect_beremiz(dir: &Path) -> Option<DiscoveredProject> {
             project_type: ProjectType::Beremiz,
             root_dir: dir.to_path_buf(),
             files: vec![plc_xml],
+            library_references: vec![],
             errors: vec![],
         })
     } else {
@@ -205,7 +231,9 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
     let single = plcproj_paths.len() == 1;
     let mut merged_files = Vec::new();
     let mut merged_errors = Vec::new();
+    let mut merged_library_references: Vec<LibraryReference> = Vec::new();
     let mut seen_files = HashSet::new();
+    let mut seen_libraries: HashSet<LibraryName> = HashSet::new();
     let mut merged_root_dir = dir.to_path_buf();
 
     for plcproj_path in &plcproj_paths {
@@ -217,6 +245,15 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
 
         if single {
             merged_root_dir = project.root_dir.clone();
+        }
+
+        // A library referenced by more than one sub-project must only be
+        // activated once. Dedup by name (first reference wins), matching the
+        // name-only resolution the registry performs downstream.
+        for reference in project.library_references {
+            if seen_libraries.insert(reference.name.clone()) {
+                merged_library_references.push(reference);
+            }
         }
 
         for file in project.files {
@@ -234,12 +271,49 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
         merged_errors.extend(project.errors);
     }
 
+    // Implicit (vendor built-in) libraries: TwinCAT provides these names to
+    // every project with no reference anywhere in the .plcproj, so discovering
+    // a TwinCAT project activates them (`REQ-CL-sources-008`). The synthetic
+    // reference joins the merged list before downstream resolution and is
+    // deduped against any real reference of the same name.
+    append_implicit_references(
+        &mut merged_library_references,
+        &mut seen_libraries,
+        &plcproj_paths[0],
+    );
+
     Some(Ok(DiscoveredProject {
         project_type: ProjectType::TwinCat,
         root_dir: merged_root_dir,
         files: merged_files,
+        library_references: merged_library_references,
         errors: merged_errors,
     }))
+}
+
+/// Append a synthetic reference for every library in
+/// [`TWINCAT_IMPLICIT_LIBRARIES`] the project does not already reference
+/// (`REQ-CL-sources-008`).
+///
+/// TwinCAT provides implicit libraries to every project, so the discovered
+/// project file itself is the activation signal; `declared_in` anchors any
+/// downstream diagnostic on that project file.
+fn append_implicit_references(
+    references: &mut Vec<LibraryReference>,
+    seen: &mut HashSet<LibraryName>,
+    declared_in: &Path,
+) {
+    for name in TWINCAT_IMPLICIT_LIBRARIES {
+        let name = LibraryName::from(*name);
+        if seen.insert(name.clone()) {
+            references.push(LibraryReference {
+                name,
+                version: None,
+                namespace: None,
+                declared_in: FileId::from_path(declared_in),
+            });
+        }
+    }
 }
 
 /// Parse a `.plcproj` file and extract `<Compile Include="...">` paths.
@@ -266,6 +340,7 @@ fn parse_plcproj(plcproj_path: &Path, root_dir: &Path) -> Result<DiscoveredProje
 
     let mut files = Vec::new();
     let mut errors = Vec::new();
+    let library_references = parse_library_references(&doc, plcproj_path);
 
     // Find all <Compile Include="..."> elements anywhere in the document.
     // An entry that doesn't resolve to a real file (a stale reference, a
@@ -307,8 +382,112 @@ fn parse_plcproj(plcproj_path: &Path, root_dir: &Path) -> Result<DiscoveredProje
         project_type: ProjectType::TwinCat,
         root_dir: root_dir.to_path_buf(),
         files,
+        library_references,
         errors,
     })
+}
+
+/// Extract the compatibility-library references from a parsed `.plcproj`.
+///
+/// A `.plcproj` states which libraries the project uses (the vendor's own
+/// record) in `<ItemGroup>` as one of two element types (`REQ-CL-sources-001`):
+///
+/// - `<PlaceholderReference Include="Name">` — the common, version-flexible
+///   form. The version lives in `<DefaultResolution>Name, Version (Vendor)`,
+///   usually the `*` wildcard.
+/// - `<LibraryReference Include="Name,Version,Vendor">` — a concrete, pinned
+///   reference.
+///
+/// Both may carry a `<Namespace>` child (the qualifier the source may write).
+/// A reference marked `<SystemLibrary>true</SystemLibrary>` (CODESYS /
+/// visualization system libraries such as `VisuElems`) is not vendor-authored
+/// ST we bundle, so the first increment skips it. Element names are matched by
+/// local name, so the MSBuild default `xmlns` does not need special handling —
+/// the same way `<Compile>` is already read.
+fn parse_library_references(
+    doc: &roxmltree::Document,
+    plcproj_path: &Path,
+) -> Vec<LibraryReference> {
+    let declared_in = FileId::from_path(plcproj_path);
+    let mut references = Vec::new();
+
+    for node in doc.descendants() {
+        if !node.is_element() {
+            continue;
+        }
+
+        let (raw_name, version) = match node.tag_name().name() {
+            "PlaceholderReference" => {
+                let Some(include) = node.attribute("Include") else {
+                    continue;
+                };
+                // The version, when present, is the middle field of
+                // `<DefaultResolution>Name, Version (Vendor)</DefaultResolution>`.
+                let version = child_text(node, "DefaultResolution")
+                    .and_then(|resolution| default_resolution_version(&resolution));
+                (include.to_string(), version)
+            }
+            "LibraryReference" => {
+                let Some(include) = node.attribute("Include") else {
+                    continue;
+                };
+                // Include is `Name,Version,Vendor`.
+                let mut fields = include.splitn(3, ',');
+                let name = fields.next().unwrap_or("").trim().to_string();
+                let version = fields
+                    .next()
+                    .map(|field| field.trim().to_string())
+                    .filter(|field| !field.is_empty());
+                (name, version)
+            }
+            _ => continue,
+        };
+
+        // Skip system libraries for now (REQ-CL-sources-001 note).
+        if child_text(node, "SystemLibrary")
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("true"))
+        {
+            continue;
+        }
+
+        let name = raw_name.trim();
+        if name.is_empty() {
+            continue;
+        }
+
+        let namespace = child_text(node, "Namespace")
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        references.push(LibraryReference {
+            name: LibraryName::from(name),
+            version,
+            namespace,
+            declared_in: declared_in.clone(),
+        });
+    }
+
+    references
+}
+
+/// The trimmed text of the first direct child element named `tag`, if any.
+fn child_text(node: roxmltree::Node, tag: &str) -> Option<String> {
+    node.children()
+        .find(|child| child.is_element() && child.tag_name().name() == tag)
+        .and_then(|child| child.text())
+        .map(str::to_string)
+}
+
+/// Extract the version from a `<DefaultResolution>` value of the form
+/// `Name, Version (Vendor)`. Returns `None` when no version is present.
+fn default_resolution_version(resolution: &str) -> Option<String> {
+    let after_name = resolution.split_once(',')?.1;
+    let version = after_name.split('(').next()?.trim();
+    if version.is_empty() {
+        None
+    } else {
+        Some(version.to_string())
+    }
 }
 
 /// Fallback detection: recursively enumerate all supported files under
@@ -332,6 +511,7 @@ fn detect_fallback(dir: &Path) -> DiscoveredProject {
         project_type: ProjectType::Unstructured,
         root_dir: dir.to_path_buf(),
         files,
+        library_references: vec![],
         errors: vec![],
     }
 }
@@ -341,6 +521,70 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn discover_when_plcproj_has_no_references_then_implicit_libraries_added() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        let names: Vec<&str> = result
+            .library_references
+            .iter()
+            .map(|reference| reference.name.as_str())
+            .collect();
+        assert_eq!(names, ["Tc2_BuiltIns"]);
+    }
+
+    #[test]
+    fn discover_when_plcproj_already_references_implicit_library_then_not_duplicated() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+    <PlaceholderReference Include="Tc2_BuiltIns">
+      <Namespace>Tc2_BuiltIns</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        let count = result
+            .library_references
+            .iter()
+            .filter(|reference| reference.name.as_str() == "Tc2_BuiltIns")
+            .count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn append_implicit_references_when_already_seen_then_appends_nothing() {
+        let mut references = Vec::new();
+        let mut seen: HashSet<LibraryName> = TWINCAT_IMPLICIT_LIBRARIES
+            .iter()
+            .map(|name| LibraryName::from(*name))
+            .collect();
+
+        append_implicit_references(&mut references, &mut seen, Path::new("project.plcproj"));
+
+        assert!(references.is_empty());
+    }
 
     #[test]
     fn discover_when_empty_directory_then_returns_unstructured() {
@@ -495,6 +739,119 @@ mod tests {
         assert!(result.errors[0].primary.message.contains("MISSING.TcPOU"));
     }
 
+    // -- TwinCAT library-reference parsing tests --
+
+    #[test]
+    fn discover_when_plcproj_has_library_references_then_reads_them() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+    <PlaceholderReference Include="Tc2_System">
+      <DefaultResolution>Tc2_System, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc2_System</Namespace>
+    </PlaceholderReference>
+    <LibraryReference Include="Tc2_Utilities,3.3.7.0,Beckhoff Automation GmbH">
+      <Namespace>Tc2_Utilities</Namespace>
+    </LibraryReference>
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        // The two declared references in declaration order, then the implicit
+        // Tc2_BuiltIns every TwinCAT project gets.
+        let references = &result.library_references;
+        assert_eq!(references.len(), 3);
+        assert_eq!(references[0].name.as_str(), "Tc2_System");
+        assert_eq!(references[0].version.as_deref(), Some("*"));
+        assert_eq!(references[0].namespace.as_deref(), Some("Tc2_System"));
+        assert_eq!(references[1].name.as_str(), "Tc2_Utilities");
+        assert_eq!(references[1].version.as_deref(), Some("3.3.7.0"));
+        assert_eq!(references[2].name.as_str(), "Tc2_BuiltIns");
+        assert_eq!(references[2].version, None);
+    }
+
+    #[test]
+    fn discover_when_plcproj_reference_is_system_library_then_skipped() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <PlaceholderReference Include="VisuElems">
+      <SystemLibrary>true</SystemLibrary>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        // The system library is skipped; only the implicit Tc2_BuiltIns
+        // every TwinCAT project gets remains.
+        let names: Vec<&str> = result
+            .library_references
+            .iter()
+            .map(|reference| reference.name.as_str())
+            .collect();
+        assert_eq!(names, ["Tc2_BuiltIns"]);
+    }
+
+    #[test]
+    fn discover_when_multiple_plcproj_reference_same_library_then_deduplicated() {
+        let dir = TempDir::new().unwrap();
+
+        let a_dir = dir.path().join("ProjectA");
+        fs::create_dir_all(&a_dir).unwrap();
+        fs::write(a_dir.join("A.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            a_dir.join("ProjectA.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="A.TcPOU" />
+    <PlaceholderReference Include="Tc2_System">
+      <Namespace>Tc2_System</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let b_dir = dir.path().join("ProjectB");
+        fs::create_dir_all(&b_dir).unwrap();
+        fs::write(b_dir.join("B.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            b_dir.join("ProjectB.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="B.TcPOU" />
+    <PlaceholderReference Include="Tc2_System">
+      <Namespace>Tc2_System</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        // The shared reference is deduplicated to one entry, followed by the
+        // implicit Tc2_BuiltIns every TwinCAT project gets.
+        let names: Vec<&str> = result
+            .library_references
+            .iter()
+            .map(|reference| reference.name.as_str())
+            .collect();
+        assert_eq!(names, ["Tc2_System", "Tc2_BuiltIns"]);
+    }
+
     #[test]
     fn detect_twincat_when_no_plcproj_then_returns_none() {
         let dir = TempDir::new().unwrap();
@@ -609,7 +966,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = discover(dir.path()).expect("missing entries must not abort discovery itself");
+        let result = discover(dir.path()).unwrap();
         assert_eq!(result.errors.len(), 1);
     }
 

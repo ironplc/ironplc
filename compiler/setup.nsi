@@ -94,6 +94,11 @@ Section "Program files"
     File "${ARTIFACTSDIR}\${VMFILE}"
     File "${ARTIFACTSDIR}\${MCPFILE}"
 
+    ; Compatibility libraries ship beside the binaries; the compiler reads them
+    ; from <bindir>\resources\libs at runtime. `/r` preserves the `libs` tree.
+    SetOutPath "$INSTDIR\bin\resources"
+    File /r "sources\resources\libs"
+
     SetOutPath "$INSTDIR\examples"
     File "..\examples\getting_started.st"
 

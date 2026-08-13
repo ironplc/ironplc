@@ -215,6 +215,17 @@ fn opcode_constants_when_builtin_then_pinned_byte() {
 }
 
 #[test]
+fn builtin_func_ids_when_unnamed_arithmetic_builtins_then_pinned_values() {
+    // The __TRUNC/__MOD lowering targets are permanent compiler/VM ABI:
+    // containers encode these func_ids directly, so the values are
+    // wire-format commitments and must never change.
+    assert_eq!(opcode::builtin::TRUNC_F64, 0x03A3);
+    assert_eq!(opcode::builtin::MOD_F64, 0x03A4);
+    assert_eq!(opcode::builtin::TRUNC_F32, 0x03A5);
+    assert_eq!(opcode::builtin::MOD_F32, 0x03A6);
+}
+
+#[test]
 fn opcode_constants_when_fb_family_then_pinned_bytes() {
     assert_eq!(opcode::FB_LOAD_INSTANCE, 0x98);
     assert_eq!(opcode::FB_STORE_PARAM, 0x9C);
@@ -576,7 +587,7 @@ END_PROGRAM
             let bc = container.code.get_function_bytecode(entry.function_id)?;
             bc.iter().position(|&b| b == opcode::CALL).map(|p| (bc, p))
         })
-        .expect("CALL opcode present in some function");
+        .unwrap();
     assert_eq!(opcode::instruction_size(opcode::CALL), 5);
     assert!(
         call_pos + 5 <= call_bc.len(),
@@ -610,10 +621,7 @@ END_PROGRAM
         .unwrap();
     // Find STR_INIT (0xB8). Validate the 7 trailing operand bytes
     // decode as LE u32 + LE u16 + u8.
-    let pos = init_bc
-        .iter()
-        .position(|&b| b == 0xB8)
-        .expect("STR_INIT opcode present in program init");
+    let pos = init_bc.iter().position(|&b| b == 0xB8).unwrap();
     assert_eq!(opcode::instruction_size(opcode::STR_INIT), 8);
     assert!(
         pos + 8 <= init_bc.len(),
@@ -648,10 +656,7 @@ PROGRAM main
 END_PROGRAM
 ",
     );
-    let pos = bc
-        .iter()
-        .position(|&b| b == 0xC4)
-        .expect("LEN_STR opcode present");
+    let pos = bc.iter().position(|&b| b == 0xC4).unwrap();
     assert_eq!(opcode::instruction_size(opcode::LEN_STR), 5);
     assert!(pos + 5 <= bc.len(), "LEN_STR has 4 trailing u32 bytes");
     let _data_offset = u32::from_le_bytes([bc[pos + 1], bc[pos + 2], bc[pos + 3], bc[pos + 4]]);
@@ -673,10 +678,7 @@ PROGRAM main
 END_PROGRAM
 ",
     );
-    let pos = bc
-        .iter()
-        .position(|&b| b == 0xC8)
-        .expect("FIND_STR opcode present");
+    let pos = bc.iter().position(|&b| b == 0xC8).unwrap();
     assert_eq!(opcode::instruction_size(opcode::FIND_STR), 9);
     assert!(pos + 9 <= bc.len(), "FIND_STR has 8 trailing u32 bytes");
     let _in1 = u32::from_le_bytes([bc[pos + 1], bc[pos + 2], bc[pos + 3], bc[pos + 4]]);
@@ -701,5 +703,166 @@ END_PROGRAM
         bc.last().copied(),
         Some(0x8C),
         "RET_VOID terminates program"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Completeness guard.
+//
+// The per-family tests above pin the byte value of every opcode by name. This
+// test proves that set is *complete*: it compares the pinned registry below to
+// the set of assigned opcodes reported by `opcode::is_assigned` (which is
+// derived from `instruction_size`, the match every new opcode must update).
+// Adding, removing, or renumbering an opcode without editing this file fails
+// this test with a clear diff -- so no opcode can change or be introduced
+// without a deliberate, reviewed change to the wire-format guard.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn opcode_pins_when_compared_to_assigned_set_then_complete() {
+    // Every opcode byte pinned by the family tests above. Keep in sync with
+    // `instruction_size` in `container/src/opcode.rs`.
+    let pinned: &[u8] = &[
+        opcode::ADD_I32,
+        opcode::SUB_I32,
+        opcode::MUL_I32,
+        opcode::DIV_I32,
+        opcode::MOD_I32,
+        opcode::NEG_I32,
+        opcode::ADD_I64,
+        opcode::SUB_I64,
+        opcode::MUL_I64,
+        opcode::DIV_I64,
+        opcode::MOD_I64,
+        opcode::NEG_I64,
+        opcode::DIV_U32,
+        opcode::MOD_U32,
+        opcode::DIV_U64,
+        opcode::MOD_U64,
+        opcode::ADD_F32,
+        opcode::SUB_F32,
+        opcode::MUL_F32,
+        opcode::DIV_F32,
+        opcode::NEG_F32,
+        opcode::ADD_F64,
+        opcode::SUB_F64,
+        opcode::MUL_F64,
+        opcode::DIV_F64,
+        opcode::NEG_F64,
+        opcode::EQ_I32,
+        opcode::NE_I32,
+        opcode::LT_I32,
+        opcode::LE_I32,
+        opcode::GT_I32,
+        opcode::GE_I32,
+        opcode::EQ_I64,
+        opcode::NE_I64,
+        opcode::LT_I64,
+        opcode::LE_I64,
+        opcode::GT_I64,
+        opcode::GE_I64,
+        opcode::LT_U32,
+        opcode::LE_U32,
+        opcode::GT_U32,
+        opcode::GE_U32,
+        opcode::LT_U64,
+        opcode::LE_U64,
+        opcode::GT_U64,
+        opcode::GE_U64,
+        opcode::EQ_F32,
+        opcode::NE_F32,
+        opcode::LT_F32,
+        opcode::LE_F32,
+        opcode::GT_F32,
+        opcode::GE_F32,
+        opcode::EQ_F64,
+        opcode::NE_F64,
+        opcode::LT_F64,
+        opcode::LE_F64,
+        opcode::GT_F64,
+        opcode::GE_F64,
+        opcode::BOOL_AND,
+        opcode::BOOL_OR,
+        opcode::BOOL_XOR,
+        opcode::BOOL_NOT,
+        opcode::BIT_AND_32,
+        opcode::BIT_OR_32,
+        opcode::BIT_XOR_32,
+        opcode::BIT_NOT_32,
+        opcode::BIT_AND_64,
+        opcode::BIT_OR_64,
+        opcode::BIT_XOR_64,
+        opcode::BIT_NOT_64,
+        opcode::TRUNC_I8,
+        opcode::TRUNC_U8,
+        opcode::TRUNC_I16,
+        opcode::TRUNC_U16,
+        opcode::LOAD_INDIRECT,
+        opcode::STORE_INDIRECT,
+        opcode::LOAD_TRUE,
+        opcode::LOAD_FALSE,
+        opcode::POP,
+        opcode::DUP,
+        opcode::SWAP,
+        opcode::RET,
+        opcode::RET_VOID,
+        opcode::FB_STORE_PARAM,
+        opcode::FB_LOAD_PARAM,
+        opcode::LOAD_CONST_I32,
+        opcode::LOAD_CONST_I64,
+        opcode::LOAD_CONST_F32,
+        opcode::LOAD_CONST_F64,
+        opcode::LOAD_CONST_STR,
+        opcode::LOAD_VAR_I32,
+        opcode::LOAD_VAR_I64,
+        opcode::LOAD_VAR_F32,
+        opcode::LOAD_VAR_F64,
+        opcode::STORE_VAR_I32,
+        opcode::STORE_VAR_I64,
+        opcode::STORE_VAR_F32,
+        opcode::STORE_VAR_F64,
+        opcode::FB_LOAD_INSTANCE,
+        opcode::FB_CALL,
+        opcode::JMP,
+        opcode::JMP_IF_NOT,
+        opcode::BUILTIN,
+        opcode::CALL,
+        opcode::LOAD_ARRAY,
+        opcode::STORE_ARRAY,
+        opcode::LOAD_ARRAY_DEREF,
+        opcode::STORE_ARRAY_DEREF,
+        opcode::STR_INIT_ARRAY,
+        opcode::STR_LOAD_ARRAY_ELEM,
+        opcode::STR_STORE_ARRAY_ELEM,
+        opcode::STR_LOAD_VAR,
+        opcode::STR_STORE_VAR,
+        opcode::LEN_STR,
+        opcode::DELETE_STR,
+        opcode::LEFT_STR,
+        opcode::RIGHT_STR,
+        opcode::MID_STR,
+        opcode::STR_INIT,
+        opcode::CMP_BR_I32,
+        opcode::CMP_BR_I64,
+        opcode::FIND_STR,
+        opcode::REPLACE_STR,
+        opcode::INSERT_STR,
+        opcode::CONCAT_STR,
+    ];
+
+    let mut pinned_sorted = pinned.to_vec();
+    pinned_sorted.sort_unstable();
+    let mut deduped = pinned_sorted.clone();
+    deduped.dedup();
+    assert_eq!(
+        pinned_sorted, deduped,
+        "two opcodes share a byte value in the pinned registry"
+    );
+
+    let assigned: Vec<u8> = (0u8..=255).filter(|&b| opcode::is_assigned(b)).collect();
+    assert_eq!(
+        pinned_sorted, assigned,
+        "pinned opcode registry != assigned opcode set: an opcode was added, \
+         removed, or renumbered without updating wire_format.rs"
     );
 }

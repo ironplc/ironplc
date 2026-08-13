@@ -155,7 +155,7 @@ FOR #i := 0 TO 100 DO
 END_FOR;
 ```
 
-**Design:** Add `Continue` as a keyword token. The parser recognizes `CONTINUE` as a statement keyword, parallel to `EXIT`. This keyword is shared across multiple dialects — see the `DIALECT_KEYWORDS` table in the [Extension Origin Model](#extension-origin-model) where it has `origins: &[Iec61131Ed3, BeckhoffCodesys, SiemensSCL]`.
+**Design:** Add `Continue` as a keyword token. The parser recognizes `CONTINUE` as a statement keyword, parallel to `EXIT`. This keyword is accepted by more than one dialect; each dialect enables it through its own `--allow-*` flag in the `define_compiler_options!` table (`compiler/parser/src/options.rs`).
 
 ### Priority 2: Common in Real Projects
 
@@ -309,7 +309,7 @@ pub enum Dialect {
 }
 ```
 
-The `Dialect` enum is shared infrastructure defined once and used by both the [Siemens SCL](siemens-scl-dialect.md) and [Beckhoff TwinCAT](beckhoff-twincat-dialect.md) designs. It controls which token transforms are applied and which `ExtensionOrigin` values are active for keyword promotion (see [Extension Origin Model](#extension-origin-model)). The `SiemensSCL` dialect implies `allow_c_style_comments: true`.
+The `Dialect` enum is shared infrastructure defined once and used by both the [Siemens SCL](siemens-scl-dialect.md) and [Beckhoff TwinCAT](beckhoff-twincat-dialect.md) designs. It controls which token transforms are applied and which `--allow-*` flags are active for keyword promotion (see [Keyword Promotion Is Gated by Dialect and Flags](beckhoff-twincat-dialect.md#keyword-promotion-is-gated-by-dialect-and-flags)). The `SiemensSCL` dialect implies `allow_c_style_comments: true`.
 
 ## Parser Integration
 
@@ -323,7 +323,7 @@ This is the same gating mechanism described in the [Beckhoff design](beckhoff-tw
 
 ### Token Transform Pipeline
 
-SCL-specific syntax normalization is handled by the dialect token transform pipeline described in [dialect-token-transforms.md](dialect-token-transforms.md). The SCL dialect uses the shared `promote_keywords` function driven by the `DIALECT_KEYWORDS` table (see [Extension Origin Model](#extension-origin-model)) — no separate `promote_scl_keywords` function is needed. The pipeline applies these transforms in order:
+SCL-specific syntax normalization is handled by the dialect token transform pipeline described in [dialect-token-transforms.md](dialect-token-transforms.md). The SCL dialect uses the shared keyword-promotion machinery gated by the active dialect's `--allow-*` flags — no separate `promote_scl_keywords` function is needed. The pipeline applies these transforms in order:
 
 1. **Keyword promotion** — promote `Identifier` tokens matching entries in `DIALECT_KEYWORDS` where `origins` intersects `SiemensSCL`. Promoted keywords: `REGION`, `END_REGION`, `VERSION`, `BEGIN`, `DATA_BLOCK`, `END_DATA_BLOCK`, `ORGANIZATION_BLOCK`, `END_ORGANIZATION_BLOCK`, `VAR_STAT`, `GOTO`, `CONTINUE`, `TITLE`, `AUTHOR`, `FAMILY`, `NAME`, `KNOW_HOW_PROTECT`, `REF_TO`
 2. **Token rewriting** — all `DoubleByteString` → `Identifier` (strip quotes, SCL only)
@@ -346,71 +346,58 @@ The REGION filter removes `Region` token + all tokens until the next `Newline` (
 - **Empty region name** (`REGION` followed immediately by `Newline`): the filter removes just the `Region` token and the `Newline`.
 - **Region name with spaces** (`REGION Initialization Phase`): all tokens between `Region` and `Newline` are removed, regardless of count.
 
-## Extension Origin Model
+## Keyword Promotion and Unsupported-Extension Reporting
 
-Every non-standard construct is tagged with its origin using the shared `ExtensionOrigin` enum defined in the [Beckhoff design](beckhoff-twincat-dialect.md#extension-origin-model). This enum is the **single source of truth** that drives both the token transform pipeline and the semantic diagnostic (`P9004 UnsupportedExtension`).
+Keyword promotion is gated by the active dialect and its `--allow-*` flags — the same mechanism as the [Beckhoff design](beckhoff-twincat-dialect.md#keyword-promotion-is-gated-by-dialect-and-flags). SCL keyword-carrying identifiers are only promoted when the SCL dialect enables the corresponding flag; there is no per-construct "origin" tag.
 
-SCL-specific keywords are added to the shared `DIALECT_KEYWORDS` table. Keywords shared between SCL and Beckhoff/CODESYS have multiple origins:
+### SCL Keywords
 
-### SCL Entries in `DIALECT_KEYWORDS`
+| Text | `TokenType` | Priority |
+|------|------------|----------|
+| `REGION` | `Region` | 1 |
+| `END_REGION` | `EndRegion` | 1 |
+| `VERSION` | `Version` | 1 |
+| `BEGIN` | `Begin` | 1 |
+| `CONTINUE` | `Continue` | 1 |
+| `DATA_BLOCK` | `DataBlock` | 3 |
+| `END_DATA_BLOCK` | `EndDataBlock` | 3 |
+| `ORGANIZATION_BLOCK` | `OrganizationBlock` | 3 |
+| `END_ORGANIZATION_BLOCK` | `EndOrganizationBlock` | 3 |
+| `GOTO` | `Goto` | 4 |
+| `TITLE` | `Title` | 2 |
+| `AUTHOR` | `Author` | 2 |
+| `FAMILY` | `Family` | 2 |
+| `NAME` | `Name` | 2 |
+| `KNOW_HOW_PROTECT` | `KnowHowProtect` | 2 |
+| `REF_TO` | `RefTo` | 4 |
 
-| Text | `TokenType` | Origins | Priority |
-|------|------------|---------|----------|
-| `REGION` | `Region` | `SiemensSCL` | 1 |
-| `END_REGION` | `EndRegion` | `SiemensSCL` | 1 |
-| `VERSION` | `Version` | `SiemensSCL` | 1 |
-| `BEGIN` | `Begin` | `SiemensSCL` | 1 |
-| `CONTINUE` | `Continue` | `Iec61131Ed3, BeckhoffCodesys, SiemensSCL` | 1 |
-| `DATA_BLOCK` | `DataBlock` | `SiemensSCL` | 3 |
-| `END_DATA_BLOCK` | `EndDataBlock` | `SiemensSCL` | 3 |
-| `ORGANIZATION_BLOCK` | `OrganizationBlock` | `SiemensSCL` | 3 |
-| `END_ORGANIZATION_BLOCK` | `EndOrganizationBlock` | `SiemensSCL` | 3 |
-| `GOTO` | `Goto` | `SiemensSCL` | 4 |
-| `TITLE` | `Title` | `SiemensSCL` | 2 |
-| `AUTHOR` | `Author` | `SiemensSCL` | 2 |
-| `FAMILY` | `Family` | `SiemensSCL` | 2 |
-| `NAME` | `Name` | `SiemensSCL` | 2 |
-| `KNOW_HOW_PROTECT` | `KnowHowProtect` | `SiemensSCL` | 2 |
-| `REF_TO` | `RefTo` | `SiemensSCL` | 4 |
-
-Keywords shared with Beckhoff (already in the table from the [Beckhoff design](beckhoff-twincat-dialect.md#new-tokentype-variants)):
-
-| Text | `TokenType` | Origins |
-|------|------------|---------|
-| `VAR_STAT` | `VarStat` | `BeckhoffCodesys, SiemensSCL` |
-| `CONTINUE` | `Continue` | `Iec61131Ed3, BeckhoffCodesys, SiemensSCL` |
+`VAR_STAT` and `CONTINUE` are also accepted by the Beckhoff/CODESYS dialect (see the [Beckhoff design](beckhoff-twincat-dialect.md#new-tokentype-variants)). Which dialects accept a keyword is recorded once in the `define_compiler_options!` table in `compiler/parser/src/options.rs`, not per-keyword here.
 
 ### `LanguageExtension` Implementations for SCL Nodes
 
-Every new AST node representing an SCL-specific construct implements the `LanguageExtension` trait defined in the [Beckhoff design](beckhoff-twincat-dialect.md#the-languageextension-trait). This enables the `rule_unsupported_extension.rs` semantic rule to emit `P9004` diagnostics:
+Every new AST node representing an SCL-specific construct implements the `LanguageExtension` trait defined in the [Beckhoff design](beckhoff-twincat-dialect.md#the-languageextension-trait). This enables the `rule_unsupported_extension.rs` semantic rule to emit `P9999 NotImplemented` diagnostics:
 
 ```rust
-// Siemens SCL extension — DATA_BLOCK declaration
-// Extension: Siemens SCL
+// DATA_BLOCK declaration
 impl LanguageExtension for DataBlockDeclaration {
     fn extension_name(&self) -> &'static str { "DATA_BLOCK declaration" }
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] { &[ExtensionOrigin::SiemensSCL] }
     fn extension_span(&self) -> SourceSpan { self.span }
 }
 
-// Siemens SCL extension — ORGANIZATION_BLOCK declaration
-// Extension: Siemens SCL
+// ORGANIZATION_BLOCK declaration
 impl LanguageExtension for OrganizationBlockDeclaration {
     fn extension_name(&self) -> &'static str { "ORGANIZATION_BLOCK declaration" }
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] { &[ExtensionOrigin::SiemensSCL] }
     fn extension_span(&self) -> SourceSpan { self.span }
 }
 
-// Siemens SCL extension — GOTO statement
-// Extension: Siemens SCL
+// GOTO statement
 impl LanguageExtension for GotoStatement {
     fn extension_name(&self) -> &'static str { "GOTO statement" }
-    fn extension_origins(&self) -> &'static [ExtensionOrigin] { &[ExtensionOrigin::SiemensSCL] }
     fn extension_span(&self) -> SourceSpan { self.span }
 }
 ```
 
-`VAR_STAT` and `CONTINUE` are shared with Beckhoff — their `LanguageExtension` implementations are defined in the [Beckhoff design](beckhoff-twincat-dialect.md#the-languageextension-trait) with multiple origins.
+`VAR_STAT` and `CONTINUE` are shared with Beckhoff — their `LanguageExtension` implementations are defined in the [Beckhoff design](beckhoff-twincat-dialect.md#the-languageextension-trait).
 
 ## AST Extensions (DSL Crate)
 
@@ -656,10 +643,8 @@ Phase 0 is shared infrastructure with the [Beckhoff design](beckhoff-twincat-dia
 
 0. **Phase 0 — Prerequisites** (before any dialect code, shared with Beckhoff):
    - Keyword safety regression test: function block with all planned keywords (both Beckhoff AND Siemens) as variable names, parsed in standard mode
-   - `ExtensionOrigin` enum in the DSL crate
    - `LanguageExtension` trait in the DSL crate
-   - `P9004 UnsupportedExtension` problem code in CSV and documentation
-   - `rule_unsupported_extension.rs` semantic rule (empty initially — no extension nodes exist yet)
+   - `rule_unsupported_extension.rs` semantic rule (empty initially — no extension nodes exist yet), emitting `P9999 NotImplemented`
    - `Dialect` enum and `CompilerOptions` extension (shared infrastructure)
    - Token transform pipeline: `promote_keywords` + `collapse_pragmas` (shared with Beckhoff)
 
