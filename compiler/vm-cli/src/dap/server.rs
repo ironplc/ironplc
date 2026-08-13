@@ -432,29 +432,33 @@ fn set_breakpoints(
     let resolved: Vec<Breakpoint> = args
         .breakpoints
         .iter()
-        .map(
-            |bp| match debug_info::resolve_breakpoint(debug, &source_path, bp.line) {
+        .map(|bp| {
+            // `bp.line` is already narrowed to the container's `SourceLine` by
+            // the serde layer; `None` means the client sent a line the debug
+            // section cannot represent, which resolves to nothing.
+            let resolved = bp
+                .line
+                .and_then(|line| debug_info::resolve_breakpoint(debug, &source_path, line));
+            match resolved {
                 Some(resolved) => {
                     for (function_id, offset) in resolved.locations {
                         breakpoints.add(function_id, offset);
                     }
                     Breakpoint {
                         verified: true,
-                        // Widen the container's `u16` line back to the DAP
-                        // wire type; lossless, so no cast is involved.
-                        line: Some(i64::from(resolved.line.raw())),
+                        line: Some(resolved.line),
                         source: source.clone(),
                         message: None,
                     }
                 }
                 None => Breakpoint {
                     verified: false,
-                    line: Some(bp.line),
+                    line: bp.line,
                     source: source.clone(),
                     message: Some("no executable location for this line".to_string()),
                 },
-            },
-        )
+            }
+        })
         .collect();
 
     serde_json::to_value(SetBreakpointsResponseBody {
@@ -478,10 +482,8 @@ fn stack_trace_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option
             StackFrame {
                 id: index as i64,
                 name: info.name,
-                // Widen the container's `u16` coordinates to the DAP wire
-                // type; lossless, so no cast is involved.
-                line: i64::from(info.line.raw()),
-                column: i64::from(info.column.raw()),
+                line: info.line,
+                column: info.column,
                 source: info.source.map(|(name, path)| Source {
                     name: Some(name),
                     path: Some(path),
@@ -1128,12 +1130,21 @@ mod tests {
                    "arguments": {"program": path}}),
             json!({"seq": 3, "type": "request", "command": "setBreakpoints",
                    "arguments": {"source": {"path": "demo.st"},
-                                 "breakpoints": [{"line": 9999}]}}),
+                                 "breakpoints": [{"line": 9999}, {"line": 65546},
+                                                 {"line": 10}]}}),
             json!({"seq": 4, "type": "request", "command": "disconnect"}),
         ]);
         let sbp = responses(&out, "setBreakpoints");
-        assert_eq!(sbp[0]["body"]["breakpoints"][0]["verified"], false);
-        assert!(sbp[0]["body"]["breakpoints"][0]["message"].is_string());
+        let bps = &sbp[0]["body"]["breakpoints"];
+        assert_eq!(bps[0]["verified"], false);
+        assert!(bps[0]["message"].is_string());
+        // A line beyond what the debug section can represent is rejected at
+        // the serde boundary, and its line is omitted rather than truncated.
+        assert_eq!(bps[1]["verified"], false);
+        assert!(bps[1].get("line").is_none());
+        // The malformed entries do not sink the valid one alongside them.
+        assert_eq!(bps[2]["verified"], true);
+        assert_eq!(bps[2]["line"], 10);
     }
 
     /// A scan of four single-byte-operand statements at the same call depth,

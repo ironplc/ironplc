@@ -8,9 +8,9 @@
 //! VAR_NAME, FUNC_NAME, STRING layouts, source file table, `debug_format`) is
 //! a dependency of exactly one module.
 
-use ironplc_container::debug_format::format_variable_value;
+use ironplc_container::debug_format::{format_variable_value, read_string_value};
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, SourceFileEntry};
-use ironplc_container::{FunctionId, SourceColumn, SourceFileId, SourceLine, STRING_HEADER_BYTES};
+use ironplc_container::{FunctionId, SourceColumn, SourceFileId, SourceLine};
 
 use super::types::Variable;
 
@@ -45,19 +45,6 @@ pub struct FrameInfo {
     pub source: Option<(String, String)>,
 }
 
-/// Narrows a DAP wire line number to the container's [`SourceLine`].
-///
-/// DAP carries line numbers as JSON numbers, which our protocol types model
-/// as `i64`; the debug section stores them as `u16`. Converting once here,
-/// at the entry to the only module that talks to the debug section, means
-/// every comparison downstream is in the container's own type rather than a
-/// scattering of `as` casts. A value a conformant client would never send —
-/// negative, or beyond `u16` — is rejected outright instead of being
-/// silently truncated into a valid-looking line.
-fn source_line_from_dap(line: i64) -> Option<SourceLine> {
-    u16::try_from(line).ok().map(SourceLine::new)
-}
-
 /// Resolve a source breakpoint to the line it binds to and the
 /// `(function, bytecode offset)` locations that should be armed for it.
 ///
@@ -67,10 +54,9 @@ fn source_line_from_dap(line: i64) -> Option<SourceLine> {
 pub fn resolve_breakpoint(
     debug: Option<&DebugSection>,
     source_path: &str,
-    line: i64,
+    requested: SourceLine,
 ) -> Option<ResolvedBreakpoint> {
     let debug = debug?;
-    let requested = source_line_from_dap(line)?;
 
     // Restrict to entries from the requested file. A container without a
     // source file table predates per-file tracking: every entry is eligible.
@@ -271,54 +257,12 @@ fn variable_value(
                     .iter()
                     .find(|layout| layout.var_index.raw() as usize == var_index)
             })
-            .and_then(|layout| read_string_value(data_region, layout.data_offset))
+            .and_then(|layout| read_string_value(data_region, layout.data_offset).ok())
             .unwrap_or_else(|| VALUE_NOT_AVAILABLE.to_string()),
         // WSTRING rendering is a v1 cut (as in the playground).
         iec_type_tag::WSTRING => VALUE_NOT_AVAILABLE.to_string(),
         _ => format_variable_value(raw, tag),
     }
-}
-
-/// Reads a STRING value from the data region at the given offset and renders
-/// it as a single-quoted IEC literal. The layout (ADR-0035) is
-/// `[max_len: u16][cur_len: u16][char_width: u16][bytes…]`. Returns `None`
-/// when the recorded offset or length would read past the end of the region
-/// (corrupt debug info must degrade to a placeholder, not a panic).
-fn read_string_value(data_region: &[u8], data_offset: u32) -> Option<String> {
-    let off = data_offset as usize;
-    if off + STRING_HEADER_BYTES > data_region.len() {
-        return None;
-    }
-    let cur_len = u16::from_le_bytes([data_region[off + 2], data_region[off + 3]]) as usize;
-    let start = off + STRING_HEADER_BYTES;
-    let end = start + cur_len;
-    if end > data_region.len() {
-        return None;
-    }
-    Some(format_iec_string_literal(&data_region[start..end]))
-}
-
-/// Renders raw STRING bytes as an IEC 61131-3 single-quoted string literal:
-/// printable ASCII passes through, the named escapes (`$T`, `$L`, `$P`,
-/// `$R`, `$$`, `$'`) cover the common control characters, and anything else
-/// becomes a `$XX` two-digit hex escape.
-fn format_iec_string_literal(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() + 2);
-    out.push('\'');
-    for &b in bytes {
-        match b {
-            b'$' => out.push_str("$$"),
-            b'\'' => out.push_str("$'"),
-            0x09 => out.push_str("$T"),
-            0x0A => out.push_str("$L"),
-            0x0C => out.push_str("$P"),
-            0x0D => out.push_str("$R"),
-            0x20..=0x7E => out.push(b as char),
-            _ => out.push_str(&format!("${b:02X}")),
-        }
-    }
-    out.push('\'');
-    out
 }
 
 #[cfg(test)]
@@ -377,7 +321,7 @@ mod tests {
     #[test]
     fn resolve_breakpoint_when_line_has_code_then_binds_exactly() {
         let debug = a_debug_section();
-        let resolved = resolve_breakpoint(Some(&debug), "demo.st", 10).unwrap();
+        let resolved = resolve_breakpoint(Some(&debug), "demo.st", SourceLine::new(10)).unwrap();
         assert_eq!(resolved.line.raw(), 10);
         assert_eq!(resolved.locations, vec![(FunctionId::SCAN, 0)]);
     }
@@ -385,7 +329,7 @@ mod tests {
     #[test]
     fn resolve_breakpoint_when_line_has_no_code_then_snaps_forward() {
         let debug = a_debug_section();
-        let resolved = resolve_breakpoint(Some(&debug), "demo.st", 11).unwrap();
+        let resolved = resolve_breakpoint(Some(&debug), "demo.st", SourceLine::new(11)).unwrap();
         assert_eq!(resolved.line.raw(), 12);
         assert_eq!(resolved.locations, vec![(FunctionId::SCAN, 6)]);
     }
@@ -393,47 +337,34 @@ mod tests {
     #[test]
     fn resolve_breakpoint_when_line_past_end_then_none() {
         let debug = a_debug_section();
-        assert!(resolve_breakpoint(Some(&debug), "demo.st", 13).is_none());
-    }
-
-    #[test]
-    fn resolve_breakpoint_when_line_negative_then_none() {
-        let debug = a_debug_section();
-        assert!(resolve_breakpoint(Some(&debug), "demo.st", -1).is_none());
-    }
-
-    #[test]
-    fn resolve_breakpoint_when_line_exceeds_container_range_then_none() {
-        // The debug section stores lines as u16. A larger value is rejected
-        // at the boundary rather than truncated into a valid-looking line —
-        // 65546 must not silently bind as line 10.
-        let debug = a_debug_section();
-        assert!(resolve_breakpoint(Some(&debug), "demo.st", 65_546).is_none());
-        assert!(resolve_breakpoint(Some(&debug), "demo.st", i64::MAX).is_none());
+        assert!(resolve_breakpoint(Some(&debug), "demo.st", SourceLine::new(13)).is_none());
     }
 
     #[test]
     fn resolve_breakpoint_when_no_debug_or_no_line_map_then_none() {
-        assert!(resolve_breakpoint(None, "demo.st", 10).is_none());
+        assert!(resolve_breakpoint(None, "demo.st", SourceLine::new(10)).is_none());
         let empty = DebugSection::default();
-        assert!(resolve_breakpoint(Some(&empty), "demo.st", 10).is_none());
+        assert!(resolve_breakpoint(Some(&empty), "demo.st", SourceLine::new(10)).is_none());
     }
 
     #[test]
     fn resolve_breakpoint_when_path_differs_by_directory_then_matches_by_file_name() {
         let debug = a_debug_section();
-        let resolved = resolve_breakpoint(Some(&debug), "/work/project/demo.st", 10).unwrap();
+        let resolved =
+            resolve_breakpoint(Some(&debug), "/work/project/demo.st", SourceLine::new(10)).unwrap();
         assert_eq!(resolved.line.raw(), 10);
         // A Windows-style separator also splits, so a container compiled on
         // Windows still matches when debugged elsewhere.
-        assert!(resolve_breakpoint(Some(&debug), "C:\\work\\demo.st", 10).is_some());
+        assert!(
+            resolve_breakpoint(Some(&debug), "C:\\work\\demo.st", SourceLine::new(10)).is_some()
+        );
     }
 
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     #[test]
     fn resolve_breakpoint_when_case_differs_on_case_insensitive_host_then_matches() {
         let debug = a_debug_section();
-        assert!(resolve_breakpoint(Some(&debug), "/work/Demo.st", 10).is_some());
+        assert!(resolve_breakpoint(Some(&debug), "/work/Demo.st", SourceLine::new(10)).is_some());
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -442,20 +373,21 @@ mod tests {
         // On a case-sensitive filesystem `Demo.st` is a different file from
         // `demo.st`; folding case would bind the breakpoint to the wrong one.
         let debug = a_debug_section();
-        assert!(resolve_breakpoint(Some(&debug), "/work/Demo.st", 10).is_none());
+        assert!(resolve_breakpoint(Some(&debug), "/work/Demo.st", SourceLine::new(10)).is_none());
     }
 
     #[test]
     fn resolve_breakpoint_when_path_is_different_file_then_none() {
         let debug = a_debug_section();
-        assert!(resolve_breakpoint(Some(&debug), "/work/other.st", 10).is_none());
+        assert!(resolve_breakpoint(Some(&debug), "/work/other.st", SourceLine::new(10)).is_none());
     }
 
     #[test]
     fn resolve_breakpoint_when_no_source_file_table_then_path_is_not_checked() {
         let mut debug = a_debug_section();
         debug.source_files.clear();
-        let resolved = resolve_breakpoint(Some(&debug), "anything.st", 10).unwrap();
+        let resolved =
+            resolve_breakpoint(Some(&debug), "anything.st", SourceLine::new(10)).unwrap();
         assert_eq!(resolved.line.raw(), 10);
     }
 
@@ -464,7 +396,7 @@ mod tests {
         let mut debug = a_debug_section();
         // A second, later offset on line 10: the earlier one is the start.
         debug.line_map.push(line_entry(FunctionId::SCAN, 3, 0, 10));
-        let resolved = resolve_breakpoint(Some(&debug), "demo.st", 10).unwrap();
+        let resolved = resolve_breakpoint(Some(&debug), "demo.st", SourceLine::new(10)).unwrap();
         assert_eq!(resolved.locations, vec![(FunctionId::SCAN, 0)]);
     }
 
@@ -472,7 +404,7 @@ mod tests {
     fn resolve_breakpoint_when_two_functions_on_line_then_arms_both() {
         let mut debug = a_debug_section();
         debug.line_map.push(line_entry(FunctionId::INIT, 4, 0, 10));
-        let resolved = resolve_breakpoint(Some(&debug), "demo.st", 10).unwrap();
+        let resolved = resolve_breakpoint(Some(&debug), "demo.st", SourceLine::new(10)).unwrap();
         assert_eq!(resolved.locations.len(), 2);
         assert!(resolved.locations.contains(&(FunctionId::SCAN, 0)));
         assert!(resolved.locations.contains(&(FunctionId::INIT, 4)));
@@ -616,14 +548,6 @@ mod tests {
         };
         let vars = render_variables(Some(&debug), &[0], &[]);
         assert_eq!(vars[0].value, VALUE_NOT_AVAILABLE);
-    }
-
-    #[test]
-    fn format_iec_string_literal_when_escapes_needed_then_dollar_escaped() {
-        assert_eq!(format_iec_string_literal(b"a$b"), "'a$$b'");
-        assert_eq!(format_iec_string_literal(b"it's"), "'it$'s'");
-        assert_eq!(format_iec_string_literal(b"a\tb\n"), "'a$Tb$L'");
-        assert_eq!(format_iec_string_literal(&[0x01]), "'$01'");
     }
 
     #[test]
