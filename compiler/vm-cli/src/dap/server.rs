@@ -440,7 +440,9 @@ fn set_breakpoints(
                     }
                     Breakpoint {
                         verified: true,
-                        line: Some(resolved.line),
+                        // Widen the container's `u16` line back to the DAP
+                        // wire type; lossless, so no cast is involved.
+                        line: Some(i64::from(resolved.line.raw())),
                         source: source.clone(),
                         message: None,
                     }
@@ -476,8 +478,10 @@ fn stack_trace_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option
             StackFrame {
                 id: index as i64,
                 name: info.name,
-                line: info.line,
-                column: info.column,
+                // Widen the container's `u16` coordinates to the DAP wire
+                // type; lossless, so no cast is involved.
+                line: i64::from(info.line.raw()),
+                column: i64::from(info.column.raw()),
                 source: info.source.map(|(name, path)| Source {
                     name: Some(name),
                     path: Some(path),

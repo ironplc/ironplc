@@ -10,7 +10,7 @@
 
 use ironplc_container::debug_format::format_variable_value;
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, SourceFileEntry};
-use ironplc_container::{FunctionId, STRING_HEADER_BYTES};
+use ironplc_container::{FunctionId, SourceColumn, SourceFileId, SourceLine, STRING_HEADER_BYTES};
 
 use super::types::Variable;
 
@@ -21,10 +21,10 @@ const VALUE_NOT_AVAILABLE: &str = "<not available>";
 /// A source breakpoint resolved against the line map.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ResolvedBreakpoint {
-    /// The 1-based source line the breakpoint actually bound to — the
-    /// requested line, or the next executable line when the requested one
-    /// has no code (the standard "snap forward" debugger behavior).
-    pub line: i64,
+    /// The source line the breakpoint actually bound to — the requested
+    /// line, or the next executable line when the requested one has no code
+    /// (the standard "snap forward" debugger behavior).
+    pub line: SourceLine,
     /// The bytecode locations to arm: for each function with code on the
     /// bound line, the smallest bytecode offset on that line.
     pub locations: Vec<(FunctionId, usize)>,
@@ -35,13 +35,27 @@ pub struct ResolvedBreakpoint {
 pub struct FrameInfo {
     /// The POU name from FUNC_NAME, or `function {id}` when unnamed.
     pub name: String,
-    /// 1-based source line of the paused instruction; `0` when unknown.
-    pub line: i64,
-    /// 1-based source column; `0` when unknown.
-    pub column: i64,
+    /// Source line of the paused instruction; `SourceLine(0)` ("unknown")
+    /// when the line map has no entry for it.
+    pub line: SourceLine,
+    /// Source column; `SourceColumn(0)` when unknown.
+    pub column: SourceColumn,
     /// `(file name, recorded path)` from the source file table, when the
     /// line map hit carries a resolvable `file_id`.
     pub source: Option<(String, String)>,
+}
+
+/// Narrows a DAP wire line number to the container's [`SourceLine`].
+///
+/// DAP carries line numbers as JSON numbers, which our protocol types model
+/// as `i64`; the debug section stores them as `u16`. Converting once here,
+/// at the entry to the only module that talks to the debug section, means
+/// every comparison downstream is in the container's own type rather than a
+/// scattering of `as` casts. A value a conformant client would never send —
+/// negative, or beyond `u16` — is rejected outright instead of being
+/// silently truncated into a valid-looking line.
+fn source_line_from_dap(line: i64) -> Option<SourceLine> {
+    u16::try_from(line).ok().map(SourceLine::new)
 }
 
 /// Resolve a source breakpoint to the line it binds to and the
@@ -56,22 +70,19 @@ pub fn resolve_breakpoint(
     line: i64,
 ) -> Option<ResolvedBreakpoint> {
     let debug = debug?;
-    if line < 0 {
-        // Never produced by a conformant client (DAP lines are 1-based).
-        return None;
-    }
+    let requested = source_line_from_dap(line)?;
 
     // Restrict to entries from the requested file. A container without a
     // source file table predates per-file tracking: every entry is eligible.
-    let file_ids: Option<Vec<u16>> = if debug.source_files.is_empty() {
+    let file_ids: Option<Vec<SourceFileId>> = if debug.source_files.is_empty() {
         None
     } else {
-        let ids: Vec<u16> = debug
+        let ids: Vec<SourceFileId> = debug
             .source_files
             .iter()
             .enumerate()
             .filter(|(_, sf)| file_matches(&sf.path, source_path))
-            .map(|(id, _)| id as u16)
+            .filter_map(|(index, _)| u16::try_from(index).ok().map(SourceFileId::new))
             .collect();
         if ids.is_empty() {
             // The breakpoint is in a file this container was not built from.
@@ -85,20 +96,21 @@ pub fn resolve_breakpoint(
         .iter()
         .filter(|e| {
             e.source_line.raw() != 0 // 0 = unknown line, never a bind target
-                && (e.source_line.raw() as i64) >= line
-                && file_ids
-                    .as_ref()
-                    .is_none_or(|ids| ids.contains(&e.file_id.raw()))
+                && e.source_line.raw() >= requested.raw()
+                && file_ids.as_ref().is_none_or(|ids| ids.contains(&e.file_id))
         })
         .collect();
 
     // Snap forward to the nearest executable line.
-    let bound = candidates.iter().map(|e| e.source_line.raw()).min()?;
+    let bound = candidates
+        .iter()
+        .map(|e| e.source_line)
+        .min_by_key(|line| line.raw())?;
 
     // Arm each function's first offset on the bound line (statement start).
     let mut locations: Vec<(FunctionId, usize)> = Vec::new();
-    for entry in candidates.iter().filter(|e| e.source_line.raw() == bound) {
-        let offset = entry.bytecode_offset as usize;
+    for entry in candidates.iter().filter(|e| e.source_line == bound) {
+        let offset = usize::from(entry.bytecode_offset);
         match locations
             .iter_mut()
             .find(|(function, _)| *function == entry.function_id)
@@ -109,21 +121,51 @@ pub fn resolve_breakpoint(
     }
 
     Some(ResolvedBreakpoint {
-        line: bound as i64,
+        line: bound,
         locations,
     })
 }
 
 /// Whether a recorded source path refers to the same file as a requested
-/// path. Exact match first; otherwise the file names are compared (ASCII
-/// case-insensitively, for Windows) to absorb absolute-vs-relative and
-/// separator differences between what the compiler recorded and what the
-/// editor sends.
+/// path. Exact match first; otherwise the file names are compared to absorb
+/// absolute-vs-relative differences between what the compiler recorded and
+/// what the editor sends.
+///
+/// Deliberately string-based rather than [`std::path::Path`]: `Path` parses
+/// and compares by the rules of the *host* platform, but `recorded` comes
+/// from wherever the container was compiled. A Windows-recorded
+/// `C:\work\demo.st` is a single component on a Unix host, so
+/// `Path::file_name` yields the whole string. `Path` comparison is also
+/// always case-sensitive (even on Windows) and does not fold a leading
+/// `./`, so it decides neither half of this question. True identity via
+/// `fs::canonicalize` needs both paths to exist on this machine, which a
+/// container built elsewhere does not guarantee.
 fn file_matches(recorded: &str, requested: &str) -> bool {
-    recorded == requested || file_name(recorded).eq_ignore_ascii_case(file_name(requested))
+    recorded == requested || file_names_match(file_name(recorded), file_name(requested))
 }
 
-/// The final path component, treating both `/` and `\` as separators.
+/// Compares two file names using the host filesystem's case rules.
+///
+/// Windows and macOS default to case-insensitive filesystems, so `Demo.st`
+/// and `demo.st` name the same file there. Linux and other Unixes are
+/// case-sensitive, where they are genuinely *different* files — folding case
+/// would bind a breakpoint to the wrong source. (The insensitive form folds
+/// ASCII only; Windows applies full Unicode case rules, which matters solely
+/// for non-ASCII file names that differ only by case.)
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn file_names_match(recorded: &str, requested: &str) -> bool {
+    recorded.eq_ignore_ascii_case(requested)
+}
+
+/// See the case-insensitive counterpart for why this is host-conditional.
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn file_names_match(recorded: &str, requested: &str) -> bool {
+    recorded == requested
+}
+
+/// The final path component, treating both `/` and `\` as separators —
+/// `recorded` may come from a container compiled on another platform, so
+/// host-specific splitting is not enough.
 fn file_name(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
@@ -132,8 +174,10 @@ fn file_name(path: &str) -> &str {
 ///
 /// The line map lookup returns the entry enclosing `pc` (largest offset
 /// `<= pc`). A frame with no FUNC_NAME entry keeps the `function {id}`
-/// fallback; one with no line map hit reports line `0` and no source, which
-/// clients render as a name-only frame.
+/// fallback; one with no line map hit reports the "unknown" line and no
+/// source, which clients render as a name-only frame. A `pc` beyond `u16`
+/// likewise resolves to unknown — the line map cannot describe an offset it
+/// has no room to store.
 pub fn resolve_frame(
     debug: Option<&DebugSection>,
     function_id: FunctionId,
@@ -144,23 +188,24 @@ pub fn resolve_frame(
         .map(|f| f.name.clone())
         .unwrap_or_else(|| format!("function {}", function_id.raw()));
 
-    let location = debug
-        .and_then(|d| d.lookup_source_location(function_id, u16::try_from(pc).unwrap_or(u16::MAX)))
+    let location = u16::try_from(pc)
+        .ok()
+        .and_then(|offset| debug?.lookup_source_location(function_id, offset))
         .filter(|e| e.source_line.raw() != 0);
 
     match location {
         Some(entry) => FrameInfo {
             name,
-            line: entry.source_line.raw() as i64,
-            column: entry.source_column.raw() as i64,
+            line: entry.source_line,
+            column: entry.source_column,
             source: debug
-                .and_then(|d| d.source_files.get(entry.file_id.raw() as usize))
+                .and_then(|d| d.source_files.get(usize::from(entry.file_id.raw())))
                 .map(|sf: &SourceFileEntry| (file_name(&sf.path).to_string(), sf.path.clone())),
         },
         None => FrameInfo {
             name,
-            line: 0,
-            column: 0,
+            line: SourceLine::default(),
+            column: SourceColumn::default(),
             source: None,
         },
     }
@@ -333,7 +378,7 @@ mod tests {
     fn resolve_breakpoint_when_line_has_code_then_binds_exactly() {
         let debug = a_debug_section();
         let resolved = resolve_breakpoint(Some(&debug), "demo.st", 10).unwrap();
-        assert_eq!(resolved.line, 10);
+        assert_eq!(resolved.line.raw(), 10);
         assert_eq!(resolved.locations, vec![(FunctionId::SCAN, 0)]);
     }
 
@@ -341,7 +386,7 @@ mod tests {
     fn resolve_breakpoint_when_line_has_no_code_then_snaps_forward() {
         let debug = a_debug_section();
         let resolved = resolve_breakpoint(Some(&debug), "demo.st", 11).unwrap();
-        assert_eq!(resolved.line, 12);
+        assert_eq!(resolved.line.raw(), 12);
         assert_eq!(resolved.locations, vec![(FunctionId::SCAN, 6)]);
     }
 
@@ -358,6 +403,16 @@ mod tests {
     }
 
     #[test]
+    fn resolve_breakpoint_when_line_exceeds_container_range_then_none() {
+        // The debug section stores lines as u16. A larger value is rejected
+        // at the boundary rather than truncated into a valid-looking line —
+        // 65546 must not silently bind as line 10.
+        let debug = a_debug_section();
+        assert!(resolve_breakpoint(Some(&debug), "demo.st", 65_546).is_none());
+        assert!(resolve_breakpoint(Some(&debug), "demo.st", i64::MAX).is_none());
+    }
+
+    #[test]
     fn resolve_breakpoint_when_no_debug_or_no_line_map_then_none() {
         assert!(resolve_breakpoint(None, "demo.st", 10).is_none());
         let empty = DebugSection::default();
@@ -368,9 +423,26 @@ mod tests {
     fn resolve_breakpoint_when_path_differs_by_directory_then_matches_by_file_name() {
         let debug = a_debug_section();
         let resolved = resolve_breakpoint(Some(&debug), "/work/project/demo.st", 10).unwrap();
-        assert_eq!(resolved.line, 10);
-        // Windows-style requested path also matches on the file name.
-        assert!(resolve_breakpoint(Some(&debug), "C:\\work\\Demo.st", 10).is_some());
+        assert_eq!(resolved.line.raw(), 10);
+        // A Windows-style separator also splits, so a container compiled on
+        // Windows still matches when debugged elsewhere.
+        assert!(resolve_breakpoint(Some(&debug), "C:\\work\\demo.st", 10).is_some());
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    #[test]
+    fn resolve_breakpoint_when_case_differs_on_case_insensitive_host_then_matches() {
+        let debug = a_debug_section();
+        assert!(resolve_breakpoint(Some(&debug), "/work/Demo.st", 10).is_some());
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[test]
+    fn resolve_breakpoint_when_case_differs_on_case_sensitive_host_then_none() {
+        // On a case-sensitive filesystem `Demo.st` is a different file from
+        // `demo.st`; folding case would bind the breakpoint to the wrong one.
+        let debug = a_debug_section();
+        assert!(resolve_breakpoint(Some(&debug), "/work/Demo.st", 10).is_none());
     }
 
     #[test]
@@ -384,7 +456,7 @@ mod tests {
         let mut debug = a_debug_section();
         debug.source_files.clear();
         let resolved = resolve_breakpoint(Some(&debug), "anything.st", 10).unwrap();
-        assert_eq!(resolved.line, 10);
+        assert_eq!(resolved.line.raw(), 10);
     }
 
     #[test]
@@ -412,8 +484,8 @@ mod tests {
         // pc 7 is inside the statement starting at offset 6 (line 12).
         let info = resolve_frame(Some(&debug), FunctionId::SCAN, 7);
         assert_eq!(info.name, "MAIN");
-        assert_eq!(info.line, 12);
-        assert_eq!(info.column, 1);
+        assert_eq!(info.line.raw(), 12);
+        assert_eq!(info.column.raw(), 1);
         assert_eq!(info.source, Some(("demo.st".into(), "demo.st".into())));
     }
 
@@ -422,7 +494,7 @@ mod tests {
         let debug = a_debug_section();
         let info = resolve_frame(Some(&debug), FunctionId::new(7), 0);
         assert_eq!(info.name, "function 7");
-        assert_eq!(info.line, 0);
+        assert_eq!(info.line.raw(), 0);
         assert!(info.source.is_none());
     }
 
@@ -430,8 +502,8 @@ mod tests {
     fn resolve_frame_when_no_debug_section_then_fallback_frame() {
         let info = resolve_frame(None, FunctionId::SCAN, 3);
         assert_eq!(info.name, "function 1");
-        assert_eq!(info.line, 0);
-        assert_eq!(info.column, 0);
+        assert_eq!(info.line.raw(), 0);
+        assert_eq!(info.column.raw(), 0);
         assert!(info.source.is_none());
     }
 
