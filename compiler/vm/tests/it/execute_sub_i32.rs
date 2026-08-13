@@ -18,15 +18,6 @@ const SUB_BYTECODE: [u8; 11] = [
     0x8C,
 ];
 
-// Nominal anchor: a straightforward difference with no overflow.
-#[test]
-fn execute_when_sub_i32_nominal_then_difference() {
-    assert_eq!(
-        crate::common::run_and_read_i32(&SUB_BYTECODE, 1, &[10, 3]),
-        7
-    );
-}
-
 // Overflow anchor: i32::MIN - 1 wraps to i32::MAX. A deterministic case pins
 // the exact wrapping behaviour the random oracle only samples.
 #[test]

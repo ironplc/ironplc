@@ -1,4 +1,11 @@
 //! `REFERENCE TO` / `REF=` binding, dereference and NULL parsing.
+//!
+//! Tests here assert AST shape. A plain `REF(x)` / `myRef^` / `:= NULL`
+//! statement is round-tripped by `plc2plc/src/tests/reference_to.rs` from the
+//! same source, which parses it first — so a test asserting only that one
+//! statement parsed is subsumed and does not belong here. The `XOR` and
+//! `<> NULL` cases below stay because they guard operator disambiguation
+//! (`^` vs `XOR`, `=`/`<>` vs `REF=`) and have no round-trip counterpart.
 
 use super::common::*;
 
@@ -254,38 +261,6 @@ fn parse_when_ref_to_array_type_decl_then_ok() {
 }
 
 #[test]
-fn parse_when_ref_operator_then_ok() {
-    let lib = parse_text_edition3(
-        "PROGRAM main
-VAR
-    counter : INT;
-    x : REF_TO INT;
-END_VAR
-    x := REF(counter);
-END_PROGRAM",
-    );
-    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
-    let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
-    assert!(!s.body.is_empty());
-}
-
-#[test]
-fn parse_when_deref_then_ok() {
-    let lib = parse_text_edition3(
-        "PROGRAM main
-VAR
-    myRef : REF_TO INT;
-    value : INT;
-END_VAR
-    value := myRef^;
-END_PROGRAM",
-    );
-    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
-    let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
-    assert_eq!(s.body.len(), 1);
-}
-
-#[test]
 fn parse_when_deref_assign_then_ok() {
     let lib = parse_text_edition3(
         "PROGRAM main
@@ -300,21 +275,6 @@ END_PROGRAM",
     assert_eq!(s.body.len(), 1);
     let assignment = cast!(&s.body[0], StmtKind::Assignment);
     assert!(assignment.deref);
-}
-
-#[test]
-fn parse_when_null_literal_then_ok() {
-    let lib = parse_text_edition3(
-        "PROGRAM main
-VAR
-    myRef : REF_TO INT;
-END_VAR
-    myRef := NULL;
-END_PROGRAM",
-    );
-    let prog = cast!(&lib.elements[0], LibraryElementKind::ProgramDeclaration);
-    let s = cast!(&prog.body, FunctionBlockBodyKind::Statements);
-    assert_eq!(s.body.len(), 1);
 }
 
 #[test]

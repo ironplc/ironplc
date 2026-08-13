@@ -1,3 +1,12 @@
+//! VM-specific edge case tests for the TP pulse timer intrinsic.
+//!
+//! The nominal TP matrix — pulse start, before/after/at PT, ET readout, IN
+//! falling mid-pulse (with ET clamped to PT), and two independent timers — is
+//! covered by end_to_end_fb_tp.rs, which drives the same `intrinsic.rs` state
+//! machine through compiled ST. These tests keep only what that file does not
+//! assert: the cold-start case where IN was never TRUE, and retriggering a new
+//! pulse after the previous one completed.
+
 use crate::common::VmBuffers;
 use ironplc_container::opcode;
 use ironplc_container::VarIndex;
@@ -12,63 +21,6 @@ fn tp_when_in_false_then_q_false_et_zero() {
 
     assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 0); // Q = FALSE
     assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 0); // ET = 0
-}
-
-#[test]
-fn tp_when_in_true_before_pt_then_q_true_et_increasing() {
-    let c = crate::common::timer_test_container(5000, opcode::fb_type::TP);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
-
-    // Set IN = TRUE
-    vm.write_variable(VarIndex::new(1), 1).unwrap();
-
-    // Scan at t=1s: rising edge, pulse starts
-    vm.run_round(1_000_000).unwrap();
-    assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1); // Q = TRUE (pulse active)
-
-    // Scan at t=3s: 2 seconds elapsed
-    vm.run_round(3_000_000).unwrap();
-    assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1); // Q = TRUE (< PT)
-    assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 2000); // ET = 2s = 2000 ms
-}
-
-#[test]
-fn tp_when_in_true_after_pt_then_q_false_et_clamped() {
-    let c = crate::common::timer_test_container(5000, opcode::fb_type::TP);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
-
-    vm.write_variable(VarIndex::new(1), 1).unwrap(); // IN = TRUE
-
-    vm.run_round(1_000_000).unwrap(); // t=1s: rising edge, pulse starts
-    vm.run_round(7_000_000).unwrap(); // t=7s: 6s elapsed > 5s PT
-
-    assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 0); // Q = FALSE (pulse ended)
-    assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 5000); // ET clamped to PT (5000 ms)
-}
-
-#[test]
-fn tp_when_in_falls_during_pulse_then_pulse_continues() {
-    let c = crate::common::timer_test_container(5000, opcode::fb_type::TP);
-    let mut b = VmBuffers::from_container(&c);
-    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
-
-    vm.write_variable(VarIndex::new(1), 1).unwrap(); // IN = TRUE
-    vm.run_round(1_000_000).unwrap(); // t=1s: rising edge, pulse starts
-    assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1); // Q = TRUE
-
-    // IN goes FALSE mid-pulse — pulse should continue
-    vm.write_variable(VarIndex::new(1), 0).unwrap();
-    vm.run_round(3_000_000).unwrap(); // t=3s: 2s elapsed, still pulsing
-
-    assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 1); // Q = TRUE (pulse ignores IN)
-    assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 2000); // ET = 2s = 2000 ms
-
-    // Pulse expires
-    vm.run_round(7_000_000).unwrap(); // t=7s: 6s elapsed > 5s PT
-    assert_eq!(vm.read_variable(VarIndex::new(2)).unwrap(), 0); // Q = FALSE
-    assert_eq!(vm.read_variable(VarIndex::new(3)).unwrap(), 5000); // ET clamped to PT (5000 ms)
 }
 
 #[test]

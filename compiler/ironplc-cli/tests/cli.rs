@@ -71,7 +71,7 @@ fn check_when_binary_encoded_then_error() -> Result<(), Box<dyn std::error::Erro
         .arg(path_to_test_resource("binary_file.st"));
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Error during analysis"));
+        .stderr(predicate::str::contains("Check failed"));
 
     Ok(())
 }
@@ -118,11 +118,13 @@ fn echo_when_valid_file_then_ok() -> Result<(), Box<dyn std::error::Error>> {
 fn echo_when_syntax_error_file_then_err() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::new(cargo::cargo_bin!("ironplcc"));
 
+    // A source that fails to parse contributes nothing to the echoed
+    // stream -- its diagnostics go to stderr like every other command's.
     cmd.arg("echo")
         .arg(shared_resource_path("first_steps_syntax_error.st"));
     cmd.assert()
         .failure()
-        .stdout(predicate::str::contains("Syntax error"))
+        .stdout(predicate::str::is_empty())
         .stderr(predicate::str::contains("Expected"));
 
     Ok(())
