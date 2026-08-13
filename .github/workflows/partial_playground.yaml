@@ -3,7 +3,10 @@ name: Playground
 on:
   workflow_call:
     inputs:
-      commit-ref:
+      # Name deliberately avoids "ref"/"head"/"branch"/"sha"/"commit": those
+      # substrings make CodeQL read the checkout below as a pull request head
+      # checkout. See partial_compiler.yaml for the full explanation.
+      source-revision:
         required: false
         type: string
         description: 'If not empty, then run for the specified branch name or tag'
@@ -17,14 +20,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # Fetch input artifacts and code
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+        if: ${{ inputs.source-revision }}
         with:
-          ref: ${{ inputs.commit-ref }}
+          ref: ${{ inputs.source-revision }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just

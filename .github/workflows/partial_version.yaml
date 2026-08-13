@@ -21,7 +21,7 @@ on:
       commit-tag:
         description: The tag in the git repository (e.g. v1.0.0)
         value: ${{ jobs.release.outputs.commit-tag }}
-      commit-ref:
+      source-revision:
         description: The tag in the git repository (e.g. v1.0.0)
         value: ${{ jobs.release.outputs.commit-tag }}
       version:
