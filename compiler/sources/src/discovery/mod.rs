@@ -173,27 +173,166 @@ fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Detect a TwinCAT project by searching for `.plcproj` files.
+/// Detect a TwinCAT project by resolving `.plcproj` files.
+///
+/// Tries `.sln` -> `.tsproj` -> `PrjFilePath` resolution first
+/// ([`resolve_plcproj_via_sln`]) -- the authoritative chain TcXaeShell
+/// itself uses. That's unambiguous even when a directory contains stale
+/// `.plcproj` artifacts left over from a project rename (a real corpus
+/// pattern: a directory with both `Foo.plcproj` and a leftover
+/// `Fo.plcproj`, where only the `.tsproj` referenced by the `.sln` names
+/// which one is live). Falls back to a recursive `.plcproj` walk
+/// ([`collect_plcproj_via_walk`]) when there's no (unambiguous) `.sln`,
+/// so bare-`.plcproj` directories and non-solution layouts keep working.
+///
+/// Returns `None` if no `.plcproj` was resolved either way. Returns
+/// `Some(Err(...))` if a resolved `.plcproj` is malformed.
+fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
+    let mut plcproj_paths = resolve_plcproj_via_sln(dir);
+    if plcproj_paths.is_empty() {
+        plcproj_paths = collect_plcproj_via_walk(dir);
+    }
+
+    if plcproj_paths.is_empty() {
+        return None;
+    }
+
+    Some(merge_plcproj_projects(dir, plcproj_paths))
+}
+
+/// Find the single `.sln` file directly in `dir` (not recursive -- a
+/// `.sln` is always the file a user/tool points at directly, unlike
+/// `.plcproj`, which real layouts commonly nest several levels deep).
+///
+/// Returns `None` if there is no `.sln`, or more than one: ambiguous,
+/// callers should fall back to the recursive walk rather than guess.
+fn find_sln(dir: &Path) -> Option<PathBuf> {
+    let entries = fs::read_dir(dir).ok()?;
+
+    let mut sln_files: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("sln"))
+        })
+        .collect();
+
+    if sln_files.len() != 1 {
+        return None;
+    }
+    sln_files.pop()
+}
+
+/// Resolve `.plcproj` paths via `.sln` -> `.tsproj` -> `PrjFilePath`.
+///
+/// Returns an empty vec if there's no unambiguous `.sln` in `dir`, or
+/// the `.sln` found doesn't lead to any `.plcproj` files -- callers
+/// should fall back to [`collect_plcproj_via_walk`] in that case.
+fn resolve_plcproj_via_sln(dir: &Path) -> Vec<PathBuf> {
+    let Some(sln_path) = find_sln(dir) else {
+        return Vec::new();
+    };
+
+    parse_sln(&sln_path)
+        .into_iter()
+        .flat_map(|tsproj_path| resolve_plcproj_via_tsproj(&tsproj_path))
+        .collect()
+}
+
+/// Parse a `.sln` and return the `.tsproj` paths it lists, resolved
+/// relative to the `.sln`'s own directory.
+///
+/// A `.sln` is a line-oriented Visual Studio format, not XML, with a
+/// real grammar: project entries
+/// (`Project("{TypeGUID}") = "Name", "RelativePath", "{ProjectGUID}"`)
+/// may carry nested `ProjectSection` blocks, solution folders are
+/// project entries too, and the trailing `Global` block has its own
+/// nested sections. [`solp`] implements that grammar, so this module
+/// asks it for the project list rather than matching lines itself.
+///
+/// Entries whose path doesn't end in `.tsproj` are other Visual Studio
+/// project types the `.sln` may also list (a `DriveManager.tcdmproj`, a
+/// `Scope.tcmproj`, a solution folder, ...) and are ignored, not
+/// treated as an error.
+///
+/// Returns an empty vec if the file can't be read or isn't a parseable
+/// solution file.
+fn parse_sln(sln_path: &Path) -> Vec<PathBuf> {
+    let Ok(content) = fs::read_to_string(sln_path) else {
+        return Vec::new();
+    };
+    let Ok(solution) = solp::parse_str(&content) else {
+        return Vec::new();
+    };
+    let sln_dir = sln_path.parent().unwrap_or(sln_path);
+
+    solution
+        .projects
+        .iter()
+        .filter_map(|project| resolve_windows_path(sln_dir, project.path_or_uri, "tsproj"))
+        .collect()
+}
+
+/// Resolve a Windows-style relative path -- as written in a `.sln`
+/// project entry or a `.tsproj` `PrjFilePath` -- against `base`, keeping
+/// it only when its extension matches `extension` (case-insensitively).
+///
+/// Returns `None` for a non-matching extension, which callers treat as
+/// "not interesting", never as an error: a `.sln` and a `.tsproj` both
+/// legitimately name kinds of project this compiler does not read.
+fn resolve_windows_path(base: &Path, relative: &str, extension: &str) -> Option<PathBuf> {
+    let matches_extension = relative
+        .rsplit('.')
+        .next()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case(extension));
+    if !matches_extension {
+        return None;
+    }
+
+    Some(base.join(relative.replace('\\', "/")))
+}
+
+/// Parse a `.tsproj` (XML) and return the `.plcproj` files it names via
+/// its nested `<Project PrjFilePath="...">` entries, resolved relative
+/// to the `.tsproj`'s own directory.
+///
+/// A `.tsproj` names a sub-project through `PrjFilePath` regardless of
+/// nesting depth, so entries are found by attribute presence
+/// (`.descendants()`, the same traversal `parse_plcproj` uses for
+/// `<Compile>`), not by assuming a fixed nesting shape. Entries whose
+/// `PrjFilePath` doesn't end in `.plcproj` -- notably `.splcproj`
+/// TwinSAFE safety projects, which use a different compilation model --
+/// are skipped, not treated as an error.
+///
+/// Returns an empty vec if the file can't be read or parsed as XML.
+fn resolve_plcproj_via_tsproj(tsproj_path: &Path) -> Vec<PathBuf> {
+    let Ok(content) = fs::read_to_string(tsproj_path) else {
+        return Vec::new();
+    };
+    let Ok(doc) = roxmltree::Document::parse(&content) else {
+        return Vec::new();
+    };
+    let tsproj_dir = tsproj_path.parent().unwrap_or(tsproj_path);
+
+    doc.descendants()
+        .filter(roxmltree::Node::is_element)
+        .filter_map(|node| node.attribute("PrjFilePath"))
+        .filter_map(|prj_file_path| resolve_windows_path(tsproj_dir, prj_file_path, "plcproj"))
+        .collect()
+}
+
+/// Recursively collect `.plcproj` candidates and keep only the first
+/// (sorted) per directory -- collapses same-directory duplicates (a
+/// previously observed stale-rename artifact) without discarding
+/// genuine sub-projects that live in different directories.
 ///
 /// Searches recursively, since real TwinCAT layouts commonly nest
 /// `.plcproj` files several levels below the directory a user would
-/// naturally point the tool at (e.g. a Visual-Studio-style
-/// solution/project structure).
-///
-/// A real solution commonly has more than one `.plcproj` -- a main PLC
-/// project plus one or more library/shared sub-projects that it (or
-/// each other) reference types from. All `.plcproj` files found in
-/// *different* directories are therefore merged into a single
-/// compilation unit, the same principle already applied to LSP
-/// workspace folders. Multiple `.plcproj` in the *same* directory are a
-/// different, previously-observed case (a stale duplicate/rename
-/// artifact, not a second sub-project): only the first (sorted) is kept
-/// per directory, preserving the original deterministic-pick behavior
-/// for that case.
-///
-/// Returns `None` if no `.plcproj` exists anywhere. Returns
-/// `Some(Err(...))` if a `.plcproj` is found but malformed.
-fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
+/// naturally point the tool at.
+fn collect_plcproj_via_walk(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     walk_files(dir, &mut files);
 
@@ -207,9 +346,6 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
         .collect();
     candidates.sort();
 
-    // Keep only the first (sorted) .plcproj per directory -- collapses
-    // same-directory duplicates without discarding genuine sub-projects
-    // that live in different directories.
     let mut seen_dirs = HashSet::new();
     let mut plcproj_paths: Vec<PathBuf> = Vec::new();
     for path in candidates {
@@ -218,11 +354,21 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
             plcproj_paths.push(path);
         }
     }
+    plcproj_paths
+}
 
-    if plcproj_paths.is_empty() {
-        return None;
-    }
-
+/// Parse and merge a resolved, non-empty list of `.plcproj` paths into
+/// one compilation unit.
+///
+/// A real solution commonly has more than one `.plcproj` -- a main PLC
+/// project plus one or more library/shared sub-projects that it (or
+/// each other) reference types from. All given `.plcproj` files are
+/// merged into a single compilation unit, the same principle already
+/// applied to LSP workspace folders.
+fn merge_plcproj_projects(
+    dir: &Path,
+    plcproj_paths: Vec<PathBuf>,
+) -> Result<DiscoveredProject, Diagnostic> {
     // <Compile Include="..."> paths in a .plcproj are always relative to
     // that .plcproj file's own directory, not the (possibly higher, now
     // that files can be nested arbitrarily deep) directory originally
@@ -238,10 +384,7 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
 
     for plcproj_path in &plcproj_paths {
         let plcproj_dir = plcproj_path.parent().unwrap_or(dir);
-        let project = match parse_plcproj(plcproj_path, plcproj_dir) {
-            Ok(project) => project,
-            Err(e) => return Some(Err(e)),
-        };
+        let project = parse_plcproj(plcproj_path, plcproj_dir)?;
 
         if single {
             merged_root_dir = project.root_dir.clone();
@@ -282,13 +425,13 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
         &plcproj_paths[0],
     );
 
-    Some(Ok(DiscoveredProject {
+    Ok(DiscoveredProject {
         project_type: ProjectType::TwinCat,
         root_dir: merged_root_dir,
         files: merged_files,
         library_references: merged_library_references,
         errors: merged_errors,
-    }))
+    })
 }
 
 /// Append a synthetic reference for every library in
@@ -1325,5 +1468,346 @@ mod tests {
         // Only the real file is found; the symlink is not traversed.
         assert_eq!(result.files.len(), 1);
         assert!(result.files[0].ends_with("real/main.st"));
+    }
+
+    // -- .sln -> .tsproj -> PrjFilePath discovery tests --
+
+    /// Write a `.sln` shaped like one TcXaeShell actually emits: UTF-8
+    /// BOM, CRLF line endings, a version preamble, a solution-folder
+    /// entry with a nested `ProjectSection`, the given project entries,
+    /// and a trailing `Global` block. The parser is expected to handle
+    /// the whole grammar, so fixtures need not be reduced to the bare
+    /// `Project(...)` lines.
+    fn write_sln(dir: &Path, name: &str, project_entries: &[(&str, &str)]) {
+        let mut content = String::from(
+            "\u{feff}Microsoft Visual Studio Solution File, Format Version 12.00\r\n\
+             # TcXaeShell Solution File, Format Version 15.00\r\n\
+             VisualStudioVersion = 15.0.28010.2050\r\n\
+             MinimumVisualStudioVersion = 10.0.40219.1\r\n\
+             Project(\"{2150E333-8FDC-42A3-9474-1A3956D46DE8}\") = \"Solution Items\", \"Solution Items\", \"{11111111-1111-1111-1111-111111111111}\"\r\n\
+             \tProjectSection(SolutionItems) = preProject\r\n\
+             \t\tREADME.md = README.md\r\n\
+             \tEndProjectSection\r\n\
+             EndProject\r\n",
+        );
+        for (project_name, relative_path) in project_entries {
+            content.push_str(&format!(
+                "Project(\"{{B1E792BE-AA5F-4E3C-8C82-674BF9C0715B}}\") = \"{project_name}\", \"{relative_path}\", \"{{9406D69C-EBA9-4591-A513-578A75D14426}}\"\r\n\
+                 \tProjectSection(ProjectDependencies) = postProject\r\n\
+                 \t\t{{11111111-1111-1111-1111-111111111111}} = {{11111111-1111-1111-1111-111111111111}}\r\n\
+                 \tEndProjectSection\r\n\
+                 EndProject\r\n"
+            ));
+        }
+        content.push_str(
+            "Global\r\n\
+             \tGlobalSection(SolutionConfigurationPlatforms) = preSolution\r\n\
+             \t\tDebug|TwinCAT RT (x64) = Debug|TwinCAT RT (x64)\r\n\
+             \tEndGlobalSection\r\n\
+             EndGlobal\r\n",
+        );
+        fs::write(dir.join(name), content).unwrap();
+    }
+
+    fn write_tsproj(path: &Path, plc_entries: &[(&str, &str)]) {
+        let mut inner = String::new();
+        for (name, prj_file_path) in plc_entries {
+            inner.push_str(&format!(
+                r#"<Project GUID="{{6DADE760-7FAC-4830-92BA-478C8595D673}}" Name="{name}" PrjFilePath="{prj_file_path}" />"#
+            ));
+        }
+        let content = format!(
+            r#"<Project ProjectGUID="{{9406D69C-EBA9-4591-A513-578A75D14426}}">{inner}</Project>"#
+        );
+        fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn discover_when_sln_present_then_resolves_via_tsproj() {
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "Solution.sln", &[("Main", "Main\\Main.tsproj")]);
+
+        let tsproj_dir = dir.path().join("Main");
+        fs::create_dir_all(&tsproj_dir).unwrap();
+        write_tsproj(
+            &tsproj_dir.join("Main.tsproj"),
+            &[("MainRuntime", "MainRuntime\\MainRuntime.plcproj")],
+        );
+
+        let plcproj_dir = tsproj_dir.join("MainRuntime");
+        fs::create_dir_all(&plcproj_dir).unwrap();
+        fs::write(plcproj_dir.join("A.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            plcproj_dir.join("MainRuntime.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("A.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_sln_lists_non_tsproj_project_then_ignored() {
+        let dir = TempDir::new().unwrap();
+        write_sln(
+            dir.path(),
+            "Solution.sln",
+            &[
+                ("Scope", "Scope\\Scope.tcmproj"),
+                ("Main", "Main\\Main.tsproj"),
+            ],
+        );
+
+        let tsproj_dir = dir.path().join("Main");
+        fs::create_dir_all(&tsproj_dir).unwrap();
+        write_tsproj(
+            &tsproj_dir.join("Main.tsproj"),
+            &[("MainRuntime", "MainRuntime\\MainRuntime.plcproj")],
+        );
+
+        let plcproj_dir = tsproj_dir.join("MainRuntime");
+        fs::create_dir_all(&plcproj_dir).unwrap();
+        fs::write(plcproj_dir.join("A.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            plcproj_dir.join("MainRuntime.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+        // Scope.tcmproj deliberately doesn't exist -- a non-.tsproj entry
+        // must not be resolved/read at all, only filtered out by extension.
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("A.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_sln_and_stale_duplicate_plcproj_then_picks_named_one() {
+        // Regression case modeled on a real private-corpus TwinCAT
+        // solution: a project renamed Foo -> Fooo left a stale
+        // `Foo.plcproj` and `Foo.tsproj` behind, neither referenced by
+        // the .sln. The stale file is named so it would sort first,
+        // so this fails under plain alphabetical-glob resolution.
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "Solution.sln", &[("Fooo", "Fooo.tsproj")]);
+
+        // Live .tsproj, referenced by the .sln.
+        write_tsproj(
+            &dir.path().join("Fooo.tsproj"),
+            &[("FoooRuntime", "Runtime\\Fooo.plcproj")],
+        );
+        // Stale .tsproj, NOT referenced by the .sln -- must be ignored.
+        write_tsproj(
+            &dir.path().join("Foo.tsproj"),
+            &[("FooRuntime", "Runtime\\Foo.plcproj")],
+        );
+
+        let plcproj_dir = dir.path().join("Runtime");
+        fs::create_dir_all(&plcproj_dir).unwrap();
+        fs::write(plcproj_dir.join("LIVE.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            plcproj_dir.join("Fooo.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="LIVE.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+        // Stale duplicate: sorts before "Fooo.plcproj" alphabetically,
+        // so the old glob-only logic would have picked this one.
+        fs::write(plcproj_dir.join("Foo.plcproj"), "<Project/>").unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("LIVE.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_tsproj_references_splcproj_then_skipped() {
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "Solution.sln", &[("Main", "Main.tsproj")]);
+        write_tsproj(
+            &dir.path().join("Main.tsproj"),
+            &[
+                ("MainRuntime", "MainRuntime\\MainRuntime.plcproj"),
+                ("MainTwinSAFE", "MainTwinSAFE\\MainTwinSAFE.splcproj"),
+            ],
+        );
+
+        let plcproj_dir = dir.path().join("MainRuntime");
+        fs::create_dir_all(&plcproj_dir).unwrap();
+        fs::write(plcproj_dir.join("A.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            plcproj_dir.join("MainRuntime.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+        // MainTwinSAFE.splcproj deliberately doesn't exist -- proves it
+        // was never resolved/read, only filtered out by extension.
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("A.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_multiple_sln_at_top_level_then_falls_back_to_walk() {
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "A.sln", &[]);
+        write_sln(dir.path(), "B.sln", &[]);
+
+        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("MAIN.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_sln_references_tsproj_with_multiple_plcproj_then_merges_all() {
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "Solution.sln", &[("Main", "Main.tsproj")]);
+        write_tsproj(
+            &dir.path().join("Main.tsproj"),
+            &[
+                ("MainRuntime", "MainRuntime\\MainRuntime.plcproj"),
+                ("SharedLib", "SharedLib\\SharedLib.plcproj"),
+            ],
+        );
+
+        let main_dir = dir.path().join("MainRuntime");
+        fs::create_dir_all(&main_dir).unwrap();
+        fs::write(main_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            main_dir.join("MainRuntime.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let lib_dir = dir.path().join("SharedLib");
+        fs::create_dir_all(&lib_dir).unwrap();
+        fs::write(lib_dir.join("FB_Shared.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            lib_dir.join("SharedLib.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="FB_Shared.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.files.len(), 2);
+        assert!(result.files.iter().any(|f| f.ends_with("MAIN.TcPOU")));
+        assert!(result.files.iter().any(|f| f.ends_with("FB_Shared.TcPOU")));
+    }
+
+    #[test]
+    fn discover_when_sln_project_name_contains_comma_then_resolves() {
+        // A solution's project *name* is free text and routinely carries
+        // commas ("Machine, rev B"). The name is not the path, so this
+        // must not shift which quoted field the path is read from.
+        let dir = TempDir::new().unwrap();
+        write_sln(
+            dir.path(),
+            "Solution.sln",
+            &[("Machine, rev B", "Main\\Main.tsproj")],
+        );
+
+        let tsproj_dir = dir.path().join("Main");
+        fs::create_dir_all(&tsproj_dir).unwrap();
+        write_tsproj(
+            &tsproj_dir.join("Main.tsproj"),
+            &[("MainRuntime", "MainRuntime\\MainRuntime.plcproj")],
+        );
+
+        let plcproj_dir = tsproj_dir.join("MainRuntime");
+        fs::create_dir_all(&plcproj_dir).unwrap();
+        fs::write(plcproj_dir.join("A.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            plcproj_dir.join("MainRuntime.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("A.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_sln_is_malformed_then_falls_back_to_walk() {
+        // A `.sln` that isn't a valid solution file (truncated mid-entry
+        // here) is rejected as a whole rather than scraped for whatever
+        // entries happen to look well-formed. The `.tsproj` it names
+        // deliberately doesn't exist, so a partial parse would resolve
+        // nothing and discovery would report no TwinCAT project at all;
+        // rejecting it falls back to the recursive walk instead.
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("Solution.sln"),
+            "Microsoft Visual Studio Solution File, Format Version 12.00\r\n\
+             Project(\"{B1E792BE-AA5F-4E3C-8C82-674BF9C0715B}\") = \"Main\", \"Missing\\Missing.tsproj\"\r\n",
+        )
+        .unwrap();
+
+        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("MAIN.TcPOU"));
     }
 }

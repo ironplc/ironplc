@@ -17,6 +17,7 @@ encoding_rs = "0.8"
 roxmltree = { version = "0.21", features = ["positions"] }
 time = "0.3.47"
 toml = "1.1"
+solp = "0.22.0"
 
 [build-dependencies]
 ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
