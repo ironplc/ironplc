@@ -172,6 +172,35 @@ Load failed ... error="llama-server process has terminated: signal: segmentation
 That leg passed in the previous deployment and involves no code touched here;
 `ai-action/setup-ollama` installs whatever Ollama release is current, so the
 likely cause is an upstream Ollama regression on the runner's CPU (the log shows
-the AMX backend in use). It is tracked separately — the fix there is a version
-pin or a retry, not a change to the library test — and mixing it into this change
+the AMX backend in use). It is tracked separately — mixing it into this change
 would make it impossible to tell which fix made the deployment green.
+
+A `workflow_dispatch` re-run of that leg on this branch
+([31700029937](https://github.com/ironplc/ironplc/actions/runs/31700029937))
+confirms the instability is in the Ollama/model layer and shows a *second*
+failure mode. This time `llama-server` did not crash — the pre-flight probe
+passed — and the run instead **hung** in layer 3:
+
+```
+12:27:27 Attempt 1/3: asking the agent to call ironplc_check...
+(no further output; llama-server still alive; cancelled manually)
+```
+
+So the real-agent layer fails two different ways (crash, hang) against the same
+pinned model, and `npm run agent-e2e` has no timeout wrapper — unlike the Ollama
+startup steps, which use `run_timeout`. A hang there pins a runner until the
+6-hour job limit and blocks the release with no diagnostic output.
+
+Three independent decisions are worth making deliberately rather than folding
+into this change:
+
+1. **Bound it.** Wrap `npm run agent-e2e` in `run_timeout` so a hang becomes a
+   prompt, legible failure. Unambiguously correct, but on its own it converts a
+   hang into a red deployment rather than a green one.
+2. **Pin Ollama.** `ai-action/setup-ollama` is SHA-pinned but installs the
+   *latest* Ollama, so the toolchain under test changes without a commit. A
+   version pin makes the leg reproducible.
+3. **Reconsider the gate.** A nondeterministic local-LLM test currently gates
+   `publish-website` and therefore the whole release. Layers 1 and 2 (the
+   connectivity smoke and the mock tool-call gate) are deterministic and worth
+   gating on; layer 3 may be better as a non-gating signal.
