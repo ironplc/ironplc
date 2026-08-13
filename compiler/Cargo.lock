@@ -350,6 +350,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
+name = "container_derive"
+version = "0.234.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -982,6 +991,7 @@ name = "ironplc-container"
 version = "0.238.0"
 dependencies = [
  "blake3",
+ "container_derive",
  "ironplc-spec-requirements-gen",
  "rstest",
  "spec_test_macro",
