@@ -20,6 +20,7 @@ fn init_test_logger() {
 #[allow(unused_macros)]
 mod test_macros;
 
+mod call_assignment_check;
 mod constant_folding;
 mod function_environment;
 pub mod intermediate_type;
