@@ -32,11 +32,10 @@ pub enum Dialect {
     /// extensions that TwinCAT accepts.  TwinCAT 3 is built on the CODESYS V3
     /// runtime, so this is close to [`Dialect::Codesys`], but does not enable
     /// the `REF_TO` / `REF()` / `NULL` reference extensions: TwinCAT spells
-    /// references and pointers `REFERENCE TO` / `POINTER TO` (with `ADR()`),
-    /// which IronPLC does not parse yet, so enabling the CODESYS `REF_TO`
-    /// syntax here would accept code TwinCAT itself rejects.  Like CODESYS, it
-    /// does not bind the implicit `__SYSTEM_UP_TIME` globals (an IronPLC
-    /// runtime convention).
+    /// references and pointers `REFERENCE TO` / `POINTER TO`, so enabling the
+    /// CODESYS `REF_TO` syntax here would accept code TwinCAT itself rejects.
+    /// Like CODESYS, it does not bind the implicit `__SYSTEM_UP_TIME` globals
+    /// (an IronPLC runtime convention).
     TwinCat,
 }
 
@@ -265,6 +264,16 @@ define_compiler_options! {
     [Codesys, TwinCat],
     allow_reference_to,
 
+    "Allow POINTER TO pointer types with explicit dereference (^)",
+    "--allow-pointer-to",
+    [Codesys, TwinCat],
+    allow_pointer_to,
+
+    "Allow the ADR() address-of operator (returns a typed pointer to a variable)",
+    "--allow-adr",
+    [Codesys, TwinCat],
+    allow_adr,
+
     "Allow arithmetic (+, -) and ordering comparisons (<, >, <=, >=) on REF_TO types",
     "--allow-ref-arithmetic",
     [Rusty, Codesys],
@@ -480,6 +489,8 @@ mod tests {
                 "allow_long_time_types",
                 "allow_ref_to",
                 "allow_reference_to",
+                "allow_pointer_to",
+                "allow_adr",
                 "allow_ref_arithmetic",
                 "allow_ref_stack_variables",
                 "allow_ref_type_punning",
@@ -502,13 +513,14 @@ mod tests {
     /// The TwinCAT dialect is close to CODESYS (TwinCAT 3 runs on the CODESYS
     /// V3 runtime) but does *not* enable the `REF_TO` reference extensions.
     /// TwinCAT spells references `REFERENCE TO` (not the CODESYS `REF_TO` /
-    /// `REF()` / `NULL`), so it enables `allow_reference_to` instead, and none
-    /// of `allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`,
-    /// or `allow_ref_type_punning` are enabled -- enabling those would accept
-    /// `REF_TO` code that TwinCAT itself rejects. (Pointer types `POINTER TO`
-    /// with `ADR()` are not parsed yet.) It does enable `allow_long_time_types`,
-    /// since TwinCAT supports the LTIME/LDATE/LTOD/LDT keywords. Listed
-    /// explicitly so an accidental divergence from the intended set is caught.
+    /// `REF()` / `NULL`), so it enables `allow_reference_to` and
+    /// `allow_pointer_to` instead, and none of `allow_ref_to`,
+    /// `allow_ref_arithmetic`, `allow_ref_stack_variables`, or
+    /// `allow_ref_type_punning` are enabled -- enabling those would accept
+    /// `REF_TO` code that TwinCAT itself rejects. It does enable
+    /// `allow_long_time_types`, since TwinCAT supports the
+    /// LTIME/LDATE/LTOD/LDT keywords. Listed explicitly so an accidental
+    /// divergence from the intended set is caught.
     #[test]
     fn twincat_dialect_enables_exactly_these_flags() {
         assert_enabled_flags(
@@ -522,6 +534,8 @@ mod tests {
                 "allow_time_as_function_name",
                 "allow_long_time_types",
                 "allow_reference_to",
+                "allow_pointer_to",
+                "allow_adr",
                 "allow_int_to_bool_initializer",
                 "allow_sizeof",
                 "allow_cross_family_widening",

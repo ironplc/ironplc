@@ -5,6 +5,7 @@
 
 mod common;
 
+mod adr;
 mod case;
 mod constant_initializers;
 mod corpus;
@@ -13,7 +14,10 @@ mod enums;
 mod fb_inheritance;
 mod mixed_vars;
 mod partial_access;
+mod pointer_to;
 mod reference_to;
 mod short_circuit;
 mod struct_init_expressions;
+mod tc2_math_calls;
+mod tc2_utilities_calls;
 mod time_and_sizeof;

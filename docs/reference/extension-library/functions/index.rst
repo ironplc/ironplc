@@ -11,6 +11,8 @@ IEC 61131-3 standard but are widely supported across PLC environments.
 
    * - Function
      - Description
+   * - :doc:`ADR <adr>`
+     - Address of a variable as a typed pointer (requires ``--allow-adr``)
    * - :doc:`SIZEOF <sizeof>`
      - Size in bytes of a variable or type (requires ``--allow-sizeof``)
    * - :doc:`__ISVALIDREF <isvalidref>`
@@ -20,5 +22,6 @@ IEC 61131-3 standard but are widely supported across PLC environments.
    :maxdepth: 1
    :hidden:
 
+   adr
    sizeof
    isvalidref

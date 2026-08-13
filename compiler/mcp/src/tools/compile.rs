@@ -106,10 +106,7 @@ pub fn build_response(
     }
 
     // Run semantic analysis
-    let mut diagnostics: Vec<serde_json::Value> = Vec::new();
-    if let Err(errs) = project.semantic() {
-        diagnostics = serialize_diagnostics(&errs);
-    }
+    let mut diagnostics = serialize_diagnostics(&project.semantic());
 
     // Check if we can proceed to codegen
     let has_errors = diagnostics

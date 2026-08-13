@@ -4,5 +4,8 @@ fn main() {
         // The analyzer owns the resolution/scoping requirements
         // (`REQ-CL-analyzer-*`) for activated compatibility libraries.
         "compatibility-libraries.md",
+        // The analyzer owns the explicit-dereference semantics requirements
+        // (`REQ-PTR-analyzer-*`) for POINTER TO.
+        "adr-and-pointer-to.md",
     ]);
 }

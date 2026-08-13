@@ -200,12 +200,10 @@ impl LspProject {
     /// emitting empty notifications to clear URIs that previously
     /// had diagnostics but no longer do.
     pub(crate) fn semantic_all(&mut self) -> HashMap<UriKey, Vec<lsp_types::Diagnostic>> {
-        let semantic_result = self.wrapped.semantic();
-
-        let diagnostics = match semantic_result {
-            Ok(_) => return HashMap::new(),
-            Err(diagnostics) => diagnostics,
-        };
+        let diagnostics = self.wrapped.semantic();
+        if diagnostics.is_empty() {
+            return HashMap::new();
+        }
 
         let mut by_key: HashMap<UriKey, Vec<lsp_types::Diagnostic>> = HashMap::new();
         for diagnostic in diagnostics {
@@ -615,6 +613,7 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::Ref => Some(KEYWORD_INDEX),
             TokenType::Null => Some(KEYWORD_INDEX),
             TokenType::Reference => Some(KEYWORD_INDEX),
+            TokenType::Pointer => Some(KEYWORD_INDEX),
             TokenType::Date => Some(KEYWORD_INDEX),
             TokenType::TimeOfDay => Some(KEYWORD_INDEX),
             TokenType::DateAndTime => Some(KEYWORD_INDEX),

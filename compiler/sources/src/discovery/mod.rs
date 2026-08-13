@@ -21,6 +21,18 @@ use log::{info, trace};
 use crate::file_type::FileType;
 use crate::libraries::{LibraryName, LibraryReference};
 
+/// Bundled libraries TwinCAT provides to every PLC project without a
+/// reference anywhere in the `.plcproj` — the built-in (compiler-operator)
+/// surface. Discovering a TwinCAT project always activates these
+/// (`REQ-CL-sources-008`); there is no way to opt out, because there is no
+/// TwinCAT project without them.
+///
+/// Deliberately a hard-coded list for now: a manifest-driven "implicit"
+/// marker would need to express *which vendor's* project format implies the
+/// library, and that mechanism does not exist yet. When a second vendor
+/// project discovery arrives, replace this with the real mechanism.
+const TWINCAT_IMPLICIT_LIBRARIES: &[&str] = &["Tc2_BuiltIns"];
+
 /// The type of PLC project that was detected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectType {
@@ -45,7 +57,10 @@ pub struct DiscoveredProject {
     /// declaration order and deduplicated by name. Read from a `.plcproj`'s
     /// `<PlaceholderReference>` / `<LibraryReference>` elements
     /// (`REQ-CL-sources-001`); system libraries (`<SystemLibrary>true`) are
-    /// skipped. Empty for project types that carry no library references.
+    /// skipped. For a TwinCAT project the list additionally carries a
+    /// synthetic reference per implicit bundled library (`REQ-CL-sources-008`),
+    /// appended after the declared references. Empty for project types that
+    /// carry no library references.
     /// Callers resolve these against the bundled registry
     /// ([`crate::libraries::LibraryRegistry::resolve_references`]) to decide
     /// which libraries to activate.
@@ -256,6 +271,17 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
         merged_errors.extend(project.errors);
     }
 
+    // Implicit (vendor built-in) libraries: TwinCAT provides these names to
+    // every project with no reference anywhere in the .plcproj, so discovering
+    // a TwinCAT project activates them (`REQ-CL-sources-008`). The synthetic
+    // reference joins the merged list before downstream resolution and is
+    // deduped against any real reference of the same name.
+    append_implicit_references(
+        &mut merged_library_references,
+        &mut seen_libraries,
+        &plcproj_paths[0],
+    );
+
     Some(Ok(DiscoveredProject {
         project_type: ProjectType::TwinCat,
         root_dir: merged_root_dir,
@@ -263,6 +289,31 @@ fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
         library_references: merged_library_references,
         errors: merged_errors,
     }))
+}
+
+/// Append a synthetic reference for every library in
+/// [`TWINCAT_IMPLICIT_LIBRARIES`] the project does not already reference
+/// (`REQ-CL-sources-008`).
+///
+/// TwinCAT provides implicit libraries to every project, so the discovered
+/// project file itself is the activation signal; `declared_in` anchors any
+/// downstream diagnostic on that project file.
+fn append_implicit_references(
+    references: &mut Vec<LibraryReference>,
+    seen: &mut HashSet<LibraryName>,
+    declared_in: &Path,
+) {
+    for name in TWINCAT_IMPLICIT_LIBRARIES {
+        let name = LibraryName::from(*name);
+        if seen.insert(name.clone()) {
+            references.push(LibraryReference {
+                name,
+                version: None,
+                namespace: None,
+                declared_in: FileId::from_path(declared_in),
+            });
+        }
+    }
 }
 
 /// Parse a `.plcproj` file and extract `<Compile Include="...">` paths.
@@ -472,6 +523,70 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn discover_when_plcproj_has_no_references_then_implicit_libraries_added() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        let names: Vec<&str> = result
+            .library_references
+            .iter()
+            .map(|reference| reference.name.as_str())
+            .collect();
+        assert_eq!(names, ["Tc2_BuiltIns"]);
+    }
+
+    #[test]
+    fn discover_when_plcproj_already_references_implicit_library_then_not_duplicated() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
+        fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU" />
+    <PlaceholderReference Include="Tc2_BuiltIns">
+      <Namespace>Tc2_BuiltIns</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let result = discover(dir.path()).unwrap();
+
+        let count = result
+            .library_references
+            .iter()
+            .filter(|reference| reference.name.as_str() == "Tc2_BuiltIns")
+            .count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn append_implicit_references_when_already_seen_then_appends_nothing() {
+        let mut references = Vec::new();
+        let mut seen: HashSet<LibraryName> = TWINCAT_IMPLICIT_LIBRARIES
+            .iter()
+            .map(|name| LibraryName::from(*name))
+            .collect();
+
+        append_implicit_references(&mut references, &mut seen, Path::new("project.plcproj"));
+
+        assert!(references.is_empty());
+    }
+
+    #[test]
     fn discover_when_empty_directory_then_returns_unstructured() {
         let dir = TempDir::new().unwrap();
         let result = discover(dir.path()).unwrap();
@@ -649,18 +764,17 @@ mod tests {
 
         let result = discover(dir.path()).unwrap();
 
-        assert_eq!(result.library_references.len(), 2);
-        assert_eq!(result.library_references[0].name.as_str(), "Tc2_System");
-        assert_eq!(result.library_references[0].version.as_deref(), Some("*"));
-        assert_eq!(
-            result.library_references[0].namespace.as_deref(),
-            Some("Tc2_System")
-        );
-        assert_eq!(result.library_references[1].name.as_str(), "Tc2_Utilities");
-        assert_eq!(
-            result.library_references[1].version.as_deref(),
-            Some("3.3.7.0")
-        );
+        // The two declared references in declaration order, then the implicit
+        // Tc2_BuiltIns every TwinCAT project gets.
+        let references = &result.library_references;
+        assert_eq!(references.len(), 3);
+        assert_eq!(references[0].name.as_str(), "Tc2_System");
+        assert_eq!(references[0].version.as_deref(), Some("*"));
+        assert_eq!(references[0].namespace.as_deref(), Some("Tc2_System"));
+        assert_eq!(references[1].name.as_str(), "Tc2_Utilities");
+        assert_eq!(references[1].version.as_deref(), Some("3.3.7.0"));
+        assert_eq!(references[2].name.as_str(), "Tc2_BuiltIns");
+        assert_eq!(references[2].version, None);
     }
 
     #[test]
@@ -679,7 +793,15 @@ mod tests {
         .unwrap();
 
         let result = discover(dir.path()).unwrap();
-        assert!(result.library_references.is_empty());
+
+        // The system library is skipped; only the implicit Tc2_BuiltIns
+        // every TwinCAT project gets remains.
+        let names: Vec<&str> = result
+            .library_references
+            .iter()
+            .map(|reference| reference.name.as_str())
+            .collect();
+        assert_eq!(names, ["Tc2_BuiltIns"]);
     }
 
     #[test]
@@ -719,8 +841,15 @@ mod tests {
         .unwrap();
 
         let result = discover(dir.path()).unwrap();
-        assert_eq!(result.library_references.len(), 1);
-        assert_eq!(result.library_references[0].name.as_str(), "Tc2_System");
+
+        // The shared reference is deduplicated to one entry, followed by the
+        // implicit Tc2_BuiltIns every TwinCAT project gets.
+        let names: Vec<&str> = result
+            .library_references
+            .iter()
+            .map(|reference| reference.name.as_str())
+            .collect();
+        assert_eq!(names, ["Tc2_System", "Tc2_BuiltIns"]);
     }
 
     #[test]
