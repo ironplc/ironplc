@@ -66,7 +66,9 @@ Supported Dialects
    ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
    ``--allow-long-time-types``,
-   ``--allow-ref-to``, ``--allow-reference-to``, ``--allow-ref-arithmetic``,
+   ``--allow-ref-to``, ``--allow-reference-to``, ``--allow-pointer-to``,
+   ``--allow-adr``,
+   ``--allow-ref-arithmetic``,
    ``--allow-ref-stack-variables``, ``--allow-ref-type-punning``,
    ``--allow-int-to-bool-initializer``, ``--allow-sizeof``,
    ``--allow-cross-family-widening``, ``--allow-partial-access-syntax``,
@@ -87,9 +89,10 @@ Supported Dialects
    such as curly-brace pragmas, C-style comments, and the ``AND_THEN``
    short-circuit operator. Unlike ``codesys``, it does **not** enable the
    ``REF_TO`` / ``REF()`` / ``NULL`` reference extensions: TwinCAT spells
-   references ``REFERENCE TO`` (bound with ``REF=``), which this dialect
-   enables instead via ``--allow-reference-to``. (Pointer types —
-   ``POINTER TO`` with ``ADR()`` — are not parsed yet.) As with ``codesys``,
+   references ``REFERENCE TO`` (bound with ``REF=``) and pointers
+   ``POINTER TO`` (bound with ``ADR()``), which this dialect enables instead
+   via ``--allow-reference-to``, ``--allow-pointer-to``, and
+   ``--allow-adr``. As with ``codesys``,
    the implicit
    :doc:`__SYSTEM_UP_TIME </reference/extension-library/variables/system-uptime>`
    globals are not pre-bound, since they are an IronPLC runtime convention
@@ -99,11 +102,13 @@ Supported Dialects
    ``--allow-top-level-var-global``, ``--allow-constant-type-params``,
    ``--allow-empty-var-blocks``, ``--allow-time-as-function-name``,
    ``--allow-long-time-types``,
-   ``--allow-reference-to``, ``--allow-int-to-bool-initializer``,
+   ``--allow-reference-to``, ``--allow-pointer-to``, ``--allow-adr``,
+   ``--allow-int-to-bool-initializer``,
    ``--allow-sizeof``, ``--allow-cross-family-widening``,
    ``--allow-partial-access-syntax``, ``--allow-pragmas``,
    ``--allow-short-circuit-operators``,
    ``--allow-mixed-located-var-declarations``,
+   ``--allow-constant-initializer-expressions``,
    ``--allow-bit-string-case-labels``, ``--allow-paren-string-length``,
    ``--allow-struct-initializer-expressions``, and
    ``--allow-fb-inheritance``.
@@ -222,6 +227,25 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    different surface syntax. The compiler does not restrict flag combinations, so
    ``--allow-ref-to`` and ``--allow-reference-to`` may be set at once. See
    :doc:`/reference/language/data-types/derived/reference-types`.
+
+``--allow-pointer-to``
+   Allow the Beckhoff TwinCAT / CODESYS ``POINTER TO`` pointer type. A
+   ``POINTER TO`` variable behaves like a ``REF_TO`` reference: reading or
+   writing the target requires the explicit dereference operator (``^``),
+   unlike ``REFERENCE TO``, which dereferences implicitly. Pointers are
+   bound with the ``ADR()`` operator (``--allow-adr``) or the
+   ``REF()``/``NULL`` forms from ``--allow-ref-to``. See
+   :doc:`/reference/language/data-types/derived/reference-types`.
+
+``--allow-adr``
+   Allow the ``ADR()`` address-of operator, which returns a typed pointer to
+   a variable for assignment to a ``POINTER TO`` variable
+   (``--allow-pointer-to``). Unlike TwinCAT's untyped ``PVOID`` result,
+   ``ADR(x)`` in IronPLC has the type ``POINTER TO`` *typeof(x)* and is
+   type-checked against the destination pointer's target type. Addresses of
+   sub-objects (array elements, structure fields) and pointer arithmetic are
+   not supported and are rejected with a diagnostic. See
+   :doc:`/reference/extension-library/functions/adr`.
 
 ``--allow-ref-arithmetic``
    Allow arithmetic (``+``, ``-``) and ordering comparisons (``<``, ``>``,

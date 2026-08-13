@@ -31,7 +31,7 @@ use crate::{
     type_environment::{TypeEnvironment, TypeEnvironmentBuilder},
     type_table, xform_fold_constant_expressions, xform_fold_initializer_expressions,
     xform_insert_implicit_deref, xform_int_to_bool_initializer, xform_named_to_positional_args,
-    xform_resolve_constant_expressions, xform_resolve_expr_types,
+    xform_resolve_adr, xform_resolve_constant_expressions, xform_resolve_expr_types,
     xform_resolve_late_bound_expr_kind, xform_resolve_late_bound_type_initializer,
     xform_resolve_symbol_and_function_environment, xform_resolve_type_aliases,
     xform_resolve_type_decl_environment, xform_toposort_declarations,
@@ -198,13 +198,37 @@ pub fn resolve_types(
         }
     }
 
+    // Rewrite the `ADR(x)` address-of operator into `ExprKind::Ref` when
+    // `allow_adr` is set. Runs after implicit-deref (so a `REFERENCE TO`
+    // operand is not mis-addressed) and before symbol/function resolution
+    // (so a recognized `ADR` is not reported as an undeclared function).
+    // Recoverable: a diagnosed call is lowered to a placeholder, so the
+    // transformed library is kept even when diagnostics are present.
+    let fallback = library.clone();
+    match xform_resolve_adr::apply(library, options) {
+        Ok((result, errs)) => {
+            library = result;
+            diagnostics.extend(errs);
+        }
+        Err(errs) => {
+            diagnostics.extend(errs);
+            library = fallback;
+        }
+    }
+
     // Fold constant-expression VAR initializers (e.g. `scaled : LREAL := SCALE*4.0;`)
     // back into ordinary literal initializers, or diagnose. Must run before
     // any other pass touches `InitialValueAssignmentKind::SimpleExpr` — see
     // specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
+    // Recoverable: a diagnosed initializer is still normalized, so the
+    // transformed library must be kept even when diagnostics are present —
+    // reverting would leak `SimpleExpr` nodes to later passes.
     let fallback = library.clone();
     match xform_fold_initializer_expressions::apply(library, options) {
-        Ok(result) => library = result,
+        Ok((result, errs)) => {
+            library = result;
+            diagnostics.extend(errs);
+        }
         Err(errs) => {
             diagnostics.extend(errs);
             library = fallback;
@@ -417,6 +441,40 @@ END_FUNCTION_BLOCK";
     fn parse_shared_library(name: &'static str) -> Library {
         let src = read_shared_resource(name);
         parse_program(&src, &FileId::default(), &CompilerOptions::default()).unwrap()
+    }
+
+    // ---------------------------------------------------------------------
+    // A diagnosed constant-expression initializer must report only its own
+    // problem. The initializer-fold transform used to be reverted when it
+    // diagnosed, leaking `SimpleExpr` nodes to later rules and raising a
+    // P9998 internal error after every legitimate P4037. See
+    // specs/plans/2026-08-06-twincat-initializer-dialect-and-fold-revert-fixes.md.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn analyze_when_initializer_expression_and_flag_disabled_then_p4037_only() {
+        let program = "
+FUNCTION func : LREAL
+VAR CONSTANT
+d2r : LREAL := 3.0/180.0;
+END_VAR
+func := d2r;
+END_FUNCTION";
+        let lib = parse_program(program, &FileId::default(), &CompilerOptions::default()).unwrap();
+
+        let (_library, context) = analyze(&[&lib], &CompilerOptions::default()).unwrap();
+
+        let codes: Vec<&str> = context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert!(codes.contains(&"P4037"), "expected P4037, got: {codes:?}");
+        // No internal error from a rule observing an unfolded initializer.
+        assert!(!codes.contains(&"P9998"), "unexpected P9998 in: {codes:?}");
+        // No cascaded "constant must have initializer" — the declaration
+        // does carry an initializer, it was merely diagnosed.
+        assert!(!codes.contains(&"P4008"), "unexpected P4008 in: {codes:?}");
     }
 
     // ---------------------------------------------------------------------

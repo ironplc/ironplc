@@ -1,0 +1,17 @@
+name = "Tc2_BuiltIns"
+vendor = "Beckhoff Automation GmbH"
+default_version = "1.0.0"
+# TwinCAT provides this surface (the built-in conversion operators) to every
+# PLC project with no library reference in the .plcproj, so this library is
+# implicit: discovering a TwinCAT project always activates it (hard-coded in
+# the discovery module's TWINCAT_IMPLICIT_LIBRARIES list).
+# `BOOL_TO_STRING` mirrors the documented TwinCAT Boolean-conversion operator:
+# TRUE -> 'TRUE', FALSE -> 'FALSE'. The body is IronPLC-authored ST dictated by
+# that documented result table. Authored per
+# specs/steering/compatibility-library-authoring.md from the clean-room spec at
+# specs/design/library-interfaces/tc2-builtins.md.
+references = [
+  "https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529047435.html -- TwinCAT 3 PLC: Boolean conversion operators (BOOL_TO_STRING result values)",
+  "https://infosys.beckhoff.com/content/1033/tc3_plc_intro/3998090635.html -- TwinCAT 3 PLC: Type conversion operators overview",
+  "https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2528853899.html -- TwinCAT 3 PLC: Operators are implicitly known throughout a project",
+]

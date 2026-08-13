@@ -34,6 +34,43 @@ Supported Elements
 Project Discovery
 -----------------
 
-When you point IronPLC at a directory containing a TwinCAT project, the compiler
-detects TwinCAT 3 projects by the presence of a :file:`.plcproj` file. It then
-reads the project file to discover which source files to analyze.
+When you point IronPLC at a directory, the compiler searches it
+recursively for :file:`.plcproj` files — the marker of a TwinCAT 3 PLC
+project. This means you can point IronPLC at any level of the Visual
+Studio solution layout that TwinCAT XAE creates:
+
+.. code-block:: text
+
+   MySolution/
+   ├── MySolution.sln
+   └── MySolution/
+       ├── MySolution.tsproj
+       └── PlcProject/
+           ├── PlcProject.plcproj
+           └── POUs/
+               ├── MAIN.TcPOU
+               └── F_Helper.TcPOU
+
+The :file:`.sln` and :file:`.tsproj` files are not themselves parsed;
+discovery walks past them to each :file:`.plcproj`, which it reads to
+determine the source files to analyze (the ``<Compile>`` items).
+
+When discovery finds more than one :file:`.plcproj`, all discovered
+projects are merged into a single compilation unit, so code in one
+project can use declarations from another. A project entry that cannot
+be resolved does not abort discovery of the remaining sources.
+
+------------------
+Library References
+------------------
+
+Discovery also reads each :file:`.plcproj` project's library references
+(``<PlaceholderReference>`` and ``<LibraryReference>`` items). A
+reference whose name matches a bundled
+:doc:`compatibility library </reference/compatibility-libraries/index>`
+activates that library automatically; a reference to a library IronPLC
+does not bundle reports problem
+:doc:`P6011 </reference/compiler/problems/P6011>`. Names are matched
+exactly and case-sensitively; the declared version is not used to select
+a package. Precompiled library files (:file:`.library` /
+:file:`.compiled-library`) are not read.

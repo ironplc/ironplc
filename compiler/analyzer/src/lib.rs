@@ -43,6 +43,7 @@ mod rule_ref_to;
 mod rule_stdlib_type_redefinition;
 mod rule_string_encoding_compat;
 mod rule_struct_initializer_expression_allowed;
+mod rule_support;
 mod rule_task_names_unique;
 mod rule_unsupported_extension;
 mod rule_unsupported_stdlib_type;
@@ -67,6 +68,7 @@ mod xform_fold_initializer_expressions;
 mod xform_insert_implicit_deref;
 mod xform_int_to_bool_initializer;
 mod xform_named_to_positional_args;
+mod xform_resolve_adr;
 mod xform_resolve_constant_expressions;
 mod xform_resolve_expr_types;
 mod xform_resolve_late_bound_expr_kind;
@@ -102,3 +104,7 @@ mod spec_requirements {
 }
 #[cfg(test)]
 mod spec_conformance;
+#[cfg(test)]
+mod spec_conformance_adr;
+#[cfg(test)]
+mod spec_conformance_pointer_to;

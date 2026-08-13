@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<TcSmProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TcSmVersion="1.0" TcVersion="3.1.4024.0">
+	<Project ProjectGUID="{7E15A2C4-9B38-4D61-A5F0-2C86D4B9E713}" ShowHideConfigurations="#x106">
+		<Plc>
+			<Project GUID="{F2A84D06-1C57-4B92-8E3D-A9605B7F1E48}" Name="PlcFormat" PrjFilePath="PlcFormat\PlcFormat.plcproj" TmcFilePath="" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e" SymbolicMapping="true"/>
+		</Plc>
+	</Project>
+</TcSmProject>

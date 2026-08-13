@@ -22,7 +22,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use ironplc_dsl::common::Library;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_sources::LibraryName;
 
@@ -36,16 +35,12 @@ pub fn check(
     libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<(), String> {
-    let mut project = create_project(paths, compiler_options, libraries, suppress_output)?;
+    let (mut project, mut diagnostics) = create_project(paths, compiler_options, libraries);
 
     // Analyze the set
-    if let Err(err) = project.semantic() {
-        trace!("Errors {err:?}");
-        handle_diagnostics(&err, Some(&project), suppress_output);
-        return Err(String::from("Error during analysis"));
-    }
+    diagnostics.extend(project.semantic());
 
-    Ok(())
+    finish("Check", diagnostics, Some(&project), suppress_output)
 }
 
 pub fn echo(
@@ -54,7 +49,7 @@ pub fn echo(
     suppress_output: bool,
 ) -> Result<(), String> {
     // Echo renders parsed source; it runs no analysis, so no library activation.
-    let mut project = create_project(paths, compiler_options, &[], suppress_output)?;
+    let (mut project, mut diagnostics) = create_project(paths, compiler_options, &[]);
 
     // Collect the results and output after because getting the results may change
     // the project itself
@@ -63,34 +58,17 @@ pub fn echo(
         results.push(src.library());
     }
 
-    let mut has_error = false;
-
     for result in results {
         match result {
-            Ok(library) => {
-                let output = write_to_string(library).map_err(|e| {
-                    handle_diagnostics(&e, None, suppress_output);
-                    String::from("Error echo source")
-                })?;
-
-                print!("{output}");
-            }
-            Err(diagnostics) => {
-                let diagnostics: Vec<Diagnostic> = diagnostics;
-                // TODO this needs to be improved but will wait for changes to source
-                handle_diagnostics(&diagnostics, None, suppress_output);
-
-                print!("Syntax error");
-
-                has_error = true;
-            }
+            Ok(library) => match write_to_string(library) {
+                Ok(output) => print!("{output}"),
+                Err(errs) => diagnostics.extend(errs),
+            },
+            Err(errs) => diagnostics.extend(errs),
         }
     }
 
-    match has_error {
-        true => Err("Tokenize error".to_owned()),
-        false => Ok(()),
-    }
+    finish("Echo", diagnostics, Some(&project), suppress_output)
 }
 
 pub fn tokenize(
@@ -99,13 +77,13 @@ pub fn tokenize(
     suppress_output: bool,
 ) -> Result<(), String> {
     // Tokenize only lexes each source; library activation is irrelevant here.
-    let project = create_project(paths, compiler_options, &[], suppress_output)?;
+    let (project, mut diagnostics) = create_project(paths, compiler_options, &[]);
 
     for src in project.sources() {
-        tokenizer::tokenize_source(src, &project, suppress_output, &handle_diagnostics)?;
+        diagnostics.extend(tokenizer::tokenize_source(src));
     }
 
-    Ok(())
+    finish("Tokenize", diagnostics, Some(&project), suppress_output)
 }
 
 /// Compiles source files into a bytecode container (.iplc) file.
@@ -119,97 +97,66 @@ pub fn compile(
     libraries: &[LibraryName],
     suppress_output: bool,
 ) -> Result<(), String> {
-    let mut project = create_project(paths, compiler_options, libraries, suppress_output)?;
+    let (mut project, mut diagnostics) = create_project(paths, compiler_options, libraries);
 
     // Refuse to write the container over a loaded source file. `File::create`
-    // truncates immediately, so this must run before any output is opened to
-    // avoid replacing a source with container bytes.
+    // truncates immediately, so this must be diagnosed before codegen runs:
+    // a non-empty diagnostic set below means no output is ever opened.
     if output_conflicts_with_source(&project, output) {
-        let diagnostics = diagnostic(
+        diagnostics.extend(diagnostic(
             Problem::OutputPathConflictsWithInput,
             output,
             String::from("Choose an output path that is not an input source file"),
-        );
-        handle_diagnostics(&diagnostics, Some(&project), suppress_output);
-        return Err(String::from("Output path conflicts with an input file"));
+        ));
     }
 
-    // Parse all sources and merge into a single library
-    let mut combined = Library::new();
-    for src in project.sources_mut() {
-        match src.library() {
-            Ok(library) => {
-                combined.elements.extend(library.elements.iter().cloned());
+    // Run full analysis: parse, type resolution and semantic checks (e.g.
+    // undeclared function calls, type mismatches). Analysis goes as far as it
+    // can; codegen requires a project with no problems at all.
+    diagnostics.extend(project.semantic());
+
+    if diagnostics.is_empty() {
+        let (Some(analyzed), Some(context)) =
+            (project.analyzed_library(), project.semantic_context())
+        else {
+            // A clean analysis always caches its artifacts; reaching this
+            // branch is a compiler defect, not a problem with the input.
+            return Err(String::from(
+                "Internal error: analysis produced no artifacts",
+            ));
+        };
+
+        // Generate bytecode, skipping user-defined functions not reachable from
+        // the PROGRAM root to reduce container size.
+        let codegen_options = ironplc_codegen::CodegenOptions {
+            system_uptime_global: compiler_options.allow_system_uptime_global,
+        };
+        // Build a SourceLookup that hands codegen the exact bytes the
+        // parser saw for each FileId. The container's debug section
+        // SOURCE_FILE_TABLE (tag 6) records a BLAKE3 hash over these so a
+        // debugger can detect drift between the .iplc and the user's
+        // working copy.
+        let mut source_bytes: std::collections::HashMap<ironplc_dsl::core::FileId, Vec<u8>> =
+            std::collections::HashMap::new();
+        for src in project.sources() {
+            source_bytes.insert(src.file_id().clone(), src.as_string().as_bytes().to_vec());
+        }
+        let source_lookup = HashMapSourceLookup(source_bytes);
+
+        match ironplc_codegen::compile(analyzed, context, &codegen_options, &source_lookup) {
+            Ok(container) => {
+                // Write the container to the output file
+                let mut out_file = std::fs::File::create(output)
+                    .map_err(|e| format!("Failed to create output file: {e}"))?;
+                container
+                    .write_to(&mut out_file)
+                    .map_err(|e| format!("Failed to write output file: {e}"))?;
             }
-            Err(diagnostics) => {
-                handle_diagnostics(&diagnostics, None, suppress_output);
-                return Err(String::from("Error parsing source files"));
-            }
+            Err(err) => diagnostics.push(err),
         }
     }
 
-    // Load any activated compatibility libraries and inject them ahead of user
-    // source (base stdlib -> library -> user), so their declarations resolve
-    // under their exact vendor names. A library that fails to load (unshipped
-    // name or malformed manifest) is a hard error for compilation.
-    let (compat_libraries, compat_diagnostics) = project.load_activated_libraries();
-    if !compat_diagnostics.is_empty() {
-        handle_diagnostics(&compat_diagnostics, Some(&project), suppress_output);
-        return Err(String::from("Error activating compatibility libraries"));
-    }
-    let analyze_input: Vec<&Library> = compat_libraries
-        .iter()
-        .chain(std::iter::once(&combined))
-        .collect();
-
-    // Run full analysis: type resolution + semantic checks (e.g. undeclared
-    // function calls, type mismatches). This must happen before codegen so
-    // that semantic errors are reported with proper problem codes.
-    let (analyzed, context) = ironplc_analyzer::stages::analyze(&analyze_input, &compiler_options)
-        .map_err(|errs| {
-            handle_diagnostics(&errs, Some(&project), suppress_output);
-            String::from("Error during analysis")
-        })?;
-
-    // Report semantic diagnostics before attempting codegen. Without this
-    // check, semantic errors (e.g. P4017 undeclared function) would surface
-    // as misleading codegen errors (e.g. P9999).
-    if context.has_diagnostics() {
-        handle_diagnostics(context.diagnostics(), Some(&project), suppress_output);
-        return Err(String::from("Error during analysis"));
-    }
-
-    // Generate bytecode, skipping user-defined functions not reachable from
-    // the PROGRAM root to reduce container size.
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: compiler_options.allow_system_uptime_global,
-    };
-    // Build a SourceLookup that hands codegen the exact bytes the
-    // parser saw for each FileId. The container's debug section
-    // SOURCE_FILE_TABLE (tag 6) records a BLAKE3 hash over these so a
-    // debugger can detect drift between the .iplc and the user's
-    // working copy.
-    let mut source_bytes: std::collections::HashMap<ironplc_dsl::core::FileId, Vec<u8>> =
-        std::collections::HashMap::new();
-    for src in project.sources() {
-        source_bytes.insert(src.file_id().clone(), src.as_string().as_bytes().to_vec());
-    }
-    let source_lookup = HashMapSourceLookup(source_bytes);
-
-    let container = ironplc_codegen::compile(&analyzed, &context, &codegen_options, &source_lookup)
-        .map_err(|err| {
-            handle_diagnostics(&[err], Some(&project), suppress_output);
-            String::from("Error during code generation")
-        })?;
-
-    // Write the container to the output file
-    let mut out_file =
-        std::fs::File::create(output).map_err(|e| format!("Failed to create output file: {e}"))?;
-    container
-        .write_to(&mut out_file)
-        .map_err(|e| format!("Failed to write output file: {e}"))?;
-
-    Ok(())
+    finish("Compile", diagnostics, Some(&project), suppress_output)
 }
 
 /// Codegen [`SourceLookup`](ironplc_codegen::SourceLookup) backed by an
@@ -223,59 +170,78 @@ impl ironplc_codegen::SourceLookup for HashMapSourceLookup {
     }
 }
 
+/// Prints every diagnostic a command collected and derives the command's
+/// final result from that same collection: `Ok` when there are none,
+/// otherwise `Err` naming the command and the problem count.
+///
+/// This is the single fold point from diagnostics (data) to exit status
+/// (control flow). Commands accumulate diagnostics from every stage —
+/// discovery, parsing, analysis, codegen — and must not decide
+/// success/failure anywhere else, so that a problem in one stage never
+/// prevents a later stage from reporting its own.
+fn finish(
+    command: &str,
+    diagnostics: Vec<Diagnostic>,
+    project: Option<&FileBackedProject>,
+    suppress_output: bool,
+) -> Result<(), String> {
+    if diagnostics.is_empty() {
+        return Ok(());
+    }
+    trace!("Errors {diagnostics:?}");
+    handle_diagnostics(&diagnostics, project, suppress_output);
+    Err(format!(
+        "{command} failed with {} problem(s)",
+        diagnostics.len()
+    ))
+}
+
+/// Builds a project from `paths`, running discovery and loading every
+/// resolvable file.
+///
+/// Returns the project together with every diagnostic discovery produced
+/// (an unresolvable `.plcproj` entry, a referenced-but-unbundled
+/// compatibility library, or an unreadable source file). Nothing is
+/// printed here and nothing aborts: the project contains every file that
+/// DID resolve, so callers run their normal work (analysis, codegen, ...)
+/// against it — real diagnostics in the resolvable files must not be
+/// hidden behind a discovery-time problem — and fold the returned
+/// diagnostics into their final result via [`finish`].
 fn create_project(
     paths: &[PathBuf],
     compiler_options: CompilerOptions,
     libraries: &[LibraryName],
-    suppress_output: bool,
-) -> Result<FileBackedProject, String> {
+) -> (FileBackedProject, Vec<Diagnostic>) {
     trace!("Reading paths {paths:?}");
     let mut files: Vec<PathBuf> = vec![];
     // Explicit `--library` activation, plus any libraries discovered project
     // files reference. The explicit set is applied first so it takes
     // precedence in ordering; discovered libraries are appended, deduplicated.
     let mut activated_libraries: Vec<LibraryName> = libraries.to_vec();
-    let mut had_error = false;
+    let mut diagnostics: Vec<Diagnostic> = vec![];
 
     for path in paths {
-        let (mut resolved, discovered_libraries, diagnostics) = enumerate_files(path);
+        let (mut resolved, discovered_libraries, path_diagnostics) = enumerate_files(path);
         files.append(&mut resolved);
         for library in discovered_libraries {
             if !activated_libraries.contains(&library) {
                 activated_libraries.push(library);
             }
         }
-        if !diagnostics.is_empty() {
-            handle_diagnostics(&diagnostics, None, suppress_output);
-            had_error = true;
-        }
+        diagnostics.extend(path_diagnostics);
     }
 
     // Create the project
     let mut project = FileBackedProject::with_options(compiler_options);
     project.set_activated_libraries(activated_libraries);
-    let mut errors: Vec<Diagnostic> = vec![];
 
     for file_path in files {
-        let res = project.push(FileId::from_path(&file_path));
-        match res {
-            Ok(_) => {}
-            Err(err) => {
-                errors.push(err);
-            }
+        if let Err(err) = project.push(FileId::from_path(&file_path)) {
+            diagnostics.push(err);
         }
     }
 
-    if !errors.is_empty() {
-        handle_diagnostics(&errors, Some(&project), suppress_output);
-        had_error = true;
-    }
-
-    if had_error {
-        return Err(String::from("Error enumerating or reading source files"));
-    }
-
-    Ok(project)
+    (project, diagnostics)
 }
 
 /// Enumerates all files at the path.
@@ -503,12 +469,25 @@ mod tests {
 
     use crate::{cli::check, cli::compile, cli::tokenize, test_helpers::resource_path};
 
-    // The valid/syntax-error/semantic-error outcomes of check, echo, tokenize,
-    // and compile against the shared fixtures are asserted by the subprocess
-    // suite in tests/cli.rs, which also pins the exit-code and stdout/stderr
-    // contract. The tests here cover only paths the subprocess suite does not:
-    // directory input, .plcproj wiring, XML tokenize, container round-trip,
-    // codegen-stage error propagation, and help-URL formatting.
+    // The plain valid/syntax-error/semantic-error outcomes of check, echo,
+    // tokenize, and compile against the shared fixtures are asserted by the
+    // subprocess suite in tests/cli.rs, which pins the exit-code and
+    // stdout/stderr contract as well. The tests here cover what that suite
+    // cannot reach: directory input, the diagnostic-accumulation contract
+    // (the `problem_count` cases below), XML tokenize, container round-trip,
+    // and help-URL formatting.
+
+    /// Extracts the problem count from a command's failure message
+    /// (`"<Command> failed with N problem(s)"`). The count is the observable
+    /// that proves how many stages contributed diagnostics: a
+    /// discovery-only failure reports 1, while discovery + a real
+    /// analysis finding reports 2 or more.
+    fn problem_count(err: &str) -> usize {
+        err.rsplit_once(" failed with ")
+            .and_then(|(_, rest)| rest.strip_suffix(" problem(s)"))
+            .and_then(|n| n.parse().ok())
+            .unwrap_or_else(|| panic!("not a command failure message: {err}"))
+    }
 
     #[test]
     fn problem_help_url_when_diagnostic_then_url_tagged_for_cli() {
@@ -559,15 +538,114 @@ mod tests {
         assert!(result.is_err())
     }
 
-    // Discovery continuing past a bad `.plcproj` entry (and still loading the
-    // valid entries) is owned and tested by `ironplc_sources::discovery`; the
-    // test above only proves the resulting diagnostics fail `check`.
+    #[test]
+    fn check_when_plcproj_has_valid_and_missing_entries_then_semantic_error_still_surfaces() {
+        // The valid entry must still be loaded and checked -- not just
+        // that the overall command fails (which a discovery-time-only
+        // failure would also produce), but specifically that
+        // project.semantic() actually ran against it. A.st here has a
+        // real semantic error (an undeclared variable): if analysis
+        // never ran, the failure message would report only the single
+        // discovery problem -- a count of 2 or more is what
+        // distinguishes "aborted before checking" from "checked, and
+        // found a real bug".
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("A.st"),
+            "PROGRAM A\nVAR\n    x : INT;\nEND_VAR\n    x := UNDECLARED_VAR;\nEND_PROGRAM",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.st" />
+    <Compile Include="MISSING.TcPOU" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().to_path_buf()];
+        let result = check(&paths, CompilerOptions::default(), &[], true);
+        let err = result.unwrap_err();
+        assert!(
+            problem_count(&err) >= 2,
+            "expected the discovery problem AND a semantic problem, got: {err}"
+        );
+    }
+
+    #[test]
+    fn check_when_plcproj_references_unbundled_library_then_still_runs_analysis() {
+        // A project referencing a library IronPLC doesn't bundle (P6011)
+        // must not prevent analysis of the project's own files -- same
+        // reasoning as the missing-.plcproj-entry case above, for the
+        // other kind of discovery-time diagnostic.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("A.st"),
+            "PROGRAM A\nVAR\n    x : INT;\nEND_VAR\n    x := UNDECLARED_VAR;\nEND_PROGRAM",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="A.st" />
+    <PlaceholderReference Include="NotBundled" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().to_path_buf()];
+        let result = check(&paths, CompilerOptions::default(), &[], true);
+        let err = result.unwrap_err();
+        assert!(
+            problem_count(&err) >= 2,
+            "expected the P6011 discovery problem AND a semantic problem, got: {err}"
+        );
+    }
 
     #[test]
     fn tokenize_xml_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("simple.xml")];
         let result = tokenize(&paths, CompilerOptions::default(), true);
         assert!(result.is_ok())
+    }
+
+    #[test]
+    fn compile_when_plcproj_references_unbundled_library_then_error_and_no_container() {
+        // Codegen runs only on a project with no problems at all. A
+        // discovery-time diagnostic (P6011, unbundled library) fails the
+        // command AND suppresses the container: a failing command must
+        // not leave behind a deployable artifact, even when the program
+        // never calls anything from the unbundled library. (If P6011
+        // should ever stop blocking compilation, the fix is diagnostic
+        // severities -- make it a warning -- not a codegen exception.)
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("A.st"),
+            "PROGRAM A\nVAR\n    x : INT;\nEND_VAR\n    x := 1;\nEND_PROGRAM",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="A.st" />
+    <PlaceholderReference Include="NotBundled" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().to_path_buf()];
+        let output = tempfile::NamedTempFile::new().unwrap();
+        let result = compile(&paths, output.path(), CompilerOptions::default(), &[], true);
+
+        assert!(result.is_err());
+        assert_eq!(output.path().metadata().unwrap().len(), 0);
     }
 
     #[test]

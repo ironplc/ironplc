@@ -7,7 +7,7 @@ use regex::Regex;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 
-use dsl_macro_derive::Recurse;
+use dsl_macro_derive::{Located, Recurse};
 
 use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
@@ -98,19 +98,14 @@ impl fmt::Display for Boolean {
 
 /// Integer liberal. The representation is of the largest possible integer
 /// and later bound to smaller types depend on context.
-#[derive(Debug, Clone, PartialEq, Recurse)]
+#[derive(Debug, Clone, PartialEq, Recurse, Located)]
 pub struct Integer {
+    #[located(position)]
     pub span: SourceSpan,
     /// The value in the maximum possible size. An integer is inherently
     /// an unsigned value.
     #[recurse(ignore)]
     pub value: u128,
-}
-
-impl Located for Integer {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 #[derive(Debug)]
@@ -603,8 +598,9 @@ impl fmt::Display for BitStringLiteral {
 /// Types are all identifiers but we use a separate structure
 /// because it is convenient to treat types and other identifiers
 /// separately.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
 pub struct TypeName {
+    #[located(delegate)]
     pub name: Id,
 }
 
@@ -626,12 +622,6 @@ impl Eq for TypeName {}
 impl Hash for TypeName {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
-    }
-}
-
-impl Located for TypeName {
-    fn span(&self) -> SourceSpan {
-        self.name.span()
     }
 }
 
@@ -1361,12 +1351,13 @@ impl ReferenceTarget {
 
 /// The surface syntax that produced a reference declaration or initializer.
 ///
-/// References share a single backend (a variable-table index), but two
+/// References share a single backend (a variable-table index), but three
 /// keywords produce them: the IEC 61131-3 `REF_TO` and the Beckhoff
-/// TwinCAT / CODESYS `REFERENCE TO`. This tag records which one appeared in
-/// the source so the renderer can reproduce it and so per-declaration
-/// dereference behavior can be keyed on it. See
-/// `specs/design/reference-to-twincat.md`.
+/// TwinCAT / CODESYS `REFERENCE TO` and `POINTER TO`. This tag records which
+/// one appeared in the source so the renderer can reproduce it and so
+/// per-declaration dereference behavior can be keyed on it. See
+/// `specs/design/reference-to-twincat.md` and
+/// `specs/design/adr-and-pointer-to.md`.
 ///
 /// This is a leaf tag, always carried behind a `#[recurse(ignore)]` field, so
 /// it deliberately does not derive `Recurse`.
@@ -1376,6 +1367,10 @@ pub enum RefSyntax {
     RefTo,
     /// Beckhoff TwinCAT / CODESYS `REFERENCE TO`.
     ReferenceTo,
+    /// Beckhoff TwinCAT / CODESYS `POINTER TO`. Same backend as `REF_TO`
+    /// with explicit `^` dereference. See
+    /// `specs/design/adr-and-pointer-to.md`.
+    PointerTo,
 }
 
 /// Reference type declaration (`REF_TO` or `REFERENCE TO`).
@@ -1917,9 +1912,10 @@ pub fn next_block_id() -> BlockId {
 /// Variable declaration.
 ///
 /// See section 2.4.3.
-#[derive(Clone, Debug, Recurse)]
+#[derive(Clone, Debug, Recurse, Located)]
 pub struct VarDecl {
     // Not all variable types have a "name", so the name is part of the type.
+    #[located(delegate)]
     pub identifier: VariableIdentifier,
     #[recurse(ignore)]
     pub var_type: VariableType,
@@ -1942,12 +1938,6 @@ impl PartialEq for VarDecl {
             && self.var_type == other.var_type
             && self.qualifier == other.qualifier
             && self.initializer == other.initializer
-    }
-}
-
-impl Located for VarDecl {
-    fn span(&self) -> SourceSpan {
-        self.identifier.span()
     }
 }
 
@@ -2305,17 +2295,12 @@ impl Display for VariableIdentifier {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
 pub struct DirectVariableIdentifier {
     pub name: Option<Id>,
     pub address_assignment: AddressAssignment,
+    #[located(position)]
     pub span: SourceSpan,
-}
-
-impl Located for DirectVariableIdentifier {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
-    }
 }
 
 /// Qualifier types for definitions.
@@ -2557,7 +2542,7 @@ pub struct SimpleExprInitializer {
 /// Provides the initialization of a string variable declaration.
 ///
 /// See sections 2.4.3.1 and 2.4.3.2.
-#[derive(Clone, PartialEq, Debug, Recurse)]
+#[derive(Clone, PartialEq, Debug, Recurse, Located)]
 pub struct StringInitializer {
     /// Maximum length of the string.
     pub length: Option<IntegerRef>,
@@ -2569,13 +2554,8 @@ pub struct StringInitializer {
     #[recurse(ignore)]
     pub initial_value: Option<Vec<char>>,
 
+    #[located(position)]
     pub keyword_span: SourceSpan,
-}
-
-impl Located for StringInitializer {
-    fn span(&self) -> SourceSpan {
-        self.keyword_span.clone()
-    }
 }
 
 impl StringInitializer {
@@ -2769,12 +2749,13 @@ impl HasVariables for FunctionDeclaration {
 /// and variables retain values between invocations.
 ///
 /// See section 2.5.2.
-#[derive(Clone, Debug, PartialEq, Recurse)]
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
 pub struct FunctionBlockDeclaration {
     pub name: TypeName,
     pub variables: Vec<VarDecl>,
     pub edge_variables: Vec<EdgeVarDecl>,
     pub body: FunctionBlockBodyKind,
+    #[located(position)]
     pub span: SourceSpan,
     /// Object-oriented facet (OOP extension).
     ///
@@ -2789,12 +2770,6 @@ pub struct FunctionBlockDeclaration {
 impl HasVariables for FunctionBlockDeclaration {
     fn variables(&self) -> &Vec<VarDecl> {
         &self.variables
-    }
-}
-
-impl Located for FunctionBlockDeclaration {
-    fn span(&self) -> SourceSpan {
-        self.span.clone()
     }
 }
 

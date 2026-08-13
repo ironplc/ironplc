@@ -77,10 +77,7 @@ pub fn build_response(
         project.add_source(FileId::from_string(&src.name), src.content.clone());
     }
 
-    let diagnostics_json = match project.semantic() {
-        Ok(()) => vec![],
-        Err(diags) => serialize_diagnostics(&diags),
-    };
+    let diagnostics_json = serialize_diagnostics(&project.semantic());
 
     let has_errors = diagnostics_json
         .iter()

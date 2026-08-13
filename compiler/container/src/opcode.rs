@@ -827,7 +827,24 @@ pub mod cmp_op {
 /// the emitter and the optimizer. Keeping one function prevents the two from
 /// diverging and producing misaligned instruction boundaries.
 pub fn instruction_size(op: Opcode) -> usize {
-    match op {
+    // Unassigned bytes advance by 1 so disassembly cannot get stuck.
+    instruction_size_opt(op).unwrap_or(1)
+}
+
+/// Returns `true` iff `op` is an assigned opcode with a defined encoding.
+///
+/// Derived from [`instruction_size_opt`] so it stays exhaustive automatically:
+/// a new opcode added there is immediately recognized here and by the
+/// wire-format completeness guard in `codegen/tests/it/wire_format.rs`, which
+/// fails until the new opcode's byte value is pinned.
+pub fn is_assigned(op: Opcode) -> bool {
+    instruction_size_opt(op).is_some()
+}
+
+/// Byte size of the instruction starting with `op`, or `None` for an unassigned
+/// byte. This match is the single enumeration of the opcode space.
+fn instruction_size_opt(op: Opcode) -> Option<usize> {
+    Some(match op {
         // 1-byte: arithmetic, logic, comparison, unary, stack, control.
         ADD_I32 | SUB_I32 | MUL_I32 | DIV_I32 | MOD_I32 | NEG_I32 | ADD_I64 | SUB_I64 | MUL_I64
         | DIV_I64 | MOD_I64 | NEG_I64 | DIV_U32 | MOD_U32 | DIV_U64 | MOD_U64 | ADD_F32
@@ -865,9 +882,9 @@ pub fn instruction_size(op: Opcode) -> usize {
         // 9-byte: opcode + u32 + u32.
         FIND_STR | REPLACE_STR | INSERT_STR | CONCAT_STR => 9,
 
-        // Unknown: advance by 1 byte to avoid infinite loops.
-        _ => 1,
-    }
+        // Unassigned byte.
+        _ => return None,
+    })
 }
 
 /// Built-in function IDs used with the BUILTIN opcode.
@@ -1195,6 +1212,33 @@ pub mod builtin {
     pub const CMP_STR: u16 = 0x03A2;
 
     // =========================================================================
+    // Real truncation / floating-modulo builtins
+    //
+    // These implement real-number semantics that IEC 61131-3 source cannot
+    // express (ADR-0042): truncation that stays in the real type, and a
+    // floating modulo. They are the lowering targets of the `__TRUNC` /
+    // `__MOD` compiler intrinsics (ANY_REAL, width selects the variant).
+    // =========================================================================
+
+    /// LREAL-preserving truncation toward zero (`f64::trunc`): pops one f64,
+    /// pushes its integer part as f64. The result stays f64, so values beyond
+    /// any integer range are preserved exactly rather than clamped.
+    pub const TRUNC_F64: u16 = 0x03A3;
+
+    /// Floating-point modulo with the sign of the dividend (Rust `%` on f64,
+    /// i.e. fmod; `x % 0.0` is NaN, not a trap): pops divisor then dividend,
+    /// pushes the remainder.
+    pub const MOD_F64: u16 = 0x03A4;
+
+    /// REAL-preserving truncation toward zero (`f32::trunc`): the f32 variant
+    /// of [`TRUNC_F64`].
+    pub const TRUNC_F32: u16 = 0x03A5;
+
+    /// Floating-point modulo with the sign of the dividend on f32: the f32
+    /// variant of [`MOD_F64`] (`x % 0.0` is NaN, not a trap).
+    pub const MOD_F32: u16 = 0x03A6;
+
+    // =========================================================================
     // MUX (multiplexer) range-based opcodes
     //
     // MUX is extensible: the number of IN arguments varies per call site.
@@ -1257,11 +1301,12 @@ pub mod builtin {
             | BCD_TO_INT_16 | BCD_TO_INT_32 | BCD_TO_INT_64 | INT_TO_BCD_8 | INT_TO_BCD_16
             | INT_TO_BCD_32 | INT_TO_BCD_64 | CONV_I32_TO_BOOL | CONV_I64_TO_BOOL
             | CONV_I32_TO_STR | CONV_U32_TO_STR | CONV_STR_TO_I32 | CONV_F32_TO_STR
-            | CONV_STR_TO_F32 => 1,
+            | CONV_STR_TO_F32 | TRUNC_F64 | TRUNC_F32 => 1,
             EXPT_I32 | EXPT_F32 | EXPT_F64 | EXPT_I64 | MIN_I32 | MIN_F32 | MIN_F64 | MIN_I64
             | MIN_U32 | MIN_U64 | MAX_I32 | MAX_F32 | MAX_F64 | MAX_I64 | MAX_U32 | MAX_U64
             | SHL_I32 | SHL_I64 | SHR_I32 | SHR_I64 | ROL_I32 | ROL_I64 | ROR_I32 | ROR_I64
-            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 | ATAN2_F32 | ATAN2_F64 | CMP_STR => 2,
+            | ROL_U8 | ROL_U16 | ROR_U8 | ROR_U16 | ATAN2_F32 | ATAN2_F64 | CMP_STR | MOD_F64
+            | MOD_F32 => 2,
             LIMIT_I32 | LIMIT_F32 | LIMIT_F64 | LIMIT_I64 | LIMIT_U32 | LIMIT_U64 | SEL_I32
             | SEL_F32 | SEL_F64 | SEL_I64 => 3,
             id if is_mux(id) => {
@@ -1335,5 +1380,13 @@ mod tests {
     #[should_panic(expected = "unknown builtin function ID")]
     fn arg_count_when_unknown_function_id_then_panics() {
         let _ = builtin::arg_count(0xFFFF);
+    }
+
+    #[test]
+    fn arg_count_when_unnamed_arithmetic_builtins_then_counts_match_dispatch() {
+        assert_eq!(builtin::arg_count(builtin::TRUNC_F64), 1);
+        assert_eq!(builtin::arg_count(builtin::MOD_F64), 2);
+        assert_eq!(builtin::arg_count(builtin::TRUNC_F32), 1);
+        assert_eq!(builtin::arg_count(builtin::MOD_F32), 2);
     }
 }

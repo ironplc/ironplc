@@ -334,6 +334,50 @@ fn sources_spec_req_cl_004_diagnoses_unshipped_library() {
     );
 }
 
+/// REQ-CL-sources-008: The bundled `Tc2_BuiltIns` library is activated
+/// automatically when a TwinCAT project (`.plcproj`) is discovered, without a
+/// project-file library reference; it is not activated for bare, context-free
+/// source.
+#[spec_test(REQ_CL_sources_008)]
+fn sources_spec_req_cl_008_implicit_library_activates_on_plcproj_discovery() {
+    // A TwinCAT project that references no libraries at all.
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("main.st"),
+        "FUNCTION_BLOCK FB END_FUNCTION_BLOCK",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("proj.plcproj"),
+        r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="main.st" />
+  </ItemGroup>
+</Project>"#,
+    )
+    .unwrap();
+
+    let mut project = SourceProject::new();
+    let diagnostics = project.initialize_from_directory(dir.path());
+    assert!(diagnostics.is_empty(), "unexpected: {diagnostics:?}");
+    assert!(
+        project
+            .activated_libraries()
+            .contains(&LibraryName::from("Tc2_BuiltIns")),
+        "discovering a .plcproj must activate the implicit Tc2_BuiltIns, got: {:?}",
+        project.activated_libraries()
+    );
+
+    // The same source with no project context activates nothing (dormant by
+    // default).
+    let mut bare = SourceProject::new();
+    bare.add_source(
+        FileId::from_string("main.st"),
+        "FUNCTION_BLOCK FB END_FUNCTION_BLOCK".to_string(),
+    );
+    assert!(bare.activated_libraries().is_empty());
+}
+
 /// REQ-CL-sources-007: The manifest records the public references the library
 /// was authored from (a non-empty `references` list), enforced as a provenance
 /// conformance test that walks every bundled manifest.
