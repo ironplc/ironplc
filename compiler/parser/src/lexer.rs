@@ -108,65 +108,13 @@ mod test {
         }
     }
 
-    #[test]
-    fn tokenize_array() {
-        let source = read_shared_resource("array.st");
-        let mut lex = TokenType::lexer(source.as_str());
-        assert_no_err(&mut lex);
-    }
-
+    // Tokenizing a corpus resource is strictly weaker than parsing it, and a
+    // plc2plc round-trip test parses (and unwraps) every corpus resource it
+    // renders — so a `tokenize_<resource>` test only carries signal for a
+    // resource with no round-trip case. `comment.st` is the one such file.
     #[test]
     fn tokenize_comment() {
         let source = read_shared_resource("comment.st");
-        let mut lex = TokenType::lexer(source.as_str());
-        assert_no_err(&mut lex);
-    }
-
-    #[test]
-    fn tokenize_conditional() {
-        let source = read_shared_resource("conditional.st");
-        let mut lex = TokenType::lexer(source.as_str());
-        assert_no_err(&mut lex);
-    }
-
-    #[test]
-    fn tokenize_expressions() {
-        let source = read_shared_resource("expressions.st");
-        let mut lex = TokenType::lexer(source.as_str());
-        assert_no_err(&mut lex);
-    }
-
-    #[test]
-    fn tokenize_nested() {
-        let source = read_shared_resource("nested.st");
-        let mut lex = TokenType::lexer(source.as_str());
-        assert_no_err(&mut lex);
-    }
-
-    #[test]
-    fn tokenize_strings() {
-        let source = read_shared_resource("strings.st");
-        let mut lex = TokenType::lexer(source.as_str());
-        assert_no_err(&mut lex);
-    }
-
-    #[test]
-    fn tokenize_textual() {
-        let source = read_shared_resource("textual.st");
-        let mut lex = TokenType::lexer(source.as_str());
-        assert_no_err(&mut lex);
-    }
-
-    #[test]
-    fn tokenize_type_decl() {
-        let source = read_shared_resource("type_decl.st");
-        let mut lex = TokenType::lexer(source.as_str());
-        assert_no_err(&mut lex);
-    }
-
-    #[test]
-    fn tokenize_var_decl() {
-        let source = read_shared_resource("var_decl.st");
         let mut lex = TokenType::lexer(source.as_str());
         assert_no_err(&mut lex);
     }

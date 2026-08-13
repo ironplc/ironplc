@@ -4,23 +4,15 @@
 use super::common::*;
 use rstest::rstest;
 
-/// Every corpus `.st` resource must parse without error. One `#[case]` per
-/// resource; add a new sample by adding a single line here.
+/// Corpus `.st` resources that must parse without error but have no plc2plc
+/// round-trip case. A round-trip test parses the same resource with the same
+/// `CompilerOptions::default()` and unwraps the result, so it already proves
+/// the resource parses — listing such a resource here too would assert the
+/// same thing at the same strength. Add a `#[case]` only for a resource
+/// `plc2plc/src/tests/corpus.rs` does not render.
 #[rstest]
-#[case::var_decl("var_decl.st")]
-#[case::inout_var_decl("inout_var_decl.st")]
-#[case::input_var_decl("input_var_decl.st")]
-#[case::strings("strings.st")]
-#[case::type_decl("type_decl.st")]
-#[case::textual("textual.st")]
-#[case::conditional("conditional.st")]
 // OSCAT files have a header that as far as I can tell is not valid but it is common.
 #[case::oscat("oscat.st")]
-#[case::expressions("expressions.st")]
-#[case::array("array.st")]
-#[case::nested("nested.st")]
-#[case::configuration("configuration.st")]
-#[case::program("program.st")]
 fn parse_when_corpus_resource_then_ok(#[case] name: &'static str) {
     let res = parse_resource(name);
     assert!(res.is_ok());
