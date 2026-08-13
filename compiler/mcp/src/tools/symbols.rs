@@ -336,10 +336,7 @@ fn empty_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn ed2_options() -> serde_json::Value {
-        serde_json::json!({"dialect": "iec61131-3-ed2"})
-    }
+    use crate::tools::test_support::ed2_options;
 
     #[test]
     fn build_response_when_valid_program_then_ok_true() {
