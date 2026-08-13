@@ -9,46 +9,24 @@ use ironplc_parser::{options::CompilerOptions, tokenize_program};
 use ironplc_sources::{xml, FileType, Source};
 use log::debug;
 
-use crate::project::FileBackedProject;
-
-/// Callback type for handling diagnostics during tokenization.
-pub type DiagnosticHandler<'a> = &'a dyn Fn(&[Diagnostic], Option<&FileBackedProject>, bool);
-
 /// Tokenize a source file based on its type.
 ///
 /// For Structured Text files, tokenizes the entire content.
 /// For XML files, extracts and tokenizes each POU's ST body.
-pub fn tokenize_source(
-    src: &Source,
-    project: &FileBackedProject,
-    suppress_output: bool,
-    handle_diagnostics: DiagnosticHandler,
-) -> Result<(), String> {
+///
+/// Token dumps are printed to stdout as each body is processed. Returns
+/// every diagnostic produced — an empty vector means the source tokenized
+/// cleanly. Rendering (and exit-status) decisions belong to the caller.
+pub fn tokenize_source(src: &Source) -> Vec<Diagnostic> {
     match src.file_type() {
-        FileType::Xml => tokenize_xml(
-            src.as_string(),
-            src.file_id(),
-            project,
-            suppress_output,
-            handle_diagnostics,
-        ),
-        FileType::StructuredText | FileType::TwinCat | FileType::Unknown => tokenize_st(
-            src.as_string(),
-            src.file_id(),
-            project,
-            suppress_output,
-            handle_diagnostics,
-        ),
+        FileType::Xml => tokenize_xml(src.as_string(), src.file_id()),
+        FileType::StructuredText | FileType::TwinCat | FileType::Unknown => {
+            tokenize_st(src.as_string(), src.file_id())
+        }
     }
 }
 
-fn tokenize_st(
-    content: &str,
-    file_id: &FileId,
-    project: &FileBackedProject,
-    suppress_output: bool,
-    handle_diagnostics: DiagnosticHandler,
-) -> Result<(), String> {
+fn tokenize_st(content: &str, file_id: &FileId) -> Vec<Diagnostic> {
     let (tokens, diagnostics) =
         tokenize_program(content, file_id, &CompilerOptions::default(), 0, 0);
 
@@ -59,27 +37,19 @@ fn tokenize_st(
 
     if !diagnostics.is_empty() {
         println!("Number of errors {}", diagnostics.len());
-        handle_diagnostics(&diagnostics, Some(project), suppress_output);
-        return Err(String::from("Not valid"));
     }
 
-    Ok(())
+    diagnostics
 }
 
-fn tokenize_xml(
-    content: &str,
-    file_id: &FileId,
-    project: &FileBackedProject,
-    suppress_output: bool,
-    handle_diagnostics: DiagnosticHandler,
-) -> Result<(), String> {
+fn tokenize_xml(content: &str, file_id: &FileId) -> Vec<Diagnostic> {
     // Parse the XML document
-    let xml_project = xml::parse_plcopen_xml(content, file_id).map_err(|diag| {
-        handle_diagnostics(&[diag], Some(project), suppress_output);
-        String::from("XML parsing error")
-    })?;
+    let xml_project = match xml::parse_plcopen_xml(content, file_id) {
+        Ok(project) => project,
+        Err(diag) => return vec![diag],
+    };
 
-    let mut had_error = false;
+    let mut diagnostics = vec![];
     let mut first_pou = true;
 
     // Tokenize each POU's ST body
@@ -92,17 +62,12 @@ fn tokenize_xml(
 
         if let Some(body) = &pou.body {
             if let Some(st_body) = body.st_body() {
-                if tokenize_st_body(
+                diagnostics.extend(tokenize_st_body(
                     &mut first_pou,
                     &format!("POU: {} ({})", pou.name, pou_type),
                     st_body,
                     file_id,
-                    project,
-                    suppress_output,
-                    handle_diagnostics,
-                ) {
-                    had_error = true;
-                }
+                ));
             } else if let Some((lang, _range)) = body.unsupported_language() {
                 print_header(
                     &mut first_pou,
@@ -115,17 +80,12 @@ fn tokenize_xml(
         if let Some(actions) = &pou.actions {
             for action in &actions.action {
                 if let Some(st_body) = action.body.st_body() {
-                    if tokenize_st_body(
+                    diagnostics.extend(tokenize_st_body(
                         &mut first_pou,
                         &format!("Action: {}.{}", pou.name, action.name),
                         st_body,
                         file_id,
-                        project,
-                        suppress_output,
-                        handle_diagnostics,
-                    ) {
-                        had_error = true;
-                    }
+                    ));
                 }
             }
         }
@@ -134,40 +94,28 @@ fn tokenize_xml(
         if let Some(transitions) = &pou.transitions {
             for transition in &transitions.transition {
                 if let Some(st_body) = transition.body.st_body() {
-                    if tokenize_st_body(
+                    diagnostics.extend(tokenize_st_body(
                         &mut first_pou,
                         &format!("Transition: {}.{}", pou.name, transition.name),
                         st_body,
                         file_id,
-                        project,
-                        suppress_output,
-                        handle_diagnostics,
-                    ) {
-                        had_error = true;
-                    }
+                    ));
                 }
             }
         }
     }
 
-    if had_error {
-        return Err(String::from("Tokenize errors in XML"));
-    }
-
-    Ok(())
+    diagnostics
 }
 
 /// Tokenize a single ST body and print the results.
-/// Returns true if there were errors.
+/// Returns the diagnostics produced for the body.
 fn tokenize_st_body(
     first_pou: &mut bool,
     header: &str,
     st_body: &xml::StBody,
     file_id: &FileId,
-    project: &FileBackedProject,
-    suppress_output: bool,
-    handle_diagnostics: DiagnosticHandler,
-) -> bool {
+) -> Vec<Diagnostic> {
     print_header(first_pou, header);
 
     let (tokens, diagnostics) = tokenize_program(
@@ -185,11 +133,9 @@ fn tokenize_st_body(
 
     if !diagnostics.is_empty() {
         println!("Number of errors {}", diagnostics.len());
-        handle_diagnostics(&diagnostics, Some(project), suppress_output);
-        return true;
     }
 
-    false
+    diagnostics
 }
 
 /// Print a section header, adding a blank line separator if not the first section.

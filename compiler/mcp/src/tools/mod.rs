@@ -11,4 +11,6 @@ pub mod project_io;
 pub mod project_manifest;
 pub mod run;
 pub mod symbols;
+#[cfg(test)]
+pub mod test_support;
 pub mod types_all;
