@@ -1876,6 +1876,14 @@ END_PROGRAM
         assert_eq!(format_time_value_ms(5000i64), "T#5s");
     }
 
+    // Whether a given dialect or `--allow-` flag accepts a construct is owned
+    // by `parser/src/tests/dialect_flags.rs` (and re-verified behaviorally
+    // across the whole flag set by mcp's feature_flag_conformance). What is
+    // playground-owned is the string plumbing: that a dialect name and a
+    // comma-separated allows list arriving from JS are resolved and actually
+    // reach the compiler. Each pair below is kept as an off/on contrast for
+    // exactly that reason — a single positive case would also pass if the
+    // strings were ignored and the baseline were simply permissive.
     #[test]
     fn compile_when_dialect_2013_then_accepts_ltime() {
         let source = "
@@ -1909,30 +1917,6 @@ END_PROGRAM
         let result: CompileResult = serde_json::from_str(&compile(source, "", "", "")).unwrap();
         assert!(!result.ok);
         assert!(!result.diagnostics.is_empty());
-    }
-
-    #[test]
-    fn load_program_when_dialect_2013_then_runs_ltime_program() {
-        reset_session();
-        let source = "
-PROGRAM main
-  VAR
-    duration : LTIME;
-  END_VAR
-  duration := LTIME#500ms;
-END_PROGRAM
-";
-        let result: StepResult =
-            serde_json::from_str(&load_program(source, 100_000, "iec61131-3-ed3", "", "")).unwrap();
-        assert!(
-            result.ok,
-            "Expected ok but got error: {:?}, diagnostics: {:?}",
-            result.error, result.diagnostics
-        );
-
-        let r1: StepResult = serde_json::from_str(&step(1)).unwrap();
-        assert!(r1.ok, "step failed: {:?}", r1.error);
-        assert!(!r1.variables.is_empty());
     }
 
     #[test]

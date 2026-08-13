@@ -1,7 +1,7 @@
 [package]
-name = "spec_test_macro"
-description = "Proc-macro attribute for spec conformance tests"
-version = "0.238.0"
+name = "container_derive"
+description = "Derive macros for the IronPLC bytecode container newtype identifiers"
+version = "0.234.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -11,7 +11,7 @@ repository.workspace = true
 proc-macro = true
 
 [dependencies]
-syn = { version = "3.0", features = ["full"] }
+syn = { version = "3.0", features = ["extra-traits", "derive"]}
 quote = "1.0"
 proc-macro2 = "1.0"
 
