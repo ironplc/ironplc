@@ -1024,7 +1024,49 @@ pub fn get_all_stdlib_functions() -> Vec<FunctionSignature> {
     // Time functions (IEC 61131-3 Section 2.5.1.5.8, Table 35)
     functions.extend(get_time_functions());
 
+    // Compiler intrinsics (reserved `__` namespace)
+    functions.extend(get_compiler_intrinsic_functions());
+
     functions
+}
+
+// =============================================================================
+// Compiler intrinsics (reserved `__` namespace)
+// =============================================================================
+
+/// Returns the `__`-prefixed compiler intrinsic function definitions.
+///
+/// The `__` prefix is the established compiler-provided namespace (like
+/// `__SYSTEM_UP_TIME`): names only the compiler can provide, visibly
+/// non-portable, and colliding with no IEC 61131-3 or vendor name. These
+/// exist for behavior IEC 61131-3 source cannot express, and their intended
+/// callers are bundled compatibility-library bodies (e.g. `Tc2_Math`'s
+/// `LTRUNC := __TRUNC(IN);`). They are seeded unconditionally because
+/// library bodies are analyzed under the *user's* options, so a flag gate
+/// would break every library that uses them.
+///
+/// - `__TRUNC(IN: ANY_REAL): ANY_REAL` — truncation toward zero that stays
+///   in the input's real type (unlike `TRUNC`, whose `ANY_INT` result clamps
+///   values beyond the integer range).
+/// - `__MOD(IN1, IN2: ANY_REAL): ANY_REAL` — IEEE-754 floating remainder
+///   with the sign of the dividend (unlike `MOD`, which is integer-only);
+///   `__MOD(x, 0.0)` is NaN, never a runtime error.
+pub fn get_compiler_intrinsic_functions() -> Vec<FunctionSignature> {
+    vec![
+        FunctionSignature::stdlib(
+            "__TRUNC",
+            TypeName::from("ANY_REAL"),
+            vec![input_param("IN", "ANY_REAL")],
+        ),
+        FunctionSignature::stdlib(
+            "__MOD",
+            TypeName::from("ANY_REAL"),
+            vec![
+                input_param("IN1", "ANY_REAL"),
+                input_param("IN2", "ANY_REAL"),
+            ],
+        ),
+    ]
 }
 
 // =============================================================================
@@ -1453,5 +1495,42 @@ mod tests {
                 func.name.original()
             );
         }
+    }
+
+    #[test]
+    fn get_compiler_intrinsic_functions_when_called_then_any_real_signatures() {
+        let functions = get_compiler_intrinsic_functions();
+
+        let trunc = functions
+            .iter()
+            .find(|f| f.name.original() == "__TRUNC")
+            .unwrap();
+        assert!(trunc.is_stdlib());
+        assert_eq!(trunc.input_parameter_count(), 1);
+        assert_eq!(trunc.parameters[0].param_type, TypeName::from("ANY_REAL"));
+        assert_eq!(
+            trunc.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("ANY_REAL")))
+        );
+
+        let fmod = functions
+            .iter()
+            .find(|f| f.name.original() == "__MOD")
+            .unwrap();
+        assert!(fmod.is_stdlib());
+        assert_eq!(fmod.input_parameter_count(), 2);
+        assert_eq!(fmod.parameters[0].param_type, TypeName::from("ANY_REAL"));
+        assert_eq!(fmod.parameters[1].param_type, TypeName::from("ANY_REAL"));
+        assert_eq!(
+            fmod.return_type,
+            Some(FunctionReturnType::Named(TypeName::from("ANY_REAL")))
+        );
+    }
+
+    #[test]
+    fn get_all_stdlib_functions_when_called_then_includes_compiler_intrinsics() {
+        let functions = get_all_stdlib_functions();
+        assert!(functions.iter().any(|f| f.name.original() == "__TRUNC"));
+        assert!(functions.iter().any(|f| f.name.original() == "__MOD"));
     }
 }

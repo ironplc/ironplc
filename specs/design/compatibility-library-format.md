@@ -105,6 +105,12 @@ format** and is defined separately when needed.
   intrinsic, or declare-only). The fail-if-unimplemented rule (a call to a
   declare-only POU is a compile error) arrives with bindings; see
   [Compatibility Libraries](compatibility-libraries.md).
+- **An `implicit` manifest marker.** Implicit (vendor built-in) libraries are
+  currently a hard-coded list in the discovery module (see
+  [Compatibility Libraries §Activation channels](compatibility-libraries.md)).
+  A manifest-driven marker would need to express *which vendor's project
+  format* implies the library — per-vendor implicit sets — and is deferred
+  until a second vendor project discovery exists to shape it.
 
 ## References
 

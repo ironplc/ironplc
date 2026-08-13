@@ -4,11 +4,17 @@
 //! These types prevent accidentally mixing up values that share the same
 //! underlying representation (e.g., passing a `TaskId` where a `FunctionId`
 //! is expected).
+//!
+//! The single-field `u16` newtypes derive their shared `new`/`raw`/
+//! `to_le_bytes` API and `Display` impl via `#[derive(U16Id)]`; per-type
+//! associated constants and any extra operator impls stay hand-written.
+
+use container_derive::U16Id;
 
 /// A function identifier within a bytecode container.
 ///
 /// Function IDs are compiler-assigned sequential indices starting from 0.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, U16Id)]
 pub struct FunctionId(u16);
 
 impl FunctionId {
@@ -20,134 +26,37 @@ impl FunctionId {
     pub const FIRST_USER: FunctionId = FunctionId(2);
     /// Indicates global/program scope (not a specific function).
     pub const GLOBAL_SCOPE: FunctionId = FunctionId(0xFFFF);
-
-    /// Creates a new `FunctionId` from a raw `u16`.
-    pub const fn new(raw: u16) -> Self {
-        Self(raw)
-    }
-    /// Returns the raw `u16` value.
-    pub const fn raw(self) -> u16 {
-        self.0
-    }
-    /// Returns the little-endian byte representation.
-    pub const fn to_le_bytes(self) -> [u8; 2] {
-        self.0.to_le_bytes()
-    }
-}
-
-impl core::fmt::Display for FunctionId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
 }
 
 /// A task identifier within a bytecode container.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, U16Id)]
 pub struct TaskId(u16);
 
 impl TaskId {
     /// The default task (ID 0).
     pub const DEFAULT: TaskId = TaskId(0);
-
-    /// Creates a new `TaskId` from a raw `u16`.
-    pub const fn new(raw: u16) -> Self {
-        Self(raw)
-    }
-    /// Returns the raw `u16` value.
-    pub const fn raw(self) -> u16 {
-        self.0
-    }
-    /// Returns the little-endian byte representation.
-    pub const fn to_le_bytes(self) -> [u8; 2] {
-        self.0.to_le_bytes()
-    }
-}
-
-impl core::fmt::Display for TaskId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
 }
 
 /// A program instance identifier within a bytecode container.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, U16Id)]
 pub struct InstanceId(u16);
 
 impl InstanceId {
     /// The default instance (ID 0).
     pub const DEFAULT: InstanceId = InstanceId(0);
-
-    /// Creates a new `InstanceId` from a raw `u16`.
-    pub const fn new(raw: u16) -> Self {
-        Self(raw)
-    }
-    /// Returns the raw `u16` value.
-    pub const fn raw(self) -> u16 {
-        self.0
-    }
-    /// Returns the little-endian byte representation.
-    pub const fn to_le_bytes(self) -> [u8; 2] {
-        self.0.to_le_bytes()
-    }
-}
-
-impl core::fmt::Display for InstanceId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
 }
 
 /// A function block type identifier within a bytecode container.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, U16Id)]
 pub struct FbTypeId(u16);
 
-impl FbTypeId {
-    /// Creates a new `FbTypeId` from a raw `u16`.
-    pub const fn new(raw: u16) -> Self {
-        Self(raw)
-    }
-    /// Returns the raw `u16` value.
-    pub const fn raw(self) -> u16 {
-        self.0
-    }
-    /// Returns the little-endian byte representation.
-    pub const fn to_le_bytes(self) -> [u8; 2] {
-        self.0.to_le_bytes()
-    }
-}
-
-impl core::fmt::Display for FbTypeId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 /// A variable table index within a bytecode container.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, U16Id)]
 pub struct VarIndex(u16);
 
 impl VarIndex {
     /// Sentinel value indicating no SINGLE trigger variable.
     pub const NO_SINGLE_VAR: VarIndex = VarIndex(0xFFFF);
-
-    /// Creates a new `VarIndex` from a raw `u16`.
-    pub const fn new(raw: u16) -> Self {
-        Self(raw)
-    }
-    /// Returns the raw `u16` value.
-    pub const fn raw(self) -> u16 {
-        self.0
-    }
-    /// Returns the little-endian byte representation.
-    pub const fn to_le_bytes(self) -> [u8; 2] {
-        self.0.to_le_bytes()
-    }
-}
-
-impl core::fmt::Display for VarIndex {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
 }
 
 impl core::ops::Add<u16> for VarIndex {
@@ -177,29 +86,8 @@ impl From<VarIndex> for i64 {
 }
 
 /// A constant pool index within a bytecode container.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, U16Id)]
 pub struct ConstantIndex(u16);
-
-impl ConstantIndex {
-    /// Creates a new `ConstantIndex` from a raw `u16`.
-    pub const fn new(raw: u16) -> Self {
-        Self(raw)
-    }
-    /// Returns the raw `u16` value.
-    pub const fn raw(self) -> u16 {
-        self.0
-    }
-    /// Returns the little-endian byte representation.
-    pub const fn to_le_bytes(self) -> [u8; 2] {
-        self.0.to_le_bytes()
-    }
-}
-
-impl core::fmt::Display for ConstantIndex {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 /// An index into the debug section's `SOURCE_FILE_TABLE` (tag 6).
 ///
@@ -209,29 +97,8 @@ impl core::fmt::Display for ConstantIndex {
 /// (`SourceFileId(0)`), which is also the first valid index — readers
 /// distinguish "no table" from "table with one entry" by checking
 /// `DebugSection.source_files.is_empty()`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, U16Id)]
 pub struct SourceFileId(u16);
-
-impl SourceFileId {
-    /// Creates a new `SourceFileId` from a raw `u16`.
-    pub const fn new(raw: u16) -> Self {
-        Self(raw)
-    }
-    /// Returns the raw `u16` value.
-    pub const fn raw(self) -> u16 {
-        self.0
-    }
-    /// Returns the little-endian byte representation.
-    pub const fn to_le_bytes(self) -> [u8; 2] {
-        self.0.to_le_bytes()
-    }
-}
-
-impl core::fmt::Display for SourceFileId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 /// A 1-based source line number.
 ///
@@ -239,57 +106,15 @@ impl core::fmt::Display for SourceFileId {
 /// not jump to a `SourceLine(0)` entry. The newtype prevents
 /// accidentally swapping line and column arguments at call sites like
 /// `Emitter::set_source_position`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, U16Id)]
 pub struct SourceLine(u16);
-
-impl SourceLine {
-    /// Creates a new `SourceLine` from a raw `u16`. `0` means "unknown".
-    pub const fn new(raw: u16) -> Self {
-        Self(raw)
-    }
-    /// Returns the raw `u16` value.
-    pub const fn raw(self) -> u16 {
-        self.0
-    }
-    /// Returns the little-endian byte representation.
-    pub const fn to_le_bytes(self) -> [u8; 2] {
-        self.0.to_le_bytes()
-    }
-}
-
-impl core::fmt::Display for SourceLine {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 /// A 1-based source column number.
 ///
 /// `0` is reserved and indicates "unknown column" — column-level
 /// precision is optional, line-level precision is not.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, U16Id)]
 pub struct SourceColumn(u16);
-
-impl SourceColumn {
-    /// Creates a new `SourceColumn` from a raw `u16`. `0` means "unknown".
-    pub const fn new(raw: u16) -> Self {
-        Self(raw)
-    }
-    /// Returns the raw `u16` value.
-    pub const fn raw(self) -> u16 {
-        self.0
-    }
-    /// Returns the little-endian byte representation.
-    pub const fn to_le_bytes(self) -> [u8; 2] {
-        self.0.to_le_bytes()
-    }
-}
-
-impl core::fmt::Display for SourceColumn {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 /// A slot offset within a structure in the bytecode container.
 ///

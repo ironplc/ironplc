@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="MAIN" Id="{c53d0a86-4e17-4b29-9f80-72b1e6d40a35}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    measured : LREAL;
+    display : STRING;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[measured := measured + 0.125;
+display := LREAL_TO_FMTSTR(measured, 2, TRUE);]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

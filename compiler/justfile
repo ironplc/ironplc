@@ -21,7 +21,7 @@ test:
 
 # Run tests and produce coverage report
 coverage:
-  cargo llvm-cov --quiet --ignore-filename-regex "cargo|dsl_macro_derive|rustup" --workspace --features ironplc-vm-cli/dap --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
+  cargo llvm-cov --quiet --ignore-filename-regex "cargo|dsl_macro_derive|container_derive|rustup" --workspace --features ironplc-vm-cli/dap --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
 
 # Fix linting errors.
 format:
@@ -93,14 +93,21 @@ _package-linux version filename target:
 
 # Smoke-test the release binaries that were just packaged: run the exact bytes
 # that went into the installer/tarball (target/<target>/release), not a test
-# build. Compiles and runs the bundled-library fixture so the check exercises
-# the shipped compiler, VM, and compatibility libraries together. Run after
-# `just package`; only meaningful when the runner can execute <target>.
+# build. `cargo test` is a debug-profile build for the *host*, so nothing in
+# `just test` ever executed the release artifacts we ship.
+#
+# The assertions live in tests/e2e/library/verify.sh -- the same script the
+# post-release library end-to-end test runs against an installed compiler -- so
+# the packaged bytes and the installed bytes are checked identically, and a new
+# assertion lands in both places at once. Paths handed to the script are
+# repository-root relative because the script cd's to the repository root.
+#
+# Run after `just package`; only meaningful when the runner can execute <target>.
 verify-package target:
   just _verify-package-{{os()}} {{target}}
 
 _verify-package-linux target:
-  just _verify-package-unix {{target}}
+  sh ../tests/e2e/library/verify.sh compiler/target/{{target}}/release/ironplcc compiler/target/{{target}}/release/ironplcvm
 
 _verify-package-macos target:
   #!/usr/bin/env sh
@@ -111,39 +118,21 @@ _verify-package-macos target:
   if [ "$(uname -m)" = "arm64" ]; then
     sudo softwareupdate --install-rosetta --agree-to-license >/dev/null 2>&1 || true
   fi
-  just _verify-package-unix {{target}}
+  sh ../tests/e2e/library/verify.sh compiler/target/{{target}}/release/ironplcc compiler/target/{{target}}/release/ironplcvm
 
 # The unix package recipes stage resources/libs beside the binaries before
-# tarring, so the release directory already has the installed layout.
-_verify-package-unix target:
-  #!/usr/bin/env sh
-  set -eu
-  BIN="target/{{target}}/release"
-  "$BIN/ironplcc" version
-  WORK="$(mktemp -d)"
-  "$BIN/ironplcc" compile --dialect twincat --library Tc2_System --output "$WORK/prog.iplc" ../tests/e2e/library/uses_pi.st
-  OUT="$("$BIN/ironplcvm" run "$WORK/prog.iplc" --scans 1 --dump-vars -)"
-  echo "$OUT"
-  if ! echo "$OUT" | grep -q "62.8318"; then
-    echo "FAIL: packaged ironplcvm did not compute 2 * PI * 10.0 from the library PI" >&2
-    exit 1
-  fi
-  echo "PASS: packaged release binaries compiled and ran the library fixture"
-
+# tarring, so the release directory already has the installed layout. On Windows
+# the NSIS installer does that copy at install time (setup.nsi), so stage the
+# same layout here before running the check.
+#
+# Each line is a separate PowerShell process (set windows-shell), so the script
+# runs through Git for Windows' bash and only the $LASTEXITCODE propagation stays
+# in PowerShell -- without it a failing script would be reported as a pass.
 _verify-package-windows target:
-  # The NSIS installer copies sources\resources\libs to <bindir>\resources\libs
-  # at install time (setup.nsi); stage the same layout beside the release
-  # binaries so the check runs against what an install produces.
   if (Test-Path "target\{{target}}\release\resources\libs") { Remove-Item -Recurse -Force "target\{{target}}\release\resources\libs" }
   New-Item -ItemType Directory -Force "target\{{target}}\release\resources" | Out-Null
   Copy-Item -Recurse "sources\resources\libs" "target\{{target}}\release\resources\libs"
-  &"target\{{target}}\release\ironplcc.exe" version; if ($LASTEXITCODE -ne 0) { exit 1 }
-  &"target\{{target}}\release\ironplcc.exe" compile --dialect twincat --library Tc2_System --output "$env:TEMP\verify-prog.iplc" "..\tests\e2e\library\uses_pi.st"; if ($LASTEXITCODE -ne 0) { Write-Error "FAIL: packaged ironplcc could not compile the library fixture"; exit 1 }
-  # PowerShell captures command output as an array of lines, and -notmatch on an
-  # array FILTERS (returns non-matching lines, truthy when any line lacks the
-  # text) instead of testing the whole output. Join to one string first.
-  $out = (&"target\{{target}}\release\ironplcvm.exe" run "$env:TEMP\verify-prog.iplc" --scans 1 --dump-vars -) -join "`n"; Write-Host $out; if ($out -notmatch "62.8318") { Write-Error "FAIL: packaged ironplcvm did not compute 2 * PI * 10.0 from the library PI"; exit 1 }
-  Write-Host "PASS: packaged release binaries compiled and ran the library fixture"
+  bash ../tests/e2e/library/verify.sh compiler/target/{{target}}/release/ironplcc.exe compiler/target/{{target}}/release/ironplcvm.exe; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # Builds the Homebrew repository to release for Mac and Linux
 publish $VERSION $MACFILENAME $LINUXFILENAME:

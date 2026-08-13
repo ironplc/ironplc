@@ -127,49 +127,35 @@ const ARGS_POU_LINEAGE_MISSING: &str = r#"{"sources":[{"name":"main.st","content
 /// Sources declaring an enum, struct, array, and subrange — used by `types_all`.
 const ARGS_TYPES_ALL_VALID: &str = r#"{"sources":[{"name":"main.st","content":"TYPE MotorState : (Stopped, Running, Fault); END_TYPE\nTYPE PidParams : STRUCT Kp : REAL; END_STRUCT; END_TYPE\nPROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"}}"#;
 
-/// `pou_scope` needs a `pou` field; empty source name still triggers P8001.
-const ARGS_POU_SCOPE_EMPTY_SOURCE: &str = r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"p"}"#;
-
-/// `pou_lineage` equivalent of the empty-source case.
-const ARGS_POU_LINEAGE_EMPTY_SOURCE: &str = r#"{"sources":[{"name":"","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"p"}"#;
-
-/// `pou_scope` with a missing dialect.
-const ARGS_POU_SCOPE_MISSING_DIALECT: &str =
-    r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{},"pou":"p"}"#;
-
-/// `pou_lineage` with a missing dialect.
-const ARGS_POU_LINEAGE_MISSING_DIALECT: &str =
-    r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{},"pou":"p"}"#;
-
 // ---------------------------------------------------------------------------
-// Per-tool happy/error paths
+// Per-tool wire dispatch + shared error-path representatives
 //
 // Each case invokes the named MCP tool with the given JSON arguments and
-// asserts the expected substring appears in stdout. This single parametrized
-// test replaces 29 hand-written `#[test] fn`s that all followed this exact
-// shape (cargo-dupes group `36d0bb0d`).
+// asserts the expected substring appears in stdout.
+//
+// The table keeps one wire-level dispatch case per tool (preferring the
+// tool's own response field, which also proves dispatch and ok:true) plus a
+// single representative per shared error class (syntax error, semantic
+// error, empty source name, missing dialect). The full tool × error-class
+// matrix lives in each tool's unit tests (`src/tools/*.rs`); the error
+// handling itself is owned by `tools::common` and the parser/analyzer
+// crates, so re-running every combination through a subprocess added no
+// signal.
 // ---------------------------------------------------------------------------
 #[rstest]
 // parse
-#[case::parse_valid_program_ok_true("parse", ARGS_VALID_PROGRAM, r#"\"ok\":true"#)]
 #[case::parse_valid_program_structure_program(
     "parse",
     ARGS_VALID_PROGRAM,
     r#"\"kind\":\"program\""#
 )]
-#[case::parse_syntax_error_ok_false("parse", ARGS_SYNTAX_ERROR, r#"\"ok\":false"#)]
 #[case::parse_syntax_error_diagnostics_code("parse", ARGS_SYNTAX_ERROR, r#"\"code\":"#)]
-#[case::parse_empty_source_name_validation_error("parse", ARGS_EMPTY_SOURCE_NAME, "P8001")]
-#[case::parse_missing_dialect_validation_error("parse", ARGS_MISSING_DIALECT, "P8001")]
-// check
+// check (also the shared error-class representatives)
 #[case::check_valid_program_ok_true("check", ARGS_VALID_PROGRAM, r#"\"ok\":true"#)]
-#[case::check_syntax_error_ok_false("check", ARGS_SYNTAX_ERROR, r#"\"ok\":false"#)]
-#[case::check_semantic_error_ok_false("check", ARGS_SEMANTIC_ERROR, r#"\"ok\":false"#)]
 #[case::check_semantic_error_diagnostics("check", ARGS_SEMANTIC_ERROR, r#"\"code\":"#)]
 #[case::check_empty_source_name_validation_error("check", ARGS_EMPTY_SOURCE_NAME, "P8001")]
 #[case::check_missing_dialect_validation_error("check", ARGS_MISSING_DIALECT, "P8001")]
 // compile
-#[case::compile_valid_program_ok_true("compile", ARGS_COMPILE_VALID, r#"\"ok\":true"#)]
 #[case::compile_valid_program_container_id_present(
     "compile",
     ARGS_COMPILE_VALID,
@@ -185,86 +171,37 @@ const ARGS_POU_LINEAGE_MISSING_DIALECT: &str =
     ARGS_COMPILE_WITH_CONFIG,
     r#"\"name\":\"program1\""#
 )]
-#[case::compile_syntax_error_ok_false("compile", ARGS_SYNTAX_ERROR, r#"\"ok\":false"#)]
-#[case::compile_empty_source_name_validation_error("compile", ARGS_EMPTY_SOURCE_NAME, "P8001")]
-#[case::compile_missing_dialect_validation_error("compile", ARGS_MISSING_DIALECT, "P8001")]
 // symbols
-#[case::symbols_valid_program_ok_true("symbols", ARGS_SYMBOLS_VALID, r#"\"ok\":true"#)]
 #[case::symbols_valid_program_programs_populated(
     "symbols",
     ARGS_SYMBOLS_VALID,
     r#"\"name\":\"p\""#
 )]
-#[case::symbols_semantic_error_ok_false("symbols", ARGS_SEMANTIC_ERROR, r#"\"ok\":false"#)]
-#[case::symbols_empty_source_name_validation_error("symbols", ARGS_EMPTY_SOURCE_NAME, "P8001")]
-#[case::symbols_missing_dialect_validation_error("symbols", ARGS_MISSING_DIALECT, "P8001")]
 // project_manifest
-#[case::project_manifest_valid_program_ok_true(
-    "project_manifest",
-    ARGS_VALID_PROGRAM,
-    r#"\"ok\":true"#
-)]
 #[case::project_manifest_enum_type_in_enumerations(
     "project_manifest",
     ARGS_ENUM_TYPE,
     r#"\"enumerations\":[\"MyEnum\"]"#
 )]
-#[case::project_manifest_semantic_error_ok_false(
-    "project_manifest",
-    ARGS_SEMANTIC_ERROR,
-    r#"\"ok\":false"#
-)]
-#[case::project_manifest_empty_source_name_validation_error(
-    "project_manifest",
-    ARGS_EMPTY_SOURCE_NAME,
-    "P8001"
-)]
-#[case::project_manifest_missing_dialect_validation_error(
-    "project_manifest",
-    ARGS_MISSING_DIALECT,
-    "P8001"
-)]
 // project_io
-#[case::project_io_valid_program_ok_true("project_io", ARGS_PROJECT_IO_INPUT, r#"\"ok\":true"#)]
 #[case::project_io_valid_program_input_listed(
     "project_io",
     ARGS_PROJECT_IO_INPUT,
     r#"\"name\":\"p.start\""#
 )]
-#[case::project_io_semantic_error_ok_false("project_io", ARGS_SEMANTIC_ERROR, r#"\"ok\":false"#)]
-#[case::project_io_empty_source_name_validation_error(
-    "project_io",
-    ARGS_EMPTY_SOURCE_NAME,
-    "P8001"
-)]
-#[case::project_io_missing_dialect_validation_error("project_io", ARGS_MISSING_DIALECT, "P8001")]
 // pou_scope
-#[case::pou_scope_valid_ok_true("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"ok\":true"#)]
-#[case::pou_scope_valid_found_true("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"found\":true"#)]
 #[case::pou_scope_valid_variable_listed("pou_scope", ARGS_POU_SCOPE_VALID, r#"\"name\":\"start\""#)]
 #[case::pou_scope_missing_found_false("pou_scope", ARGS_POU_SCOPE_MISSING, r#"\"found\":false"#)]
-#[case::pou_scope_missing_p8001("pou_scope", ARGS_POU_SCOPE_MISSING, "P8001")]
-#[case::pou_scope_empty_source_p8001("pou_scope", ARGS_POU_SCOPE_EMPTY_SOURCE, "P8001")]
-#[case::pou_scope_missing_dialect_p8001("pou_scope", ARGS_POU_SCOPE_MISSING_DIALECT, "P8001")]
 // pou_lineage
-#[case::pou_lineage_valid_ok_true("pou_lineage", ARGS_POU_LINEAGE_VALID, r#"\"ok\":true"#)]
-#[case::pou_lineage_valid_found_true("pou_lineage", ARGS_POU_LINEAGE_VALID, r#"\"found\":true"#)]
 #[case::pou_lineage_valid_upstream_has_counter("pou_lineage", ARGS_POU_LINEAGE_VALID, "Counter")]
 #[case::pou_lineage_missing_found_false(
     "pou_lineage",
     ARGS_POU_LINEAGE_MISSING,
     r#"\"found\":false"#
 )]
-#[case::pou_lineage_missing_p8001("pou_lineage", ARGS_POU_LINEAGE_MISSING, "P8001")]
-#[case::pou_lineage_empty_source_p8001("pou_lineage", ARGS_POU_LINEAGE_EMPTY_SOURCE, "P8001")]
-#[case::pou_lineage_missing_dialect_p8001("pou_lineage", ARGS_POU_LINEAGE_MISSING_DIALECT, "P8001")]
 // types_all
-#[case::types_all_valid_ok_true("types_all", ARGS_TYPES_ALL_VALID, r#"\"ok\":true"#)]
 #[case::types_all_valid_enum_kind("types_all", ARGS_TYPES_ALL_VALID, r#"\"kind\":\"enum\""#)]
 #[case::types_all_valid_struct_kind("types_all", ARGS_TYPES_ALL_VALID, r#"\"kind\":\"struct\""#)]
-#[case::types_all_semantic_error_ok_false("types_all", ARGS_SEMANTIC_ERROR, r#"\"ok\":false"#)]
-#[case::types_all_empty_source_p8001("types_all", ARGS_EMPTY_SOURCE_NAME, "P8001")]
-#[case::types_all_missing_dialect_p8001("types_all", ARGS_MISSING_DIALECT, "P8001")]
 fn tool_call_then_stdout_contains(
     #[case] tool: &str,
     #[case] arguments_json: &str,

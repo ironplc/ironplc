@@ -252,7 +252,8 @@ bare operand with its dereference.
 
 ## Out of scope (this document)
 
-- `POINTER TO` and the `ADR()`/`^` pointer model.
+- `POINTER TO` and the `ADR()`/`^` pointer model — since implemented; see
+  [adr-and-pointer-to.md](adr-and-pointer-to.md).
 - `S=` / `R=` extended assignment operators.
 - TwinCAT OOP features (methods, properties, interfaces).
 - Implicit dereference of `REFERENCE TO` **array elements** and

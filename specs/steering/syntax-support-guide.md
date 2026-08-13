@@ -23,6 +23,10 @@ When adding new syntax, ensure every applicable item is complete:
 
 Not every syntax change requires all items. A new operator might not need new tokens. A token-level fix might not need codegen changes. Use judgment, but **always** include both round-trip and execution tests when the syntax produces executable code.
 
+Each test leg must assert something the others do not — a parser test that only
+checks "it parses" is subsumed by the round-trip test on the same snippet. See
+[Which leg asserts what](#which-leg-asserts-what-avoid-duplicate-tests).
+
 ## Test File Organization (avoid merge conflicts)
 
 Tests are split into **small, feature-focused files** so that two feature
@@ -44,6 +48,31 @@ Prefer a **new** file for a new sub-feature over appending to an existing
 one: appending puts every branch's new tests on the same trailing lines,
 which is exactly what causes the recurring conflicts. Only add to an
 existing file when the new tests genuinely extend that same narrow feature.
+
+### Which leg asserts what (avoid duplicate tests)
+
+A feature gets tests in several crates, and each leg must assert something
+the others do not. A round-trip test already parses the source with the same
+options, so a parser test that only asserts `is_ok()` on that same snippet
+adds no signal — it is subsumed. Keep the legs distinct:
+
+| Leg | Asserts | Do **not** write |
+|---|---|---|
+| **Parser** (`parser/src/tests/`) | The AST *shape*: the node variant, its fields, counts, nesting | A bare "it parses" on a snippet a plc2plc round-trip already covers |
+| **plc2plc** (`plc2plc/src/tests/`) | Text → AST → text fidelity against a golden file | A second assertion that the source parsed |
+| **Analyzer** (`analyzer/src/rule_*.rs`) | The semantic outcome (accepted, or a specific problem code) | Anything about parse success or failure |
+| **codegen `compile_*`** | The emitted instruction sequence / container structure | Run results |
+| **codegen `end_to_end_*`** | Run results — the nominal behavior matrix reachable from ST | — |
+| **VM** (`vm/tests/it/`) | Traps, overflow/wrap edges, and states codegen cannot emit | A nominal case its codegen twin already runs |
+
+Parser tests asserting only `is_ok()` are still right when there is **no**
+round-trip counterpart — a dialect-flag rejection, a pragma, or a corpus file
+plc2plc does not render. The rule is about the same snippet being asserted
+twice at the same strength, not about `is_ok()` itself.
+
+When a VM test and a codegen end-to-end test would cover the same behavior,
+the codegen test owns it and the VM file says so in its module header (see
+`vm/tests/it/execute_fb_ton.rs` or `execute_string_ops.rs` for the wording).
 
 ## Lexer and Token Patterns
 
@@ -207,7 +236,7 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 | IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
 | RuSTy | `rusty` | OFF | ON | all ON |
 | CODESYS | `codesys` | OFF | ON | all ON except `allow_system_uptime_global` |
-| TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`), plus `allow_reference_to` — TwinCAT uses `REFERENCE TO` (parsed) / `POINTER TO` (not yet parsed) |
+| TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`), plus `allow_reference_to`, `allow_pointer_to`, and `allow_adr` — TwinCAT spells references `REFERENCE TO` (bound with `REF=`) and pointers `POINTER TO` (bound with `ADR()`) |
 
 ### Grouping Guidance
 

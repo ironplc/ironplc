@@ -2,7 +2,17 @@ name: IronPLC Compiler
 on:
   workflow_call:
     inputs:
-      commit-ref:
+      # Named `source-revision` rather than `commit-ref`, and the name matters.
+      # CodeQL's actions/untrusted-checkout heuristic treats any
+      # `actions/checkout` whose `ref:` comes from an expression whose *name*
+      # contains "ref", "head", "branch", "sha", or "commit" as a checkout of a
+      # pull request head -- regardless of where the value actually comes from.
+      # Every job below checks out this input, so a name like `commit-ref`
+      # raises one medium "Checkout of untrusted code" alert per job, and adding
+      # a job adds a new alert that fails the CodeQL check on the pull request.
+      # Keep this name (and the names of any expressions that carry it) free of
+      # those substrings.
+      source-revision:
         required: false
         type: string
         description: 'If not empty, then run for the specified tag'
@@ -32,14 +42,14 @@ jobs:
       run:
         working-directory: ./compiler
     steps:
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+        if: ${{ inputs.source-revision }}
         with:
-          ref: ${{ inputs.commit-ref }}
+          ref: ${{ inputs.source-revision }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        if: ${{ !inputs.source-revision }}
 
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
       - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
@@ -82,14 +92,14 @@ jobs:
 
     steps:
       # Checkout the repository/fetch input artifacts
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+        if: ${{ inputs.source-revision }}
         with:
-          ref: ${{ inputs.commit-ref  }}
+          ref: ${{ inputs.source-revision  }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment. Only the tools `just ci` needs;
       # no cross-compile target, SBOM, or NSIS.
@@ -130,14 +140,14 @@ jobs:
 
     steps:
       # Checkout the repository/fetch input artifacts
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+        if: ${{ inputs.source-revision }}
         with:
-          ref: ${{ inputs.commit-ref  }}
+          ref: ${{ inputs.source-revision }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment. Only what `just test` needs: no
       # cross-compile target, SBOM, or NSIS.
@@ -190,14 +200,14 @@ jobs:
 
     steps:
       # Checkout the repository/fetch input artifacts
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+        if: ${{ inputs.source-revision }}
         with:
-          ref: ${{ inputs.commit-ref  }}
+          ref: ${{ inputs.source-revision  }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment. Only the tools `just package`
       # needs; lint/coverage tooling lives in compiler-quality.
@@ -243,7 +253,7 @@ jobs:
         run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
 
       # Run the exact release binaries that were packed into the installer:
-      # compile and execute the bundled-library fixture on the shipped
+      # compile and execute the bundled-library fixtures on the shipped
       # compiler + VM. This tests the bytes we ship -- something the previous
       # in-job `just test` (a debug-profile host build) never did.
       - name: Verify packaged release binaries

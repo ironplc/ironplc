@@ -53,7 +53,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_vscode_extension.yaml
     with:
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-revision: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       artifact-name: ironplc-vscode-extension.vsix
       marketplace-artifact-name: ironplc-vscode-extension-marketplace.vsix
@@ -64,7 +64,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_compiler.yaml
     with:
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-revision: ${{ needs.release.outputs.commit-tag }}
       gh-release-tag: ${{ needs.release.outputs.gh-release-tag }}
       version: ${{ needs.release.outputs.version }}
 
@@ -73,7 +73,7 @@ jobs:
     needs: [release]
     uses: ./.github/workflows/partial_playground.yaml
     with:
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-revision: ${{ needs.release.outputs.commit-tag }}
 
   upload-release-artifacts:
     name: Upload Release Artifacts
@@ -127,6 +127,17 @@ jobs:
       compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
       model: "qwen2.5:1.5b"
 
+  library-e2e-test:
+    name: Library Installer E2E Test
+    # Install the just-published compiler with the real OS installers (tarball,
+    # NSIS, Homebrew formula) and verify the bundled compatibility libraries
+    # ship beside the binaries and resolve at compile/run time.
+    needs: [release, upload-release-artifacts]
+    uses: ./.github/workflows/partial_library_e2e.yaml
+    if: ${{ !inputs.dryrun || inputs.dryrun-test-version-override }}
+    with:
+      compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
+
   playground-e2e-test:
     name: Playground E2E Test
     # Run browser-based E2E tests against the built playground before publishing.
@@ -140,14 +151,14 @@ jobs:
     # if those are failing so we depend on those. In particular,
     # install-script-smoke-test must pass before we publish the
     # docs site, because the site serves install.sh.
-    needs: [release, smoke-test, install-script-smoke-test, opencode-e2e-test, playground-e2e-test]
+    needs: [release, smoke-test, install-script-smoke-test, opencode-e2e-test, library-e2e-test, playground-e2e-test]
     # peaceiris/actions-gh-pages pushes the gh-pages branch via GITHUB_TOKEN.
     permissions:
       contents: write
     uses: ./.github/workflows/partial_website.yaml
     with:
       publish: ${{ !inputs.dryrun }}
-      commit-ref: ${{ needs.release.outputs.commit-tag }}
+      source-revision: ${{ needs.release.outputs.commit-tag }}
 
   publish-release:
     name: Publish Release

@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<TcSmProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TcSmVersion="1.0" TcVersion="3.1.4024.0">
+	<Project ProjectGUID="{8F2D5B44-0C6A-4E17-9D3B-2E7C1A90F4B2}" ShowHideConfigurations="#x106">
+		<Plc>
+			<Project GUID="{6E1F3AC9-5B72-4D0E-8B4F-9C2A7D51E8C3}" Name="PlcConveyor" PrjFilePath="PlcConveyor\PlcConveyor.plcproj" TmcFilePath="" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e" SymbolicMapping="true"/>
+		</Plc>
+	</Project>
+</TcSmProject>

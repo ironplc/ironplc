@@ -47,69 +47,41 @@ pub fn build_response(sources: &[SourceInput], options_value: &serde_json::Value
     }
 
     // Run parse + full semantic analysis
-    match project.semantic() {
-        Ok(()) => CheckResponse {
-            ok: true,
-            diagnostics: vec![],
-        },
-        Err(diags) => {
-            let diagnostics = serialize_diagnostics(&diags);
-            CheckResponse {
-                ok: false,
-                diagnostics,
-            }
-        }
+    let diagnostics = serialize_diagnostics(&project.semantic());
+    CheckResponse {
+        ok: diagnostics.is_empty(),
+        diagnostics,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::test_support::{
+        ed2_options, source, unnamed_source, SEMANTIC_ERROR_PROGRAM, SYNTAX_ERROR_PROGRAM,
+        VALID_PROGRAM,
+    };
 
-    fn ed2_options() -> serde_json::Value {
-        serde_json::json!({"dialect": "iec61131-3-ed2"})
-    }
+    // Parse and analyze outcomes are owned by the parser and analyzer crates;
+    // these tests only prove the tool wires the pipeline and validation in.
 
     #[test]
     fn build_response_when_valid_program_then_ok_true() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(VALID_PROGRAM), &ed2_options());
         assert!(resp.ok);
         assert!(resp.diagnostics.is_empty());
     }
 
     #[test]
     fn build_response_when_syntax_error_then_ok_false() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(SYNTAX_ERROR_PROGRAM), &ed2_options());
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
 
     #[test]
     fn build_response_when_semantic_error_then_ok_false() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
-        assert!(!resp.ok);
-        assert!(!resp.diagnostics.is_empty());
-    }
-
-    #[test]
-    fn build_response_when_undeclared_variable_then_diagnostic() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(SEMANTIC_ERROR_PROGRAM), &ed2_options());
         assert!(!resp.ok);
         assert!(resp
             .diagnostics
@@ -118,55 +90,17 @@ mod tests {
     }
 
     #[test]
-    fn build_response_when_type_error_then_diagnostic() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "FUNCTION_BLOCK fb\nEND_FUNCTION_BLOCK\nPROGRAM p\nVAR x : fb; END_VAR\nx(invalid_param := 1);\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
-        assert!(
-            !resp.ok,
-            "expected not ok, diagnostics: {:?}",
-            resp.diagnostics
-        );
-    }
-
-    #[test]
     fn build_response_when_invalid_sources_then_error_diagnostic() {
-        let sources = vec![SourceInput {
-            name: String::new(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&unnamed_source(), &ed2_options());
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
     }
 
     #[test]
     fn build_response_when_invalid_options_then_error_diagnostic() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p END_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &serde_json::json!({}));
+        let resp = build_response(&source(VALID_PROGRAM), &serde_json::json!({}));
         assert!(!resp.ok);
         assert!(!resp.diagnostics.is_empty());
-    }
-
-    #[test]
-    fn build_response_when_multiple_valid_sources_then_ok_true() {
-        let sources = vec![
-            SourceInput {
-                name: "a.st".into(),
-                content: "PROGRAM a\nEND_PROGRAM".into(),
-            },
-            SourceInput {
-                name: "b.st".into(),
-                content: "PROGRAM b\nEND_PROGRAM".into(),
-            },
-        ];
-        let resp = build_response(&sources, &ed2_options());
-        assert!(resp.ok);
     }
 
     #[test]
@@ -188,11 +122,7 @@ mod tests {
 
     #[test]
     fn build_response_when_error_then_diagnostics_have_byte_offsets() {
-        let sources = vec![SourceInput {
-            name: "main.st".into(),
-            content: "PROGRAM p\nVAR x : INT; END_VAR\nx := y;\nEND_PROGRAM".into(),
-        }];
-        let resp = build_response(&sources, &ed2_options());
+        let resp = build_response(&source(SEMANTIC_ERROR_PROGRAM), &ed2_options());
         assert!(!resp.ok);
         let d = &resp.diagnostics[0];
         // Verify byte offset fields exist
