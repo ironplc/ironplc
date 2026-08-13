@@ -77,10 +77,7 @@ pub fn build_response(
         project.add_source(FileId::from_string(&src.name), src.content.clone());
     }
 
-    let diagnostics_json = match project.semantic() {
-        Ok(()) => vec![],
-        Err(diags) => serialize_diagnostics(&diags),
-    };
+    let diagnostics_json = serialize_diagnostics(&project.semantic());
 
     let has_errors = diagnostics_json
         .iter()
@@ -183,10 +180,7 @@ fn populate(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn ed2_options() -> serde_json::Value {
-        serde_json::json!({"dialect": "iec61131-3-ed2"})
-    }
+    use crate::tools::test_support::ed2_options;
 
     #[test]
     fn build_response_when_valid_program_then_ok_true() {

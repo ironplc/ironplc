@@ -313,7 +313,8 @@ install-script-smoke compiler-version="":
 # library check here is a HARD assertion: this test exists to catch a release
 # that fails to ship the libraries, so the target release must be one that does.
 #
-# NOT wired into CI yet -- run it manually, or from the Actions tab via
+# Runs in deployment.yaml (via partial_library_e2e.yaml) alongside the other
+# end-to-end tests. Also runnable manually, or from the Actions tab via
 # partial_library_e2e.yaml's workflow_dispatch.
 #
 # compiler-version: a required, bare release version like "0.234.0" (no leading

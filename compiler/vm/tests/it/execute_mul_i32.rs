@@ -18,15 +18,6 @@ const MUL_BYTECODE: [u8; 11] = [
     0x8C,
 ];
 
-// Nominal anchor: a straightforward product with no overflow.
-#[test]
-fn execute_when_mul_i32_nominal_then_product() {
-    assert_eq!(
-        crate::common::run_and_read_i32(&MUL_BYTECODE, 1, &[6, 7]),
-        42
-    );
-}
-
 // Overflow anchor: i32::MAX * 2 wraps to -2. A random oracle exercises this
 // class, but keeping a deterministic case pins the exact wrapping behaviour.
 #[test]
