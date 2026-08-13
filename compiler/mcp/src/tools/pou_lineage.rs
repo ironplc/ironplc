@@ -339,10 +339,7 @@ fn not_found_diagnostic(pou_name: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn ed2_options() -> serde_json::Value {
-        serde_json::json!({"dialect": "iec61131-3-ed2"})
-    }
+    use crate::tools::test_support::ed2_options;
 
     fn build(src: &str, pou: &str) -> PouLineageResponse {
         let sources = vec![SourceInput {

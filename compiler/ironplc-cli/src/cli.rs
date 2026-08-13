@@ -467,7 +467,15 @@ mod tests {
 
     use ironplc_parser::options::CompilerOptions;
 
-    use crate::{cli::check, cli::compile, cli::echo, cli::tokenize, test_helpers::resource_path};
+    use crate::{cli::check, cli::compile, cli::tokenize, test_helpers::resource_path};
+
+    // The plain valid/syntax-error/semantic-error outcomes of check, echo,
+    // tokenize, and compile against the shared fixtures are asserted by the
+    // subprocess suite in tests/cli.rs, which pins the exit-code and
+    // stdout/stderr contract as well. The tests here cover what that suite
+    // cannot reach: directory input, the diagnostic-accumulation contract
+    // (the `problem_count` cases below), XML tokenize, container round-trip,
+    // and help-URL formatting.
 
     /// Extracts the problem count from a command's failure message
     /// (`"<Command> failed with N problem(s)"`). The count is the observable
@@ -479,13 +487,6 @@ mod tests {
             .and_then(|(_, rest)| rest.strip_suffix(" problem(s)"))
             .and_then(|n| n.parse().ok())
             .unwrap_or_else(|| panic!("not a command failure message: {err}"))
-    }
-
-    #[test]
-    fn check_first_steps_when_invalid_syntax_then_error() {
-        let paths = vec![shared_resource_path("first_steps_semantic_error.st")];
-        let result = check(&paths, CompilerOptions::default(), &[], true);
-        assert!(result.is_err())
     }
 
     #[test]
@@ -506,13 +507,6 @@ mod tests {
         assert!(url.contains("&channel=cli"));
         assert!(url.contains("&file=compiler/analyzer/src/rule_example.rs"));
         assert!(url.contains("&line=42"));
-    }
-
-    #[test]
-    fn check_first_steps_when_valid_syntax_then_ok() {
-        let paths = vec![shared_resource_path("first_steps.st")];
-        let result = check(&paths, CompilerOptions::default(), &[], true);
-        assert!(result.is_ok())
     }
 
     #[test]
@@ -614,48 +608,10 @@ mod tests {
     }
 
     #[test]
-    fn echo_first_steps_when_invalid_syntax_then_error() {
-        let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
-        let result = check(&paths, CompilerOptions::default(), &[], true);
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn echo_first_steps_when_valid_syntax_then_ok() {
-        let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(&paths, CompilerOptions::default(), true);
-        assert!(result.is_ok())
-    }
-
-    #[test]
-    fn tokenize_first_steps_when_valid_syntax_then_ok() {
-        let paths = vec![shared_resource_path("first_steps.st")];
-        let result = echo(&paths, CompilerOptions::default(), true);
-        assert!(result.is_ok())
-    }
-
-    #[test]
     fn tokenize_xml_when_valid_syntax_then_ok() {
         let paths = vec![resource_path("simple.xml")];
         let result = tokenize(&paths, CompilerOptions::default(), true);
         assert!(result.is_ok())
-    }
-
-    #[test]
-    fn compile_when_steel_thread_then_creates_output() {
-        let paths = vec![shared_resource_path("steel_thread.st")];
-        let output = tempfile::NamedTempFile::new().unwrap();
-        let result = compile(&paths, output.path(), CompilerOptions::default(), &[], true);
-        assert!(result.is_ok());
-        assert!(output.path().metadata().unwrap().len() > 0);
-    }
-
-    #[test]
-    fn compile_when_syntax_error_then_error() {
-        let paths = vec![shared_resource_path("first_steps_syntax_error.st")];
-        let output = tempfile::NamedTempFile::new().unwrap();
-        let result = compile(&paths, output.path(), CompilerOptions::default(), &[], true);
-        assert!(result.is_err());
     }
 
     #[test]
