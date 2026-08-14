@@ -357,27 +357,24 @@ impl ExprTypeResolver<'_> {
         }
     }
 
-    /// Resolves the type of a struct field access expression (e.g., `setup.FLAG`).
+    /// Resolves the type of a member access expression (e.g., `setup.FLAG` or
+    /// `timer.Q`).
     ///
-    /// Walks the struct chain to find the root variable, looks up its struct
-    /// type definition, then finds the leaf field's type.
+    /// Walks the member chain to find the root variable, looks up its type
+    /// definition, then finds the leaf member's type.
     fn resolve_structured_variable_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
         let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        match parent_type {
-            IntermediateType::Structure { fields } => {
-                let field = fields.iter().find(|f| f.name == sv.field)?;
-                self.type_environment
-                    .elementary_type_name_for(&field.field_type)
-            }
-            _ => None,
-        }
+        let field = parent_type.member_fields()?.iter().find(|f| f.name == sv.field)?;
+        self.type_environment
+            .elementary_type_name_for(&field.field_type)
     }
 
-    /// Resolves a `SymbolicVariableKind` to its struct `IntermediateType`.
+    /// Resolves a `SymbolicVariableKind` to the `IntermediateType` whose
+    /// members it exposes.
     ///
     /// For `Named`, looks up the variable's declared type and resolves it as a
-    /// struct. For `Structured`, recursively resolves the parent and finds the
-    /// nested struct field type.
+    /// structure or function block instance. For `Structured`, recursively
+    /// resolves the parent and finds the nested member type.
     fn resolve_parent_struct_type<'b>(
         &'b self,
         kind: &SymbolicVariableKind,
@@ -385,20 +382,15 @@ impl ExprTypeResolver<'_> {
         match kind {
             SymbolicVariableKind::Named(nv) => {
                 let var_type = self.var_types.get(&nv.name)?;
-                self.type_environment.resolve_struct_type(var_type)
+                self.type_environment.resolve_member_access_type(var_type)
             }
             SymbolicVariableKind::Structured(sv) => {
                 let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-                match parent_type {
-                    IntermediateType::Structure { fields } => {
-                        let field = fields.iter().find(|f| f.name == sv.field)?;
-                        if field.field_type.is_structure() {
-                            Some(&field.field_type)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
+                let field = parent_type.member_fields()?.iter().find(|f| f.name == sv.field)?;
+                if field.field_type.has_members() {
+                    Some(&field.field_type)
+                } else {
+                    None
                 }
             }
             _ => None,
@@ -413,10 +405,10 @@ impl ExprTypeResolver<'_> {
     /// canonical `TypeName`.
     fn resolve_struct_field_array_element_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
         let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let IntermediateType::Structure { fields } = parent_type else {
-            return None;
-        };
-        let field = fields.iter().find(|f| f.name == sv.field)?;
+        let field = parent_type
+            .member_fields()?
+            .iter()
+            .find(|f| f.name == sv.field)?;
         let IntermediateType::Array { element_type, .. } = &field.field_type else {
             return None;
         };
@@ -1292,6 +1284,42 @@ END_VAR
 END_FUNCTION_BLOCK",
         "DINT"
     )]
+    // A function block instance exposes its variables as named members, the
+    // same as a struct field. Leaving these unresolved made codegen fail with
+    // P9999 wherever the expression's own type was needed (issue #1375).
+    #[case::function_block_bool_output(
+        "
+FUNCTION_BLOCK FB_TEST
+VAR
+    timer : TON;
+    result : BOOL;
+END_VAR
+    result := timer.Q;
+END_FUNCTION_BLOCK",
+        "BOOL"
+    )]
+    #[case::function_block_time_output(
+        "
+FUNCTION_BLOCK FB_TEST
+VAR
+    timer : TON;
+    result : TIME;
+END_VAR
+    result := timer.ET;
+END_FUNCTION_BLOCK",
+        "TIME"
+    )]
+    #[case::function_block_input(
+        "
+FUNCTION_BLOCK FB_TEST
+VAR
+    timer : TON;
+    result : BOOL;
+END_VAR
+    result := timer.IN;
+END_FUNCTION_BLOCK",
+        "BOOL"
+    )]
     fn apply_when_single_assignment_then_resolves_expected_type(
         #[case] program: &str,
         #[case] expected: &str,
@@ -1300,5 +1328,50 @@ END_FUNCTION_BLOCK",
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
         assert_type_eq(&types[0], expected);
+    }
+
+    #[test]
+    fn apply_when_function_block_output_in_condition_then_resolves_type() {
+        // An IF condition has no assignment target to borrow a type from, so
+        // codegen reads the condition's own resolved_type. Leaving it unset
+        // for `timer.Q` produced P9999 (issue #1375).
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    timer : TON;
+    done : BOOL;
+END_VAR
+    IF timer.Q THEN
+        done := TRUE;
+    END_IF;
+END_FUNCTION_BLOCK";
+        let result = run_pass(program);
+        let types = collect_all_expr_types(&result);
+        assert!(
+            types.iter().any(|t| type_name_upper(t).as_deref() == Some("BOOL")),
+            "condition `timer.Q` should resolve to BOOL, got {types:?}"
+        );
+        assert!(
+            types.iter().all(|t| t.is_some()),
+            "every expression should resolve, got {types:?}"
+        );
+    }
+
+    #[test]
+    fn apply_when_unknown_function_block_field_then_type_is_unresolved() {
+        // A misspelled member has no field to resolve against; the pass must
+        // leave it unset rather than inventing a type.
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    timer : TON;
+    result : BOOL;
+END_VAR
+    result := timer.NOT_A_FIELD;
+END_FUNCTION_BLOCK";
+        let result = run_pass(program);
+        let types = collect_assignment_types(&result);
+        assert_eq!(types.len(), 1);
+        assert_eq!(types[0], None);
     }
 }
