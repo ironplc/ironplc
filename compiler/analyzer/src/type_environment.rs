@@ -360,7 +360,10 @@ impl TypeEnvironment {
     /// instead when the caller needs a structure specifically.
     pub fn resolve_member_access_type(&self, type_name: &TypeName) -> Option<&IntermediateType> {
         let attrs = self.get(type_name)?;
-        attrs.representation.has_members().then_some(&attrs.representation)
+        attrs
+            .representation
+            .has_members()
+            .then_some(&attrs.representation)
     }
 
     /// An iterator for all types in the environment

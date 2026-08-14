@@ -364,7 +364,10 @@ impl ExprTypeResolver<'_> {
     /// definition, then finds the leaf member's type.
     fn resolve_structured_variable_type(&self, sv: &StructuredVariable) -> Option<TypeName> {
         let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-        let field = parent_type.member_fields()?.iter().find(|f| f.name == sv.field)?;
+        let field = parent_type
+            .member_fields()?
+            .iter()
+            .find(|f| f.name == sv.field)?;
         self.type_environment
             .elementary_type_name_for(&field.field_type)
     }
@@ -386,7 +389,10 @@ impl ExprTypeResolver<'_> {
             }
             SymbolicVariableKind::Structured(sv) => {
                 let parent_type = self.resolve_parent_struct_type(sv.record.as_ref())?;
-                let field = parent_type.member_fields()?.iter().find(|f| f.name == sv.field)?;
+                let field = parent_type
+                    .member_fields()?
+                    .iter()
+                    .find(|f| f.name == sv.field)?;
                 if field.field_type.has_members() {
                     Some(&field.field_type)
                 } else {
@@ -1348,7 +1354,9 @@ END_FUNCTION_BLOCK";
         let result = run_pass(program);
         let types = collect_all_expr_types(&result);
         assert!(
-            types.iter().any(|t| type_name_upper(t).as_deref() == Some("BOOL")),
+            types
+                .iter()
+                .any(|t| type_name_upper(t).as_deref() == Some("BOOL")),
             "condition `timer.Q` should resolve to BOOL, got {types:?}"
         );
         assert!(
