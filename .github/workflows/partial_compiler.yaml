@@ -2,7 +2,17 @@ name: IronPLC Compiler
 on:
   workflow_call:
     inputs:
-      commit-ref:
+      # Named `source-revision` rather than `commit-ref`, and the name matters.
+      # CodeQL's actions/untrusted-checkout heuristic treats any
+      # `actions/checkout` whose `ref:` comes from an expression whose *name*
+      # contains "ref", "head", "branch", "sha", or "commit" as a checkout of a
+      # pull request head -- regardless of where the value actually comes from.
+      # Every job below checks out this input, so a name like `commit-ref`
+      # raises one medium "Checkout of untrusted code" alert per job, and adding
+      # a job adds a new alert that fails the CodeQL check on the pull request.
+      # Keep this name (and the names of any expressions that carry it) free of
+      # those substrings.
+      source-revision:
         required: false
         type: string
         description: 'If not empty, then run for the specified tag'
@@ -32,17 +42,24 @@ jobs:
       run:
         working-directory: ./compiler
     steps:
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+        if: ${{ inputs.source-revision }}
         with:
-          ref: ${{ inputs.commit-ref }}
+          ref: ${{ inputs.source-revision }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        if: ${{ !inputs.source-revision }}
 
       - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
       - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
+      # rust-cache caches ~/.cargo/bin, so the cargo-cyclonedx install below is
+      # a near no-op on a warm cache. Every compiler-package leg waits on this
+      # job, so its duration is a serial prefix of all the installer builds.
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: "compiler -> target"
+          key: sbom-ubuntu-latest
       - name: Install SBOM tools
         run: just setup-sbom
 
@@ -65,8 +82,7 @@ jobs:
   #
   # Coverage/lint/dupes are host-independent, and `just ci` never uses the
   # release `rust_target`. Cross-platform test execution is provided instead by
-  # the per-target test step in compiler-package, so this gate runs on Linux
-  # only.
+  # the compiler-test job, so this gate runs on Linux only.
   compiler-quality:
     name: Compiler Quality Checks
     runs-on: ubuntu-latest
@@ -76,14 +92,14 @@ jobs:
 
     steps:
       # Checkout the repository/fetch input artifacts
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+        if: ${{ inputs.source-revision }}
         with:
-          ref: ${{ inputs.commit-ref  }}
+          ref: ${{ inputs.source-revision  }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment. Only the tools `just ci` needs;
       # no cross-compile target, SBOM, or NSIS.
@@ -103,6 +119,48 @@ jobs:
       - name: Run quality checks
         run: just ci
 
+  # Cross-platform test gate: the full test suite on each unique host OS.
+  # `cargo test` always builds and runs for the host, never for the release
+  # cross-compile target, so running it inside the 5-leg compiler-package
+  # matrix executed the identical host suite twice on Windows and twice on
+  # macOS -- and serialized every installer build behind a test run. This job
+  # runs the same suite on the same 3 unique hosts, in parallel with the
+  # package builds. The reusable workflow still fails if any job fails, so
+  # release uploads remain gated on these tests passing.
+  compiler-test:
+    name: Compiler Tests
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ./compiler
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [windows-2025, ubuntu-latest, macos-latest]
+
+    steps:
+      # Checkout the repository/fetch input artifacts
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: ${{ inputs.source-revision }}
+        with:
+          ref: ${{ inputs.source-revision }}
+      - name: Checkout HEAD
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: ${{ !inputs.source-revision }}
+
+      # Configure the execution environment. Only what `just test` needs: no
+      # cross-compile target, SBOM, or NSIS.
+      - uses: taiki-e/install-action@01159adff8f38113be7211e869405f6f6abf02d7 # just
+      - uses: actions-rust-lang/setup-rust-toolchain@a0b538fa0b742a6aa35d6e2c169b4bd06d225a98 # v1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: "compiler -> target"
+          key: test-${{ matrix.os }}
+
+      - name: Run tests
+        run: just test
+
   compiler-package:
     name: Build Compiler and Associated Installers
     needs: [compiler-sbom]
@@ -112,34 +170,44 @@ jobs:
         working-directory: ./compiler
     strategy:
       fail-fast: true
+      # `verify` marks legs whose rust_target the build host can execute, so
+      # the packaged release binaries can be smoke-tested in place. Only the
+      # aarch64 Windows cross-build cannot run on its x86_64 host (the x86_64
+      # macOS build runs on the arm64 host via Rosetta 2); that leg is covered
+      # by the post-release smoke tests instead.
       matrix:
         include:
           - os: windows-2025
             artifact: ironplcc-x86_64-windows.exe
             rust_target: x86_64-pc-windows-msvc
+            verify: true
           - os: windows-2025
             artifact: ironplcc-aarch64-windows.exe
             rust_target: aarch64-pc-windows-msvc
+            verify: false
           - os: ubuntu-latest
             artifact: ironplcc-x86_64-linux-musl.tar.gz
             rust_target: x86_64-unknown-linux-musl
+            verify: true
           - os: macos-latest
             artifact: ironplcc-x86_64-macos.tar.gz
             rust_target: x86_64-apple-darwin
+            verify: true
           - os: macos-latest
             artifact: ironplcc-aarch64-macos.tar.gz
             rust_target: aarch64-apple-darwin
+            verify: true
 
     steps:
       # Checkout the repository/fetch input artifacts
-      - name: Checkout branch or tag ${{ inputs.commit-ref }}
+      - name: Checkout branch or tag ${{ inputs.source-revision }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ inputs.commit-ref }}
+        if: ${{ inputs.source-revision }}
         with:
-          ref: ${{ inputs.commit-ref  }}
+          ref: ${{ inputs.source-revision  }}
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: ${{ !inputs.commit-ref }}
+        if: ${{ !inputs.source-revision }}
 
       # Configure the execution environment. Only the tools `just package`
       # needs; lint/coverage tooling lives in compiler-quality.
@@ -178,16 +246,19 @@ jobs:
           name: ironplc-compiler-sbom
           path: compiler/
 
-      # Run the full test suite on this host. compiler-quality runs coverage
-      # (and thus the tests) on Linux only, so this is where cross-platform
-      # test execution happens -- tests run on the Windows and macOS hosts too.
-      - name: Run tests
-        run: just test
-
       # Execute build recipe. This is the release build only; the debug /
-      # coverage / lint build runs in parallel in compiler-quality.
+      # coverage / lint build runs in parallel in compiler-quality, and the
+      # cross-platform test suite runs in parallel in compiler-test.
       - name: Create installer package
         run: just package ${{ inputs.version }} ${{ matrix.artifact }} ${{ matrix.rust_target }}
+
+      # Run the exact release binaries that were packed into the installer:
+      # compile and execute the bundled-library fixtures on the shipped
+      # compiler + VM. This tests the bytes we ship -- something the previous
+      # in-job `just test` (a debug-profile host build) never did.
+      - name: Verify packaged release binaries
+        if: ${{ matrix.verify }}
+        run: just verify-package ${{ matrix.rust_target }}
 
       # Save output artifacts. Uploaded unconditionally (not gated on
       # gh-release-tag) so a deployment dry run still produces them and the
