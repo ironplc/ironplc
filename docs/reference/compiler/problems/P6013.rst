@@ -1,0 +1,45 @@
+=====
+P6013
+=====
+
+.. problem-summary:: P6013
+
+This error occurs when a project manifest was found but does not resolve to a
+project. The manifest may be unreadable, malformed, or may name files that do
+not exist.
+
+A manifest is authoritative: it is the record of which files belong to the
+project. When one is present but cannot be followed, the compiler reports the
+failure rather than searching the directory tree for something that looks like
+a project — a search would have to guess, and guessing is how a stale project
+file gets compiled in place of the live one.
+
+Causes
+------
+
+- A ``.sln`` that cannot be read.
+- A ``.sln`` that names a ``.tsproj`` that does not exist.
+- A ``.tsproj`` that is not well-formed XML.
+- A ``.sln`` or ``.tsproj`` that names no ``.plcproj`` at all — for example a
+  solution containing only non-PLC project types.
+- A file named on the command line whose extension is not one of ``.sln``,
+  ``.tsproj``, or ``.plcproj``, passed where a manifest was expected.
+
+Example
+-------
+
+.. code-block:: text
+
+   MySolution/
+     MySolution.sln          # lists MyProject\MyProject.tsproj
+     (MyProject/ was deleted)
+
+.. code-block:: bash
+
+   ironplcc check MySolution
+
+To fix this error:
+
+- Restore or correct the file the manifest names.
+- Repair the malformed manifest.
+- If the solution has no PLC project, point the compiler at one that does.

@@ -101,6 +101,9 @@ P6008,XmlUnsupportedVersion,PLCopen XML version is not supported
 P6009,OutputPathConflictsWithInput,Output path conflicts with an input file
 P6010,LibraryManifestInvalid,Compatibility library manifest is malformed or missing a required field
 P6011,LibraryNotFound,Referenced compatibility library not found
+P6012,ProjectManifestAmbiguous,Directory contains more than one project manifest
+P6013,ProjectManifestUnresolvable,Project manifest does not resolve to a project
+P6014,ProjectManifestNotInDirectory,Directory has no project manifest but one exists below it
 P8001,McpInputValidation,MCP tool input validation error
 P9001,UnsupportedStdLibType,Referenced type is valid but not implemented
 P9002,NoContent,Set of valid source files has no content

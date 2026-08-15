@@ -39,9 +39,19 @@ folder containing the manifest**.
 
 The nested-manifest hint (row 4) is the only remaining use of `walk_files`
 in the TwinCAT path, and it is purely for the error message: it never
-selects sources. It fires only when `detect_fallback` also comes back
-empty, so a directory of loose `.st` files that happens to contain an
+selects sources. It fires only when the directory holds nothing of its
+own, so a directory of loose `.st` files that happens to contain an
 unrelated solution in a subfolder does not get a spurious diagnostic.
+
+"Nothing of its own" is measured against the nested manifest's directory
+rather than by an empty fallback enumeration. A real project's sources sit
+*beside* its manifest and are themselves supported file types
+(`.TcPOU`, `.TcGVL`, ...), so an empty-enumeration test would never fire
+for the case row 4 exists to catch — opening the tree above a TwinCAT
+project. Enumerating those files and calling the directory unstructured
+would compile the project's sources while ignoring the manifest that says
+which of them belong, which is the same guess the manifest exists to
+settle.
 
 Bare-`.st` directories are unaffected: they never reach the TwinCAT
 detector, and `detect_fallback` stays recursive — with no manifest format
@@ -59,7 +69,7 @@ legitimate. Replaced by:
 ```rust
 enum Detection {
     NotDetected,
-    NotDetectedWithHint(Diagnostic),
+    NotDetectedWithHint { manifest: PathBuf, diagnostic: Diagnostic },
     Detected(Box<DiscoveredProject>),
     Failed(Diagnostic),
 }
@@ -67,7 +77,8 @@ enum Detection {
 
 `Failed` never falls through; `NotDetected*` always does. `discover` owns
 the policy for when a hint is surfaced, so a detector never needs to know
-the fallback's outcome.
+the fallback's outcome — the hint carries the manifest path it names,
+which is the only input that policy needs.
 
 ### Breaking change
 
@@ -103,19 +114,19 @@ Created:
 
 ## Tasks
 
-- [ ] Add problem codes P6012 (ambiguous manifests), P6013 (manifest found
+- [x] Add problem codes P6012 (ambiguous manifests), P6013 (manifest found
       but unresolvable), P6014 (no manifest in directory, one nested below)
-- [ ] Rework `sln.rs`: non-recursive manifest lookup; `Result`-returning
+- [x] Rework `sln.rs`: non-recursive manifest lookup; `Result`-returning
       `.sln` and `.tsproj` resolution
-- [ ] Add the `Detection` enum and rewrite `detect_twincat` to tier
+- [x] Add the `Detection` enum and rewrite `detect_twincat` to tier
       `.sln` > `.tsproj` > `.plcproj` over the directory only
-- [ ] Delete `collect_plcproj_via_walk`
-- [ ] Teach `discover` the fall-through policy, including the
-      "hint only when the fallback is also empty" rule
-- [ ] Add `is_manifest` / `discover_from_manifest` and wire them into
+- [x] Delete `collect_plcproj_via_walk`
+- [x] Teach `discover` the fall-through policy, including the
+      "hint only when the directory holds nothing of its own" rule
+- [x] Add `is_manifest` / `discover_from_manifest` and wire them into
       `enumerate_files`
-- [ ] Tests: each row of the rule table, per manifest tier; the
+- [x] Tests: each row of the rule table, per manifest tier; the
       stale-rename regression; a manifest file argument for each of the
       three extensions
-- [ ] Write the three problem doc pages
-- [ ] Full CI (`cd compiler && just`)
+- [x] Write the three problem doc pages
+- [x] Full CI (`cd compiler && just`)

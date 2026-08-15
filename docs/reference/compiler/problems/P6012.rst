@@ -1,0 +1,41 @@
+=====
+P6012
+=====
+
+.. problem-summary:: P6012
+
+This error occurs when a directory contains more than one project manifest of
+the same kind — more than one ``.sln``, more than one ``.tsproj``, or more than
+one ``.plcproj`` — so there is no way to tell which project was meant.
+
+The compiler resolves a TwinCAT project through its manifest chain
+(``.sln`` → ``.tsproj`` → ``PrjFilePath`` → ``.plcproj``), and only the
+directory it was pointed at is read. When that directory holds several
+candidates at the same level, nothing in it says which one is live. A stale
+project file left behind by a rename looks exactly like the current one, so
+the compiler asks rather than picking by sort order.
+
+Example
+-------
+
+.. code-block:: text
+
+   MyProject/
+     MyProject.plcproj       # current
+     MyProjekt.plcproj       # left over from a rename
+     MAIN.TcPOU
+
+.. code-block:: bash
+
+   ironplcc check MyProject
+
+To fix this error:
+
+- Name the manifest you want instead of the directory that holds it —
+  ``ironplcc check MyProject/MyProject.plcproj``.
+- Or delete the manifests that are no longer part of the project.
+
+Manifests of *different* kinds in one directory are not ambiguous: a ``.sln``
+takes priority over a ``.tsproj``, which takes priority over a ``.plcproj``, so
+a solution folder that also holds a stray project file still resolves through
+the solution.

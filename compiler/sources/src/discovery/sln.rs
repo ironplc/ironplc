@@ -3,56 +3,71 @@
 //! A `.sln` is the file a user/tool actually points a TwinCAT solution
 //! at; it lists one or more Visual Studio-style sub-projects (`.tsproj`
 //! among them), and each `.tsproj` in turn names its `.plcproj`
-//! sub-projects via nested `PrjFilePath` attributes. Resolving through
-//! this chain (rather than just walking the directory tree for
-//! `.plcproj` files) is what lets discovery pick the correct, currently
-//! referenced `.plcproj` when a directory also contains stale,
-//! no-longer-referenced project files left behind by a rename -- see
+//! sub-projects via nested `PrjFilePath` attributes.
+//!
+//! Resolution follows that chain and only that chain. The directory tree
+//! is never searched for `.plcproj` files: the nesting a real TwinCAT
+//! layout has is traversed *by reference*, each manifest naming the next.
+//! Searching instead would have to guess when a directory holds more than
+//! one candidate, and guessing is exactly what picks a stale `.plcproj`
+//! left behind by a project rename over the live one -- see
 //! `discover_when_sln_and_stale_duplicate_plcproj_then_picks_named_one`
 //! below.
 
 use std::{fs, path::Path, path::PathBuf};
 
-/// Find the single `.sln` file directly in `dir` (not recursive -- a
-/// `.sln` is always the file a user/tool points at directly, unlike
-/// `.plcproj`, which real layouts commonly nest several levels deep).
-///
-/// Returns `None` if there is no `.sln`, or more than one: ambiguous,
-/// callers should fall back to the recursive walk rather than guess.
-fn find_sln(dir: &Path) -> Option<PathBuf> {
-    let entries = fs::read_dir(dir).ok()?;
+use ironplc_dsl::core::FileId;
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
+use ironplc_problems::Problem;
 
-    let mut sln_files: Vec<PathBuf> = entries
+/// Find every file directly in `dir` (not recursive) whose extension
+/// matches `extension`, sorted by path.
+///
+/// Deliberately non-recursive: a project manifest is the file a user or
+/// tool points at, so discovery looks for it where it was pointed and
+/// nowhere else.
+pub(super) fn find_manifests(dir: &Path, extension: &str) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+
+    let mut manifests: Vec<PathBuf> = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| {
             path.is_file()
                 && path
                     .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("sln"))
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case(extension))
         })
         .collect();
-
-    if sln_files.len() != 1 {
-        return None;
-    }
-    sln_files.pop()
+    manifests.sort();
+    manifests
 }
 
-/// Resolve `.plcproj` paths via `.sln` -> `.tsproj` -> `PrjFilePath`.
+/// Resolve the `.plcproj` paths a `.sln` names, via the `.tsproj` files
+/// it lists.
 ///
-/// Returns an empty vec if there's no unambiguous `.sln` in `dir`, or
-/// the `.sln` found doesn't lead to any `.plcproj` files -- callers
-/// should fall back to [`super::collect_plcproj_via_walk`] in that case.
-pub(super) fn resolve_plcproj_via_sln(dir: &Path) -> Vec<PathBuf> {
-    let Some(sln_path) = find_sln(dir) else {
-        return Vec::new();
-    };
+/// Returns an error if the `.sln` cannot be read, if any `.tsproj` it
+/// lists cannot be resolved, or if the chain names no `.plcproj` at all.
+/// A `.sln` is authoritative, so a failure here is reported rather than
+/// worked around.
+pub(super) fn resolve_plcproj_via_sln(sln_path: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
+    let tsproj_paths = parse_sln(sln_path)?;
 
-    parse_sln(&sln_path)
-        .into_iter()
-        .flat_map(|tsproj_path| resolve_plcproj_via_tsproj(&tsproj_path))
-        .collect()
+    let mut plcproj_paths = Vec::new();
+    for tsproj_path in &tsproj_paths {
+        plcproj_paths.extend(resolve_plcproj_via_tsproj(tsproj_path)?);
+    }
+
+    if plcproj_paths.is_empty() {
+        return Err(unresolvable(
+            sln_path,
+            "the solution does not name any TwinCAT PLC project (.plcproj)",
+        ));
+    }
+
+    Ok(plcproj_paths)
 }
 
 /// Parse a `.sln` (a line-oriented format, not XML) and return the
@@ -65,10 +80,9 @@ pub(super) fn resolve_plcproj_via_sln(dir: &Path) -> Vec<PathBuf> {
 /// Visual Studio project types the `.sln` may also list (a
 /// `DriveManager.tcdmproj`, a `Scope.tcmproj`, ...) and are ignored, not
 /// treated as an error.
-fn parse_sln(sln_path: &Path) -> Vec<PathBuf> {
-    let Ok(content) = fs::read_to_string(sln_path) else {
-        return Vec::new();
-    };
+fn parse_sln(sln_path: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
+    let content = fs::read_to_string(sln_path)
+        .map_err(|e| unresolvable(sln_path, &format!("cannot read the solution file: {e}")))?;
     let sln_dir = sln_path.parent().unwrap_or(sln_path);
 
     let mut tsproj_paths = Vec::new();
@@ -85,11 +99,7 @@ fn parse_sln(sln_path: &Path) -> Vec<PathBuf> {
             continue;
         };
 
-        let is_tsproj = relative_path
-            .rsplit('.')
-            .next()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("tsproj"));
-        if !is_tsproj {
+        if !has_extension(relative_path, "tsproj") {
             continue;
         }
 
@@ -97,7 +107,7 @@ fn parse_sln(sln_path: &Path) -> Vec<PathBuf> {
         tsproj_paths.push(sln_dir.join(normalized));
     }
 
-    tsproj_paths
+    Ok(tsproj_paths)
 }
 
 /// Parse a `.tsproj` (XML) and return the `.plcproj` files it names via
@@ -112,14 +122,15 @@ fn parse_sln(sln_path: &Path) -> Vec<PathBuf> {
 /// TwinSAFE safety projects, which use a different compilation model --
 /// are skipped, not treated as an error.
 ///
-/// Returns an empty vec if the file can't be read or parsed as XML.
-fn resolve_plcproj_via_tsproj(tsproj_path: &Path) -> Vec<PathBuf> {
-    let Ok(content) = fs::read_to_string(tsproj_path) else {
-        return Vec::new();
-    };
-    let Ok(doc) = roxmltree::Document::parse(&content) else {
-        return Vec::new();
-    };
+/// Returns an error if the file cannot be read or parsed as XML. A
+/// `.tsproj` that names no `.plcproj` is *not* an error here: a solution
+/// may legitimately contain a TwinCAT project with no PLC part, and
+/// [`resolve_plcproj_via_sln`] reports the empty overall result instead.
+pub(super) fn resolve_plcproj_via_tsproj(tsproj_path: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
+    let content = fs::read_to_string(tsproj_path)
+        .map_err(|e| unresolvable(tsproj_path, &format!("cannot read the project file: {e}")))?;
+    let doc = roxmltree::Document::parse(&content)
+        .map_err(|e| unresolvable(tsproj_path, &format!("malformed .tsproj XML: {e}")))?;
     let tsproj_dir = tsproj_path.parent().unwrap_or(tsproj_path);
 
     let mut plcproj_paths = Vec::new();
@@ -131,11 +142,7 @@ fn resolve_plcproj_via_tsproj(tsproj_path: &Path) -> Vec<PathBuf> {
             continue;
         };
 
-        let is_plcproj = prj_file_path
-            .rsplit('.')
-            .next()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("plcproj"));
-        if !is_plcproj {
+        if !has_extension(prj_file_path, "plcproj") {
             continue;
         }
 
@@ -143,40 +150,39 @@ fn resolve_plcproj_via_tsproj(tsproj_path: &Path) -> Vec<PathBuf> {
         plcproj_paths.push(tsproj_dir.join(normalized));
     }
 
-    plcproj_paths
+    Ok(plcproj_paths)
+}
+
+/// Whether a manifest-declared, possibly Windows-style relative path ends
+/// in `extension`. Compares the text rather than going through
+/// [`Path::extension`], because the value has not been normalized yet.
+fn has_extension(declared_path: &str, extension: &str) -> bool {
+    declared_path
+        .rsplit('.')
+        .next()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case(extension))
+}
+
+/// A manifest was found and is authoritative, but does not resolve to a
+/// project. Never a reason to fall back to a heuristic.
+pub(super) fn unresolvable(manifest_path: &Path, reason: &str) -> Diagnostic {
+    Diagnostic::problem(
+        Problem::ProjectManifestUnresolvable,
+        Label::file(
+            FileId::from_path(manifest_path),
+            format!("{} does not resolve to a project: {reason}", {
+                manifest_path.display()
+            }),
+        ),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::discovery::fixtures::{write_plcproj, write_sln, write_tsproj};
     use crate::discovery::{discover, ProjectType};
     use tempfile::TempDir;
-
-    fn write_sln(dir: &Path, name: &str, tsproj_entries: &[(&str, &str)]) {
-        let mut content = String::from(
-            "Microsoft Visual Studio Solution File, Format Version 12.00\n\
-             # TcXaeShell Solution File, Format Version 11.00\n",
-        );
-        for (project_name, relative_path) in tsproj_entries {
-            content.push_str(&format!(
-                "Project(\"{{B1E792BE-AA5F-4E3C-8C82-674BF9C0715B}}\") = \"{project_name}\", \"{relative_path}\", \"{{9406D69C-EBA9-4591-A513-578A75D14426}}\"\nEndProject\n"
-            ));
-        }
-        fs::write(dir.join(name), content).unwrap();
-    }
-
-    fn write_tsproj(path: &Path, plc_entries: &[(&str, &str)]) {
-        let mut inner = String::new();
-        for (name, prj_file_path) in plc_entries {
-            inner.push_str(&format!(
-                r#"<Project GUID="{{6DADE760-7FAC-4830-92BA-478C8595D673}}" Name="{name}" PrjFilePath="{prj_file_path}" />"#
-            ));
-        }
-        let content = format!(
-            r#"<Project ProjectGUID="{{9406D69C-EBA9-4591-A513-578A75D14426}}">{inner}</Project>"#
-        );
-        fs::write(path, content).unwrap();
-    }
 
     #[test]
     fn discover_when_sln_present_then_resolves_via_tsproj() {
@@ -184,24 +190,14 @@ mod tests {
         write_sln(dir.path(), "Solution.sln", &[("Main", "Main\\Main.tsproj")]);
 
         let tsproj_dir = dir.path().join("Main");
-        fs::create_dir_all(&tsproj_dir).unwrap();
         write_tsproj(
             &tsproj_dir.join("Main.tsproj"),
             &[("MainRuntime", "MainRuntime\\MainRuntime.plcproj")],
         );
-
-        let plcproj_dir = tsproj_dir.join("MainRuntime");
-        fs::create_dir_all(&plcproj_dir).unwrap();
-        fs::write(plcproj_dir.join("A.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            plcproj_dir.join("MainRuntime.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="A.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        write_plcproj(
+            &tsproj_dir.join("MainRuntime").join("MainRuntime.plcproj"),
+            &["A.TcPOU"],
+        );
 
         let result = discover(dir.path()).unwrap();
 
@@ -223,24 +219,14 @@ mod tests {
         );
 
         let tsproj_dir = dir.path().join("Main");
-        fs::create_dir_all(&tsproj_dir).unwrap();
         write_tsproj(
             &tsproj_dir.join("Main.tsproj"),
             &[("MainRuntime", "MainRuntime\\MainRuntime.plcproj")],
         );
-
-        let plcproj_dir = tsproj_dir.join("MainRuntime");
-        fs::create_dir_all(&plcproj_dir).unwrap();
-        fs::write(plcproj_dir.join("A.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            plcproj_dir.join("MainRuntime.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="A.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        write_plcproj(
+            &tsproj_dir.join("MainRuntime").join("MainRuntime.plcproj"),
+            &["A.TcPOU"],
+        );
         // Scope.tcmproj deliberately doesn't exist -- a non-.tsproj entry
         // must not be resolved/read at all, only filtered out by extension.
 
@@ -272,19 +258,9 @@ mod tests {
         );
 
         let plcproj_dir = dir.path().join("Runtime");
-        fs::create_dir_all(&plcproj_dir).unwrap();
-        fs::write(plcproj_dir.join("LIVE.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            plcproj_dir.join("Fooo.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="LIVE.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        write_plcproj(&plcproj_dir.join("Fooo.plcproj"), &["LIVE.TcPOU"]);
         // Stale duplicate: sorts before "Fooo.plcproj" alphabetically,
-        // so the old glob-only logic would have picked this one.
+        // so a glob-and-sort resolution would have picked this one.
         fs::write(plcproj_dir.join("Foo.plcproj"), "<Project/>").unwrap();
 
         let result = discover(dir.path()).unwrap();
@@ -304,19 +280,10 @@ mod tests {
                 ("MainTwinSAFE", "MainTwinSAFE\\MainTwinSAFE.splcproj"),
             ],
         );
-
-        let plcproj_dir = dir.path().join("MainRuntime");
-        fs::create_dir_all(&plcproj_dir).unwrap();
-        fs::write(plcproj_dir.join("A.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            plcproj_dir.join("MainRuntime.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="A.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        write_plcproj(
+            &dir.path().join("MainRuntime").join("MainRuntime.plcproj"),
+            &["A.TcPOU"],
+        );
         // MainTwinSAFE.splcproj deliberately doesn't exist -- proves it
         // was never resolved/read, only filtered out by extension.
 
@@ -324,30 +291,6 @@ mod tests {
 
         assert_eq!(result.files.len(), 1);
         assert!(result.files[0].ends_with("A.TcPOU"));
-    }
-
-    #[test]
-    fn discover_when_multiple_sln_at_top_level_then_falls_back_to_walk() {
-        let dir = TempDir::new().unwrap();
-        write_sln(dir.path(), "A.sln", &[]);
-        write_sln(dir.path(), "B.sln", &[]);
-
-        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert_eq!(result.files.len(), 1);
-        assert!(result.files[0].ends_with("MAIN.TcPOU"));
     }
 
     #[test]
@@ -361,37 +304,53 @@ mod tests {
                 ("SharedLib", "SharedLib\\SharedLib.plcproj"),
             ],
         );
-
-        let main_dir = dir.path().join("MainRuntime");
-        fs::create_dir_all(&main_dir).unwrap();
-        fs::write(main_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            main_dir.join("MainRuntime.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let lib_dir = dir.path().join("SharedLib");
-        fs::create_dir_all(&lib_dir).unwrap();
-        fs::write(lib_dir.join("FB_Shared.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            lib_dir.join("SharedLib.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="FB_Shared.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        write_plcproj(
+            &dir.path().join("MainRuntime").join("MainRuntime.plcproj"),
+            &["MAIN.TcPOU"],
+        );
+        write_plcproj(
+            &dir.path().join("SharedLib").join("SharedLib.plcproj"),
+            &["FB_Shared.TcPOU"],
+        );
 
         let result = discover(dir.path()).unwrap();
 
         assert_eq!(result.files.len(), 2);
         assert!(result.files.iter().any(|f| f.ends_with("MAIN.TcPOU")));
         assert!(result.files.iter().any(|f| f.ends_with("FB_Shared.TcPOU")));
+    }
+
+    #[test]
+    fn discover_when_sln_lists_missing_tsproj_then_reports_unresolvable() {
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "Solution.sln", &[("Main", "Main.tsproj")]);
+        // Main.tsproj deliberately absent.
+
+        let error = discover(dir.path()).unwrap_err();
+
+        assert_eq!(error.code, "P6013");
+    }
+
+    #[test]
+    fn discover_when_tsproj_is_malformed_xml_then_reports_unresolvable() {
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "Solution.sln", &[("Main", "Main.tsproj")]);
+        fs::write(dir.path().join("Main.tsproj"), "<Project>").unwrap();
+
+        let error = discover(dir.path()).unwrap_err();
+
+        assert_eq!(error.code, "P6013");
+    }
+
+    #[test]
+    fn discover_when_sln_names_no_plcproj_then_reports_unresolvable() {
+        let dir = TempDir::new().unwrap();
+        // A solution with only a non-PLC project: authoritative, but
+        // there is nothing for the compiler to build.
+        write_sln(dir.path(), "Solution.sln", &[("Scope", "Scope.tcmproj")]);
+
+        let error = discover(dir.path()).unwrap_err();
+
+        assert_eq!(error.code, "P6013");
     }
 }

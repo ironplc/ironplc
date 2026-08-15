@@ -1,0 +1,45 @@
+=====
+P6014
+=====
+
+.. problem-summary:: P6014
+
+This error occurs when the directory given to the compiler contains no project
+manifest, but one exists in a subdirectory below it. The diagnostic names the
+manifest it found.
+
+The compiler opens the folder it was pointed at and reads the manifest there.
+It does not search downward for one: a search would have to choose when a tree
+holds several candidates, and the wrong choice silently compiles the wrong
+project. Nesting is instead traversed by reference — a ``.sln`` names its
+``.tsproj`` files, a ``.tsproj`` names its ``.plcproj`` files, and a
+``.plcproj`` names its sources — so opening the folder that holds the manifest
+reaches everything below it.
+
+Example
+-------
+
+.. code-block:: text
+
+   MyRepo/
+     docs/
+     src/
+       MySolution/
+         MySolution.sln
+         MyProject/
+
+.. code-block:: bash
+
+   ironplcc check MyRepo
+
+To fix this error, open the folder that contains the manifest, or name the
+manifest itself:
+
+.. code-block:: bash
+
+   ironplcc check MyRepo/src/MySolution
+   ironplcc check MyRepo/src/MySolution/MySolution.sln
+
+A directory with source files of its own is not affected: those files are
+enumerated as an unstructured project, and a solution that happens to sit in
+some unrelated subfolder is ignored.

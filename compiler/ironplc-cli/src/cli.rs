@@ -23,6 +23,7 @@ use std::{
 };
 
 use ironplc_parser::options::CompilerOptions;
+use ironplc_sources::discovery::DiscoveredProject;
 use ironplc_sources::LibraryName;
 
 use ironplc_project::tokenizer;
@@ -246,9 +247,12 @@ fn create_project(
 
 /// Enumerates all files at the path.
 ///
-/// If the path is a file, then returns the file. If the path is a directory,
-/// then uses project discovery to detect the project structure and return
-/// the appropriate set of files.
+/// If the path is a directory, then uses project discovery to detect the
+/// project structure and return the appropriate set of files. If the path
+/// is a project manifest (`.sln`, `.tsproj`, `.plcproj`), it is resolved
+/// the same way -- naming the manifest is how a user says which project
+/// they mean when its directory holds more than one. Any other file is
+/// returned as itself, to be loaded as source text.
 ///
 /// Discovery problems that shouldn't stop the rest of the project from
 /// being enumerated (e.g. a `.plcproj` `<Compile Include="...">` entry
@@ -285,22 +289,12 @@ fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagn
         }
     };
     if metadata.is_dir() {
-        return match ironplc_sources::discovery::discover(&path) {
-            Ok(project) => {
-                // Auto-activate the libraries a discovered project file
-                // references, alongside any files it declares. Referenced but
-                // unshipped libraries contribute a diagnostic naming them.
-                let (libraries, library_diagnostics) =
-                    ironplc_sources::libraries::LibraryRegistry::bundled()
-                        .resolve_references(&project.library_references);
-                let mut diagnostics = project.errors;
-                diagnostics.extend(library_diagnostics);
-                (project.files, libraries, diagnostics)
-            }
-            Err(e) => (vec![], vec![], vec![e]),
-        };
+        return enumerate_project(ironplc_sources::discovery::discover(&path));
     }
     if metadata.is_file() {
+        if ironplc_sources::discovery::is_manifest(&path) {
+            return enumerate_project(ironplc_sources::discovery::discover_from_manifest(&path));
+        }
         return (vec![path.to_path_buf()], vec![], vec![]);
     }
     if metadata.is_symlink() {
@@ -311,6 +305,28 @@ fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagn
         );
     }
     (vec![], vec![], vec![])
+}
+
+/// Flattens a discovered project into the files, libraries, and problems
+/// [`enumerate_files`] reports.
+///
+/// Auto-activates the libraries a discovered project file references,
+/// alongside any files it declares. Referenced but unshipped libraries
+/// contribute a diagnostic naming them.
+fn enumerate_project(
+    discovered: Result<DiscoveredProject, Diagnostic>,
+) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagnostic>) {
+    match discovered {
+        Ok(project) => {
+            let (libraries, library_diagnostics) =
+                ironplc_sources::libraries::LibraryRegistry::bundled()
+                    .resolve_references(&project.library_references);
+            let mut diagnostics = project.errors;
+            diagnostics.extend(library_diagnostics);
+            (project.files, libraries, diagnostics)
+        }
+        Err(e) => (vec![], vec![], vec![e]),
+    }
 }
 
 /// Converts an IronPLC diagnostic into the
@@ -536,6 +552,66 @@ mod tests {
         let paths = vec![dir.path().to_path_buf()];
         let result = check(&paths, CompilerOptions::default(), &[], true);
         assert!(result.is_err())
+    }
+
+    #[test]
+    fn check_when_plcproj_named_as_file_argument_then_loads_its_sources() {
+        // A manifest given by name resolves as a project rather than
+        // being read as source text -- this is how a user says which
+        // project they mean when a directory holds more than one.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("A.st"),
+            "PROGRAM A\nVAR\n    x : INT;\nEND_VAR\n    x := UNDECLARED_VAR;\nEND_PROGRAM",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("project.plcproj"),
+            r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.st" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+
+        let paths = vec![dir.path().join("project.plcproj")];
+        let err = check(&paths, CompilerOptions::default(), &[], true).unwrap_err();
+
+        // Exactly the semantic error in A.st: the .plcproj resolved to
+        // its sources instead of being parsed as Structured Text, which
+        // would have produced a syntax error against the XML itself.
+        assert_eq!(problem_count(&err), 1, "{err}");
+    }
+
+    #[test]
+    fn check_when_ambiguous_plcproj_directory_then_naming_one_resolves_it() {
+        // Two .plcproj in one directory is ambiguous (P6012); the
+        // diagnostic's advice -- name the one you meant -- has to work.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("A.st"), "PROGRAM A\nEND_PROGRAM").unwrap();
+        for name in ["AAA.plcproj", "ZZZ.plcproj"] {
+            std::fs::write(
+                dir.path().join(name),
+                r#"<Project>
+  <ItemGroup>
+    <Compile Include="A.st" />
+  </ItemGroup>
+</Project>"#,
+            )
+            .unwrap();
+        }
+
+        assert!(check(
+            &[dir.path().to_path_buf()],
+            CompilerOptions::default(),
+            &[],
+            true
+        )
+        .is_err());
+
+        let named = vec![dir.path().join("ZZZ.plcproj")];
+        assert!(check(&named, CompilerOptions::default(), &[], true).is_ok());
     }
 
     #[test]

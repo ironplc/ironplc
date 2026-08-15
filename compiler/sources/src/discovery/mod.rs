@@ -6,6 +6,17 @@
 //!
 //! The detector chain runs in priority order: Beremiz → TwinCAT → Fallback.
 //! The first match wins.
+//!
+//! A project detector reads the directory it was given and nothing below
+//! it: a project is defined by its manifest, and the manifest names
+//! everything else by reference. The convention that follows from that is
+//! **open the folder containing the manifest** -- pointing the tool higher
+//! up a tree and searching for manifests would have to guess between
+//! candidates, and guessing is how a stale project file left behind by a
+//! rename gets compiled instead of the live one. The one detector that
+//! does read the whole subtree is [`detect_fallback`], where there is no
+//! manifest format in play at all and enumeration *is* the project
+//! definition.
 
 use std::{
     fs,
@@ -20,10 +31,17 @@ use log::info;
 use crate::file_type::FileType;
 use crate::libraries::LibraryReference;
 
+#[cfg(test)]
+mod fixtures;
 mod plcproj;
 mod sln;
-use plcproj::{collect_plcproj_via_walk, merge_plcproj_projects};
-use sln::resolve_plcproj_via_sln;
+use plcproj::merge_plcproj_projects;
+use sln::{find_manifests, resolve_plcproj_via_sln, resolve_plcproj_via_tsproj};
+
+/// The manifest kinds a TwinCAT project can be opened through, in
+/// priority order: a solution names the projects it contains, so it wins
+/// over any individual project file sitting in the same directory.
+const TWINCAT_MANIFEST_TIERS: &[&str] = &["sln", "tsproj", "plcproj"];
 
 /// The type of PLC project that was detected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,13 +86,39 @@ pub struct DiscoveredProject {
     pub errors: Vec<Diagnostic>,
 }
 
+/// The outcome of running one detector against a directory.
+///
+/// The distinction that matters is between "there is no project of this
+/// kind here" and "there is one, but it could not be resolved". Only the
+/// former may fall through to the next detector: falling through on the
+/// latter would answer an unresolvable manifest with a guess.
+enum Detection {
+    /// No manifest of this kind here. Try the next detector.
+    NotDetected,
+    /// No manifest here, but one exists deeper in the tree. Still not
+    /// this detector's project, so the chain continues -- the hint is
+    /// surfaced only if nothing else claims the directory. `manifest` is
+    /// the path the hint names, which is how [`discover`] decides that.
+    NotDetectedWithHint {
+        manifest: PathBuf,
+        diagnostic: Diagnostic,
+    },
+    /// Detected and fully resolved.
+    Detected(Box<DiscoveredProject>),
+    /// Detected but unresolvable: ambiguous manifests, an unreadable
+    /// `.sln`, a malformed `.tsproj`. Authoritative -- never falls
+    /// through to another detector.
+    Failed(Diagnostic),
+}
+
 /// Discover the project structure in a directory.
 ///
 /// Tries each detector in priority order (Beremiz, TwinCAT) and returns
 /// the first match. If no specific project structure is detected, falls
 /// back to enumerating all supported files.
 ///
-/// Returns an error if the directory does not exist or cannot be read.
+/// Returns an error if the directory does not exist or cannot be read,
+/// or if a detector found a project manifest it could not resolve.
 pub fn discover(dir: &Path) -> Result<DiscoveredProject, Diagnostic> {
     info!("Discovering project structure in: {}", dir.display());
 
@@ -92,39 +136,69 @@ pub fn discover(dir: &Path) -> Result<DiscoveredProject, Diagnostic> {
         ));
     }
 
-    if let Some(project) = detect_beremiz(dir) {
-        info!("Detected Beremiz project");
-        return Ok(project);
+    let mut hints = Vec::new();
+    for detect in [detect_beremiz, detect_twincat] {
+        match detect(dir) {
+            Detection::Detected(project) => {
+                info!(
+                    "Detected {:?} project with {} files",
+                    project.project_type,
+                    project.files.len()
+                );
+                return Ok(*project);
+            }
+            Detection::Failed(diagnostic) => return Err(diagnostic),
+            Detection::NotDetectedWithHint {
+                manifest,
+                diagnostic,
+            } => hints.push((manifest, diagnostic)),
+            Detection::NotDetected => {}
+        }
     }
 
-    if let Some(result) = detect_twincat(dir) {
-        let project = result?;
-        info!(
-            "Detected TwinCAT project with {} files",
-            project.files.len()
-        );
-        return Ok(project);
+    // A hint says "no project here, but there is one below". That is
+    // worth saying only when the directory holds nothing of its own: a
+    // directory of loose source files that happens to contain an
+    // unrelated solution in some subfolder is not a mistake, and telling
+    // its owner to go open the subfolder would be wrong.
+    //
+    // "Nothing of its own" is measured against the manifest's directory
+    // rather than by an empty enumeration, because a real project's
+    // sources sit *beside* its manifest and are themselves supported file
+    // types. Enumerating those and calling the directory unstructured
+    // would compile the project's files while ignoring the manifest that
+    // says which of them belong -- the same guess the manifest exists to
+    // settle.
+    let fallback = detect_fallback(dir);
+    match hints.into_iter().next() {
+        Some((manifest, diagnostic))
+            if fallback
+                .files
+                .iter()
+                .all(|file| file.starts_with(manifest.parent().unwrap_or(&manifest))) =>
+        {
+            Err(diagnostic)
+        }
+        _ => Ok(fallback),
     }
-
-    Ok(detect_fallback(dir))
 }
 
 /// Detect a Beremiz project by checking for `plc.xml` in the directory.
 ///
 /// Beremiz projects contain `plc.xml` (PLCopen TC6 XML) and optionally
 /// `beremiz.xml` (IDE settings). Only `plc.xml` is loaded.
-fn detect_beremiz(dir: &Path) -> Option<DiscoveredProject> {
+fn detect_beremiz(dir: &Path) -> Detection {
     let plc_xml = dir.join("plc.xml");
     if plc_xml.is_file() {
-        Some(DiscoveredProject {
+        Detection::Detected(Box::new(DiscoveredProject {
             project_type: ProjectType::Beremiz,
             root_dir: dir.to_path_buf(),
             files: vec![plc_xml],
             library_references: vec![],
             errors: vec![],
-        })
+        }))
     } else {
-        None
+        Detection::NotDetected
     }
 }
 
@@ -165,31 +239,145 @@ pub(super) fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Detect a TwinCAT project by resolving `.plcproj` files.
+/// Detect a TwinCAT project from the manifest directly in `dir`.
 ///
-/// Tries `.sln` -> `.tsproj` -> `PrjFilePath` resolution first
-/// ([`resolve_plcproj_via_sln`]) -- the authoritative chain TcXaeShell
-/// itself uses. That's unambiguous even when a directory contains stale
-/// `.plcproj` artifacts left over from a project rename (a real corpus
-/// pattern: a directory with both `Foo.plcproj` and a leftover
-/// `Fo.plcproj`, where only the `.tsproj` referenced by the `.sln` names
-/// which one is live). Falls back to a recursive `.plcproj` walk
-/// ([`collect_plcproj_via_walk`]) when there's no (unambiguous) `.sln`,
-/// so bare-`.plcproj` directories and non-solution layouts keep working.
+/// [`TWINCAT_MANIFEST_TIERS`] are tried in order and the first tier with
+/// any manifest present decides the outcome -- a solution folder that
+/// also holds a stray `.plcproj` still resolves through its `.sln`.
+/// Exactly one manifest at that tier is authoritative and is resolved
+/// through the `.sln` -> `.tsproj` -> `PrjFilePath` chain TcXaeShell
+/// itself uses; more than one is ambiguous and the user is asked to name
+/// the one they meant, rather than having it picked for them by sort
+/// order.
 ///
-/// Returns `None` if no `.plcproj` was resolved either way. Returns
-/// `Some(Err(...))` if a resolved `.plcproj` is malformed.
-fn detect_twincat(dir: &Path) -> Option<Result<DiscoveredProject, Diagnostic>> {
-    let mut plcproj_paths = resolve_plcproj_via_sln(dir);
-    if plcproj_paths.is_empty() {
-        plcproj_paths = collect_plcproj_via_walk(dir);
+/// Only `dir` itself is read. If it holds no manifest but one exists
+/// below it, that is reported as a hint naming it -- the user pointed at
+/// the wrong level, which is a different mistake from having no TwinCAT
+/// project at all.
+fn detect_twincat(dir: &Path) -> Detection {
+    for tier in TWINCAT_MANIFEST_TIERS {
+        let manifests = find_manifests(dir, tier);
+        match manifests.len() {
+            0 => continue,
+            1 => {
+                return match resolve_manifest(&manifests[0]) {
+                    Ok(project) => Detection::Detected(Box::new(project)),
+                    Err(diagnostic) => Detection::Failed(diagnostic),
+                }
+            }
+            _ => return Detection::Failed(ambiguous_manifests(dir, tier, &manifests)),
+        }
     }
 
-    if plcproj_paths.is_empty() {
-        return None;
+    match find_nested_manifest(dir) {
+        Some(nested) => Detection::NotDetectedWithHint {
+            diagnostic: manifest_not_in_directory(dir, &nested),
+            manifest: nested,
+        },
+        None => Detection::NotDetected,
     }
+}
 
-    Some(merge_plcproj_projects(dir, plcproj_paths))
+/// Whether `path` names a project manifest [`discover_from_manifest`] can
+/// resolve. Lets a caller that accepts file arguments route a manifest to
+/// discovery instead of loading it as source text.
+pub fn is_manifest(path: &Path) -> bool {
+    path.extension().is_some_and(|extension| {
+        TWINCAT_MANIFEST_TIERS
+            .iter()
+            .any(|tier| extension.eq_ignore_ascii_case(tier))
+    })
+}
+
+/// Resolve a project manifest named directly, rather than found by
+/// opening the directory that contains it.
+///
+/// A manifest given by name is authoritative in exactly the way one found
+/// in a directory is -- this is how a user resolves the ambiguity of a
+/// directory holding several. Returns an error if `path` is not a
+/// manifest ([`is_manifest`]) or does not resolve to a project.
+pub fn discover_from_manifest(path: &Path) -> Result<DiscoveredProject, Diagnostic> {
+    if !is_manifest(path) {
+        return Err(sln::unresolvable(path, "not a TwinCAT project manifest"));
+    }
+    resolve_manifest(path)
+}
+
+/// Resolve one manifest of any tier into a project.
+fn resolve_manifest(manifest_path: &Path) -> Result<DiscoveredProject, Diagnostic> {
+    let manifest_dir = manifest_path.parent().unwrap_or(manifest_path);
+    let extension = manifest_path.extension().unwrap_or_default();
+
+    let plcproj_paths = if extension.eq_ignore_ascii_case("sln") {
+        resolve_plcproj_via_sln(manifest_path)?
+    } else if extension.eq_ignore_ascii_case("tsproj") {
+        let plcproj_paths = resolve_plcproj_via_tsproj(manifest_path)?;
+        if plcproj_paths.is_empty() {
+            return Err(sln::unresolvable(
+                manifest_path,
+                "the project does not name any TwinCAT PLC project (.plcproj)",
+            ));
+        }
+        plcproj_paths
+    } else {
+        vec![manifest_path.to_path_buf()]
+    };
+
+    merge_plcproj_projects(manifest_dir, plcproj_paths)
+}
+
+/// The first manifest of any tier below `dir`, if there is one.
+///
+/// Used only to make the "you opened the wrong folder" diagnostic name a
+/// concrete path; it never selects sources.
+fn find_nested_manifest(dir: &Path) -> Option<PathBuf> {
+    let mut files = Vec::new();
+    walk_files(dir, &mut files);
+    files.sort();
+    files.into_iter().find(|path| is_manifest(path))
+}
+
+/// More than one project manifest of the same tier sits in `dir`, so
+/// there is no way to tell which one the user meant.
+fn ambiguous_manifests(dir: &Path, tier: &str, manifests: &[PathBuf]) -> Diagnostic {
+    let names: Vec<String> = manifests
+        .iter()
+        .map(|path| {
+            path.file_name()
+                .unwrap_or(path.as_os_str())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+
+    Diagnostic::problem(
+        Problem::ProjectManifestAmbiguous,
+        Label::file(
+            FileId::from_path(dir),
+            format!(
+                "{} contains {} .{tier} files ({}); name the one to open instead of the directory",
+                dir.display(),
+                manifests.len(),
+                names.join(", ")
+            ),
+        ),
+    )
+}
+
+/// `dir` holds no manifest, but one exists below it -- the user opened
+/// the tree above their project rather than the project itself.
+fn manifest_not_in_directory(dir: &Path, nested: &Path) -> Diagnostic {
+    Diagnostic::problem(
+        Problem::ProjectManifestNotInDirectory,
+        Label::file(
+            FileId::from_path(dir),
+            format!(
+                "{} contains no project manifest, but {} is one; open the folder containing it",
+                dir.display(),
+                nested.display()
+            ),
+        ),
+    )
 }
 
 /// Fallback detection: recursively enumerate all supported files under
@@ -220,60 +408,10 @@ fn detect_fallback(dir: &Path) -> DiscoveredProject {
 
 #[cfg(test)]
 mod tests {
+    use super::fixtures::{write_plcproj, write_sln, write_tsproj};
     use super::*;
     use std::fs;
     use tempfile::TempDir;
-
-    #[test]
-    fn discover_when_plcproj_has_no_references_then_implicit_libraries_added() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        let names: Vec<&str> = result
-            .library_references
-            .iter()
-            .map(|reference| reference.name.as_str())
-            .collect();
-        assert_eq!(names, ["Tc2_BuiltIns"]);
-    }
-
-    #[test]
-    fn discover_when_plcproj_already_references_implicit_library_then_not_duplicated() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-    <PlaceholderReference Include="Tc2_BuiltIns">
-      <Namespace>Tc2_BuiltIns</Namespace>
-    </PlaceholderReference>
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        let count = result
-            .library_references
-            .iter()
-            .filter(|reference| reference.name.as_str() == "Tc2_BuiltIns")
-            .count();
-        assert_eq!(count, 1);
-    }
 
     #[test]
     fn discover_when_empty_directory_then_returns_unstructured() {
@@ -325,11 +463,11 @@ mod tests {
     }
 
     #[test]
-    fn detect_beremiz_when_no_plc_xml_then_returns_none() {
+    fn detect_beremiz_when_no_plc_xml_then_not_detected() {
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("other.xml"), "<data/>").unwrap();
 
-        assert!(detect_beremiz(dir.path()).is_none());
+        assert!(matches!(detect_beremiz(dir.path()), Detection::NotDetected));
     }
 
     // -- TwinCAT detection tests --
@@ -355,226 +493,14 @@ mod tests {
         assert!(result.files[0].ends_with("MAIN.TcPOU"));
     }
 
-    #[test]
-    fn discover_when_plcproj_with_subdirectory_paths_then_resolves() {
-        let dir = TempDir::new().unwrap();
-        let pous_dir = dir.path().join("POUs");
-        fs::create_dir(&pous_dir).unwrap();
-        fs::write(pous_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="POUs\MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert_eq!(result.files.len(), 1);
-        assert!(result.files[0].ends_with("MAIN.TcPOU"));
-    }
-
-    #[test]
-    fn discover_when_plcproj_references_missing_file_then_returns_error_but_keeps_discovering() {
-        // A single unresolvable <Compile> entry must not abort discovery
-        // for the whole project -- it's recorded as an error and
-        // skipped, matching how every other per-file problem in the
-        // codebase is handled. It must still be surfaced as an error,
-        // though (not downgraded to a mere warning): the caller is
-        // responsible for still failing the overall command.
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MISSING.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert!(result.files.is_empty());
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].primary.message.contains("MISSING.TcPOU"));
-    }
-
-    #[test]
-    fn discover_when_plcproj_has_valid_and_missing_entries_then_valid_file_still_resolves() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("A.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="A.TcPOU" />
-    <Compile Include="MISSING.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.files.len(), 1);
-        assert!(result.files[0].ends_with("A.TcPOU"));
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].primary.message.contains("MISSING.TcPOU"));
-    }
-
     // -- TwinCAT library-reference parsing tests --
 
     #[test]
-    fn discover_when_plcproj_has_library_references_then_reads_them() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-    <PlaceholderReference Include="Tc2_System">
-      <DefaultResolution>Tc2_System, * (Beckhoff Automation GmbH)</DefaultResolution>
-      <Namespace>Tc2_System</Namespace>
-    </PlaceholderReference>
-    <LibraryReference Include="Tc2_Utilities,3.3.7.0,Beckhoff Automation GmbH">
-      <Namespace>Tc2_Utilities</Namespace>
-    </LibraryReference>
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        // The two declared references in declaration order, then the implicit
-        // Tc2_BuiltIns every TwinCAT project gets.
-        let references = &result.library_references;
-        assert_eq!(references.len(), 3);
-        assert_eq!(references[0].name.as_str(), "Tc2_System");
-        assert_eq!(references[0].version.as_deref(), Some("*"));
-        assert_eq!(references[0].namespace.as_deref(), Some("Tc2_System"));
-        assert_eq!(references[1].name.as_str(), "Tc2_Utilities");
-        assert_eq!(references[1].version.as_deref(), Some("3.3.7.0"));
-        assert_eq!(references[2].name.as_str(), "Tc2_BuiltIns");
-        assert_eq!(references[2].version, None);
-    }
-
-    #[test]
-    fn discover_when_plcproj_reference_is_system_library_then_skipped() {
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <PlaceholderReference Include="VisuElems">
-      <SystemLibrary>true</SystemLibrary>
-    </PlaceholderReference>
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        // The system library is skipped; only the implicit Tc2_BuiltIns
-        // every TwinCAT project gets remains.
-        let names: Vec<&str> = result
-            .library_references
-            .iter()
-            .map(|reference| reference.name.as_str())
-            .collect();
-        assert_eq!(names, ["Tc2_BuiltIns"]);
-    }
-
-    #[test]
-    fn discover_when_multiple_plcproj_reference_same_library_then_deduplicated() {
-        let dir = TempDir::new().unwrap();
-
-        let a_dir = dir.path().join("ProjectA");
-        fs::create_dir_all(&a_dir).unwrap();
-        fs::write(a_dir.join("A.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            a_dir.join("ProjectA.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="A.TcPOU" />
-    <PlaceholderReference Include="Tc2_System">
-      <Namespace>Tc2_System</Namespace>
-    </PlaceholderReference>
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let b_dir = dir.path().join("ProjectB");
-        fs::create_dir_all(&b_dir).unwrap();
-        fs::write(b_dir.join("B.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            b_dir.join("ProjectB.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="B.TcPOU" />
-    <PlaceholderReference Include="Tc2_System">
-      <Namespace>Tc2_System</Namespace>
-    </PlaceholderReference>
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        // The shared reference is deduplicated to one entry, followed by the
-        // implicit Tc2_BuiltIns every TwinCAT project gets.
-        let names: Vec<&str> = result
-            .library_references
-            .iter()
-            .map(|reference| reference.name.as_str())
-            .collect();
-        assert_eq!(names, ["Tc2_System", "Tc2_BuiltIns"]);
-    }
-
-    #[test]
-    fn detect_twincat_when_no_plcproj_then_returns_none() {
+    fn detect_twincat_when_no_manifest_then_not_detected() {
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("main.st"), "PROGRAM END_PROGRAM").unwrap();
 
-        assert!(detect_twincat(dir.path()).is_none());
-    }
-
-    #[test]
-    fn discover_when_plcproj_with_multiple_files_then_preserves_order() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("B_Second.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(dir.path().join("A_First.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(dir.path().join("C_Third.TcDUT"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="B_Second.TcPOU" />
-    <Compile Include="A_First.TcPOU" />
-    <Compile Include="C_Third.TcDUT" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert_eq!(result.files.len(), 3);
-        // Order should match .plcproj order, not alphabetical
-        assert!(result.files[0].ends_with("B_Second.TcPOU"));
-        assert!(result.files[1].ends_with("A_First.TcPOU"));
-        assert!(result.files[2].ends_with("C_Third.TcDUT"));
+        assert!(matches!(detect_twincat(dir.path()), Detection::NotDetected));
     }
 
     // -- Fallback detection tests --
@@ -622,191 +548,197 @@ mod tests {
     }
 
     #[test]
-    fn discover_when_plcproj_with_malformed_xml_then_returns_diagnostic() {
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            "THIS IS NOT VALID XML <><>",
-        )
-        .unwrap();
-
-        let result = discover(dir.path());
-        assert!(result.is_err());
-
-        let diag = result.unwrap_err();
-        assert_eq!(diag.code, "P0006"); // XmlMalformed
-    }
-
-    #[test]
-    fn discover_when_twincat_and_plcproj_error_propagates() {
-        // A .plcproj that references a missing file must not abort
-        // discovery through the detect_twincat -> discover path -- the
-        // error is collected on `DiscoveredProject::errors`, not
-        // returned as `Err`, so the rest of the project can still be
-        // enumerated. Callers must still surface it as a failure.
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="DOES_NOT_EXIST.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-        assert_eq!(result.errors.len(), 1);
-    }
-
-    #[test]
-    fn discover_when_all_plcproj_entries_unresolvable_then_returns_empty_with_errors() {
-        // Not a special case -- matches the existing "no <Compile>
-        // entries at all" precedent (empty files list, no `Err`), but
-        // still reports one error per unresolvable entry.
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MISSING_A.TcPOU" />
-    <Compile Include="MISSING_B.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert!(result.files.is_empty());
-        assert_eq!(result.errors.len(), 2);
-    }
-
-    #[test]
-    fn discover_when_plcproj_with_no_compile_entries_then_returns_empty_twincat() {
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <PropertyGroup>
-    <Name>EmptyProject</Name>
-  </PropertyGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert!(result.files.is_empty());
-    }
-
-    #[test]
     fn detect_fallback_root_dir_is_set_correctly() {
         let dir = TempDir::new().unwrap();
         let result = detect_fallback(dir.path());
         assert_eq!(result.root_dir, dir.path());
     }
 
-    // -- Recursive discovery tests --
+    // -- Manifest tier tests --
 
     #[test]
-    fn discover_when_plcproj_nested_several_levels_then_finds_it() {
+    fn discover_when_sln_and_plcproj_in_same_directory_then_sln_wins() {
+        // A solution folder that also holds a stray .plcproj resolves
+        // through the .sln: the solution says which projects are live.
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "Solution.sln", &[("Main", "Main.tsproj")]);
+        write_tsproj(
+            &dir.path().join("Main.tsproj"),
+            &[("Runtime", "Runtime\\Runtime.plcproj")],
+        );
+        write_plcproj(
+            &dir.path().join("Runtime").join("Runtime.plcproj"),
+            &["LIVE.TcPOU"],
+        );
+        write_plcproj(&dir.path().join("Stray.plcproj"), &["STRAY.TcPOU"]);
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("LIVE.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_tsproj_and_plcproj_in_same_directory_then_tsproj_wins() {
+        let dir = TempDir::new().unwrap();
+        write_tsproj(
+            &dir.path().join("Main.tsproj"),
+            &[("Runtime", "Runtime\\Runtime.plcproj")],
+        );
+        write_plcproj(
+            &dir.path().join("Runtime").join("Runtime.plcproj"),
+            &["LIVE.TcPOU"],
+        );
+        write_plcproj(&dir.path().join("Stray.plcproj"), &["STRAY.TcPOU"]);
+
+        let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("LIVE.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_multiple_sln_in_directory_then_reports_ambiguous() {
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "A.sln", &[]);
+        write_sln(dir.path(), "B.sln", &[]);
+
+        let error = discover(dir.path()).unwrap_err();
+
+        assert_eq!(error.code, "P6012");
+    }
+
+    #[test]
+    fn discover_when_multiple_plcproj_in_directory_then_reports_ambiguous() {
+        // The real duplicate found in a private test corpus: two
+        // .plcproj files in one directory, one of them a stale rename
+        // artifact. Nothing in the directory says which is live, so the
+        // user is asked rather than having sort order decide.
+        let dir = TempDir::new().unwrap();
+        write_plcproj(&dir.path().join("AAA.plcproj"), &["MAIN.TcPOU"]);
+        write_plcproj(&dir.path().join("ZZZ.plcproj"), &["MAIN.TcPOU"]);
+
+        let error = discover(dir.path()).unwrap_err();
+
+        assert_eq!(error.code, "P6012");
+        // The message names both candidates so the user can pick one.
+        let description = format!("{error:?}");
+        assert!(description.contains("AAA.plcproj"), "{description}");
+        assert!(description.contains("ZZZ.plcproj"), "{description}");
+    }
+
+    #[test]
+    fn discover_when_ambiguous_plcproj_then_naming_one_resolves_it() {
+        // The escape hatch the ambiguity diagnostic points at: name the
+        // manifest instead of the directory that holds several.
+        let dir = TempDir::new().unwrap();
+        write_plcproj(&dir.path().join("AAA.plcproj"), &["A.TcPOU"]);
+        write_plcproj(&dir.path().join("ZZZ.plcproj"), &["Z.TcPOU"]);
+
+        let result = discover_from_manifest(&dir.path().join("ZZZ.plcproj")).unwrap();
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("Z.TcPOU"));
+    }
+
+    // -- Manifests below the opened directory --
+
+    #[test]
+    fn discover_when_manifest_only_nested_then_reports_manifest_not_in_directory() {
         // Matches a real layout found in a private test corpus:
-        // TestProject/TestProject/TestProjectRuntime/TestProjectRuntime.plcproj
+        // TestProject/TestProject/TestProjectRuntime/TestProjectRuntime.plcproj.
+        // Opening the tree above the project used to work by accident,
+        // via a recursive search that had to guess between candidates.
         let dir = TempDir::new().unwrap();
         let nested = dir.path().join("Solution").join("Runtime");
-        fs::create_dir_all(&nested).unwrap();
-        fs::write(nested.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            nested.join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        write_plcproj(&nested.join("project.plcproj"), &["MAIN.TcPOU"]);
 
-        let result = discover(dir.path()).unwrap();
+        let error = discover(dir.path()).unwrap_err();
 
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert_eq!(result.files.len(), 1);
-        assert!(result.files[0].ends_with("MAIN.TcPOU"));
+        assert_eq!(error.code, "P6014");
+        // The message names the manifest, so the fix is to open its folder.
+        assert!(format!("{error:?}").contains("project.plcproj"));
     }
 
     #[test]
-    fn discover_when_nested_plcproj_then_root_dir_is_plcproj_directory() {
+    fn discover_when_manifest_nested_and_loose_sources_present_then_unstructured() {
+        // The directory has content of its own, so the nested solution is
+        // incidental -- enumerating the loose files is what was asked for
+        // and the hint would be a spurious complaint.
         let dir = TempDir::new().unwrap();
-        let nested = dir.path().join("Solution").join("Runtime");
-        fs::create_dir_all(&nested).unwrap();
-        fs::write(nested.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            nested.join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        fs::write(dir.path().join("main.st"), "PROGRAM END_PROGRAM").unwrap();
+        let nested = dir.path().join("Unrelated").join("Runtime");
+        write_plcproj(&nested.join("project.plcproj"), &["MAIN.TcPOU"]);
 
         let result = discover(dir.path()).unwrap();
 
-        // root_dir must be where the .plcproj actually lives, not the
-        // top-level directory passed to discover() -- otherwise a
-        // .plcproj referencing a file in a further subdirectory of its
-        // own would resolve against the wrong base.
-        assert_eq!(result.root_dir, nested);
+        assert_eq!(result.project_type, ProjectType::Unstructured);
+        assert!(result.files.iter().any(|f| f.ends_with("main.st")));
     }
 
     #[test]
-    fn discover_when_nested_plcproj_references_file_in_its_own_subdirectory_then_resolves() {
+    fn discover_when_manifest_directory_opened_then_no_hint() {
+        // Opening the folder that holds the manifest is the convention
+        // the hint exists to teach; it must resolve, not complain.
         let dir = TempDir::new().unwrap();
         let nested = dir.path().join("Solution").join("Runtime");
-        let pous_dir = nested.join("POUs");
-        fs::create_dir_all(&pous_dir).unwrap();
-        fs::write(pous_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            nested.join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="POUs\MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        write_plcproj(&nested.join("project.plcproj"), &["MAIN.TcPOU"]);
 
-        let result = discover(dir.path()).unwrap();
+        let result = discover(&nested).unwrap();
 
         assert_eq!(result.project_type, ProjectType::TwinCat);
         assert_eq!(result.files.len(), 1);
-        assert!(result.files[0].ends_with("POUs/MAIN.TcPOU"));
     }
 
     #[test]
     fn discover_when_hidden_directory_contains_plcproj_then_ignored() {
         // .git/.idea-style directories must not be descended into, both
-        // for correctness (a decoy .plcproj shouldn't win) and to avoid
-        // wastefully/riskily walking into a real .git tree.
+        // for correctness (a decoy .plcproj must not even be named as a
+        // hint) and to avoid wastefully/riskily walking a real .git tree.
         let dir = TempDir::new().unwrap();
         let hidden = dir.path().join(".git");
         fs::create_dir_all(&hidden).unwrap();
         fs::write(hidden.join("decoy.plcproj"), "<Project/>").unwrap();
 
-        let real = dir.path().join("Runtime");
-        fs::create_dir_all(&real).unwrap();
-        fs::write(real.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            real.join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
         let result = discover(dir.path()).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::Unstructured);
+        assert!(result.files.is_empty());
+    }
+
+    // -- Multi-project solutions --
+
+    // -- Manifests named directly, rather than found in a directory --
+
+    #[test]
+    fn is_manifest_when_manifest_extension_then_true() {
+        assert!(is_manifest(Path::new("Solution.sln")));
+        assert!(is_manifest(Path::new("Main.TSPROJ")));
+        assert!(is_manifest(Path::new("Runtime.plcproj")));
+    }
+
+    #[test]
+    fn is_manifest_when_source_file_then_false() {
+        assert!(!is_manifest(Path::new("main.st")));
+        assert!(!is_manifest(Path::new("MAIN.TcPOU")));
+        assert!(!is_manifest(Path::new("Safety.splcproj")));
+        assert!(!is_manifest(Path::new("no-extension")));
+    }
+
+    #[test]
+    fn discover_from_manifest_when_sln_then_resolves_chain() {
+        let dir = TempDir::new().unwrap();
+        write_sln(dir.path(), "Solution.sln", &[("Main", "Main.tsproj")]);
+        write_tsproj(
+            &dir.path().join("Main.tsproj"),
+            &[("Runtime", "Runtime\\Runtime.plcproj")],
+        );
+        write_plcproj(
+            &dir.path().join("Runtime").join("Runtime.plcproj"),
+            &["MAIN.TcPOU"],
+        );
+
+        let result = discover_from_manifest(&dir.path().join("Solution.sln")).unwrap();
 
         assert_eq!(result.project_type, ProjectType::TwinCat);
         assert_eq!(result.files.len(), 1);
@@ -814,154 +746,41 @@ mod tests {
     }
 
     #[test]
-    fn discover_when_multiple_plcproj_candidates_then_picks_deterministically() {
-        // Matches a real duplicate found in a private test corpus (an
-        // apparent stale rename artifact): two .plcproj files in the
-        // same directory. Must not error or pick non-deterministically.
+    fn discover_from_manifest_when_tsproj_then_resolves_its_plcproj() {
         let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("AAA.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-        fs::write(dir.path().join("ZZZ.plcproj"), "<Project/>").unwrap();
+        write_tsproj(
+            &dir.path().join("Main.tsproj"),
+            &[("Runtime", "Runtime\\Runtime.plcproj")],
+        );
+        write_plcproj(
+            &dir.path().join("Runtime").join("Runtime.plcproj"),
+            &["MAIN.TcPOU"],
+        );
 
-        let result1 = discover(dir.path()).unwrap();
-        let result2 = discover(dir.path()).unwrap();
+        let result = discover_from_manifest(&dir.path().join("Main.tsproj")).unwrap();
 
-        // Sorted lexicographically: AAA.plcproj wins over ZZZ.plcproj.
-        assert_eq!(result1.files.len(), 1);
-        assert_eq!(result1.files, result2.files);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("MAIN.TcPOU"));
     }
 
     #[test]
-    fn discover_when_multiple_plcproj_in_different_directories_then_merges_all() {
-        // A solution with a main PLC project and a separate library
-        // sub-project -- both must be loaded together so a type declared
-        // in one is visible when referenced from the other.
+    fn discover_from_manifest_when_tsproj_names_no_plcproj_then_reports_unresolvable() {
         let dir = TempDir::new().unwrap();
+        write_tsproj(&dir.path().join("Main.tsproj"), &[]);
 
-        let main_dir = dir.path().join("Main");
-        fs::create_dir_all(&main_dir).unwrap();
-        fs::write(main_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            main_dir.join("Main.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        let error = discover_from_manifest(&dir.path().join("Main.tsproj")).unwrap_err();
 
-        let lib_dir = dir.path().join("SharedLib");
-        fs::create_dir_all(&lib_dir).unwrap();
-        fs::write(lib_dir.join("FB_Shared.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            lib_dir.join("SharedLib.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="FB_Shared.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert_eq!(result.files.len(), 2);
-        assert!(result.files.iter().any(|f| f.ends_with("MAIN.TcPOU")));
-        assert!(result.files.iter().any(|f| f.ends_with("FB_Shared.TcPOU")));
+        assert_eq!(error.code, "P6013");
     }
 
     #[test]
-    fn discover_when_multiple_plcproj_in_different_directories_then_root_dir_is_top_level() {
+    fn discover_from_manifest_when_not_a_manifest_then_reports_unresolvable() {
         let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.st"), "PROGRAM END_PROGRAM").unwrap();
 
-        let main_dir = dir.path().join("Main");
-        fs::create_dir_all(&main_dir).unwrap();
-        fs::write(main_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            main_dir.join("Main.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        let error = discover_from_manifest(&dir.path().join("main.st")).unwrap_err();
 
-        let lib_dir = dir.path().join("SharedLib");
-        fs::create_dir_all(&lib_dir).unwrap();
-        fs::write(lib_dir.join("FB_Shared.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            lib_dir.join("SharedLib.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="FB_Shared.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        // With more than one sub-project merged, there is no single
-        // meaningful ".plcproj directory" to fall back on -- unlike the
-        // single-.plcproj case, root_dir is the top-level directory that
-        // was passed to discover().
-        assert_eq!(result.root_dir, dir.path());
-    }
-
-    #[test]
-    fn discover_when_same_file_referenced_by_two_plcproj_then_deduplicated() {
-        // Two sub-projects that both reference the same physical file
-        // (a shared dependency living in a common directory) must only
-        // load and declare it once.
-        let dir = TempDir::new().unwrap();
-
-        let shared_dir = dir.path().join("Common");
-        fs::create_dir_all(&shared_dir).unwrap();
-        fs::write(shared_dir.join("GVL_Shared.TcGVL"), "<TcPlcObject/>").unwrap();
-
-        let a_dir = dir.path().join("ProjectA");
-        fs::create_dir_all(&a_dir).unwrap();
-        fs::write(
-            a_dir.join("ProjectA.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="..\Common\GVL_Shared.TcGVL" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let b_dir = dir.path().join("ProjectB");
-        fs::create_dir_all(&b_dir).unwrap();
-        fs::write(
-            b_dir.join("ProjectB.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="..\Common\GVL_Shared.TcGVL" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        let matches: Vec<_> = result
-            .files
-            .iter()
-            .filter(|f| f.ends_with("GVL_Shared.TcGVL"))
-            .collect();
-        assert_eq!(matches.len(), 1);
+        assert_eq!(error.code, "P6013");
     }
 
     #[test]
