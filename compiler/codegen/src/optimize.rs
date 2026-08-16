@@ -92,6 +92,17 @@ impl Instruction {
 
 /// Decode raw bytecode into a list of instructions and the set of jump
 /// target offsets (relative to the original bytecode).
+/// Encoded size of a `CMP_BR_*` instruction: opcode + u8 + u16 + u16 + i16.
+/// The branch offset occupies the trailing `i16` and is relative to the end
+/// of the instruction.
+const CMP_BR_SIZE: usize = 8;
+
+/// Returns true for the compare-and-branch superinstructions, which carry a
+/// relative branch offset like `JMP`/`JMP_IF_NOT` but in a different slot.
+fn is_cmp_br(op: u8) -> bool {
+    op == opcode::CMP_BR_I32 || op == opcode::CMP_BR_I64
+}
+
 fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
     let mut instructions = Vec::new();
     let mut jump_targets = HashSet::new();
@@ -109,6 +120,13 @@ fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
         if (op == opcode::JMP || op == opcode::JMP_IF_NOT) && end - pc >= 3 {
             let rel = i16::from_le_bytes([bytecode[pc + 1], bytecode[pc + 2]]);
             let target = (pc as isize + 3 + rel as isize) as usize;
+            jump_targets.insert(target);
+        }
+        // CMP_BR is a branch too: its target must be protected from removal
+        // and its offset rewritten, exactly like JMP/JMP_IF_NOT.
+        if is_cmp_br(op) && end - pc >= CMP_BR_SIZE {
+            let rel = i16::from_le_bytes([bytecode[pc + 6], bytecode[pc + 7]]);
+            let target = (pc as isize + CMP_BR_SIZE as isize + rel as isize) as usize;
             jump_targets.insert(target);
         }
 
@@ -277,6 +295,16 @@ pub(crate) fn optimize(bytecode: &[u8], constants: &[PoolConstant]) -> (Vec<u8>,
             let new_rel = (new_target as isize - (new_pos as isize + 3)) as i16;
             output.push(op);
             output.extend_from_slice(&new_rel.to_le_bytes());
+        } else if is_cmp_br(op) && instr.bytes.len() == CMP_BR_SIZE {
+            let old_rel = i16::from_le_bytes([instr.bytes[6], instr.bytes[7]]);
+            let old_target =
+                (instr.offset as isize + CMP_BR_SIZE as isize + old_rel as isize) as usize;
+            let new_pos = output.len();
+            let new_target = offset_map[&old_target];
+            let new_rel =
+                (new_target as isize - (new_pos as isize + CMP_BR_SIZE as isize)) as i16;
+            output.extend_from_slice(&instr.bytes[..6]);
+            output.extend_from_slice(&new_rel.to_le_bytes());
         } else {
             output.extend_from_slice(&instr.bytes);
         }
@@ -339,6 +367,15 @@ mod tests {
 
     fn jmp(offset: i16) -> Vec<u8> {
         let mut v = vec![opcode::JMP];
+        v.extend_from_slice(&offset.to_le_bytes());
+        v
+    }
+
+    /// Builds a `CMP_BR_I32`: opcode + cmp_op + var_idx + const_idx + offset.
+    fn cmp_br_i32(var_idx: u16, const_idx: u16, offset: i16) -> Vec<u8> {
+        let mut v = vec![opcode::CMP_BR_I32, opcode::cmp_op::LE_S];
+        v.extend_from_slice(&var_idx.to_le_bytes());
+        v.extend_from_slice(&const_idx.to_le_bytes());
         v.extend_from_slice(&offset.to_le_bytes());
         v
     }
@@ -617,6 +654,93 @@ mod tests {
         let mut expected = Vec::new();
         expected.extend_from_slice(&jmp(1));
         expected.push(opcode::LOAD_TRUE);
+        expected.push(opcode::RET_VOID);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn optimize_when_cmp_br_over_removed_instructions_then_adjusts_offset() {
+        // A CMP_BR branching forward over a removable pair. Before this was
+        // handled, the offset was left stale and the branch landed inside an
+        // instruction, decoding as garbage at run time.
+        //
+        // Layout:
+        //   [0]  CMP_BR_I32 +7    -> targets offset 15 (RET_VOID)
+        //   [8]  LOAD_VAR_I32 5   ]
+        //   [11] STORE_VAR_I32 5  ]-- removable pair
+        //   [14] LOAD_TRUE
+        //   [15] RET_VOID         <- branch target
+        let mut bytecode = Vec::new();
+        bytecode.extend_from_slice(&cmp_br_i32(1, 2, 7));
+        bytecode.extend_from_slice(&load_var_i32(5));
+        bytecode.extend_from_slice(&store_var_i32(5));
+        bytecode.push(opcode::LOAD_TRUE);
+        bytecode.push(opcode::RET_VOID);
+
+        let (result, _) = optimize(&bytecode, &[]);
+
+        // After removing 6 bytes, the branch must still land on RET_VOID:
+        //   [0] CMP_BR_I32 +1
+        //   [8] LOAD_TRUE
+        //   [9] RET_VOID
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&cmp_br_i32(1, 2, 1));
+        expected.push(opcode::LOAD_TRUE);
+        expected.push(opcode::RET_VOID);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn optimize_when_cmp_br_targets_removable_pair_then_pair_is_kept() {
+        // The branch target must be protected from removal, otherwise the
+        // branch would land on whatever instruction followed the pair.
+        //
+        // Layout:
+        //   [0]  LOAD_TRUE
+        //   [1]  CMP_BR_I32 +0    -> targets offset 9 (the LOAD_VAR_I32)
+        //   [9]  LOAD_VAR_I32 5   ]
+        //   [12] STORE_VAR_I32 5  ]-- removable, but [9] is a branch target
+        //   [15] RET_VOID
+        let mut bytecode = Vec::new();
+        bytecode.push(opcode::LOAD_TRUE);
+        bytecode.extend_from_slice(&cmp_br_i32(1, 2, 0));
+        bytecode.extend_from_slice(&load_var_i32(5));
+        bytecode.extend_from_slice(&store_var_i32(5));
+        bytecode.push(opcode::RET_VOID);
+
+        let (result, _) = optimize(&bytecode, &[]);
+
+        assert_eq!(result, bytecode, "branch target must not be removed");
+    }
+
+    #[test]
+    fn optimize_when_cmp_br_branches_backward_then_adjusts_offset() {
+        // The loop shape: a removable pair inside the body, with the branch
+        // jumping backwards over it.
+        //
+        // Layout:
+        //   [0]  LOAD_TRUE        <- branch target
+        //   [1]  LOAD_VAR_I32 5   ]
+        //   [4]  STORE_VAR_I32 5  ]-- removable pair
+        //   [7]  CMP_BR_I32 -15   -> targets offset 0
+        //   [15] RET_VOID
+        let mut bytecode = Vec::new();
+        bytecode.push(opcode::LOAD_TRUE);
+        bytecode.extend_from_slice(&load_var_i32(5));
+        bytecode.extend_from_slice(&store_var_i32(5));
+        bytecode.extend_from_slice(&cmp_br_i32(1, 2, -15));
+        bytecode.push(opcode::RET_VOID);
+
+        let (result, _) = optimize(&bytecode, &[]);
+
+        //   [0] LOAD_TRUE
+        //   [1] CMP_BR_I32 -9
+        //   [9] RET_VOID
+        let mut expected = Vec::new();
+        expected.push(opcode::LOAD_TRUE);
+        expected.extend_from_slice(&cmp_br_i32(1, 2, -9));
         expected.push(opcode::RET_VOID);
 
         assert_eq!(result, expected);
