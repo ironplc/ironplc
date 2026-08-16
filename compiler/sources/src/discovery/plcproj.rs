@@ -311,64 +311,11 @@ fn default_resolution_version(resolution: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::super::discover;
-    use super::super::fixtures::{write_file, write_plcproj};
+    use super::super::fixtures::{in_tree, tree, tree_file};
     use super::*;
-    use tempfile::TempDir;
 
-    /// A solution naming `Main.tsproj`. Rule 2 keys off the `.sln`: a
-    /// `.tsproj` is part of the chain but never an entry point, so these
-    /// folders need the solution that names it.
-    const SOLUTION_NAMING_MAIN_TSPROJ: &str = r#"Microsoft Visual Studio Solution File, Format Version 12.00
-# TcXaeShell Solution File, Format Version 11.00
-Project("{B1E792BE-AA5F-4E3C-8C82-674BF9C0715B}") = "Main", "Main.tsproj", "{9406D69C-EBA9-4591-A513-578A75D14426}"
-EndProject
-"#;
-
-    /// A TwinCAT project naming two PLC sub-projects. Written literally
-    /// rather than generated -- see `fixtures.rs` for why.
-    const TSPROJ_NAMING_TWO_PLCPROJ: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<TcSmProject ProjectGUID="{9406D69C-EBA9-4591-A513-578A75D14426}">
-  <Project>
-    <Plc>
-      <Project GUID="{6DADE760-7FAC-4830-92BA-478C8595D673}" Name="Main" PrjFilePath="Main\Main.plcproj" AmsPort="851" />
-      <Project GUID="{1F2E3D4C-5B6A-4978-8899-AABBCCDDEEFF}" Name="SharedLib" PrjFilePath="SharedLib\SharedLib.plcproj" AmsPort="852" />
-    </Plc>
-  </Project>
-</TcSmProject>
-"#;
-
-    /// A TwinCAT project naming `ProjectA` and `ProjectB`, the two
-    /// sub-projects the merge tests share a dependency between.
-    const TSPROJ_NAMING_PROJECT_A_AND_B: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<TcSmProject ProjectGUID="{9406D69C-EBA9-4591-A513-578A75D14426}">
-  <Project>
-    <Plc>
-      <Project GUID="{6DADE760-7FAC-4830-92BA-478C8595D673}" Name="ProjectA" PrjFilePath="ProjectA\ProjectA.plcproj" AmsPort="851" />
-      <Project GUID="{1F2E3D4C-5B6A-4978-8899-AABBCCDDEEFF}" Name="ProjectB" PrjFilePath="ProjectB\ProjectB.plcproj" AmsPort="852" />
-    </Plc>
-  </Project>
-</TcSmProject>
-"#;
-
-    /// A TwinCAT project naming one PLC sub-project, `Runtime.plcproj`.
-    const TSPROJ_NAMING_RUNTIME_PLCPROJ: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<TcSmProject ProjectGUID="{9406D69C-EBA9-4591-A513-578A75D14426}">
-  <Project>
-    <Plc>
-      <Project GUID="{6DADE760-7FAC-4830-92BA-478C8595D673}" Name="Runtime" PrjFilePath="Runtime\Runtime.plcproj" AmsPort="851" />
-    </Plc>
-  </Project>
-</TcSmProject>
-"#;
-
-    /// A `.plcproj` whose only `<Compile>` entry reaches a file in a
-    /// sibling directory via `..`.
-    const PLCPROJ_SHARING_COMMON_GVL: &str = r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="..\Common\GVL_Shared.TcGVL" />
-  </ItemGroup>
-</Project>
-"#;
+    // Every case points at a checked-in tree under
+    // `resources/test/discovery`; see `fixtures.rs`.
 
     #[test]
     fn append_implicit_references_when_already_seen_then_appends_nothing() {
@@ -383,21 +330,86 @@ EndProject
         assert!(references.is_empty());
     }
 
+    // -- <Compile> entries --
+
+    #[test]
+    fn discover_when_plcproj_with_subdirectory_paths_then_resolves() {
+        let result = discover(&tree("plcproj_subdirectory_paths")).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("POUs/MAIN.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_plcproj_references_missing_file_then_returns_error_but_keeps_discovering() {
+        // A single unresolvable <Compile> entry must not abort discovery
+        // for the whole project -- it's recorded as an error and
+        // skipped, matching how every other per-file problem in the
+        // codebase is handled. It must still be surfaced as an error,
+        // though (not downgraded to a mere warning): the caller is
+        // responsible for still failing the overall command.
+        let result = discover(&tree("plcproj_missing_entry")).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert!(result.files.is_empty());
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].primary.message.contains("MISSING.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_plcproj_has_valid_and_missing_entries_then_valid_file_still_resolves() {
+        let result = discover(&tree("plcproj_valid_and_missing_entries")).unwrap();
+
+        assert_eq!(result.files.len(), 1);
+        assert!(result.files[0].ends_with("A.TcPOU"));
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].primary.message.contains("MISSING.TcPOU"));
+    }
+
+    #[test]
+    fn discover_when_all_plcproj_entries_unresolvable_then_returns_empty_with_errors() {
+        // Not a special case -- matches the existing "no <Compile>
+        // entries at all" precedent (empty files list, no `Err`), but
+        // still reports one error per unresolvable entry.
+        let result = discover(&tree("plcproj_all_entries_missing")).unwrap();
+
+        assert!(result.files.is_empty());
+        assert_eq!(result.errors.len(), 2);
+    }
+
+    #[test]
+    fn discover_when_plcproj_with_no_compile_entries_then_returns_empty_twincat() {
+        let result = discover(&tree("plcproj_no_compile_entries")).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert!(result.files.is_empty());
+    }
+
+    #[test]
+    fn discover_when_plcproj_with_multiple_files_then_preserves_order() {
+        let result = discover(&tree("plcproj_multiple_files")).unwrap();
+
+        assert_eq!(result.project_type, ProjectType::TwinCat);
+        assert_eq!(result.files.len(), 3);
+        // Order matches .plcproj declaration order, not alphabetical.
+        assert!(result.files[0].ends_with("B_Second.TcPOU"));
+        assert!(result.files[1].ends_with("A_First.TcPOU"));
+        assert!(result.files[2].ends_with("C_Third.TcDUT"));
+    }
+
+    #[test]
+    fn discover_when_plcproj_with_malformed_xml_then_returns_diagnostic() {
+        let error = discover(&tree("plcproj_malformed")).unwrap_err();
+
+        assert_eq!(error.code, "P0006"); // XmlMalformed
+    }
+
+    // -- Library references --
+
     #[test]
     fn discover_when_plcproj_has_no_references_then_implicit_libraries_added() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
+        let result = discover(&tree("plcproj_only")).unwrap();
 
         let names: Vec<&str> = result
             .library_references
@@ -409,22 +421,7 @@ EndProject
 
     #[test]
     fn discover_when_plcproj_already_references_implicit_library_then_not_duplicated() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-    <PlaceholderReference Include="Tc2_BuiltIns">
-      <Namespace>Tc2_BuiltIns</Namespace>
-    </PlaceholderReference>
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
+        let result = discover(&tree("plcproj_implicit_library_declared")).unwrap();
 
         let count = result
             .library_references
@@ -435,103 +432,11 @@ EndProject
     }
 
     #[test]
-    fn discover_when_plcproj_with_subdirectory_paths_then_resolves() {
-        let dir = TempDir::new().unwrap();
-        let pous_dir = dir.path().join("POUs");
-        fs::create_dir(&pous_dir).unwrap();
-        fs::write(pous_dir.join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="POUs\MAIN.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert_eq!(result.files.len(), 1);
-        assert!(result.files[0].ends_with("MAIN.TcPOU"));
-    }
-
-    #[test]
-    fn discover_when_plcproj_references_missing_file_then_returns_error_but_keeps_discovering() {
-        // A single unresolvable <Compile> entry must not abort discovery
-        // for the whole project -- it's recorded as an error and
-        // skipped, matching how every other per-file problem in the
-        // codebase is handled. It must still be surfaced as an error,
-        // though (not downgraded to a mere warning): the caller is
-        // responsible for still failing the overall command.
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MISSING.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert!(result.files.is_empty());
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].primary.message.contains("MISSING.TcPOU"));
-    }
-
-    #[test]
-    fn discover_when_plcproj_has_valid_and_missing_entries_then_valid_file_still_resolves() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("A.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="A.TcPOU" />
-    <Compile Include="MISSING.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.files.len(), 1);
-        assert!(result.files[0].ends_with("A.TcPOU"));
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].primary.message.contains("MISSING.TcPOU"));
-    }
-
-    #[test]
     fn discover_when_plcproj_has_library_references_then_reads_them() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("MAIN.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="MAIN.TcPOU" />
-    <PlaceholderReference Include="Tc2_System">
-      <DefaultResolution>Tc2_System, * (Beckhoff Automation GmbH)</DefaultResolution>
-      <Namespace>Tc2_System</Namespace>
-    </PlaceholderReference>
-    <LibraryReference Include="Tc2_Utilities,3.3.7.0,Beckhoff Automation GmbH">
-      <Namespace>Tc2_Utilities</Namespace>
-    </LibraryReference>
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
+        let result = discover(&tree("plcproj_library_references")).unwrap();
 
-        let result = discover(dir.path()).unwrap();
-
-        // The two declared references in declaration order, then the implicit
-        // Tc2_BuiltIns every TwinCAT project gets.
+        // The two declared references in declaration order, then the
+        // implicit Tc2_BuiltIns every TwinCAT project gets.
         let references = &result.library_references;
         assert_eq!(references.len(), 3);
         assert_eq!(references[0].name.as_str(), "Tc2_System");
@@ -545,20 +450,7 @@ EndProject
 
     #[test]
     fn discover_when_plcproj_reference_is_system_library_then_skipped() {
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <PlaceholderReference Include="VisuElems">
-      <SystemLibrary>true</SystemLibrary>
-    </PlaceholderReference>
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
+        let result = discover(&tree("plcproj_system_library")).unwrap();
 
         // The system library is skipped; only the implicit Tc2_BuiltIns
         // every TwinCAT project gets remains.
@@ -572,38 +464,10 @@ EndProject
 
     #[test]
     fn discover_when_multiple_plcproj_reference_same_library_then_deduplicated() {
-        let dir = TempDir::new().unwrap();
-        write_file(
-            &dir.path().join("Solution.sln"),
-            SOLUTION_NAMING_MAIN_TSPROJ,
-        );
-        write_file(
-            &dir.path().join("Main.tsproj"),
-            TSPROJ_NAMING_PROJECT_A_AND_B,
-        );
+        let result = discover(&tree("two_plcproj_same_library")).unwrap();
 
-        for (name, source) in [("ProjectA", "A.TcPOU"), ("ProjectB", "B.TcPOU")] {
-            let project_dir = dir.path().join(name);
-            write_file(&project_dir.join(source), "<TcPlcObject/>");
-            write_file(
-                &project_dir.join(format!("{name}.plcproj")),
-                &format!(
-                    r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Compile Include="{source}" />
-    <PlaceholderReference Include="Tc2_System">
-      <Namespace>Tc2_System</Namespace>
-    </PlaceholderReference>
-  </ItemGroup>
-</Project>"#
-                ),
-            );
-        }
-
-        let result = discover(dir.path()).unwrap();
-
-        // The shared reference is deduplicated to one entry, followed by the
-        // implicit Tc2_BuiltIns every TwinCAT project gets.
+        // The shared reference is deduplicated to one entry, followed by
+        // the implicit Tc2_BuiltIns.
         let names: Vec<&str> = result
             .library_references
             .iter()
@@ -612,138 +476,14 @@ EndProject
         assert_eq!(names, ["Tc2_System", "Tc2_BuiltIns"]);
     }
 
-    #[test]
-    fn discover_when_plcproj_with_multiple_files_then_preserves_order() {
-        let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("B_Second.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(dir.path().join("A_First.TcPOU"), "<TcPlcObject/>").unwrap();
-        fs::write(dir.path().join("C_Third.TcDUT"), "<TcPlcObject/>").unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="B_Second.TcPOU" />
-    <Compile Include="A_First.TcPOU" />
-    <Compile Include="C_Third.TcDUT" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert_eq!(result.files.len(), 3);
-        // Order should match .plcproj order, not alphabetical
-        assert!(result.files[0].ends_with("B_Second.TcPOU"));
-        assert!(result.files[1].ends_with("A_First.TcPOU"));
-        assert!(result.files[2].ends_with("C_Third.TcDUT"));
-    }
-
-    #[test]
-    fn discover_when_plcproj_with_malformed_xml_then_returns_diagnostic() {
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            "THIS IS NOT VALID XML <><>",
-        )
-        .unwrap();
-
-        let result = discover(dir.path());
-        assert!(result.is_err());
-
-        let diag = result.unwrap_err();
-        assert_eq!(diag.code, "P0006"); // XmlMalformed
-    }
-
-    #[test]
-    fn discover_when_twincat_and_plcproj_error_propagates() {
-        // A .plcproj that references a missing file must not abort
-        // discovery through the detect_twincat -> discover path -- the
-        // error is collected on `DiscoveredProject::errors`, not
-        // returned as `Err`, so the rest of the project can still be
-        // enumerated. Callers must still surface it as a failure.
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="DOES_NOT_EXIST.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-        assert_eq!(result.errors.len(), 1);
-    }
-
-    #[test]
-    fn discover_when_all_plcproj_entries_unresolvable_then_returns_empty_with_errors() {
-        // Not a special case -- matches the existing "no <Compile>
-        // entries at all" precedent (empty files list, no `Err`), but
-        // still reports one error per unresolvable entry.
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <ItemGroup>
-    <Compile Include="MISSING_A.TcPOU" />
-    <Compile Include="MISSING_B.TcPOU" />
-  </ItemGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-
-        assert!(result.files.is_empty());
-        assert_eq!(result.errors.len(), 2);
-    }
-
-    #[test]
-    fn discover_when_plcproj_with_no_compile_entries_then_returns_empty_twincat() {
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("project.plcproj"),
-            r#"<Project>
-  <PropertyGroup>
-    <Name>EmptyProject</Name>
-  </PropertyGroup>
-</Project>"#,
-        )
-        .unwrap();
-
-        let result = discover(dir.path()).unwrap();
-        assert_eq!(result.project_type, ProjectType::TwinCat);
-        assert!(result.files.is_empty());
-    }
+    // -- Merging sub-projects --
 
     #[test]
     fn discover_when_tsproj_names_plcproj_in_different_directories_then_merges_all() {
         // A solution with a main PLC project and a separate library
         // sub-project -- both must be loaded together so a type declared
         // in one is visible when referenced from the other.
-        let dir = TempDir::new().unwrap();
-        write_file(
-            &dir.path().join("Solution.sln"),
-            SOLUTION_NAMING_MAIN_TSPROJ,
-        );
-        write_file(
-            &dir.path().join("Solution.sln"),
-            SOLUTION_NAMING_MAIN_TSPROJ,
-        );
-        write_file(&dir.path().join("Main.tsproj"), TSPROJ_NAMING_TWO_PLCPROJ);
-        write_plcproj(
-            &dir.path().join("Main").join("Main.plcproj"),
-            &["MAIN.TcPOU"],
-        );
-        write_plcproj(
-            &dir.path().join("SharedLib").join("SharedLib.plcproj"),
-            &["FB_Shared.TcPOU"],
-        );
-
-        let result = discover(dir.path()).unwrap();
+        let result = discover(&tree("two_plcproj_directories")).unwrap();
 
         assert_eq!(result.project_type, ProjectType::TwinCat);
         assert_eq!(result.files.len(), 2);
@@ -753,108 +493,43 @@ EndProject
 
     #[test]
     fn discover_when_multiple_plcproj_merged_then_root_dir_is_manifest_directory() {
-        let dir = TempDir::new().unwrap();
-        write_file(
-            &dir.path().join("Solution.sln"),
-            SOLUTION_NAMING_MAIN_TSPROJ,
-        );
-        write_file(
-            &dir.path().join("Solution.sln"),
-            SOLUTION_NAMING_MAIN_TSPROJ,
-        );
-        write_file(&dir.path().join("Main.tsproj"), TSPROJ_NAMING_TWO_PLCPROJ);
-        write_plcproj(
-            &dir.path().join("Main").join("Main.plcproj"),
-            &["MAIN.TcPOU"],
-        );
-        write_plcproj(
-            &dir.path().join("SharedLib").join("SharedLib.plcproj"),
-            &["FB_Shared.TcPOU"],
-        );
-
-        let result = discover(dir.path()).unwrap();
+        let result = discover(&tree("two_plcproj_directories")).unwrap();
 
         // With more than one sub-project merged, there is no single
         // meaningful ".plcproj directory" to fall back on -- unlike the
         // single-.plcproj case, root_dir is the directory holding the
         // manifest that named them.
-        assert_eq!(result.root_dir, dir.path());
+        assert_eq!(result.root_dir, tree("two_plcproj_directories"));
     }
 
     #[test]
     fn discover_when_single_plcproj_named_by_manifest_then_root_dir_is_plcproj_directory() {
-        let dir = TempDir::new().unwrap();
-        write_file(
-            &dir.path().join("Solution.sln"),
-            SOLUTION_NAMING_MAIN_TSPROJ,
-        );
-        write_file(
-            &dir.path().join("Main.tsproj"),
-            TSPROJ_NAMING_RUNTIME_PLCPROJ,
-        );
-        let plcproj_dir = dir.path().join("Runtime");
-        write_plcproj(&plcproj_dir.join("Runtime.plcproj"), &["MAIN.TcPOU"]);
-
-        let result = discover(dir.path()).unwrap();
+        let result = discover(&tree("sln_chain")).unwrap();
 
         // root_dir must be where the .plcproj actually lives, not the
         // directory holding the manifest that named it -- otherwise a
         // .plcproj referencing a file in a further subdirectory of its
         // own would resolve against the wrong base.
-        assert_eq!(result.root_dir, plcproj_dir);
+        assert_eq!(result.root_dir, tree_file("sln_chain", "Runtime"));
     }
 
     #[test]
     fn discover_when_plcproj_references_file_in_its_own_subdirectory_then_resolves() {
-        let dir = TempDir::new().unwrap();
-        write_file(
-            &dir.path().join("Solution.sln"),
-            SOLUTION_NAMING_MAIN_TSPROJ,
-        );
-        write_file(
-            &dir.path().join("Main.tsproj"),
-            TSPROJ_NAMING_RUNTIME_PLCPROJ,
-        );
-        write_plcproj(
-            &dir.path().join("Runtime").join("Runtime.plcproj"),
-            &["POUs\\MAIN.TcPOU"],
-        );
+        // sln_chain's .plcproj names POUs\LIVE.TcPOU, two levels below
+        // the folder that was opened.
+        let result = discover(&tree("sln_chain")).unwrap();
 
-        let result = discover(dir.path()).unwrap();
-
-        assert_eq!(result.project_type, ProjectType::TwinCat);
         assert_eq!(result.files.len(), 1);
-        assert!(result.files[0].ends_with("POUs/MAIN.TcPOU"));
+        assert!(result.files[0].ends_with("Runtime/POUs/LIVE.TcPOU"));
+        assert!(in_tree(&result.files[0], "sln_chain"));
     }
 
     #[test]
     fn discover_when_same_file_referenced_by_two_plcproj_then_deduplicated() {
         // Two sub-projects that both reference the same physical file
-        // (a shared dependency living in a common directory) must only
-        // load and declare it once.
-        let dir = TempDir::new().unwrap();
-        write_file(
-            &dir.path().join("Solution.sln"),
-            SOLUTION_NAMING_MAIN_TSPROJ,
-        );
-        write_file(
-            &dir.path().join("Main.tsproj"),
-            TSPROJ_NAMING_PROJECT_A_AND_B,
-        );
-        write_file(
-            &dir.path().join("Common").join("GVL_Shared.TcGVL"),
-            "<TcPlcObject/>",
-        );
-        write_file(
-            &dir.path().join("ProjectA").join("ProjectA.plcproj"),
-            PLCPROJ_SHARING_COMMON_GVL,
-        );
-        write_file(
-            &dir.path().join("ProjectB").join("ProjectB.plcproj"),
-            PLCPROJ_SHARING_COMMON_GVL,
-        );
-
-        let result = discover(dir.path()).unwrap();
+        // (a shared dependency living in a common directory, reached via
+        // `..`) must only load and declare it once.
+        let result = discover(&tree("shared_file_two_plcproj")).unwrap();
 
         let matches: Vec<_> = result
             .files

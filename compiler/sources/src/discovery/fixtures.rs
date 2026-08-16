@@ -1,49 +1,42 @@
-//! Test plumbing for the discovery tests.
+//! Paths to the golden project trees the discovery tests run against.
 //!
-//! Discovery's job is to decide which files on disk make up a project --
-//! which manifest a directory holds, whether there is more than one,
-//! whether a `<Compile>` entry names a file that exists. Those questions
-//! are about the filesystem, so the tests that ask them need a real tree
-//! under a `TempDir`.
+//! Discovery's job is to decide what a path on disk means -- which
+//! manifest a folder holds, whether it holds more than one, whether a
+//! `<Compile>` entry names a file that exists. Those questions are about
+//! real files, so the tests point at real files: one checked-in tree per
+//! case under `resources/test/discovery`, laid out the way TcXaeShell
+//! lays a solution out.
 //!
-//! What lives here is only the plumbing for laying one out. Manifest
-//! *content* is written literally at each test site: a builder that emits
-//! the handful of lines the parser already reads would agree with the
-//! parser by construction, and could never catch the parser drifting from
-//! the format a real IDE writes. The format itself is exercised against
-//! literal manifest text in `sln.rs`, with no file involved at all.
+//! Nothing is built at test time. A tree assembled by a helper would
+//! agree with the parser by construction and could never catch it
+//! drifting from the format an IDE actually writes; a tree checked in is
+//! reviewable, and `git diff` shows when its meaning changes.
 
-use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// Write `content` to `path`, creating any missing parent directories.
-pub(super) fn write_file(path: &Path, content: &str) {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).unwrap();
-    }
-    fs::write(path, content).unwrap();
+/// The golden tree named `name`, e.g. `sln_chain`.
+pub(super) fn tree(name: &str) -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("resources");
+    path.push("test");
+    path.push("discovery");
+    path.push(name);
+    path
 }
 
-/// Write a `.plcproj` at `path` declaring one `<Compile>` entry per name
-/// in `sources`, and create each named file alongside it.
-///
-/// The `<Compile>` entries have to agree with the files that exist for
-/// the project to resolve at all, so the two are written together --
-/// this states a tree, not a file format.
-pub(super) fn write_plcproj(path: &Path, sources: &[&str]) {
-    let entries: String = sources
-        .iter()
-        .map(|source| format!("    <Compile Include=\"{source}\" />\n"))
-        .collect();
-    write_file(
-        path,
-        &format!(
-            "<Project xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n  <ItemGroup>\n{entries}  </ItemGroup>\n</Project>"
-        ),
-    );
-
-    let dir = path.parent().unwrap();
-    for source in sources {
-        write_file(&dir.join(source.replace('\\', "/")), "<TcPlcObject/>");
+/// A file inside the golden tree named `name`, e.g.
+/// `tree_file("sln_chain", "Solution.sln")`. `relative` uses `/`
+/// separators on every platform.
+pub(super) fn tree_file(name: &str, relative: &str) -> PathBuf {
+    let mut path = tree(name);
+    for segment in relative.split('/') {
+        path.push(segment);
     }
+    path
+}
+
+/// Whether `path` sits inside the golden tree named `name` -- for
+/// assertions about which project a file was resolved from.
+pub(super) fn in_tree(path: &Path, name: &str) -> bool {
+    path.starts_with(tree(name))
 }

@@ -98,6 +98,8 @@ Modified:
 - `compiler/sources/src/discovery/plcproj.rs` — drop
   `collect_plcproj_via_walk`; absorb the `.plcproj` parsing tests from
   `mod.rs` to keep every module under the 1000-line limit
+- `compiler/sources/src/discovery/fixtures.rs` — paths to the golden
+  trees; nothing is built at test time
 - `compiler/ironplc-cli/src/cli.rs` — `enumerate_files` accepts a manifest
   as a file argument instead of loading it as source text
 - `compiler/problems/resources/problem-codes.csv` — P6012
@@ -105,6 +107,9 @@ Modified:
 Created:
 
 - `docs/reference/compiler/problems/P6012.rst`
+- `compiler/sources/resources/test/discovery/**` — one checked-in project
+  tree per case (29 trees, 74 files), laid out the way TcXaeShell lays a
+  solution out
 
 ## Tasks
 
@@ -119,4 +124,6 @@ Created:
 - [x] Tests: each row of the rule table; the stale-rename regression; a
       manifest named directly for each entry-point extension
 - [x] Write the problem doc page
+- [x] Replace the test-time tree builders with checked-in golden trees;
+      exercise the `.sln`/`.tsproj` formats against literal text instead
 - [x] Full CI (`cd compiler && just`)
