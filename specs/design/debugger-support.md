@@ -301,7 +301,7 @@ The DAP server scans the debug section directory for the tags it needs and ignor
 |-------------|---------------|-------------------|
 | `setBreakpoints` | Line maps | Resolve source line → (function_id, bytecode_offset); snap to nearest valid line |
 | `stackTrace` | Function names + line maps | Frame name (FuncNameEntry.name) + source location (LineMapEntry.source_line) |
-| `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL) |
+| `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL). Alongside these program scopes sits a **`Runtime`** scope carrying VM-level state that is not a program variable — currently `scanCount` (see §Scopes). |
 | `variables` | Variable names + type section | Name (VarNameEntry.name), type (VarNameEntry.type_name), value (read from VariableTable, formatted according to type) |
 | `evaluate` | Variable names | Look up variable by name, return formatted value |
 
@@ -1078,8 +1078,8 @@ The "Legal in" column lists the VM `Phase` values in which each request is accep
 | `configurationDone` | READY | Start VM: transition READY → RUNNING, call `run_round_debug` |
 | `threads` | RUNNING, PausedAt | One DAP thread for the single program instance (v1 hard limit: one instance, enforced at launch) |
 | `stackTrace` | PausedAt | Walk `frames` top-to-bottom; for each frame produce `name = func_names[function_id]`, `line/column = line_map.lookup(function_id, pc)` |
-| `scopes` | PausedAt | IEC-specific scopes, filtered by `var_section` of the topmost frame's `function_id` |
-| `variables` | PausedAt | Read from `VariableTable`; format per `iec_type_tag` |
+| `scopes` | PausedAt | IEC-specific scopes, filtered by `var_section` of the topmost frame's `function_id`, plus the `Runtime` scope (see §Scopes) |
+| `variables` | PausedAt | Dispatch on `variablesReference`: program scopes read from `VariableTable` and format per `iec_type_tag`; the `Runtime` scope reports VM state (see §Scopes) |
 | `continue` | PausedAt (non-terminal) | Clear step mode; re-enter `run_round_debug` |
 | `next` | PausedAt (non-terminal) | Set `StepMode::StepOver` (origin = current line, depth = current depth); re-enter |
 | `stepIn` | PausedAt (non-terminal) | Set `StepMode::StepIn`; re-enter |
@@ -1090,6 +1090,35 @@ The "Legal in" column lists the VM `Phase` values in which each request is accep
 | `evaluate` | PausedAt | Bare-identifier lookup in v1 (see §Evaluate scope below) |
 
 **Terminal vs non-terminal pause.** `PausedAt(Trap(_))` is terminal: continue/step are rejected. Every other `PausedAt` is non-terminal.
+
+#### Scopes
+
+The `scopes` response returns the program's variable scopes plus one scope that
+is not a program scope at all:
+
+| Scope | Contents |
+|-------|----------|
+| `Variables` | The program's ST variables. (Splitting this into per-`var_section` scopes — Locals, Inputs, Outputs, In/Out, Globals — is the eventual shape; today it is one flat scope.) |
+| `Runtime` | VM-level state that is not a program variable. Currently `scanCount` (type `ULINT`), the number of *completed* scan cycles. |
+
+**Why `Runtime` is a scope rather than a button.** The scan count changes every
+cycle, so it is a value to *watch* while stepping, not one to *ask for*. A
+client re-requests `scopes` and `variables` at every stop, so putting the count
+in a scope makes it track execution with no polling, no adapter-side state, and
+no UI affordance to press — and it works in any DAP client rather than only in
+VS Code. An earlier cut exposed it through an `ironplc.scanCount` toolbar button
+that raised a notification; that button is retired.
+
+**Why its own scope rather than an entry in `Variables`.** A synthetic entry
+inside the program's variables would collide with an ST variable of the same
+name and would misrepresent VM state as program state.
+
+Because there is now more than one scope, `variables` dispatches on the
+requested `variablesReference`. A reference the server never issued returns an
+empty list rather than defaulting to the program variables.
+
+Future runtime metrics (cycle time, next-due) belong in `Runtime` and need no
+further scope.
 
 #### Evaluate scope (v1 limit)
 
@@ -1106,7 +1135,7 @@ It does **not** support arithmetic, function calls, or non-constant subscripts. 
 | Custom Request | Description | Status |
 |----------------|-------------|--------|
 | `ironplc/stepScan` | Run one complete scan cycle, then pause | Deferred — `RoundOutcome::PausedAfterScan` has no producer and `StepMode` has no scan-level variant, so this needs debug-engine work. Answered `requestNotApplicable`. |
-| `ironplc/scanCount` | Return the number of *completed* scan cycles | Implemented (2026-08-16). Legal wherever inspection is (`Paused`, `Faulted`); returns `{ "scanCount": <u64> }`. |
+| `ironplc/scanCount` | Return the number of *completed* scan cycles | Implemented (2026-08-16). Legal wherever inspection is (`Paused`, `Faulted`); returns `{ "scanCount": <u64> }`. Retained as the programmatic API; the UI reads the count from the `Runtime` scope instead (see §Scopes). |
 
 Removed from v1 (deferred):
 

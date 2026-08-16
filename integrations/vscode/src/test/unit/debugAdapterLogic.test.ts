@@ -10,7 +10,6 @@ import {
   programKind,
   resolveProgramPath,
   customRequestFailedMessage,
-  scanCountMessage,
   sourceExtensionsFromLanguages,
 } from '../../debugAdapterLogic';
 
@@ -224,27 +223,6 @@ suite('firstLine', () => {
 
   test('firstLine_when_empty_then_empty', () => {
     assert.strictEqual(firstLine(''), '');
-  });
-});
-
-suite('scanCountMessage', () => {
-  test('scanCountMessage_when_count_present_then_includes_count', () => {
-    assert.ok(scanCountMessage({ scanCount: 7 }).includes('7'));
-  });
-
-  test('scanCountMessage_when_count_missing_then_not_available', () => {
-    assert.ok(scanCountMessage({}).includes('not available'));
-  });
-
-  test('scanCountMessage_when_response_undefined_then_not_available', () => {
-    assert.ok(scanCountMessage(undefined).includes('not available'));
-  });
-
-  test('scanCountMessage_when_count_is_zero_then_reports_zero', () => {
-    // Zero completed scans is a real answer (the entry stop), not a missing
-    // one, so it must not fall into the "not available" branch.
-    assert.ok(scanCountMessage({ scanCount: 0 }).includes('0'));
-    assert.ok(!scanCountMessage({ scanCount: 0 }).includes('not available'));
   });
 });
 

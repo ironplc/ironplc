@@ -1,17 +1,19 @@
 import * as vscode from 'vscode';
 import { IRONPLC_DEBUG_TYPE } from './debugAdapter';
-import {
-  ScanCountResponse,
-  customRequestFailedMessage,
-  scanCountMessage,
-} from './debugAdapterLogic';
+import { customRequestFailedMessage } from './debugAdapterLogic';
 
 /**
- * Registers the scan-cycle custom-request commands. These forward IronPLC's
- * custom DAP requests (`ironplc/stepScan`, `ironplc/scanCount`) to the active
- * debug session; without them the requests are unreachable from the UI (see
- * `specs/design/debugger-support.md` §"Phase 5"). The debug toolbar buttons
- * that invoke these commands are contributed in `package.json`.
+ * Registers the scan-cycle custom-request command, forwarding IronPLC's
+ * `ironplc/stepScan` request to the active debug session; without it the
+ * request is unreachable from the UI (see
+ * `specs/design/debugger-support.md` §"Phase 5"). The debug toolbar button that
+ * invokes it is contributed in `package.json`.
+ *
+ * The scan *count* is deliberately not a command. It is a value you watch while
+ * stepping, not one you ask for: the server publishes it in the `Runtime`
+ * scope, which the client re-reads at every stop, so it is simply on screen in
+ * the Variables panel. A button that popped it in a notification was the wrong
+ * shape for it — see §Scopes in the design doc.
  */
 export function registerCustomRequests(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
@@ -28,24 +30,6 @@ export function registerCustomRequests(context: vscode.ExtensionContext): void {
         // rejection escape as an unhandled error.
         void vscode.window.showWarningMessage(customRequestFailedMessage('Step Scan Cycle'));
       }
-    }),
-  );
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('ironplc.scanCount', async () => {
-      const session = activeIronplcSession();
-      if (!session) {
-        return;
-      }
-      let response: ScanCountResponse | undefined;
-      try {
-        response = (await session.customRequest('ironplc/scanCount')) as ScanCountResponse | undefined;
-      } catch {
-        // A refused request rejects; fall through to `scanCountMessage`, whose
-        // "not available" branch is exactly this case.
-        response = undefined;
-      }
-      void vscode.window.showInformationMessage(scanCountMessage(response));
     }),
   );
 }

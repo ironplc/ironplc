@@ -37,17 +37,22 @@ use super::types::{
     Breakpoint, Capabilities, ContinueResponseBody, Event, LaunchRequestArguments, Request,
     Response, ScanCountResponseBody, Scope, ScopesResponseBody, SetBreakpointsArguments,
     SetBreakpointsResponseBody, Source, StackFrame, StackTraceResponseBody, StoppedEventBody,
-    Thread, ThreadsResponseBody, VariablesResponseBody,
+    Thread, ThreadsResponseBody, Variable, VariablesArguments, VariablesResponseBody,
 };
 
 /// The id of the single synthetic thread the v1 server exposes.
 const THREAD_ID: i64 = 1;
 
-/// The `variablesReference` handle for the one variable scope. Non-zero so DAP
-/// treats it as expandable; the (flat) list of program variables is returned
+/// The `variablesReference` handle for the program's ST variables. Non-zero so
+/// DAP treats it as expandable; the (flat) list of program variables is returned
 /// for it. Structured expansion (nested FB fields) is a later phase, so every
 /// returned [`Variable`](super::types::Variable) has `variablesReference: 0`.
 const VARIABLES_REF: i64 = 1;
+
+/// The `variablesReference` handle for the `Runtime` scope: VM-level state that
+/// is not a program variable. Keeping it in its own scope means a synthetic
+/// entry can never collide with an ST variable of the same name.
+const RUNTIME_REF: i64 = 2;
 
 /// The DAP `message` returned for any request that is illegal in the current
 /// phase or not supported by this server slice.
@@ -346,18 +351,42 @@ fn launched_session<R: BufRead, W: Write>(
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::Scopes) if legal_here => {
+                // Two scopes: the program's own variables, and VM-level runtime
+                // state. The client re-requests both at every stop, so the
+                // runtime values track execution without any polling.
                 let body = serde_json::to_value(ScopesResponseBody {
-                    scopes: vec![Scope {
-                        name: "Variables".to_string(),
-                        variables_reference: VARIABLES_REF,
-                        expensive: false,
-                    }],
+                    scopes: vec![
+                        Scope {
+                            name: "Variables".to_string(),
+                            variables_reference: VARIABLES_REF,
+                            expensive: false,
+                        },
+                        Scope {
+                            name: "Runtime".to_string(),
+                            variables_reference: RUNTIME_REF,
+                            expensive: false,
+                        },
+                    ],
                 })
                 .ok();
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::Variables) if legal_here => {
-                let body = variables_body(&running, debug);
+                // Dispatch on the handle the client asked for. Before the
+                // `Runtime` scope existed this argument was ignored and the
+                // program variables were returned for *any* reference; a
+                // reference we never handed out now yields an empty list
+                // rather than a plausible-looking wrong answer.
+                let reference = request
+                    .arguments
+                    .as_ref()
+                    .and_then(|v| serde_json::from_value::<VariablesArguments>(v.clone()).ok())
+                    .map_or(VARIABLES_REF, |a| a.variables_reference);
+                let body = match reference {
+                    VARIABLES_REF => variables_body(&running, debug),
+                    RUNTIME_REF => runtime_variables_body(&running),
+                    _ => serde_json::to_value(VariablesResponseBody { variables: vec![] }).ok(),
+                };
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::ScanCount) if legal_here => {
@@ -517,6 +546,22 @@ fn variables_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option<V
         .map(|i| running.read_variable_raw(VarIndex::new(i)).unwrap_or(0))
         .collect();
     let variables = debug_info::render_variables(debug, &values, running.data_region());
+    serde_json::to_value(VariablesResponseBody { variables }).ok()
+}
+
+/// Builds the `Runtime` scope's contents: VM-level state that is not a program
+/// variable. Today that is the completed-scan-cycle count, which the client
+/// re-reads at every stop, so it replaces the earlier "show scan count" button
+/// with a value that is simply on screen. Cycle timing and next-due can join
+/// this list without adding another scope.
+fn runtime_variables_body(running: &VmRunning) -> Option<Value> {
+    let variables = vec![Variable {
+        name: "scanCount".to_string(),
+        value: running.scan_count().to_string(),
+        // The VM counter is a u64; ULINT is its IEC 61131-3 spelling.
+        type_name: Some("ULINT".to_string()),
+        variables_reference: 0,
+    }];
     serde_json::to_value(VariablesResponseBody { variables }).ok()
 }
 
@@ -1179,6 +1224,89 @@ mod tests {
             "scan count must advance by one cycle between consecutive \
              breakpoint stops (got {first} then {second})"
         );
+    }
+
+    #[test]
+    fn serve_when_scopes_requested_then_offers_variables_and_runtime() {
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "scopes",
+                   "arguments": {"frameId": 0}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let scopes = &responses(&out, "scopes")[0]["body"]["scopes"];
+        assert_eq!(scopes[0]["name"], "Variables");
+        assert_eq!(scopes[1]["name"], "Runtime");
+        // The two scopes must be addressable independently.
+        assert_ne!(
+            scopes[0]["variablesReference"],
+            scopes[1]["variablesReference"]
+        );
+    }
+
+    #[test]
+    fn serve_when_runtime_scope_expanded_then_shows_scan_count_advancing() {
+        // The Runtime scope is what replaces the old "show scan count" button:
+        // the client re-reads it at each stop, so the value must track cycles.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": 11}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 5, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 6, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let vars = responses(&out, "variables");
+        for scope in &vars {
+            assert_eq!(scope["body"]["variables"][0]["name"], "scanCount");
+            assert_eq!(scope["body"]["variables"][0]["type"], "ULINT");
+        }
+        let first: u64 = vars[0]["body"]["variables"][0]["value"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let second: u64 = vars[1]["body"]["variables"][0]["value"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(second, first + 1, "runtime scan count must advance a cycle");
+    }
+
+    #[test]
+    fn serve_when_variables_reference_unknown_then_returns_no_variables() {
+        // A handle the server never issued must not fall back to the program
+        // variables, which is what the pre-Runtime-scope code did.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 99}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let vars = responses(&out, "variables");
+        assert_eq!(vars[0]["success"], true);
+        assert_eq!(vars[0]["body"]["variables"].as_array().unwrap().len(), 0);
     }
 
     #[test]
