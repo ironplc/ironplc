@@ -1,5 +1,12 @@
 set windows-shell := ["powershell.exe", "-c"]
 
+# The executables every installer and package ships. This is the single Unix
+# packaging list -- both `_package-macos` and `_package-linux` read it -- and the
+# `shipped_binaries_guard` test asserts it matches the workspace's `[[bin]]`
+# targets, `setup.nsi`, and the Homebrew formula. A binary that is built but not
+# listed here fails that guard rather than silently missing from the release.
+binaries := "ironplcc ironplcvm ironplcmcp ironplcdap"
+
 alias ci := default
 # Coverage runs all tests with instrumentation, so separate test step is redundant
 default: compile coverage lint dupes
@@ -17,20 +24,20 @@ compile:
 # by `just lint` and run via `just bench`. Mirrors the targets `just coverage`
 # exercises.
 test:
-  cargo test --quiet --workspace --features ironplc-vm-cli/dap
+  cargo test --quiet --workspace
 
 # Run tests and produce coverage report
 coverage:
-  cargo llvm-cov --quiet --ignore-filename-regex "cargo|dsl_macro_derive|container_derive|rustup" --workspace --features ironplc-vm-cli/dap --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
+  cargo llvm-cov --quiet --ignore-filename-regex "cargo|dsl_macro_derive|container_derive|rustup" --workspace --fail-under-lines 85 --show-missing-lines --lcov --output-path lcov.info
 
 # Fix linting errors.
 format:
-  cargo clippy --all-targets --features ironplc-vm-cli/dap --fix
+  cargo clippy --all-targets --fix
   cargo fmt --all
 
 # Check for linting errors.
 lint:
-  cargo clippy --all-targets --features ironplc-vm-cli/dap
+  cargo clippy --all-targets
   cargo fmt --all -- --check
 
 # Check for duplicate code (AST-based).
@@ -77,7 +84,7 @@ _package-macos version filename target:
   rm -rf target/{{target}}/release/resources/libs
   mkdir -p target/{{target}}/release/resources
   cp -R sources/resources/libs target/{{target}}/release/resources/libs
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json resources
+  tar -czvf {{filename}} --directory=target/{{target}}/release {{binaries}} bom.cdx.json resources
   shasum -a 256 {{filename}} > {{filename}}.sha256
 
 _package-linux version filename target:
@@ -88,7 +95,7 @@ _package-linux version filename target:
   rm -rf target/{{target}}/release/resources/libs
   mkdir -p target/{{target}}/release/resources
   cp -R sources/resources/libs target/{{target}}/release/resources/libs
-  tar -czvf {{filename}} --directory=target/{{target}}/release ironplcc ironplcvm ironplcmcp bom.cdx.json resources
+  tar -czvf {{filename}} --directory=target/{{target}}/release {{binaries}} bom.cdx.json resources
   sha256sum {{filename}} > {{filename}}.sha256
 
 # Smoke-test the release binaries that were just packaged: run the exact bytes
