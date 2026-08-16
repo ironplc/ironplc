@@ -163,15 +163,6 @@ export function resolveProgramPath(
   return activeEditorPath;
 }
 
-/**
- * The reply shape of an `ironplc/scanCount` custom request. The count field is
- * optional so a server that does not yet implement the request (returning an
- * empty body) is handled gracefully.
- */
-export interface ScanCountResponse {
-  scanCount?: number;
-}
-
 /** The first non-empty, trimmed line of `text`, or the empty string. */
 export function firstLine(text: string): string {
   for (const line of text.split('\n')) {
@@ -183,11 +174,16 @@ export function firstLine(text: string): string {
   return '';
 }
 
-/** Formats an `ironplc/scanCount` reply for display in the UI. */
-export function scanCountMessage(response: ScanCountResponse | undefined): string {
-  const count = response?.scanCount;
-  if (typeof count !== 'number') {
-    return 'IronPLC: scan count is not available.';
-  }
-  return `IronPLC: scan cycle ${count}`;
+/**
+ * The message shown when a custom request is refused by the debug server.
+ *
+ * `DebugSession.customRequest` rejects when the adapter answers with
+ * `success: false`, which is what a server that does not implement the request
+ * returns (`requestNotApplicable`). Without this, the rejection escapes the
+ * command handler as an unhandled error and the user sees no useful
+ * explanation. `title` is the command's UI title, so the message names the
+ * button that was pressed.
+ */
+export function customRequestFailedMessage(title: string): string {
+  return `IronPLC: "${title}" is not supported by this debug server.`;
 }

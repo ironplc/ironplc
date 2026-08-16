@@ -301,7 +301,7 @@ The DAP server scans the debug section directory for the tags it needs and ignor
 |-------------|---------------|-------------------|
 | `setBreakpoints` | Line maps | Resolve source line → (function_id, bytecode_offset); snap to nearest valid line |
 | `stackTrace` | Function names + line maps | Frame name (FuncNameEntry.name) + source location (LineMapEntry.source_line) |
-| `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL) |
+| `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL). Alongside these program scopes sits a **`Runtime`** scope carrying VM-level state that is not a program variable — currently `scanCount` (see §Scopes). |
 | `variables` | Variable names + type section | Name (VarNameEntry.name), type (VarNameEntry.type_name), value (read from VariableTable, formatted according to type) |
 | `evaluate` | Variable names | Look up variable by name, return formatted value |
 
@@ -860,9 +860,9 @@ For PLC-specific debugging, users need scan-level control:
 > (the adapter process is terminated), not by a mid-scan `pause`; interactive
 > `pause`-while-running remains the Phase 6 cut. This continuous-loop work is a
 > tracked server follow-up (Phase 4c) and is **not** part of Phase 5 (VS Code
-> integration). The custom `ironplc/stepScan` / `ironplc/scanCount` handlers land
-> with it; until then the Phase 5 toolbar buttons are wired but answered
-> `requestNotApplicable`.
+> integration). The scan count is now surfaced by the `Runtime` scope rather
+> than a custom request (2026-08-16); `ironplc/stepScan` is still answered
+> `requestNotApplicable` — see §Custom DAP Requests and §Scopes.
 
 A new `VmRunning::run_round_debug` method drives a single round under a `DebuggerHook`. v1 supports a single program instance only (see §Multi-instance: not supported in v1), so the `instances_for_task` loop is collapsed to "the one instance":
 
@@ -1078,8 +1078,8 @@ The "Legal in" column lists the VM `Phase` values in which each request is accep
 | `configurationDone` | READY | Start VM: transition READY → RUNNING, call `run_round_debug` |
 | `threads` | RUNNING, PausedAt | One DAP thread for the single program instance (v1 hard limit: one instance, enforced at launch) |
 | `stackTrace` | PausedAt | Walk `frames` top-to-bottom; for each frame produce `name = func_names[function_id]`, `line/column = line_map.lookup(function_id, pc)` |
-| `scopes` | PausedAt | IEC-specific scopes, filtered by `var_section` of the topmost frame's `function_id` |
-| `variables` | PausedAt | Read from `VariableTable`; format per `iec_type_tag` |
+| `scopes` | PausedAt | IEC-specific scopes, filtered by `var_section` of the topmost frame's `function_id`, plus the `Runtime` scope (see §Scopes) |
+| `variables` | PausedAt | Dispatch on `variablesReference`: program scopes read from `VariableTable` and format per `iec_type_tag`; the `Runtime` scope reports VM state (see §Scopes) |
 | `continue` | PausedAt (non-terminal) | Clear step mode; re-enter `run_round_debug` |
 | `next` | PausedAt (non-terminal) | Set `StepMode::StepOver` (origin = current line, depth = current depth); re-enter |
 | `stepIn` | PausedAt (non-terminal) | Set `StepMode::StepIn`; re-enter |
@@ -1090,6 +1090,42 @@ The "Legal in" column lists the VM `Phase` values in which each request is accep
 | `evaluate` | PausedAt | Bare-identifier lookup in v1 (see §Evaluate scope below) |
 
 **Terminal vs non-terminal pause.** `PausedAt(Trap(_))` is terminal: continue/step are rejected. Every other `PausedAt` is non-terminal.
+
+#### Scopes
+
+The `scopes` response returns the program's variable scopes plus one scope that
+is not a program scope at all:
+
+| Scope | Contents |
+|-------|----------|
+| `Program` | The program's ST variables, unfiltered — locals and globals together. (Splitting this into per-`var_section` scopes — Locals, Inputs, Outputs, In/Out, Globals — is the eventual shape; today it is one flat scope.) |
+| `Runtime` | VM-level state that is not a program variable. Currently `scanCount` (type `ULINT`), the number of *completed* scan cycles. |
+
+**Why `Runtime` is a scope rather than a button.** The scan count changes every
+cycle, so it is a value to *watch* while stepping, not one to *ask for*. A
+client re-requests `scopes` and `variables` at every stop, so putting the count
+in a scope makes it track execution with no polling, no adapter-side state, and
+no UI affordance to press — and it works in any DAP client rather than only in
+VS Code. An earlier cut exposed it through an `ironplc.scanCount` toolbar button
+that raised a notification; that button is retired.
+
+**Why its own scope rather than an entry in `Program`.** A synthetic entry
+inside the program's variables would collide with an ST variable of the same
+name and would misrepresent VM state as program state.
+
+**Why neither scope is called `Variables`.** DAP clients render scopes as nodes
+*inside* a pane that is already titled Variables, so a scope by that name reads
+as `Variables > Variables`. A scope name should say what kind of state it holds:
+`Program` (the program's) against `Runtime` (the VM's). `Locals` would be the
+conventional name but is inaccurate here — the scope is unfiltered and includes
+globals — and would have to be corrected when the `var_section` split lands.
+
+Because there is now more than one scope, `variables` dispatches on the
+requested `variablesReference`. A reference the server never issued returns an
+empty list rather than defaulting to the program variables.
+
+Future runtime metrics (cycle time, next-due) belong in `Runtime` and need no
+further scope.
 
 #### Evaluate scope (v1 limit)
 
@@ -1103,10 +1139,10 @@ It does **not** support arithmetic, function calls, or non-constant subscripts. 
 
 ### Custom DAP Requests
 
-| Custom Request | Description |
-|----------------|-------------|
-| `ironplc/stepScan` | Run one complete scan cycle, then pause |
-| `ironplc/scanCount` | Return current scan_count |
+| Custom Request | Description | Status |
+|----------------|-------------|--------|
+| `ironplc/stepScan` | Run one complete scan cycle, then pause | Deferred — `RoundOutcome::PausedAfterScan` has no producer and `StepMode` has no scan-level variant, so this needs debug-engine work. Answered `requestNotApplicable`. |
+| ~~`ironplc/scanCount`~~ | Return the current scan_count | **Dropped (2026-08-16).** Superseded by the `Runtime` scope (see §Scopes), which carries the same value over standard `scopes`/`variables`. A custom request would be the *less* portable path — every DAP client can read a scope, but only an IronPLC-aware client knows this request — and having both meant two ways to read one counter. |
 
 Removed from v1 (deferred):
 
@@ -1375,7 +1411,7 @@ to a temp `.iplc` first so the `launch` sees a debug-enabled container.
 | `integrations/vscode` | `package.json` | Add `debuggers` (type `ironplc`) and `breakpoints` contributions; **`commands` and `menus.debug/toolBar` entries for `ironplc.stepScan` and `ironplc.scanCount`** (otherwise custom DAP requests are unreachable); `ironplc.dapServerPath` setting |
 | `integrations/vscode/src` | new `debugAdapterLogic.ts` | Pure, unit-tested decision logic: source-vs-container detection, temp container path, `ironplcdap` discovery (env → setting → bundled), program-path fallback, compile args |
 | `integrations/vscode/src` | new `debugAdapter.ts` | `DebugConfigurationProvider` (fills defaults; if `program` is a source file, runs the compiler with debug info to emit a temp `.iplc`) and `DebugAdapterDescriptorFactory` (spawns `ironplcdap`, resolved via `debugAdapterLogic`) |
-| `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan`, `ironplc/scanCount` as VS Code commands forwarding to the active session. (No force/unforce — those are out of v1 scope.) |
+| `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan` as a VS Code command forwarding to the active session. (Scan count is a scope, not a command — see §Scopes. No force/unforce — those are out of v1 scope.) |
 | `integrations/vscode/src` | `extension.ts` | Register debug config provider, adapter factory, and custom-request commands |
 
 **Tests:**
@@ -1387,9 +1423,12 @@ to a temp `.iplc` first so the `launch` sees a debug-enabled container.
 - Manual: F5 with a breakpoint hits, variable inspection populates, Step Scan
   toolbar works.
 
-Server-side handling of the `ironplc/stepScan` / `ironplc/scanCount` custom
-requests (and single-stepping) is a later phase; until then the server answers
-them `requestNotApplicable`, so the toolbar buttons are wired but inert.
+Single-stepping landed in #1305. The scan count landed on 2026-08-16 as the
+`Runtime` scope rather than a custom request, and its toolbar button was retired
+(see `specs/plans/2026-08-16-dap-scan-count.md`). `ironplc/stepScan` is still
+answered `requestNotApplicable`, so that toolbar button remains inert; a refused
+custom request is now reported to the user rather than escaping the command
+handler as an unhandled rejection.
 
 ### Phase 6: Beyond v1 (Future)
 

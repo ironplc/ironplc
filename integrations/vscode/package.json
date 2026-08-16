@@ -67,12 +67,6 @@
         "title": "Step Scan Cycle",
         "category": "IronPLC",
         "icon": "$(debug-step-over)"
-      },
-      {
-        "command": "ironplc.scanCount",
-        "title": "Show Scan Count",
-        "category": "IronPLC",
-        "icon": "$(watch)"
       }
     ],
     "menus": {
@@ -88,20 +82,11 @@
           "command": "ironplc.stepScan",
           "group": "navigation@1",
           "when": "debugType == 'ironplc'"
-        },
-        {
-          "command": "ironplc.scanCount",
-          "group": "navigation@2",
-          "when": "debugType == 'ironplc'"
         }
       ],
       "commandPalette": [
         {
           "command": "ironplc.stepScan",
-          "when": "debugType == 'ironplc'"
-        },
-        {
-          "command": "ironplc.scanCount",
           "when": "debugType == 'ironplc'"
         }
       ]

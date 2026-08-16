@@ -9,7 +9,7 @@ import {
   isSourceProgram,
   programKind,
   resolveProgramPath,
-  scanCountMessage,
+  customRequestFailedMessage,
   sourceExtensionsFromLanguages,
 } from '../../debugAdapterLogic';
 
@@ -226,16 +226,10 @@ suite('firstLine', () => {
   });
 });
 
-suite('scanCountMessage', () => {
-  test('scanCountMessage_when_count_present_then_includes_count', () => {
-    assert.ok(scanCountMessage({ scanCount: 7 }).includes('7'));
-  });
-
-  test('scanCountMessage_when_count_missing_then_not_available', () => {
-    assert.ok(scanCountMessage({}).includes('not available'));
-  });
-
-  test('scanCountMessage_when_response_undefined_then_not_available', () => {
-    assert.ok(scanCountMessage(undefined).includes('not available'));
+suite('customRequestFailedMessage', () => {
+  test('customRequestFailedMessage_when_given_title_then_names_the_command', () => {
+    const message = customRequestFailedMessage('Step Scan Cycle');
+    assert.ok(message.includes('Step Scan Cycle'));
+    assert.ok(message.includes('not supported'));
   });
 });

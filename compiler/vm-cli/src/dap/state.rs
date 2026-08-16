@@ -108,7 +108,9 @@ pub fn legal(phase: Phase, command: Command) -> bool {
         Launch | ConfigurationDone => phase == Configuring,
         // Breakpoints can be (re)set before the run and at any live pause.
         SetBreakpoints => matches!(phase, Configuring | Paused),
-        // Inspection: at any pause, including the terminal trap pause.
+        // Inspection: at any pause, including the terminal trap pause. The scan
+        // count is inspected through the `Runtime` scope, so it needs no
+        // request of its own — `scopes`/`variables` already carry it.
         Threads | StackTrace | Scopes | Variables => matches!(phase, Paused | Faulted),
         // Execution control: only at a non-terminal pause.
         Continue | Next | StepIn | StepOut => phase == Paused,
