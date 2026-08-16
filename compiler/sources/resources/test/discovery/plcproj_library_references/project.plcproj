@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Name>Project</Name>
+    <ProgramVersion>3.1.4024.0</ProgramVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="MAIN.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <PlaceholderReference Include="Tc2_System">
+      <DefaultResolution>Tc2_System, * (Beckhoff Automation GmbH)</DefaultResolution>
+      <Namespace>Tc2_System</Namespace>
+    </PlaceholderReference>
+    <LibraryReference Include="Tc2_Utilities,3.3.7.0,Beckhoff Automation GmbH">
+      <Namespace>Tc2_Utilities</Namespace>
+    </LibraryReference>
+  </ItemGroup>
+</Project>

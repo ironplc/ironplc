@@ -1,0 +1,11 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# TcXaeShell Solution File, Format Version 11.00
+VisualStudioVersion = 15.0.27130.2036
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{B1E792BE-AA5F-4E3C-8C82-674BF9C0715B}") = "Main", "Main.tsproj", "{9406D69C-EBA9-4591-A513-578A75D14426}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|TwinCAT RT (x64) = Release|TwinCAT RT (x64)
+	EndGlobalSection
+EndGlobal

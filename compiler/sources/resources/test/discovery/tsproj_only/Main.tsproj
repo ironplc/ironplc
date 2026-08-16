@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<TcSmProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" TcSmVersion="1.0" TcVersion="3.1.4024.0">
+	<Project ProjectGUID="{9406D69C-EBA9-4591-A513-578A75D14426}" ShowHideConfigurations="#x106">
+		<Plc>
+			<Project GUID="{{6DADE760-7FAC-4830-92BA-478C8595D670}}" Name="Runtime" PrjFilePath="Runtime\Runtime.plcproj" TmcFilePath="" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e"/>
+		</Plc>
+	</Project>
+</TcSmProject>
