@@ -20,6 +20,7 @@ fn init_test_logger() {
 #[allow(unused_macros)]
 mod test_macros;
 
+mod call_assignment_check;
 mod constant_folding;
 mod function_environment;
 pub mod intermediate_type;
@@ -35,6 +36,7 @@ mod rule_function_block_call_unsupported;
 mod rule_function_block_invocation;
 mod rule_function_call_declared;
 mod rule_function_call_type_check;
+mod rule_method_call_declared;
 mod rule_mixed_located_var_declarations;
 mod rule_no_top_level_var_global;
 mod rule_pou_hierarchy;

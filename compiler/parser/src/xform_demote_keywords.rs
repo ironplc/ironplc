@@ -35,7 +35,7 @@ use crate::{
 /// * **`POINTER`** — demoted unless `allow_pointer_to` (TwinCAT/CODESYS
 ///   `POINTER TO`).
 /// * **OOP keywords** (`EXTENDS`, `IMPLEMENTS`, `INTERFACE`, `END_INTERFACE`,
-///   `ABSTRACT`) — demoted unless `allow_fb_inheritance`.
+///   `ABSTRACT`, `METHOD`, `END_METHOD`) — demoted unless `allow_fb_inheritance`.
 /// * **`AND_THEN`** — demoted unless `allow_short_circuit_operators`.
 ///
 /// The context-sensitive `TIME` keyword is handled by [`apply_time`].
@@ -60,7 +60,9 @@ pub fn apply(tokens: &mut [Token], options: &CompilerOptions) {
             | TokenType::Implements
             | TokenType::Interface
             | TokenType::EndInterface
-            | TokenType::Abstract => demote_oop,
+            | TokenType::Abstract
+            | TokenType::Method
+            | TokenType::EndMethod => demote_oop,
             TokenType::AndThen => demote_and_then,
             _ => false,
         };
