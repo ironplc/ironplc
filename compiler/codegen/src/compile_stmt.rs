@@ -140,9 +140,18 @@ fn compile_statement(
             }
 
             // Check if the target is a structured variable (struct field write).
-            if let Variable::Symbolic(SymbolicVariableKind::Structured(structured)) =
-                &assignment.target
-            {
+            // Excludes `s.arr[i].field := ...`, whose record is an array
+            // element rather than a fixed-offset struct field. That shape
+            // falls through to the `resolve_access` dispatch below.
+            let fixed_offset_field = match &assignment.target {
+                Variable::Symbolic(SymbolicVariableKind::Structured(structured))
+                    if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
+                {
+                    Some(structured)
+                }
+                _ => None,
+            };
+            if let Some(structured) = fixed_offset_field {
                 // Function block instance field write (e.g. `timer.IN := TRUE`).
                 // FB instances live in `ctx.fb_instances` rather than
                 // `ctx.struct_vars`, and their fields are stored in the data

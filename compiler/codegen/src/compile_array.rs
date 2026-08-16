@@ -206,6 +206,14 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                 }
             }
         }
+        // `s.arr[i].field` -- a field selected from an element of an
+        // array-of-struct. The record is an array element rather than a
+        // fixed-offset struct field, so it resolves through the array path.
+        Variable::Symbolic(SymbolicVariableKind::Structured(structured))
+            if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
+        {
+            resolve_struct_array_element_field(ctx, structured)
+        }
         _ => {
             // Fall through to existing resolve_variable() for scalars.
             let var_index = super::compile_expr::resolve_variable(ctx, variable)?;
@@ -297,6 +305,157 @@ pub(crate) fn resolve_struct_field_array<'ctx, 'ast>(
         subscripts,
         element_op_type,
         element_type: element_type.as_ref().clone(),
+    })
+}
+
+/// Resolves a field selected from an element of an array-of-struct, e.g. the
+/// `Trigger` in `MyBay.Devices.MeterQRScanner[i].Trigger`.
+///
+/// Structures occupy a contiguous run of slots, so element `k` of an
+/// array-of-struct field starts at `field_offset + k * element_slots` and the
+/// leaf field sits a further compile-time `leaf_offset` into it:
+///
+/// ```text
+/// slot = field_offset + leaf_offset          (compile-time constant)
+///      + flat_index * element_slots          (runtime)
+/// ```
+///
+/// `emit_flat_index` already multiplies each subscript by its dimension
+/// stride, so scaling every stride by `element_slots` makes the emitted flat
+/// index a slot offset directly. That lets this reuse
+/// [`ResolvedAccess::StructFieldArrayElement`] unchanged -- no new opcode and
+/// no new emission path. Bounds checks are unaffected because they validate
+/// against the unscaled `lower_bound`/`size`.
+pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
+    ctx: &'ctx CompileContext,
+    structured: &'ast ironplc_dsl::textual::StructuredVariable,
+) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
+    let SymbolicVariableKind::Array(array_var) = structured.record.as_ref() else {
+        return Err(Diagnostic::todo_with_span(
+            structured.span(),
+            file!(),
+            line!(),
+        ));
+    };
+
+    // Collect subscript groups innermost-first, then reverse -- the same
+    // walk `resolve_access` performs for plain array chains.
+    let mut levels: Vec<&[Expr]> = Vec::new();
+    let mut current = array_var;
+    let base = loop {
+        levels.push(&current.subscripts);
+        match current.subscripted_variable.as_ref() {
+            SymbolicVariableKind::Array(inner) => current = inner,
+            SymbolicVariableKind::Structured(base) => break base,
+            other => {
+                // A top-level `ARRAY OF <struct>` variable reaches here. Those
+                // are rejected earlier, at declaration time, because
+                // `resolve_type_name` resolves only elementary element types.
+                return Err(Diagnostic::todo_with_span(other.span(), file!(), line!()));
+            }
+        }
+    };
+    levels.reverse();
+    let subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
+
+    let (root_name, field_slot_offset, field_type) =
+        crate::compile_struct::walk_struct_chain(ctx, &base.record, &base.field, 0)?;
+
+    let IntermediateType::Array {
+        element_type,
+        dimensions: array_dims,
+    } = &field_type
+    else {
+        return Err(Diagnostic::not_implemented(Label::span(
+            base.field.span(),
+            format!("Field '{}' is not an array type", base.field),
+        )));
+    };
+
+    let IntermediateType::Structure {
+        fields: element_fields,
+    } = element_type.as_ref()
+    else {
+        return Err(Diagnostic::not_implemented(Label::span(
+            structured.field.span(),
+            format!(
+                "Cannot select field '{}' -- array elements are not a structure type",
+                structured.field
+            ),
+        )));
+    };
+
+    let element_slots = element_type.slot_count().map_err(|_| {
+        Diagnostic::not_implemented(Label::span(
+            base.field.span(),
+            format!(
+                "Array element type of field '{}' is unsupported",
+                base.field
+            ),
+        ))
+    })?;
+
+    let (leaf_slot_offset, leaf_type) = crate::compile_struct::find_field_in_type(
+        element_fields,
+        &structured.field,
+        &structured.field.span(),
+    )?;
+
+    // A STRING leaf needs an element stride of `element_slots * 8`, which the
+    // 8-byte ArrayDescriptor cannot express (the VM derives a string array's
+    // stride from `element_extra`). Tracked separately; reject explicitly
+    // rather than emitting a wrong address.
+    if matches!(leaf_type, IntermediateType::String { .. }) {
+        return Err(Diagnostic::not_implemented(Label::span(
+            structured.field.span(),
+            format!(
+                "STRING field '{}' of an array-of-struct element is not yet supported",
+                structured.field
+            ),
+        )));
+    }
+
+    let element_op_type =
+        crate::compile_struct::resolve_field_op_type(&leaf_type).ok_or_else(|| {
+            Diagnostic::not_implemented(Label::span(
+                structured.field.span(),
+                format!(
+                    "Field '{}' of an array-of-struct element is composite (nested struct or array)",
+                    structured.field
+                ),
+            ))
+        })?;
+
+    let struct_info = ctx.struct_vars.get(&root_name).ok_or_else(|| {
+        Diagnostic::not_implemented(Label::span(
+            structured.span(),
+            format!("Variable '{}' is not a structure", root_name),
+        ))
+    })?;
+
+    // Scale strides so the emitted flat index counts slots, not elements.
+    let mut dimensions = dimensions_from_intermediate(array_dims);
+    for dim in &mut dimensions {
+        dim.stride = dim.stride.checked_mul(element_slots).ok_or_else(|| {
+            Diagnostic::not_implemented(Label::span(base.field.span(), "Array too large"))
+        })?;
+    }
+
+    let combined_offset = field_slot_offset
+        .raw()
+        .checked_add(leaf_slot_offset.raw())
+        .ok_or_else(|| {
+            Diagnostic::not_implemented(Label::span(base.field.span(), "Array too large"))
+        })?;
+
+    Ok(ResolvedAccess::StructFieldArrayElement {
+        var_index: struct_info.var_index,
+        desc_index: struct_info.desc_index,
+        field_slot_offset: SlotIndex::new(combined_offset),
+        dimensions,
+        subscripts,
+        element_op_type,
+        element_type: leaf_type,
     })
 }
 

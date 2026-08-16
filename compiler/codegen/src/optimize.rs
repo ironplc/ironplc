@@ -90,8 +90,6 @@ impl Instruction {
     }
 }
 
-/// Decode raw bytecode into a list of instructions and the set of jump
-/// target offsets (relative to the original bytecode).
 /// Encoded size of a `CMP_BR_*` instruction: opcode + u8 + u16 + u16 + i16.
 /// The branch offset occupies the trailing `i16` and is relative to the end
 /// of the instruction.
@@ -103,6 +101,8 @@ fn is_cmp_br(op: u8) -> bool {
     op == opcode::CMP_BR_I32 || op == opcode::CMP_BR_I64
 }
 
+/// Decode raw bytecode into a list of instructions and the set of jump
+/// target offsets (relative to the original bytecode).
 fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
     let mut instructions = Vec::new();
     let mut jump_targets = HashSet::new();
@@ -301,8 +301,7 @@ pub(crate) fn optimize(bytecode: &[u8], constants: &[PoolConstant]) -> (Vec<u8>,
                 (instr.offset as isize + CMP_BR_SIZE as isize + old_rel as isize) as usize;
             let new_pos = output.len();
             let new_target = offset_map[&old_target];
-            let new_rel =
-                (new_target as isize - (new_pos as isize + CMP_BR_SIZE as isize)) as i16;
+            let new_rel = (new_target as isize - (new_pos as isize + CMP_BR_SIZE as isize)) as i16;
             output.extend_from_slice(&instr.bytes[..6]);
             output.extend_from_slice(&new_rel.to_le_bytes());
         } else {
