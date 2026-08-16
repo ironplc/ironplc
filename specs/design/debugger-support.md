@@ -1098,7 +1098,7 @@ is not a program scope at all:
 
 | Scope | Contents |
 |-------|----------|
-| `Variables` | The program's ST variables. (Splitting this into per-`var_section` scopes — Locals, Inputs, Outputs, In/Out, Globals — is the eventual shape; today it is one flat scope.) |
+| `Program` | The program's ST variables, unfiltered — locals and globals together. (Splitting this into per-`var_section` scopes — Locals, Inputs, Outputs, In/Out, Globals — is the eventual shape; today it is one flat scope.) |
 | `Runtime` | VM-level state that is not a program variable. Currently `scanCount` (type `ULINT`), the number of *completed* scan cycles. |
 
 **Why `Runtime` is a scope rather than a button.** The scan count changes every
@@ -1109,9 +1109,16 @@ no UI affordance to press — and it works in any DAP client rather than only in
 VS Code. An earlier cut exposed it through an `ironplc.scanCount` toolbar button
 that raised a notification; that button is retired.
 
-**Why its own scope rather than an entry in `Variables`.** A synthetic entry
+**Why its own scope rather than an entry in `Program`.** A synthetic entry
 inside the program's variables would collide with an ST variable of the same
 name and would misrepresent VM state as program state.
+
+**Why neither scope is called `Variables`.** DAP clients render scopes as nodes
+*inside* a pane that is already titled Variables, so a scope by that name reads
+as `Variables > Variables`. A scope name should say what kind of state it holds:
+`Program` (the program's) against `Runtime` (the VM's). `Locals` would be the
+conventional name but is inaccurate here — the scope is unfiltered and includes
+globals — and would have to be corrected when the `var_section` split lands.
 
 Because there is now more than one scope, `variables` dispatches on the
 requested `variablesReference`. A reference the server never issued returns an

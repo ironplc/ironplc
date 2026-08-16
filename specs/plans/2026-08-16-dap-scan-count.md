@@ -31,16 +31,19 @@ something you *watch* while stepping, not something you *ask for*. A
 click-per-look button also can't show it changing.
 
 The count therefore moves into a second DAP **scope**, `Runtime`, alongside the
-existing `Variables` scope. Clients re-request `scopes` and `variables` at every
-stop, so the value tracks execution with no polling, no extension-side state,
+existing program-variable scope. Clients re-request `scopes` and `variables` at
+every stop, so the value tracks execution with no polling, no extension-side state,
 and no button. This is protocol-standard rather than VS Code-specific, which
 matters for design goal #6 ("any DAP-compatible editor"), and it is the
 direction the design already points: the `scopes` row of §"How DAP Uses the
 Debug Info" plans to group variables into Locals / Inputs / Outputs / In-Out /
 Globals, so multiple scopes are the intended end state and today's single
-`Variables` scope is the placeholder.
+flat scope is the placeholder. That scope is named `Program`, not `Variables`:
+clients render scopes inside a pane already titled Variables, so `Variables`
+would read as `Variables > Variables`. `Locals` would be conventional but is
+inaccurate while the scope is unfiltered.
 
-A separate scope, rather than a synthetic entry inside `Variables`, keeps
+A separate scope, rather than a synthetic entry inside `Program`, keeps
 runtime state from colliding with an ST variable that happens to be named
 `scanCount`.
 
@@ -65,7 +68,7 @@ remains refused until its own change lands, so it needs the guard regardless.
 
 - `ironplc/stepScan` server support (needs a scan-level pause in the VM debug
   engine; `RoundOutcome::PausedAfterScan` has no producer today).
-- Splitting `Variables` into per-IEC-section scopes. That is the design's
+- Splitting `Program` into per-IEC-section scopes. That is the design's
   eventual shape but is independent of this change.
 - Any change to scan-cycle execution, `scanLimit`, or `stopOnEntry`.
 
@@ -89,9 +92,9 @@ Adding the variant automatically extends the exhaustive phase × command test in
 |------|--------|
 | `dap/types.rs` | `ScanCountResponseBody { scan_count: u64 }`, `camelCase` so the wire field is `scanCount`. |
 | `dap/state.rs` | `Command::ScanCount`; map `"ironplc/scanCount"`; legality as above; extend both test tables. |
-| `dap/server.rs` | `ironplc/scanCount` dispatch arm; a second `Runtime` scope at reference 2; `runtime_variables_body`; and `variables` dispatching on the requested reference. |
+| `dap/server.rs` | `ironplc/scanCount` dispatch arm; the first scope renamed `Program` (`PROGRAM_REF`, `program_variables_body`); a second `Runtime` scope at reference 2 (`runtime_variables_body`); and `variables` dispatching on the requested reference. |
 
-**Reference dispatch is also a latent-bug fix.** `variables_body` ignored
+**Reference dispatch is also a latent-bug fix.** `program_variables_body` ignored
 `arguments.variablesReference` entirely and returned the program variables for
 *any* handle — `VariablesArguments` was defined but never read. With two scopes
 the argument must be honoured, and a handle the server never issued now yields

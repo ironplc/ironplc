@@ -43,11 +43,12 @@ use super::types::{
 /// The id of the single synthetic thread the v1 server exposes.
 const THREAD_ID: i64 = 1;
 
-/// The `variablesReference` handle for the program's ST variables. Non-zero so
-/// DAP treats it as expandable; the (flat) list of program variables is returned
-/// for it. Structured expansion (nested FB fields) is a later phase, so every
-/// returned [`Variable`](super::types::Variable) has `variablesReference: 0`.
-const VARIABLES_REF: i64 = 1;
+/// The `variablesReference` handle for the `Program` scope: the program's ST
+/// variables. Non-zero so DAP treats it as expandable; the (flat) list of
+/// program variables is returned for it. Structured expansion (nested FB fields)
+/// is a later phase, so every returned
+/// [`Variable`](super::types::Variable) has `variablesReference: 0`.
+const PROGRAM_REF: i64 = 1;
 
 /// The `variablesReference` handle for the `Runtime` scope: VM-level state that
 /// is not a program variable. Keeping it in its own scope means a synthetic
@@ -357,8 +358,13 @@ fn launched_session<R: BufRead, W: Write>(
                 let body = serde_json::to_value(ScopesResponseBody {
                     scopes: vec![
                         Scope {
-                            name: "Variables".to_string(),
-                            variables_reference: VARIABLES_REF,
+                            // Not "Variables": DAP clients render scopes inside
+                            // a pane already titled Variables, so that name
+                            // reads as Variables > Variables. The scope names
+                            // what kind of state it holds -- the program's, as
+                            // against the VM's.
+                            name: "Program".to_string(),
+                            variables_reference: PROGRAM_REF,
                             expensive: false,
                         },
                         Scope {
@@ -381,9 +387,9 @@ fn launched_session<R: BufRead, W: Write>(
                     .arguments
                     .as_ref()
                     .and_then(|v| serde_json::from_value::<VariablesArguments>(v.clone()).ok())
-                    .map_or(VARIABLES_REF, |a| a.variables_reference);
+                    .map_or(PROGRAM_REF, |a| a.variables_reference);
                 let body = match reference {
-                    VARIABLES_REF => variables_body(&running, debug),
+                    PROGRAM_REF => program_variables_body(&running, debug),
                     RUNTIME_REF => runtime_variables_body(&running),
                     _ => serde_json::to_value(VariablesResponseBody { variables: vec![] }).ok(),
                 };
@@ -537,10 +543,15 @@ fn stack_trace_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option
     .ok()
 }
 
-/// Builds the `variables` response body: every program variable slot, rendered
+/// Builds the `Program` scope's contents: every program variable slot, rendered
 /// by [`debug_info`] with its VAR_NAME name/type and a value formatted per its
 /// IEC type tag (STRING values are read from the data region).
-fn variables_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option<Value> {
+///
+/// The list is unfiltered — locals and globals together — which is why the scope
+/// is named `Program` rather than `Locals`. Splitting it by `var_section` into
+/// Locals / Inputs / Outputs / In-Out / Globals is the design's end state; the
+/// data for it is already in `VarNameEntry::var_section`.
+fn program_variables_body(running: &VmRunning, debug: Option<&DebugSection>) -> Option<Value> {
     let count = running.num_variables();
     let values: Vec<u64> = (0..count)
         .map(|i| running.read_variable_raw(VarIndex::new(i)).unwrap_or(0))
@@ -1081,7 +1092,7 @@ mod tests {
         let sc = responses(&out, "scopes");
         assert_eq!(
             sc[0]["body"]["scopes"][0]["variablesReference"],
-            VARIABLES_REF
+            PROGRAM_REF
         );
 
         // The single program variable is rendered with its source name and
@@ -1240,7 +1251,9 @@ mod tests {
         ]);
 
         let scopes = &responses(&out, "scopes")[0]["body"]["scopes"];
-        assert_eq!(scopes[0]["name"], "Variables");
+        // Not "Variables" -- that would render as Variables > Variables inside
+        // the client's variables pane.
+        assert_eq!(scopes[0]["name"], "Program");
         assert_eq!(scopes[1]["name"], "Runtime");
         // The two scopes must be addressable independently.
         assert_ne!(
