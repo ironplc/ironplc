@@ -1,80 +1,49 @@
-//! Shared fixture builders for the discovery tests.
+//! Test plumbing for the discovery tests.
 //!
-//! Discovery is defined by what a manifest chain says, so almost every
-//! test needs a `.sln`, a `.tsproj`, or a `.plcproj` on disk with real
-//! content. These write the minimum shape of each that discovery reads.
+//! Discovery's job is to decide which files on disk make up a project --
+//! which manifest a directory holds, whether there is more than one,
+//! whether a `<Compile>` entry names a file that exists. Those questions
+//! are about the filesystem, so the tests that ask them need a real tree
+//! under a `TempDir`.
+//!
+//! What lives here is only the plumbing for laying one out. Manifest
+//! *content* is written literally at each test site: a builder that emits
+//! the handful of lines the parser already reads would agree with the
+//! parser by construction, and could never catch the parser drifting from
+//! the format a real IDE writes. The format itself is exercised against
+//! literal manifest text in `sln.rs`, with no file involved at all.
 
 use std::fs;
 use std::path::Path;
 
-/// Write a `.sln` listing one `Project(...)` entry per
-/// `(name, relative_path)`. Paths use the Windows-style separators a
-/// real solution file carries.
-pub(super) fn write_sln(dir: &Path, name: &str, project_entries: &[(&str, &str)]) {
-    let mut content = String::from(
-        "Microsoft Visual Studio Solution File, Format Version 12.00\n\
-         # TcXaeShell Solution File, Format Version 11.00\n",
-    );
-    for (project_name, relative_path) in project_entries {
-        content.push_str(&format!(
-            "Project(\"{{B1E792BE-AA5F-4E3C-8C82-674BF9C0715B}}\") = \"{project_name}\", \"{relative_path}\", \"{{9406D69C-EBA9-4591-A513-578A75D14426}}\"\nEndProject\n"
-        ));
+/// Write `content` to `path`, creating any missing parent directories.
+pub(super) fn write_file(path: &Path, content: &str) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).unwrap();
     }
-    fs::write(dir.join(name), content).unwrap();
-}
-
-/// Write a `.tsproj` at `path` naming one sub-project per
-/// `(name, prj_file_path)`.
-pub(super) fn write_tsproj(path: &Path, plc_entries: &[(&str, &str)]) {
-    let mut inner = String::new();
-    for (name, prj_file_path) in plc_entries {
-        inner.push_str(&format!(
-            r#"<Project GUID="{{6DADE760-7FAC-4830-92BA-478C8595D673}}" Name="{name}" PrjFilePath="{prj_file_path}" />"#
-        ));
-    }
-    let content = format!(
-        r#"<Project ProjectGUID="{{9406D69C-EBA9-4591-A513-578A75D14426}}">{inner}</Project>"#
-    );
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, content).unwrap();
 }
 
 /// Write a `.plcproj` at `path` declaring one `<Compile>` entry per name
-/// in `sources`, creating each named file alongside it.
+/// in `sources`, and create each named file alongside it.
+///
+/// The `<Compile>` entries have to agree with the files that exist for
+/// the project to resolve at all, so the two are written together --
+/// this states a tree, not a file format.
 pub(super) fn write_plcproj(path: &Path, sources: &[&str]) {
-    write_plcproj_with_item_group(path, &compile_entries(sources));
+    let entries: String = sources
+        .iter()
+        .map(|source| format!("    <Compile Include=\"{source}\" />\n"))
+        .collect();
+    write_file(
+        path,
+        &format!(
+            "<Project xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n  <ItemGroup>\n{entries}  </ItemGroup>\n</Project>"
+        ),
+    );
+
     let dir = path.parent().unwrap();
     for source in sources {
-        let source_path = dir.join(source.replace('\\', "/"));
-        fs::create_dir_all(source_path.parent().unwrap()).unwrap();
-        fs::write(source_path, "<TcPlcObject/>").unwrap();
+        write_file(&dir.join(source.replace('\\', "/")), "<TcPlcObject/>");
     }
-}
-
-/// Write a `.plcproj` at `path` whose `<ItemGroup>` holds `item_group`
-/// verbatim, creating no source files. For tests that need entries
-/// discovery cannot resolve, or elements other than `<Compile>`.
-pub(super) fn write_plcproj_with_item_group(path: &Path, item_group: &str) {
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(
-        path,
-        format!(
-            r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-{item_group}
-  </ItemGroup>
-</Project>"#
-        ),
-    )
-    .unwrap();
-}
-
-/// `<Compile Include="...">` elements for each name, as
-/// [`write_plcproj_with_item_group`] expects them.
-pub(super) fn compile_entries(sources: &[&str]) -> String {
-    sources
-        .iter()
-        .map(|source| format!(r#"    <Compile Include="{source}" />"#))
-        .collect::<Vec<String>>()
-        .join("\n")
 }

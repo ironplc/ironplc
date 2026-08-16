@@ -408,10 +408,42 @@ fn detect_fallback(dir: &Path) -> DiscoveredProject {
 
 #[cfg(test)]
 mod tests {
-    use super::fixtures::{write_plcproj, write_sln, write_tsproj};
+    use super::fixtures::{write_file, write_plcproj};
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    /// A solution naming `Main.tsproj`. Written literally rather than
+    /// generated: these tests are about which manifest a directory
+    /// resolves through, and a generator agreeing with the parser by
+    /// construction would hide the parser drifting from the real format.
+    /// `sln.rs` exercises the format itself against literal text.
+    const SOLUTION_NAMING_MAIN_TSPROJ: &str = r#"Microsoft Visual Studio Solution File, Format Version 12.00
+# TcXaeShell Solution File, Format Version 11.00
+Project("{B1E792BE-AA5F-4E3C-8C82-674BF9C0715B}") = "Main", "Main.tsproj", "{9406D69C-EBA9-4591-A513-578A75D14426}"
+EndProject
+"#;
+
+    /// A TwinCAT project naming one PLC sub-project, `Runtime.plcproj`.
+    const TSPROJ_NAMING_RUNTIME_PLCPROJ: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<TcSmProject ProjectGUID="{9406D69C-EBA9-4591-A513-578A75D14426}">
+  <Project>
+    <Plc>
+      <Project GUID="{6DADE760-7FAC-4830-92BA-478C8595D673}" Name="Runtime" PrjFilePath="Runtime\Runtime.plcproj" AmsPort="851" />
+    </Plc>
+  </Project>
+</TcSmProject>
+"#;
+
+    /// A TwinCAT project with no PLC part at all -- authoritative, but
+    /// nothing for the compiler to build.
+    const TSPROJ_NAMING_NOTHING: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<TcSmProject ProjectGUID="{9406D69C-EBA9-4591-A513-578A75D14426}">
+  <Project>
+    <Io />
+  </Project>
+</TcSmProject>
+"#;
 
     #[test]
     fn discover_when_empty_directory_then_returns_unstructured() {
@@ -561,10 +593,13 @@ mod tests {
         // A solution folder that also holds a stray .plcproj resolves
         // through the .sln: the solution says which projects are live.
         let dir = TempDir::new().unwrap();
-        write_sln(dir.path(), "Solution.sln", &[("Main", "Main.tsproj")]);
-        write_tsproj(
+        write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
+        write_file(
             &dir.path().join("Main.tsproj"),
-            &[("Runtime", "Runtime\\Runtime.plcproj")],
+            TSPROJ_NAMING_RUNTIME_PLCPROJ,
         );
         write_plcproj(
             &dir.path().join("Runtime").join("Runtime.plcproj"),
@@ -581,9 +616,9 @@ mod tests {
     #[test]
     fn discover_when_tsproj_and_plcproj_in_same_directory_then_tsproj_wins() {
         let dir = TempDir::new().unwrap();
-        write_tsproj(
+        write_file(
             &dir.path().join("Main.tsproj"),
-            &[("Runtime", "Runtime\\Runtime.plcproj")],
+            TSPROJ_NAMING_RUNTIME_PLCPROJ,
         );
         write_plcproj(
             &dir.path().join("Runtime").join("Runtime.plcproj"),
@@ -600,8 +635,8 @@ mod tests {
     #[test]
     fn discover_when_multiple_sln_in_directory_then_reports_ambiguous() {
         let dir = TempDir::new().unwrap();
-        write_sln(dir.path(), "A.sln", &[]);
-        write_sln(dir.path(), "B.sln", &[]);
+        write_file(&dir.path().join("A.sln"), SOLUTION_NAMING_MAIN_TSPROJ);
+        write_file(&dir.path().join("B.sln"), SOLUTION_NAMING_MAIN_TSPROJ);
 
         let error = discover(dir.path()).unwrap_err();
 
@@ -728,10 +763,13 @@ mod tests {
     #[test]
     fn discover_from_manifest_when_sln_then_resolves_chain() {
         let dir = TempDir::new().unwrap();
-        write_sln(dir.path(), "Solution.sln", &[("Main", "Main.tsproj")]);
-        write_tsproj(
+        write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
+        write_file(
             &dir.path().join("Main.tsproj"),
-            &[("Runtime", "Runtime\\Runtime.plcproj")],
+            TSPROJ_NAMING_RUNTIME_PLCPROJ,
         );
         write_plcproj(
             &dir.path().join("Runtime").join("Runtime.plcproj"),
@@ -748,9 +786,9 @@ mod tests {
     #[test]
     fn discover_from_manifest_when_tsproj_then_resolves_its_plcproj() {
         let dir = TempDir::new().unwrap();
-        write_tsproj(
+        write_file(
             &dir.path().join("Main.tsproj"),
-            &[("Runtime", "Runtime\\Runtime.plcproj")],
+            TSPROJ_NAMING_RUNTIME_PLCPROJ,
         );
         write_plcproj(
             &dir.path().join("Runtime").join("Runtime.plcproj"),
@@ -766,7 +804,7 @@ mod tests {
     #[test]
     fn discover_from_manifest_when_tsproj_names_no_plcproj_then_reports_unresolvable() {
         let dir = TempDir::new().unwrap();
-        write_tsproj(&dir.path().join("Main.tsproj"), &[]);
+        write_file(&dir.path().join("Main.tsproj"), TSPROJ_NAMING_NOTHING);
 
         let error = discover_from_manifest(&dir.path().join("Main.tsproj")).unwrap_err();
 

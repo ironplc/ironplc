@@ -311,11 +311,55 @@ fn default_resolution_version(resolution: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::super::discover;
-    use super::super::fixtures::{
-        compile_entries, write_plcproj, write_plcproj_with_item_group, write_tsproj,
-    };
+    use super::super::fixtures::{write_file, write_plcproj};
     use super::*;
     use tempfile::TempDir;
+
+    /// A TwinCAT project naming two PLC sub-projects. Written literally
+    /// rather than generated -- see `fixtures.rs` for why.
+    const TSPROJ_NAMING_TWO_PLCPROJ: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<TcSmProject ProjectGUID="{9406D69C-EBA9-4591-A513-578A75D14426}">
+  <Project>
+    <Plc>
+      <Project GUID="{6DADE760-7FAC-4830-92BA-478C8595D673}" Name="Main" PrjFilePath="Main\Main.plcproj" AmsPort="851" />
+      <Project GUID="{1F2E3D4C-5B6A-4978-8899-AABBCCDDEEFF}" Name="SharedLib" PrjFilePath="SharedLib\SharedLib.plcproj" AmsPort="852" />
+    </Plc>
+  </Project>
+</TcSmProject>
+"#;
+
+    /// A TwinCAT project naming `ProjectA` and `ProjectB`, the two
+    /// sub-projects the merge tests share a dependency between.
+    const TSPROJ_NAMING_PROJECT_A_AND_B: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<TcSmProject ProjectGUID="{9406D69C-EBA9-4591-A513-578A75D14426}">
+  <Project>
+    <Plc>
+      <Project GUID="{6DADE760-7FAC-4830-92BA-478C8595D673}" Name="ProjectA" PrjFilePath="ProjectA\ProjectA.plcproj" AmsPort="851" />
+      <Project GUID="{1F2E3D4C-5B6A-4978-8899-AABBCCDDEEFF}" Name="ProjectB" PrjFilePath="ProjectB\ProjectB.plcproj" AmsPort="852" />
+    </Plc>
+  </Project>
+</TcSmProject>
+"#;
+
+    /// A TwinCAT project naming one PLC sub-project, `Runtime.plcproj`.
+    const TSPROJ_NAMING_RUNTIME_PLCPROJ: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<TcSmProject ProjectGUID="{9406D69C-EBA9-4591-A513-578A75D14426}">
+  <Project>
+    <Plc>
+      <Project GUID="{6DADE760-7FAC-4830-92BA-478C8595D673}" Name="Runtime" PrjFilePath="Runtime\Runtime.plcproj" AmsPort="851" />
+    </Plc>
+  </Project>
+</TcSmProject>
+"#;
+
+    /// A `.plcproj` whose only `<Compile>` entry reaches a file in a
+    /// sibling directory via `..`.
+    const PLCPROJ_SHARING_COMMON_GVL: &str = r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="..\Common\GVL_Shared.TcGVL" />
+  </ItemGroup>
+</Project>
+"#;
 
     #[test]
     fn append_implicit_references_when_already_seen_then_appends_nothing() {
@@ -520,23 +564,25 @@ mod tests {
     #[test]
     fn discover_when_multiple_plcproj_reference_same_library_then_deduplicated() {
         let dir = TempDir::new().unwrap();
-        write_tsproj(
+        write_file(
             &dir.path().join("Main.tsproj"),
-            &[
-                ("ProjectA", "ProjectA\\ProjectA.plcproj"),
-                ("ProjectB", "ProjectB\\ProjectB.plcproj"),
-            ],
+            TSPROJ_NAMING_PROJECT_A_AND_B,
         );
 
         for (name, source) in [("ProjectA", "A.TcPOU"), ("ProjectB", "B.TcPOU")] {
             let project_dir = dir.path().join(name);
-            fs::create_dir_all(&project_dir).unwrap();
-            fs::write(project_dir.join(source), "<TcPlcObject/>").unwrap();
-            write_plcproj_with_item_group(
+            write_file(&project_dir.join(source), "<TcPlcObject/>");
+            write_file(
                 &project_dir.join(format!("{name}.plcproj")),
                 &format!(
-                    "{}\n    <PlaceholderReference Include=\"Tc2_System\">\n      <Namespace>Tc2_System</Namespace>\n    </PlaceholderReference>",
-                    compile_entries(&[source])
+                    r#"<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Compile Include="{source}" />
+    <PlaceholderReference Include="Tc2_System">
+      <Namespace>Tc2_System</Namespace>
+    </PlaceholderReference>
+  </ItemGroup>
+</Project>"#
                 ),
             );
         }
@@ -666,13 +712,7 @@ mod tests {
         // sub-project -- both must be loaded together so a type declared
         // in one is visible when referenced from the other.
         let dir = TempDir::new().unwrap();
-        write_tsproj(
-            &dir.path().join("Main.tsproj"),
-            &[
-                ("Main", "Main\\Main.plcproj"),
-                ("SharedLib", "SharedLib\\SharedLib.plcproj"),
-            ],
-        );
+        write_file(&dir.path().join("Main.tsproj"), TSPROJ_NAMING_TWO_PLCPROJ);
         write_plcproj(
             &dir.path().join("Main").join("Main.plcproj"),
             &["MAIN.TcPOU"],
@@ -693,13 +733,7 @@ mod tests {
     #[test]
     fn discover_when_multiple_plcproj_merged_then_root_dir_is_manifest_directory() {
         let dir = TempDir::new().unwrap();
-        write_tsproj(
-            &dir.path().join("Main.tsproj"),
-            &[
-                ("Main", "Main\\Main.plcproj"),
-                ("SharedLib", "SharedLib\\SharedLib.plcproj"),
-            ],
-        );
+        write_file(&dir.path().join("Main.tsproj"), TSPROJ_NAMING_TWO_PLCPROJ);
         write_plcproj(
             &dir.path().join("Main").join("Main.plcproj"),
             &["MAIN.TcPOU"],
@@ -721,9 +755,9 @@ mod tests {
     #[test]
     fn discover_when_single_plcproj_named_by_manifest_then_root_dir_is_plcproj_directory() {
         let dir = TempDir::new().unwrap();
-        write_tsproj(
+        write_file(
             &dir.path().join("Main.tsproj"),
-            &[("Runtime", "Runtime\\Runtime.plcproj")],
+            TSPROJ_NAMING_RUNTIME_PLCPROJ,
         );
         let plcproj_dir = dir.path().join("Runtime");
         write_plcproj(&plcproj_dir.join("Runtime.plcproj"), &["MAIN.TcPOU"]);
@@ -740,9 +774,9 @@ mod tests {
     #[test]
     fn discover_when_plcproj_references_file_in_its_own_subdirectory_then_resolves() {
         let dir = TempDir::new().unwrap();
-        write_tsproj(
+        write_file(
             &dir.path().join("Main.tsproj"),
-            &[("Runtime", "Runtime\\Runtime.plcproj")],
+            TSPROJ_NAMING_RUNTIME_PLCPROJ,
         );
         write_plcproj(
             &dir.path().join("Runtime").join("Runtime.plcproj"),
@@ -762,26 +796,21 @@ mod tests {
         // (a shared dependency living in a common directory) must only
         // load and declare it once.
         let dir = TempDir::new().unwrap();
-        write_tsproj(
+        write_file(
             &dir.path().join("Main.tsproj"),
-            &[
-                ("ProjectA", "ProjectA\\ProjectA.plcproj"),
-                ("ProjectB", "ProjectB\\ProjectB.plcproj"),
-            ],
+            TSPROJ_NAMING_PROJECT_A_AND_B,
         );
-
-        let shared_dir = dir.path().join("Common");
-        fs::create_dir_all(&shared_dir).unwrap();
-        fs::write(shared_dir.join("GVL_Shared.TcGVL"), "<TcPlcObject/>").unwrap();
-
-        let shared_reference = compile_entries(&["..\\Common\\GVL_Shared.TcGVL"]);
-        write_plcproj_with_item_group(
+        write_file(
+            &dir.path().join("Common").join("GVL_Shared.TcGVL"),
+            "<TcPlcObject/>",
+        );
+        write_file(
             &dir.path().join("ProjectA").join("ProjectA.plcproj"),
-            &shared_reference,
+            PLCPROJ_SHARING_COMMON_GVL,
         );
-        write_plcproj_with_item_group(
+        write_file(
             &dir.path().join("ProjectB").join("ProjectB.plcproj"),
-            &shared_reference,
+            PLCPROJ_SHARING_COMMON_GVL,
         );
 
         let result = discover(dir.path()).unwrap();
