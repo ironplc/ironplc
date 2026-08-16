@@ -60,10 +60,6 @@ pub enum Command {
     StepIn,
     StepOut,
     Disconnect,
-    /// `ironplc/scanCount`, an IronPLC-specific request reporting how many scan
-    /// cycles have completed. Inspection-only: it reads a counter and never
-    /// touches execution.
-    ScanCount,
     // Known DAP requests deliberately unsupported in v1: always illegal.
     Pause,
     SetVariable,
@@ -91,7 +87,6 @@ impl Command {
             "stepIn" => Command::StepIn,
             "stepOut" => Command::StepOut,
             "disconnect" => Command::Disconnect,
-            "ironplc/scanCount" => Command::ScanCount,
             "pause" => Command::Pause,
             "setVariable" => Command::SetVariable,
             "evaluate" => Command::Evaluate,
@@ -114,11 +109,9 @@ pub fn legal(phase: Phase, command: Command) -> bool {
         // Breakpoints can be (re)set before the run and at any live pause.
         SetBreakpoints => matches!(phase, Configuring | Paused),
         // Inspection: at any pause, including the terminal trap pause. The scan
-        // counter belongs here — it reads VM state without touching execution,
-        // and which scan a trap landed on is worth knowing at a fault pause.
-        Threads | StackTrace | Scopes | Variables | ScanCount => {
-            matches!(phase, Paused | Faulted)
-        }
+        // count is inspected through the `Runtime` scope, so it needs no
+        // request of its own — `scopes`/`variables` already carry it.
+        Threads | StackTrace | Scopes | Variables => matches!(phase, Paused | Faulted),
         // Execution control: only at a non-terminal pause.
         Continue | Next | StepIn | StepOut => phase == Paused,
         // Teardown is always accepted.
@@ -141,7 +134,7 @@ mod tests {
         Phase::Faulted,
     ];
 
-    const ALL_COMMANDS: [Command; 18] = [
+    const ALL_COMMANDS: [Command; 17] = [
         Command::Initialize,
         Command::Launch,
         Command::SetBreakpoints,
@@ -155,7 +148,6 @@ mod tests {
         Command::StepIn,
         Command::StepOut,
         Command::Disconnect,
-        Command::ScanCount,
         Command::Pause,
         Command::SetVariable,
         Command::Evaluate,
@@ -173,7 +165,7 @@ mod tests {
             Launch => &[Configuring],
             ConfigurationDone => &[Configuring],
             SetBreakpoints => &[Configuring, Paused],
-            Threads | StackTrace | Scopes | Variables | ScanCount => &[Paused, Faulted],
+            Threads | StackTrace | Scopes | Variables => &[Paused, Faulted],
             Continue | Next | StepIn | StepOut => &[Paused],
             Disconnect => &[
                 Initialized,

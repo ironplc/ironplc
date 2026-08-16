@@ -860,9 +860,9 @@ For PLC-specific debugging, users need scan-level control:
 > (the adapter process is terminated), not by a mid-scan `pause`; interactive
 > `pause`-while-running remains the Phase 6 cut. This continuous-loop work is a
 > tracked server follow-up (Phase 4c) and is **not** part of Phase 5 (VS Code
-> integration). `ironplc/scanCount` is implemented (2026-08-16);
-> `ironplc/stepScan` is still answered `requestNotApplicable` — see
-> §Custom DAP Requests for the status of each.
+> integration). The scan count is now surfaced by the `Runtime` scope rather
+> than a custom request (2026-08-16); `ironplc/stepScan` is still answered
+> `requestNotApplicable` — see §Custom DAP Requests and §Scopes.
 
 A new `VmRunning::run_round_debug` method drives a single round under a `DebuggerHook`. v1 supports a single program instance only (see §Multi-instance: not supported in v1), so the `instances_for_task` loop is collapsed to "the one instance":
 
@@ -1142,7 +1142,7 @@ It does **not** support arithmetic, function calls, or non-constant subscripts. 
 | Custom Request | Description | Status |
 |----------------|-------------|--------|
 | `ironplc/stepScan` | Run one complete scan cycle, then pause | Deferred — `RoundOutcome::PausedAfterScan` has no producer and `StepMode` has no scan-level variant, so this needs debug-engine work. Answered `requestNotApplicable`. |
-| `ironplc/scanCount` | Return the number of *completed* scan cycles | Implemented (2026-08-16). Legal wherever inspection is (`Paused`, `Faulted`); returns `{ "scanCount": <u64> }`. Retained as the programmatic API; the UI reads the count from the `Runtime` scope instead (see §Scopes). |
+| ~~`ironplc/scanCount`~~ | Return the current scan_count | **Dropped (2026-08-16).** Superseded by the `Runtime` scope (see §Scopes), which carries the same value over standard `scopes`/`variables`. A custom request would be the *less* portable path — every DAP client can read a scope, but only an IronPLC-aware client knows this request — and having both meant two ways to read one counter. |
 
 Removed from v1 (deferred):
 
@@ -1411,7 +1411,7 @@ to a temp `.iplc` first so the `launch` sees a debug-enabled container.
 | `integrations/vscode` | `package.json` | Add `debuggers` (type `ironplc`) and `breakpoints` contributions; **`commands` and `menus.debug/toolBar` entries for `ironplc.stepScan` and `ironplc.scanCount`** (otherwise custom DAP requests are unreachable); `ironplc.dapServerPath` setting |
 | `integrations/vscode/src` | new `debugAdapterLogic.ts` | Pure, unit-tested decision logic: source-vs-container detection, temp container path, `ironplcdap` discovery (env → setting → bundled), program-path fallback, compile args |
 | `integrations/vscode/src` | new `debugAdapter.ts` | `DebugConfigurationProvider` (fills defaults; if `program` is a source file, runs the compiler with debug info to emit a temp `.iplc`) and `DebugAdapterDescriptorFactory` (spawns `ironplcdap`, resolved via `debugAdapterLogic`) |
-| `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan`, `ironplc/scanCount` as VS Code commands forwarding to the active session. (No force/unforce — those are out of v1 scope.) |
+| `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan` as a VS Code command forwarding to the active session. (Scan count is a scope, not a command — see §Scopes. No force/unforce — those are out of v1 scope.) |
 | `integrations/vscode/src` | `extension.ts` | Register debug config provider, adapter factory, and custom-request commands |
 
 **Tests:**
@@ -1423,8 +1423,9 @@ to a temp `.iplc` first so the `launch` sees a debug-enabled container.
 - Manual: F5 with a breakpoint hits, variable inspection populates, Step Scan
   toolbar works.
 
-Single-stepping landed in #1305, and `ironplc/scanCount` on 2026-08-16 (see
-`specs/plans/2026-08-16-dap-scan-count.md`). `ironplc/stepScan` is still
+Single-stepping landed in #1305. The scan count landed on 2026-08-16 as the
+`Runtime` scope rather than a custom request, and its toolbar button was retired
+(see `specs/plans/2026-08-16-dap-scan-count.md`). `ironplc/stepScan` is still
 answered `requestNotApplicable`, so that toolbar button remains inert; a refused
 custom request is now reported to the user rather than escaping the command
 handler as an unhandled rejection.

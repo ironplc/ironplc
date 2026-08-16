@@ -80,11 +80,6 @@ suite('Extension Test Suite', () => {
     assert.ok(commands.includes('ironplc.stepScan'));
   });
 
-  test('ironplc.scanCount command is registered', async () => {
-    const commands = await vscode.commands.getCommands(true);
-    assert.ok(commands.includes('ironplc.scanCount'));
-  });
-
   test('does not detect non-ST extension as 61131-3-st', async () => {
     const filePath = testResourcePath('invalid-ext.notst');
     const textDocument = await vscode.workspace.openTextDocument(filePath);

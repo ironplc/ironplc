@@ -56,11 +56,15 @@ remains refused until its own change lands, so it needs the guard regardless.
 
 ## Goals
 
-1. `ironplc/scanCount` returns `{ "scanCount": <completed cycles> }` at any stop
-   point where inspection is legal, as the programmatic API for non-VS-Code
-   clients and tests.
-2. The count is visible continuously in the debug panel via a `Runtime` scope,
-   and the `ironplc.scanCount` command and toolbar button are retired.
+1. The number of completed scan cycles is visible continuously in the debug
+   panel via a `Runtime` scope.
+2. The `ironplc.scanCount` command, its toolbar button, and the
+   `ironplc/scanCount` custom request are all retired. An intermediate cut
+   implemented the custom request and kept it as a "programmatic API"; that
+   does not hold up. Every DAP client can read a scope over standard
+   `scopes`/`variables`, while only an IronPLC-aware client knows a custom
+   request — so the request was the *less* portable path, with no caller, and
+   left two ways to read one counter.
 3. A refused custom request produces a clear message, not an unhandled
    rejection.
 
@@ -76,23 +80,17 @@ remains refused until its own change lands, so it needs the guard regardless.
 
 ### Legality
 
-`ScanCount` joins the **inspection** group in the legality table: legal in
-`Paused` and `Faulted`, illegal everywhere else — matching
-`threads`/`stackTrace`/`scopes`/`variables`, since it reads VM state without
-touching execution and which scan a trap landed on is useful at a fault pause.
-It is illegal before `launch` (no `VmRunning` exists) and while `Running` (the
-single-threaded loop services no requests mid-scan).
-
-Adding the variant automatically extends the exhaustive phase × command test in
-`state.rs`, which checks `legal()` against an independent expected-phases table.
+No new command, so the legality table is unchanged: the count is read through
+`scopes`/`variables`, which are already legal in `Paused` and `Faulted`. That
+also means it is unavailable before `launch` (no `VmRunning` exists) and while
+`Running` (the single-threaded loop services no requests mid-scan), which is the
+correct behaviour and needed no new rule.
 
 ### Server
 
 | File | Change |
 |------|--------|
-| `dap/types.rs` | `ScanCountResponseBody { scan_count: u64 }`, `camelCase` so the wire field is `scanCount`. |
-| `dap/state.rs` | `Command::ScanCount`; map `"ironplc/scanCount"`; legality as above; extend both test tables. |
-| `dap/server.rs` | `ironplc/scanCount` dispatch arm; the first scope renamed `Program` (`PROGRAM_REF`, `program_variables_body`); a second `Runtime` scope at reference 2 (`runtime_variables_body`); and `variables` dispatching on the requested reference. |
+| `dap/server.rs` | The first scope renamed `Program` (`PROGRAM_REF`, `program_variables_body`); a second `Runtime` scope at reference 2 (`runtime_variables_body`) carrying `scanCount`; and `variables` dispatching on the requested reference. |
 
 **Reference dispatch is also a latent-bug fix.** `program_variables_body` ignored
 `arguments.variablesReference` entirely and returned the program variables for
@@ -108,19 +106,20 @@ anyway before structured expansion (FB instance fields) lands.
 | `package.json` | Remove the `ironplc.scanCount` command, its `debug/toolBar` entry, and its `commandPalette` entry. The `Runtime` scope replaces it. |
 | `src/customRequests.ts` | Drop the `scanCount` handler; wrap the remaining `stepScan` call in `try`/`catch`. |
 | `src/debugAdapterLogic.ts` | Drop the now-unused `ScanCountResponse` / `scanCountMessage`; add `customRequestFailedMessage(title)`, pure and unit-testable. |
+| `src/test/functional/suite/extension.test.ts` | Drop the assertion that `ironplc.scanCount` is registered. |
 
 ## Testing
 
-- `state.rs`: the exhaustive legality test covers the new command once it is in
-  `ALL_COMMANDS` and `expected_legal_phases`.
-- `server.rs`: `scanCount` reports 0 at a `stopOnEntry` pause, advances by one
-  between consecutive breakpoint stops, and is refused before `launch`;
-  `scopes` offers both scopes with distinct references; the `Runtime` scope
-  reports `scanCount` as `ULINT` and advances across cycles; an unknown
-  reference returns no variables.
+- `server.rs`: `scopes` offers `Program` and `Runtime` with distinct references;
+  the `Runtime` scope reports 0 completed scans at a `stopOnEntry` pause, and
+  reports `scanCount` as `ULINT` advancing by one cycle between consecutive
+  breakpoint stops; an unknown reference returns no variables.
 - `debugAdapterLogic.test.ts`: `customRequestFailedMessage` formatting.
-- `cd compiler && just`, plus the extension's `npm run compile && npm run lint
-  && npm run test:unit`.
+- The functional suite asserts which commands are registered, so removing a
+  contributed command means removing its assertion there too. Run the
+  extension's **`just ci`** (which includes `test:functional`), not only
+  `npm run test:unit` — the unit suite does not see command registration.
+- `cd compiler && just`.
 
 ## Out of scope / follow-ups
 
