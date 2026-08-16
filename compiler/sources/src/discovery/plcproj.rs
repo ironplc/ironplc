@@ -315,6 +315,15 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// A solution naming `Main.tsproj`. Rule 2 keys off the `.sln`: a
+    /// `.tsproj` is part of the chain but never an entry point, so these
+    /// folders need the solution that names it.
+    const SOLUTION_NAMING_MAIN_TSPROJ: &str = r#"Microsoft Visual Studio Solution File, Format Version 12.00
+# TcXaeShell Solution File, Format Version 11.00
+Project("{B1E792BE-AA5F-4E3C-8C82-674BF9C0715B}") = "Main", "Main.tsproj", "{9406D69C-EBA9-4591-A513-578A75D14426}"
+EndProject
+"#;
+
     /// A TwinCAT project naming two PLC sub-projects. Written literally
     /// rather than generated -- see `fixtures.rs` for why.
     const TSPROJ_NAMING_TWO_PLCPROJ: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -565,6 +574,10 @@ mod tests {
     fn discover_when_multiple_plcproj_reference_same_library_then_deduplicated() {
         let dir = TempDir::new().unwrap();
         write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
+        write_file(
             &dir.path().join("Main.tsproj"),
             TSPROJ_NAMING_PROJECT_A_AND_B,
         );
@@ -712,6 +725,14 @@ mod tests {
         // sub-project -- both must be loaded together so a type declared
         // in one is visible when referenced from the other.
         let dir = TempDir::new().unwrap();
+        write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
+        write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
         write_file(&dir.path().join("Main.tsproj"), TSPROJ_NAMING_TWO_PLCPROJ);
         write_plcproj(
             &dir.path().join("Main").join("Main.plcproj"),
@@ -733,6 +754,14 @@ mod tests {
     #[test]
     fn discover_when_multiple_plcproj_merged_then_root_dir_is_manifest_directory() {
         let dir = TempDir::new().unwrap();
+        write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
+        write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
         write_file(&dir.path().join("Main.tsproj"), TSPROJ_NAMING_TWO_PLCPROJ);
         write_plcproj(
             &dir.path().join("Main").join("Main.plcproj"),
@@ -756,6 +785,10 @@ mod tests {
     fn discover_when_single_plcproj_named_by_manifest_then_root_dir_is_plcproj_directory() {
         let dir = TempDir::new().unwrap();
         write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
+        write_file(
             &dir.path().join("Main.tsproj"),
             TSPROJ_NAMING_RUNTIME_PLCPROJ,
         );
@@ -774,6 +807,10 @@ mod tests {
     #[test]
     fn discover_when_plcproj_references_file_in_its_own_subdirectory_then_resolves() {
         let dir = TempDir::new().unwrap();
+        write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
         write_file(
             &dir.path().join("Main.tsproj"),
             TSPROJ_NAMING_RUNTIME_PLCPROJ,
@@ -796,6 +833,10 @@ mod tests {
         // (a shared dependency living in a common directory) must only
         // load and declare it once.
         let dir = TempDir::new().unwrap();
+        write_file(
+            &dir.path().join("Solution.sln"),
+            SOLUTION_NAMING_MAIN_TSPROJ,
+        );
         write_file(
             &dir.path().join("Main.tsproj"),
             TSPROJ_NAMING_PROJECT_A_AND_B,

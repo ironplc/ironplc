@@ -247,12 +247,11 @@ fn create_project(
 
 /// Enumerates all files at the path.
 ///
-/// If the path is a directory, then uses project discovery to detect the
-/// project structure and return the appropriate set of files. If the path
-/// is a project manifest (`.sln`, `.tsproj`, `.plcproj`), it is resolved
-/// the same way -- naming the manifest is how a user says which project
-/// they mean when its directory holds more than one. Any other file is
-/// returned as itself, to be loaded as source text.
+/// Project discovery decides what the path means -- a `.sln`/`.plcproj`
+/// or the folder holding one is a TwinCAT project, a `plc.xml` or its
+/// folder is a Beremiz project, and anything else is enumerated as loose
+/// source files. Naming a manifest is how a user says which project they
+/// mean when a folder holds more than one.
 ///
 /// Discovery problems that shouldn't stop the rest of the project from
 /// being enumerated (e.g. a `.plcproj` `<Compile Include="...">` entry
@@ -288,15 +287,6 @@ fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagn
             );
         }
     };
-    if metadata.is_dir() {
-        return enumerate_project(ironplc_sources::discovery::discover(&path));
-    }
-    if metadata.is_file() {
-        if ironplc_sources::discovery::is_manifest(&path) {
-            return enumerate_project(ironplc_sources::discovery::discover_from_manifest(&path));
-        }
-        return (vec![path.to_path_buf()], vec![], vec![]);
-    }
     if metadata.is_symlink() {
         return (
             vec![],
@@ -304,7 +294,8 @@ fn enumerate_files(path: &PathBuf) -> (Vec<PathBuf>, Vec<LibraryName>, Vec<Diagn
             diagnostic(Problem::SymlinkUnsupported, &path, String::from("")),
         );
     }
-    (vec![], vec![], vec![])
+
+    enumerate_project(ironplc_sources::discovery::discover(&path))
 }
 
 /// Flattens a discovered project into the files, libraries, and problems
@@ -586,8 +577,10 @@ mod tests {
 
     #[test]
     fn check_when_ambiguous_plcproj_directory_then_naming_one_resolves_it() {
-        // Two .plcproj in one directory is ambiguous (P6012); the
-        // diagnostic's advice -- name the one you meant -- has to work.
+        // Two .plcproj in one folder name no single project, so the
+        // folder is enumerated as loose sources -- MISSING.TcPOU is never
+        // looked for, because no project file was followed. Naming one
+        // resolves that project, and its missing entry then fails.
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("A.st"), "PROGRAM A\nEND_PROGRAM").unwrap();
         for name in ["AAA.plcproj", "ZZZ.plcproj"] {
@@ -596,6 +589,7 @@ mod tests {
                 r#"<Project>
   <ItemGroup>
     <Compile Include="A.st" />
+    <Compile Include="MISSING.TcPOU" />
   </ItemGroup>
 </Project>"#,
             )
@@ -608,10 +602,11 @@ mod tests {
             &[],
             true
         )
-        .is_err());
+        .is_ok());
 
         let named = vec![dir.path().join("ZZZ.plcproj")];
-        assert!(check(&named, CompilerOptions::default(), &[], true).is_ok());
+        let err = check(&named, CompilerOptions::default(), &[], true).unwrap_err();
+        assert_eq!(problem_count(&err), 1, "{err}");
     }
 
     #[test]

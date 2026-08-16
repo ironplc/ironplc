@@ -20,13 +20,14 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
 
-/// Find every file directly in `dir` (not recursive) whose extension
-/// matches `extension`, sorted by path.
+/// Find every file directly in `dir` (not recursive) whose extension is
+/// one of `extensions`, sorted by path.
 ///
 /// Deliberately non-recursive: a project manifest is the file a user or
 /// tool points at, so discovery looks for it where it was pointed and
-/// nowhere else.
-pub(super) fn find_manifests(dir: &Path, extension: &str) -> Vec<PathBuf> {
+/// nowhere else. Callers use the count -- exactly one manifest names a
+/// project, any other number names none.
+pub(super) fn find_manifests(dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -36,9 +37,11 @@ pub(super) fn find_manifests(dir: &Path, extension: &str) -> Vec<PathBuf> {
         .map(|entry| entry.path())
         .filter(|path| {
             path.is_file()
-                && path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case(extension))
+                && path.extension().is_some_and(|found| {
+                    extensions
+                        .iter()
+                        .any(|extension| found.eq_ignore_ascii_case(extension))
+                })
         })
         .collect();
     manifests.sort();
@@ -135,7 +138,7 @@ fn tsproj_paths_in_sln(content: &str, sln_dir: &Path) -> Vec<PathBuf> {
 /// `.tsproj` that names no `.plcproj` is *not* an error here: a solution
 /// may legitimately contain a TwinCAT project with no PLC part, and
 /// [`resolve_plcproj_via_sln`] reports the empty overall result instead.
-pub(super) fn resolve_plcproj_via_tsproj(tsproj_path: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
+fn resolve_plcproj_via_tsproj(tsproj_path: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
     let content = fs::read_to_string(tsproj_path)
         .map_err(|e| unresolvable(tsproj_path, &format!("cannot read the project file: {e}")))?;
 
@@ -320,7 +323,7 @@ EndGlobal
         )
         .unwrap_err();
 
-        assert_eq!(error.code, "P6013");
+        assert_eq!(error.code, "P6012");
     }
 
     #[test]
@@ -330,14 +333,14 @@ EndGlobal
         let error = resolve_plcproj_via_tsproj(Path::new("/nonexistent/MySolution/Main.tsproj"))
             .unwrap_err();
 
-        assert_eq!(error.code, "P6013");
+        assert_eq!(error.code, "P6012");
     }
 
     #[test]
     fn resolve_plcproj_via_sln_when_file_missing_then_reports_unresolvable() {
         let error = resolve_plcproj_via_sln(Path::new("/nonexistent/MySolution.sln")).unwrap_err();
 
-        assert_eq!(error.code, "P6013");
+        assert_eq!(error.code, "P6012");
     }
 
     #[test]

@@ -4,38 +4,45 @@ P6012
 
 .. problem-summary:: P6012
 
-This error occurs when a directory contains more than one project manifest of
-the same kind — more than one ``.sln``, more than one ``.tsproj``, or more than
-one ``.plcproj`` — so there is no way to tell which project was meant.
+This error occurs when a project manifest was found but does not resolve to a
+project. The manifest may be unreadable, malformed, or may name files that do
+not exist.
 
-The compiler resolves a TwinCAT project through its manifest chain
-(``.sln`` → ``.tsproj`` → ``PrjFilePath`` → ``.plcproj``), and only the
-directory it was pointed at is read. When that directory holds several
-candidates at the same level, nothing in it says which one is live. A stale
-project file left behind by a rename looks exactly like the current one, so
-the compiler asks rather than picking by sort order.
+A manifest is authoritative: it is the record of which files belong to the
+project. When one is present but cannot be followed, the compiler reports the
+failure rather than falling back to enumerating whatever source files happen to
+be nearby — that would compile the project's files while ignoring the manifest
+that says which of them belong.
+
+Causes
+------
+
+- A ``.sln`` or ``.plcproj`` that cannot be read.
+- A ``.sln`` that names a ``.tsproj`` that does not exist.
+- A ``.tsproj`` that is not well-formed XML.
+- A ``.sln`` that names no ``.plcproj`` at all — for example a solution
+  containing only non-PLC project types.
 
 Example
 -------
 
 .. code-block:: text
 
-   MyProject/
-     MyProject.plcproj       # current
-     MyProjekt.plcproj       # left over from a rename
-     MAIN.TcPOU
+   MySolution/
+     MySolution.sln          # lists MyProject\MyProject.tsproj
+     (MyProject/ was deleted)
 
 .. code-block:: bash
 
-   ironplcc check MyProject
+   ironplcc check MySolution
 
 To fix this error:
 
-- Name the manifest you want instead of the directory that holds it —
-  ``ironplcc check MyProject/MyProject.plcproj``.
-- Or delete the manifests that are no longer part of the project.
+- Restore or correct the file the manifest names.
+- Repair the malformed manifest.
+- If the solution has no PLC project, point the compiler at one that does.
 
-Manifests of *different* kinds in one directory are not ambiguous: a ``.sln``
-takes priority over a ``.tsproj``, which takes priority over a ``.plcproj``, so
-a solution folder that also holds a stray project file still resolves through
-the solution.
+A directory holding *more than one* ``.sln`` or ``.plcproj`` is not this error.
+It names no single project, so it is not treated as a TwinCAT project at all and
+its source files are enumerated instead. Name the manifest you want —
+``ironplcc check MySolution/MySolution.sln`` — to compile that project.

@@ -19,17 +19,31 @@ whenever an authoritative manifest is found but not resolved.
 
 ### The rule
 
-Manifests are tiered `.sln` > `.tsproj` > `.plcproj`, so a solution folder
-containing a stray `.plcproj` still resolves through the `.sln`. Only the
-directory itself is examined — never a subtree.
+A path is either the project manifest itself or the folder holding it;
+both say the same thing, so an editor that can only open a folder is as
+well served as a command line that can name a file. Checked in order,
+first match wins:
 
-| Input | Behavior |
-|---|---|
-| file argument: `.sln` / `.tsproj` / `.plcproj` | authoritative, use it |
-| folder, exactly one manifest at the top tier present | authoritative; a resolution failure is a diagnostic, never a heuristic |
-| folder, multiple manifests at the same tier | diagnostic naming them; the user passes one explicitly |
-| folder, no manifest, one found nested below | diagnostic pointing at it |
-| folder, no manifest anywhere | unstructured: enumerate loose source files (unchanged) |
+| # | Input | Behavior |
+|---|---|---|
+| 1 | a `.sln` or `.plcproj` file | TwinCAT |
+| 2 | a folder holding exactly one `.sln` or `.plcproj` | TwinCAT |
+| 3 | a `plc.xml` file, or a folder holding one | Beremiz |
+| 4 | anything else | unstructured: enumerate loose source files |
+
+Rule 2 counts `.sln` and `.plcproj` together: a folder holding one of
+each, or two of either, names no single project and falls to rule 4. That
+is not an error — nothing is being selected, so there is nothing to guess
+between, and a user who meant one of them says so by naming it (rule 1).
+
+Once a manifest *is* found, failing to follow it is an error (P6012), not
+a reason to fall back to rule 4: enumerating the folder would compile the
+project's sources while ignoring the manifest that says which of them
+belong, which is the same guess the manifest exists to settle.
+
+`.tsproj` is not an entry point. It remains part of the resolution chain —
+a `.sln` reaches its `.plcproj` files through one — but nobody opens a
+solution by naming its system project.
 
 The recursion the walk used to provide is replaced by traversal *by
 reference*: a `.sln` names its `.tsproj` files, a `.tsproj` names its
@@ -37,25 +51,10 @@ reference*: a `.sln` names its `.tsproj` files, a `.tsproj` names its
 convention the walk was compensating for becomes explicit — **open the
 folder containing the manifest**.
 
-The nested-manifest hint (row 4) is the only remaining use of `walk_files`
-in the TwinCAT path, and it is purely for the error message: it never
-selects sources. It fires only when the directory holds nothing of its
-own, so a directory of loose `.st` files that happens to contain an
-unrelated solution in a subfolder does not get a spurious diagnostic.
-
-"Nothing of its own" is measured against the nested manifest's directory
-rather than by an empty fallback enumeration. A real project's sources sit
-*beside* its manifest and are themselves supported file types
-(`.TcPOU`, `.TcGVL`, ...), so an empty-enumeration test would never fire
-for the case row 4 exists to catch — opening the tree above a TwinCAT
-project. Enumerating those files and calling the directory unstructured
-would compile the project's sources while ignoring the manifest that says
-which of them belong, which is the same guess the manifest exists to
-settle.
-
-Bare-`.st` directories are unaffected: they never reach the TwinCAT
-detector, and `detect_fallback` stays recursive — with no manifest format
-in play, enumeration *is* the project definition.
+Recursion now happens in exactly one place: `detect_fallback`, rule 4,
+where no manifest format is in play at all and enumeration *is* the
+project definition. The TwinCAT and Beremiz detectors read the given
+folder and nothing below it.
 
 ### The detector result type
 
@@ -69,23 +68,20 @@ legitimate. Replaced by:
 ```rust
 enum Detection {
     NotDetected,
-    NotDetectedWithHint { manifest: PathBuf, diagnostic: Diagnostic },
     Detected(Box<DiscoveredProject>),
     Failed(Diagnostic),
 }
 ```
 
-`Failed` never falls through; `NotDetected*` always does. `discover` owns
-the policy for when a hint is surfaced, so a detector never needs to know
-the fallback's outcome — the hint carries the manifest path it names,
-which is the only input that policy needs.
+`Failed` never falls through; `NotDetected` always does.
 
 ### Breaking change
 
 Anyone whose setup works today by accident — pointed the tool at a repo
-root and the walk happened to find the right thing — gets a diagnostic
-instead of results. Accepted deliberately in favor of correctness (see the
-review discussion on #1342).
+root and the walk happened to find the right thing — now gets that folder
+enumerated as loose source files instead of the project the walk guessed
+at. Opening the folder that holds the manifest (rule 2) is the fix, and is
+what an IDE does by default.
 
 ## File map
 
@@ -104,29 +100,23 @@ Modified:
   `mod.rs` to keep every module under the 1000-line limit
 - `compiler/ironplc-cli/src/cli.rs` — `enumerate_files` accepts a manifest
   as a file argument instead of loading it as source text
-- `compiler/problems/resources/problem-codes.csv` — P6012, P6013, P6014
+- `compiler/problems/resources/problem-codes.csv` — P6012
 
 Created:
 
 - `docs/reference/compiler/problems/P6012.rst`
-- `docs/reference/compiler/problems/P6013.rst`
-- `docs/reference/compiler/problems/P6014.rst`
 
 ## Tasks
 
-- [x] Add problem codes P6012 (ambiguous manifests), P6013 (manifest found
-      but unresolvable), P6014 (no manifest in directory, one nested below)
+- [x] Add problem code P6012 (manifest found but unresolvable)
 - [x] Rework `sln.rs`: non-recursive manifest lookup; `Result`-returning
       `.sln` and `.tsproj` resolution
-- [x] Add the `Detection` enum and rewrite `detect_twincat` to tier
-      `.sln` > `.tsproj` > `.plcproj` over the directory only
+- [x] Add the `Detection` enum and rewrite `detect_twincat` for rules 1-2
 - [x] Delete `collect_plcproj_via_walk`
-- [x] Teach `discover` the fall-through policy, including the
-      "hint only when the directory holds nothing of its own" rule
-- [x] Add `is_manifest` / `discover_from_manifest` and wire them into
-      `enumerate_files`
-- [x] Tests: each row of the rule table, per manifest tier; the
-      stale-rename regression; a manifest file argument for each of the
-      three extensions
-- [x] Write the three problem doc pages
+- [x] Teach `discover` to take a manifest or a folder, and `detect_beremiz`
+      to do the same for `plc.xml`
+- [x] Collapse `enumerate_files` onto the single `discover` entry point
+- [x] Tests: each row of the rule table; the stale-rename regression; a
+      manifest named directly for each entry-point extension
+- [x] Write the problem doc page
 - [x] Full CI (`cd compiler && just`)
