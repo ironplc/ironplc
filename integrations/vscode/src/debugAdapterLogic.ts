@@ -191,3 +191,17 @@ export function scanCountMessage(response: ScanCountResponse | undefined): strin
   }
   return `IronPLC: scan cycle ${count}`;
 }
+
+/**
+ * The message shown when a custom request is refused by the debug server.
+ *
+ * `DebugSession.customRequest` rejects when the adapter answers with
+ * `success: false`, which is what a server that does not implement the request
+ * returns (`requestNotApplicable`). Without this, the rejection escapes the
+ * command handler as an unhandled error and the user sees no useful
+ * explanation. `title` is the command's UI title, so the message names the
+ * button that was pressed.
+ */
+export function customRequestFailedMessage(title: string): string {
+  return `IronPLC: "${title}" is not supported by this debug server.`;
+}

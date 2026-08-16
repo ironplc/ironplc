@@ -35,9 +35,9 @@ use super::launch;
 use super::state::{self, Command, Phase};
 use super::types::{
     Breakpoint, Capabilities, ContinueResponseBody, Event, LaunchRequestArguments, Request,
-    Response, Scope, ScopesResponseBody, SetBreakpointsArguments, SetBreakpointsResponseBody,
-    Source, StackFrame, StackTraceResponseBody, StoppedEventBody, Thread, ThreadsResponseBody,
-    VariablesResponseBody,
+    Response, ScanCountResponseBody, Scope, ScopesResponseBody, SetBreakpointsArguments,
+    SetBreakpointsResponseBody, Source, StackFrame, StackTraceResponseBody, StoppedEventBody,
+    Thread, ThreadsResponseBody, VariablesResponseBody,
 };
 
 /// The id of the single synthetic thread the v1 server exposes.
@@ -358,6 +358,15 @@ fn launched_session<R: BufRead, W: Write>(
             }
             Some(Command::Variables) if legal_here => {
                 let body = variables_body(&running, debug);
+                send(writer, &Response::success(take_seq(seq), &request, body))?;
+            }
+            Some(Command::ScanCount) if legal_here => {
+                // The same counter the `scanLimit` bound above reads, so the
+                // number the user sees is the one that terminates the session.
+                let body = serde_json::to_value(ScanCountResponseBody {
+                    scan_count: running.scan_count(),
+                })
+                .ok();
                 send(writer, &Response::success(take_seq(seq), &request, body))?;
             }
             Some(Command::Continue) if legal_here => {
@@ -1118,6 +1127,72 @@ mod tests {
         // No logic has run yet: the increment has not happened.
         let vars = responses(&out, "variables");
         assert_eq!(vars[0]["body"]["variables"][0]["value"], "0");
+    }
+
+    #[test]
+    fn serve_when_scan_count_at_entry_then_reports_no_completed_scans() {
+        // `scan_count` counts *completed* cycles, so the entry stop -- which
+        // happens before the first cycle runs -- reports 0.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "ironplc/scanCount"}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let counts = responses(&out, "ironplc/scanCount");
+        assert_eq!(counts.len(), 1);
+        assert_eq!(counts[0]["success"], true);
+        assert_eq!(counts[0]["body"]["scanCount"], 0);
+    }
+
+    #[test]
+    fn serve_when_scan_count_across_scans_then_reports_increasing_count() {
+        // A breakpoint that fires every cycle: the counter must advance with
+        // the cycles rather than reporting a constant.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": 11}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 5, "type": "request", "command": "ironplc/scanCount"}),
+            json!({"seq": 6, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "ironplc/scanCount"}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let counts = responses(&out, "ironplc/scanCount");
+        assert_eq!(counts.len(), 2);
+        let first = counts[0]["body"]["scanCount"].as_u64().unwrap();
+        let second = counts[1]["body"]["scanCount"].as_u64().unwrap();
+        assert_eq!(
+            second,
+            first + 1,
+            "scan count must advance by one cycle between consecutive \
+             breakpoint stops (got {first} then {second})"
+        );
+    }
+
+    #[test]
+    fn serve_when_scan_count_before_launch_then_request_not_applicable() {
+        // Inspection is illegal before a VM exists; the counter is no exception.
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "ironplc/scanCount"}),
+        ]);
+
+        let counts = responses(&out, "ironplc/scanCount");
+        assert_eq!(counts.len(), 1);
+        assert_eq!(counts[0]["success"], false);
+        assert_eq!(counts[0]["message"], "requestNotApplicable");
     }
 
     #[test]

@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { IRONPLC_DEBUG_TYPE } from './debugAdapter';
-import { ScanCountResponse, scanCountMessage } from './debugAdapterLogic';
+import {
+  ScanCountResponse,
+  customRequestFailedMessage,
+  scanCountMessage,
+} from './debugAdapterLogic';
 
 /**
  * Registers the scan-cycle custom-request commands. These forward IronPLC's
@@ -16,7 +20,14 @@ export function registerCustomRequests(context: vscode.ExtensionContext): void {
       if (!session) {
         return;
       }
-      await session.customRequest('ironplc/stepScan');
+      try {
+        await session.customRequest('ironplc/stepScan');
+      } catch {
+        // Server-side `ironplc/stepScan` is not implemented yet, so the request
+        // is refused and the promise rejects. Report it rather than letting the
+        // rejection escape as an unhandled error.
+        void vscode.window.showWarningMessage(customRequestFailedMessage('Step Scan Cycle'));
+      }
     }),
   );
 
@@ -26,7 +37,14 @@ export function registerCustomRequests(context: vscode.ExtensionContext): void {
       if (!session) {
         return;
       }
-      const response = (await session.customRequest('ironplc/scanCount')) as ScanCountResponse | undefined;
+      let response: ScanCountResponse | undefined;
+      try {
+        response = (await session.customRequest('ironplc/scanCount')) as ScanCountResponse | undefined;
+      } catch {
+        // A refused request rejects; fall through to `scanCountMessage`, whose
+        // "not available" branch is exactly this case.
+        response = undefined;
+      }
       void vscode.window.showInformationMessage(scanCountMessage(response));
     }),
   );

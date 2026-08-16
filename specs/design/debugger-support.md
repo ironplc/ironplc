@@ -860,9 +860,9 @@ For PLC-specific debugging, users need scan-level control:
 > (the adapter process is terminated), not by a mid-scan `pause`; interactive
 > `pause`-while-running remains the Phase 6 cut. This continuous-loop work is a
 > tracked server follow-up (Phase 4c) and is **not** part of Phase 5 (VS Code
-> integration). The custom `ironplc/stepScan` / `ironplc/scanCount` handlers land
-> with it; until then the Phase 5 toolbar buttons are wired but answered
-> `requestNotApplicable`.
+> integration). `ironplc/scanCount` is implemented (2026-08-16);
+> `ironplc/stepScan` is still answered `requestNotApplicable` — see
+> §Custom DAP Requests for the status of each.
 
 A new `VmRunning::run_round_debug` method drives a single round under a `DebuggerHook`. v1 supports a single program instance only (see §Multi-instance: not supported in v1), so the `instances_for_task` loop is collapsed to "the one instance":
 
@@ -1103,10 +1103,10 @@ It does **not** support arithmetic, function calls, or non-constant subscripts. 
 
 ### Custom DAP Requests
 
-| Custom Request | Description |
-|----------------|-------------|
-| `ironplc/stepScan` | Run one complete scan cycle, then pause |
-| `ironplc/scanCount` | Return current scan_count |
+| Custom Request | Description | Status |
+|----------------|-------------|--------|
+| `ironplc/stepScan` | Run one complete scan cycle, then pause | Deferred — `RoundOutcome::PausedAfterScan` has no producer and `StepMode` has no scan-level variant, so this needs debug-engine work. Answered `requestNotApplicable`. |
+| `ironplc/scanCount` | Return the number of *completed* scan cycles | Implemented (2026-08-16). Legal wherever inspection is (`Paused`, `Faulted`); returns `{ "scanCount": <u64> }`. |
 
 Removed from v1 (deferred):
 
@@ -1387,9 +1387,11 @@ to a temp `.iplc` first so the `launch` sees a debug-enabled container.
 - Manual: F5 with a breakpoint hits, variable inspection populates, Step Scan
   toolbar works.
 
-Server-side handling of the `ironplc/stepScan` / `ironplc/scanCount` custom
-requests (and single-stepping) is a later phase; until then the server answers
-them `requestNotApplicable`, so the toolbar buttons are wired but inert.
+Single-stepping landed in #1305, and `ironplc/scanCount` on 2026-08-16 (see
+`specs/plans/2026-08-16-dap-scan-count.md`). `ironplc/stepScan` is still
+answered `requestNotApplicable`, so that toolbar button remains inert; a refused
+custom request is now reported to the user rather than escaping the command
+handler as an unhandled rejection.
 
 ### Phase 6: Beyond v1 (Future)
 

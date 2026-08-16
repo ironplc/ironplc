@@ -400,6 +400,20 @@ pub struct ContinueResponseBody {
 }
 
 // ---------------------------------------------------------------------------
+// ironplc/scanCount (custom request)
+// ---------------------------------------------------------------------------
+
+/// Body of the `ironplc/scanCount` response: the number of *completed* scan
+/// cycles, so a stop before the first cycle reports 0. `camelCase` puts the
+/// field on the wire as `scanCount`, which is what the VS Code extension reads
+/// (`integrations/vscode/src/debugAdapterLogic.ts`).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanCountResponseBody {
+    pub scan_count: u64,
+}
+
+// ---------------------------------------------------------------------------
 // disconnect
 // ---------------------------------------------------------------------------
 
