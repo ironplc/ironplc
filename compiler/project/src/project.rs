@@ -13,7 +13,7 @@ use ironplc_dsl::{
 };
 use ironplc_parser::{options::CompilerOptions, token::Token, tokenize_program};
 use ironplc_problems::Problem;
-use ironplc_sources::{LibraryName, Source, SourceProject};
+use ironplc_sources::{FileType, LibraryName, Source, SourceProject};
 use log::{debug, trace};
 
 /// Runs semantic analysis on the given source project and compiler options.
@@ -23,9 +23,15 @@ use log::{debug, trace};
 /// runs the analyzer, and returns the collected diagnostics (empty when the
 /// project is clean) plus the semantic context (when type resolution
 /// succeeds).
+///
+/// `preparsed_libraries` are compatibility libraries the caller already parsed,
+/// injected alongside the ones the bundled registry loads. They exist for hosts
+/// that cannot read the registry from disk -- the playground fetches its
+/// library text over HTTP -- and are treated identically once loaded.
 fn run_semantic_analysis(
     source_project: &mut SourceProject,
     compiler_options: &CompilerOptions,
+    preparsed_libraries: &[Library],
 ) -> (Vec<Diagnostic>, Option<SemanticContext>, Option<Library>) {
     let mut all_libraries = vec![];
     let mut all_diagnostics: Vec<Diagnostic> = vec![];
@@ -35,16 +41,10 @@ fn run_semantic_analysis(
     // not prevent the rest of analysis. These declarations are injected ahead
     // of user source (base stdlib -> library -> user), so a user declaration
     // shadows a library declaration of the same name.
-    let (compat_libraries, compat_diagnostics) = source_project.load_activated_libraries();
+    let (mut compat_libraries, compat_diagnostics) = source_project.load_activated_libraries();
+    compat_libraries.extend(preparsed_libraries.iter().cloned());
     all_diagnostics.extend(compat_diagnostics);
 
-    // Sources are backed by a HashMap, so iteration order is randomized
-    // per-process by its hasher's random seed. Merging them in that order
-    // made the combined Library's declaration order -- and therefore
-    // semantic analysis's outcome for a given multi-file project -- vary
-    // from run to run of the identical binary and identical input. Sort by
-    // FileId first so the merged order (and every downstream result) is
-    // deterministic.
     // Sources are backed by a HashMap, so iteration order is randomized
     // per-process by its hasher's random seed. Merging them in that order
     // made the combined Library's declaration order -- and therefore
@@ -55,17 +55,30 @@ fn run_semantic_analysis(
     let mut sources = source_project.sources_mut();
     sources.sort_by_key(|source| source.file_id().to_string());
 
+    let mut any_source_failed_to_parse = false;
     for source in sources {
         match source.library() {
             Ok(library) => {
                 all_libraries.push(library);
             }
             Err(diagnostics) => {
+                any_source_failed_to_parse = true;
                 for diagnostic in diagnostics {
                     all_diagnostics.push(diagnostic.clone());
                 }
             }
         }
+    }
+
+    // Nothing parsed, and parsing is why. Analysis of an empty set reports
+    // `NoContent` (P9002), which is true but useless here: the syntax error
+    // already collected says exactly what is wrong, and stacking an
+    // internal-flavored code on top of it only adds noise. A project with no
+    // sources at all still falls through to analysis, which is the case
+    // `NoContent` exists to report. Partial failure is unaffected -- analysis
+    // runs on whatever did parse.
+    if all_libraries.is_empty() && any_source_failed_to_parse {
+        return (all_diagnostics, None, None);
     }
 
     // A user-declared function takes precedence over a library function of
@@ -269,7 +282,7 @@ impl Project for FileBackedProject {
         self.semantic_context = None;
         self.analyzed_library = None;
         let (diagnostics, context, library) =
-            run_semantic_analysis(&mut self.source_project, &self.compiler_options);
+            run_semantic_analysis(&mut self.source_project, &self.compiler_options, &[]);
         self.semantic_context = context;
         self.analyzed_library = library;
         diagnostics
@@ -309,6 +322,9 @@ pub struct MemoryBackedProject {
     semantic_context: Option<SemanticContext>,
     /// Cached analyzed library from the last successful analysis
     analyzed_library: Option<Library>,
+    /// Compatibility libraries the caller parsed itself, injected ahead of
+    /// user source alongside any the bundled registry loads.
+    preparsed_libraries: Vec<Library>,
 }
 
 impl MemoryBackedProject {
@@ -319,6 +335,7 @@ impl MemoryBackedProject {
             compiler_options,
             semantic_context: None,
             analyzed_library: None,
+            preparsed_libraries: Vec::new(),
         }
     }
 
@@ -330,9 +347,37 @@ impl MemoryBackedProject {
         self.source_project.add_source(file_id, content);
     }
 
+    /// Adds a source whose file type is supplied rather than derived from the
+    /// `file_id`'s extension.
+    ///
+    /// For content that never had a filename -- the playground editor's buffer
+    /// -- where the caller detects the type from the content itself (see
+    /// [`ironplc_sources::FileType::from_content`]).
+    pub fn add_source_with_file_type(
+        &mut self,
+        file_id: FileId,
+        content: String,
+        file_type: FileType,
+    ) {
+        self.source_project
+            .add_source_with_file_type(file_id, content, file_type);
+    }
+
     /// Activate the named compatibility libraries (replacing any current set).
     pub fn set_activated_libraries(&mut self, names: Vec<LibraryName>) {
         self.source_project.set_activated_libraries(names);
+    }
+
+    /// Supply compatibility libraries the caller already parsed (replacing any
+    /// current set).
+    ///
+    /// [`set_activated_libraries`](Self::set_activated_libraries) loads library
+    /// text from the bundled registry on disk, which a wasm host cannot reach.
+    /// The playground fetches that text over HTTP and parses it itself
+    /// (`REQ-CL-playground-001`); the result arrives here. Both sets are
+    /// injected ahead of user source, registry-loaded first.
+    pub fn set_preparsed_libraries(&mut self, libraries: Vec<Library>) {
+        self.preparsed_libraries = libraries;
     }
 }
 
@@ -369,8 +414,11 @@ impl Project for MemoryBackedProject {
     fn semantic(&mut self) -> Vec<Diagnostic> {
         self.semantic_context = None;
         self.analyzed_library = None;
-        let (diagnostics, context, library) =
-            run_semantic_analysis(&mut self.source_project, &self.compiler_options);
+        let (diagnostics, context, library) = run_semantic_analysis(
+            &mut self.source_project,
+            &self.compiler_options,
+            &self.preparsed_libraries,
+        );
         self.semantic_context = context;
         self.analyzed_library = library;
         diagnostics
@@ -634,6 +682,136 @@ mod test {
         );
     }
 
+    // -----------------------------------------------------------------
+    // Pre-parsed compatibility libraries (the playground's path: library
+    // text arrives over HTTP, so the on-disk registry is unreachable).
+    // -----------------------------------------------------------------
+
+    const LIB_FUNCTION: &str =
+        "FUNCTION LIB_DOUBLE : LREAL VAR_INPUT IN : LREAL; END_VAR LIB_DOUBLE := IN * 2.0; \
+         END_FUNCTION";
+    const CALLS_LIB_FUNCTION: &str =
+        "PROGRAM main VAR a : LREAL; END_VAR a := LIB_DOUBLE(2.0); END_PROGRAM";
+
+    fn parse_library(source: &str) -> ironplc_dsl::common::Library {
+        ironplc_sources::parse_source(
+            ironplc_sources::FileType::StructuredText,
+            source,
+            &FileId::from_string("lib.st"),
+            &CompilerOptions::default(),
+        )
+        .expect("fixture library must parse")
+    }
+
+    #[test]
+    fn semantic_when_preparsed_library_supplied_then_its_function_resolves() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        project.set_preparsed_libraries(vec![parse_library(LIB_FUNCTION)]);
+        project.add_source(
+            FileId::from_string("main.st"),
+            CALLS_LIB_FUNCTION.to_owned(),
+        );
+
+        let result = project.semantic();
+        assert!(
+            result.is_empty(),
+            "expected clean analysis, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn semantic_when_no_preparsed_library_then_its_function_undefined() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        project.add_source(
+            FileId::from_string("main.st"),
+            CALLS_LIB_FUNCTION.to_owned(),
+        );
+
+        let result = project.semantic();
+        assert!(!result.is_empty());
+    }
+
+    /// `REQ-CL-analyzer-004` holds for pre-parsed libraries too: redeclaring a
+    /// library function shadows it rather than colliding with it. The
+    /// playground composed its own pipeline without this step, so the same
+    /// source compiled in the CLI and errored in the browser.
+    #[test]
+    fn semantic_when_user_function_shadows_preparsed_library_function_then_ok() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        project.set_preparsed_libraries(vec![parse_library(LIB_FUNCTION)]);
+        project.add_source(
+            FileId::from_string("main.st"),
+            format!("{LIB_FUNCTION} {CALLS_LIB_FUNCTION}"),
+        );
+
+        let result = project.semantic();
+        assert!(
+            result.is_empty(),
+            "shadowing a library function must not error: {:?}",
+            result
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // What analysis does when parsing produced nothing to analyze.
+    // -----------------------------------------------------------------
+
+    /// A syntax error is a complete explanation on its own. Analysis of the
+    /// empty set would add `NoContent` (P9002) on top of it -- an
+    /// internal-flavored code that tells the user nothing they don't already
+    /// know from the syntax error -- so analysis is skipped instead.
+    #[test]
+    fn semantic_when_every_source_fails_to_parse_then_no_content_not_reported() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        project.add_source(
+            FileId::from_string("bad.st"),
+            "PROGRAM END_PROGRAM".to_owned(),
+        );
+
+        let result = project.semantic();
+        assert!(!result.is_empty());
+        assert!(
+            !result.iter().any(|d| d.code == "P9002"),
+            "the syntax error explains itself; P9002 is noise: {result:?}"
+        );
+    }
+
+    /// The case P9002 exists for: nothing to analyze, and no parse failure to
+    /// explain why.
+    #[test]
+    fn semantic_when_no_sources_then_no_content_reported() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+
+        let result = project.semantic();
+        assert!(
+            result.iter().any(|d| d.code == "P9002"),
+            "expected P9002 for an empty project, got: {result:?}"
+        );
+    }
+
+    /// Partial failure is unaffected: whatever parsed is still analyzed, so a
+    /// real problem in the good file surfaces alongside the syntax error.
+    #[test]
+    fn semantic_when_one_of_two_sources_fails_to_parse_then_other_still_analyzed() {
+        let mut project = MemoryBackedProject::new(CompilerOptions::default());
+        project.add_source(
+            FileId::from_string("bad.st"),
+            "PROGRAM END_PROGRAM".to_owned(),
+        );
+        project.add_source(
+            FileId::from_string("good.st"),
+            "PROGRAM main VAR x : INT; END_VAR x := undeclared_var; END_PROGRAM".to_owned(),
+        );
+
+        let result = project.semantic();
+        assert!(
+            result.len() >= 2,
+            "expected the syntax error AND the semantic error, got: {result:?}"
+        );
+        assert!(project.analyzed_library().is_some());
+    }
+
     #[test]
     fn tokenize_when_has_other_file_then_error() {
         let mut project = FileBackedProject::default();
@@ -677,7 +855,7 @@ mod test {
 
         fn element_names(source_project: &mut SourceProject) -> Vec<String> {
             let (_, _, library) =
-                super::run_semantic_analysis(source_project, &CompilerOptions::default());
+                super::run_semantic_analysis(source_project, &CompilerOptions::default(), &[]);
             let library = library.unwrap();
             library
                 .elements

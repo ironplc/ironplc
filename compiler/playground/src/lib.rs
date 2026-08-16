@@ -14,8 +14,6 @@ use std::io::Cursor;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
-use ironplc_analyzer::stages::analyze;
-use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_format::{build_var_debug_map, VarDebugInfo};
 use ironplc_container::debug_section::iec_type_tag;
 use ironplc_container::{Container, STRING_HEADER_BYTES};
@@ -23,6 +21,7 @@ use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
 use ironplc_parser::options::{CompilerOptions, Dialect, FeatureDescriptor};
+use ironplc_project::MemoryBackedProject;
 use ironplc_sources::{parse_source, FileType};
 use ironplc_vm::{Slot, Vm, VmBuffers};
 use serde::{Deserialize, Serialize};
@@ -635,69 +634,32 @@ fn compile_inner(source: &str, dialect: &str, allows: &str, libraries: &str) -> 
         Err(result) => return result,
     };
 
-    let library = match parse_source(file_type, source, &FileId::default(), &options) {
-        Ok(lib) => lib,
-        Err(diag) => {
-            return CompileResult {
-                ok: false,
-                bytecode: None,
-                diagnostics: vec![diagnostic_info(&diag, source)],
-            };
-        }
-    };
+    // The pipeline (parse -> analysis -> codegen) is owned by
+    // `ironplc-project`, which compiles for wasm32 -- the playground supplies
+    // the editor buffer and the fetched library text, and does nothing with
+    // the filesystem-backed half of that crate. The editor buffer has no
+    // filename, so its type comes from the content rather than an extension.
+    let mut project = MemoryBackedProject::new(options);
+    project.set_preparsed_libraries(compat_libraries);
+    project.add_source_with_file_type(FileId::default(), source.to_owned(), file_type);
 
-    // Run the full analysis pipeline: type resolution + semantic checks.
-    // Type resolution populates expr.resolved_type so codegen can select
-    // correct opcodes. Semantic checks catch errors like undeclared variables,
-    // wrong argument counts, type mismatches, etc.
-    let analyze_input: Vec<&Library> = compat_libraries
-        .iter()
-        .chain(std::iter::once(&library))
-        .collect();
-    let (library, context) = match analyze(&analyze_input, &options) {
-        Ok((resolved_lib, ctx)) => (resolved_lib, ctx),
-        Err(diagnostics) => {
-            return CompileResult {
-                ok: false,
-                bytecode: None,
-                diagnostics: diagnostics
-                    .iter()
-                    .map(|d| diagnostic_info(d, source))
-                    .collect(),
-            };
-        }
-    };
+    let output = ironplc_project::compile(
+        &mut project,
+        &options,
+        &ironplc_codegen::EmptyLookup,
+        vec![],
+    );
 
-    // Report any semantic diagnostics (non-fatal errors found during analysis).
-    if context.has_diagnostics() {
+    let Some(container) = output.container else {
         return CompileResult {
             ok: false,
             bytecode: None,
-            diagnostics: context
-                .diagnostics()
+            diagnostics: output
+                .diagnostics
                 .iter()
                 .map(|d| diagnostic_info(d, source))
                 .collect(),
         };
-    }
-
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: options.allow_system_uptime_global,
-    };
-    let container = match codegen_compile(
-        &library,
-        &context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    ) {
-        Ok(c) => c,
-        Err(diag) => {
-            return CompileResult {
-                ok: false,
-                bytecode: None,
-                diagnostics: vec![diagnostic_info(&diag, source)],
-            };
-        }
     };
 
     let mut buf = Vec::new();
@@ -1790,20 +1752,11 @@ END_PROGRAM
         assert!(diag.compiler_line > 0, "expected a non-zero compiler line");
     }
 
-    #[test]
-    fn compile_when_undeclared_variable_then_returns_diagnostic() {
-        let source = "
-PROGRAM main
-  VAR
-    x : INT;
-  END_VAR
-  x := undeclared_var;
-END_PROGRAM
-";
-        let result: CompileResult = serde_json::from_str(&compile(source, "", "", "")).unwrap();
-        assert!(!result.ok);
-        assert!(!result.diagnostics.is_empty());
-    }
+    // A semantic error failing the compile is owned by
+    // `ironplc_project::compile::compile_when_semantic_error_then_no_container`;
+    // that a failed compile becomes `ok: false` with diagnostics attached is
+    // this binding's own contract, asserted by
+    // `compile_when_syntax_error_then_returns_diagnostics` above.
 
     #[test]
     fn step_when_ton_then_q_transitions_to_true() {

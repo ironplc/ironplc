@@ -111,59 +111,52 @@ pub fn compile(
         ));
     }
 
-    // Run full analysis: parse, type resolution and semantic checks (e.g.
-    // undeclared function calls, type mismatches). Analysis goes as far as it
-    // can; codegen requires a project with no problems at all.
-    diagnostics.extend(project.semantic());
+    // Build a SourceLookup that hands codegen the exact bytes the parser saw
+    // for each FileId. The container's debug section SOURCE_FILE_TABLE (tag 6)
+    // records a BLAKE3 hash over these so a debugger can detect drift between
+    // the .iplc and the user's working copy.
+    let source_lookup = HashMapSourceLookup::from_project(&project);
 
-    if diagnostics.is_empty() {
-        let (Some(analyzed), Some(context)) =
-            (project.analyzed_library(), project.semantic_context())
-        else {
-            // A clean analysis always caches its artifacts; reaching this
-            // branch is a compiler defect, not a problem with the input.
-            return Err(String::from(
-                "Internal error: analysis produced no artifacts",
-            ));
-        };
+    // The pipeline (parse, analysis, codegen) is owned by `ironplc-project`.
+    // Handing it the diagnostics collected so far is what makes a
+    // discovery-time problem suppress the container while still letting
+    // analysis run against the files that did resolve.
+    let output_result =
+        ironplc_project::compile(&mut project, &compiler_options, &source_lookup, diagnostics);
 
-        // Generate bytecode, skipping user-defined functions not reachable from
-        // the PROGRAM root to reduce container size.
-        let codegen_options = ironplc_codegen::CodegenOptions {
-            system_uptime_global: compiler_options.allow_system_uptime_global,
-        };
-        // Build a SourceLookup that hands codegen the exact bytes the
-        // parser saw for each FileId. The container's debug section
-        // SOURCE_FILE_TABLE (tag 6) records a BLAKE3 hash over these so a
-        // debugger can detect drift between the .iplc and the user's
-        // working copy.
-        let mut source_bytes: std::collections::HashMap<ironplc_dsl::core::FileId, Vec<u8>> =
-            std::collections::HashMap::new();
-        for src in project.sources() {
-            source_bytes.insert(src.file_id().clone(), src.as_string().as_bytes().to_vec());
-        }
-        let source_lookup = HashMapSourceLookup(source_bytes);
-
-        match ironplc_codegen::compile(analyzed, context, &codegen_options, &source_lookup) {
-            Ok(container) => {
-                // Write the container to the output file
-                let mut out_file = std::fs::File::create(output)
-                    .map_err(|e| format!("Failed to create output file: {e}"))?;
-                container
-                    .write_to(&mut out_file)
-                    .map_err(|e| format!("Failed to write output file: {e}"))?;
-            }
-            Err(err) => diagnostics.push(err),
-        }
+    if let Some(container) = output_result.container {
+        // Write the container to the output file
+        let mut out_file = std::fs::File::create(output)
+            .map_err(|e| format!("Failed to create output file: {e}"))?;
+        container
+            .write_to(&mut out_file)
+            .map_err(|e| format!("Failed to write output file: {e}"))?;
     }
 
-    finish("Compile", diagnostics, Some(&project), suppress_output)
+    finish(
+        "Compile",
+        output_result.diagnostics,
+        Some(&project),
+        suppress_output,
+    )
 }
 
 /// Codegen [`SourceLookup`](ironplc_codegen::SourceLookup) backed by an
 /// in-memory map populated from the project's loaded sources. The map
 /// owns the bytes so the lookup can outlive any borrow on the project.
 struct HashMapSourceLookup(std::collections::HashMap<ironplc_dsl::core::FileId, Vec<u8>>);
+
+impl HashMapSourceLookup {
+    fn from_project(project: &FileBackedProject) -> Self {
+        HashMapSourceLookup(
+            project
+                .sources()
+                .iter()
+                .map(|src| (src.file_id().clone(), src.as_string().as_bytes().to_vec()))
+                .collect(),
+        )
+    }
+}
 
 impl ironplc_codegen::SourceLookup for HashMapSourceLookup {
     fn source_bytes(&self, file_id: &ironplc_dsl::core::FileId) -> Option<&[u8]> {

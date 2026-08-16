@@ -59,8 +59,11 @@ pipeline shared by everyone — without option 2's extra indirection layer and
 without option 1's feature flag. Feature-gating would be dead weight: it buys
 nothing today and would have to be maintained on every future `project` API.
 
-A wasm build check is added to the playground CI workflow so the property this
-decision rests on is enforced rather than rediscovered.
+The property this decision rests on is already enforced in CI: the
+`Build Playground` job runs `just ci` in `playground/`, which runs
+`wasm-pack build ../compiler/playground --target web`. That compiles the crate
+— and now `ironplc-project` with it — for `wasm32-unknown-unknown`, so a
+regression fails the build. No extra check is needed.
 
 ## Architecture
 
@@ -170,20 +173,19 @@ its artifacts) and is not worth two error channels.
 - `compiler/mcp/src/tools/compile.rs` — `build_response` calls it.
 - `compiler/playground/Cargo.toml` — add `ironplc-project`.
 - `compiler/playground/src/lib.rs` — `compile_inner` calls it.
-- `.github/workflows/partial_playground.yaml` — wasm build check.
 
 ## Tasks
 
-- [ ] Commit this plan.
-- [ ] Add `compile.rs` to `ironplc-project` with the owned pipeline.
-- [ ] Add the `sources` / `MemoryBackedProject` hooks playground needs.
-- [ ] Move `ironplc-cli::compile` onto the owned pipeline.
-- [ ] Move `mcp::tools::compile::build_response` onto it.
-- [ ] Move `playground::compile_inner` onto it; add the `ironplc-project`
-      dependency and the CI wasm check.
-- [ ] Remove wrapper tests that only re-assert pipeline behavior, naming the
+- [x] Commit this plan.
+- [x] Add `compile.rs` to `ironplc-project` with the owned pipeline.
+- [x] Add the `sources` / `MemoryBackedProject` hooks playground needs.
+- [x] Move `ironplc-cli::compile` onto the owned pipeline.
+- [x] Move `mcp::tools::compile::build_response` onto it.
+- [x] Move `playground::compile_inner` onto it; add the `ironplc-project`
+      dependency.
+- [x] Remove wrapper tests that only re-assert pipeline behavior, naming the
       surviving owner for each.
-- [ ] `cd compiler && just` green; compare per-file uncovered line counts
+- [x] `cd compiler && just` green; compare per-file uncovered line counts
       against the captured `lcov.info` baseline.
 
 ## Verification

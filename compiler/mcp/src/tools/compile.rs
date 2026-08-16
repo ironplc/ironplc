@@ -105,17 +105,18 @@ pub fn build_response(
         project.add_source(FileId::from_string(&src.name), src.content.clone());
     }
 
-    // Run semantic analysis
-    let mut diagnostics = serialize_diagnostics(&project.semantic());
+    // Run the pipeline (parse, analysis, codegen) that `ironplc-project` owns.
+    // No sources come from disk here, so codegen gets no source bytes to hash
+    // into the container's debug section.
+    let output = ironplc_project::compile(
+        &mut project,
+        &compiler_options,
+        &ironplc_codegen::EmptyLookup,
+        vec![],
+    );
+    let mut diagnostics = serialize_diagnostics(&output.diagnostics);
 
-    // Check if we can proceed to codegen
-    let has_errors = diagnostics
-        .iter()
-        .any(|d| d["severity"].as_str() == Some("error"));
-    let library = project.analyzed_library();
-    let context = project.semantic_context();
-
-    if has_errors || library.is_none() || context.is_none() {
+    let Some(container) = output.container else {
         return CompileResponse {
             ok: false,
             container_id: None,
@@ -124,33 +125,22 @@ pub fn build_response(
             programs: vec![],
             diagnostics,
         };
-    }
-
-    let library = library.unwrap();
-    let context = context.unwrap();
-
-    // Run codegen
-    let codegen_options = ironplc_codegen::CodegenOptions {
-        system_uptime_global: compiler_options.allow_system_uptime_global,
     };
-    let container = match ironplc_codegen::compile(
-        library,
-        context,
-        &codegen_options,
-        &ironplc_codegen::EmptyLookup,
-    ) {
-        Ok(c) => c,
-        Err(err) => {
-            diagnostics.push(serialize_diagnostic(&err));
-            return CompileResponse {
-                ok: false,
-                container_id: None,
-                container_base64: None,
-                tasks: vec![],
-                programs: vec![],
-                diagnostics,
-            };
-        }
+
+    // The analyzed library and context stay cached on the project; a clean
+    // compile guarantees both.
+    let (Some(library), Some(context)) = (project.analyzed_library(), project.semantic_context())
+    else {
+        let err = Diagnostic::internal_error(file!(), line!());
+        diagnostics.push(serialize_diagnostic(&err));
+        return CompileResponse {
+            ok: false,
+            container_id: None,
+            container_base64: None,
+            tasks: vec![],
+            programs: vec![],
+            diagnostics,
+        };
     };
 
     // Serialize container to bytes
@@ -360,13 +350,16 @@ END_CONFIGURATION
         }]
     }
 
-    #[test]
-    fn build_response_when_valid_program_then_ok_true() {
-        let cache = make_cache();
-        let resp = build_response(&valid_program_source(), &ed2_options(), false, &cache);
-        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-    }
+    // The valid-program happy path is asserted by
+    // `build_response_when_valid_then_container_id_present` below, which runs
+    // the same fixture and checks `ok` plus the container handle this tool
+    // exists to produce.
 
+    // A failing pipeline mapping to `ok: false` with no container handle is
+    // this tool's own contract, proven once here. Which *kinds* of input fail
+    // the pipeline -- syntax errors, semantic errors, codegen errors -- is
+    // owned by `ironplc_project::compile`, whose
+    // `compile_when_{syntax,semantic}_error_then_no_container` cover them.
     #[test]
     fn build_response_when_syntax_error_then_ok_false() {
         let cache = make_cache();
@@ -377,32 +370,6 @@ END_CONFIGURATION
         let resp = build_response(&sources, &ed2_options(), false, &cache);
         assert!(!resp.ok);
         assert!(resp.container_id.is_none());
-    }
-
-    #[test]
-    fn build_response_when_semantic_error_then_ok_false() {
-        let cache = make_cache();
-        let sources = vec![SourceInput {
-            name: "bad.st".into(),
-            content: r#"
-PROGRAM Main
-VAR
-  x : INT;
-END_VAR
-  x := undeclared_var;
-END_PROGRAM
-
-CONFIGURATION config
-  RESOURCE resource1 ON PLC
-    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
-    PROGRAM program1 WITH plc_task : Main;
-  END_RESOURCE
-END_CONFIGURATION
-"#
-            .into(),
-        }];
-        let resp = build_response(&sources, &ed2_options(), false, &cache);
-        assert!(!resp.ok);
     }
 
     #[test]

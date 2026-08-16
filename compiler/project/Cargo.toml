@@ -15,6 +15,7 @@ trace = ["ironplc-parser/trace"]
 
 [dependencies]
 ironplc-analyzer = { path = "../analyzer", version = "0.238.0" }
+ironplc-codegen = { path = "../codegen", version = "0.238.0" }
 ironplc-parser = { path = "../parser", version = "0.238.0" }
 ironplc-dsl = { path = "../dsl", version = "0.238.0" }
 ironplc-problems = { path = "../problems", version = "0.238.0" }
