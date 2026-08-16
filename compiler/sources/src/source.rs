@@ -41,6 +41,27 @@ impl Source {
         }
     }
 
+    /// Create a new Source whose file type is supplied rather than derived
+    /// from the file ID's extension.
+    ///
+    /// Content that never had a filename -- the playground editor's buffer, for
+    /// example -- has no extension to derive from, so the caller detects the
+    /// type itself (see [`FileType::from_content`]) and passes it here.
+    pub fn with_file_type(
+        source: String,
+        file_id: &FileId,
+        compiler_options: CompilerOptions,
+        file_type: FileType,
+    ) -> Self {
+        Self {
+            file_id: file_id.clone(),
+            data: source,
+            file_type,
+            compiler_options,
+            library: None,
+        }
+    }
+
     /// Create a Source by reading from a file
     pub fn try_from_file_id(
         item: &FileId,
