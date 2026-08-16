@@ -238,7 +238,7 @@ its own plan/PR per item.
 - [x] Stage B1: codegen↔vm timer/string ownership pass
 - [x] Stage B2–B4: parser corpus/reference_to reduction + guide update
 - [x] Stage B5: playground dialect trim
-- [ ] Stage C1: plan for single compile owner
+- [x] Stage C1: plan for single compile owner
 - [ ] Stage C2: shared fixtures in ironplc-test
 - [ ] Stage C3: shared container test builders
 - [ ] Stage C4: logger unification

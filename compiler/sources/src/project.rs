@@ -6,6 +6,7 @@ use ironplc_dsl::{common::Library, core::FileId, diagnostic::Diagnostic};
 use ironplc_parser::options::CompilerOptions;
 use log::{debug, info, trace};
 
+use crate::file_type::FileType;
 use crate::libraries::{LibraryName, LibraryRegistry};
 use crate::source::Source;
 
@@ -97,6 +98,22 @@ impl SourceProject {
     pub fn add_source(&mut self, file_id: FileId, content: String) {
         trace!("Adding source file: {}", file_id);
         let source = Source::new(content, &file_id, self.compiler_options);
+        self.sources.insert(file_id, source);
+    }
+
+    /// Add source content whose file type is supplied rather than derived from
+    /// the file ID's extension.
+    ///
+    /// Used for content that never had a filename (the playground editor's
+    /// buffer), where the caller detects the type from the content itself.
+    pub fn add_source_with_file_type(
+        &mut self,
+        file_id: FileId,
+        content: String,
+        file_type: FileType,
+    ) {
+        trace!("Adding source file: {} as {:?}", file_id, file_type);
+        let source = Source::with_file_type(content, &file_id, self.compiler_options, file_type);
         self.sources.insert(file_id, source);
     }
 
@@ -236,6 +253,48 @@ mod tests {
         assert_eq!(project.len(), 1);
         assert!(!project.is_empty());
         assert!(project.get_source(&file_id).is_some());
+    }
+
+    /// The playground's case: a buffer with no filename, so the extension
+    /// cannot say what it is. Detection is the caller's, and the supplied type
+    /// -- not the file ID -- decides which parser runs.
+    #[test]
+    fn add_source_with_file_type_when_xml_content_and_no_extension_then_parses_as_xml() {
+        let content = r#"<?xml version="1.0" encoding="utf-8"?>
+<project xmlns="http://www.plcopen.org/xml/tc6_0201">
+  <types>
+    <dataTypes/>
+    <pous>
+      <pou name="main" pouType="program">
+        <interface>
+          <localVars>
+            <variable name="x"><type><INT/></type></variable>
+          </localVars>
+        </interface>
+        <body>
+          <ST>
+            <xhtml xmlns="http://www.w3.org/1999/xhtml">x := 1;</xhtml>
+          </ST>
+        </body>
+      </pou>
+    </pous>
+  </types>
+</project>"#;
+        let file_id = FileId::default();
+
+        let mut project = SourceProject::new();
+        project.add_source_with_file_type(
+            file_id.clone(),
+            content.to_string(),
+            FileType::from_content(content),
+        );
+
+        let source = project.get_source_mut(&file_id).unwrap();
+        assert_eq!(source.file_type(), FileType::Xml);
+        assert!(
+            source.library().is_ok(),
+            "the XML parser should have run despite the file ID having no extension"
+        );
     }
 
     #[test]
