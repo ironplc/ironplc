@@ -134,6 +134,67 @@ PROGRAM main
 END_PROGRAM
 ";
 
+// Dot-access read of Q as an IF condition: timer=var0, done=var1.
+const TON_DOT_READ_Q_IN_IF: &str = "
+PROGRAM main
+  VAR
+    timer : TON;
+    done : BOOL := FALSE;
+  END_VAR
+  timer(IN := TRUE, PT := T#500ms);
+  IF timer.Q THEN
+    done := TRUE;
+  END_IF;
+END_PROGRAM
+";
+
+// Dot-access read of Q inside a boolean expression: timer=var0, gate=var1,
+// result=var2.
+const TON_DOT_READ_Q_IN_EXPR: &str = "
+PROGRAM main
+  VAR
+    timer : TON;
+    gate : BOOL;
+    result : BOOL := FALSE;
+  END_VAR
+  timer(IN := TRUE, PT := T#500ms);
+  IF gate AND NOT timer.Q THEN
+    result := TRUE;
+  ELSE
+    result := FALSE;
+  END_IF;
+END_PROGRAM
+";
+
+// Dot-access read of the TIME output ET in a comparison: timer=var0,
+// past=var1.
+const TON_DOT_READ_ET_IN_IF: &str = "
+PROGRAM main
+  VAR
+    timer : TON;
+    past : BOOL := FALSE;
+  END_VAR
+  timer(IN := TRUE, PT := T#10s);
+  IF timer.ET > T#2s THEN
+    past := TRUE;
+  END_IF;
+END_PROGRAM
+";
+
+// Dot-access read of Q as a WHILE condition guard: timer=var0, count=var1.
+const TON_DOT_READ_Q_IN_WHILE: &str = "
+PROGRAM main
+  VAR
+    timer : TON;
+    count : DINT := 0;
+  END_VAR
+  timer(IN := TRUE, PT := T#500ms);
+  WHILE NOT timer.Q AND count < 3 DO
+    count := count + 1;
+  END_WHILE;
+END_PROGRAM
+";
+
 #[rstest]
 // Plain TIME literal assignment: T#5s stored as 5000 ms (i32).
 #[case::time_value_i32_ms(TON_TIME_ONLY, &[Run(0), Expect(0, 5000)])]
@@ -183,6 +244,28 @@ END_PROGRAM
 // Dot-access write of PT uses the new (longer) period.
 #[case::dot_access_writes_pt(TON_DOT_WRITE_2S, &[
     Run(0), Run(1_000_000), Expect(1, 0), Run(3_000_000), Expect(1, 1),
+])]
+// Dot-access read of Q as an IF condition (issue #1375).
+#[case::dot_access_reads_q_in_if(TON_DOT_READ_Q_IN_IF, &[
+    Run(0), Run(100_000), Expect(1, 0), Run(600_000), Expect(1, 1),
+])]
+// Dot-access read of Q combined with other terms in a boolean expression.
+#[case::dot_access_reads_q_in_expr(TON_DOT_READ_Q_IN_EXPR, &[
+    // gate FALSE: result stays FALSE regardless of Q.
+    Run(0), Expect(2, 0),
+    // gate TRUE and Q still FALSE: result TRUE.
+    Write(1, 1), Run(100_000), Expect(2, 1),
+    // gate TRUE but Q now TRUE: result back to FALSE.
+    Run(600_000), Expect(2, 0),
+])]
+// Dot-access read of the TIME output ET in a comparison.
+#[case::dot_access_reads_et_in_if(TON_DOT_READ_ET_IN_IF, &[
+    Run(0), Run(1_000_000), Expect(1, 0), Run(3_000_000), Expect(1, 1),
+])]
+// Dot-access read of Q as a WHILE loop guard.
+#[case::dot_access_reads_q_in_while(TON_DOT_READ_Q_IN_WHILE, &[
+    // Q still FALSE, so the loop runs to its count bound.
+    Run(0), Run(100_000), Expect(1, 3),
 ])]
 fn end_to_end_fb_ton(#[case] source: &str, #[case] steps: &[FbStep]) {
     drive_fb(source, &CompilerOptions::default(), steps);

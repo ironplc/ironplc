@@ -194,6 +194,29 @@ impl IntermediateType {
         matches!(self, IntermediateType::Function { .. })
     }
 
+    /// Returns if the type exposes named members reachable with `.` access.
+    ///
+    /// Structures and function block instances both expose named fields, so
+    /// both answer `true`.
+    pub fn has_members(&self) -> bool {
+        self.member_fields().is_some()
+    }
+
+    /// Returns the named fields reachable with `.` access, None if the type
+    /// has no such members.
+    ///
+    /// A function block instance exposes its variables (`timer.Q`) the same way
+    /// a structure exposes its fields (`setup.FLAG`), so both are returned
+    /// here. Use [`IntermediateType::is_structure`] instead when the caller
+    /// needs a structure specifically.
+    pub fn member_fields(&self) -> Option<&Vec<IntermediateStructField>> {
+        match self {
+            IntermediateType::Structure { fields }
+            | IntermediateType::FunctionBlock { fields, .. } => Some(fields),
+            _ => None,
+        }
+    }
+
     /// Returns if the type is a reference (REF_TO).
     pub fn is_reference(&self) -> bool {
         matches!(self, IntermediateType::Reference { .. })
@@ -1558,6 +1581,60 @@ mod tests {
         let struct_type = IntermediateType::Structure { fields };
         // Should return None because one field has unknown size
         assert_eq!(struct_type.size_in_bytes(), None);
+    }
+
+    #[test]
+    fn member_fields_when_structure_then_returns_fields() {
+        use super::IntermediateStructField;
+        use ironplc_dsl::core::Id;
+
+        let fields = vec![IntermediateStructField {
+            name: Id::from("field1"),
+            field_type: IntermediateType::Bool,
+            offset: 0,
+            var_type: None,
+            has_default: false,
+        }];
+        let struct_type = IntermediateType::Structure {
+            fields: fields.clone(),
+        };
+
+        assert!(struct_type.has_members());
+        assert_eq!(struct_type.member_fields(), Some(&fields));
+    }
+
+    #[test]
+    fn member_fields_when_function_block_then_returns_fields() {
+        use super::{FunctionBlockVarType, IntermediateStructField};
+        use ironplc_dsl::core::Id;
+
+        let fields = vec![IntermediateStructField {
+            name: Id::from("Q"),
+            field_type: IntermediateType::Bool,
+            offset: 0,
+            var_type: Some(FunctionBlockVarType::Output),
+            has_default: false,
+        }];
+        let fb_type = IntermediateType::FunctionBlock {
+            name: "MyFB".to_string(),
+            fields: fields.clone(),
+        };
+
+        assert!(fb_type.has_members());
+        assert_eq!(fb_type.member_fields(), Some(&fields));
+    }
+
+    #[test]
+    fn member_fields_when_not_composite_then_returns_none() {
+        assert!(!IntermediateType::Bool.has_members());
+        assert_eq!(IntermediateType::Bool.member_fields(), None);
+
+        let array_type = IntermediateType::Array {
+            element_type: Box::new(IntermediateType::Bool),
+            dimensions: vec![],
+        };
+        assert!(!array_type.has_members());
+        assert_eq!(array_type.member_fields(), None);
     }
 
     #[test]

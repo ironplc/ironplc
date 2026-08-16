@@ -16,9 +16,13 @@ on:
         required: true
 
     outputs:
-      commit-ref:
+      # Callers feed this straight into the `source-revision` input of the build
+      # partials, which use it as an `actions/checkout` ref. The name has to stay
+      # free of "ref"/"head"/"branch"/"sha"/"commit" for the same reason it does
+      # there -- see partial_compiler.yaml for the full explanation.
+      source-revision:
         description: 'A commit reference that contains the updated dependencies'
-        value: ${{ jobs.update-dependencies.outputs.commit-ref }}
+        value: ${{ jobs.update-dependencies.outputs.source-revision }}
 
       branch-name:
         description: 'A commit reference that contains the updated dependencies'
@@ -40,7 +44,7 @@ jobs:
         environment: production
 
         outputs:
-          commit-ref: ${{ inputs.branch-name }}
+          source-revision: ${{ inputs.branch-name }}
           branch-name: ${{ inputs.branch-name }}
 
         steps:
