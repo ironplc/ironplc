@@ -57,7 +57,10 @@ pub use constant_pool::{ConstEntry, ConstantPool};
 #[cfg(feature = "std")]
 pub use container::Container;
 #[cfg(feature = "std")]
-pub use debug_format::{build_var_debug_map, format_variable_value, VarDebugInfo};
+pub use debug_format::{
+    build_var_debug_map, format_iec_string_literal, format_variable_value, read_string_value,
+    StringReadError, VarDebugInfo,
+};
 #[cfg(feature = "std")]
 pub use debug_section::{
     DebugSection, EnumDefEntry, FuncNameEntry, LineMapEntry, SourceFileEntry, StringLayoutEntry,

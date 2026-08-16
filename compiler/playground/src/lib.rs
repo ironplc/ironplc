@@ -18,7 +18,7 @@ use ironplc_analyzer::stages::analyze;
 use ironplc_codegen::compile as codegen_compile;
 use ironplc_container::debug_format::{build_var_debug_map, VarDebugInfo};
 use ironplc_container::debug_section::iec_type_tag;
-use ironplc_container::{Container, STRING_HEADER_BYTES};
+use ironplc_container::{read_string_value, Container};
 use ironplc_dsl::common::Library;
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, LineColumn};
@@ -337,61 +337,6 @@ fn build_string_layout_map(container: &Container) -> StringLayoutMap {
         }
     }
     map
-}
-
-/// Reasons a STRING variable's bytes could not be read from the data region.
-#[derive(Debug, PartialEq, Eq)]
-enum StringReadError {
-    /// The recorded `data_offset` plus the string header would read past the
-    /// end of the data region.
-    OffsetOutOfBounds,
-    /// The header was readable but `cur_len` plus the data start would read
-    /// past the end of the data region.
-    LengthOutOfBounds,
-}
-
-/// Reads a STRING value from the data region at the given offset and renders
-/// it as a single-quoted IEC literal with IEC 61131-3 `$`-escape sequences
-/// for non-printable bytes, `$`, and `'`.
-///
-/// Returns an error variant (rather than a sentinel string) so the caller
-/// can mark the value as invalid and the UI can render it differently from
-/// real string content like `'<invalid>'`.
-fn read_string_value(data_region: &[u8], data_offset: u32) -> Result<String, StringReadError> {
-    let off = data_offset as usize;
-    if off + STRING_HEADER_BYTES > data_region.len() {
-        return Err(StringReadError::OffsetOutOfBounds);
-    }
-    let cur_len = u16::from_le_bytes([data_region[off + 2], data_region[off + 3]]) as usize;
-    let start = off + STRING_HEADER_BYTES;
-    let end = start + cur_len;
-    if end > data_region.len() {
-        return Err(StringReadError::LengthOutOfBounds);
-    }
-    Ok(format_iec_string_literal(&data_region[start..end]))
-}
-
-/// Renders raw STRING bytes as an IEC 61131-3 single-quoted string literal.
-/// Each byte is either passed through as printable ASCII, replaced with one
-/// of the named `$`-escapes (`$T`, `$L`, `$P`, `$R`, `$$`, `$'`), or emitted
-/// as a `$XX` two-digit hex escape.
-fn format_iec_string_literal(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() + 2);
-    out.push('\'');
-    for &b in bytes {
-        match b {
-            b'$' => out.push_str("$$"),
-            b'\'' => out.push_str("$'"),
-            0x09 => out.push_str("$T"),
-            0x0A => out.push_str("$L"),
-            0x0C => out.push_str("$P"),
-            0x0D => out.push_str("$R"),
-            0x20..=0x7E => out.push(b as char),
-            _ => out.push_str(&format!("${b:02X}")),
-        }
-    }
-    out.push('\'');
-    out
 }
 
 /// Formats a raw 64-bit slot value according to the IEC type tag,
@@ -1878,64 +1823,6 @@ END_PROGRAM
         assert!(r1.ok, "step(10) failed: {:?}", r1.error);
         let active_var = r1.variables.iter().find(|v| v.name == "active").unwrap();
         assert_eq!(active_var.value, "TRUE");
-    }
-
-    #[test]
-    fn read_string_value_when_valid_header_then_decodes_bytes() {
-        let mut data = vec![0u8; 16];
-        data[0..2].copy_from_slice(&10u16.to_le_bytes());
-        data[2..4].copy_from_slice(&5u16.to_le_bytes());
-        // data[4..6] is the char_width field; string bytes follow the
-        // STRING_HEADER_BYTES-wide header.
-        data[STRING_HEADER_BYTES..STRING_HEADER_BYTES + 5].copy_from_slice(b"hello");
-        assert_eq!(read_string_value(&data, 0).unwrap(), "'hello'");
-    }
-
-    #[test]
-    fn read_string_value_when_zero_length_then_empty_quotes() {
-        let data = vec![0u8; 16];
-        assert_eq!(read_string_value(&data, 0).unwrap(), "''");
-    }
-
-    #[test]
-    fn read_string_value_when_offset_beyond_region_then_offset_error() {
-        let data = vec![0u8; 4];
-        assert_eq!(
-            read_string_value(&data, 8),
-            Err(StringReadError::OffsetOutOfBounds)
-        );
-    }
-
-    #[test]
-    fn read_string_value_when_cur_len_overruns_then_length_error() {
-        let mut data = vec![0u8; 8];
-        data[0..2].copy_from_slice(&10u16.to_le_bytes());
-        data[2..4].copy_from_slice(&100u16.to_le_bytes());
-        assert_eq!(
-            read_string_value(&data, 0),
-            Err(StringReadError::LengthOutOfBounds)
-        );
-    }
-
-    #[test]
-    fn format_iec_string_literal_when_named_escapes_then_iec_form() {
-        assert_eq!(
-            format_iec_string_literal(b"a\tb\nc\rd\x0Ce"),
-            "'a$Tb$Lc$Rd$Pe'"
-        );
-    }
-
-    #[test]
-    fn format_iec_string_literal_when_dollar_or_quote_then_doubled() {
-        assert_eq!(format_iec_string_literal(b"$1.50 'hi'"), "'$$1.50 $'hi$''");
-    }
-
-    #[test]
-    fn format_iec_string_literal_when_null_or_high_byte_then_hex_escape() {
-        assert_eq!(
-            format_iec_string_literal(&[0x00, 0x01, 0xFF]),
-            "'$00$01$FF'"
-        );
     }
 
     #[test]
