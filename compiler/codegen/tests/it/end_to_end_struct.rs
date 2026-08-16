@@ -619,3 +619,90 @@ END_PROGRAM
     );
     assert_eq!(result.unwrap_err().code, "P9999");
 }
+
+// --- Field access on array-of-struct elements ---
+// `s.arr[i].field`. See specs/plans/2026-08-16-array-of-struct-field-codegen.md.
+
+// h is var 0, result is var 1.
+e2e_i32!(
+    end_to_end_when_array_of_struct_field_written_with_literal_index_then_reads_back,
+    "TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE TYPE Holder : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; result : DINT; END_VAR h.items[2].b := 42; result := h.items[2].b; END_PROGRAM",
+    &[(1, 42)],
+);
+
+// Writing one element must not disturb its neighbours -- this is what a wrong
+// element stride would break.
+e2e_i32!(
+    end_to_end_when_array_of_struct_elements_written_then_each_element_distinct,
+    "TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE TYPE Holder : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; r1 : DINT; r2 : DINT; r3 : DINT; END_VAR h.items[1].a := 11; h.items[2].a := 22; h.items[3].a := 33; r1 := h.items[1].a; r2 := h.items[2].a; r3 := h.items[3].a; END_PROGRAM",
+    &[(1, 11), (2, 22), (3, 33)],
+);
+
+// Distinct fields within one element must not alias -- this is what a wrong
+// leaf offset would break.
+e2e_i32!(
+    end_to_end_when_array_of_struct_sibling_fields_written_then_do_not_alias,
+    "TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE TYPE Holder : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; ra : DINT; rb : DINT; END_VAR h.items[2].a := 7; h.items[2].b := 9; ra := h.items[2].a; rb := h.items[2].b; END_PROGRAM",
+    &[(1, 7), (2, 9)],
+);
+
+// Variable subscript exercises the runtime flat-index path rather than the
+// compile-time constant-folded one.
+e2e_i32!(
+    end_to_end_when_array_of_struct_indexed_by_variable_then_correct_element,
+    "TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE TYPE Holder : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; i : INT; result : DINT; END_VAR i := 3; h.items[i].b := 55; result := h.items[i].b; END_PROGRAM",
+    &[(2, 55)],
+);
+
+// A FOR loop over the array, mirroring the shape reported in issue #1376.
+e2e_i32!(
+    end_to_end_when_array_of_struct_written_in_for_loop_then_all_elements_set,
+    "TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE TYPE Holder : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; i : INT; r : DINT; END_VAR FOR i := 1 TO 3 DO h.items[i].a := 5; END_FOR; r := h.items[3].a; END_PROGRAM",
+    &[(2, 5)],
+);
+
+// Several element reads combined in one expression.
+e2e_i32!(
+    end_to_end_when_array_of_struct_elements_summed_then_correct_total,
+    "TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE TYPE Holder : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; total : DINT; END_VAR h.items[1].a := 1; h.items[2].a := 2; h.items[3].a := 3; total := h.items[1].a + h.items[2].a + h.items[3].a; END_PROGRAM",
+    &[(1, 6)],
+);
+
+// The array field is not the first member, so the field offset must be added
+// on top of the element stride.
+e2e_i32!(
+    end_to_end_when_array_of_struct_preceded_by_scalar_field_then_offset_correct,
+    "TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE TYPE Holder : STRUCT lead : DINT; items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; rl : DINT; ra : DINT; END_VAR h.lead := 99; h.items[1].a := 4; rl := h.lead; ra := h.items[1].a; END_PROGRAM",
+    &[(1, 99), (2, 4)],
+);
+
+// Nested struct chain ahead of the subscript, as in `MyBay.Devices.Scanner[i].F`.
+e2e_i32!(
+    end_to_end_when_array_of_struct_reached_through_nested_struct_then_correct_value,
+    "TYPE Item : STRUCT a : DINT; END_STRUCT; END_TYPE TYPE Inner : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE TYPE Outer : STRUCT inner : Inner; END_STRUCT; END_TYPE PROGRAM main VAR o : Outer; result : DINT; END_VAR o.inner.items[3].a := 77; result := o.inner.items[3].a; END_PROGRAM",
+    &[(1, 77)],
+);
+
+// A BOOL leaf exercises the narrow-width truncation path.
+e2e_i32!(
+    end_to_end_when_array_of_struct_bool_field_written_then_reads_back,
+    "TYPE Item : STRUCT flag : BOOL; n : DINT; END_STRUCT; END_TYPE TYPE Holder : STRUCT items : ARRAY[1..3] OF Item; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; result : DINT; END_VAR h.items[2].flag := TRUE; result := BOOL_TO_DINT(h.items[2].flag); END_PROGRAM",
+    &[(1, 1)],
+);
+
+// Two-dimensional array-of-struct: both strides must be scaled.
+e2e_i32!(
+    end_to_end_when_two_dimensional_array_of_struct_then_correct_element,
+    "TYPE Item : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE TYPE Holder : STRUCT items : ARRAY[1..2, 1..3] OF Item; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; r1 : DINT; r2 : DINT; END_VAR h.items[1,1].a := 1; h.items[2,3].a := 6; r1 := h.items[1,1].a; r2 := h.items[2,3].a; END_PROGRAM",
+    &[(1, 1), (2, 6)],
+);
+
+// Regression: a struct array field at slot offset 0 emits `load_const 0; add`,
+// which the peephole optimizer removes. Inside a FOR loop the CMP_BR branch
+// offset then had to be rewritten -- before that was handled the branch landed
+// mid-instruction and the VM trapped with InvalidConstantIndex.
+e2e_i32!(
+    end_to_end_when_struct_array_field_written_in_for_loop_then_no_fault,
+    "TYPE Holder : STRUCT vals : ARRAY[1..3] OF DINT; END_STRUCT; END_TYPE PROGRAM main VAR h : Holder; i : INT; r : DINT; END_VAR FOR i := 1 TO 3 DO h.vals[i] := 5; END_FOR; r := h.vals[3]; END_PROGRAM",
+    &[(2, 5)],
+);

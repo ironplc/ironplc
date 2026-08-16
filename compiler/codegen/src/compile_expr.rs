@@ -640,7 +640,12 @@ pub(crate) fn compile_variable_read(
             }
             Ok(())
         }
-        Variable::Symbolic(SymbolicVariableKind::Structured(structured)) => {
+        // The guard excludes `s.arr[i].field`, whose record is an array
+        // element rather than a fixed-offset struct field. That shape falls
+        // through to the generic `resolve_access` dispatch below.
+        Variable::Symbolic(SymbolicVariableKind::Structured(structured))
+            if !matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
+        {
             // Function block instance field read (e.g. `timer.Q`). FB instances
             // live in `ctx.fb_instances` rather than `ctx.struct_vars`, and
             // their fields are stored in the data region addressed via

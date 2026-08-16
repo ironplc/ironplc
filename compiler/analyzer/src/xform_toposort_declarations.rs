@@ -581,7 +581,23 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                         let to = self.declarations.add_node(&struct_init.type_name.name);
                         self.declarations.graph.add_edge(to, from, ());
                     }
-                    InitialValueAssignmentKind::Array(_) => {}
+                    InitialValueAssignmentKind::Array(array_init) => {
+                        // An array-typed field depends on its element type
+                        // exactly as `visit_array_declaration` does for a
+                        // top-level array type. Without this edge, the
+                        // element type may be ordered after the containing
+                        // declaration and is then missing from the type
+                        // environment, surfacing as a spurious P2013.
+                        let element_type_name = match &array_init.spec {
+                            SpecificationKind::Named(parent) => parent.name.clone(),
+                            SpecificationKind::Inline(subranges) => {
+                                subranges.type_name.to_type_name().name
+                            }
+                        };
+                        let from = self.declarations.add_node(from);
+                        let to = self.declarations.add_node(&element_type_name);
+                        self.declarations.graph.add_edge(to, from, ());
+                    }
                     InitialValueAssignmentKind::Reference(_) => {}
                     InitialValueAssignmentKind::LateResolvedType(lrt) => {
                         // We only care about these because these may be references to a function block
@@ -1167,5 +1183,160 @@ END_TYPE";
             first,
             LibraryElementKind::GlobalVarDeclarations(_)
         ));
+    }
+
+    // ---------------------------------------------------------------------
+    // Array element type dependency edge for array-typed struct fields.
+    // See specs/plans/2026-08-16-array-element-type-decl-order.md.
+    // ---------------------------------------------------------------------
+
+    /// Returns the position of the named structure declaration in the sorted
+    /// library, or `None` when the library does not declare that structure.
+    fn structure_position(library: &Library, name: &str) -> Option<usize> {
+        library.elements.iter().position(|element| match element {
+            LibraryElementKind::DataTypeDeclaration(DataTypeDeclarationKind::Structure(decl)) => {
+                decl.type_name == TypeName::from(name)
+            }
+            _ => false,
+        })
+    }
+
+    #[test]
+    fn apply_when_struct_array_field_element_declared_first_then_element_ordered_first() {
+        // Declaration order already matches dependency order. The element type
+        // must still be ordered ahead of the struct that arrays over it --
+        // without a dependency edge the sort is free to emit either order.
+        let program = "
+TYPE Item : STRUCT
+    Flag : BOOL;
+END_STRUCT;
+END_TYPE
+
+TYPE Holder : STRUCT
+    Items : ARRAY[1..6] OF Item;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let item = structure_position(&library, "Item").unwrap();
+        let holder = structure_position(&library, "Holder").unwrap();
+        assert!(item < holder, "Item must be ordered before Holder");
+    }
+
+    #[test]
+    fn apply_when_struct_array_field_element_declared_last_then_element_ordered_first() {
+        // Forward reference: the element type is declared textually *after*
+        // the struct whose array field references it.
+        let program = "
+TYPE Holder : STRUCT
+    Items : ARRAY[1..6] OF Item;
+END_STRUCT;
+END_TYPE
+
+TYPE Item : STRUCT
+    Flag : BOOL;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        let item = structure_position(&library, "Item").unwrap();
+        let holder = structure_position(&library, "Holder").unwrap();
+        assert!(item < holder, "Item must be ordered before Holder");
+    }
+
+    #[test]
+    fn apply_when_struct_array_field_element_is_elementary_then_return_ok() {
+        // Elementary element types have no declaration to order against. The
+        // added edge must not make the graph unsortable.
+        let program = "
+TYPE Holder : STRUCT
+    Nums : ARRAY[1..4] OF INT;
+    Flags : ARRAY[1..2] OF BOOL;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let (library, _reachable) = apply(library).unwrap();
+
+        assert!(structure_position(&library, "Holder").is_some());
+    }
+
+    #[test]
+    fn apply_when_struct_array_field_is_self_recursive_then_return_error() {
+        // An array of the enclosing struct is infinitely sized. The new edge
+        // makes this a genuine cycle, which must be reported as such.
+        let program = "
+TYPE A : STRUCT
+    Items : ARRAY[1..2] OF A;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let result = apply(library);
+        assert_eq!(
+            result.unwrap_err().first().unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
+    }
+
+    #[test]
+    fn apply_when_struct_array_fields_are_mutually_recursive_then_return_error() {
+        let program = "
+TYPE A : STRUCT
+    Items : ARRAY[1..2] OF B;
+END_STRUCT;
+END_TYPE
+
+TYPE B : STRUCT
+    Items : ARRAY[1..2] OF A;
+END_STRUCT;
+END_TYPE";
+
+        let library = parse_only(program);
+        let result = apply(library);
+        assert_eq!(
+            result.unwrap_err().first().unwrap().code,
+            Problem::RecursiveCycle.code().to_string()
+        );
+    }
+
+    #[test]
+    fn resolve_types_when_struct_array_field_element_declared_before_program_then_return_ok() {
+        // Pipeline-level regression guard for the reported symptom: this
+        // layout previously failed with P2013 because the element type was
+        // absent from the type environment when the array field was resolved.
+        // See https://github.com/ironplc/ironplc/issues/1376.
+        use ironplc_parser::options::CompilerOptions;
+
+        let program = "
+TYPE Item : STRUCT
+    Flag : BOOL;
+END_STRUCT;
+END_TYPE
+
+TYPE Holder : STRUCT
+    Items : ARRAY[1..6] OF Item;
+    Other : BOOL;
+END_STRUCT;
+END_TYPE
+
+PROGRAM Main
+VAR
+    H : Holder;
+END_VAR
+    H.Other := TRUE;
+END_PROGRAM";
+
+        let library = parse_only(program);
+        let result = crate::stages::resolve_types(&[&library], &CompilerOptions::default());
+        assert!(
+            result.is_ok(),
+            "expected type resolution to succeed, got {:?}",
+            result.err()
+        );
     }
 }
