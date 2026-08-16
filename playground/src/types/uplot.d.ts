@@ -34,6 +34,10 @@ declare module "*/uPlot.esm.js" {
 
   export default class uPlot {
     constructor(opts: UplotOptions, data: UplotData, target: HTMLElement);
+    /** Replace the chart's data in place and redraw, without reconstructing. */
+    setData(data: UplotData): void;
+    /** Remove the chart from the DOM and release its resources. */
+    destroy(): void;
     static paths: UplotPaths;
   }
 }

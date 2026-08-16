@@ -28,13 +28,13 @@ dap = ["dep:serde"]
 [dependencies]
 ironplc-vm = { path = "../vm", version = "0.238.0" }
 ironplc-container = { path = "../container", version = "0.238.0" }
+ironplc-cli-support = { path = "../cli-support", version = "0.238.0" }
 clap = { version = "4.6", features = ["derive", "wrap_help"] }
 ctrlc = "3"
 env_logger = "0.11.10"
 log = "0.4.29"
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = "1.0"
-time = "0.3.47"
 
 [build-dependencies]
 csv = "1"
