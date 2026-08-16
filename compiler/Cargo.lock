@@ -947,6 +947,7 @@ dependencies = [
  "encoding_rs",
  "env_logger",
  "ironplc-analyzer",
+ "ironplc-cli-support",
  "ironplc-codegen",
  "ironplc-container",
  "ironplc-dsl",
@@ -963,6 +964,15 @@ dependencies = [
  "predicates",
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "ironplc-cli-support"
+version = "0.238.0"
+dependencies = [
+ "env_logger",
+ "log",
  "tempfile",
  "time",
 ]
@@ -1166,6 +1176,7 @@ dependencies = [
  "ctor",
  "ctrlc",
  "env_logger",
+ "ironplc-cli-support",
  "ironplc-container",
  "ironplc-spec-requirements-gen",
  "ironplc-vm",
@@ -1175,7 +1186,6 @@ dependencies = [
  "serde_json",
  "spec_test_macro",
  "tempfile",
- "time",
 ]
 
 [[package]]

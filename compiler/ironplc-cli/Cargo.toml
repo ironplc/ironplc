@@ -25,8 +25,8 @@ ironplc-test = { path = "../test", version = "0.238.0" }
 ironplc-codegen = { path = "../codegen", version = "0.238.0" }
 ironplc-container = { path = "../container", version = "0.238.0" }
 ironplc-vm = { path = "../vm", version = "0.238.0" }
+ironplc-cli-support = { path = "../cli-support", version = "0.238.0" }
 
-time = "0.3.47"
 clap = { version = "4.6", features = ["derive", "wrap_help"] }
 codespan-reporting = { version = "0.13" }
 lsp-server = "0.10"
