@@ -604,6 +604,17 @@ impl<'a> VmRunning<'a> {
         self.variables.store(index, Slot::from_i32(value))
     }
 
+    /// Writes a variable's raw 64-bit slot value.
+    ///
+    /// The counterpart to [`read_variable_raw`](Self::read_variable_raw): the
+    /// slot is stored verbatim, so 64-bit values (`LREAL`, `LINT`, `ULINT`,
+    /// `LWORD`) round-trip without truncation. Embedders use this to restore
+    /// RETAIN variables at startup and to map wide process inputs into the
+    /// variable table.
+    pub fn write_variable_raw(&mut self, index: VarIndex, value: u64) -> Result<(), Trap> {
+        self.variables.store(index, Slot::from_u64(value))
+    }
+
     /// Returns a reference to the data region.
     pub fn data_region(&self) -> &[u8] {
         self.data_region
@@ -3012,6 +3023,73 @@ mod tests {
 
         assert_eq!(ready.read_variable_raw(VarIndex::new(0)).unwrap(), 0u64);
         assert_eq!(ready.read_variable_raw(VarIndex::new(1)).unwrap(), 0u64);
+    }
+
+    #[test]
+    fn write_variable_raw_when_lword_pattern_then_round_trips_without_truncation() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        // A bit pattern that is non-zero in both halves of the slot.
+        let value = 0xDEAD_BEEF_0BAD_F00D_u64;
+        vm.write_variable_raw(VarIndex::new(0), value).unwrap();
+
+        assert_eq!(vm.read_variable_raw(VarIndex::new(0)).unwrap(), value);
+    }
+
+    #[test]
+    fn write_variable_raw_when_lreal_pattern_then_reads_back_same_float() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        let value = std::f64::consts::PI;
+        vm.write_variable_raw(VarIndex::new(1), value.to_bits())
+            .unwrap();
+
+        let raw = vm.read_variable_raw(VarIndex::new(1)).unwrap();
+        assert_eq!(f64::from_bits(raw), value);
+    }
+
+    #[test]
+    fn write_variable_raw_when_lint_value_then_read_variable_i64_agrees() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        let value = -9_007_199_254_740_993_i64;
+        vm.write_variable_raw(VarIndex::new(0), value as u64)
+            .unwrap();
+
+        assert_eq!(vm.read_variable_i64(VarIndex::new(0)).unwrap(), value);
+    }
+
+    #[test]
+    fn write_variable_when_64_bit_value_then_truncates_unlike_write_variable_raw() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        let value = 0x0000_0001_0000_002A_u64;
+        vm.write_variable(VarIndex::new(0), value as i32).unwrap();
+        vm.write_variable_raw(VarIndex::new(1), value).unwrap();
+
+        assert_eq!(vm.read_variable_raw(VarIndex::new(0)).unwrap(), 0x2A);
+        assert_eq!(vm.read_variable_raw(VarIndex::new(1)).unwrap(), value);
+    }
+
+    #[test]
+    fn write_variable_raw_when_index_out_of_range_then_invalid_variable_index_trap() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        let index = VarIndex::new(99);
+        assert_eq!(
+            vm.write_variable_raw(index, 1).unwrap_err(),
+            Trap::InvalidVariableIndex(index)
+        );
     }
 
     #[test]

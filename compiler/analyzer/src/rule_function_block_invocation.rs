@@ -47,46 +47,6 @@ use crate::{
 };
 use ironplc_parser::options::CompilerOptions;
 
-/// Returns the first variable matching the specified name and one of the
-/// variable types or `None` if the owner does not contain a matching
-/// variable.
-fn find<'a>(
-    owner: &'a dyn HasVariables,
-    name: &'a Id,
-    types: &[VariableType],
-) -> Option<&'a VarDecl> {
-    owner
-        .variables()
-        .iter()
-        .find(|item| match item.identifier.symbolic_id() {
-            Some(n) => n.eq(name) && types.contains(&item.var_type),
-            None => false,
-        })
-}
-
-fn count_input_type(owner: &dyn HasVariables) -> usize {
-    owner
-        .variables()
-        .iter()
-        .filter(|item| item.var_type == VariableType::Input)
-        .count()
-}
-
-/// Returns the first VAR_INPUT or VAR_INOUT variable matching the name
-/// or `None` if the owner does not contain a matching variable.
-fn find_input_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
-    find(owner, name, &[VariableType::Input, VariableType::InOut])
-}
-
-/// Returns the first VAR_OUTPUT variable matching the name
-/// or `None` if the owner does not contain a matching variable.
-///
-/// VAR_IN_OUT are output variables, but they are only assigned
-/// through the input `:=` syntax so not included for this rule.
-fn find_output_type<'a>(owner: &'a dyn HasVariables, name: &'a Id) -> Option<&'a VarDecl> {
-    find(owner, name, &[VariableType::Output])
-}
-
 pub fn apply(
     lib: &Library,
     _context: &SemanticContext,
@@ -126,91 +86,18 @@ impl<'a> RuleFunctionBlockUse<'a> {
         function_block: &FunctionBlockDeclaration,
         fb_call: &FbCall,
     ) -> Result<(), Diagnostic> {
-        // Sort the inputs as either named, positional, and outputs
-        let mut formal: Vec<&NamedInput> = vec![];
-        let mut non_formal: Vec<&PositionalInput> = vec![];
-        let mut outputs: Vec<&Output> = vec![];
-        for param in fb_call.params.iter() {
-            match param {
-                ParamAssignmentKind::NamedInput(n) => {
-                    formal.push(n);
-                }
-                ParamAssignmentKind::PositionalInput(p) => {
-                    non_formal.push(p);
-                }
-                // Don't care outputs here
-                ParamAssignmentKind::Output(o) => {
-                    outputs.push(o);
-                }
-            }
-        }
-
-        // Don't allow a mixture so assert that either named is empty or
-        // positional is empty
-        if !formal.is_empty() && !non_formal.is_empty() {
-            return Err(Diagnostic::problem(
-                Problem::FunctionCallMixedArgTypes,
-                Label::span(fb_call.span(), "Function "),
-            )
-            .with_context_type("function", &function_block.name));
-        }
-
-        // Check that the names and types match. Unassigned values are
-        // permitted so we use the assignments as the set to iterate
-        if !formal.is_empty() {
-            // TODO check the types.
-            for name in formal {
-                match find_input_type(function_block, &name.name) {
-                    Some(_) => {}
-                    None => {
-                        return Err(Diagnostic::problem(
-                            Problem::FunctionInvocationMissingInput,
-                            Label::span(fb_call.span(), "Function block invocation"),
-                        )
-                        .with_context_type("invocation", &function_block.name)
-                        .with_context_id("undefined input", &name.name)
-                        .with_secondary(Label::span(
-                            function_block.span(),
-                            "Function block declaration",
-                        )))
-                    }
-                }
-            }
-        }
-
-        // Check that the number of variables matches exactly the number
-        // of expected inputs and the types match.
-        if !non_formal.is_empty() {
-            let num_required_inputs = count_input_type(function_block);
-            if non_formal.len() != num_required_inputs {
-                return Err(Diagnostic::problem(
-                    Problem::FunctionInvocationRequiresFormal,
-                    Label::span(fb_call.span(), "Function block invocation"),
-                )
-                .with_context_type("invocation", &function_block.name)
-                .with_context("required", &format!("{num_required_inputs}"))
-                .with_context("actual", &format!("{}", non_formal.len())));
-            }
-        }
-
-        // Check that the assigned output parameter names match the actual
-        // output parameter names
-        for output in outputs {
-            match find_output_type(function_block, &output.src) {
-                Some(_) => {}
-                None => {
-                    return Err(Diagnostic::problem(
-                        Problem::FunctionInvocationUndefinedOutput,
-                        Label::span(fb_call.span(), "Function block invocation"),
-                    )
-                    .with_context_type("invocation", &function_block.name)
-                    .with_context_id("source", &output.src)
-                    .with_context("target", &output.tgt.to_string()))
-                }
-            }
-        }
-
-        Ok(())
+        crate::call_assignment_check::check_assignments(
+            function_block,
+            function_block.span(),
+            fb_call.span(),
+            &fb_call.params,
+            &crate::call_assignment_check::AssignmentCheckLabels {
+                call_label: "Function block invocation",
+                context_key: "invocation",
+                owner_name: &function_block.name.to_string(),
+                decl_label: "Function block declaration",
+            },
+        )
     }
 }
 

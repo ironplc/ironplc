@@ -16,6 +16,7 @@ mod enums;
 mod fb_inheritance;
 mod function_calls;
 mod literals;
+mod methods;
 mod partial_access;
 mod pointer_to;
 mod pragmas;

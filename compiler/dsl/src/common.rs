@@ -2765,6 +2765,48 @@ pub struct FunctionBlockDeclaration {
     /// or `ABSTRACT`. See `LanguageExtension` impl on `FunctionBlockOop` and
     /// `specs/plans/2026-07-18-twincat-extends-implements-interface.md`.
     pub oop: Option<FunctionBlockOop>,
+    /// `METHOD ... END_METHOD` blocks declared on this function block
+    /// (OOP extension). Empty for an ordinary function block — same
+    /// "empty is the common case" convention as `variables`, rather than
+    /// nesting under `FunctionBlockOop` (a plain FB can declare methods
+    /// without using `EXTENDS`/`IMPLEMENTS`/`ABSTRACT`). See ADR-0041.
+    pub methods: Vec<MethodDeclaration>,
+}
+
+/// `METHOD name (: return_type)? ... END_METHOD` (OOP extension).
+///
+/// Declared on a `FunctionBlockDeclaration`. Shaped like a
+/// `FunctionDeclaration`, except `return_type` is optional: unlike a
+/// function, a method with no return type is valid IEC 61131-3 and acts
+/// like a procedure (see `FunctionSignature::return_type` in
+/// `ironplc-analyzer` for the same modeling choice on the resolved side).
+///
+/// See ADR-0041 ("Staged Method/Property Dispatch and Interface Values"),
+/// Phase 1: static dispatch. Resolution of calls against this declaration
+/// (own methods first, then the `EXTENDS` chain) is implemented outside
+/// the AST, in `ironplc-analyzer`.
+#[derive(Clone, Debug, PartialEq, Recurse, Located)]
+pub struct MethodDeclaration {
+    pub name: Id,
+    pub return_type: Option<FunctionReturnType>,
+    pub variables: Vec<VarDecl>,
+    /// `R_EDGE`/`F_EDGE`-qualified `VAR` declarations (IEC 61131-3
+    /// §2.4.3). Not a TwinCAT-specific or OOP-specific capability: the
+    /// parser's `method_declaration()` rule reuses the exact same
+    /// standard variable-declaration grammar (`io_var_declarations()`/
+    /// `other_var_declarations()`) that `FunctionDeclaration` and
+    /// `FunctionBlockDeclaration` already use, so edge variables are
+    /// inherited for free, the same way a `VAR` block full stop is.
+    pub edge_variables: Vec<EdgeVarDecl>,
+    pub body: Vec<StmtKind>,
+    #[located(position)]
+    pub span: SourceSpan,
+}
+
+impl HasVariables for MethodDeclaration {
+    fn variables(&self) -> &Vec<VarDecl> {
+        &self.variables
+    }
 }
 
 impl HasVariables for FunctionBlockDeclaration {
