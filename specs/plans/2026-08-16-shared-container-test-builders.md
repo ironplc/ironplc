@@ -122,14 +122,14 @@ Modified:
 
 ## Tasks
 
-- [ ] Commit this plan.
-- [ ] Add `test-support` feature and `test_support` module to `container`.
-- [ ] Wire the feature chain through `vm`, `vm-cli`, `project`.
-- [ ] Re-export from `vm/src/test_support.rs`; reduce `vm/tests/it/common/mod.rs`
+- [x] Commit this plan.
+- [x] Add `test-support` feature and `test_support` module to `container`.
+- [x] Wire the feature chain through `vm`, `vm-cli`, `project`.
+- [x] Re-export from `vm/src/test_support.rs`; reduce `vm/tests/it/common/mod.rs`
       to a shim.
-- [ ] Adopt in `container` (3 files), `vm` (3 files), `vm-cli`, `project`.
-- [ ] `cd compiler && just` green, including `--features ironplc-vm-cli/dap`.
-- [ ] Confirm test count unchanged and both frozen goldens still load.
+- [x] Adopt in `container` (3 files), `vm` (3 files), `vm-cli`, `project`.
+- [x] `cd compiler && just` green, including `--features ironplc-vm-cli/dap`.
+- [x] Confirm test count unchanged and both frozen goldens still load.
 
 ## Verification
 

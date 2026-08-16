@@ -10,6 +10,11 @@ repository.workspace = true
 [features]
 default = ["std"]
 std = ["dep:blake3"]
+# Exposes `test_support`, the container fixtures shared by the test suites of
+# `vm`, `vm-cli` and `project`. Implies `std` because the fixtures are built
+# from `ContainerBuilder`, which is itself `std`-only. Enable it from
+# `[dev-dependencies]` only, so it never reaches a normal build.
+test-support = ["std"]
 
 [dependencies]
 blake3 = { version = "1", optional = true }
