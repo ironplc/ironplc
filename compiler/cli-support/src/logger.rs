@@ -140,9 +140,10 @@ mod test {
         let err = builder(0, Some(&log_file)).unwrap_err();
 
         assert!(matches!(err, LogError::LogFileCreate(ref path, _) if path == &log_file));
-        assert!(err
-            .to_string()
-            .starts_with(&format!("Unable to create log file {}.", log_file.display())));
+        assert!(err.to_string().starts_with(&format!(
+            "Unable to create log file {}.",
+            log_file.display()
+        )));
     }
 
     #[test]
