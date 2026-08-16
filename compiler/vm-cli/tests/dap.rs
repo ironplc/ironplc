@@ -4,9 +4,9 @@
 //! the framed responses and events, plus the two launch-precondition failures
 //! (`NoDebugInfo`, `MultiInstanceUnsupported`).
 //!
-//! Gated on the `dap` feature: the `ironplcdap` binary only exists when the
-//! feature is enabled (CI builds it via `--features ironplc-vm-cli/dap`).
-#![cfg(feature = "dap")]
+//! These spawn `ironplcdap`, so they also serve as the regression test for the
+//! binary being built at all: it is no longer behind a feature gate, and a
+//! change that stops building it stops this file from running.
 
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
