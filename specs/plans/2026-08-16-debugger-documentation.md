@@ -89,18 +89,69 @@ the server-side work separately. That is a small extension change, not a docs
 change, and it should land first. If the button stays, the reference page must
 list it as a known limitation.
 
-## Approach: one truth table, four quadrants
+## Approach: permanent pages, one shared banner, limitations in context
 
-The risk with debugger docs is drift between four pages that each restate what
-works. Avoid it the way the docs already avoid it elsewhere (`docs/includes/`):
+### Every page is permanent
 
-Write the v1 capability/limitation table **once** as
-`docs/includes/debugger-v1-limits.rst` and `.. include::` it in the reference
-page, the how-to, and the explanation page. The tutorial does not include it;
-it simply never leads a learner into a cut feature.
+`specs/steering/coming-from-guide-authoring.md` §"URL stability policy" already
+states the rule and it governs here too: **published URLs are permanent.** No
+page in this plan is a staging area for the debugger's current maturity. That
+has three consequences for how these pages get written:
 
-This mirrors the `docs/how-to-guides/twincat/index.rst` §"What Works Today"
-pattern, which sets expectations honestly without repeating itself.
+- **No temporary pages.** There is no "debugger limitations" page, no "preview"
+  page, and no page whose reason to exist disappears when a capability lands.
+  Every page in the file map is one a mature debugger still needs.
+- **No maturity words in slugs.** No `preview`, `experimental`, `v1`, or `new`
+  in any file name. The slugs are task-first and expected to live forever.
+- **Maturity lives in content, not in structure.** When a capability lands, the
+  change is an edit inside an existing page — never a new page, a rename, or a
+  deletion.
+
+### One shared banner
+
+`docs/includes/debugging-in-development.rst` (already written) holds the single
+statement that debugging is early:
+
+```rst
+.. note::
+   Debugging is early and in development. Breakpoints, stepping, and variable
+   inspection work for Structured Text programs, but some capabilities are
+   missing or limited. Each section notes the limits that apply to it.
+```
+
+Every debugger page opens with `.. include:: /includes/debugging-in-development.rst`
+directly under its title. **The text is never copied into a page.** This follows
+the existing pattern — `enabled-by-flag.rst`, `compat-library-independence.rst`,
+and `report-internal-vm-error.rst` are all included, never pasted — and it means
+one edit retires the banner from every page at once.
+
+`docs/includes/` is in `conf.py`'s `exclude_patterns`, so the include is never
+built as a standalone page and never needs a toctree entry.
+
+### Limitations go where the user meets them
+
+An earlier draft of this plan proposed a second include: one big v1
+capability/limitation table, shared across pages. That is exactly the temporary
+artifact this section rules out — a table whose rows all delete themselves as
+the debugger matures, sitting in a block a reader has to mentally join back to
+the feature it constrains.
+
+Instead each limitation is stated **once, inline, in the section that raises
+it**, in the same present-tense voice as the rest of the page:
+
+| Limitation | Where it is stated |
+|------------|--------------------|
+| No variable forcing or writing | Reference §Variables; Explanation (with the reasoning) |
+| No watch expressions or `evaluate` | Reference §Variables |
+| No pause-while-running | Reference §Execution control, next to `scanLimit` |
+| Single program instance only | Reference §Launch preconditions; How-to §Before you start |
+| `WSTRING` shows `<not available>` | Reference §Variables |
+| FB fields and FB type names unresolved | Reference §Variables; Tutorial, where the doorbell's `TON` makes it concrete |
+| Breakpoints are line-level, and snap | Reference §Breakpoints |
+
+Retiring a limitation is then a one-paragraph edit in one page, and the page
+around it stays correct. Retiring the last of them is deleting the include, the
+`.. include::` lines, and nothing else.
 
 ## Quadrant mapping
 
@@ -112,7 +163,8 @@ Placed after `configuring.rst` and before `multiple-files.rst`: the learner has
 a complete, configured, single-instance program at that point, which is exactly
 the shape v1 debugs.
 
-The chapter must *teach through a fault*, not tour a UI. Sketch:
+The chapter opens with the shared banner like every other debugger page, then
+*teaches through a fault* rather than touring a UI. Sketch:
 
 1. Introduce a small, deliberate bug into the quickstart doorbell program (a
    counter that never resets, or an inverted condition) — the learner sees wrong
@@ -195,8 +247,11 @@ The editor-facing contract:
 - What a breakpoint binds to and the snapping rule.
 - The `Program` and `Runtime` scopes and what each contains.
 - Which editor debug actions work (continue, step over/in/out) and which do not
-  (pause, watch, set-value), with `.. include:: /includes/debugger-v1-limits.rst`.
+  (pause, watch, set-value), each stated in the section it belongs to.
 - Links to `E0004`–`E0007`.
+
+This page carries the most inline limitations of the four, because it is where a
+user looks when something they expected is not there.
 
 **New: `docs/reference/runtime/ironplcdap.rst`**
 
@@ -257,8 +312,10 @@ under time pressure — do not skip it.
 ### Cross-cutting: the landing page
 
 `docs/index.rst:23` claims IronPLC "doesn't yet provide I/O mapping or debugging
-capabilities". Correct it to name debugging as supported (scoped to Structured
-Text, single-instance) and keep the I/O-mapping caveat. Check the landing grid
+capabilities". Correct it to name debugging as supported but early (scoped to
+Structured Text, single-instance) and keep the I/O-mapping caveat. The landing
+page states the maturity in its own prose rather than carrying the banner — an
+admonition on the front page is heavier than that sentence needs. Check the landing grid
 and `.. meta:: :description:` for the same claim. `docs/explanation/
 ironplc-ecosystem.rst:20` cites debugging as something full IDEs have and should
 be revisited in the same pass.
@@ -288,8 +345,8 @@ Every `.. figure::` needs an `:alt:`, as the existing pages do.
 `V6009`'s misleading solution; resolve the Step Scan Cycle button question.
 Small, no new pages, removes an actively false statement.
 
-**Phase 1 — Reference.** `includes/debugger-v1-limits.rst`,
-`reference/editor/debugging.rst`, `reference/runtime/ironplcdap.rst`, the
+**Phase 1 — Reference.** `reference/editor/debugging.rst`,
+`reference/runtime/ironplcdap.rst`, the
 `settings.rst`/`overview.rst`/`runtime/index.rst`/`ironplcc.rst` edits. Reference
 first because the other three quadrants link into it.
 
@@ -310,7 +367,7 @@ Phases 1–4 are each independently shippable.
 
 **New**
 
-- `docs/includes/debugger-v1-limits.rst`
+- `docs/includes/debugging-in-development.rst` *(written)*
 - `docs/quickstart/debugging.rst`
 - `docs/how-to-guides/getting-started/debug-a-program.rst`
 - `docs/how-to-guides/getting-started/debug-without-vs-code.rst` *(Phase 5)*
@@ -338,9 +395,11 @@ Phases 1–4 are each independently shippable.
 
 ## Tasks
 
+- [x] Write the shared banner `docs/includes/debugging-in-development.rst`
 - [ ] Decide the Step Scan Cycle question (hide the button, or document the gap)
 - [ ] Phase 0: fix the landing-page claim and the `V6009` solution text
-- [ ] Phase 1: write `debugger-v1-limits.rst` and the two reference pages
+- [ ] Phase 1: write the two reference pages, each opening with the banner
+      include and stating its limitations inline
 - [ ] Phase 1: apply the settings/overview/index/`ironplcc` reference edits
 - [ ] Phase 2: write `debug-a-program.rst`; extend `troubleshoot-editor.rst`
 - [ ] Phase 3: add screenshot captures and the fixture program
@@ -362,7 +421,10 @@ structure but not accuracy — the tutorial has to be walked by hand.
 - Documenting the debugger's internals. `specs/design/debugger-support.md` owns
   that and must never move into `docs/`.
 - Documenting deferred features (forcing, logpoints, watch expressions,
-  multi-instance) as anything other than named limitations.
+  multi-instance) as anything other than named limitations, stated inline where
+  a user would look for them.
+- Any page, section, or slug that exists only to hold the debugger's current
+  maturity and would be deleted once the debugger matures.
 - Adding new problem codes. `V6008`–`V6010` and `E0004`–`E0007` already cover
   every failure the debugger can report today.
 
