@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.238.0">
+<meta name="ironplc-version" content="0.239.0">
 </head>
   <body>
     
@@ -552,6 +552,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4043.html">P4043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4045.html">P4045</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6003.html">P6003</a></li>
@@ -563,6 +564,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6009.html">P6009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6010.html">P6010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6011.html">P6011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P6012.html">P6012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P8001.html">P8001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../compiler/problems/P9002.html">P9002</a></li>
@@ -723,16 +725,16 @@ after the workspace folder (for example, a folder named <code class="docutils li
 <div class="literal-block-wrapper docutils container" id="id1">
 <div class="code-block-caption"><span class="caption-text">.vscode/tasks.json</span><a class="headerlink" href="#id1" title="Link to this code">¶</a></div>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2.0.0&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;tasks&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="nt">"version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2.0.0"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"tasks"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ironplc&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;compile&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;group&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;build&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;isDefault&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">      </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ironplc"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"task"</span><span class="p">:</span><span class="w"> </span><span class="s2">"compile"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"group"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"kind"</span><span class="p">:</span><span class="w"> </span><span class="s2">"build"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"isDefault"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">&quot;label&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ironplc: compile&quot;</span>
+<span class="w">      </span><span class="nt">"label"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ironplc: compile"</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">  </span><span class="p">]</span>
 <span class="p">}</span>

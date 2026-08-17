@@ -9,7 +9,7 @@
 <meta property="og:site_name" content="IronPLC" />
 <meta property="og:description" content="Code, P6011,, Message, Referenced compatibility library not found,. This error occurs when a compatibility library is activated by name — either explicitly with--library &lt;name&gt; or by a projec..." />
 <meta name="description" content="Code, P6011,, Message, Referenced compatibility library not found,. This error occurs when a compatibility library is activated by name — either explicitly with--library &lt;name&gt; or by a projec..." />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P8001" href="P8001.html"><link rel="prev" title="P6010" href="P6010.html">
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P6012" href="P6012.html"><link rel="prev" title="P6010" href="P6010.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/compiler/problems/P6011.html">
 
     <link rel="shortcut icon" href="../../../_static/favicon.ico"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.238.0">
+<meta name="ironplc-version" content="0.239.0">
 </head>
   <body>
     
@@ -552,6 +552,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P4043.html">P4043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4045.html">P4045</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -563,6 +564,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P6009.html">P6009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6010.html">P6010</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">P6011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P6012.html">P6012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P8001.html">P8001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9002.html">P9002</a></li>
@@ -697,7 +699,7 @@ never silently binds the wrong library. The diagnostic names the missing
 library so that any resulting <code class="docutils literal notranslate"><span class="pre">undefined</span> <span class="pre">symbol</span></code> errors are explained.</p>
 <section id="example">
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># No library named &quot;Tc2_Maths&quot; exists (note the trailing &#39;s&#39;)</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># No library named "Tc2_Maths" exists (note the trailing 's')</span>
 ironplcc<span class="w"> </span>check<span class="w"> </span>--library<span class="w"> </span>Tc2_Maths<span class="w"> </span>main.st
 </pre></div>
 </div>
@@ -720,12 +722,12 @@ with a small sample that demonstrates the problem.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="P8001.html">
+          <a class="next-page" href="P6012.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">P8001</div>
+                <div class="title">P6012</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

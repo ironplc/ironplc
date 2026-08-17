@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.238.0">
+<meta name="ironplc-version" content="0.239.0">
 </head>
   <body>
     
@@ -552,6 +552,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4043.html">P4043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4045.html">P4045</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -563,6 +564,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6009.html">P6009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6010.html">P6010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6011.html">P6011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6012.html">P6012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P8001.html">P8001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P9002.html">P9002</a></li>
@@ -704,8 +706,8 @@ value of an integer expression.</p>
 <section id="syntax">
 <h2>Syntax<a class="headerlink" href="#syntax" title="Link to this heading">¶</a></h2>
 <div class="highlight-bnf notranslate"><div class="highlight"><pre><span></span>CASE expression OF
-    case_value { &#39;,&#39; case_value } &#39;:&#39; statement_list
-    { case_value { &#39;,&#39; case_value } &#39;:&#39; statement_list }
+    case_value { ',' case_value } ':' statement_list
+    { case_value { ',' case_value } ':' statement_list }
 [ ELSE
     statement_list ]
 END_CASE ;

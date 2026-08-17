@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.238.0">
+<meta name="ironplc-version" content="0.239.0">
 </head>
   <body>
     
@@ -552,6 +552,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P4043.html">P4043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4045.html">P4045</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -563,6 +564,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P6009.html">P6009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6010.html">P6010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6011.html">P6011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P6012.html">P6012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P8001.html">P8001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9002.html">P9002</a></li>
@@ -699,22 +701,22 @@
 <li><p>Invalid element names or structure</p></li>
 <li><p>Missing required attributes</p></li>
 </ol>
-<div class="highlight-xml notranslate"><div class="highlight"><pre><span></span><span class="cp">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;</span>
-<span class="nt">&lt;configuration</span><span class="w"> </span><span class="na">xmlns=</span><span class="s">&quot;http://www.plcopen.org/xml/tc6_0201&quot;</span><span class="nt">&gt;</span>
+<div class="highlight-xml notranslate"><div class="highlight"><pre><span></span><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;configuration</span><span class="w"> </span><span class="na">xmlns=</span><span class="s">"http://www.plcopen.org/xml/tc6_0201"</span><span class="nt">&gt;</span>
 <span class="w">  </span><span class="cm">&lt;!-- Wrong root element - should be &lt;project&gt; --&gt;</span>
 <span class="nt">&lt;/configuration&gt;</span>
 </pre></div>
 </div>
 <p>The compiler expects the root element to be <code class="docutils literal notranslate"><span class="pre">&lt;project&gt;</span></code>, not <code class="docutils literal notranslate"><span class="pre">&lt;configuration&gt;</span></code>.</p>
 <p>To fix this error, ensure your XML file follows the PLCopen TC6 v2.01 schema:</p>
-<div class="highlight-xml notranslate"><div class="highlight"><pre><span></span><span class="cp">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;</span>
-<span class="nt">&lt;project</span><span class="w"> </span><span class="na">xmlns=</span><span class="s">&quot;http://www.plcopen.org/xml/tc6_0201&quot;</span><span class="nt">&gt;</span>
-<span class="w">  </span><span class="nt">&lt;fileHeader</span><span class="w"> </span><span class="na">companyName=</span><span class="s">&quot;Company&quot;</span><span class="w"> </span><span class="na">productName=</span><span class="s">&quot;Product&quot;</span><span class="w"> </span><span class="na">productVersion=</span><span class="s">&quot;1.0&quot;</span><span class="w"> </span><span class="na">creationDateTime=</span><span class="s">&quot;2024-01-01T00:00:00&quot;</span><span class="nt">/&gt;</span>
-<span class="w">  </span><span class="nt">&lt;contentHeader</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;ProjectName&quot;</span><span class="nt">&gt;</span>
+<div class="highlight-xml notranslate"><div class="highlight"><pre><span></span><span class="cp">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span>
+<span class="nt">&lt;project</span><span class="w"> </span><span class="na">xmlns=</span><span class="s">"http://www.plcopen.org/xml/tc6_0201"</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;fileHeader</span><span class="w"> </span><span class="na">companyName=</span><span class="s">"Company"</span><span class="w"> </span><span class="na">productName=</span><span class="s">"Product"</span><span class="w"> </span><span class="na">productVersion=</span><span class="s">"1.0"</span><span class="w"> </span><span class="na">creationDateTime=</span><span class="s">"2024-01-01T00:00:00"</span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;contentHeader</span><span class="w"> </span><span class="na">name=</span><span class="s">"ProjectName"</span><span class="nt">&gt;</span>
 <span class="w">    </span><span class="nt">&lt;coordinateInfo&gt;</span>
-<span class="w">      </span><span class="nt">&lt;fbd&gt;&lt;scaling</span><span class="w"> </span><span class="na">x=</span><span class="s">&quot;1&quot;</span><span class="w"> </span><span class="na">y=</span><span class="s">&quot;1&quot;</span><span class="nt">/&gt;&lt;/fbd&gt;</span>
-<span class="w">      </span><span class="nt">&lt;ld&gt;&lt;scaling</span><span class="w"> </span><span class="na">x=</span><span class="s">&quot;1&quot;</span><span class="w"> </span><span class="na">y=</span><span class="s">&quot;1&quot;</span><span class="nt">/&gt;&lt;/ld&gt;</span>
-<span class="w">      </span><span class="nt">&lt;sfc&gt;&lt;scaling</span><span class="w"> </span><span class="na">x=</span><span class="s">&quot;1&quot;</span><span class="w"> </span><span class="na">y=</span><span class="s">&quot;1&quot;</span><span class="nt">/&gt;&lt;/sfc&gt;</span>
+<span class="w">      </span><span class="nt">&lt;fbd&gt;&lt;scaling</span><span class="w"> </span><span class="na">x=</span><span class="s">"1"</span><span class="w"> </span><span class="na">y=</span><span class="s">"1"</span><span class="nt">/&gt;&lt;/fbd&gt;</span>
+<span class="w">      </span><span class="nt">&lt;ld&gt;&lt;scaling</span><span class="w"> </span><span class="na">x=</span><span class="s">"1"</span><span class="w"> </span><span class="na">y=</span><span class="s">"1"</span><span class="nt">/&gt;&lt;/ld&gt;</span>
+<span class="w">      </span><span class="nt">&lt;sfc&gt;&lt;scaling</span><span class="w"> </span><span class="na">x=</span><span class="s">"1"</span><span class="w"> </span><span class="na">y=</span><span class="s">"1"</span><span class="nt">/&gt;&lt;/sfc&gt;</span>
 <span class="w">    </span><span class="nt">&lt;/coordinateInfo&gt;</span>
 <span class="w">  </span><span class="nt">&lt;/contentHeader&gt;</span>
 <span class="w">  </span><span class="nt">&lt;types&gt;</span>

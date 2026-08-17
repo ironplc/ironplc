@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.238.0">
+<meta name="ironplc-version" content="0.239.0">
 </head>
   <body>
     
@@ -552,6 +552,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P4043.html">P4043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P4045.html">P4045</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -563,6 +564,7 @@
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6009.html">P6009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6010.html">P6010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6011.html">P6011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P6012.html">P6012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P8001.html">P8001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../reference/compiler/problems/P9002.html">P9002</a></li>
@@ -688,11 +690,11 @@ This guide explains how to read those messages and find the fix.</p>
 <section id="anatomy-of-an-error-message">
 <h2>Anatomy of an Error Message<a class="headerlink" href="#anatomy-of-an-error-message" title="Link to this heading">¶</a></h2>
 <p>A typical error message from <strong class="program">ironplcc check</strong> looks like this:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>error[P2001]: Variable &#39;Counter&#39; is declared but type &#39;IN&#39; is not defined
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>error[P2001]: Variable 'Counter' is declared but type 'IN' is not defined
   --&gt; main.st:3:7
    |
  3 |       Counter : IN := 0;
-   |       ^^^^^^^ type &#39;IN&#39; is not defined
+   |       ^^^^^^^ type 'IN' is not defined
 </pre></div>
 </div>
 <p>The message has several parts:</p>

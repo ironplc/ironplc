@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.238.0">
+<meta name="ironplc-version" content="0.239.0">
 </head>
   <body>
     
@@ -552,6 +552,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P4043.html">P4043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4045.html">P4045</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4046.html">P4046</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -563,6 +564,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P6009.html">P6009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6010.html">P6010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6011.html">P6011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P6012.html">P6012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P8001.html">P8001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9002.html">P9002</a></li>
@@ -695,7 +697,7 @@
 <h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
 <p>The following code will generate error P0003:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">TYPE</span>
-    <span class="n">CUSTOM_STRUCT</span> <span class="p">:</span> <span class="n">STRUCT</span><span class="o">&amp;</span>   <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">Invalid</span> <span class="n">character</span> <span class="s1">&#39;&amp;&#39;</span> <span class="o">*</span><span class="p">)</span>
+    <span class="n">CUSTOM_STRUCT</span> <span class="p">:</span> <span class="n">STRUCT</span><span class="o">&amp;</span>   <span class="p">(</span><span class="o">*</span> <span class="n">Error</span><span class="p">:</span> <span class="n">Invalid</span> <span class="n">character</span> <span class="s1">'&amp;'</span> <span class="o">*</span><span class="p">)</span>
         <span class="n">NAME</span><span class="p">:</span> <span class="n">BOOL</span><span class="p">;</span>
     <span class="n">END_STRUCT</span><span class="p">;</span>
 <span class="n">END_TYPE</span>

@@ -9,7 +9,7 @@
 <meta property="og:site_name" content="IronPLC" />
 <meta property="og:description" content="Code, P6001,, Message, Unable to canonicalize the path,. This error occurs when the compiler is unable to canonicalize a file path, typically due to invalid path components, permission issues, or f..." />
 <meta name="description" content="Code, P6001,, Message, Unable to canonicalize the path,. This error occurs when the compiler is unable to canonicalize a file path, typically due to invalid path components, permission issues, or f..." />
-<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P6002" href="P6002.html"><link rel="prev" title="P4045" href="P4045.html">
+<link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="P6002" href="P6002.html"><link rel="prev" title="P4046" href="P4046.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/compiler/problems/P6001.html">
 
     <link rel="shortcut icon" href="../../../_static/favicon.ico"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.238.0">
+<meta name="ironplc-version" content="0.239.0">
 </head>
   <body>
     
@@ -552,6 +552,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P4043.html">P4043</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P4045.html">P4045</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P4046.html">P4046</a></li>
 <li class="toctree-l4 current current-page"><a class="current reference internal" href="#">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6003.html">P6003</a></li>
@@ -563,6 +564,7 @@
 <li class="toctree-l4"><a class="reference internal" href="P6009.html">P6009</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6010.html">P6010</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P6011.html">P6011</a></li>
+<li class="toctree-l4"><a class="reference internal" href="P6012.html">P6012</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P8001.html">P8001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9001.html">P9001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="P9002.html">P9002</a></li>
@@ -707,9 +709,9 @@
 <li><p>The filesystem is functioning correctly</p></li>
 </ul>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example of problematic paths that might cause this error:</span>
-ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">&quot;/invalid\0path/file.st&quot;</span><span class="w">        </span><span class="c1"># Invalid null character</span>
-ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">&quot;//server/missing/file.st&quot;</span><span class="w">      </span><span class="c1"># Non-existent network path</span>
-ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">&quot;/root/restricted/file.st&quot;</span><span class="w">      </span><span class="c1"># Permission denied</span>
+ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">"/invalid\0path/file.st"</span><span class="w">        </span><span class="c1"># Invalid null character</span>
+ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">"//server/missing/file.st"</span><span class="w">      </span><span class="c1"># Non-existent network path</span>
+ironplcc<span class="w"> </span>check<span class="w"> </span><span class="s2">"/root/restricted/file.st"</span><span class="w">      </span><span class="c1"># Permission denied</span>
 </pre></div>
 </div>
 <div class="tip admonition">
@@ -734,14 +736,14 @@ with a small sample that demonstrates the problem.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="P4045.html">
+          <a class="prev-page" href="P4046.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">P4045</div>
+                <div class="title">P4046</div>
                 
               </div>
             </a>
