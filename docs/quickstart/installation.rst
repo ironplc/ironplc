@@ -6,16 +6,22 @@ Installation
 
 .. note::
 
-   The IronPLC VS Code extension is currently unavailable on the Visual
-   Studio Marketplace. Install via:
+   The IronPLC extension is published to two registries. Both are built
+   from the same source and released together, but each carries its own
+   extension ID:
 
+   - `Visual Studio Marketplace
+     <https://marketplace.visualstudio.com/items?itemName=ironplc.ironplc-vscode>`_
+     (Visual Studio Code) — listed as :guilabel:`IronPLC IDE`, extension ID
+     ``ironplc.ironplc-vscode``
    - `Open VSX <https://open-vsx.org/extension/ironplc/ironplc>`_ (Cursor,
-     Windsurf, VSCodium)
-   - Direct VSIX from `IronPLC GitHub releases`_
+     Windsurf, VSCodium) — listed as :guilabel:`IronPLC`, extension ID
+     ``ironplc.ironplc``
 
-   Existing installs continue to work; automatic updates from the
-   Marketplace are paused. We are working with Microsoft to restore the
-   listing.
+   A VSIX for each is also attached to every `IronPLC GitHub releases`_
+   entry: ``ironplc-vscode-extension-marketplace.vsix`` matches the
+   Marketplace listing and ``ironplc-vscode-extension.vsix`` matches the
+   Open VSX listing.
 
 IronPLC supports the following platforms:
 
@@ -58,9 +64,21 @@ Follow the steps below to install IronPLC.
 
    .. rubric:: Install IronPLC Extension
 
+   Option 1 — install from the extension registry (recommended):
+
+   Run your development environment, then:
+
+   #. Go to the Extensions view by clicking on the Extensions icon in
+      :guilabel:`Activity Bar` on the side of the window or using the
+      View: Extensions command (:kbd:`Ctrl+Shift+X`).
+   #. Search for ``IronPLC``, then select :guilabel:`Install`.
+
+   Option 2 — install from a VSIX:
+
    #. Download the latest IronPLC extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
+      :download_artifact:`ironplc-vscode-extension-marketplace.vsix` from
+      `IronPLC GitHub releases`_. For Cursor, Windsurf, or VSCodium,
+      download :download_artifact:`ironplc-vscode-extension.vsix` instead.
 
    Run your development environment, then:
 
@@ -99,9 +117,21 @@ Follow the steps below to install IronPLC.
 
    .. rubric:: Install IronPLC Extension
 
+   Option 1 — install from the extension registry (recommended):
+
+   Run your development environment, then:
+
+   #. Go to the Extensions view by clicking on the Extensions icon in
+      :guilabel:`Activity Bar` on the side of the window or using the
+      View: Extensions command (:kbd:`⌘+Shift+X`).
+   #. Search for ``IronPLC``, then select :guilabel:`Install`.
+
+   Option 2 — install from a VSIX:
+
    #. Download the latest IronPLC extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
+      :download_artifact:`ironplc-vscode-extension-marketplace.vsix` from
+      `IronPLC GitHub releases`_. For Cursor, Windsurf, or VSCodium,
+      download :download_artifact:`ironplc-vscode-extension.vsix` instead.
 
    Run your development environment, then:
 
@@ -135,9 +165,21 @@ Follow the steps below to install IronPLC.
 
    .. rubric:: Install IronPLC Extension
 
+   Option 1 — install from the extension registry (recommended):
+
+   Run your development environment, then:
+
+   #. Go to the Extensions view by clicking on the Extensions icon in
+      :guilabel:`Activity Bar` on the side of the window or using the
+      View: Extensions command (:kbd:`Ctrl+Shift+X`).
+   #. Search for ``IronPLC``, then select :guilabel:`Install`.
+
+   Option 2 — install from a VSIX:
+
    #. Download the latest IronPLC extension
-      :download_artifact:`ironplc-vscode-extension.vsix` from
-      `IronPLC GitHub releases`_.
+      :download_artifact:`ironplc-vscode-extension-marketplace.vsix` from
+      `IronPLC GitHub releases`_. For Cursor, Windsurf, or VSCodium,
+      download :download_artifact:`ironplc-vscode-extension.vsix` instead.
 
    Run your development environment, then:
 
