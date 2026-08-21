@@ -94,9 +94,16 @@ The new listing has been validated by hand, so publishing is now automated.
      `extensions.json`, so this input must track whichever VSIX the job
      downloads.
 
-4. **Docs.** `docs/quickstart/installation.rst` and
-   `integrations/vscode/README.md` now describe both registries, their differing
-   extension IDs and display names, and which release VSIX corresponds to each.
-   Installing from the extension registry is presented as the recommended path,
-   with the VSIX download kept as a fallback. The Open VSX `ironplc.ironplc`
-   link is intact.
+4. **Docs.** Delivered separately in #1390, which landed first.
+   `docs/quickstart/installation.rst`, `integrations/vscode/README.md`, and
+   `docs/how-to-guides/troubleshoot-editor.rst` describe both listings —
+   "IronPLC IDE" (`ironplc.ironplc-vscode`) on the Marketplace and "IronPLC"
+   (`ironplc.ironplc`) on Open VSX — and make installing from the Extensions
+   view the primary path, keeping the VSIX download as the fallback for
+   environments that cannot reach either registry.
+
+   Known gap: the docs describe a single release VSIX, but two are attached
+   (`ironplc-vscode-extension-marketplace.vsix` matches the Marketplace listing,
+   `ironplc-vscode-extension.vsix` matches Open VSX). A VS Code user who
+   sideloads the Open VSX VSIX will not receive Marketplace updates. Worth a
+   follow-up if manual installation on VS Code turns out to be common.

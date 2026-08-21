@@ -1,15 +1,18 @@
 # IronPLC
 
-> **Note:** IronPLC is published to two registries, each with its own
-> extension ID. Both are built from the same source and released together.
+> **Note:** This extension is published under two different names because
+> the two registries are separate namespaces:
 >
 > - [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=ironplc.ironplc-vscode)
->   (VS Code) — listed as "IronPLC IDE", extension ID `ironplc.ironplc-vscode`
-> - [Open VSX](https://open-vsx.org/extension/ironplc/ironplc) (Cursor, Windsurf, VSCodium)
->   — listed as "IronPLC", extension ID `ironplc.ironplc`
+>   — listed as **IronPLC IDE** (extension ID `ironplc.ironplc-vscode`)
+> - [Open VSX](https://open-vsx.org/extension/ironplc/ironplc) — listed as
+>   **IronPLC** (extension ID `ironplc.ironplc`), used by Cursor, Kiro,
+>   Devin (formerly Windsurf), and VSCodium
+> - [Direct VSIX from GitHub Releases](https://github.com/ironplc/ironplc/releases/latest)
 >
-> A VSIX for each is also attached to every
-> [GitHub release](https://github.com/ironplc/ironplc/releases/latest).
+> Both listings are the same extension. In Cursor, IronPLC works in the
+> Cursor IDE interface; it is not available in Cursor's newer agent-first
+> interface.
 
 IronPLC provides IEC 61131-3 Structured Text language support for VS Code.
 Get real-time error checking, syntax highlighting, and build tools for PLC
