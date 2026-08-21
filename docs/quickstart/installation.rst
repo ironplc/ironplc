@@ -93,9 +93,8 @@ Follow the steps below to install IronPLC.
 
       curl -fsSL https://www.ironplc.com/install.sh | sh
 
-   This installs ``ironplcc``, ``ironplcvm``, and ``ironplcmcp`` into
-   ``$HOME/.ironplc/bin`` and adds that directory to your ``PATH`` via
-   your shell profile.
+   This installs IronPLC into ``$HOME/.ironplc/bin`` and adds that
+   directory to your ``PATH`` via your shell profile.
 
    .. rubric:: Install IronPLC Extension
 
@@ -121,9 +120,8 @@ Follow the steps below to install IronPLC.
 
       curl -fsSL https://www.ironplc.com/install.sh | sh
 
-   This installs ``ironplcc``, ``ironplcvm``, and ``ironplcmcp`` into
-   ``$HOME/.ironplc/bin`` and adds that directory to your ``PATH`` via
-   your shell profile.
+   This installs IronPLC into ``$HOME/.ironplc/bin`` and adds that
+   directory to your ``PATH`` via your shell profile.
 
    To install a specific version:
 
