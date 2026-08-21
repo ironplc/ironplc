@@ -16,6 +16,17 @@ impl<'a> OperandStack<'a> {
         }
     }
 
+    /// Number of slots currently on the stack.
+    ///
+    /// The operand stack is shared across every frame and every scan round
+    /// — nothing clears it between rounds — so a scan that ends with a
+    /// non-zero depth has leaked slots that accumulate forever. Callers use
+    /// this to assert the stack is empty at a scan boundary; see
+    /// `VmRunning::operand_stack_depth`.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
     /// Pushes a slot onto the stack.
     pub fn push(&mut self, slot: Slot) -> Result<(), Trap> {
         if self.len >= self.data.len() {

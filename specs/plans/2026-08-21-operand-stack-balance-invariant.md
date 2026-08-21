@@ -148,30 +148,52 @@ tests are a separate crate and link the VM as a normal dependency, so a
 test-only item in `ironplc-vm` is not visible to them.
 
 `parse_and_run_rounds` hands a `&mut VmRunning` to a closure that may run
-many rounds, so a check only at closure exit would miss intermediate rounds.
-Layer 3 covers those.
+many rounds. Round attribution is recovered by asserting inside `drive_fb`'s
+`Run` and `Pulse` steps, which is where nearly all multi-round scenarios
+live. Detection does not depend on that: because nothing ever truncates the
+operand stack, a leak in any round survives to the end of the scenario, so
+the check after the closure catches a leak in every round of it.
 
-### Layer 3 — runtime defense
+### Layer 3 — runtime defense: rejected, with evidence
 
-`run_round` gets a `debug_assert!`-gated check that the operand stack is
-empty when the round completes. This is the right call rather than a trap:
+**No stack-balance check is added to the VM.** The first attempt put a
+`debug_assert!` at the end of `run_round`, on the reasoning that
+`debug_assertions` is off in release so the production scan path stays
+byte-identical. Running the suite disproved the idea outright — it broke two
+VM tests, and both breakages are correct:
 
-- **Cost.** `debug_assertions` is off in release builds, so the production
-  scan path is byte-identical to today. A real trap would add a branch per
-  scan — small, but on the one path a PLC runtime must keep tight, and it
-  would buy nothing that layer 1 does not already prevent.
-- **Coverage.** It fires on *every* `run_round` in the whole test suite,
-  including the multi-round `parse_and_run_rounds` and `drive_fb` scenarios
-  that layer 2 cannot reach, and including VM tests that build containers by
-  hand and never go through codegen at all.
-- **Redundancy is the point.** Layer 1 checks what the compiler *emitted*;
-  layer 3 checks what the VM *did*. A bug in the verifier's effect table —
-  the one component both layers share — shows up as a disagreement between
-  them rather than as two silent agreements.
+- `proptest_robustness::execute_when_arbitrary_bytecode_then_never_panics`
+  feeds up to 512 random bytes into `run_round` and pins the contract that
+  arbitrary bytecode must **never panic the VM**. A `debug_assert` in
+  `run_round` *is* a panic on arbitrary bytecode. The two requirements are
+  irreconcilable, and the robustness contract is the more important one:
+  containers reach the VM from disk, not only from this compiler.
+- `execute_dup_swap::execute_when_dup_and_swap_combined_then_correct` runs a
+  hand-written fixture that leaves one slot behind. It is a test fixture, not
+  codegen output, and it is entitled to be unbalanced.
 
-Adding a `Trap::StackNotEmpty` and returning it from `run_round` is
-explicitly rejected: it converts a compiler bug into a runtime fault for the
-end user, which is the failure mode this work exists to remove.
+The mistake was a category error. "A completed scan leaves the operand stack
+empty" is a property of *the compiler that produced the container*, not one
+the VM can guarantee about every container it is handed. Asserting it inside
+the VM asserts something the VM does not know. Enforcement belongs where
+provenance is known: codegen, which verifies what it emits, and the codegen
+test harness, which only ever runs containers codegen produced.
+
+Feature-gating the check on `test-support` was considered and does not work:
+`vm/Cargo.toml` self-enables that feature in its own dev-dependencies, so the
+VM's robustness tests would still see it.
+
+`Trap::StackNotEmpty` is rejected for a separate reason: it converts a
+compiler bug into a runtime fault for the end user, which is the failure mode
+this work exists to remove.
+
+What the VM does gain is the read-only `operand_stack_depth()` accessor that
+layer 2 needs — no branch, no cost, and useful to debuggers and embedders.
+
+Load-time verification — calling `verify_stack_balance` when the VM loads a
+container, which is what `bytecode-verifier-rules.md` actually envisages — is
+the principled way to give the VM this guarantee about untrusted containers.
+It is out of scope here and left as follow-up.
 
 ## Design doc reference
 
@@ -192,7 +214,7 @@ remaining rules.
 | File | Purpose |
 |------|---------|
 | `compiler/container/src/verify.rs` | CFG abstract interpretation, `StackImbalance` |
-| `compiler/codegen/tests/it/stack_balance.rs` | Emitter-driven proof: leak and over-pop are caught |
+| `compiler/codegen/src/stack_balance.rs` | Codegen entry point plus the Emitter-driven proof tests (the `emit` module is crate-private, so the proof cannot live in `tests/it`) |
 
 **Modified**
 
@@ -201,37 +223,40 @@ remaining rules.
 | `compiler/container/src/opcode.rs` | `arg_count_opt` — non-panicking `arg_count` for the verifier |
 | `compiler/container/src/lib.rs` | Export `verify` |
 | `compiler/codegen/src/compile.rs` | Verify the container before returning it |
-| `compiler/codegen/tests/it/main.rs` | Register the new test module |
 | `compiler/codegen/tests/it/common/mod.rs` | Assert empty stack after a scan |
-| `compiler/vm/src/vm.rs` | `operand_stack_depth` accessor; `debug_assert` in `run_round` |
+| `compiler/vm/src/vm.rs` | `operand_stack_depth` accessor on `VmReady`/`VmRunning` |
 | `compiler/vm/src/stack.rs` | `len` accessor |
 
 ## Tasks
 
-- [ ] Add `opcode::builtin::arg_count_opt`; re-express `arg_count` on top of it
-- [ ] Write `container/src/verify.rs`: boundary scan, worklist interpretation,
+- [x] Add `opcode::builtin::arg_count_opt`; re-express `arg_count` on top of it
+- [x] Write `container/src/verify.rs`: boundary scan, worklist interpretation,
       `StackImbalance` with `Display`
-- [ ] Unit-test the verifier: balanced, leak, over-pop, merge conflict,
+- [x] Unit-test the verifier: balanced, leak, over-pop, merge conflict,
       early-`RET`, loop back edge, unreachable code, bad jump target,
       truncated instruction, unassigned opcode, `CALL` parameter accounting
-- [ ] Add the exhaustiveness test tying `effect_of` to `opcode::is_assigned`
-- [ ] Call the verifier from `compile_program_with_functions`; map violations
+- [x] Add the exhaustiveness test tying `effect_of` to `opcode::is_assigned`
+- [x] Call the verifier from `compile_program_with_functions`; map violations
       to `Diagnostic::internal_error_at`
-- [ ] Confirm zero false positives across the whole existing suite
+- [x] Confirm zero false positives across the whole existing suite
       (`RETURN`, `EXIT`, `CASE`, nested calls, function blocks)
-- [ ] Add `OperandStack::len` and `VmReady`/`VmRunning::operand_stack_depth`
-- [ ] Add the `debug_assert` at the end of `run_round`
-- [ ] Assert an empty stack in `parse_and_run` / `parse_and_try_run` /
+- [x] Add `OperandStack::len` and `VmReady`/`VmRunning::operand_stack_depth`
+- [x] Evaluate a runtime check in `run_round`; reject it if it conflicts
+      with the VM's arbitrary-bytecode robustness contract
+- [x] Assert an empty stack in `parse_and_run` / `parse_and_try_run` /
       `parse_and_run_rounds`
-- [ ] Write the main-only reproduction: drive `Emitter` + `ContainerBuilder`
+- [x] Write the main-only reproduction in `codegen/src/stack_balance.rs`:
+      drive `Emitter` + `ContainerBuilder`
       to produce a spare push and an over-pop, and assert each is caught and
       that the pre-existing `max_stack_depth` path accepted both
-- [ ] Run `cd compiler && just` and make every check pass
+- [x] Run `cd compiler && just` and make every check pass
 
 ## Verification
 
 1. `cargo test --workspace` — no regressions, no false positives.
-2. The new reproduction tests fail if the verifier call is removed from
-   `compile.rs`, which is what makes them regression tests rather than
-   decoration.
+2. The reproduction tests pin the verifier itself: each drives the real
+   `Emitter` and `ContainerBuilder`, and each asserts both that the defect
+   is caught now and that the pre-existing machinery accepted it. The
+   `compile.rs` wiring is pinned indirectly — any real codegen leak trips
+   the harness assertion in the ~1090-test e2e suite.
 3. `cd compiler && just` — compile, coverage ≥ 85%, clippy, fmt, dupes.
