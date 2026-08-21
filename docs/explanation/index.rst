@@ -14,6 +14,7 @@ them later when you want to understand *why* things work the way they do.
    Structured Text Basics <structured-text-basics>
    Program Organization <program-organization>
    Execution Cycle <execution-cycle>
+   Debugging a Scan Cycle <debugging-a-scan-cycle>
    Variables and I/O <variables-and-io>
    Object Oriented Programming <object-orientation>
    System Clock and Uptime <system-clock-and-uptime>

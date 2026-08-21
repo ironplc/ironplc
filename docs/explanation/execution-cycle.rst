@@ -33,6 +33,10 @@ with :kbd:`Ctrl+C` or until a fault occurs.
    you can test and debug your code. See the :doc:`/reference/runtime/ironplcvm`
    command reference for details.
 
+   The debugger takes control of the loop a scan at a time, which is a
+   different experience from debugging an ordinary program. See
+   :doc:`debugging-a-scan-cycle`.
+
 --------------------------------------
 How Tasks Are Scheduled
 --------------------------------------
