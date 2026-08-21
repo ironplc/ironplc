@@ -116,28 +116,6 @@ Recompile after every source change. The debugger runs the container as it
 finds it.
 
 --------------------------------------
-Debug a TwinCAT POU
---------------------------------------
-
-Breakpoints work in :file:`.TcPOU` files the same way they do in
-:file:`.st` files.
-
-A POU that references other POUs, global variable lists, or library
-functions does not compile on its own. Compile the project and debug the
-container, as above:
-
-.. code-block:: shell
-
-   ironplcc compile --dialect twincat path/to/my-solution --output myproject.iplc
-
-The ``--dialect twincat`` option matters here: the debugger compiles a single
-file with default options, so a POU that uses TwinCAT extensions has to be
-compiled ahead of time and debugged as a container.
-
-See :doc:`/how-to-guides/twincat/run-twincat-projects` for compiling a
-TwinCAT project.
-
---------------------------------------
 Watch the Scan Cycle
 --------------------------------------
 

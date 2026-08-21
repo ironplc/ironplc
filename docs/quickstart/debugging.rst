@@ -116,13 +116,6 @@ Open the :guilabel:`Variables` view. It shows two groups.
 ``scanCount`` is the number of scan cycles the program has completed. It is
 0, because none have. This is the number to watch.
 
-.. note::
-
-   ``PulseTimer`` is a function block instance. Its fields --- ``IN``,
-   ``PT``, ``Q``, ``ET`` --- are not listed yet, so you cannot read the
-   timer's elapsed time here. ``Buzzer`` tells you what the timer decided,
-   which is all this chapter needs.
-
 --------------------------------------
 Run to the Breakpoint
 --------------------------------------
@@ -217,24 +210,10 @@ Press :kbd:`F5` again. Nothing stops. The program keeps scanning, the
 condition is never true again, and ``RingCount`` stays where it is.
 
 --------------------------------------
-What You Learned
---------------------------------------
-
-Detecting a rising edge is one of the most common patterns in PLC
-programming, and forgetting it is one of the most common bugs. It happens
-because Structured Text reads like a script that runs once, and a PLC program
-is not that. It runs the same lines again, and again, many times a second.
-
-The debugger makes that visible. A breakpoint stops the program on every
-scan, and ``scanCount`` tells you which scan you are on, so you can watch a
-value accumulate across cycles instead of guessing why it is wrong.
-
---------------------------------------
 Next Steps
 --------------------------------------
 
-* :doc:`/explanation/debugging-a-scan-cycle` --- what pausing means when the
-  machine keeps running
-* :doc:`/how-to-guides/getting-started/debug-a-program` --- limit the scans,
-  debug a whole project
-* :doc:`/reference/editor/debugging` --- every launch attribute and limit
+You can now stop a running program and watch it work a scan at a time. As
+your project grows, you will want to organize code across multiple files.
+
+Continue to :doc:`multiple-files`.
