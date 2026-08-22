@@ -171,39 +171,41 @@ pub(crate) fn assign_variables(
                     (iec_type_tag::OTHER, fb_name)
                 }
                 InitialValueAssignmentKind::Array(array_init) => {
-                    let spec = match &array_init.spec {
-                        SpecificationKind::Inline(array_subranges) => {
-                            crate::compile_array::array_spec_from_inline(
-                                array_subranges,
-                                &decl.identifier.span(),
-                            )?
-                        }
-                        SpecificationKind::Named(type_name) => {
-                            let array_type =
-                                types.resolve_array_type(type_name).ok_or_else(|| {
-                                    Diagnostic::not_implemented(Label::span(
-                                        type_name.span(),
-                                        "Unknown array type",
-                                    ))
-                                })?;
-                            let IntermediateType::Array {
-                                element_type,
-                                dimensions,
-                            } = array_type
-                            else {
-                                unreachable!("resolve_array_type guarantees Array variant");
-                            };
-                            crate::compile_array::array_spec_from_named(element_type, dimensions)?
-                        }
-                    };
-                    crate::compile_array::register_array_variable(
-                        ctx,
-                        builder,
-                        id,
-                        index,
-                        &spec,
-                        &decl.identifier.span(),
-                    )?
+                    // An array whose elements are structures is laid out as
+                    // one flat run of slots rather than one slot per element,
+                    // so it registers through its own path.
+                    if let Some((element_type, debug_type_name, dimensions)) =
+                        crate::compile_array_struct::struct_array_declaration(
+                            types,
+                            &array_init.spec,
+                            &decl.identifier.span(),
+                        )?
+                    {
+                        crate::compile_array_struct::register_struct_array_variable(
+                            ctx,
+                            builder,
+                            id,
+                            index,
+                            &element_type,
+                            &debug_type_name,
+                            &dimensions,
+                            &decl.identifier.span(),
+                        )?
+                    } else {
+                        let spec = crate::compile_array::array_spec_for_declaration(
+                            types,
+                            &array_init.spec,
+                            &decl.identifier.span(),
+                        )?;
+                        crate::compile_array::register_array_variable(
+                            ctx,
+                            builder,
+                            id,
+                            index,
+                            &spec,
+                            &decl.identifier.span(),
+                        )?
+                    }
                 }
                 InitialValueAssignmentKind::Reference(ref_init) => {
                     // References are stored as 64-bit variable-table indices (unsigned).
@@ -480,7 +482,23 @@ pub(crate) fn emit_initial_values(
                     }
                 }
                 InitialValueAssignmentKind::Array(array_init) => {
-                    if let Some(array_info) = ctx.array_vars.get(id) {
+                    // An array of structures holds the data region offset in
+                    // its variable slot, like a structure variable does. Its
+                    // element fields are left zeroed, matching what an
+                    // array-of-struct field of a structure gets today.
+                    if let Some(struct_array_info) = ctx.struct_array_vars.get(id) {
+                        if !array_init.initial_values.is_empty() {
+                            return Err(Diagnostic::not_implemented(Label::span(
+                                decl.identifier.span(),
+                                "Initial values for an array of structures",
+                            )));
+                        }
+                        let data_offset = struct_array_info.data_offset;
+                        let var_index = struct_array_info.var_index;
+                        let offset_const = ctx.add_i32_constant(data_offset as i32);
+                        emitter.emit_load_const_i32(offset_const);
+                        emitter.emit_store_var_i32(var_index);
+                    } else if let Some(array_info) = ctx.array_vars.get(id) {
                         let data_offset = array_info.data_offset;
                         let var_index = array_info.var_index;
                         let desc_index = array_info.desc_index;

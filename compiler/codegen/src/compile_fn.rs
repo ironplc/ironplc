@@ -80,6 +80,7 @@ pub(crate) fn compile_user_function(
     let saved_string_vars = std::mem::take(&mut ctx.string_vars);
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
     let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
+    let saved_struct_array_vars = std::mem::take(&mut ctx.struct_array_vars);
 
     // Re-insert global variable mappings so the function body can access them.
     for (id, index) in &saved_variables {
@@ -109,6 +110,14 @@ pub(crate) fn compile_user_function(
             .is_some_and(|i| i.raw() < num_globals)
         {
             ctx.struct_vars.insert(id.clone(), info.clone());
+        }
+    }
+    for (id, info) in &saved_struct_array_vars {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.struct_array_vars.insert(id.clone(), info.clone());
         }
     }
 
@@ -468,6 +477,7 @@ pub(crate) fn compile_user_function(
     ctx.string_vars = saved_string_vars;
     ctx.array_vars = saved_array_vars;
     ctx.struct_vars = saved_struct_vars;
+    ctx.struct_array_vars = saved_struct_array_vars;
 
     Ok(CompiledFunction {
         function_id,
@@ -524,6 +534,7 @@ pub(crate) fn compile_user_function_block(
     let saved_string_vars = std::mem::take(&mut ctx.string_vars);
     let saved_array_vars = std::mem::take(&mut ctx.array_vars);
     let saved_struct_vars = std::mem::take(&mut ctx.struct_vars);
+    let saved_struct_array_vars = std::mem::take(&mut ctx.struct_array_vars);
     let saved_fb_instances = std::mem::take(&mut ctx.fb_instances);
 
     // Re-insert global variable mappings so the FB body can access them.
@@ -554,6 +565,14 @@ pub(crate) fn compile_user_function_block(
             .is_some_and(|i| i.raw() < num_globals)
         {
             ctx.struct_vars.insert(id.clone(), info.clone());
+        }
+    }
+    for (id, info) in &saved_struct_array_vars {
+        if saved_variables
+            .get(id)
+            .is_some_and(|i| i.raw() < num_globals)
+        {
+            ctx.struct_array_vars.insert(id.clone(), info.clone());
         }
     }
 
@@ -644,6 +663,7 @@ pub(crate) fn compile_user_function_block(
     ctx.string_vars = saved_string_vars;
     ctx.array_vars = saved_array_vars;
     ctx.struct_vars = saved_struct_vars;
+    ctx.struct_array_vars = saved_struct_array_vars;
     ctx.fb_instances = saved_fb_instances;
 
     Ok(CompiledFunction {

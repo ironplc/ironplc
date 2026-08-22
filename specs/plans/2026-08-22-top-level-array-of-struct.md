@@ -63,28 +63,33 @@ addressing added for #1376.
 
 | File | Change |
 |------|--------|
+| `compiler/codegen/src/compile_array_struct.rs` | New module: `StructArrayVarInfo`, declaration detection, registration, and `arr[i].field` resolution for both the top-level and struct-field forms |
 | `compiler/codegen/src/compile.rs` | `CompileContext::struct_array_vars` map |
-| `compiler/codegen/src/compile_array.rs` | `StructArrayVarInfo`, `register_struct_array_variable`, top-level base in `resolve_struct_array_element_field`, shared element-field access helper |
+| `compiler/codegen/src/compile_array.rs` | Moved the array-of-struct access path into the new module; extracted `array_spec_for_declaration`; explanatory diagnostic for whole-element access |
 | `compiler/codegen/src/compile_setup.rs` | Route struct element types to the new registration; store the data offset into the variable slot in `emit_initial_values` |
 | `compiler/codegen/src/compile_fn.rs` | Save/restore `struct_array_vars` and re-expose globals to function and FB bodies |
+| `compiler/codegen/src/lib.rs` | Register the new module |
 | `compiler/codegen/tests/it/end_to_end_array_of_struct.rs` | New end-to-end file (registered in `tests/it/main.rs`) |
+| `compiler/codegen/tests/it/compile_array.rs` | Container-shape and emitted-index tests |
 
 ## Tasks
 
-- [ ] Add `StructArrayVarInfo` and `CompileContext::struct_array_vars`
-- [ ] Add `register_struct_array_variable` (slot accounting, limits, descriptor)
-- [ ] Route inline (`ARRAY[..] OF Item`) and named array types with a
+- [x] Add `StructArrayVarInfo` and `CompileContext::struct_array_vars`
+- [x] Add `register_struct_array_variable` (slot accounting, limits, descriptor)
+- [x] Route inline (`ARRAY[..] OF Item`) and named array types with a
       structure element type to the new registration in `assign_variables`
-- [ ] Emit the data-region offset into the variable slot in
+- [x] Emit the data-region offset into the variable slot in
       `emit_initial_values`; reject explicit initial values
-- [ ] Resolve `Arr[i].field` for a top-level base in
+- [x] Resolve `Arr[i].field` for a top-level base in
       `resolve_struct_array_element_field`, factoring the tail shared with the
       struct-field base into one helper
-- [ ] Give whole-element access (`Arr[i]` without a field) an explanatory
+- [x] Move the array-of-struct paths into `compile_array_struct.rs` so no
+      module crosses the 1000-line guideline
+- [x] Give whole-element access (`Arr[i]` without a field) an explanatory
       diagnostic instead of the bare `todo`
-- [ ] Save/restore `struct_array_vars` across function and FB body compilation
-- [ ] End-to-end tests: literal and variable subscript, distinct elements,
+- [x] Save/restore `struct_array_vars` across function and FB body compilation
+- [x] End-to-end tests: literal and variable subscript, distinct elements,
       sibling fields, multi-dimensional, FOR loop, BOOL leaf, read-back in an
       expression, named array type, and a global declaration
-- [ ] Unit tests for the registration and resolution error paths
-- [ ] `cd compiler && just`
+- [x] Unit tests for the registration and resolution error paths
+- [x] `cd compiler && just`
