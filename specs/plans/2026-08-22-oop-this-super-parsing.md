@@ -30,9 +30,12 @@ In scope:
   - statement-position method call: `THIS^.Start();`, `SUPER^.Start();`
   - bare: `v := THIS^;` (parses; nothing can be done with it yet)
 - plc2plc rendering and round-trip.
-- One clean `P9999` per occurrence from `rule_unsupported_extension`,
-  via a `LanguageExtension` impl — the pattern already used for
-  `IMPLEMENTS`, `ABSTRACT`, and `INTERFACE`.
+- `P9999` per occurrence from `rule_unsupported_extension`, via a
+  `LanguageExtension` impl — the pattern already used for
+  `IMPLEMENTS`, `ABSTRACT`, and `INTERFACE`. Earlier passes will also
+  report the construct as unimplemented, so the diagnostic output is
+  expected to be redundant and blunt at first; see *Analyzer* for why
+  that is preferred to silencing them.
 - Codegen: an explicit not-implemented arm (`Diagnostic::todo`) as a
   backstop, mirroring how `StmtKind::MethodCall` is handled today.
 
@@ -265,31 +268,49 @@ also touches whatever currently walks `instance`.
 
 ### Analyzer
 
+**No quiet arms.** The compiler will force a new match arm at every site
+that matches `SymbolicVariableKind` exhaustively. Every one of those arms
+must be *loud* — return an explicit not-implemented diagnostic
+(`Diagnostic::not_implemented` / `Diagnostic::todo`, naming the pass) —
+never a silent `None`, `Ok(())`, or "skip this node". A quiet arm is
+indistinguishable from a handled case, so when `THIS^`/`SUPER^` later
+grows real semantics, a pass that was silently ignoring it keeps
+ignoring it and miscompiles instead of failing. Being noisy and slightly
+confusing at first is the accepted cost; the diagnostics get refined
+once the construct has semantics worth resolving.
+
 - `impl LanguageExtension for SelfRefVariable` with name
   `"THIS^"` / `"SUPER^"` (from `kind`), plus a
   `visit_self_ref_variable` override in
   `rule_unsupported_extension.rs` → one `P9999` per occurrence.
 - The semantic rules run *after* the resolution transforms
-  (`stages.rs:337` vs `stages.rs:135-300`), so the risk is that
-  `xform_resolve_expr_types` and friends emit their own confused
-  diagnostics before `P9999` is ever reached. Each site that matches
-  `SymbolicVariableKind` needs an arm that returns "no type / not
-  resolvable" *quietly*:
-  `xform_resolve_expr_types.rs` (14 sites, incl. `find_base_variable_name`
-  → `None`), `xform_resolve_late_bound_expr_kind.rs` (7),
+  (`stages.rs:337` vs `stages.rs:135-300`), so the transforms meet the
+  new variant first and will report it before `rule_unsupported_extension`
+  ever runs. That is fine and expected: a program using `THIS^` is
+  rejected either way. The sites the compiler will point at are
+  `xform_resolve_expr_types.rs` (14, incl. `find_base_variable_name`),
+  `xform_resolve_late_bound_expr_kind.rs` (7),
   `rule_bit_access_range.rs` (6), `rule_ref_to.rs` (8),
   `xform_insert_implicit_deref.rs`, `xform_fold_initializer_expressions.rs`,
   `rule_function_call_type_check.rs`, `rule_string_encoding_compat.rs`.
+- Consequence to accept up front: a single `THIS^.count := 1;` may
+  produce several diagnostics — one per pass that meets it — and their
+  wording will be blunt ("`THIS^` is not supported by
+  <pass>"). Do not tune this by suppressing passes; the redundancy is
+  the signal that each pass has an unimplemented case.
+- Existing `_ =>` wildcard arms are not to be *relied on* for the new
+  variant. Where the compiler does not force a change, check whether a
+  wildcard is swallowing `SelfRef` into a wrong-but-plausible path
+  (rather than into a diagnostic); if it is, split the arm out
+  explicitly. Where a wildcard already lands in an error path, leave it.
 - `rule_use_declared_symbolic_var` needs no change *by construction*:
   a `SelfRef` head is not a `NamedVariable`, so `THIS` is never looked
   up as an undeclared symbol. Cover it with a test anyway.
-- `rule_method_call_declared.rs` skips `MethodReceiver::SelfRef`
-  receivers in this slice — resolving them would produce a second
-  diagnostic alongside `P9999`. It already tracks the enclosing
-  function block, so wiring resolution up later is cheap (see
-  *Optional add-ons*).
-- Acceptance test: a program using `THIS^.x` and `SUPER^.M()` produces
-  **exactly** the expected `P9999`s and nothing else.
+- `rule_method_call_declared.rs` reports `MethodReceiver::SelfRef`
+  receivers as not-implemented rather than skipping them — same rule:
+  a silent skip would keep quietly passing once `THIS^.M()` is
+  resolvable. It already tracks the enclosing function block, so
+  wiring real resolution up later is cheap (see *Optional add-ons*).
 
 ### Codegen
 
@@ -317,7 +338,7 @@ not `write_ws("^")`, so no space is introduced. Receiver rendering for
 | `compiler/dsl/src/visitor.rs`, `fold.rs` | `dispatch!` entries; receiver walk |
 | `compiler/dsl/src/extension.rs` consumers | `LanguageExtension` impl for `SelfRefVariable` |
 | `compiler/analyzer/src/rule_unsupported_extension.rs` | `visit_self_ref_variable` → P9999 |
-| `compiler/analyzer/src/xform_resolve_expr_types.rs` and the 7 other listed sites | Quiet "unresolvable" arms |
+| `compiler/analyzer/src/xform_resolve_expr_types.rs` and the 7 other listed sites | Explicit not-implemented arms (no silent skips) |
 | `compiler/analyzer/src/rule_method_call_declared.rs` | Skip `SelfRef` receivers; adapt to `receiver` field |
 | `compiler/codegen/src/compile_expr.rs`, `compile_stmt.rs` | `Diagnostic::todo` arms |
 | `compiler/plc2plc/src/renderer.rs` | Render `THIS^` / `SUPER^`; receiver rendering |
@@ -349,7 +370,12 @@ the others do not.
   including re-parsing the rendered output (as
   `plc2plc/src/tests/case.rs:33` does) so a stray space before `^`
   fails the test.
-- **Analyzer** — exactly the expected `P9999`s and no other diagnostic.
+- **Analyzer** — a program using `THIS^`/`SUPER^` is rejected, and
+  `P9999` is among the diagnostics. Assert *presence*, not an exact
+  diagnostic set: the set is expected to be noisy and to change as
+  passes are taught the construct, and pinning it would make every
+  later improvement a test edit. Do assert that a program *without*
+  `THIS^`/`SUPER^` is unaffected.
 - **Codegen** — `compile` fails with `P9999`, like
   `codegen/tests/it/end_to_end_struct.rs:620`.
 - **No end-to-end execution test** — nothing executes yet; the
@@ -387,7 +413,7 @@ the others do not.
 - [ ] Parser tests (flag on and flag off, including the whitespace case)
 - [ ] plc2plc rendering + re-parsing round-trip tests
 - [ ] `LanguageExtension` impl + `rule_unsupported_extension` override
-- [ ] Quiet arms in the resolution transforms; analyzer test asserting *only* P9999
+- [ ] Explicit not-implemented arms in the resolution transforms (audit `_ =>` wildcards for wrong-but-plausible fallthrough); analyzer test asserting rejection + P9999 present
 - [ ] Codegen `Diagnostic::todo` arms + compile-fails-with-P9999 test
 - [ ] Docs: reference page, `index.rst`, explanation page
 - [ ] Decide the optional add-ons above
