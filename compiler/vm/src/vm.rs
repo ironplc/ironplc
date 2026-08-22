@@ -125,6 +125,15 @@ pub struct VmReady<'a> {
 }
 
 impl<'a> VmReady<'a> {
+    /// Number of values currently on the operand stack.
+    ///
+    /// After `start` has run the init functions this is 0: every function
+    /// body is stack-balanced, so nothing survives an init. A non-zero
+    /// value means an init function leaked operand slots.
+    pub fn operand_stack_depth(&self) -> usize {
+        self.stack.len()
+    }
+
     /// Starts the VM for scan execution.
     ///
     /// Executes the init function for each program instance to apply
@@ -409,6 +418,22 @@ impl<'a> VmRunning<'a> {
 
         // Stub: OUTPUT_FLUSH (no-op)
 
+        // Deliberately no stack-balance assertion here. A completed round
+        // leaving values on the operand stack means the bytecode is not
+        // stack-balanced -- but that is a property of the *compiler that
+        // produced the container*, not one this VM can guarantee. Containers
+        // reach `run_round` from disk and from hand-built test fixtures, and
+        // `execute_when_arbitrary_bytecode_then_never_panics` pins the
+        // contract that arbitrary bytes must never panic the VM. An
+        // assertion here would violate exactly that contract.
+        //
+        // Enforcement lives where provenance is known instead: codegen
+        // verifies every container it emits
+        // (`ironplc_container::verify_stack_balance`), and the codegen test
+        // harness asserts `operand_stack_depth() == 0` at scan boundaries.
+        // Because nothing ever truncates this buffer, a leak in any round
+        // persists, so a single check after a scenario detects a leak in
+        // every round of it.
         self.scan_count += 1;
         Ok(())
     }
@@ -565,6 +590,21 @@ impl<'a> VmRunning<'a> {
             hook,
         )?;
         Ok((outcome, frame_count, temp_alloc_next))
+    }
+
+    /// Number of values currently on the operand stack.
+    ///
+    /// The operand stack is a single long-lived buffer shared by every
+    /// frame and every scan round — `run_round` does not truncate it — so
+    /// this reads 0 between completed scans. Any other value means a
+    /// function body leaked operand slots, and because nothing ever clears
+    /// them they accumulate every round until the buffer overflows with a
+    /// `Trap::StackOverflow` far from the instruction responsible.
+    ///
+    /// Test harnesses assert this is 0 after each scan; see
+    /// `codegen/tests/it/common/mod.rs`.
+    pub fn operand_stack_depth(&self) -> usize {
+        self.stack.len()
     }
 
     /// Current debug-driver phase (see [`Phase`]).

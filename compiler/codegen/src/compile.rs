@@ -765,7 +765,14 @@ fn compile_program_with_functions(
         });
     }
 
-    Ok(builder.build())
+    let container = builder.build();
+
+    // Verify operand-stack discipline before the container escapes codegen.
+    // See `crate::stack_balance` for why this is a hard error and
+    // `specs/design/bytecode-verifier-rules.md` for the rules it enforces.
+    crate::stack_balance::verify_container(&container)?;
+
+    Ok(container)
 }
 
 #[derive(Clone)]
