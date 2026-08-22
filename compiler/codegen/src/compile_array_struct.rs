@@ -56,11 +56,7 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
     structured: &'ast ironplc_dsl::textual::StructuredVariable,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
     let SymbolicVariableKind::Array(array_var) = structured.record.as_ref() else {
-        return Err(Diagnostic::todo_with_span(
-            structured.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(structured.span()));
     };
 
     // Collect subscript groups innermost-first, then reverse -- the same
@@ -74,7 +70,7 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
             SymbolicVariableKind::Structured(base) => break ArrayOfStructBase::Field(base),
             SymbolicVariableKind::Named(named) => break ArrayOfStructBase::Variable(&named.name),
             other => {
-                return Err(Diagnostic::todo_with_span(other.span(), file!(), line!()));
+                return Err(Diagnostic::todo_with_span(other.span()));
             }
         }
     };

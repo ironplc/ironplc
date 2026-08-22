@@ -41,7 +41,7 @@ pub(crate) fn compile_body(
             compile_statements(emitter, ctx, statements)
         }
         FunctionBlockBodyKind::Empty => Ok(()),
-        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo(file!(), line!())),
+        FunctionBlockBodyKind::Sfc(_) => Err(Diagnostic::todo()),
     }
 }
 
@@ -110,7 +110,7 @@ fn compile_statement(
                 let target_name = resolve_variable_name(&assignment.target);
                 let target_index = target_name
                     .and_then(|name| ctx.variables.get(name).copied())
-                    .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+                    .ok_or_else(|| Diagnostic::todo())?;
 
                 // Compile the value expression (use DEFAULT_OP_TYPE; the referenced
                 // type determines the actual width at runtime).
@@ -441,11 +441,7 @@ fn compile_statement(
             // specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md.
             // Parsing, resolution, and diagnostics already work; only
             // execution is not yet implemented.
-            Err(Diagnostic::todo_with_span(
-                method_call.position.clone(),
-                file!(),
-                line!(),
-            ))
+            Err(Diagnostic::todo_with_span(method_call.position.clone()))
         }
         StmtKind::If(if_stmt) => compile_if(emitter, ctx, if_stmt),
         StmtKind::Case(case_stmt) => compile_case(emitter, ctx, case_stmt),
@@ -513,7 +509,7 @@ fn compile_fb_call(
     let fb_info = ctx
         .fb_instances
         .get(&fb_call.var_name)
-        .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span(), file!(), line!()))?;
+        .ok_or_else(|| Diagnostic::todo_with_span(fb_call.span()))?;
     let type_id = fb_info.type_id;
     let field_indices = fb_info.field_indices.clone();
     let var_index = fb_info.var_index;
@@ -527,7 +523,7 @@ fn compile_fb_call(
             let field_name = input.name.to_string().to_lowercase();
             let field_idx = field_indices
                 .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(input.name.span(), file!(), line!()))?;
+                .ok_or_else(|| Diagnostic::todo_with_span(input.name.span()))?;
             let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
             compile_expr(emitter, ctx, &input.expr, op_type)?;
             emitter.emit_fb_store_param(*field_idx);
@@ -552,7 +548,7 @@ fn compile_fb_call(
             let field_name = output.src.to_string().to_lowercase();
             let field_idx = field_indices
                 .get(&field_name)
-                .ok_or_else(|| Diagnostic::todo_with_span(output.src.span(), file!(), line!()))?;
+                .ok_or_else(|| Diagnostic::todo_with_span(output.src.span()))?;
             emitter.emit_fb_load_param(*field_idx);
             let target_index = resolve_variable(ctx, &output.tgt)?;
             let op_type = resolve_fb_field_op_type(ctx, type_id, &field_name);
@@ -742,7 +738,7 @@ fn compile_case_selector(
                     emitter.emit_eq_i64();
                 }
                 // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo(file!(), line!())),
+                _ => return Err(Diagnostic::todo()),
             }
             Ok(())
         }
@@ -779,7 +775,7 @@ fn compile_case_selector(
                     emit_le(emitter, op_type);
                 }
                 // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo(file!(), line!())),
+                _ => return Err(Diagnostic::todo()),
             }
 
             emitter.emit_bool_and();
@@ -827,7 +823,7 @@ fn compile_case_selector(
                     emitter.emit_eq_i64();
                 }
                 // CASE with float types is not meaningful in IEC 61131-3.
-                _ => return Err(Diagnostic::todo(file!(), line!())),
+                _ => return Err(Diagnostic::todo()),
             }
             Ok(())
         }
@@ -843,7 +839,7 @@ pub(crate) fn resolve_string_max_length(
     match &string_init.length {
         None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
+        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
 }
 
@@ -856,7 +852,7 @@ pub(crate) fn resolve_string_spec_max_length(
     match &spec.length {
         None => Ok(DEFAULT_STRING_MAX_LENGTH_U16),
         Some(IntegerRef::Literal(i)) => Ok(i.value as u16),
-        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
+        Some(IntegerRef::Constant(id)) => Err(Diagnostic::todo_with_id(id)),
     }
 }
 
@@ -865,7 +861,7 @@ pub(crate) fn resolve_string_spec_max_length(
 fn resolve_signed_integer_ref(sir: &SignedIntegerRef) -> Result<&SignedInteger, Diagnostic> {
     match sir {
         SignedIntegerRef::Literal(si) => Ok(si),
-        SignedIntegerRef::Constant(id) => Err(Diagnostic::todo_with_id(id, file!(), line!())),
+        SignedIntegerRef::Constant(id) => Err(Diagnostic::todo_with_id(id)),
     }
 }
 

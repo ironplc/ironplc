@@ -1,0 +1,41 @@
+=====
+P4047
+=====
+
+.. problem-summary:: P4047
+
+This error occurs when a ``TASK`` declares the ``SINGLE`` parameter. ``SINGLE``
+names a boolean variable whose rising edge triggers the task. The runtime does
+not yet schedule event-triggered tasks, so a program that used ``SINGLE`` would
+compile but never run its task body.
+
+Example
+-------
+
+The following code will generate error P4047:
+
+.. code-block::
+
+   CONFIGURATION config
+       VAR_GLOBAL
+           Trigger : BOOL;
+       END_VAR
+       RESOURCE resource1 ON PLC
+           TASK task1(SINGLE := Trigger, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+To fix this error, run the task on a fixed interval with ``INTERVAL``:
+
+.. code-block::
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#100ms, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+A task with neither ``SINGLE`` nor ``INTERVAL`` runs freewheeling — the runtime
+starts the next scan cycle as soon as the previous one finishes.

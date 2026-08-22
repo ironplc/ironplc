@@ -516,7 +516,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                 let to = self.declarations.add_node(&node.name);
                 self.declarations.graph.add_edge(to, from, ());
             }
-            None => return Err(Diagnostic::todo(file!(), line!())),
+            None => return Err(Diagnostic::todo()),
         }
 
         node.recurse_visit(self)
@@ -537,7 +537,7 @@ impl Visitor<Diagnostic> for RuleGraphReferenceableElements {
                 let to = self.declarations.add_node(&init.type_name.name);
                 self.declarations.graph.add_edge(to, from, ());
             }
-            None => return Err(Diagnostic::todo(file!(), line!())),
+            None => return Err(Diagnostic::todo()),
         }
 
         Ok(())

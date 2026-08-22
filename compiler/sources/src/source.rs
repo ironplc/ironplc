@@ -100,7 +100,7 @@ impl Source {
             },
             None => {
                 // This should not be possible to reach since we set self.library above
-                Err(vec![Diagnostic::internal_error(file!(), line!())])
+                Err(vec![Diagnostic::internal_error()])
             }
         }
     }

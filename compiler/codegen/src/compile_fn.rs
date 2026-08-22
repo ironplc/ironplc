@@ -294,7 +294,7 @@ pub(crate) fn compile_user_function(
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+                .ok_or_else(|| Diagnostic::todo())?;
 
             if max_length > ctx.max_string_capacity {
                 ctx.max_string_capacity = max_length;
