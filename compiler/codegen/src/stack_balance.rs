@@ -124,66 +124,83 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn emitter_max_stack_depth_when_over_pop_then_reports_zero_and_hides_the_defect() {
-        // The pre-existing machinery's view of the over-popping function:
-        // a completely ordinary function that needs no stack at all. This
-        // is what "silently accepted before" means concretely -- there was
-        // no signal to act on.
-        let mut emitter = Emitter::new();
-        emitter.emit_store_var_i32(VarIndex::new(0));
-        emitter.emit_ret_void();
-        let _ = emitter.bytecode();
+    /// What the world looked like before this check: three places that could
+    /// have caught an operand-stack imbalance, none of which did. These pin
+    /// the gap the verifier closes -- if any of them starts failing, the
+    /// claim that an imbalance was "silently accepted before" is no longer
+    /// true and the verifier's justification needs revisiting.
+    mod baseline_without_verification {
+        use super::*;
 
-        assert_eq!(emitter.max_stack_depth(), 0);
-    }
+        #[test]
+        fn emitter_max_stack_depth_when_over_pop_then_reports_zero_and_hides_the_defect() {
+            // The pre-existing machinery's view of the over-popping function:
+            // a completely ordinary function that needs no stack at all. This
+            // is what "silently accepted before" means concretely -- there was
+            // no signal to act on.
+            let mut emitter = Emitter::new();
+            emitter.emit_store_var_i32(VarIndex::new(0));
+            emitter.emit_ret_void();
+            let _ = emitter.bytecode();
 
-    #[test]
-    fn container_builder_when_bytecode_unbalanced_then_still_builds() {
-        // The other half of "silently accepted before": neither the emitter
-        // nor the container builder rejects either defect. Both produce a
-        // well-formed container that the VM will happily load and run.
-        let mut leaky = Emitter::new();
-        leaky.emit_load_const_i32(0);
-        leaky.emit_ret_void();
-        let leak_container = container_from(&mut leaky, 0);
+            assert_eq!(emitter.max_stack_depth(), 0);
+        }
 
-        let mut over_popping = Emitter::new();
-        over_popping.emit_store_var_i32(VarIndex::new(0));
-        over_popping.emit_ret_void();
-        let over_pop_container = container_from(&mut over_popping, 0);
+        #[test]
+        fn container_builder_when_bytecode_unbalanced_then_accepts_without_verifying() {
+            // The other half of "silently accepted before": neither the emitter
+            // nor the container builder rejects either defect. Both produce a
+            // well-formed container that the VM will happily load and run.
+            //
+            // This pins a deliberate layering, not a desirable end state.
+            // Verification is a separate pass invoked from codegen rather than
+            // from `build()`: the VM's own tests hand-build malformed
+            // containers on purpose -- including the reproductions above --
+            // and making `build()` fallible would ripple through ~160 call
+            // sites to no benefit. A stricter builder is free to change this;
+            // the verifier is what must keep rejecting these two bodies.
+            let mut leaky = Emitter::new();
+            leaky.emit_load_const_i32(0);
+            leaky.emit_ret_void();
+            let leak_container = container_from(&mut leaky, 0);
 
-        assert_eq!(leak_container.header.num_functions, 1);
-        assert_eq!(over_pop_container.header.num_functions, 1);
-    }
+            let mut over_popping = Emitter::new();
+            over_popping.emit_store_var_i32(VarIndex::new(0));
+            over_popping.emit_ret_void();
+            let over_pop_container = container_from(&mut over_popping, 0);
 
-    #[test]
-    fn vm_when_leaked_slot_then_operand_stack_retains_it_across_the_scan_boundary() {
-        // The runtime consequence the compile-time check prevents. The
-        // leaking body runs as the init function, so this observes the
-        // operand stack at the first scan boundary: the slot is still
-        // there, and nothing in the VM will ever remove it.
-        let mut emitter = Emitter::new();
-        emitter.emit_load_const_i32(0);
-        emitter.emit_ret_void();
+            assert_eq!(leak_container.header.num_functions, 1);
+            assert_eq!(over_pop_container.header.num_functions, 1);
+        }
 
-        let mut container = container_from(&mut emitter, 0);
-        // The container needs a constant for LOAD_CONST_I32 pool index 0 and
-        // headroom on the operand stack, neither of which the leaking body
-        // declares for itself.
-        container
-            .constant_pool
-            .push(ironplc_container::ConstEntry::primitive_le(
-                ironplc_container::ConstType::I32,
-                &7i32.to_le_bytes(),
-            ));
-        container.header.max_stack_depth = 4;
+        #[test]
+        fn vm_when_leaked_slot_then_operand_stack_retains_it_across_the_scan_boundary() {
+            // The runtime consequence the compile-time check prevents. The
+            // leaking body runs as the init function, so this observes the
+            // operand stack at the first scan boundary: the slot is still
+            // there, and nothing in the VM will ever remove it.
+            let mut emitter = Emitter::new();
+            emitter.emit_load_const_i32(0);
+            emitter.emit_ret_void();
 
-        let mut bufs = ironplc_vm::VmBuffers::from_container(&container);
-        let vm = ironplc_vm::Vm::new().load(&container, &mut bufs).start();
+            let mut container = container_from(&mut emitter, 0);
+            // The container needs a constant for LOAD_CONST_I32 pool index 0 and
+            // headroom on the operand stack, neither of which the leaking body
+            // declares for itself.
+            container
+                .constant_pool
+                .push(ironplc_container::ConstEntry::primitive_le(
+                    ironplc_container::ConstType::I32,
+                    &7i32.to_le_bytes(),
+                ));
+            container.header.max_stack_depth = 4;
 
-        assert!(vm.is_ok());
-        assert_eq!(vm.unwrap().operand_stack_depth(), 1);
+            let mut bufs = ironplc_vm::VmBuffers::from_container(&container);
+            let vm = ironplc_vm::Vm::new().load(&container, &mut bufs).start();
+
+            assert!(vm.is_ok());
+            assert_eq!(vm.unwrap().operand_stack_depth(), 1);
+        }
     }
 
     #[test]
