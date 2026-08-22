@@ -3,12 +3,13 @@ set windows-shell := ["powershell.exe", "-c"]
 default: compile
 
 # Runs the continuous integration steps
-ci: setup compile
+ci: setup compile duplicates
 
 setup:
   python3 -m venv .venv
   .venv/bin/pip install --upgrade pip
   .venv/bin/pip install -r requirements.txt
+  npm ci
 
 compile:
   .venv/bin/sphinx-build -a -W -n -b html . _build
@@ -18,10 +19,15 @@ compile:
   # publish-website on a broken installer.
   cp ../compiler/install.sh _build/install.sh
 
+# Fails if duplicated content rises above the threshold in .jscpd.json.
+# See CONTRIBUTING.md for what the threshold means and why it is so high.
+duplicates:
+  ./node_modules/.bin/jscpd .
+
 # Sets the version number for this component.
 version version:
   echo "{{version}}" > VERSION
 
 # Removes built files
 clean:
-  rm -rf _build
+  rm -rf _build _duplication
