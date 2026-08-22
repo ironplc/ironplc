@@ -33,7 +33,9 @@ Structured Text code. Today it provides:
 - **A Visual Studio Code extension** that provides auto-completion, syntax highlighting
   and real-time error checking as you type.
 - **A runtime** (:program:`ironplcvm`) that can execute compiled programs.
-- **An MCP server** (:program:`ironplcvm`) that AI agents can use to understand and run programs.
+- **An MCP server** (:program:`ironplcmcp`) that AI agents can use to understand and run programs.
+- **A debug server** (:program:`ironplcdap`) that the extension uses to set
+  breakpoints, step through code, and inspect variables while a program runs.
 
 Try it now — this program increments a counter on every scan cycle:
 
