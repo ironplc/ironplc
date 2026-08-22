@@ -762,6 +762,7 @@ fn compile_program_with_functions(
         ctx.string_vars = saved_scope.string_vars;
         ctx.array_vars = saved_scope.array_vars;
         ctx.struct_vars = saved_scope.struct_vars;
+        ctx.struct_array_vars = saved_scope.struct_array_vars;
         ctx.fb_instances = saved_scope.fb_instances;
     }
 
@@ -1037,6 +1038,7 @@ pub(crate) struct SavedFbScope {
     pub(crate) string_vars: HashMap<Id, StringVarInfo>,
     pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
+    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
     pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
 }
 
@@ -1121,6 +1123,9 @@ pub(crate) struct CompileContext {
     pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     /// Maps structure variable identifiers to their metadata.
     pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
+    /// Maps top-level `ARRAY OF <struct>` variable identifiers to their metadata.
+    /// Kept apart from `array_vars`, whose elements occupy a single slot each.
+    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
     /// Pre-computed ordinal mappings for named enumeration types.
     pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
     /// Next available byte offset in the data region.
@@ -1192,6 +1197,7 @@ impl CompileContext {
             fb_instances: HashMap::new(),
             array_vars: HashMap::new(),
             struct_vars: HashMap::new(),
+            struct_array_vars: HashMap::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
             has_wide_string: false,
