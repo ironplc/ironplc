@@ -297,8 +297,10 @@ pub(crate) fn struct_array_declaration(
             if !matches!(element_type.as_ref(), IntermediateType::Structure { .. }) {
                 return Ok(None);
             }
-            // The type environment records the element's shape but not its
-            // name, so the debug entry carries the array type's own name.
+            // Named array specifications are expanded to inline ones before
+            // codegen, so this arm is defensive. It cannot name the element:
+            // `IntermediateType::Structure` is structural and carries no
+            // declared name, so the debug entry falls back to the array type's.
             Ok(Some((
                 element_type.as_ref().clone(),
                 type_name.to_string().to_uppercase(),
