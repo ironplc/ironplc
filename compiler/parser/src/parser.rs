@@ -849,9 +849,26 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    rule symbolic_variable() -> SymbolicVariableKind = name:variable_identifier() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessByte) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Byte, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
-      // Start by assuming that the top is just a named variable
-      let mut head = SymbolicVariableKind::Named(NamedVariable { name });
+    // OOP extension: `THIS^` / `SUPER^`. The caret is mandatory -- `THIS`
+    // and `SUPER` are pointers to an instance in the dialects that define
+    // them -- and optional whitespace/comments are accepted between the
+    // keyword and the caret, since nothing in the grammar joins them into
+    // one token. The `This`/`Super` tokens only reach the parser when
+    // `allow_fb_inheritance` is set (they demote to identifiers otherwise),
+    // so this rule is gated at the token level.
+    rule self_ref() -> SelfRefVariable =
+      t:tok(TokenType::This) _ c:tok(TokenType::Caret) {
+        SelfRefVariable { kind: SelfRefKind::This, position: SourceSpan::join(&t.span, &c.span) }
+      }
+      / t:tok(TokenType::Super) _ c:tok(TokenType::Caret) {
+        SelfRefVariable { kind: SelfRefKind::Super, position: SourceSpan::join(&t.span, &c.span) }
+      }
+    rule symbolic_variable_head() -> SymbolicVariableKind =
+      s:self_ref() { SymbolicVariableKind::SelfRef(s) }
+      / name:variable_identifier() { SymbolicVariableKind::Named(NamedVariable { name }) }
+    rule symbolic_variable() -> SymbolicVariableKind = head:symbolic_variable_head() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessByte) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Byte, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
+      // Start from whatever the head matched (a plain name, or THIS^/SUPER^)
+      let mut head = head;
 
       // Then consume additional items
       for elem in elements {
@@ -1849,10 +1866,13 @@ parser! {
     // is purely additive and needs no dialect gating of its own -- the
     // METHOD declarations that would make such a call resolve are
     // already gated by `allow_fb_inheritance` at the token level.
-    rule method_invocation() -> StmtKind = instance:identifier() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
-      let span = SourceSpan::join(&instance.span, &end.span);
+    rule method_receiver() -> MethodReceiver =
+      s:self_ref() { MethodReceiver::SelfRef(s) }
+      / id:identifier() { MethodReceiver::Instance(id) }
+    rule method_invocation() -> StmtKind = receiver:method_receiver() _ period() _ method:identifier() _ tok(TokenType::LeftParen) _ params:param_assignment() ** (_ tok(TokenType::Comma) _) _ end:tok(TokenType::RightParen) {
+      let span = SourceSpan::join(&receiver.span(), &end.span);
       StmtKind::MethodCall(MethodCall {
-        instance,
+        receiver,
         method,
         params,
         position: span,

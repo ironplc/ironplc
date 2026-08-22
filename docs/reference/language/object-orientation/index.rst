@@ -38,6 +38,8 @@ Keywords
      - Mark a function block type as not directly instantiable
    * - :doc:`interface`
      - Declare an interface — a named set of method signatures
+   * - :doc:`this-and-super`
+     - Refer to the instance a method is running on, or to its base type
 
 .. toctree::
    :maxdepth: 1
@@ -47,3 +49,4 @@ Keywords
    implements
    abstract
    interface
+   this-and-super

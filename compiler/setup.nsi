@@ -33,7 +33,7 @@
 !define APPFILE "ironplcc${EXTENSION}"
 !define VMFILE "ironplcvm${EXTENSION}"
 !define MCPFILE "ironplcmcp${EXTENSION}"
-!define DAPFILE "ironplcdap${EXTENSION}"
+!define VMDFILE "ironplcvmd${EXTENSION}"
 !define SLUG "${NAME} v${VERSION}"
 !define REGPATH_APPPATHSUBKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\${APPFILE}"
 !define REGPATH_UNINSTSUBKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NAME}"
@@ -96,7 +96,7 @@ Section "Program files"
     File "${ARTIFACTSDIR}\${MCPFILE}"
     ; The debug adapter. Editors find it beside ironplcc, so it must install
     ; into the same bin directory.
-    File "${ARTIFACTSDIR}\${DAPFILE}"
+    File "${ARTIFACTSDIR}\${VMDFILE}"
 
     ; Compatibility libraries ship beside the binaries; the compiler reads them
     ; from <bindir>\resources\libs at runtime. `/r` preserves the `libs` tree.

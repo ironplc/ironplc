@@ -220,6 +220,13 @@ pub enum TokenType {
     Method,
     #[token("END_METHOD", ignore(case))]
     EndMethod,
+    // `THIS^` / `SUPER^` -- the self-reference and base-reference forms.
+    // The caret is the ordinary dereference operator. Identifiers unless
+    // `allow_fb_inheritance` is set -- see xform_demote_keywords.rs.
+    #[token("THIS", ignore(case))]
+    This,
+    #[token("SUPER", ignore(case))]
+    Super,
 
     #[token("IF", ignore(case))]
     If,
@@ -559,6 +566,8 @@ impl TokenType {
             TokenType::Abstract => "'ABSTRACT'",
             TokenType::Method => "'METHOD'",
             TokenType::EndMethod => "'END_METHOD'",
+            TokenType::This => "'THIS'",
+            TokenType::Super => "'SUPER'",
             TokenType::If => "'IF'",
             TokenType::Then => "'THEN'",
             TokenType::Elsif => "'ELSIF'",
@@ -783,6 +792,8 @@ mod tests {
             (Abstract, "ABSTRACT"),
             (Method, "METHOD"),
             (EndMethod, "END_METHOD"),
+            (This, "THIS"),
+            (Super, "SUPER"),
             (If, "IF"),
             (Then, "THEN"),
             (Elsif, "ELSIF"),

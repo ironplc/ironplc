@@ -429,3 +429,153 @@ fn run_round_debug_when_step_out_of_callee_then_lands_in_caller_after_call() {
     assert_eq!(frames[0].function_id, FunctionId::SCAN);
     assert_eq!(frames[0].pc, 8);
 }
+
+/// A scan that increments `var[0]` by one and returns: `LOAD_VAR\@0,
+/// LOAD_CONST\@3, ADD\@6, STORE\@7, RET_VOID\@10`. Running the cycle out is
+/// observable as `var[0]` advancing by one.
+fn incrementing_scan_container() -> ironplc_container::Container {
+    #[rustfmt::skip]
+    let scan_bytecode: Vec<u8> = vec![
+        opcode::LOAD_VAR_I32, 0x00, 0x00,   // @0
+        opcode::LOAD_CONST_I32, 0x00, 0x00, // @3
+        opcode::ADD_I32,                    // @6
+        opcode::STORE_VAR_I32, 0x00, 0x00,  // @7
+        opcode::RET_VOID,                   // @10
+    ];
+    call_container(&scan_bytecode, &[], 1, &[1])
+}
+
+#[test]
+fn run_round_debug_when_step_scan_then_runs_the_cycle_out_and_pauses_after_scan() {
+    let c = incrementing_scan_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let mut table = BreakpointTable::new();
+    table.add(FunctionId::SCAN, 7); // the STORE, before the increment lands
+
+    // Pause mid-scan: the increment has not been stored yet.
+    let mut hook = DebuggerHook::new(&table);
+    assert!(matches!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Breakpoint(_))
+    ));
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 0);
+    assert_eq!(vm.scan_count(), 0);
+
+    // A scan step finishes the cycle rather than stopping at an instruction.
+    hook.step_scan();
+    assert_eq!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::PausedAfterScan
+    );
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 1);
+    assert_eq!(vm.scan_count(), 1, "the cycle completed, outputs and all");
+    assert!(
+        vm.debug_frames().is_empty(),
+        "the frame stack drains at a scan boundary -- which is why the DAP \
+         server lands the step on the next scan's first instruction instead"
+    );
+}
+
+#[test]
+fn run_round_debug_when_scan_step_landing_then_stops_at_next_scan_first_instruction() {
+    let c = incrementing_scan_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    // Run one cycle out with a scan step armed from the top of the scan.
+    let table = BreakpointTable::new();
+    let mut hook = DebuggerHook::new(&table);
+    hook.step_scan();
+    assert_eq!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::PausedAfterScan
+    );
+
+    // The landing round: a fresh hook (the DAP loop rebuilds one per round)
+    // stops before the first instruction of the *new* scan.
+    let mut hook = DebuggerHook::new(&table);
+    hook.land_scan_step();
+    assert_eq!(
+        vm.run_round_debug(1000, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Step)
+    );
+    let frames = vm.debug_frames();
+    assert_eq!(frames.len(), 1, "the entry frame is live for inspection");
+    assert_eq!(frames[0].function_id, FunctionId::SCAN);
+    assert_eq!(frames[0].pc, 0);
+    // Nothing of the new scan has run yet, so the stop shows the finished
+    // cycle's values.
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 1);
+    assert_eq!(vm.scan_count(), 1);
+}
+
+#[test]
+fn run_round_debug_when_step_scan_spans_a_call_then_does_not_stop_on_return() {
+    // A scan step is not a step-out: returning to a shallower frame mid-scan
+    // is not a landing, so the cycle runs to its end.
+    let c = stepping_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let mut table = BreakpointTable::new();
+    table.add(FunctionId::new(2), 0); // inside the callee
+    let mut hook = DebuggerHook::new(&table);
+    assert!(matches!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Breakpoint(_))
+    ));
+    assert_eq!(vm.debug_frames().len(), 2);
+
+    hook.step_scan();
+    assert_eq!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::PausedAfterScan
+    );
+    // The callee's result was stored: the whole scan ran.
+    assert_eq!(vm.read_variable(VarIndex::new(0)).unwrap(), 42);
+}
+
+#[test]
+fn run_round_debug_when_breakpoint_during_step_scan_then_stops_at_the_breakpoint() {
+    // A breakpoint inside the stepped-over cycle wins, exactly as it does
+    // mid-`step_over`, and the scan does not complete.
+    let c = incrementing_scan_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let mut table = BreakpointTable::new();
+    table.add(FunctionId::SCAN, 0);
+    table.add(FunctionId::SCAN, 7);
+    let mut hook = DebuggerHook::new(&table);
+    assert!(matches!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Breakpoint(_))
+    ));
+    assert_eq!(vm.debug_frames().last().unwrap().pc, 0);
+
+    hook.step_scan();
+    assert!(matches!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::Paused(PauseReason::Breakpoint(_))
+    ));
+    assert_eq!(vm.debug_frames().last().unwrap().pc, 7);
+    assert_eq!(vm.scan_count(), 0, "the cycle never finished");
+}
+
+#[test]
+fn run_round_debug_when_no_step_scan_then_completed_scan_is_not_a_pause() {
+    // The `stepping_scan` default must not turn every completed scan into a
+    // stop for hooks that never arm a scan step.
+    let c = incrementing_scan_container();
+    let mut b = VmBuffers::from_container(&c);
+    let mut vm = crate::common::load_and_start(&c, &mut b).unwrap();
+
+    let table = BreakpointTable::new();
+    let mut hook = DebuggerHook::new(&table);
+    assert_eq!(
+        vm.run_round_debug(0, &mut hook).unwrap(),
+        RoundOutcome::Completed
+    );
+}

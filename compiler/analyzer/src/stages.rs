@@ -618,4 +618,79 @@ END_FUNCTION_BLOCK";
             "unexpected spurious P2011: {codes:?}"
         );
     }
+
+    // ---------------------------------------------------------------------
+    // THIS^ / SUPER^ (parsed, not analyzed or executed).
+    // ---------------------------------------------------------------------
+
+    /// A program using `THIS^` is rejected, and P9999 is among the reasons.
+    ///
+    /// Deliberately asserts presence rather than an exact diagnostic set:
+    /// several passes meet the construct and each says so, and pinning the
+    /// set would turn every later improvement into a test edit. What must
+    /// hold is that no pass quietly accepts it.
+    #[rstest::rstest]
+    #[case::this_field_write("    THIS^.count := 1;")]
+    #[case::super_field_read("    count := SUPER^.count;")]
+    #[case::this_method_call("    THIS^.Start();")]
+    fn analyze_when_self_ref_then_rejected_with_not_implemented(#[case] body: &str) {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let program = format!(
+            "
+FUNCTION_BLOCK FB_Motor
+VAR
+    count : INT;
+END_VAR
+METHOD Start
+    count := 1;
+END_METHOD
+METHOD Run
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        );
+        let lib = parse_program(&program, &FileId::default(), &options).unwrap();
+        let (_library, context) = analyze(&[&lib], &options).unwrap();
+
+        let codes: Vec<&str> = context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert!(
+            codes.contains(&"P9999"),
+            "expected P9999 among diagnostics, got: {codes:?}"
+        );
+    }
+
+    /// The same function block without `THIS^` analyzes cleanly -- the new
+    /// arms must not report anything for programs that do not use it.
+    #[test]
+    fn analyze_when_no_self_ref_then_no_not_implemented() {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let program = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    count : INT;
+END_VAR
+METHOD Start
+    count := 1;
+END_METHOD
+END_FUNCTION_BLOCK";
+        let lib = parse_program(program, &FileId::default(), &options).unwrap();
+        let (_library, context) = analyze(&[&lib], &options).unwrap();
+
+        let codes: Vec<&str> = context
+            .diagnostics()
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert!(codes.is_empty(), "expected no diagnostics, got: {codes:?}");
+    }
 }

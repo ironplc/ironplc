@@ -9,8 +9,8 @@
 //! don't match, causing incorrect opcode selection. By resolving aliases to
 //! elementary types here, codegen gets clean type names.
 use ironplc_dsl::common::*;
-use ironplc_dsl::core::Id;
-use ironplc_dsl::diagnostic::Diagnostic;
+use ironplc_dsl::core::{Id, Located};
+use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
 use ironplc_dsl::textual::*;
 use std::collections::HashMap;
@@ -475,6 +475,13 @@ impl ExprTypeResolver<'_> {
                     None
                 }
             }
+            Variable::Symbolic(SymbolicVariableKind::SelfRef(_)) => {
+                // THIS^/SUPER^ has no resolvable type until function-block
+                // member resolution exists. Unreachable in practice:
+                // `fold_self_ref_variable` rejects the construct before any
+                // type resolution runs. See issue #1406.
+                None
+            }
             Variable::Direct(_) => None,
         }
     }
@@ -548,6 +555,23 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         self.var_types.clear();
         self.array_element_types.clear();
         result
+    }
+
+    fn fold_self_ref_variable(
+        &mut self,
+        node: SelfRefVariable,
+    ) -> Result<SelfRefVariable, Diagnostic> {
+        // Fail rather than resolve to "unknown": every downstream consumer
+        // of this pass treats an unresolved type as a fact about the
+        // program, and silently producing one here would let THIS^/SUPER^
+        // through unnoticed once it is otherwise supported. See issue #1406.
+        Err(Diagnostic::not_implemented(Label::span(
+            node.span(),
+            format!(
+                "{} is recognized but its type cannot be resolved by IronPLC yet",
+                node.kind.spelling()
+            ),
+        )))
     }
 
     fn fold_expr(&mut self, node: Expr) -> Result<Expr, Diagnostic> {

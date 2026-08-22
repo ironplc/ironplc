@@ -34,7 +34,7 @@ Structured Text code. Today it provides:
   and real-time error checking as you type.
 - **A runtime** (:program:`ironplcvm`) that can execute compiled programs.
 - **An MCP server** (:program:`ironplcmcp`) that AI agents can use to understand and run programs.
-- **A debug server** (:program:`ironplcdap`) that the extension uses to set
+- **A debug server** (:program:`ironplcvmd`) that the extension uses to set
   breakpoints, step through code, and inspect variables while a program runs.
   Debugging is early and in development.
 

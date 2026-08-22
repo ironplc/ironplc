@@ -9,7 +9,7 @@ FUNCTION read_ref : INT
       pt : REF_TO INT;
    END_VAR
 
-   read_ref := pt ^ ;
+   read_ref := pt^ ;
 END_FUNCTION
 PROGRAM main
 
@@ -40,11 +40,11 @@ END_VAR
 VAR
    value : INT;
 END_VAR
-value := r ^ ;
+value := r^ ;
 r^ := 99 ;
 r := REF( counter ) ;
 IF ( r <> NULL ) THEN
-   value := r ^ ;
+   value := r^ ;
 END_IF ;
 
 value := read_ref ( pt := REF( counter ) ) ;
