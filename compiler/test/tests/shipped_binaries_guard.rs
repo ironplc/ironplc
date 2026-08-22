@@ -1,11 +1,8 @@
 //! Workspace-level guard that every binary we build is a binary we ship.
 //!
-//! `ironplcvmd` (then named `ironplcdap`) was declared with `required-features
-//! = ["dap"]` while every packaging manifest listed only the other three
-//! binaries. Nothing compared the two, so the debug adapter was neither built
-//! by `cargo build` nor shipped by any installer, and the failure surfaced only
-//! as "the debugger doesn't work".
-//! See `specs/plans/2026-08-16-always-build-ship-dap-server.md`.
+//! A binary that is built but not packaged fails no compiler test: it surfaces
+//! only as the program missing from an installed IronPLC. This guard catches
+//! that in CI instead.
 //!
 //! Like `spec_conformance_guard.rs`, both sides are recovered from files already
 //! in the tree, so there is no new manifest to keep in sync:

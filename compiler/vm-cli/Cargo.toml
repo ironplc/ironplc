@@ -11,17 +11,13 @@ repository.workspace = true
 name = "ironplcvm"
 path = "src/main.rs"
 
-# The debug daemon: `ironplcvm` under a debugger. It is named for what it is
-# rather than for the Debug Adapter Protocol it currently speaks, so the name
-# survives a protocol change. The DAP implementation stays in `src/dap/`.
+# The debug daemon: `ironplcvm` under a debugger. Named for the program rather
+# than for the Debug Adapter Protocol it speaks, so the name outlasts the
+# protocol; the DAP implementation lives in `src/dap/`.
 #
-# Built unconditionally, like every other shipped binary. It was once gated
-# behind a `dap` feature to keep the DAP layer out of `ironplcvm`, but that gate
-# bought nothing: `mod dap` is declared only in `dap_main.rs`, and separate
-# `[[bin]]` targets are separate compilation units, so `ironplcvm` never
-# compiled the DAP layer either way. What the gate did do was make `cargo build`
-# skip this binary, leaving whatever stale copy was last built by hand in
-# `target/` for editors to launch.
+# Built unconditionally, like every other shipped binary. `mod dap` is declared
+# only in `dap_main.rs`, and separate `[[bin]]` targets are separate compilation
+# units, so `ironplcvm` does not compile the DAP layer.
 [[bin]]
 name = "ironplcvmd"
 path = "src/dap_main.rs"

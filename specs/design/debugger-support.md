@@ -94,9 +94,7 @@ The debugger is four layers:
 
 ### Why a separate DAP binary?
 
-The DAP server is its own binary, `ironplcvmd`, built from `dap_main.rs` in the `vm-cli` crate. An earlier draft made it an `ironplcvm debug` subcommand to avoid duplicating the VM embedding code; sharing the crate achieves that without coupling the two entry points, and keeps the DAP protocol loop out of the production VM's argument parsing and lifecycle.
-
-**Naming (revised 2026-08-22).** The binary was originally `ironplcdap`, after the protocol it speaks. It is now `ironplcvmd` — `ironplcvm` plus the daemon `d` — so the name describes the program rather than one of its interfaces, and survives a protocol change. The `ironplc.dapServerPath` setting and `IRONPLCDAP` environment variable became `ironplc.debugServerPath` and `IRONPLCVMD` at the same time, with no compatibility fallback. See `specs/plans/2026-08-22-rename-ironplcdap-to-ironplcvmd.md`.
+The DAP server is its own binary, `ironplcvmd`, built from `dap_main.rs` in the `vm-cli` crate. Sharing the crate with `ironplcvm` reuses the VM embedding code without coupling the two entry points, and keeps the DAP protocol loop out of the production VM's argument parsing and lifecycle.
 
 `ironplcvmd` takes **no command-line arguments**. It speaks DAP on stdin/stdout, and the program under debug arrives in the `launch` request's `arguments.program` field as a path to a compiled `.iplc` container.
 
