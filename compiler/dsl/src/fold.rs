@@ -315,6 +315,8 @@ pub trait Fold<E> {
     dispatch!(FbCall);
     dispatch!(MethodCall);
 
+    dispatch!(MethodReceiver);
+
     // 3.2.3
     dispatch!(PositionalInput);
 
@@ -379,4 +381,6 @@ pub trait Fold<E> {
     dispatch!(PartialAccessVariable);
 
     dispatch!(DerefVariable);
+
+    dispatch!(SelfRefVariable);
 }
