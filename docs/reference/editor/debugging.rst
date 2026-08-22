@@ -26,7 +26,9 @@ Debugging needs three things:
   and debug the container instead. See `Debug a Compiled Container`_.
 * **A single program instance.** The configuration must declare exactly one
   ``PROGRAM ... WITH ...`` instance. A program that declares more is refused
-  at launch. See :doc:`/reference/runtime/problems/V6010`.
+  at launch, because a breakpoint would stop the first instance to reach it
+  while the others still hold state from the previous scan. See
+  :doc:`/reference/runtime/problems/V6010`.
 
 Starting a Session
 ==================
@@ -154,8 +156,7 @@ the end of the code --- stays unverified, and the editor shows it as a hollow
 dot. The session still runs; that breakpoint never pauses it.
 
 A breakpoint in a scan-cycle program pauses *every* scan, not once. Continuing
-from a breakpoint runs to the same breakpoint on the next cycle. See
-:doc:`/explanation/debugging-a-scan-cycle`.
+from a breakpoint runs to the same breakpoint on the next cycle.
 
 .. note::
 
@@ -247,8 +248,12 @@ State the virtual machine owns rather than your program:
    Values are read-only. Setting a variable while paused, forcing a value, and
    watch expressions are not supported, and expressions typed into the Debug
    Console are not evaluated. To change what the program does, edit the source
-   and launch again. :doc:`/explanation/debugging-a-scan-cycle` explains why
-   forcing is absent rather than merely missing.
+   and launch again.
+
+   Forcing is absent rather than merely missing. In a PLC, forcing a variable
+   means holding it at a value across scans, overriding what the program
+   writes. A value set only while paused is overwritten on the next scan, a
+   few milliseconds later, which looks like a debugger that does not work.
 
 .. note::
 
@@ -307,6 +312,5 @@ See Also
 
 * :doc:`/quickstart/debugging` --- debug a program for the first time
 * :doc:`/how-to-guides/getting-started/debug-a-program` --- task recipes
-* :doc:`/explanation/debugging-a-scan-cycle` --- what pausing means in a PLC
 * :doc:`/reference/runtime/ironplcdap` --- the debug server
 * :doc:`problems/index` --- extension problem codes

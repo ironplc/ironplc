@@ -35,8 +35,7 @@ The server embeds the same virtual machine as
 debugger as it does in production. Two things differ: the debugger stops the
 program, and it drives the clock itself, advancing program time by one
 millisecond per scan cycle rather than reading the real clock. Timers are
-therefore measured in scans, and a debug session repeats exactly. See
-:doc:`/explanation/debugging-a-scan-cycle`.
+therefore measured in scans, and a debug session repeats exactly.
 
 Launch Arguments
 ================

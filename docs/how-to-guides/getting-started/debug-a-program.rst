@@ -128,9 +128,6 @@ the next one, and stops on the same breakpoint with ``scanCount`` one
 higher. Anything your program accumulates --- a counter, a timer --- moves
 with it.
 
-:doc:`/explanation/debugging-a-scan-cycle` explains what this means for the
-values you are looking at.
-
 --------------------------------------
 When the Debugger Does Not Start
 --------------------------------------
@@ -169,4 +166,3 @@ Next Steps
 
 * :doc:`/quickstart/debugging` --- a worked example that finds a real bug
 * :doc:`/reference/editor/debugging` --- every launch attribute and limit
-* :doc:`/explanation/debugging-a-scan-cycle` --- what pausing means in a PLC
