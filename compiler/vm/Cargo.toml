@@ -8,7 +8,9 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-test-support = []
+# Re-exports the shared container fixtures alongside the VM-side helpers.
+# `container` owns the fixtures, so the feature has to be turned on there too.
+test-support = ["ironplc-container/test-support"]
 profiling = []
 
 [dependencies]
@@ -16,6 +18,12 @@ ironplc-container = { path = "../container", version = "0.239.0" }
 
 [dev-dependencies]
 ironplc-vm = { path = ".", features = ["test-support"] }
+# `#[cfg(test)]` code in `src/` uses the container fixtures directly, so the
+# feature must be on for this crate's own test build and not only for
+# downstream crates that enable `ironplc-vm/test-support`.
+ironplc-container = { path = "../container", version = "0.239.0", features = [
+  "test-support",
+] }
 proptest = "1"
 rstest = "0.26"
 spec_test_macro = { path = "../spec_test_macro" }

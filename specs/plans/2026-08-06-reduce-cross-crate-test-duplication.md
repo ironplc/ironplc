@@ -240,7 +240,7 @@ its own plan/PR per item.
 - [x] Stage B5: playground dialect trim
 - [x] Stage C1: plan for single compile owner
 - [ ] Stage C2: shared fixtures in ironplc-test
-- [ ] Stage C3: shared container test builders
+- [x] Stage C3: shared container test builders
 - [ ] Stage C4: logger unification
 
 ## Outcome of Stages A and B

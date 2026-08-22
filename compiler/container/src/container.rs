@@ -159,33 +159,16 @@ mod tests {
         function_id, iec_type_tag, var_section, FuncNameEntry, VarNameEntry,
     };
     use crate::id_types::{ConstantIndex, FunctionId, InstanceId, TaskId, VarIndex};
+    use crate::test_support::{
+        round_trip, steel_thread_bytecode, steel_thread_single_function_container,
+    };
     use crate::ContainerBuilder;
 
     #[test]
     fn container_write_read_when_steel_thread_program_then_roundtrips() {
         // x := 10; y := x + 32;
-        #[rustfmt::skip]
-        let bytecode: Vec<u8> = vec![
-            0x00, 0x00, 0x00,       // LOAD_CONST_I32 pool[0]  (10)
-            0x10, 0x00, 0x00,       // STORE_VAR_I32  var[0]   (x := 10)
-            0x0C, 0x00, 0x00,       // LOAD_VAR_I32   var[0]   (push x)
-            0x00, 0x01, 0x00,       // LOAD_CONST_I32 pool[1]  (32)
-            0x20,                   // ADD_I32
-            0x10, 0x01, 0x00,       // STORE_VAR_I32  var[1]   (y := 42)
-            0x8C,                   // RET_VOID
-        ];
-
-        let container = ContainerBuilder::new()
-            .num_variables(2)
-            .add_i32_constant(10)
-            .add_i32_constant(32)
-            .add_function(FunctionId::INIT, &bytecode, 2, 2, 0)
-            .build();
-
-        let mut buf = Vec::new();
-        container.write_to(&mut buf).unwrap();
-
-        let decoded = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+        let bytecode = steel_thread_bytecode();
+        let decoded = round_trip(&steel_thread_single_function_container());
 
         // Verify synthesized default task table
         assert_eq!(decoded.task_table.tasks.len(), 1);
