@@ -848,6 +848,15 @@ pub(crate) fn resolve_symbolic_variable_name(
             resolve_symbolic_variable_name(&structured.record)
         }
         SymbolicVariableKind::Deref(deref) => resolve_symbolic_variable_name(&deref.variable),
+        // THIS^/SUPER^ names the executing instance, not a variable in the
+        // table. Giving it a receiver-pointer parameter is the codegen
+        // slice that also owns method-call codegen; until then this is an
+        // error, never a guess at some enclosing name.
+        SymbolicVariableKind::SelfRef(self_ref) => Err(Diagnostic::todo_with_span(
+            self_ref.span(),
+            file!(),
+            line!(),
+        )),
     }
 }
 
@@ -878,6 +887,11 @@ pub(crate) fn resolve_variable(
             SymbolicVariableKind::Deref(deref) => {
                 Err(Diagnostic::todo_with_span(deref.span(), file!(), line!()))
             }
+            SymbolicVariableKind::SelfRef(self_ref) => Err(Diagnostic::todo_with_span(
+                self_ref.span(),
+                file!(),
+                line!(),
+            )),
         },
         Variable::Direct(direct) => Err(Diagnostic::todo_with_span(
             direct.position.clone(),

@@ -339,6 +339,19 @@ impl fmt::Display for SelfRefVariable {
     }
 }
 
+impl crate::extension::LanguageExtension for SelfRefVariable {
+    fn extension_name(&self) -> &'static str {
+        match self.kind {
+            SelfRefKind::This => "THIS^ self reference",
+            SelfRefKind::Super => "SUPER^ base reference",
+        }
+    }
+
+    fn extension_span(&self) -> SourceSpan {
+        self.position.clone()
+    }
+}
+
 /// Function block invocation.
 ///
 /// See section 3.2.3.

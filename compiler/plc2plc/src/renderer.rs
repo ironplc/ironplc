@@ -1368,12 +1368,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    // OOP extension: `instance.MethodName(args)` (ADR-0041 Phase 1).
+    // OOP extension: `instance.MethodName(args)`, `THIS^.MethodName(args)`
+    // (ADR-0041 Phase 1).
     fn visit_method_call(
         &mut self,
         node: &dsl::textual::MethodCall,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_id(&node.instance)?;
+        self.visit_method_receiver(&node.receiver)?;
         self.write(".");
         self.visit_id(&node.method)?;
 
@@ -1696,6 +1697,30 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_symbolic_variable_kind(&node.variable)?;
         self.write("^");
         Ok(())
+    }
+
+    // OOP extension: `THIS^` / `SUPER^`. The caret is part of the node's
+    // spelling, so it can never be split from the keyword, and whatever
+    // element follows (`.field`, `[i]`) is written with no gap -- which is
+    // what the parser requires after a caret.
+    fn visit_self_ref_variable(
+        &mut self,
+        node: &dsl::textual::SelfRefVariable,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws(node.kind.spelling());
+        Ok(())
+    }
+
+    fn visit_method_receiver(
+        &mut self,
+        node: &dsl::textual::MethodReceiver,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            dsl::textual::MethodReceiver::Instance(name) => self.visit_id(name),
+            dsl::textual::MethodReceiver::SelfRef(self_ref) => {
+                self.visit_self_ref_variable(self_ref)
+            }
+        }
     }
 
     fn visit_reference_declaration(

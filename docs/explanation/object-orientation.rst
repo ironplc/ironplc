@@ -93,6 +93,35 @@ one ``VAR`` block — are a duplicate and are rejected
 *different* scopes, the base type and the derived type, so the name is
 resolved by choosing the nearer declaration rather than reported as an error.
 
+Referring to the instance and to the base type
+----------------------------------------------
+
+Hiding raises a question: once a derived type has hidden an inherited name,
+how does it reach the hidden one? The standard answers with two names for the
+instance a method is running on —
+:doc:`THIS and SUPER </reference/language/object-orientation/this-and-super>`.
+
+``THIS^`` is the instance itself. It is what makes an instance variable
+reachable when a nearer name — a method parameter, say — hides it.
+
+``SUPER^`` is the same instance seen as its base type. A derived type that
+overrides an inherited method uses it to call the implementation it
+overrode, so the derived behavior can add to the base behavior rather than
+replace it:
+
+.. code-block::
+
+   FUNCTION_BLOCK FB_LoggingMotor EXTENDS FB_Motor
+       METHOD Stop
+           SUPER^.Stop();
+       END_METHOD
+   END_FUNCTION_BLOCK
+
+Both are pointers to an instance, which is why each is written with the
+dereference operator ``^``. ``SUPER^`` is resolved when the program is
+compiled, not while it runs: "the base type's implementation" is decided by
+the declaration, not by what the instance turns out to be.
+
 Interfaces
 ==========
 
