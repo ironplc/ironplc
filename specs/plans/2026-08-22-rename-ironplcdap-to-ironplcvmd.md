@@ -92,13 +92,16 @@ catches the one prose copy that is actually addressable (the slug).
 
 ### Docs URL stability
 
-`docs/reference/runtime/ironplcdap.rst` shipped with #1392, which is already on
-`main`. Per the URL-stability policy the old path must keep resolving, so the
-page is renamed to `ironplcvmd.rst` and `conf.py` gains an `ironplc_redirects`
-entry `reference/runtime/ironplcdap.html` → `reference/runtime/ironplcvmd.html`.
-That is the mechanism `conf.py` already documents for a renamed page, and it
-beats a stub file: no second page to keep alive, and the stub carries
-`noindex` + `canonical` so search consolidates on the new URL.
+`docs/reference/runtime/ironplcdap.rst` arrived with #1392. It is on `main` but
+the site has not been published since, so the old slug has never been a live
+URL: nothing links to it and nothing has indexed it. The page is renamed to
+`ironplcvmd.rst` with **no redirect** — the URL-stability policy protects
+*published* URLs, and adding an `ironplc_redirects` entry here would mean
+maintaining a permanent stub for an address that never existed.
+
+This holds only as long as the rename lands before the next docs publish. If it
+slips past one, the old slug becomes a shipped URL and the redirect entry has to
+go in after all.
 
 ## File map
 
@@ -122,7 +125,6 @@ beats a stub file: no second page to keep alive, and the stub carries
 
 **Docs**
 - `docs/reference/runtime/ironplcdap.rst` → `docs/reference/runtime/ironplcvmd.rst`
-- `docs/conf.py` — redirect entry
 - `docs/reference/runtime/index.rst`, `docs/reference/editor/debugging.rst`,
   `docs/reference/editor/settings.rst`, `docs/reference/editor/problems/E0007.rst`,
   `docs/how-to-guides/getting-started/debug-a-program.rst`,
@@ -136,7 +138,7 @@ beats a stub file: no second page to keep alive, and the stub carries
 
 - [x] Commit this plan
 - [x] Rename the binary across the compiler and packaging manifests
-- [x] Rename the docs page, add the redirect, update the referring pages
+- [x] Rename the docs page and update the referring pages
 - [x] Introduce the extension name constants and route all uses through them
 - [x] Add the manifest / CSV / Cargo-target guards
 - [x] Add the docs-page guard to `shipped_binaries_guard.rs`

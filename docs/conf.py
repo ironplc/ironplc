@@ -184,11 +184,6 @@ ironplc_redirects = {
     "vscode/overview.html": "reference/editor/overview.html",
     "vscode/settings.html": "reference/editor/settings.html",
     "vscode/troubleshooting.html": "how-to-guides/troubleshoot-editor.html",
-
-    # The debug server was renamed ironplcdap -> ironplcvmd, so it is named for
-    # the program (the VM's debug daemon) rather than for the Debug Adapter
-    # Protocol it speaks.
-    "reference/runtime/ironplcdap.html": "reference/runtime/ironplcvmd.html",
 }
 
 # -- Open Graph configuration --------------------------------------------------
