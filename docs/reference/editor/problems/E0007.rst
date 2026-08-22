@@ -29,16 +29,3 @@ contains the executable wins; if none do, you see this error.
 3. **Use the environment variable**: Set ``IRONPLCVMD`` to the full path of the
    executable, for example when running a locally built server from a
    :file:`target/debug` directory.
-
-Renamed in a recent release
-===========================
-
-The debug server was previously named :program:`ironplcdap`, and its override
-was the ``ironplc.dapServerPath`` setting and the ``IRONPLCDAP`` environment
-variable. Both were renamed and the old names are no longer read.
-
-If this error appeared after an upgrade, an override left over from the old
-names is the likely cause: move its value to ``ironplc.debugServerPath`` (or
-``IRONPLCVMD``), or remove it and let the extension discover the server next to
-:program:`ironplcc`.
-

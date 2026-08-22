@@ -61,12 +61,6 @@ Example values:
 
 See :doc:`debugging` for what the debug server does.
 
-.. note::
-
-   This setting was named ``ironplc.dapServerPath`` in earlier releases, when
-   the debug server was named :program:`ironplcdap`. The old name is no longer
-   read; move any existing value to ``ironplc.debugServerPath``.
-
 ironplc.logLevel
 ----------------
 

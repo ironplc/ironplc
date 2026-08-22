@@ -19,9 +19,9 @@ the VM under a debugger. `ironplcvmd` sits beside `ironplcvm` the way a daemon
 sits beside its command, and it survives a protocol change.
 
 Per the issue, there is **no compatibility fallback**: the old setting and
-environment variable stop being read. Anyone who set `ironplc.dapServerPath`
-loses the override and gets E0007 until they update it. This needs a release
-note.
+environment variable stop being read. The setting shipped in v0.235.0-v0.239.0,
+but nobody has set it, so this is a clean rename with no upgraders to carry: the
+docs describe only the new names.
 
 ### The duplication problem
 
@@ -130,5 +130,4 @@ catches the one prose copy that is actually addressable (the slug).
 - [x] Add the manifest / CSV / Cargo-target guards
 - [x] Add the docs-page guard to `shipped_binaries_guard.rs`
 - [x] Update the design doc and DAP plans
-- [x] Add the release note for the setting rename
 - [x] `cd compiler && just`; extension `npm run pretest && npm run test:unit`
