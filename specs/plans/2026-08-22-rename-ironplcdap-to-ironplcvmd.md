@@ -90,19 +90,6 @@ text. Substituting them would cost readability for no safety — a stale word in
 a sentence is a documentation bug, not a broken install, and the doc-page guard
 catches the one prose copy that is actually addressable (the slug).
 
-### Docs URL stability
-
-`docs/reference/runtime/ironplcdap.rst` arrived with #1392. It is on `main` but
-the site has not been published since, so the old slug has never been a live
-URL: nothing links to it and nothing has indexed it. The page is renamed to
-`ironplcvmd.rst` with **no redirect** — the URL-stability policy protects
-*published* URLs, and adding an `ironplc_redirects` entry here would mean
-maintaining a permanent stub for an address that never existed.
-
-This holds only as long as the rename lands before the next docs publish. If it
-slips past one, the old slug becomes a shipped URL and the redirect entry has to
-go in after all.
-
 ## File map
 
 **Compiler**
