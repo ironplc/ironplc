@@ -33,10 +33,10 @@ Structured Text code. Today it provides:
 - **A Visual Studio Code extension** that provides auto-completion, syntax highlighting
   and real-time error checking as you type.
 - **A runtime** (:program:`ironplcvm`) that can execute compiled programs.
-- **A debugger** (:program:`ironplcdap`) that pauses a running program on a
-  source line so you can step through it and read its variables. Debugging is
-  early and in development.
 - **An MCP server** (:program:`ironplcmcp`) that AI agents can use to understand and run programs.
+- **A debug server** (:program:`ironplcdap`) that the extension uses to set
+  breakpoints, step through code, and inspect variables while a program runs.
+  Debugging is early and in development.
 
 Try it now — this program increments a counter on every scan cycle:
 

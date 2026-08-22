@@ -80,14 +80,12 @@ jobs:
         run: just sbom ${{ inputs.version }}
 
       # Package the Visual Studio Marketplace build (extension ID
-      # ironplc.ironplc-vscode) to validate that Marketplace packaging works
-      # end-to-end in CI. This runs unconditionally so every build proves the
-      # package builds; the VSIX is uploaded as a build artifact only when
-      # marketplace-artifact-name is set (see below) and is never published:
-      # automated Marketplace publishing (Stage 2 of
-      # specs/plans/vscode-marketplace-extension-id.md) is deferred until the new
-      # listing is validated by hand. Runs after the Open VSX VSIX and the SBOM
-      # so its package.json `name` override does not affect those artifacts.
+      # ironplc.ironplc-vscode). This runs unconditionally so every build proves
+      # the package builds; the VSIX is uploaded as a build artifact only when
+      # marketplace-artifact-name is set (see below). Publishing happens in
+      # deployment.yaml::publish-release, which consumes that artifact -- this
+      # job stays credential-free. Runs after the Open VSX VSIX and the SBOM so
+      # its package.json `name` override does not affect those artifacts.
       - name: Create Marketplace VSIX package
         run: just package-marketplace ironplc-vscode-extension-marketplace.vsix
 
@@ -113,8 +111,8 @@ jobs:
           if-no-files-found: error
       # Marketplace VSIX (ironplc.ironplc-vscode), uploaded as a separate build
       # artifact. The consolidated upload-release-artifacts job attaches it to
-      # the GitHub Release so users can install the Marketplace build manually.
-      # Automated publishing to the Marketplace remains deferred.
+      # the GitHub Release, and deployment.yaml::publish-release downloads it to
+      # publish to the Visual Studio Marketplace.
       - name: Upload Marketplace VSIX to build artifact
         if: ${{ inputs.marketplace-artifact-name }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

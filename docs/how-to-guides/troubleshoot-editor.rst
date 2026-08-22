@@ -148,8 +148,11 @@ If all else fails, try a clean reset:
    * macOS/Linux: ``~/.vscode/extensions/ironplc.*`` (or ``~/.cursor/extensions/ironplc.*`` for Cursor)
 
 3. Reload the development environment
-4. Reinstall the extension by downloading the latest
+4. Reinstall the extension from the Extensions view: search for ``ironplc``,
+   then select :guilabel:`IronPLC IDE` in Visual Studio Code or
+   :guilabel:`IronPLC` in editors that install from Open VSX (Cursor, Kiro,
+   Devin, VSCodium). If neither registry is reachable, download the latest
    ``ironplc-vscode-extension.vsix`` from the
    `IronPLC GitHub releases <https://github.com/ironplc/ironplc/releases/>`_
-   and using :menuselection:`... (View and More Actions) --> Install from VSIX...`
+   and use :menuselection:`... (View and More Actions) --> Install from VSIX...`
    in the Extensions view
