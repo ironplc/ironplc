@@ -221,8 +221,8 @@ pub enum TokenType {
     #[token("END_METHOD", ignore(case))]
     EndMethod,
     // `THIS^` / `SUPER^` -- the self-reference and base-reference forms.
-    // The caret is the ordinary dereference operator; see
-    // specs/plans/2026-08-22-oop-this-super-parsing.md.
+    // The caret is the ordinary dereference operator. Identifiers unless
+    // `allow_fb_inheritance` is set -- see xform_demote_keywords.rs.
     #[token("THIS", ignore(case))]
     This,
     #[token("SUPER", ignore(case))]

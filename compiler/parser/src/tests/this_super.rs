@@ -21,9 +21,7 @@ METHOD Run
 END_METHOD
 END_FUNCTION_BLOCK"
     );
-    let result = parse_program(&source, &FileId::default(), &opts_with_fb_inheritance());
-    assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-    result.unwrap()
+    parse_program(&source, &FileId::default(), &opts_with_fb_inheritance()).unwrap()
 }
 
 /// Proves THIS/SUPER remain valid identifiers in standard IEC 61131-3
@@ -43,11 +41,7 @@ SUPER := 2;
 END_FUNCTION_BLOCK
 ";
     let result = parse_program(program, &FileId::default(), &CompilerOptions::default());
-    assert!(
-        result.is_ok(),
-        "THIS/SUPER must remain valid identifiers in standard mode: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok());
 }
 
 /// Without the flag, `THIS^.x` keeps its pre-existing meaning: a
@@ -193,8 +187,5 @@ END_METHOD
 END_FUNCTION_BLOCK"
     );
     let result = parse_program(&source, &FileId::default(), &opts_with_fb_inheritance());
-    assert!(
-        result.is_err(),
-        "THIS/SUPER without a dereference caret must be rejected"
-    );
+    assert!(result.is_err());
 }

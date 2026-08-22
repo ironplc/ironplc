@@ -40,9 +40,6 @@ END_PROGRAM
     };
     let result = try_parse_and_compile(&source, &options);
 
-    assert!(
-        result.is_err(),
-        "expected compilation to fail for THIS^/SUPER^"
-    );
+    assert!(result.is_err());
     assert_eq!(result.unwrap_err().code, "P9999");
 }

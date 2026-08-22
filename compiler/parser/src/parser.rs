@@ -849,14 +849,13 @@ parser! {
     //rule symbolic_variable() -> SymbolicVariableKind =
     //  multi_element_variable()
     //  / name:variable_name() { SymbolicVariableKind::Named(NamedVariable{name}) }
-    // OOP extension: `THIS^` / `SUPER^` (ADR-0041 Phase 1). The caret is
-    // mandatory -- `THIS` and `SUPER` are pointers to an instance in the
-    // dialects that define them -- and optional whitespace/comments are
-    // accepted between the keyword and the caret, since nothing in the
-    // grammar joins them into one token. The `This`/`Super` tokens only
-    // reach the parser when `allow_fb_inheritance` is set (they demote to
-    // identifiers otherwise), so this rule is gated at the token level.
-    // See specs/plans/2026-08-22-oop-this-super-parsing.md.
+    // OOP extension: `THIS^` / `SUPER^`. The caret is mandatory -- `THIS`
+    // and `SUPER` are pointers to an instance in the dialects that define
+    // them -- and optional whitespace/comments are accepted between the
+    // keyword and the caret, since nothing in the grammar joins them into
+    // one token. The `This`/`Super` tokens only reach the parser when
+    // `allow_fb_inheritance` is set (they demote to identifiers otherwise),
+    // so this rule is gated at the token level.
     rule self_ref() -> SelfRefVariable =
       t:tok(TokenType::This) _ c:tok(TokenType::Caret) {
         SelfRefVariable { kind: SelfRefKind::This, position: SourceSpan::join(&t.span, &c.span) }

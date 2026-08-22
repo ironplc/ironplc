@@ -73,8 +73,7 @@ fn write_to_string_when_self_ref_source_then_round_trips(#[case] source: &'stati
     };
     let library_original = parse_program(source, &FileId::default(), &options).unwrap();
     let rendered = write_to_string(&library_original).unwrap();
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options)
-        .unwrap_or_else(|e| panic!("re-parse failed: {e:?}\n--- rendered ---\n{rendered}"));
+    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
     assert_eq!(library_original, library_rendered);
 }
 
