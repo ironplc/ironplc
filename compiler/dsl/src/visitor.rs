@@ -366,6 +366,8 @@ pub trait Visitor<E> {
     dispatch!(FbCall);
     dispatch!(MethodCall);
 
+    dispatch!(MethodReceiver);
+
     // 3.2.3
     dispatch!(PositionalInput);
 
@@ -430,6 +432,8 @@ pub trait Visitor<E> {
     dispatch!(PartialAccessVariable);
 
     dispatch!(DerefVariable);
+
+    dispatch!(SelfRefVariable);
 }
 
 #[cfg(test)]

@@ -38,11 +38,7 @@ pub(crate) fn compile_len(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     // The argument must be a string variable so we can look up its data_offset.
@@ -51,13 +47,12 @@ pub(crate) fn compile_len(
         _ => None,
     };
 
-    let name =
-        var_name.ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+    let name = var_name.ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
 
     let info = ctx
         .string_vars
         .get(name)
-        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
 
     emitter.emit_len_str(info.data_offset);
     Ok(())
@@ -95,7 +90,7 @@ pub(crate) fn compile_string_compare(
         CompareOp::LtEq => emitter.emit_le_i32(),
         CompareOp::GtEq => emitter.emit_ge_i32(),
         _ => {
-            return Err(Diagnostic::todo_with_span(span, file!(), line!()));
+            return Err(Diagnostic::todo_with_span(span));
         }
     }
     Ok(())
@@ -128,7 +123,7 @@ pub(crate) fn resolve_string_arg(
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
 
             if max_length > ctx.max_string_capacity {
                 ctx.max_string_capacity = max_length;
@@ -151,7 +146,7 @@ pub(crate) fn resolve_string_arg(
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
 
             if max_length > ctx.max_string_capacity {
                 ctx.max_string_capacity = max_length;
@@ -177,7 +172,7 @@ pub(crate) fn resolve_string_arg(
             ctx.data_region_offset = ctx
                 .data_region_offset
                 .checked_add(total_bytes)
-                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone(), file!(), line!()))?;
+                .ok_or_else(|| Diagnostic::todo_with_span(func_span.clone()))?;
 
             if max_length > ctx.max_string_capacity {
                 ctx.max_string_capacity = max_length;
@@ -218,11 +213,7 @@ pub(crate) fn compile_find(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -246,11 +237,7 @@ pub(crate) fn compile_replace(
     let args = collect_positional_args(func);
 
     if args.len() != 4 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -281,11 +268,7 @@ pub(crate) fn compile_insert(
     let args = collect_positional_args(func);
 
     if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -316,11 +299,7 @@ fn compile_string_2arg(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -348,11 +327,7 @@ fn compile_string_3arg(
     let args = collect_positional_args(func);
 
     if args.len() != 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;
@@ -429,11 +404,7 @@ pub(crate) fn compile_concat(
     let args = collect_positional_args(func);
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let in1_offset = resolve_string_arg(emitter, ctx, args[0], &func.name.span())?;

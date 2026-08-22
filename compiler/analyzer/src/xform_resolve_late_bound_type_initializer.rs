@@ -234,7 +234,7 @@ impl Fold<Diagnostic> for TypeResolver<'_> {
                         TypeDefinitionKind::Subrange => Ok(InitialValueAssignmentKind::Subrange(
                             SpecificationKind::Named(name),
                         )),
-                        _ => Err(Diagnostic::todo_with_type(&name, file!(), line!())),
+                        _ => Err(Diagnostic::todo_with_type(&name)),
                     },
                     None => {
                         trace!("{:?}", self.types);

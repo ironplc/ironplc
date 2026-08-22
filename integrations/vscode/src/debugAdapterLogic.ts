@@ -220,12 +220,14 @@ export function firstLine(text: string): string {
  * The message shown when a custom request is refused by the debug server.
  *
  * `DebugSession.customRequest` rejects when the adapter answers with
- * `success: false`, which is what a server that does not implement the request
- * returns (`requestNotApplicable`). Without this, the rejection escapes the
- * command handler as an unhandled error and the user sees no useful
- * explanation. `title` is the command's UI title, so the message names the
- * button that was pressed.
+ * `success: false`, which is what the server returns (`requestNotApplicable`)
+ * for a request that is legal only in another phase. The debug toolbar shows
+ * its buttons for the whole session, so scan stepping can be pressed after the
+ * program has terminated or faulted, when there is no cycle left to step.
+ * Without this, the rejection escapes the command handler as an unhandled error
+ * and the user sees no useful explanation. `title` is the command's UI title, so
+ * the message names the button that was pressed.
  */
 export function customRequestFailedMessage(title: string): string {
-  return `IronPLC: "${title}" is not supported by this debug server.`;
+  return `IronPLC: "${title}" is only available while the program is paused.`;
 }

@@ -183,16 +183,34 @@ While the program is paused:
    * - :guilabel:`Step Out`
      - :kbd:`Shift+F11`
      - Run to the end of the current POU and stop in its caller.
+   * - :guilabel:`Step Scan Cycle`
+     - None
+     - Run the rest of the current scan cycle and stop at the start of the
+       next one.
    * - :guilabel:`Stop`
      - :kbd:`Shift+F5`
      - End the session.
 
-.. note::
+Scan Stepping
+-------------
 
-   The :guilabel:`Step Scan Cycle` button on the debug toolbar is not yet
-   implemented. Pressing it reports that the request is not supported. Use
-   :guilabel:`Continue` to advance to the next scan, and watch ``scanCount``
-   in the :guilabel:`Runtime` scope to see the cycles pass.
+:guilabel:`Step Scan Cycle` is on the debug toolbar and in the Command
+Palette. It is the scan-cycle equivalent of :guilabel:`Step Over`: one press
+advances the program by exactly one cycle, no matter how many lines that
+takes.
+
+The stop lands on the first line of the *next* cycle. The cycle you stepped
+has finished --- its outputs are written and ``scanCount`` in the
+:guilabel:`Runtime` scope has gone up by one --- so the values you see are
+that cycle's results.
+
+A breakpoint reached partway through the cycle stops there instead, the same
+way one reached during :guilabel:`Step Over` does. The scan step ends at that
+breakpoint; press :guilabel:`Step Scan Cycle` again to run out the rest of the
+cycle.
+
+If the cycle you step is the last one allowed by ``scanLimit``, the session
+ends rather than stopping again.
 
 Inspecting Variables
 ====================

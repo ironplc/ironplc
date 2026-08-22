@@ -246,6 +246,13 @@ fn resolve_variable_type(
         SymbolicVariableKind::PartialAccess(partial) => {
             resolve_variable_type(&partial.variable, var_initializers, type_env)
         }
+        SymbolicVariableKind::SelfRef(_) => {
+            // Typing a member of THIS^/SUPER^ needs function-block member
+            // resolution, which does not exist yet. Unreachable in practice:
+            // `visit_self_ref_variable` below reports the construct before
+            // any range check runs. See issue #1406.
+            None
+        }
         SymbolicVariableKind::Deref(deref) => {
             resolve_variable_type(&deref.variable, var_initializers, type_env)
         }
@@ -296,6 +303,21 @@ impl Visitor<Diagnostic> for RuleBitAccessRange<'_> {
         let ret = node.recurse_visit(self);
         self.var_initializers.clear();
         ret
+    }
+
+    fn visit_self_ref_variable(&mut self, node: &SelfRefVariable) -> Result<(), Diagnostic> {
+        // Report rather than skip: a bit access through THIS^/SUPER^ cannot
+        // be range-checked until member resolution exists, and staying
+        // silent here would keep this rule quietly passing such a program
+        // once the construct is otherwise supported. See issue #1406.
+        self.diagnostics.push(Diagnostic::not_implemented(Label::span(
+            node.span(),
+            format!(
+                "{} is recognized but its members are not yet resolved, so bit and partial access through it is not range-checked",
+                node.kind.spelling()
+            ),
+        )));
+        Ok(())
     }
 
     fn visit_bit_access_variable(&mut self, node: &BitAccessVariable) -> Result<(), Diagnostic> {

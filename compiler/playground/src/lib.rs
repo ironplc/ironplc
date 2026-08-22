@@ -232,7 +232,7 @@ fn internal_run_error(message: String) -> RunError {
     let loc = std::panic::Location::caller();
     // Derive the stable code from the shared diagnostic constructor rather than
     // hard-coding "P9998", so it tracks the compiler's internal-error code.
-    let code = Diagnostic::internal_error(loc.file(), loc.line()).code;
+    let code = Diagnostic::internal_error().code;
     RunError {
         message,
         code: Some(code),
@@ -255,7 +255,7 @@ fn fallback_error_json(err: &RunError) -> String {
 #[track_caller]
 fn internal_diagnostic(message: String) -> DiagnosticInfo {
     let loc = std::panic::Location::caller();
-    let code = Diagnostic::internal_error(loc.file(), loc.line()).code;
+    let code = Diagnostic::internal_error().code;
     DiagnosticInfo {
         code,
         message,

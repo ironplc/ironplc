@@ -74,6 +74,20 @@ pub trait DebugHook {
     /// resuming in, or `None` if the outermost frame just returned.
     /// Default: no-op.
     fn after_return(&mut self, _returning_to: Option<FunctionId>) {}
+
+    /// Whether a *scan step* is in flight: the user asked to run out the
+    /// current scan cycle and stop when it ends.
+    ///
+    /// A scan step is the one stop a hook cannot report on its own, because
+    /// its landing is a scan boundary rather than an instruction. The driver
+    /// ([`run_round_debug`](crate::VmRunning::run_round_debug)) asks this once
+    /// per completed scan and reports
+    /// [`RoundOutcome::PausedAfterScan`](crate::RoundOutcome::PausedAfterScan)
+    /// when it holds. Default: `false`, so a hook that does not step never
+    /// interrupts the run loop.
+    fn stepping_scan(&self) -> bool {
+        false
+    }
 }
 
 /// A no-op [`DebugHook`] used by default. Zero-sized; the empty

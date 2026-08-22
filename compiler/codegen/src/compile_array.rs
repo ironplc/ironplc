@@ -158,9 +158,10 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                     SymbolicVariableKind::Named(named) => {
                         levels.reverse();
                         let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
-                        let info = ctx.array_vars.get(&named.name).ok_or_else(|| {
-                            Diagnostic::todo_with_span(named.name.span(), file!(), line!())
-                        })?;
+                        let info = ctx
+                            .array_vars
+                            .get(&named.name)
+                            .ok_or_else(|| Diagnostic::todo_with_span(named.name.span()))?;
                         return Ok(ResolvedAccess::ArrayElement {
                             info,
                             subscripts: all_subscripts,
@@ -178,20 +179,17 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                                 levels.reverse();
                                 let all_subscripts: Vec<&Expr> =
                                     levels.into_iter().flatten().collect();
-                                let info = ctx.array_vars.get(&named.name).ok_or_else(|| {
-                                    Diagnostic::todo_with_span(named.name.span(), file!(), line!())
-                                })?;
+                                let info = ctx
+                                    .array_vars
+                                    .get(&named.name)
+                                    .ok_or_else(|| Diagnostic::todo_with_span(named.name.span()))?;
                                 return Ok(ResolvedAccess::DerefArrayElement {
                                     info,
                                     subscripts: all_subscripts,
                                 });
                             }
                             other => {
-                                return Err(Diagnostic::todo_with_span(
-                                    other.span(),
-                                    file!(),
-                                    line!(),
-                                ));
+                                return Err(Diagnostic::todo_with_span(other.span()));
                             }
                         }
                     }
@@ -201,7 +199,7 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                         return resolve_struct_field_array(ctx, structured, all_subscripts);
                     }
                     other => {
-                        return Err(Diagnostic::todo_with_span(other.span(), file!(), line!()));
+                        return Err(Diagnostic::todo_with_span(other.span()));
                     }
                 }
             }
@@ -331,11 +329,7 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
     structured: &'ast ironplc_dsl::textual::StructuredVariable,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
     let SymbolicVariableKind::Array(array_var) = structured.record.as_ref() else {
-        return Err(Diagnostic::todo_with_span(
-            structured.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(structured.span()));
     };
 
     // Collect subscript groups innermost-first, then reverse -- the same
@@ -351,7 +345,7 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
                 // A top-level `ARRAY OF <struct>` variable reaches here. Those
                 // are rejected earlier, at declaration time, because
                 // `resolve_type_name` resolves only elementary element types.
-                return Err(Diagnostic::todo_with_span(other.span(), file!(), line!()));
+                return Err(Diagnostic::todo_with_span(other.span()));
             }
         }
     };
@@ -618,7 +612,7 @@ fn intermediate_type_to_name(ty: &IntermediateType) -> Result<Id, Diagnostic> {
             size: ByteSized::B64,
         } => "LTIME",
         IntermediateType::String { .. } => "STRING",
-        _ => return Err(Diagnostic::todo(file!(), line!())),
+        _ => return Err(Diagnostic::todo()),
     };
     Ok(Id::from(name))
 }
@@ -870,7 +864,7 @@ pub(crate) fn flatten_array_initial_values(
                 result.push(value.clone());
             }
             ArrayInitialElementKind::EnumValue(_) => {
-                return Err(Diagnostic::todo(file!(), line!()));
+                return Err(Diagnostic::todo());
             }
             ArrayInitialElementKind::Repeated(repeated) => {
                 let count = repeated.size.value as usize;
