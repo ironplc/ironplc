@@ -760,6 +760,9 @@ enum StepMode {
     /// DAP "stepOut".
     StepOut,
     /// Run until the next scan cycle boundary. Custom DAP request.
+    /// (Shipped as `StepMode::Scan`; it has no intra-scan landing, so
+    /// `StepController::check` returns false for it and the round driver
+    /// reports the boundary instead.)
     StepScan,
 }
 ```
@@ -808,7 +811,7 @@ The natural stop points are:
 | Breakpoint | `DebuggerHook` returns `HookAction::Pause(Breakpoint)` |
 | Step landing | `DebuggerHook` returns `HookAction::Pause(Step)` |
 | Scan boundary | `run_round_debug` returns `RoundOutcome::Completed` (one complete scan finished) |
-| Step Scan landing | `run_round_debug` returns `RoundOutcome::PausedAfterScan` |
+| Step Scan landing | `run_round_debug` returns `RoundOutcome::PausedAfterScan`, and the loop stops on the following round's first instruction (frames have drained at the boundary itself) |
 | Trap | `Err(Trap)` from the dispatch loop, with trap-bp enabled |
 | Disconnect timer | `scanLimit` reached (launch-config; runaway prevention) |
 
@@ -845,7 +848,7 @@ For PLC-specific debugging, users need scan-level control:
 
 | Command | Behavior |
 |---------|----------|
-| **Step Scan** | Run one complete scan cycle (INPUT_FREEZE → EXECUTE → OUTPUT_FLUSH), then pause before the next |
+| **Step Scan** | Run one complete scan cycle (INPUT_FREEZE → EXECUTE → OUTPUT_FLUSH), then pause before the next. *Implemented;* the pause is reported at the next scan's first instruction rather than at the frame-less boundary, so the stop has a call stack and variables to show. |
 | **Pause Between Scans** | Always pause after OUTPUT_FLUSH, before the next INPUT_FREEZE |
 | **Run to Scan N** | Continue until `scan_count` reaches a target value |
 
@@ -861,8 +864,8 @@ For PLC-specific debugging, users need scan-level control:
 > `pause`-while-running remains the Phase 6 cut. This continuous-loop work is a
 > tracked server follow-up (Phase 4c) and is **not** part of Phase 5 (VS Code
 > integration). The scan count is now surfaced by the `Runtime` scope rather
-> than a custom request (2026-08-16); `ironplc/stepScan` is still answered
-> `requestNotApplicable` — see §Custom DAP Requests and §Scopes.
+> than a custom request (2026-08-16), and `ironplc/stepScan` landed on
+> 2026-08-22 — see §Custom DAP Requests and §Scopes.
 
 A new `VmRunning::run_round_debug` method drives a single round under a `DebuggerHook`. v1 supports a single program instance only (see §Multi-instance: not supported in v1), so the `instances_for_task` loop is collapsed to "the one instance":
 
@@ -897,7 +900,7 @@ impl<'a> VmRunning<'a> {
         // OUTPUT_FLUSH and scan_count++ run only when the instance completed.
         self.flush_outputs();
         self.scan_count += 1;
-        if hook.took_step_scan_now() {
+        if hook.stepping_scan() {
             return Ok(RoundOutcome::PausedAfterScan);
         }
         Ok(RoundOutcome::Completed)
@@ -1141,7 +1144,7 @@ It does **not** support arithmetic, function calls, or non-constant subscripts. 
 
 | Custom Request | Description | Status |
 |----------------|-------------|--------|
-| `ironplc/stepScan` | Run one complete scan cycle, then pause | Deferred — `RoundOutcome::PausedAfterScan` has no producer and `StepMode` has no scan-level variant, so this needs debug-engine work. Answered `requestNotApplicable`. |
+| `ironplc/stepScan` | Run one complete scan cycle, then pause at the start of the next | **Implemented (2026-08-22).** `StepMode::Scan` + `DebuggerHook::step_scan()` run the cycle out; `run_round_debug` reports `RoundOutcome::PausedAfterScan` at the boundary; the DAP loop then lands the stop on the next scan's first instruction with `DebuggerHook::land_scan_step()` (the boundary itself has no frames to inspect). Legal at a non-terminal pause, like the other execution-control requests. |
 | ~~`ironplc/scanCount`~~ | Return the current scan_count | **Dropped (2026-08-16).** Superseded by the `Runtime` scope (see §Scopes), which carries the same value over standard `scopes`/`variables`. A custom request would be the *less* portable path — every DAP client can read a scope, but only an IronPLC-aware client knows this request — and having both meant two ways to read one counter. |
 
 Removed from v1 (deferred):
@@ -1425,10 +1428,12 @@ to a temp `.iplc` first so the `launch` sees a debug-enabled container.
 
 Single-stepping landed in #1305. The scan count landed on 2026-08-16 as the
 `Runtime` scope rather than a custom request, and its toolbar button was retired
-(see `specs/plans/2026-08-16-dap-scan-count.md`). `ironplc/stepScan` is still
-answered `requestNotApplicable`, so that toolbar button remains inert; a refused
-custom request is now reported to the user rather than escaping the command
-handler as an unhandled rejection.
+(see `specs/plans/2026-08-16-dap-scan-count.md`). `ironplc/stepScan` landed on
+2026-08-22 (see `specs/plans/2026-08-22-dap-step-scan.md`), so the Step Scan
+Cycle toolbar button now works; a refused custom request — the button is on the
+toolbar for the whole session, including after termination — is still reported
+to the user rather than escaping the command handler as an unhandled
+rejection.
 
 ### Phase 6: Beyond v1 (Future)
 
