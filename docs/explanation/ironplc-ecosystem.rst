@@ -36,6 +36,7 @@ Structured Text code. Today it provides:
 - **An MCP server** (:program:`ironplcmcp`) that AI agents can use to understand and run programs.
 - **A debug server** (:program:`ironplcdap`) that the extension uses to set
   breakpoints, step through code, and inspect variables while a program runs.
+  Debugging is early and in development.
 
 Try it now — this program increments a counter on every scan cycle:
 
