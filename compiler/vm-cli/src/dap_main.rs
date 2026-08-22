@@ -1,4 +1,4 @@
-//! `ironplcdap` — the IronPLC Debug Adapter Protocol server.
+//! `ironplcvmd` — the IronPLC Debug Adapter Protocol server.
 //!
 //! Speaks DAP over stdin/stdout so an editor (VS Code, Phase 5) can drive a
 //! debug session. See `specs/plans/2026-06-25-dap-server-scaffold.md`.

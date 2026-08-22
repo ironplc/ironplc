@@ -293,7 +293,8 @@ function registerRunSupport(context: vscode.ExtensionContext) {
 /**
  * Registers the DAP debug adapter: a configuration provider that compiles a
  * source program to an `.iplc` container before launch, and an adapter factory
- * that spawns the `ironplcdap` server (resolved from the compiler's directory).
+ * that spawns the `ironplcvmd` debug server (resolved from the compiler's
+ * directory).
  */
 function registerDebugSupport(context: vscode.ExtensionContext, compilerPath: string) {
   const compilerDir = path.dirname(compilerPath);

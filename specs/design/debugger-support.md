@@ -94,9 +94,9 @@ The debugger is four layers:
 
 ### Why a separate DAP binary?
 
-The DAP server is its own binary, `ironplcdap`, built from `dap_main.rs` in the `vm-cli` crate. An earlier draft made it an `ironplcvm debug` subcommand to avoid duplicating the VM embedding code; sharing the crate achieves that without coupling the two entry points, and keeps the DAP protocol loop out of the production VM's argument parsing and lifecycle.
+The DAP server is its own binary, `ironplcvmd`, built from `dap_main.rs` in the `vm-cli` crate. Sharing the crate with `ironplcvm` reuses the VM embedding code without coupling the two entry points, and keeps the DAP protocol loop out of the production VM's argument parsing and lifecycle.
 
-`ironplcdap` takes **no command-line arguments**. It speaks DAP on stdin/stdout, and the program under debug arrives in the `launch` request's `arguments.program` field as a path to a compiled `.iplc` container.
+`ironplcvmd` takes **no command-line arguments**. It speaks DAP on stdin/stdout, and the program under debug arrives in the `launch` request's `arguments.program` field as a path to a compiled `.iplc` container.
 
 ## Layer 1: Debug Info
 
@@ -1063,10 +1063,10 @@ The DAP server speaks the [Debug Adapter Protocol](https://microsoft.github.io/d
 The DAP server is launched as a subprocess by the VS Code extension:
 
 ```
-ironplcdap
+ironplcvmd
 ```
 
-`ironplcdap` is always in DAP mode: it reads Content-Length-framed JSON on stdin and writes responses and events on stdout. It takes no arguments — the container to debug arrives in the `launch` request.
+`ironplcvmd` is always in DAP mode: it reads Content-Length-framed JSON on stdin and writes responses and events on stdout. It takes no arguments — the container to debug arrives in the `launch` request.
 
 ### DAP Request Mapping
 
@@ -1265,7 +1265,7 @@ The VS Code extension registers a debug adapter in `package.json`:
 The extension implements a `DebugAdapterDescriptorFactory` that:
 
 1. If `compileFirst` is true and `program` ends with `.st`, compiles the source to a temp `.iplc` file using the IronPLC compiler (same binary used for LSP)
-2. Launches `ironplcdap` as a child process, passing the `.iplc` path in the `launch` request
+2. Launches `ironplcvmd` as a child process, passing the `.iplc` path in the `launch` request
 3. Connects stdin/stdout to VS Code's DAP client
 
 ### Scan Cycle Toolbar
@@ -1370,16 +1370,16 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 
 **Goal:** Launch `ironplcvm debug --dap <file.iplc>` and debug from VS Code using standard DAP.
 
-**Packaging decision (revised 2026-08-16).** DAP support is a **second, always-built binary** in the `vm-cli` crate: `ironplcdap`, whose entry point is `dap_main.rs`. Distribution ships it alongside `ironplcc`, `ironplcvm`, and `ironplcmcp` in every installer, because the VS Code extension resolves the debug adapter from the directory holding the discovered `ironplcc`.
+**Packaging decision (revised 2026-08-16).** DAP support is a **second, always-built binary** in the `vm-cli` crate: `ironplcvmd`, whose entry point is `dap_main.rs`. Distribution ships it alongside `ironplcc`, `ironplcvm`, and `ironplcmcp` in every installer, because the VS Code extension resolves the debug adapter from the directory holding the discovered `ironplcc`.
 
-This supersedes the original decision to feature-gate DAP behind `--features dap`. The gate did not do what it claimed: `mod dap` is declared only in `dap_main.rs`, and separate `[[bin]]` targets are separate compilation units, so `ironplcvm` never compiled the DAP layer either way. What the gate did do was exclude `ironplcdap` from `cargo build` entirely, so local builds silently kept a stale binary and no release ever shipped one. The `shipped_binaries_guard` test (`compiler/test/tests/`) now asserts that every `[[bin]]` target appears in every packaging manifest. See `specs/plans/2026-08-16-always-build-ship-dap-server.md`.
+This supersedes the original decision to feature-gate DAP behind `--features dap`. The gate did not do what it claimed: `mod dap` is declared only in `dap_main.rs`, and separate `[[bin]]` targets are separate compilation units, so `ironplcvm` never compiled the DAP layer either way. What the gate did do was exclude `ironplcvmd` from `cargo build` entirely, so local builds silently kept a stale binary and no release ever shipped one. The `shipped_binaries_guard` test (`compiler/test/tests/`) now asserts that every `[[bin]]` target appears in every packaging manifest. See `specs/plans/2026-08-16-always-build-ship-dap-server.md`.
 
 **Changes:**
 
 | Crate | Files | Changes |
 |-------|-------|---------|
-| `vm-cli` | `Cargo.toml` | Second `[[bin]]` target, `ironplcdap`, built unconditionally |
-| `vm-cli` | new `dap_main.rs` | Entry point for `ironplcdap`; speaks DAP on stdin/stdout and takes no arguments (the program under debug arrives in the `launch` request). `main.rs`/`ironplcvm` is untouched. |
+| `vm-cli` | `Cargo.toml` | Second `[[bin]]` target, `ironplcvmd`, built unconditionally |
+| `vm-cli` | new `dap_main.rs` | Entry point for `ironplcvmd`; speaks DAP on stdin/stdout and takes no arguments (the program under debug arrives in the `launch` request). `main.rs`/`ironplcvm` is untouched. |
 | `vm-cli` | new `dap/framing.rs` | Content-Length framing reader/writer |
 | `vm-cli` | new `dap/types.rs` | DAP protocol types (Request, Response, Event, Capabilities). Prefer the `dap-types` crate if it's a fit; otherwise hand-rolled with `serde`. |
 | `vm-cli` | new `dap/server.rs` | **Single-threaded** event loop: alternate between draining queued DAP requests at natural stop points and running the VM under `run_round_debug` (see §Single-threaded DAP loop). No I/O thread, no `Send`/`Sync`, no `Arc`, no `AtomicBool`. |
@@ -1402,23 +1402,23 @@ This supersedes the original decision to feature-gate DAP behind `--features dap
 Implemented in `specs/plans/2026-08-02-dap-vscode-integration.md`.
 
 **Adapter invocation (as shipped).** Phase 4 shipped the DAP server as a
-**separate binary, `ironplcdap`** (feature-gated on `vm-cli`), that speaks DAP
+**separate binary, `ironplcvmd`** (feature-gated on `vm-cli`), that speaks DAP
 over stdin/stdout and takes **no CLI arguments**; the program under debug is
 delivered by the `launch` request's `arguments.program` field (a path to a
 compiled `.iplc` container). Phase 5 matches that: the adapter spawns
-`ironplcdap` with no arguments and, when `program` is a source file, compiles it
+`ironplcvmd` with no arguments and, when `program` is a source file, compiles it
 to a temp `.iplc` first so the `launch` sees a debug-enabled container.
 
 | Location | Files | Changes |
 |----------|-------|---------|
-| `integrations/vscode` | `package.json` | Add `debuggers` (type `ironplc`) and `breakpoints` contributions; **`commands` and `menus.debug/toolBar` entries for `ironplc.stepScan` and `ironplc.scanCount`** (otherwise custom DAP requests are unreachable); `ironplc.dapServerPath` setting |
-| `integrations/vscode/src` | new `debugAdapterLogic.ts` | Pure, unit-tested decision logic: source-vs-container detection, temp container path, `ironplcdap` discovery (env → setting → bundled), program-path fallback, compile args |
-| `integrations/vscode/src` | new `debugAdapter.ts` | `DebugConfigurationProvider` (fills defaults; if `program` is a source file, runs the compiler with debug info to emit a temp `.iplc`) and `DebugAdapterDescriptorFactory` (spawns `ironplcdap`, resolved via `debugAdapterLogic`) |
+| `integrations/vscode` | `package.json` | Add `debuggers` (type `ironplc`) and `breakpoints` contributions; **`commands` and `menus.debug/toolBar` entries for `ironplc.stepScan` and `ironplc.scanCount`** (otherwise custom DAP requests are unreachable); `ironplc.debugServerPath` setting |
+| `integrations/vscode/src` | new `debugAdapterLogic.ts` | Pure, unit-tested decision logic: source-vs-container detection, temp container path, `ironplcvmd` discovery (env → setting → bundled), program-path fallback, compile args |
+| `integrations/vscode/src` | new `debugAdapter.ts` | `DebugConfigurationProvider` (fills defaults; if `program` is a source file, runs the compiler with debug info to emit a temp `.iplc`) and `DebugAdapterDescriptorFactory` (spawns `ironplcvmd`, resolved via `debugAdapterLogic`) |
 | `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan` as a VS Code command forwarding to the active session. (Scan count is a scope, not a command — see §Scopes. No force/unforce — those are out of v1 scope.) |
 | `integrations/vscode/src` | `extension.ts` | Register debug config provider, adapter factory, and custom-request commands |
 
 **Tests:**
-- Unit: `debugAdapterLogic` — `ironplcdap` path resolution (env var, setting,
+- Unit: `debugAdapterLogic` — `ironplcvmd` path resolution (env var, setting,
   then bundled), source-vs-container detection, temp container path, program
   fallback, compile args, scan-count formatting.
 - Extension (functional): `ironplc.stepScan` / `ironplc.scanCount` commands
@@ -1523,7 +1523,7 @@ For reviewers familiar with the prior version of this document:
 5. **Optimizer contract** spelled out: post-optimization line map, snap-forward, instruction-boundary invariant, breakpoint-resolution feedback.
 6. **State machine documented** with a Phase enum and a per-DAP-request legality column.
 7. **Tag registry reconciled** with the existing `Tag 9 = ENUM_DEF` implementation.
-8. **DAP packaging** is a second always-built `[[bin]]` on `vm-cli`, `ironplcdap`, shipped by every installer beside `ironplcc` (revised 2026-08-16; it was previously `--features dap`, which meant the binary was never built or shipped at all).
+8. **DAP packaging** is a second always-built `[[bin]]` on `vm-cli`, `ironplcvmd`, shipped by every installer beside `ironplcc` (revised 2026-08-16; it was previously `--features dap`, which meant the binary was never built or shipped at all).
 
 ### v1 scope cuts (changes vs. earlier drafts)
 

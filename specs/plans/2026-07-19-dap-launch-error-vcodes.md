@@ -1,8 +1,13 @@
 # DAP launch errors carry V-codes
 
+> **Renamed 2026-08-22.** This plan was written when the debug server was
+> named `ironplcdap`. The name below has been updated to `ironplcvmd` so it
+> matches the shipped binary; see
+> [the rename plan](2026-08-22-rename-ironplcdap-to-ironplcvmd.md).
+
 ## Goal
 
-Make every `ironplcdap` `launch` failure carry a stable IronPLC **V-code**, so a
+Make every `ironplcvmd` `launch` failure carry a stable IronPLC **V-code**, so a
 DAP client sees the same `V#### - message` surface the `ironplcvm` CLI already
 emits (and can link to the runtime problem-code docs). Chosen approach:
 `LaunchError` owns its own `v_code()` and renders `"V#### - message"` via
@@ -14,7 +19,7 @@ exiting the process).
 
 `compiler/vm-cli/src/dap/launch.rs` defines `LaunchError` with a `message()`
 that returns bare human text (`"NoDebugInfo: …"`, `"MultiInstanceUnsupported:
-…"`). The `ironplcdap` binary (`dap_main.rs`) does not compile `error.rs`, so it
+…"`). The `ironplcvmd` binary (`dap_main.rs`) does not compile `error.rs`, so it
 has no access to the generated V-code constants. V-codes come from
 `vm-cli/resources/problem-codes.csv` → `build.rs` → `io_codes.rs`
 (`pub const NAME: &str = "V6xxx"`). Runtime traps already expose `Trap::v_code()`.

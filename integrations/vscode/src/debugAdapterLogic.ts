@@ -26,8 +26,51 @@ export interface DapDiscoveryResult {
   source: string;
 }
 
-/** The compiled-container extension the DAP server's `launch` expects. */
+/** The compiled-container extension the debug server's `launch` expects. */
 export const CONTAINER_EXTENSION = '.iplc';
+
+/*
+ * The names of the things the debug integration talks to, in one place.
+ *
+ * Each of these strings also exists outside this file — the binary in the
+ * compiler's `[[bin]]` target, the setting id in `package.json`, the binary
+ * again in the E0007 message in `resources/problem-codes.csv` — and none of
+ * those can import a TypeScript constant. Every copy the extension *can*
+ * reach reads these constants instead of retyping the string, and the copies
+ * it cannot reach are pinned to them by the guards in
+ * `test/unit/debugAdapterLogic.test.ts`. Renaming the server is then a change
+ * here plus whatever those guards report, not a grep.
+ */
+
+/** The debug-server executable, without any platform extension. */
+export const DEBUG_SERVER_BINARY = 'ironplcvmd';
+
+/** Environment variable that points directly at the debug-server binary. */
+export const DEBUG_SERVER_ENV_VAR = 'IRONPLCVMD';
+
+/** The configuration section every IronPLC setting lives under. */
+export const CONFIG_SECTION = 'ironplc';
+
+/** Setting key, within [`CONFIG_SECTION`], that points at the binary. */
+export const DEBUG_SERVER_PATH_SETTING = 'debugServerPath';
+
+/** The setting as users and `package.json` spell it. */
+export const DEBUG_SERVER_PATH_SETTING_ID = `${CONFIG_SECTION}.${DEBUG_SERVER_PATH_SETTING}`;
+
+/** The debug-server file name on `platform` (`.exe` on Windows). */
+export function debugServerFileName(platform: string): string {
+  return platform === 'win32' ? DEBUG_SERVER_BINARY + '.exe' : DEBUG_SERVER_BINARY;
+}
+
+/**
+ * The E0007 context line: what to do when the debug server is not found.
+ * Lives here so the setting id and binary name in the user-facing text come
+ * from the constants above rather than from a hand-typed literal.
+ */
+export function debugServerNotFoundHint(): string {
+  return `Set "${DEBUG_SERVER_PATH_SETTING_ID}" or install the IronPLC compiler `
+    + `alongside ${DEBUG_SERVER_BINARY}.`;
+}
 
 /** A subset of a VS Code `contributes.languages` entry. */
 export interface LanguageContribution {
@@ -107,7 +150,7 @@ export function containerOutputPath(program: string, tmpDir: string): string {
 }
 
 /**
- * Resolves the `ironplcdap` DAP-server binary. The resolution order is
+ * Resolves the [`DEBUG_SERVER_BINARY`] executable. The resolution order is
  * environment variable, then setting, then bundled (alongside the discovered
  * `ironplcc` compiler, whose directory is `compilerDir`), matching
  * `specs/design/debugger-support.md` §"Phase 5". Returns the first candidate
@@ -117,17 +160,16 @@ export function findDapServerPath(
   env: DapEnvironment,
   compilerDir?: string,
 ): DapDiscoveryResult | undefined {
-  const ext = env.platform === 'win32' ? '.exe' : '';
-  const exe = 'ironplcdap' + ext;
+  const exe = debugServerFileName(env.platform);
 
   const trials: (() => [string | undefined, string])[] = [
     () => {
       // Environment variable pointing directly at the binary. Not generally set.
-      return [env.getEnv('IRONPLCDAP'), 'environment'];
+      return [env.getEnv(DEBUG_SERVER_ENV_VAR), 'environment'];
     },
     () => {
       // Setting pointing directly at the binary.
-      return [env.getConfig('dapServerPath'), 'configuration'];
+      return [env.getConfig(DEBUG_SERVER_PATH_SETTING), 'configuration'];
     },
     () => {
       // Bundled next to the compiler discovered by `findCompilerPath`.

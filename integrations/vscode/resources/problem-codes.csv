@@ -5,4 +5,4 @@ E0003,DisassemblyFailed,Failed to disassemble .iplc bytecode file
 E0004,DebugNoProgram,No program specified to debug
 E0005,DebugProgramNotDebuggable,Program is not a Structured Text source or compiled .iplc container
 E0006,DebugCompileFailed,Failed to compile the program for debugging
-E0007,DebugServerNotFound,IronPLC debug server (ironplcdap) not found
+E0007,DebugServerNotFound,IronPLC debug server (ironplcvmd) not found

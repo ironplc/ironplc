@@ -1,8 +1,16 @@
 import * as assert from 'assert';
 import * as path from 'path';
+import * as fs from 'fs';
 import {
+  CONFIG_SECTION,
   DapEnvironment,
+  DEBUG_SERVER_BINARY,
+  DEBUG_SERVER_ENV_VAR,
+  DEBUG_SERVER_PATH_SETTING,
+  DEBUG_SERVER_PATH_SETTING_ID,
   containerOutputPath,
+  debugServerFileName,
+  debugServerNotFoundHint,
   findDapServerPath,
   firstLine,
   isDebuggableProgram,
@@ -121,30 +129,30 @@ suite('containerOutputPath', () => {
 suite('findDapServerPath', () => {
   test('findDapServerPath_when_env_var_set_then_returns_environment_source', () => {
     const env = createDapEnv({
-      getEnv: name => name === 'IRONPLCDAP' ? '/env/ironplcdap' : undefined,
-      existsSync: p => p === '/env/ironplcdap',
+      getEnv: name => name === DEBUG_SERVER_ENV_VAR ? `/env/${DEBUG_SERVER_BINARY}` : undefined,
+      existsSync: p => p === `/env/${DEBUG_SERVER_BINARY}`,
     });
     const result = findDapServerPath(env, '/bundled');
     assert.ok(result);
-    assert.strictEqual(result.path, '/env/ironplcdap');
+    assert.strictEqual(result.path, `/env/${DEBUG_SERVER_BINARY}`);
     assert.strictEqual(result.source, 'environment');
   });
 
   test('findDapServerPath_when_only_setting_then_returns_configuration_source', () => {
     const env = createDapEnv({
-      getConfig: key => key === 'dapServerPath' ? '/cfg/ironplcdap' : undefined,
-      existsSync: p => p === '/cfg/ironplcdap',
+      getConfig: key => key === DEBUG_SERVER_PATH_SETTING ? `/cfg/${DEBUG_SERVER_BINARY}` : undefined,
+      existsSync: p => p === `/cfg/${DEBUG_SERVER_BINARY}`,
     });
     const result = findDapServerPath(env, '/bundled');
     assert.ok(result);
-    assert.strictEqual(result.path, '/cfg/ironplcdap');
+    assert.strictEqual(result.path, `/cfg/${DEBUG_SERVER_BINARY}`);
     assert.strictEqual(result.source, 'configuration');
   });
 
   test('findDapServerPath_when_env_and_setting_set_then_env_wins', () => {
     const env = createDapEnv({
-      getEnv: name => name === 'IRONPLCDAP' ? '/env/ironplcdap' : undefined,
-      getConfig: key => key === 'dapServerPath' ? '/cfg/ironplcdap' : undefined,
+      getEnv: name => name === DEBUG_SERVER_ENV_VAR ? `/env/${DEBUG_SERVER_BINARY}` : undefined,
+      getConfig: key => key === DEBUG_SERVER_PATH_SETTING ? `/cfg/${DEBUG_SERVER_BINARY}` : undefined,
       existsSync: () => true,
     });
     const result = findDapServerPath(env, '/bundled');
@@ -153,7 +161,7 @@ suite('findDapServerPath', () => {
   });
 
   test('findDapServerPath_when_only_bundled_then_returns_bundled_source', () => {
-    const expected = path.join('/bundled', 'ironplcdap');
+    const expected = path.join('/bundled', DEBUG_SERVER_BINARY);
     const env = createDapEnv({
       existsSync: p => p === expected,
     });
@@ -164,14 +172,14 @@ suite('findDapServerPath', () => {
   });
 
   test('findDapServerPath_when_win32_then_uses_exe_extension', () => {
-    const expected = path.join('/bundled', 'ironplcdap.exe');
+    const expected = path.join('/bundled', DEBUG_SERVER_BINARY + '.exe');
     const env = createDapEnv({
       platform: 'win32',
       existsSync: p => p === expected,
     });
     const result = findDapServerPath(env, '/bundled');
     assert.ok(result);
-    assert.ok(result.path.endsWith('ironplcdap.exe'));
+    assert.ok(result.path.endsWith(DEBUG_SERVER_BINARY + '.exe'));
   });
 
   test('findDapServerPath_when_no_compiler_dir_and_nothing_set_then_undefined', () => {
@@ -183,9 +191,9 @@ suite('findDapServerPath', () => {
   test('findDapServerPath_when_candidate_missing_on_disk_then_falls_through', () => {
     // The env var points somewhere that does not exist; discovery falls back
     // to the bundled binary.
-    const bundled = path.join('/bundled', 'ironplcdap');
+    const bundled = path.join('/bundled', DEBUG_SERVER_BINARY);
     const env = createDapEnv({
-      getEnv: name => name === 'IRONPLCDAP' ? '/env/missing' : undefined,
+      getEnv: name => name === DEBUG_SERVER_ENV_VAR ? '/env/missing' : undefined,
       existsSync: p => p === bundled,
     });
     const result = findDapServerPath(env, '/bundled');
@@ -233,3 +241,97 @@ suite('customRequestFailedMessage', () => {
     assert.ok(message.includes('paused'));
   });
 });
+
+suite('debugServerFileName', () => {
+  test('debugServerFileName_when_posix_then_returns_bare_binary', () => {
+    assert.strictEqual(debugServerFileName('linux'), DEBUG_SERVER_BINARY);
+    assert.strictEqual(debugServerFileName('darwin'), DEBUG_SERVER_BINARY);
+  });
+
+  test('debugServerFileName_when_win32_then_appends_exe', () => {
+    assert.strictEqual(debugServerFileName('win32'), DEBUG_SERVER_BINARY + '.exe');
+  });
+});
+
+suite('debugServerNotFoundHint', () => {
+  test('debugServerNotFoundHint_when_called_then_names_setting_and_binary', () => {
+    // The hint is the only place the E0007 remedy is spelled out, so it must
+    // name both things the user can act on.
+    const hint = debugServerNotFoundHint();
+    assert.ok(hint.includes(DEBUG_SERVER_PATH_SETTING_ID), hint);
+    assert.ok(hint.includes(DEBUG_SERVER_BINARY), hint);
+  });
+});
+
+/**
+ * Guards for the copies of the debug-server names that live outside
+ * TypeScript and so cannot import the constants in `debugAdapterLogic.ts`:
+ * the extension manifest and the compiler's `[[bin]]` target. Without these,
+ * renaming the server leaves the extension compiling and its tests green while
+ * discovery fails at runtime as E0007 on a user's machine.
+ */
+suite('debug server name consistency', () => {
+  // From out/test/unit/: the extension root is 3 levels up, the repo root 5.
+  const extensionRoot = path.resolve(__dirname, '..', '..', '..');
+  const repoRoot = path.resolve(extensionRoot, '..', '..');
+
+  test('packageJson_when_read_then_declares_the_debug_server_path_setting', () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(extensionRoot, 'package.json'), 'utf-8'),
+    );
+    const properties = manifest.contributes.configuration.properties;
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(properties, DEBUG_SERVER_PATH_SETTING_ID),
+      `package.json has no "${DEBUG_SERVER_PATH_SETTING_ID}" setting; `
+      + `it declares ${JSON.stringify(Object.keys(properties))}`,
+    );
+    assert.ok(
+      Object.keys(properties).every(key => key.startsWith(`${CONFIG_SECTION}.`)),
+      `every setting must live under "${CONFIG_SECTION}."`,
+    );
+  });
+
+  test('packageJson_when_setting_described_then_description_names_the_binary', () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(extensionRoot, 'package.json'), 'utf-8'),
+    );
+    const setting = manifest.contributes.configuration.properties[DEBUG_SERVER_PATH_SETTING_ID];
+    assert.ok(
+      setting.markdownDescription.includes(DEBUG_SERVER_BINARY),
+      `the "${DEBUG_SERVER_PATH_SETTING_ID}" description must name ${DEBUG_SERVER_BINARY}, `
+      + `but says: ${setting.markdownDescription}`,
+    );
+  });
+
+  test('cargoManifest_when_read_then_declares_the_debug_server_binary', () => {
+    // The extension launches a binary the compiler builds. Nothing else ties
+    // the two names together, so a rename on either side must fail here.
+    const cargoToml = fs.readFileSync(
+      path.join(repoRoot, 'compiler', 'vm-cli', 'Cargo.toml'),
+      'utf-8',
+    );
+    // Only `[[bin]]` blocks — the `[package]` name is not a binary.
+    const binNames: string[] = [];
+    let inBin = false;
+    for (const line of cargoToml.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('#')) {
+        continue;
+      }
+      if (trimmed.startsWith('[')) {
+        inBin = trimmed === '[[bin]]';
+        continue;
+      }
+      const name = inBin ? /^name\s*=\s*"([^"]+)"/.exec(trimmed) : null;
+      if (name) {
+        binNames.push(name[1]);
+      }
+    }
+    assert.ok(
+      binNames.includes(DEBUG_SERVER_BINARY),
+      `compiler/vm-cli/Cargo.toml declares no target named ${DEBUG_SERVER_BINARY}; `
+      + `it declares ${JSON.stringify(binNames)}`,
+    );
+  });
+});
+

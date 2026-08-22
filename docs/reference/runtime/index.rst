@@ -6,7 +6,7 @@ The program :program:`ironplcvm` (:program:`ironplcvm.exe` on Windows) is the
 IronPLC virtual machine runtime. It loads and executes compiled bytecode
 container (``.iplc``) files produced by the :doc:`compiler </reference/compiler/index>`.
 
-The program :program:`ironplcdap` (:program:`ironplcdap.exe` on Windows) runs
+The program :program:`ironplcvmd` (:program:`ironplcvmd.exe` on Windows) runs
 the same programs under a debugger, and installs beside it.
 
 .. toctree::
@@ -14,5 +14,5 @@ the same programs under a debugger, and installs beside it.
 
    Overview <overview>
    Command Reference <ironplcvm>
-   Debug Server <ironplcdap>
+   Debug Server <ironplcvmd>
    Problem Code Index <problems/index>
