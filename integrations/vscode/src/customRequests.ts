@@ -9,6 +9,9 @@ import { customRequestFailedMessage } from './debugAdapterLogic';
  * `specs/design/debugger-support.md` §"Phase 5"). The debug toolbar button that
  * invokes it is contributed in `package.json`.
  *
+ * The server runs the rest of the current scan cycle and stops at the start of
+ * the next, so one press advances the program by exactly one cycle.
+ *
  * The scan *count* is deliberately not a command. It is a value you watch while
  * stepping, not one you ask for: the server publishes it in the `Runtime`
  * scope, which the client re-reads at every stop, so it is simply on screen in
@@ -25,9 +28,10 @@ export function registerCustomRequests(context: vscode.ExtensionContext): void {
       try {
         await session.customRequest('ironplc/stepScan');
       } catch {
-        // Server-side `ironplc/stepScan` is not implemented yet, so the request
-        // is refused and the promise rejects. Report it rather than letting the
-        // rejection escape as an unhandled error.
+        // The server refuses the request outside a live pause (a terminated or
+        // faulted session still shows the toolbar), which rejects the promise.
+        // Report it rather than letting the rejection escape as an unhandled
+        // error.
         void vscode.window.showWarningMessage(customRequestFailedMessage('Step Scan Cycle'));
       }
     }),

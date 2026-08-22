@@ -100,8 +100,8 @@
           "default": "",
           "editPresentation": "singlelineText"
         },
-        "ironplc.dapServerPath": {
-          "markdownDescription": "Overrides the path to the IronPLC debug server (ironplcdap, ironplcdap.exe on Windows). If empty, then discovers the server next to the ironplcc compiler.",
+        "ironplc.debugServerPath": {
+          "markdownDescription": "Overrides the path to the IronPLC debug server (ironplcvmd, ironplcvmd.exe on Windows). If empty, then discovers the server next to the ironplcc compiler.",
           "type": "string",
           "default": "",
           "editPresentation": "singlelineText"

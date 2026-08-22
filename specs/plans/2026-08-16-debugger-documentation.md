@@ -1,5 +1,10 @@
 # Plan: Documenting Debugger Support on the Docs Website
 
+> **Renamed 2026-08-22.** This plan was written when the debug server was
+> named `ironplcdap`. The name below has been updated to `ironplcvmd` so it
+> matches the shipped binary; see
+> [the rename plan](2026-08-22-rename-ironplcdap-to-ironplcvmd.md).
+
 ## Goal
 
 Add debugger documentation to the docs website (`docs/`), covering all four
@@ -9,7 +14,7 @@ and limit, and understand why debugging a scan cycle is not like debugging an
 ordinary program.
 
 The debugger shipped across #1364 (Layer-1 debug-info swap), #1385 (always
-build and ship `ironplcdap`), and #1388 (scan count in the `Runtime` scope).
+build and ship `ironplcvmd`), and #1388 (scan count in the `Runtime` scope).
 The docs website says nothing about it — and the landing page actively says the
 opposite.
 
@@ -28,7 +33,7 @@ opposite.
 
 | Surface | Detail |
 |---------|--------|
-| DAP server | `ironplcdap` (`compiler/vm-cli/src/dap_main.rs`), no CLI arguments, speaks DAP on stdin/stdout, built and shipped unconditionally |
+| DAP server | `ironplcvmd` (`compiler/vm-cli/src/dap_main.rs`), no CLI arguments, speaks DAP on stdin/stdout, built and shipped unconditionally |
 | Editor debug type | `ironplc`, registered for the `61131-3-st` and `twincat-pou` languages |
 | Launch attributes | `program` (an `.st`/`.TcPOU` source **or** a compiled `.iplc`), `stopOnEntry`, `scanLimit` |
 | Breakpoints | Source-line, snapped to the nearest executable line; the editor's dot moves to the bound line |
@@ -36,7 +41,7 @@ opposite.
 | Variables | Two scopes — `Program` (named, typed, `counter : DINT = 42`, STRING rendered as a quoted literal) and `Runtime` (`scanCount : ULINT`) |
 | Execution control | `continue`, `next`, `stepIn`, `stepOut`, `configurationDone`, `disconnect` |
 | Source-to-container | The extension compiles a source `program` to a container before launching |
-| Setting | `ironplc.dapServerPath` overrides DAP-server discovery |
+| Setting | `ironplc.debugServerPath` overrides DAP-server discovery |
 | Debug info | Always emitted by `ironplcc compile`; there is no `--debug` flag and no strip flag |
 
 ### What is explicitly *not* in v1
@@ -67,11 +72,11 @@ item is a documented cut, not a bug:
 |----------|---------|
 | `docs/index.rst:23` | "doesn't yet provide I/O mapping or debugging capabilities" — **factually wrong now** |
 | `docs/reference/editor/overview.rst` | Lists Commands, Build Tasks, Bytecode Viewer, Diagnostics, Run Program — no Debugging section |
-| `docs/reference/editor/settings.rst` | Documents `ironplc.path`, `logLevel`, `logFile`, `dialect` — omits `ironplc.dapServerPath` |
+| `docs/reference/editor/settings.rst` | Documents `ironplc.path`, `logLevel`, `logFile`, `dialect` — omits `ironplc.debugServerPath` |
 | `docs/how-to-guides/troubleshoot-editor.rst` | No debugger section |
 | `docs/quickstart/` | No debug chapter |
 | `docs/explanation/` | Nothing on debugging; `execution-cycle.rst:33` points at `ironplcvm` for "test and debug" |
-| `docs/reference/runtime/index.rst` | Describes `ironplcvm` only; `ironplcdap` ships beside it and is unmentioned |
+| `docs/reference/runtime/index.rst` | Describes `ironplcvm` only; `ironplcvmd` ships beside it and is unmentioned |
 
 The **only** debugger documentation that exists is the problem-code reference:
 `V6008`, `V6009`, `V6010` (runtime) and `E0004`–`E0007` (editor). Those pages
@@ -214,7 +219,7 @@ Task-shaped, no narrative, for someone who already knows what a debugger is:
 **New: `docs/how-to-guides/getting-started/debug-without-vs-code.rst` —
 "Debug from Another Editor"** *(second priority; ship if capacity allows)*
 
-`ironplcdap` is a plain DAP server over stdio, so Neovim (`nvim-dap`), Emacs
+`ironplcvmd` is a plain DAP server over stdio, so Neovim (`nvim-dap`), Emacs
 (`dap-mode`), and other DAP clients can drive it. This guide gives the adapter
 definition and the launch-request JSON, and states the one thing those clients
 do not get for free: they must compile the source to `.iplc` themselves,
@@ -224,7 +229,7 @@ because that step lives in the VS Code extension, not in the server.
 
 Add a "The debugger does not start" section keyed to the existing problem codes,
 so symptoms route to `E0004`–`E0007`, `V6008`–`V6010` rather than duplicating
-them: server not found → `E0007` and `ironplc.dapServerPath`; wrong file type →
+them: server not found → `E0007` and `ironplc.debugServerPath`; wrong file type →
 `E0005`; compile failed → `E0006` and the "IronPLC Debug" output channel;
 multi-instance → `V6010`.
 
@@ -253,12 +258,12 @@ The editor-facing contract:
 This page carries the most inline limitations of the four, because it is where a
 user looks when something they expected is not there.
 
-**New: `docs/reference/runtime/ironplcdap.rst`**
+**New: `docs/reference/runtime/ironplcvmd.rst`**
 
 The server-facing contract, mirroring the shape of the existing
 `reference/runtime/ironplcvm.rst`:
 
-- What `ironplcdap` is, that it takes no arguments, and that it is installed
+- What `ironplcvmd` is, that it takes no arguments, and that it is installed
   beside `ironplcc`/`ironplcvm`.
 - The supported DAP request set, and the requests that answer
   `requestNotApplicable`.
@@ -266,7 +271,7 @@ The server-facing contract, mirroring the shape of the existing
   instance) and the codes they raise.
 - Links to `V6008`–`V6010`.
 
-**Edit: `docs/reference/editor/settings.rst`** — add an `ironplc.dapServerPath`
+**Edit: `docs/reference/editor/settings.rst`** — add an `ironplc.debugServerPath`
 subsection matching the existing per-setting format, and add it to the combined
 example block.
 
@@ -275,7 +280,7 @@ example block.
 `Run Program` executes; the debugger pauses.
 
 **Edit: `docs/reference/runtime/index.rst`** — the section intro currently
-describes `ironplcvm` alone; name `ironplcdap` as the second binary and add it
+describes `ironplcvm` alone; name `ironplcvmd` as the second binary and add it
 to the toctree.
 
 **Edit: `docs/reference/compiler/ironplcc.rst`** — one line stating that
@@ -346,7 +351,7 @@ Every `.. figure::` needs an `:alt:`, as the existing pages do.
 Small, no new pages, removes an actively false statement.
 
 **Phase 1 — Reference.** `reference/editor/debugging.rst`,
-`reference/runtime/ironplcdap.rst`, the
+`reference/runtime/ironplcvmd.rst`, the
 `settings.rst`/`overview.rst`/`runtime/index.rst`/`ironplcc.rst` edits. Reference
 first because the other three quadrants link into it.
 
@@ -372,7 +377,7 @@ Phases 1–4 are each independently shippable.
 - `docs/how-to-guides/getting-started/debug-a-program.rst`
 - `docs/how-to-guides/getting-started/debug-without-vs-code.rst` *(Phase 5)*
 - `docs/reference/editor/debugging.rst`
-- `docs/reference/runtime/ironplcdap.rst`
+- `docs/reference/runtime/ironplcvmd.rst`
 - `docs/explanation/debugging-a-scan-cycle.rst`
 - `docs/images/screenshots/debug-*.png` (4 files)
 

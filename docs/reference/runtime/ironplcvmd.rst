@@ -1,5 +1,5 @@
 ===========
-ironplcdap
+ironplcvmd
 ===========
 
 .. include:: /includes/debugging-in-development.rst
@@ -7,17 +7,17 @@ ironplcdap
 Name
 ====
 
-ironplcdap --- IronPLC debug server
+ironplcvmd --- IronPLC debug server
 
 Synopsis
 ========
 
-| :program:`ironplcdap`
+| :program:`ironplcvmd`
 
 Description
 ===========
 
-:program:`ironplcdap` is the IronPLC debug server. It speaks the
+:program:`ironplcvmd` is the IronPLC debug server. It speaks the
 `Debug Adapter Protocol <https://microsoft.github.io/debug-adapter-protocol/>`_
 (DAP) on standard input and output, so any DAP-capable editor can debug an
 IEC 61131-3 program with it.
@@ -26,7 +26,7 @@ The server takes no command-line arguments. The program to debug arrives in
 the DAP ``launch`` request as a path to a compiled bytecode container
 (``.iplc``) file.
 
-:program:`ironplcdap` installs alongside :program:`ironplcc` and
+:program:`ironplcvmd` installs alongside :program:`ironplcc` and
 :program:`ironplcvm`. Most developers never run it directly --- the
 :doc:`extension </reference/editor/debugging>` starts it for you.
 
@@ -122,7 +122,7 @@ control is not: a trapped program cannot resume.
 Using Another Editor
 ====================
 
-Any DAP client can drive :program:`ironplcdap`. Configure the client to launch
+Any DAP client can drive :program:`ironplcvmd`. Configure the client to launch
 the executable and speak DAP over its standard input and output, then send a
 ``launch`` request naming a container:
 

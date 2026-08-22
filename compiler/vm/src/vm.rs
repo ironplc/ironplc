@@ -298,9 +298,15 @@ pub enum Phase {
 pub enum RoundOutcome {
     /// The scan completed; call again to run the next scan.
     Completed,
-    /// A step spanned the scan boundary and stopped at the start of the
-    /// next scan. Reserved for scan-stepping; not produced in the first
-    /// debug phase (intra-scan steps report [`RoundOutcome::Paused`]).
+    /// A scan step ran the cycle out: the scan completed (outputs flushed,
+    /// `scan_count` advanced) and stopped there because the hook reported
+    /// [`DebugHook::stepping_scan`](crate::debug_hook::DebugHook::stepping_scan).
+    ///
+    /// The frame stack has drained at this boundary, so there is nothing to
+    /// inspect *at* it; a driver presenting a scan step to a user runs one more
+    /// round with the landing armed (`DebuggerHook::land_scan_step`) to stop at
+    /// the first instruction of the new scan. Intra-scan stops report
+    /// [`RoundOutcome::Paused`] instead.
     PausedAfterScan,
     /// The VM paused mid-scan; the frame stack is preserved for inspection
     /// and a later resume.
@@ -513,7 +519,16 @@ impl<'a> VmRunning<'a> {
             ExecuteOutcome::Completed => {
                 self.scan_count += 1;
                 self.phase = Phase::CompletedScan;
-                Ok(RoundOutcome::Completed)
+                // A scan step's landing is this boundary, which no
+                // per-instruction hook can see; ask the hook whether one is in
+                // flight and report it here. The phase stays `CompletedScan`
+                // either way: the cycle really did finish, so the next call
+                // starts a fresh scan rather than resuming this one.
+                if hook.stepping_scan() {
+                    Ok(RoundOutcome::PausedAfterScan)
+                } else {
+                    Ok(RoundOutcome::Completed)
+                }
             }
         }
     }

@@ -1,10 +1,15 @@
 # Plan: DAP Phase 4c — Continuous Run Loop
 
+> **Renamed 2026-08-22.** This plan was written when the debug server was
+> named `ironplcdap`. The name below has been updated to `ironplcvmd` so it
+> matches the shipped binary; see
+> [the rename plan](2026-08-22-rename-ironplcdap-to-ironplcvmd.md).
+
 ## Context
 
 Phases 1–5 of the debugger (`specs/design/debugger-support.md`) delivered debug
 info, the iterative VM, the VM debug engine, the single-threaded DAP server
-(`ironplcdap`), and the VS Code integration. The DAP server's post-launch
+(`ironplcvmd`), and the VS Code integration. The DAP server's post-launch
 run/stop loop (`compiler/vm-cli/src/dap/server.rs`, `launched_session`) is still
 the Phase 4 **single-scan** minimal loop: on `RoundOutcome::Completed` it emits
 `terminated` after exactly one scan cycle.
