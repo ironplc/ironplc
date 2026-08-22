@@ -40,13 +40,13 @@ Example values:
 * macOS: ``/usr/local/bin/ironplcc``
 * Linux: ``/home/username/ironplc/ironplcc``
 
-ironplc.dapServerPath
----------------------
+ironplc.debugServerPath
+-----------------------
 
 :Type: String
 :Default: Empty (auto-discovery)
 
-Specifies the path to the :program:`ironplcdap` debug server. When empty (the
+Specifies the path to the :program:`ironplcvmd` debug server. When empty (the
 default), the extension looks for the server next to the :program:`ironplcc`
 compiler it discovered.
 
@@ -55,11 +55,17 @@ or when :doc:`problems/E0007` reports that the server was not found.
 
 Example values:
 
-* Windows: ``C:\Program Files\IronPLC\bin\ironplcdap.exe``
-* macOS: ``/usr/local/bin/ironplcdap``
-* Linux: ``/home/username/ironplc/ironplcdap``
+* Windows: ``C:\Program Files\IronPLC\bin\ironplcvmd.exe``
+* macOS: ``/usr/local/bin/ironplcvmd``
+* Linux: ``/home/username/ironplc/ironplcvmd``
 
 See :doc:`debugging` for what the debug server does.
+
+.. note::
+
+   This setting was named ``ironplc.dapServerPath`` in earlier releases, when
+   the debug server was named :program:`ironplcdap`. The old name is no longer
+   read; move any existing value to ``ironplc.debugServerPath``.
 
 ironplc.logLevel
 ----------------
@@ -139,7 +145,7 @@ You can also configure these settings directly in your :file:`settings.json` fil
 
    {
      "ironplc.path": "/custom/path/to/ironplcc",
-     "ironplc.dapServerPath": "/custom/path/to/ironplcdap",
+     "ironplc.debugServerPath": "/custom/path/to/ironplcvmd",
      "ironplc.logLevel": "DEBUG",
      "ironplc.logFile": "/tmp/ironplc-debug.log",
      "ironplc.dialect": "rusty"

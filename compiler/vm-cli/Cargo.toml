@@ -11,15 +11,19 @@ repository.workspace = true
 name = "ironplcvm"
 path = "src/main.rs"
 
-# The Debug Adapter Protocol server. Built unconditionally, like every other
-# shipped binary. It was once gated behind a `dap` feature to keep the DAP layer
-# out of `ironplcvm`, but that gate bought nothing: `mod dap` is declared only in
-# `dap_main.rs`, and separate `[[bin]]` targets are separate compilation units,
-# so `ironplcvm` never compiled the DAP layer either way. What the gate did do
-# was make `cargo build` skip this binary, leaving whatever stale copy was last
-# built by hand in `target/` for editors to launch.
+# The debug daemon: `ironplcvm` under a debugger. It is named for what it is
+# rather than for the Debug Adapter Protocol it currently speaks, so the name
+# survives a protocol change. The DAP implementation stays in `src/dap/`.
+#
+# Built unconditionally, like every other shipped binary. It was once gated
+# behind a `dap` feature to keep the DAP layer out of `ironplcvm`, but that gate
+# bought nothing: `mod dap` is declared only in `dap_main.rs`, and separate
+# `[[bin]]` targets are separate compilation units, so `ironplcvm` never
+# compiled the DAP layer either way. What the gate did do was make `cargo build`
+# skip this binary, leaving whatever stale copy was last built by hand in
+# `target/` for editors to launch.
 [[bin]]
-name = "ironplcdap"
+name = "ironplcvmd"
 path = "src/dap_main.rs"
 
 [dependencies]

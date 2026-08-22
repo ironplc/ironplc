@@ -134,12 +134,12 @@ beats a stub file: no second page to keep alive, and the stub carries
 
 ## Tasks
 
-- [ ] Commit this plan
-- [ ] Rename the binary across the compiler and packaging manifests
-- [ ] Rename the docs page, add the redirect, update the referring pages
-- [ ] Introduce the extension name constants and route all uses through them
-- [ ] Add the manifest / CSV / Cargo-target guards
-- [ ] Add the docs-page guard to `shipped_binaries_guard.rs`
-- [ ] Update the design doc and DAP plans
-- [ ] Add the release note for the setting rename
-- [ ] `cd compiler && just`; extension `npm run pretest && npm run test:unit`
+- [x] Commit this plan
+- [x] Rename the binary across the compiler and packaging manifests
+- [x] Rename the docs page, add the redirect, update the referring pages
+- [x] Introduce the extension name constants and route all uses through them
+- [x] Add the manifest / CSV / Cargo-target guards
+- [x] Add the docs-page guard to `shipped_binaries_guard.rs`
+- [x] Update the design doc and DAP plans
+- [x] Add the release note for the setting rename
+- [x] `cd compiler && just`; extension `npm run pretest && npm run test:unit`

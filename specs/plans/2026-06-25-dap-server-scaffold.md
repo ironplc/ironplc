@@ -1,5 +1,10 @@
 # Phase 4: DAP Server Scaffold (minimal v1)
 
+> **Renamed 2026-08-22.** This plan was written when the debug server was
+> named `ironplcdap`. The name below has been updated to `ironplcvmd` so it
+> matches the shipped binary; see
+> [the rename plan](2026-08-22-rename-ironplcdap-to-ironplcvmd.md).
+
 ## Status (2026-08-02)
 
 Commits 1–3 have landed (PR #1205 merged commit 3: the `initialize → launch →
@@ -14,7 +19,7 @@ implements the stepping primitives, so wiring them later is cheap.
 
 ## Goal
 
-Stand up `ironplcdap <file.iplc>` — a single-threaded Debug Adapter Protocol
+Stand up `ironplcvmd <file.iplc>` — a single-threaded Debug Adapter Protocol
 server that VS Code (or any DAP client) can connect to, drive through the
 `initialize → launch → setBreakpoints → configurationDone → continue →
 disconnect` lifecycle, pause on a **line breakpoint**, walk the stack, and
@@ -76,25 +81,25 @@ expression-subset evaluator. See `2026-06-25-vm-debug-engine.md`.
 defines the CLI error type with `exit_code()`. `serde_json` is already a
 dependency. No `dap` feature, no DAP binary, no DAP modules.
 
-## Binary: `ironplcdap` (not `ironplcvm-debug`)
+## Binary: `ironplcvmd` (not `ironplcvm-debug`)
 
-Ship the DAP server as a dedicated, feature-gated binary named **`ironplcdap`**.
+Ship the DAP server as a dedicated, feature-gated binary named **`ironplcvmd`**.
 
 Rationale: `ironplcvm-debug` reads as "a build of the VM for debugging the VM
-itself," which is confusing. `ironplcdap` names what it is — the DAP server.
+itself," which is confusing. `ironplcvmd` names what it is — the DAP server.
 
 The design spec's §"Why not a separate DAP binary?" argued for a subcommand
 to avoid duplicating the VM-embedding code. We honour that concern *without*
-the confusing name: `ironplcdap` is a **second `[[bin]]` target in the same
+the confusing name: `ironplcvmd` is a **second `[[bin]]` target in the same
 `vm-cli` crate**, gated behind the `dap` feature, reusing the crate's VM
 embedding (buffer sizing, container load) — a few lines of `main`, no
 duplicated embedding logic. The VS Code extension (Phase 5) launches
-`ironplcdap <file.iplc>`, which speaks DAP on stdin/stdout.
+`ironplcvmd <file.iplc>`, which speaks DAP on stdin/stdout.
 
 ```toml
 # vm-cli/Cargo.toml
 [[bin]]
-name = "ironplcdap"
+name = "ironplcvmd"
 path = "src/dap_main.rs"
 required-features = ["dap"]
 
@@ -225,7 +230,7 @@ before Layer 1 finishes; swap in real lookups behind the same signatures.
   `requestNotApplicable`.
 - **Unit — launch**: multi-instance → `MultiInstanceUnsupported`;
   no-debug-section → `NoDebugInfo`.
-- **Integration — handshake**: spawn `ironplcdap`, send `initialize` +
+- **Integration — handshake**: spawn `ironplcvmd`, send `initialize` +
   `launch` + `setBreakpoints` + `configurationDone`, expect `stopped` at the
   breakpoint. (Offset-based breakpoint until Layer 1 line maps land.)
 - **Integration — inspection**: from `stopped`, request `stackTrace`,
@@ -247,9 +252,9 @@ Deferred to Phase 4b (see below):
 ## Commit order
 
 Each commit compiles and passes `cd compiler && just` (DAP code behind the
-`dap` feature; CI builds the `ironplcdap` bin with `--features dap`).
+`dap` feature; CI builds the `ironplcvmd` bin with `--features dap`).
 
-1. `dap` feature + `ironplcdap` bin target (`dap_main.rs`, no-op handler) +
+1. `dap` feature + `ironplcvmd` bin target (`dap_main.rs`, no-op handler) +
    `dap/framing.rs` with its roundtrip unit test.
 2. Hand-rolled `dap/types.rs` (v1 messages only) + `dap/state.rs` legality
    table + tests. Still no VM.
@@ -295,9 +300,9 @@ each is a thin server-side addition:
 
 - New optional dep under the `dap` feature: `serde` (derive). `serde_json` is
   already present. **No `dap` / `dap-types` crate dependency** (see above).
-- One extra binary, `ironplcdap`, feature-gated in the `vm-cli` crate; the
+- One extra binary, `ironplcvmd`, feature-gated in the `vm-cli` crate; the
   production `ironplcvm` binary is unaffected. The VS Code extension (Phase
-  5) launches `ironplcdap <file.iplc>`.
+  5) launches `ironplcvmd <file.iplc>`.
 
 ## Risks
 

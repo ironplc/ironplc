@@ -4,28 +4,41 @@ E0007
 
 .. problem-summary:: E0007
 
-The IronPLC debug server (:program:`ironplcdap`) could not be found.
+The IronPLC debug server (:program:`ironplcvmd`) could not be found.
 
-Debugging is driven by the :program:`ironplcdap` server, a separate executable
+Debugging is driven by the :program:`ironplcvmd` server, a separate executable
 that speaks the Debug Adapter Protocol and is distributed alongside the
 :program:`ironplcc` compiler. This error appears when the extension cannot
 locate that executable, so it has no debug server to launch.
 
-The extension looks for the server in this order: the ``IRONPLCDAP``
-environment variable, then the ``ironplc.dapServerPath`` setting, and finally
+The extension looks for the server in this order: the ``IRONPLCVMD``
+environment variable, then the ``ironplc.debugServerPath`` setting, and finally
 next to the discovered :program:`ironplcc` compiler. The first location that
 contains the executable wins; if none do, you see this error.
 
 **Solutions**:
 
-1. **Install alongside the compiler**: Ensure :program:`ironplcdap`
-   (:program:`ironplcdap.exe` on Windows) sits in the same directory as
+1. **Install alongside the compiler**: Ensure :program:`ironplcvmd`
+   (:program:`ironplcvmd.exe` on Windows) sits in the same directory as
    :program:`ironplcc`. Official installers place both together.
 
-2. **Set the path manually**: Set the ``ironplc.dapServerPath`` setting to the
-   full path of the :program:`ironplcdap` executable if it lives in a
+2. **Set the path manually**: Set the ``ironplc.debugServerPath`` setting to the
+   full path of the :program:`ironplcvmd` executable if it lives in a
    non-standard location.
 
-3. **Use the environment variable**: Set ``IRONPLCDAP`` to the full path of the
+3. **Use the environment variable**: Set ``IRONPLCVMD`` to the full path of the
    executable, for example when running a locally built server from a
    :file:`target/debug` directory.
+
+Renamed in a recent release
+===========================
+
+The debug server was previously named :program:`ironplcdap`, and its override
+was the ``ironplc.dapServerPath`` setting and the ``IRONPLCDAP`` environment
+variable. Both were renamed and the old names are no longer read.
+
+If this error appeared after an upgrade, an override left over from the old
+names is the likely cause: move its value to ``ironplc.debugServerPath`` (or
+``IRONPLCVMD``), or remove it and let the extension discover the server next to
+:program:`ironplcc`.
+
