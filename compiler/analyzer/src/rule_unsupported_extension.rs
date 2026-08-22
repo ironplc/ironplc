@@ -91,6 +91,17 @@ impl Visitor<Diagnostic> for RuleUnsupportedExtension {
         node.recurse_visit(self)
     }
 
+    fn visit_self_ref_variable(
+        &mut self,
+        node: &ironplc_dsl::textual::SelfRefVariable,
+    ) -> Result<Self::Value, Diagnostic> {
+        // A SelfRefVariable only exists when THIS^/SUPER^ was written, so
+        // it is always an extension. Parsed and rendered, but neither
+        // analyzed nor executed.
+        self.flag(node);
+        node.recurse_visit(self)
+    }
+
     fn visit_interface_declaration(
         &mut self,
         node: &InterfaceDeclaration,
@@ -157,6 +168,36 @@ END_FUNCTION_BLOCK";
 
         let (input, _context) =
             parse_and_resolve_types_with_options(program, &opts_with_fb_inheritance());
+        let context = SemanticContextBuilder::new().build().unwrap();
+        let result = apply(&input, &context, &opts_with_fb_inheritance());
+
+        let errors = result.unwrap_err();
+        assert_eq!(errors.len(), 1);
+        // P9999 == Problem::NotImplemented; the enum variant is #[deprecated]
+        // (must be constructed via Diagnostic::not_implemented), so assert on
+        // the stable code string rather than referencing the variant.
+        assert_eq!("P9999", errors[0].code);
+    }
+
+    #[rstest::rstest]
+    #[case::this("    THIS^.count := 1;")]
+    #[case::super_("    count := SUPER^.count;")]
+    #[case::this_method_call("    THIS^.Start();")]
+    fn apply_when_self_ref_then_p9999(#[case] body: &str) {
+        let program = format!(
+            "
+FUNCTION_BLOCK FB_Motor
+VAR
+    count : INT;
+END_VAR
+METHOD Run
+{body}
+END_METHOD
+END_FUNCTION_BLOCK"
+        );
+
+        let (input, _context) =
+            parse_and_resolve_types_with_options(&program, &opts_with_fb_inheritance());
         let context = SemanticContextBuilder::new().build().unwrap();
         let result = apply(&input, &context, &opts_with_fb_inheritance());
 

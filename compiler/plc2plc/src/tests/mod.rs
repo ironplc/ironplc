@@ -21,4 +21,5 @@ mod short_circuit;
 mod struct_init_expressions;
 mod tc2_math_calls;
 mod tc2_utilities_calls;
+mod this_super;
 mod time_and_sizeof;

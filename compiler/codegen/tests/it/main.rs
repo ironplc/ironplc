@@ -25,6 +25,7 @@ mod compile_loops;
 mod compile_mux;
 mod compile_shift;
 mod compile_struct;
+mod compile_this_super;
 mod compile_types;
 mod end_to_end;
 mod end_to_end_abs;
