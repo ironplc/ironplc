@@ -390,13 +390,35 @@ the others do not.
 
 ## Tasks
 
-- [ ] `This` / `Super` tokens + demotion arm + token tests
-- [ ] `SelfRefVariable` / `SelfRefKind` / `MethodReceiver` AST + `dispatch!` entries
-- [ ] `self_ref()` rule; `symbolic_variable()` head; `method_invocation()` receiver
-- [ ] Parser tests (flag on and flag off, including the whitespace case)
-- [ ] plc2plc rendering + re-parsing round-trip tests
-- [ ] `LanguageExtension` impl + `rule_unsupported_extension` override
-- [ ] Explicit not-implemented arms in the resolution transforms (audit `_ =>` wildcards for wrong-but-plausible fallthrough); analyzer test asserting rejection + P9999 present
-- [ ] Codegen `Diagnostic::todo` arms + compile-fails-with-P9999 test
-- [ ] Docs: reference page, `index.rst`, explanation page
-- [ ] `cd compiler && just` clean
+- [x] `This` / `Super` tokens + demotion arm + token tests
+- [x] `SelfRefVariable` / `SelfRefKind` / `MethodReceiver` AST + `dispatch!` entries
+- [x] `self_ref()` rule; `symbolic_variable()` head; `method_invocation()` receiver
+- [x] Parser tests (flag on and flag off, including the whitespace case) — `parser/src/tests/this_super.rs`, 17 tests
+- [x] plc2plc rendering + re-parsing round-trip tests — `plc2plc/src/tests/this_super.rs`, 6 tests
+- [x] `LanguageExtension` impl + `rule_unsupported_extension` override
+- [x] Explicit not-implemented arms in the resolution transforms; analyzer test asserting rejection + P9999 present
+- [x] Codegen `Diagnostic::todo` arms + compile-fails-with-P9999 test
+- [x] Docs: reference page, `index.rst`, explanation page
+- [x] `cd compiler && just` clean
+
+### Notes from implementation (2026-08-22)
+
+- The forced-match-arm count came in lower than the plan estimated: four
+  sites in the analyzer (`rule_method_call_declared`, `rule_bit_access_range`,
+  `xform_resolve_expr_types`, `xform_resolve_late_bound_expr_kind`), two in
+  codegen (`compile_expr`), one in the LSP semantic-token map, and one in
+  the renderer. The rest of the ~50 `SymbolicVariableKind` match sites
+  already had wildcard arms landing in an error or recursion path.
+- Two of the analyzer sites are `Option`-returning type resolvers, where a
+  diagnostic cannot be returned from the helper itself. Those got the arm
+  *plus* a loud guard at the pass's own entry point
+  (`fold_self_ref_variable` / `visit_self_ref_variable`), so the pass
+  reports and stops rather than proceeding on an unresolved type.
+- Method bodies are not compiled at all yet, so a `THIS^` inside a
+  `METHOD` never reaches codegen. The codegen test therefore puts the
+  statement in the function block body; without that it passes
+  vacuously.
+- No array-subscript round-trip case: `THIS^.values[2]` renders as
+  `THIS^.values [ 2 ]`, which does not re-parse. It is a pre-existing
+  renderer bug affecting every subscript (`values [ 2 ]` alone fails the
+  same way, with no dialect flags involved) — reported on issue #1404.
