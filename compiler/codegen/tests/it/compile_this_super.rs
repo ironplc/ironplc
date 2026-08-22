@@ -1,7 +1,6 @@
 //! `THIS^` / `SUPER^` reach codegen only if analysis lets them through;
 //! codegen itself has no execution semantics for them and says so rather
-//! than emitting anything. See
-//! specs/plans/2026-08-22-oop-this-super-parsing.md.
+//! than emitting anything.
 //!
 //! The statements under test live in the function block *body*, not in a
 //! `METHOD` body: method bodies are not compiled at all yet (method

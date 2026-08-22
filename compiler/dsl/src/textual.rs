@@ -311,8 +311,7 @@ impl SelfRefKind {
     }
 }
 
-/// `THIS^` or `SUPER^` at the head of a variable reference (OOP extension,
-/// ADR-0041 Phase 1).
+/// `THIS^` or `SUPER^` at the head of a variable reference (OOP extension).
 ///
 /// This is the head of a symbolic variable rather than an expression
 /// because `THIS^.count := 1;` puts it in assignment-target position,
@@ -323,8 +322,7 @@ impl SelfRefKind {
 /// The dereference caret is part of this node rather than a wrapping
 /// [`DerefVariable`]: `THIS`/`SUPER` have no pointer type to be given,
 /// so an un-dereferenced form would be a node nothing could type, and
-/// folding the caret in makes "the caret is mandatory" structural. See
-/// `specs/plans/2026-08-22-oop-this-super-parsing.md`.
+/// folding the caret in makes "the caret is mandatory" structural.
 #[derive(Debug, PartialEq, Clone, Recurse, Located)]
 pub struct SelfRefVariable {
     #[recurse(ignore)]

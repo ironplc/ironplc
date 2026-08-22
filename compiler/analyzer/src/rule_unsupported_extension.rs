@@ -97,8 +97,7 @@ impl Visitor<Diagnostic> for RuleUnsupportedExtension {
     ) -> Result<Self::Value, Diagnostic> {
         // A SelfRefVariable only exists when THIS^/SUPER^ was written, so
         // it is always an extension. Parsed and rendered, but neither
-        // analyzed nor executed -- see
-        // specs/plans/2026-08-22-oop-this-super-parsing.md.
+        // analyzed nor executed.
         self.flag(node);
         node.recurse_visit(self)
     }

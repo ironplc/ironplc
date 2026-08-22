@@ -1,5 +1,4 @@
-//! OOP extension: `THIS^` / `SUPER^` round-trip. See
-//! specs/plans/2026-08-22-oop-this-super-parsing.md.
+//! OOP extension: `THIS^` / `SUPER^` round-trip.
 
 use super::common::*;
 use rstest::rstest;

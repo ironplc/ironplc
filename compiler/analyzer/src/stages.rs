@@ -621,7 +621,6 @@ END_FUNCTION_BLOCK";
 
     // ---------------------------------------------------------------------
     // THIS^ / SUPER^ (parsed, not analyzed or executed).
-    // See specs/plans/2026-08-22-oop-this-super-parsing.md.
     // ---------------------------------------------------------------------
 
     /// A program using `THIS^` is rejected, and P9999 is among the reasons.

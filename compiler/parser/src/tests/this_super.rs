@@ -1,5 +1,4 @@
 //! OOP extension: `THIS^` and `SUPER^` self/base references.
-//! See specs/plans/2026-08-22-oop-this-super-parsing.md.
 
 use super::common::*;
 
