@@ -212,7 +212,8 @@ impl TerminatedReason {
     }
 }
 
-/// Executes a cached container for `trace_set` variables under `limits`.
+/// Executes a cached container for `trace_set` variables for `duration_ms` of
+/// simulated time, under `limits`.
 ///
 /// This is the core of the `run` tool. Control flow:
 /// 1. Deserialize bytes → `Container`.
@@ -221,9 +222,15 @@ impl TerminatedReason {
 ///    advanced its `scan_count`, append to trace.
 /// 4. On trap: capture diagnostic, drain final values from `VmFaulted`.
 /// 5. On clean stop: drain final values from `VmStopped`.
+///
+/// `duration_ms` is what the agent asked for (REQ-TOL-mcp-040); reaching it is
+/// a clean finish. `limits.max_duration_ms` is the sandbox ceiling
+/// (REQ-ARC-mcp-030); being cut short by it is not, and reports
+/// [`TerminatedReason::Duration`].
 pub fn execute(
     cached: &CachedContainer,
     trace_set: &[ResolvedVar],
+    duration_ms: u64,
     limits: EffectiveLimits,
 ) -> Result<RunOutcome, String> {
     let mut bytes = cached.iplc_bytes.as_slice();
@@ -255,10 +262,21 @@ pub fn execute(
     let mut prev_scan_counts: Vec<u64> = vec![0; task_names.len()];
     let mut truncated = false;
 
+    // The run stops at whichever comes first: the simulated duration the agent
+    // asked for, or the sandbox ceiling. Which one it was decides the reason —
+    // reaching the request is a clean finish, being clamped by the ceiling is
+    // an early termination (REQ-TOL-mcp-047).
+    let run_duration_ms = duration_ms.min(limits.max_duration_ms);
+    let duration_stop = if duration_ms > limits.max_duration_ms {
+        TerminatedReason::Duration
+    } else {
+        TerminatedReason::Completed
+    };
+
     let terminated_reason = loop {
         // Between-rounds limit gates (REQ-ARC-mcp-032/035).
-        if simulated_us / 1_000 >= limits.max_duration_ms {
-            break TerminatedReason::Duration;
+        if simulated_us / 1_000 >= run_duration_ms {
+            break duration_stop;
         }
         if wall_start.elapsed().as_millis() as u64 >= limits.max_wall_clock_ms {
             break TerminatedReason::WallClock;
@@ -277,8 +295,8 @@ pub fn execute(
 
         // Re-check the duration gate against `current_us` so a cyclic task
         // due after the deadline doesn't execute.
-        if current_us / 1_000 >= limits.max_duration_ms {
-            break TerminatedReason::Duration;
+        if current_us / 1_000 >= run_duration_ms {
+            break duration_stop;
         }
 
         // Snapshot scan counts before the round so we can tell which tasks
