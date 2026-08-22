@@ -44,8 +44,7 @@ Out of scope:
 - Any execution semantics or bytecode. `SUPER^`'s base-method dispatch
   and `THIS^`'s receiver pointer belong to the codegen slice.
 - Type-checking / member resolution through `THIS^`/`SUPER^` (no
-  "member does not exist on the enclosing FB" diagnostic yet). See
-  *Optional add-ons*.
+  "member does not exist on the enclosing FB" diagnostic yet).
 - Unqualified self-calls (`Start();` inside a method body).
 - `THIS^` / `SUPER^` in expression-position method calls
   (`IF THIS^.IsMoving() THEN`) — expression-position method calls do
@@ -307,7 +306,7 @@ once the construct has semantics worth resolving.
   receivers as not-implemented rather than skipping them — same rule:
   a silent skip would keep quietly passing once `THIS^.M()` is
   resolvable. It already tracks the enclosing function block, so
-  wiring real resolution up later is cheap (see *Optional add-ons*).
+  wiring real resolution up later is cheap (#1406).
 
 ### Codegen
 
@@ -380,22 +379,14 @@ the others do not.
   that produces executable code.
 - `cd compiler && just` clean before the PR.
 
-## Optional add-ons (call before implementing)
+## Follow-ups (tracked separately, not part of this PR)
 
-1. **A real diagnostic for a missing caret.** With the flag on,
-   `THIS := 1;` or `THIS.count := 1;` currently fails as a generic
-   `P0002` syntax error. A dedicated problem code (next free is
-   `P4047`) saying "THIS must be dereferenced — write `THIS^`" is a
-   meaningful DX win for anyone arriving from a language where `this.x`
-   is the spelling. Costs a grammar path, a problem code, and a docs
-   page. **Recommended.**
-2. **`SUPER^` outside an extending function block.** `SUPER^` in a
-   `PROGRAM`, a `FUNCTION`, or a function block with no `EXTENDS` is
-   always wrong and is cheap to detect (`rule_method_call_declared`
-   already tracks the enclosing FB). It is real analysis on a construct
-   this slice otherwise only parses, and it would be additive to the
-   `P9999` rather than replacing it — so it may read as noise. **Defer
-   to the codegen slice** unless you want the diagnostic sooner.
+- **#1405** — diagnose `THIS` / `SUPER` written without the `^`, instead
+  of the generic `P0002` syntax error.
+- **#1406** — reject `SUPER^` where there is no base type, and
+  `THIS^`/`SUPER^` outside a function block body.
+- **#1404** — pre-existing plc2plc `ExprKind::Deref` rendering bug,
+  unrelated to this feature.
 
 ## Tasks
 
@@ -408,5 +399,4 @@ the others do not.
 - [ ] Explicit not-implemented arms in the resolution transforms (audit `_ =>` wildcards for wrong-but-plausible fallthrough); analyzer test asserting rejection + P9999 present
 - [ ] Codegen `Diagnostic::todo` arms + compile-fails-with-P9999 test
 - [ ] Docs: reference page, `index.rst`, explanation page
-- [ ] Decide the optional add-ons above
 - [ ] `cd compiler && just` clean
