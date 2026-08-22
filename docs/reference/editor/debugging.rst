@@ -8,9 +8,9 @@ The IronPLC extension debugs Structured Text programs: set breakpoints on
 source lines, step through the code, and inspect variables while the program
 is paused.
 
-Debugging is driven by :program:`ironplcdap`, which installs alongside the
+Debugging is driven by :program:`ironplcvmd`, which installs alongside the
 :program:`ironplcc` compiler. There is no separate debug extension to install.
-See :doc:`/reference/runtime/ironplcdap` for the server itself.
+See :doc:`/reference/runtime/ironplcvmd` for the server itself.
 
 Before You Start
 ================
@@ -18,7 +18,7 @@ Before You Start
 Debugging needs two things:
 
 * **The IronPLC compiler.** The extension discovers :program:`ironplcc` and
-  finds :program:`ironplcdap` beside it. See :doc:`problems/E0007` if the
+  finds :program:`ironplcvmd` beside it. See :doc:`problems/E0007` if the
   server cannot be found.
 * **A single program instance.** The configuration must declare exactly one
   ``PROGRAM ... WITH ...`` instance. A program that declares more is refused
@@ -37,7 +37,7 @@ No :file:`launch.json` is required. When you press :kbd:`F5` with no debug
 configuration, the extension debugs the active file.
 
 The extension compiles the file to a temporary ``.iplc`` container, starts
-:program:`ironplcdap`, and runs the program. Compiler output appears in the
+:program:`ironplcvmd`, and runs the program. Compiler output appears in the
 :guilabel:`IronPLC Debug` output channel
 (:menuselection:`View --> Output --> IronPLC Debug`).
 
@@ -258,7 +258,7 @@ runtime reports.
 Settings
 ========
 
-``ironplc.dapServerPath`` overrides the discovery of the debug server. See
+``ironplc.debugServerPath`` overrides the discovery of the debug server. See
 :doc:`settings`.
 
 Supported Languages
@@ -272,5 +272,5 @@ See Also
 
 * :doc:`/quickstart/debugging` --- debug a program for the first time
 * :doc:`/how-to-guides/getting-started/debug-a-program` --- task recipes
-* :doc:`/reference/runtime/ironplcdap` --- the debug server
+* :doc:`/reference/runtime/ironplcvmd` --- the debug server
 * :doc:`problems/index` --- extension problem codes

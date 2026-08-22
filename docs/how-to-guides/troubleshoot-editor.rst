@@ -72,9 +72,9 @@ immediately.
    :doc:`/how-to-guides/getting-started/debug-a-program` lists the symptoms
    and what each one means.
 
-3. **Check the debug server is installed**: :program:`ironplcdap` installs
+3. **Check the debug server is installed**: :program:`ironplcvmd` installs
    beside :program:`ironplcc`. If it is somewhere else, set
-   ``ironplc.dapServerPath``. See :doc:`/reference/editor/problems/E0007`.
+   ``ironplc.debugServerPath``. See :doc:`/reference/editor/problems/E0007`.
 
 4. **Compile the project first**: The debugger compiles the single file you
    point it at. A file that uses POUs or types from other files does not

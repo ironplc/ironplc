@@ -1,10 +1,8 @@
 //! Workspace-level guard that every binary we build is a binary we ship.
 //!
-//! `ironplcdap` was declared with `required-features = ["dap"]` while every
-//! packaging manifest listed only the other three binaries. Nothing compared the
-//! two, so the debug adapter was neither built by `cargo build` nor shipped by
-//! any installer, and the failure surfaced only as "the debugger doesn't work".
-//! See `specs/plans/2026-08-16-always-build-ship-dap-server.md`.
+//! A binary that is built but not packaged fails no compiler test: it surfaces
+//! only as the program missing from an installed IronPLC. This guard catches
+//! that in CI instead.
 //!
 //! Like `spec_conformance_guard.rs`, both sides are recovered from files already
 //! in the tree, so there is no new manifest to keep in sync:
@@ -227,11 +225,13 @@ fn compare(label: &str, expected: &BTreeSet<String>, actual: &BTreeSet<String>) 
 // Live guard over the actual repository
 // ---------------------------------------------------------------------------
 
-/// Every `[[bin]]` target in the workspace is shipped by every packaging path.
-#[test]
-fn every_built_binary_is_shipped_by_every_installer() {
-    let compiler_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+/// The `compiler/` directory of the live repository.
+fn compiler_dir() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
+}
 
+/// Every `[[bin]]` name declared by a workspace member of `compiler/Cargo.toml`.
+fn built_binaries(compiler_dir: &Path) -> BTreeSet<String> {
     let workspace = fs::read_to_string(compiler_dir.join("Cargo.toml")).unwrap();
     let mut built: BTreeSet<String> = BTreeSet::new();
     for member in workspace_members(&workspace) {
@@ -246,6 +246,14 @@ fn every_built_binary_is_shipped_by_every_installer() {
         !built.is_empty(),
         "shipped-binaries guard found no [[bin]] targets — did the workspace layout change?"
     );
+    built
+}
+
+/// Every `[[bin]]` target in the workspace is shipped by every packaging path.
+#[test]
+fn every_built_binary_is_shipped_by_every_installer() {
+    let compiler_dir = compiler_dir();
+    let built = built_binaries(&compiler_dir);
 
     let justfile = fs::read_to_string(compiler_dir.join("justfile")).unwrap();
     let nsi = fs::read_to_string(compiler_dir.join("setup.nsi")).unwrap();
@@ -270,6 +278,58 @@ fn every_built_binary_is_shipped_by_every_installer() {
         problems.is_empty(),
         "shipped-binaries guard failed (built: {built:?}):\n  {}",
         problems.join("\n  ")
+    );
+}
+
+/// The reference pages under `docs/reference/`, by file stem.
+///
+/// The pages live in per-area directories (`compiler/`, `runtime/`, `mcp/`),
+/// so the stem — not the path — is what has to match the binary name.
+fn reference_page_stems(docs_reference: &Path) -> BTreeSet<String> {
+    let mut stems = BTreeSet::new();
+    let mut dirs = vec![docs_reference.to_path_buf()];
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rst") {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    stems.insert(stem.to_string());
+                }
+            }
+        }
+    }
+    stems
+}
+
+/// Every shipped binary has a reference page named after it.
+///
+/// The binary name is also a documentation URL — `ironplcvmd` ships as
+/// `docs/reference/runtime/ironplcvmd.rst`. Nothing else connects the two, so
+/// a rename that updates the `[[bin]]` target and the installers but leaves the
+/// page at its old slug produces docs that describe a program no longer
+/// installed under that name. This guard makes the page part of the rename.
+#[test]
+fn every_built_binary_has_a_reference_page() {
+    let compiler_dir = compiler_dir();
+    let built = built_binaries(&compiler_dir);
+    let docs_reference = compiler_dir.join("../docs/reference");
+
+    let stems = reference_page_stems(&docs_reference);
+    assert!(
+        !stems.is_empty(),
+        "reference-page guard found no .rst pages under {} — did the docs layout change?",
+        docs_reference.display()
+    );
+
+    let missing: Vec<&String> = built.difference(&stems).collect();
+    assert!(
+        missing.is_empty(),
+        "shipped binaries with no docs/reference/**/<name>.rst page: {missing:?}"
     );
 }
 
@@ -298,13 +358,13 @@ name = "ironplcvm"
 path = "src/main.rs"
 
 [[bin]]
-name = "ironplcdap"
+name = "ironplcvmd"
 path = "src/dap_main.rs"
 
 [dependencies]
 name = "not-a-binary"
 "#;
-    assert_eq!(bin_names(toml), vec!["ironplcvm", "ironplcdap"]);
+    assert_eq!(bin_names(toml), vec!["ironplcvm", "ironplcvmd"]);
 }
 
 #[test]
@@ -338,14 +398,14 @@ fn just_binaries_when_assignment_missing_then_empty() {
 fn nsis_installed_binaries_when_defines_resolve_then_strips_extension() {
     let nsi = r#"
 !define APPFILE "ironplcc${EXTENSION}"
-!define DAPFILE "ironplcdap${EXTENSION}"
+!define VMDFILE "ironplcvmd${EXTENSION}"
 Section "Program files"
     File "..\LICENSE"
     File "${ARTIFACTSDIR}\${APPFILE}"
-    File "${ARTIFACTSDIR}\${DAPFILE}"
+    File "${ARTIFACTSDIR}\${VMDFILE}"
 SectionEnd
 "#;
-    assert_eq!(nsis_installed_binaries(nsi), vec!["ironplcc", "ironplcdap"]);
+    assert_eq!(nsis_installed_binaries(nsi), vec!["ironplcc", "ironplcvmd"]);
 }
 
 #[test]
@@ -354,7 +414,7 @@ fn nsis_installed_binaries_when_define_never_installed_then_omits_it() {
     // must not be counted as though it were.
     let nsi = r#"
 !define APPFILE "ironplcc${EXTENSION}"
-!define DAPFILE "ironplcdap${EXTENSION}"
+!define VMDFILE "ironplcvmd${EXTENSION}"
     File "${ARTIFACTSDIR}\${APPFILE}"
 "#;
     assert_eq!(nsis_installed_binaries(nsi), vec!["ironplcc"]);
@@ -386,11 +446,11 @@ fn formula_symlinked_binaries_when_several_then_extracts_each() {
     let formula = r#"
       libexec.install "ironplcc", "resources"
       bin.install_symlink libexec/"ironplcc"
-      bin.install_symlink libexec/"ironplcdap"
+      bin.install_symlink libexec/"ironplcvmd"
 "#;
     assert_eq!(
         formula_symlinked_binaries(formula),
-        vec!["ironplcc", "ironplcdap"]
+        vec!["ironplcc", "ironplcvmd"]
     );
 }
 

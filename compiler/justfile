@@ -5,7 +5,7 @@ set windows-shell := ["powershell.exe", "-c"]
 # `shipped_binaries_guard` test asserts it matches the workspace's `[[bin]]`
 # targets, `setup.nsi`, and the Homebrew formula. A binary that is built but not
 # listed here fails that guard rather than silently missing from the release.
-binaries := "ironplcc ironplcvm ironplcmcp ironplcdap"
+binaries := "ironplcc ironplcvm ironplcmcp ironplcvmd"
 
 alias ci := default
 # Coverage runs all tests with instrumentation, so separate test step is redundant

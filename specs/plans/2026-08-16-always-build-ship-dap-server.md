@@ -1,16 +1,21 @@
 # Plan: Always build and ship the DAP server
 
+> **Renamed 2026-08-22.** This plan was written when the debug server was
+> named `ironplcdap`. The name below has been updated to `ironplcvmd` so it
+> matches the shipped binary; see
+> [the rename plan](2026-08-22-rename-ironplcdap-to-ironplcvmd.md).
+
 ## Context
 
-`ironplcdap` was declared with `required-features = ["dap"]`, and the `dap`
+`ironplcvmd` was declared with `required-features = ["dap"]`, and the `dap`
 feature is off by default. `just compile` is a bare `cargo build`, so every
 local and release build silently skipped the binary. A developer who pointed
 the VS Code extension at `compiler/target/debug` (via `ironplc.path`, which the
 extension also uses as the DAP-server directory — `extension.ts:299`) got
-whatever `ironplcdap` happened to be left in that directory from the last time
+whatever `ironplcvmd` happened to be left in that directory from the last time
 someone explicitly passed `--features ironplc-vm-cli/dap`.
 
-Observed: `target/debug/ironplcdap` two weeks older than `ironplcc`/`ironplcvm`
+Observed: `target/debug/ironplcvmd` two weeks older than `ironplcc`/`ironplcvm`
 in the same directory, predating the continuous run loop (#1304), single
 stepping (#1305), and the Layer-1 debug-info swap (#1364). The debugger
 appeared broken; the code was fine.
@@ -32,7 +37,7 @@ plain `cargo test` skipped them).
 ### The second half of the bug
 
 Removing the gate fixes "not built". It does not fix "not shipped": no release
-path ever produced `ironplcdap`, and the binary set is hardcoded in four places
+path ever produced `ironplcvmd`, and the binary set is hardcoded in four places
 that nothing cross-checks.
 
 | Location | Lists |
@@ -49,8 +54,8 @@ The extension's last-resort DAP discovery looks next to the installed
 
 ## Goals
 
-1. `cargo build` produces `ironplcdap` on every platform, with no feature flag.
-2. Every installer and package ships `ironplcdap` alongside the other binaries.
+1. `cargo build` produces `ironplcvmd` on every platform, with no feature flag.
+2. Every installer and package ships `ironplcvmd` alongside the other binaries.
 3. A binary that is built but not shipped fails CI, so this class of drift
    cannot recur silently.
 
@@ -69,7 +74,7 @@ The extension's last-resort DAP discovery looks next to the installed
 
 | File | Change |
 |------|--------|
-| `vm-cli/Cargo.toml` | Drop `required-features` from the `ironplcdap` bin, drop the `[features]` block, make `serde` non-optional. Replace the stale comment with why the binary is unconditional. |
+| `vm-cli/Cargo.toml` | Drop `required-features` from the `ironplcvmd` bin, drop the `[features]` block, make `serde` non-optional. Replace the stale comment with why the binary is unconditional. |
 | `justfile` | Drop `--features ironplc-vm-cli/dap` from `test`, `coverage`, `format`, `lint`. |
 | `vm-cli/tests/dap.rs` | Drop `#![cfg(feature = "dap")]` so the DAP integration tests run under a plain `cargo test`. |
 | `vm-cli/src/dap_main.rs` | Drop the "Feature-gated behind `dap`" sentence. |
@@ -79,7 +84,7 @@ The extension's last-resort DAP discovery looks next to the installed
 `justfile` gains a single `binaries` variable used by both tar recipes, so the
 two Unix lists become one. `setup.nsi` gains a `DAPFILE` define and its `File`
 line. The Homebrew formula gains the install entry and the symlink. Each of the
-four now lists `ironplcdap`.
+four now lists `ironplcvmd`.
 
 The NSIS uninstall section is `RMDir /r $INSTDIR`, so there is no per-file
 delete list to update.
@@ -110,13 +115,13 @@ names per manifest.
 
 - `compiler/test`: the new guard, plus fixture tests for each parser.
 - `vm-cli/tests/dap.rs` now runs unconditionally — it is the regression test for
-  Part 1, since it can only build if `ironplcdap` is built by default.
-- Manual: confirm `cargo build` alone produces `target/debug/ironplcdap`.
+  Part 1, since it can only build if `ironplcvmd` is built by default.
+- Manual: confirm `cargo build` alone produces `target/debug/ironplcvmd`.
 - `cd compiler && just` must pass (compile, coverage ≥ 85%, lint, dupes).
 
 ## Out of scope / follow-ups
 
-- Smoke-testing the packaged `ironplcdap` in `verify-package` (it currently
+- Smoke-testing the packaged `ironplcvmd` in `verify-package` (it currently
   execs only `ironplcc` and `ironplcvm` via `tests/e2e/library/verify.sh`,
   whose contract is library verification and takes exactly two binaries).
   Presence is guarded here; executing the shipped DAP bytes is a follow-up.
