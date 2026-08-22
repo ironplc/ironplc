@@ -148,20 +148,18 @@ fn write_to_string_when_ref_to_type_decl_then_preserves() {
 ///
 /// Limited to a plain dereference: a subscripted one (`refs[0]^`) renders
 /// as `refs [ 0 ]^`, which the parser also rejects -- a separate,
-/// pre-existing spacing bug in the subscript rendering, not this one.
+/// pre-existing spacing bug in the subscript rendering (#1407), not this
+/// one.
 #[test]
 fn write_to_string_when_deref_expression_then_round_trips() {
-    let source = "PROGRAM main
+    assert_round_trips(
+        "PROGRAM main
 VAR
     myRef : REF_TO INT;
     value : INT;
 END_VAR
     value := myRef^;
-END_PROGRAM";
-    let options = CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3);
-    let library_original = parse_program(source, &FileId::default(), &options).unwrap();
-    let rendered = write_to_string(&library_original).unwrap();
-
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
-    assert_eq!(library_original, library_rendered);
+END_PROGRAM",
+        &CompilerOptions::from_dialect(Dialect::Iec61131_3Ed3),
+    );
 }
