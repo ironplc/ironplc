@@ -128,14 +128,14 @@ Modified:
 - [x] Re-export from `vm/src/test_support.rs`; reduce `vm/tests/it/common/mod.rs`
       to a shim.
 - [x] Adopt in `container` (3 files), `vm` (3 files), `vm-cli`, `project`.
-- [x] `cd compiler && just` green, including `--features ironplc-vm-cli/dap`.
+- [x] `cd compiler && just` green.
 - [x] Confirm test count unchanged and both frozen goldens still load.
 
 ## Verification
 
 - `cd compiler && just` (compile, coverage ≥ 85%, lint, dupes) green.
-- `cargo test --workspace --features ironplc-vm-cli/dap -- --list` count
-  unchanged before/after — this deduplicates fixtures, not tests.
+- `cargo test --workspace -- --list` count unchanged before/after — this
+  deduplicates fixtures, not tests.
 - `cargo build -p ironplc-container --no-default-features` still compiles, and
   `cargo tree -e features` shows no `test-support` in a plain `cargo build`.
 - The `run_when_golden_container_file_then_ok` and

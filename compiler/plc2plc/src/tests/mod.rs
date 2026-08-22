@@ -12,6 +12,7 @@ mod corpus;
 mod declarations;
 mod enums;
 mod fb_inheritance;
+mod methods;
 mod mixed_vars;
 mod partial_access;
 mod pointer_to;

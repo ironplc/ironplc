@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IEC 61131-3 Structured Text language support with real-time error checking, syntax highlighting, and build tools for PLC programs.",
-  "version": "0.238.0",
+  "version": "0.239.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -67,12 +67,6 @@
         "title": "Step Scan Cycle",
         "category": "IronPLC",
         "icon": "$(debug-step-over)"
-      },
-      {
-        "command": "ironplc.scanCount",
-        "title": "Show Scan Count",
-        "category": "IronPLC",
-        "icon": "$(watch)"
       }
     ],
     "menus": {
@@ -88,20 +82,11 @@
           "command": "ironplc.stepScan",
           "group": "navigation@1",
           "when": "debugType == 'ironplc'"
-        },
-        {
-          "command": "ironplc.scanCount",
-          "group": "navigation@2",
-          "when": "debugType == 'ironplc'"
         }
       ],
       "commandPalette": [
         {
           "command": "ironplc.stepScan",
-          "when": "debugType == 'ironplc'"
-        },
-        {
-          "command": "ironplc.scanCount",
           "when": "debugType == 'ironplc'"
         }
       ]
@@ -115,8 +100,8 @@
           "default": "",
           "editPresentation": "singlelineText"
         },
-        "ironplc.dapServerPath": {
-          "markdownDescription": "Overrides the path to the IronPLC debug server (ironplcdap, ironplcdap.exe on Windows). If empty, then discovers the server next to the ironplcc compiler.",
+        "ironplc.debugServerPath": {
+          "markdownDescription": "Overrides the path to the IronPLC debug server (ironplcvmd, ironplcvmd.exe on Windows). If empty, then discovers the server next to the ironplcc compiler.",
           "type": "string",
           "default": "",
           "editPresentation": "singlelineText"

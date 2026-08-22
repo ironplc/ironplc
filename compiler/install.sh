@@ -62,9 +62,9 @@ Options:
   --force              Reinstall even if the requested version is already present.
   -h, --help           Show this help.
 
-Installs ironplcc, ironplcvm, and ironplcmcp from the latest IronPLC
-GitHub release into $HOME/.ironplc/bin and (unless --no-modify-path)
-adds that directory to your PATH via your shell profile.
+Installs IronPLC from the latest IronPLC GitHub release into
+$HOME/.ironplc/bin and (unless --no-modify-path) adds that directory
+to your PATH via your shell profile.
 USAGE
 }
 

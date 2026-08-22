@@ -155,6 +155,16 @@ pub enum StepMode {
     In,
     /// Run until the current function returns, then stop in the caller.
     Out,
+    /// Run to the end of the current scan cycle, then stop at the start of the
+    /// next one.
+    ///
+    /// Unlike the other modes this one has no *intra*-scan landing: the stop is
+    /// a round boundary, not an instruction, so the driver decides it. The
+    /// [`DebuggerHook`] only reports that a scan step is in flight (see
+    /// [`DebugHook::stepping_scan`](crate::debug_hook::DebugHook::stepping_scan))
+    /// and `run_round_debug` turns a completed scan into
+    /// [`RoundOutcome::PausedAfterScan`](crate::RoundOutcome::PausedAfterScan).
+    Scan,
 }
 
 /// Remembers where a step started so the hook can tell when it has "landed".
@@ -192,6 +202,9 @@ impl StepController {
             StepMode::In => !at_origin,
             // Only once control has unwound past the origin frame.
             StepMode::Out => depth < self.origin_depth,
+            // A scan step never lands inside the scan: it runs to the scan
+            // boundary, which only the round driver can observe.
+            StepMode::Scan => false,
         }
     }
 }
@@ -213,6 +226,12 @@ pub struct DebuggerHook<'a> {
     /// exactly once, before any breakpoint or step check. The single-threaded
     /// driver arms this only on the first round of a `stopOnEntry` launch.
     stop_on_entry: bool,
+    /// When set, the next instruction pauses with [`PauseReason::Step`] exactly
+    /// once — the landing half of a scan step, armed by the driver on the round
+    /// that follows the scan the step ran out. See [`land_scan_step`].
+    ///
+    /// [`land_scan_step`]: DebuggerHook::land_scan_step
+    scan_landing: bool,
     /// Call depth relative to scan entry: `+1` per call, `-1` per return.
     /// Self-heals to 0 at each scan boundary (the entry-frame return uses a
     /// saturating decrement).
@@ -230,6 +249,7 @@ impl<'a> DebuggerHook<'a> {
             breakpoints,
             skip_breakpoint_once: false,
             stop_on_entry: false,
+            scan_landing: false,
             depth: 0,
             last_offset: 0,
             step: StepController::idle(),
@@ -263,6 +283,36 @@ impl<'a> DebuggerHook<'a> {
     /// current function returns, then stop in the caller.
     pub fn step_out(&mut self) {
         self.arm(StepMode::Out);
+    }
+
+    /// Arm the *run* half of a scan step: finish the current scan cycle without
+    /// stopping at any step landing, so the driver reports
+    /// [`RoundOutcome::PausedAfterScan`](crate::RoundOutcome::PausedAfterScan)
+    /// at the scan boundary.
+    ///
+    /// Breakpoints still fire during that scan, and abandon the step where they
+    /// stop — the same way a breakpoint reached mid-`step_over` abandons that
+    /// step. Because a scan step's stop is the *next* scan's first instruction
+    /// (the frame stack has drained at the boundary itself, leaving nothing to
+    /// inspect), the driver completes it with [`land_scan_step`] on the
+    /// following round.
+    ///
+    /// [`land_scan_step`]: Self::land_scan_step
+    pub fn step_scan(&mut self) {
+        self.arm(StepMode::Scan);
+    }
+
+    /// Arm the *landing* half of a scan step: pause before this round's first
+    /// instruction, reported as [`PauseReason::Step`].
+    ///
+    /// The driver arms this on the round that follows a
+    /// [`RoundOutcome::PausedAfterScan`](crate::RoundOutcome::PausedAfterScan),
+    /// so the user lands at the start of the new scan with the entry frame
+    /// live: a call stack to show, a line to highlight, and freshly flushed
+    /// outputs to read. A breakpoint on that same instruction takes precedence
+    /// and is reported instead.
+    pub fn land_scan_step(&mut self) {
+        self.scan_landing = true;
     }
 
     fn arm(&mut self, mode: StepMode) {
@@ -317,9 +367,10 @@ impl DebugHook for DebuggerHook<'_> {
                 return HookAction::Pause(PauseReason::Breakpoint(id));
             }
         }
-        if self.step.landed(self.depth, pc) {
+        if self.scan_landing || self.step.landed(self.depth, pc) {
             // A step lands only once; disarm and suppress a co-located
             // breakpoint on the resume instruction.
+            self.scan_landing = false;
             self.step.mode = StepMode::None;
             self.skip_breakpoint_once = true;
             return HookAction::Pause(PauseReason::Step);
@@ -333,6 +384,10 @@ impl DebugHook for DebuggerHook<'_> {
 
     fn after_return(&mut self, _returning_to: Option<FunctionId>) {
         self.depth = self.depth.saturating_sub(1);
+    }
+
+    fn stepping_scan(&self) -> bool {
+        self.step.mode == StepMode::Scan
     }
 }
 
@@ -522,6 +577,87 @@ mod tests {
             hook.before_instruction(FunctionId::SCAN, 8, 0),
             HookAction::Pause(PauseReason::Step)
         ));
+    }
+
+    #[test]
+    fn debugger_hook_when_step_scan_then_never_lands_inside_the_scan() {
+        use crate::debug_hook::{DebugHook, HookAction};
+        let table = BreakpointTable::new();
+        let mut hook = DebuggerHook::new(&table);
+        hook.seed_resume_position(0, 0);
+        hook.step_scan();
+        // A scan step's landing is the scan boundary, which the driver
+        // observes -- so no instruction, at any depth, is a landing.
+        assert!(hook.stepping_scan());
+        for (depth_change, function_id, pc) in [
+            (0, FunctionId::SCAN, 3),
+            (1, FunctionId::new(2), 0),
+            (-1, FunctionId::SCAN, 6),
+        ] {
+            match depth_change {
+                1 => hook.before_call(FunctionId::new(2)),
+                -1 => hook.after_return(Some(FunctionId::SCAN)),
+                _ => {}
+            }
+            assert!(matches!(
+                hook.before_instruction(function_id, pc, 0),
+                HookAction::Continue
+            ));
+        }
+        // Still armed at the end of the scan: that is what the driver reads.
+        assert!(hook.stepping_scan());
+    }
+
+    #[test]
+    fn debugger_hook_when_step_scan_and_breakpoint_then_breakpoint_wins() {
+        use crate::debug_hook::{DebugHook, HookAction};
+        let mut table = BreakpointTable::new();
+        let id = table.add(FunctionId::SCAN, 6);
+        let mut hook = DebuggerHook::new(&table);
+        hook.step_scan();
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 3, 0),
+            HookAction::Continue
+        ));
+        // A breakpoint inside the stepped-over scan still stops there, the way
+        // one inside a step-over does.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 6, 0),
+            HookAction::Pause(PauseReason::Breakpoint(bp)) if bp == id
+        ));
+    }
+
+    #[test]
+    fn debugger_hook_when_scan_step_landing_then_pauses_at_first_instruction() {
+        use crate::debug_hook::{DebugHook, HookAction};
+        let table = BreakpointTable::new();
+        let mut hook = DebuggerHook::new(&table);
+        hook.land_scan_step();
+        // The landing half is a step stop at the very first instruction of the
+        // new scan -- and it is not itself a scan step, so the driver does not
+        // run another cycle out.
+        assert!(!hook.stepping_scan());
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 0, 0),
+            HookAction::Pause(PauseReason::Step)
+        ));
+        // One-shot: the following instruction runs.
+        assert!(matches!(
+            hook.before_instruction(FunctionId::SCAN, 3, 0),
+            HookAction::Continue
+        ));
+    }
+
+    #[test]
+    fn debugger_hook_when_not_stepping_scan_then_driver_sees_no_scan_step() {
+        use crate::debug_hook::DebugHook;
+        let table = BreakpointTable::new();
+        let mut hook = DebuggerHook::new(&table);
+        assert!(!hook.stepping_scan());
+        hook.step_over();
+        assert!(!hook.stepping_scan());
+        // The default trait impl keeps a non-debugger hook out of the way.
+        assert!(!crate::debug_hook::NoopDebugHook.stepping_scan());
     }
 
     #[test]

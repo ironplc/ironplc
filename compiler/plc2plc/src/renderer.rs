@@ -955,7 +955,53 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.outdent();
         self.newline();
 
+        for method in node.methods.iter() {
+            self.visit_method_declaration(method)?;
+        }
+
         self.write_ws("END_FUNCTION_BLOCK");
+        self.newline();
+        Ok(())
+    }
+
+    // OOP extension: METHOD ... END_METHOD (ADR-0041 Phase 1).
+    fn visit_method_declaration(
+        &mut self,
+        node: &MethodDeclaration,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws("METHOD");
+        self.visit_id(&node.name)?;
+        if let Some(return_type) = &node.return_type {
+            self.write_ws(":");
+            self.visit_function_return_type(return_type)?;
+        }
+        self.newline();
+
+        if !node.variables.is_empty() {
+            self.indent();
+            for item in node.variables.iter() {
+                self.visit_var_decl(item)?;
+            }
+            self.outdent();
+            self.newline();
+        }
+
+        if !node.edge_variables.is_empty() {
+            self.indent();
+            for item in node.edge_variables.iter() {
+                self.visit_edge_var_decl(item)?;
+            }
+            self.outdent();
+            self.newline();
+        }
+
+        self.indent();
+        for stmt in node.body.iter() {
+            self.visit_stmt_kind(stmt)?;
+        }
+        self.outdent();
+
+        self.write_ws("END_METHOD");
         self.newline();
         Ok(())
     }
@@ -1316,6 +1362,26 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("(");
         visit_comma_separated!(self, node.params.iter(), ParamAssignmentKind);
         self.write_ws(")");
+        self.write_ws(";");
+        self.newline();
+
+        Ok(())
+    }
+
+    // OOP extension: `instance.MethodName(args)` (ADR-0041 Phase 1).
+    fn visit_method_call(
+        &mut self,
+        node: &dsl::textual::MethodCall,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_id(&node.instance)?;
+        self.write(".");
+        self.visit_id(&node.method)?;
+
+        self.write_ws("(");
+        visit_comma_separated!(self, node.params.iter(), ParamAssignmentKind);
+        self.write_ws(")");
+        self.write_ws(";");
+        self.newline();
 
         Ok(())
     }

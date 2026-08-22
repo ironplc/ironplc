@@ -35,8 +35,10 @@ Commands
 
    ``--dump-vars`` *FILE*
       Write all variable values to the specified file after execution stops.
-      The output contains one variable per line in the format ``var[N]: VALUE``.
-      Variables are dumped on both normal shutdown and after a runtime error.
+      The output contains one variable per line in the format ``NAME: VALUE``,
+      using the names recorded in the container's debug section. A variable
+      with no recorded name is reported as ``var[N]``. Variables are dumped on
+      both normal shutdown and after a runtime error.
 
    ``--scans`` *N*
       Run exactly *N* scheduling rounds then stop. Without this option, the

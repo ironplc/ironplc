@@ -1,12 +1,12 @@
-//! End-to-end handshake tests for the `ironplcdap` Debug Adapter Protocol
+//! End-to-end handshake tests for the `ironplcvmd` Debug Adapter Protocol
 //! server (Phase 4.3). These spawn the real binary and drive the
 //! `initialize` → `launch` → `disconnect` path over stdin/stdout, asserting
 //! the framed responses and events, plus the two launch-precondition failures
 //! (`NoDebugInfo`, `MultiInstanceUnsupported`).
 //!
-//! Gated on the `dap` feature: the `ironplcdap` binary only exists when the
-//! feature is enabled (CI builds it via `--features ironplc-vm-cli/dap`).
-#![cfg(feature = "dap")]
+//! These spawn `ironplcvmd`, so they also serve as the regression test for the
+//! binary being built at all: it is no longer behind a feature gate, and a
+//! change that stops building it stops this file from running.
 
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
@@ -140,10 +140,10 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-/// Spawns `ironplcdap`, sends each request framed, closes stdin, and returns
+/// Spawns `ironplcvmd`, sends each request framed, closes stdin, and returns
 /// the decoded response/event stream.
 fn run_dap(requests: &[Value]) -> Vec<Value> {
-    let mut child = Command::new(cargo::cargo_bin!("ironplcdap"))
+    let mut child = Command::new(cargo::cargo_bin!("ironplcvmd"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -167,7 +167,7 @@ fn run_dap(requests: &[Value]) -> Vec<Value> {
 }
 
 #[test]
-fn ironplcdap_when_initialize_launch_disconnect_then_handshake_succeeds() {
+fn ironplcvmd_when_initialize_launch_disconnect_then_handshake_succeeds() {
     let container = single_instance_debug_container();
     let path = container.path().to_string_lossy().into_owned();
 
@@ -205,7 +205,7 @@ fn ironplcdap_when_initialize_launch_disconnect_then_handshake_succeeds() {
 }
 
 #[test]
-fn ironplcdap_when_launch_container_without_debug_then_no_debug_info() {
+fn ironplcvmd_when_launch_container_without_debug_then_no_debug_info() {
     let container = no_debug_container();
     let path = container.path().to_string_lossy().into_owned();
 
@@ -222,7 +222,7 @@ fn ironplcdap_when_launch_container_without_debug_then_no_debug_info() {
 }
 
 #[test]
-fn ironplcdap_when_launch_multi_instance_then_multi_instance_unsupported() {
+fn ironplcvmd_when_launch_multi_instance_then_multi_instance_unsupported() {
     let container = multi_instance_container();
     let path = container.path().to_string_lossy().into_owned();
 

@@ -125,6 +125,15 @@ pub struct VmReady<'a> {
 }
 
 impl<'a> VmReady<'a> {
+    /// Number of values currently on the operand stack.
+    ///
+    /// After `start` has run the init functions this is 0: every function
+    /// body is stack-balanced, so nothing survives an init. A non-zero
+    /// value means an init function leaked operand slots.
+    pub fn operand_stack_depth(&self) -> usize {
+        self.stack.len()
+    }
+
     /// Starts the VM for scan execution.
     ///
     /// Executes the init function for each program instance to apply
@@ -289,9 +298,15 @@ pub enum Phase {
 pub enum RoundOutcome {
     /// The scan completed; call again to run the next scan.
     Completed,
-    /// A step spanned the scan boundary and stopped at the start of the
-    /// next scan. Reserved for scan-stepping; not produced in the first
-    /// debug phase (intra-scan steps report [`RoundOutcome::Paused`]).
+    /// A scan step ran the cycle out: the scan completed (outputs flushed,
+    /// `scan_count` advanced) and stopped there because the hook reported
+    /// [`DebugHook::stepping_scan`](crate::debug_hook::DebugHook::stepping_scan).
+    ///
+    /// The frame stack has drained at this boundary, so there is nothing to
+    /// inspect *at* it; a driver presenting a scan step to a user runs one more
+    /// round with the landing armed (`DebuggerHook::land_scan_step`) to stop at
+    /// the first instruction of the new scan. Intra-scan stops report
+    /// [`RoundOutcome::Paused`] instead.
     PausedAfterScan,
     /// The VM paused mid-scan; the frame stack is preserved for inspection
     /// and a later resume.
@@ -409,6 +424,22 @@ impl<'a> VmRunning<'a> {
 
         // Stub: OUTPUT_FLUSH (no-op)
 
+        // Deliberately no stack-balance assertion here. A completed round
+        // leaving values on the operand stack means the bytecode is not
+        // stack-balanced -- but that is a property of the *compiler that
+        // produced the container*, not one this VM can guarantee. Containers
+        // reach `run_round` from disk and from hand-built test fixtures, and
+        // `execute_when_arbitrary_bytecode_then_never_panics` pins the
+        // contract that arbitrary bytes must never panic the VM. An
+        // assertion here would violate exactly that contract.
+        //
+        // Enforcement lives where provenance is known instead: codegen
+        // verifies every container it emits
+        // (`ironplc_container::verify_stack_balance`), and the codegen test
+        // harness asserts `operand_stack_depth() == 0` at scan boundaries.
+        // Because nothing ever truncates this buffer, a leak in any round
+        // persists, so a single check after a scenario detects a leak in
+        // every round of it.
         self.scan_count += 1;
         Ok(())
     }
@@ -488,7 +519,16 @@ impl<'a> VmRunning<'a> {
             ExecuteOutcome::Completed => {
                 self.scan_count += 1;
                 self.phase = Phase::CompletedScan;
-                Ok(RoundOutcome::Completed)
+                // A scan step's landing is this boundary, which no
+                // per-instruction hook can see; ask the hook whether one is in
+                // flight and report it here. The phase stays `CompletedScan`
+                // either way: the cycle really did finish, so the next call
+                // starts a fresh scan rather than resuming this one.
+                if hook.stepping_scan() {
+                    Ok(RoundOutcome::PausedAfterScan)
+                } else {
+                    Ok(RoundOutcome::Completed)
+                }
             }
         }
     }
@@ -567,6 +607,21 @@ impl<'a> VmRunning<'a> {
         Ok((outcome, frame_count, temp_alloc_next))
     }
 
+    /// Number of values currently on the operand stack.
+    ///
+    /// The operand stack is a single long-lived buffer shared by every
+    /// frame and every scan round — `run_round` does not truncate it — so
+    /// this reads 0 between completed scans. Any other value means a
+    /// function body leaked operand slots, and because nothing ever clears
+    /// them they accumulate every round until the buffer overflows with a
+    /// `Trap::StackOverflow` far from the instruction responsible.
+    ///
+    /// Test harnesses assert this is 0 after each scan; see
+    /// `codegen/tests/it/common/mod.rs`.
+    pub fn operand_stack_depth(&self) -> usize {
+        self.stack.len()
+    }
+
     /// Current debug-driver phase (see [`Phase`]).
     pub fn phase(&self) -> Phase {
         self.phase
@@ -602,6 +657,17 @@ impl<'a> VmRunning<'a> {
     /// Writes a variable value as an i32.
     pub fn write_variable(&mut self, index: VarIndex, value: i32) -> Result<(), Trap> {
         self.variables.store(index, Slot::from_i32(value))
+    }
+
+    /// Writes a variable's raw 64-bit slot value.
+    ///
+    /// The counterpart to [`read_variable_raw`](Self::read_variable_raw): the
+    /// slot is stored verbatim, so 64-bit values (`LREAL`, `LINT`, `ULINT`,
+    /// `LWORD`) round-trip without truncation. Embedders use this to restore
+    /// RETAIN variables at startup and to map wide process inputs into the
+    /// variable table.
+    pub fn write_variable_raw(&mut self, index: VarIndex, value: u64) -> Result<(), Trap> {
+        self.variables.store(index, Slot::from_u64(value))
     }
 
     /// Returns a reference to the data region.
@@ -2962,6 +3028,73 @@ mod tests {
 
         assert_eq!(ready.read_variable_raw(VarIndex::new(0)).unwrap(), 0u64);
         assert_eq!(ready.read_variable_raw(VarIndex::new(1)).unwrap(), 0u64);
+    }
+
+    #[test]
+    fn write_variable_raw_when_lword_pattern_then_round_trips_without_truncation() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        // A bit pattern that is non-zero in both halves of the slot.
+        let value = 0xDEAD_BEEF_0BAD_F00D_u64;
+        vm.write_variable_raw(VarIndex::new(0), value).unwrap();
+
+        assert_eq!(vm.read_variable_raw(VarIndex::new(0)).unwrap(), value);
+    }
+
+    #[test]
+    fn write_variable_raw_when_lreal_pattern_then_reads_back_same_float() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        let value = std::f64::consts::PI;
+        vm.write_variable_raw(VarIndex::new(1), value.to_bits())
+            .unwrap();
+
+        let raw = vm.read_variable_raw(VarIndex::new(1)).unwrap();
+        assert_eq!(f64::from_bits(raw), value);
+    }
+
+    #[test]
+    fn write_variable_raw_when_lint_value_then_read_variable_i64_agrees() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        let value = -9_007_199_254_740_993_i64;
+        vm.write_variable_raw(VarIndex::new(0), value as u64)
+            .unwrap();
+
+        assert_eq!(vm.read_variable_i64(VarIndex::new(0)).unwrap(), value);
+    }
+
+    #[test]
+    fn write_variable_when_64_bit_value_then_truncates_unlike_write_variable_raw() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        let value = 0x0000_0001_0000_002A_u64;
+        vm.write_variable(VarIndex::new(0), value as i32).unwrap();
+        vm.write_variable_raw(VarIndex::new(1), value).unwrap();
+
+        assert_eq!(vm.read_variable_raw(VarIndex::new(0)).unwrap(), 0x2A);
+        assert_eq!(vm.read_variable_raw(VarIndex::new(1)).unwrap(), value);
+    }
+
+    #[test]
+    fn write_variable_raw_when_index_out_of_range_then_invalid_variable_index_trap() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        let index = VarIndex::new(99);
+        assert_eq!(
+            vm.write_variable_raw(index, 1).unwrap_err(),
+            Trap::InvalidVariableIndex(index)
+        );
     }
 
     #[test]
