@@ -112,12 +112,9 @@ Two related decisions that follow from the same reasoning:
   Relaxing member access generally is a separate change; this slice
   should not make `THIS^` more permissive than `p^` past the caret.
 
-Also worth fixing near this work (separately — it is a pre-existing bug,
-not part of this feature): `renderer.rs:1679` renders `ExprKind::Deref`
-with `write_ws("^")`, which emits `myRef ^` — output the parser then
-rejects in expression position. `visit_deref_variable` already uses
-`write("^")` correctly. One-word fix, and
-`plc2plc/src/tests/reference_to.rs:83` asserts the buggy spelling.
+(The same inconsistency also produces a pre-existing plc2plc rendering
+bug, tracked separately as issue #1404. It is not part of this feature
+and this slice does not touch it.)
 
 ## Design
 
@@ -399,11 +396,6 @@ the others do not.
    this slice otherwise only parses, and it would be additive to the
    `P9999` rather than replacing it — so it may read as noise. **Defer
    to the codegen slice** unless you want the diagnostic sooner.
-3. **Fix the `ExprKind::Deref` rendering bug** (`renderer.rs:1679`,
-   `write_ws` → `write`) plus its test at
-   `plc2plc/src/tests/reference_to.rs:83`. Unrelated to this feature,
-   two lines, and this is the slice that is looking straight at it.
-   **Recommended as its own commit.**
 
 ## Tasks
 
