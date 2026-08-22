@@ -8,9 +8,9 @@ The IronPLC extension debugs Structured Text programs: set breakpoints on
 source lines, step through the code, and inspect variables while the program
 is paused.
 
-Debugging is driven by :program:`ironplcdap`, which installs alongside the
+Debugging is driven by :program:`ironplcvmd`, which installs alongside the
 :program:`ironplcc` compiler. There is no separate debug extension to install.
-See :doc:`/reference/runtime/ironplcdap` for the server itself.
+See :doc:`/reference/runtime/ironplcvmd` for the server itself.
 
 Before You Start
 ================
@@ -18,7 +18,7 @@ Before You Start
 Debugging needs two things:
 
 * **The IronPLC compiler.** The extension discovers :program:`ironplcc` and
-  finds :program:`ironplcdap` beside it. See :doc:`problems/E0007` if the
+  finds :program:`ironplcvmd` beside it. See :doc:`problems/E0007` if the
   server cannot be found.
 * **A single program instance.** The configuration must declare exactly one
   ``PROGRAM ... WITH ...`` instance. A program that declares more is refused
@@ -37,7 +37,7 @@ No :file:`launch.json` is required. When you press :kbd:`F5` with no debug
 configuration, the extension debugs the active file.
 
 The extension compiles the file to a temporary ``.iplc`` container, starts
-:program:`ironplcdap`, and runs the program. Compiler output appears in the
+:program:`ironplcvmd`, and runs the program. Compiler output appears in the
 :guilabel:`IronPLC Debug` output channel
 (:menuselection:`View --> Output --> IronPLC Debug`).
 
@@ -183,16 +183,34 @@ While the program is paused:
    * - :guilabel:`Step Out`
      - :kbd:`Shift+F11`
      - Run to the end of the current POU and stop in its caller.
+   * - :guilabel:`Step Scan Cycle`
+     - None
+     - Run the rest of the current scan cycle and stop at the start of the
+       next one.
    * - :guilabel:`Stop`
      - :kbd:`Shift+F5`
      - End the session.
 
-.. note::
+Scan Stepping
+-------------
 
-   The :guilabel:`Step Scan Cycle` button on the debug toolbar is not yet
-   implemented. Pressing it reports that the request is not supported. Use
-   :guilabel:`Continue` to advance to the next scan, and watch ``scanCount``
-   in the :guilabel:`Runtime` scope to see the cycles pass.
+:guilabel:`Step Scan Cycle` is on the debug toolbar and in the Command
+Palette. It is the scan-cycle equivalent of :guilabel:`Step Over`: one press
+advances the program by exactly one cycle, no matter how many lines that
+takes.
+
+The stop lands on the first line of the *next* cycle. The cycle you stepped
+has finished --- its outputs are written and ``scanCount`` in the
+:guilabel:`Runtime` scope has gone up by one --- so the values you see are
+that cycle's results.
+
+A breakpoint reached partway through the cycle stops there instead, the same
+way one reached during :guilabel:`Step Over` does. The scan step ends at that
+breakpoint; press :guilabel:`Step Scan Cycle` again to run out the rest of the
+cycle.
+
+If the cycle you step is the last one allowed by ``scanLimit``, the session
+ends rather than stopping again.
 
 Inspecting Variables
 ====================
@@ -258,7 +276,7 @@ runtime reports.
 Settings
 ========
 
-``ironplc.dapServerPath`` overrides the discovery of the debug server. See
+``ironplc.debugServerPath`` overrides the discovery of the debug server. See
 :doc:`settings`.
 
 Supported Languages
@@ -272,5 +290,5 @@ See Also
 
 * :doc:`/quickstart/debugging` --- debug a program for the first time
 * :doc:`/how-to-guides/getting-started/debug-a-program` --- task recipes
-* :doc:`/reference/runtime/ironplcdap` --- the debug server
+* :doc:`/reference/runtime/ironplcvmd` --- the debug server
 * :doc:`problems/index` --- extension problem codes

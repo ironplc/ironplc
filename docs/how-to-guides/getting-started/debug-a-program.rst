@@ -147,8 +147,8 @@ When the Debugger Does Not Start
      - The file did not compile. Check the :guilabel:`IronPLC Debug` output
        channel. See :doc:`/reference/editor/problems/E0006`.
    * - "Debug server not found"
-     - :program:`ironplcdap` was not found next to the compiler. Set
-       ``ironplc.dapServerPath``. See
+     - :program:`ironplcvmd` was not found next to the compiler. Set
+       ``ironplc.debugServerPath``. See
        :doc:`/reference/editor/problems/E0007`.
    * - "Compile with debug info enabled"
      - The container has no debug information. Recompile it with
