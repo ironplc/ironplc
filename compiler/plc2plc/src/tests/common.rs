@@ -55,3 +55,21 @@ pub(crate) fn parse_and_render_resource_empty_var_blocks(name: &'static str) -> 
     let library = parse_program(&source, &FileId::default(), &options).unwrap();
     write_to_string(&library).unwrap()
 }
+
+/// Asserts that `source` survives a parse -> render -> re-parse round trip
+/// with the AST unchanged.
+///
+/// Rendering alone does not prove the output is valid input: a stray space
+/// can produce text the parser rejects (see the `^` and `[` spacing bugs).
+/// Re-parsing here is what catches that.
+pub(crate) fn assert_round_trips(source: &str, options: &CompilerOptions) {
+    let library_original = parse_program(source, &FileId::default(), options).unwrap();
+    let rendered = write_to_string(&library_original).unwrap();
+
+    let library_rendered = parse_program(&rendered, &FileId::default(), options)
+        .unwrap_or_else(|e| panic!("Rendered output did not re-parse: {e:?}\n{rendered}"));
+    assert_eq!(
+        library_original, library_rendered,
+        "Round trip changed the AST. Rendered:\n{rendered}"
+    );
+}

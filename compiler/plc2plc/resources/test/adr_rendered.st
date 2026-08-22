@@ -12,6 +12,6 @@ VAR
    value : INT;
 END_VAR
 p := ADR ( counter ) ;
-value := p ^ ;
+value := p^ ;
 p^ := 99 ;
 END_PROGRAM

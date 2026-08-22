@@ -1679,7 +1679,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             }
             dsl::textual::ExprKind::Deref(expr) => {
                 self.visit_expr(expr)?;
-                self.write_ws("^");
+                // No separating space: the parser's `unary_expression`
+                // rule allows no whitespace between the operand and the
+                // `^`, so `myRef ^` would not re-parse.
+                self.write("^");
                 Ok(())
             }
             dsl::textual::ExprKind::Null(_) => {
