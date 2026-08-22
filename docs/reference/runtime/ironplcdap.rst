@@ -32,10 +32,8 @@ the DAP ``launch`` request as a path to a compiled bytecode container
 
 The server embeds the same virtual machine as
 :doc:`ironplcvm <ironplcvm>`, so a program computes the same results under the
-debugger as it does in production. Two things differ: the debugger stops the
-program, and it drives the clock itself, advancing program time by one
-millisecond per scan cycle rather than reading the real clock. Timers are
-therefore measured in scans, and a debug session repeats exactly.
+debugger as it does in production, with one difference: the debugger stops
+it.
 
 Launch Arguments
 ================
@@ -73,9 +71,6 @@ answers the ``launch`` request with an error carrying an IronPLC problem code:
 
 A ``launch`` request with no usable ``program`` path reports
 :doc:`problems/V6008`.
-
-:program:`ironplcc compile` always writes debug information, so a container it
-produced satisfies the first condition. There is no separate debug build.
 
 Supported Requests
 ==================

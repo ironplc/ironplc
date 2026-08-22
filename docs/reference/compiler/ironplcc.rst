@@ -52,11 +52,6 @@ Build Commands
       generation does not yet support produces a code generation error
       rather than incorrect bytecode.
 
-   Every container carries debug information --- source line maps, variable
-   names, and types --- so it can be debugged. There is no separate debug
-   build and no flag to enable. See
-   :doc:`/reference/editor/debugging`.
-
 Diagnostic Commands
 -------------------
 

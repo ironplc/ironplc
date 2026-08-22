@@ -107,11 +107,13 @@ Open the :guilabel:`Variables` view. It shows two groups.
    RingCount  DINT    0
    PulseTimer TON     0
 
-:guilabel:`Runtime` holds one value the virtual machine owns:
+:guilabel:`Runtime` holds values the virtual machine owns rather than your
+program, for example:
 
 .. code-block:: text
 
    scanCount  ULINT   0
+   ...
 
 ``scanCount`` is the number of scan cycles the program has completed. It is
 0, because none have. This is the number to watch.
@@ -122,23 +124,13 @@ Run to the Breakpoint
 
 Press :kbd:`F5` to continue.
 
-The program runs, and stops on the line you marked:
+The program runs, and stops on the line you marked.
 
-.. code-block:: text
-
-   Buzzer     BOOL    TRUE
-   RingCount  DINT    0
-   scanCount  ULINT   500
-
-Two things to notice.
-
-``scanCount`` is 500. The program ran 500 complete scan cycles before the
-buzzer turned on, because ``PulseTimer`` waits ``T#500ms`` and the debugger
-advances the clock by one millisecond per scan. Under the debugger, timers
-are counted in scans, so a run is repeatable.
+Two things to notice. ``Buzzer`` is now ``TRUE``: the timer has finished, and
+``scanCount`` tells you how many scan cycles that took.
 
 ``RingCount`` is still 0. A breakpoint pauses *before* the line runs, so you
-are looking at the values as they are on the way in.
+are looking at the values on the way in.
 
 --------------------------------------
 Continue, and Watch
@@ -148,21 +140,13 @@ Press :kbd:`F5` again.
 
 The program does not run to the end --- there is no end. It finishes the
 scan, starts the next one, and stops on the same line again, because a
-breakpoint in a PLC program pauses on **every** scan that reaches it:
+breakpoint in a PLC program pauses on **every** scan that reaches it.
 
-.. code-block:: text
+``RingCount`` has gone up by one. So has ``scanCount``. ``Buzzer`` has not
+changed.
 
-   Buzzer     BOOL    TRUE
-   RingCount  DINT    1
-   scanCount  ULINT   501
-
-Press :kbd:`F5` twice more:
-
-.. code-block:: text
-
-   Buzzer     BOOL    TRUE
-   RingCount  DINT    3
-   scanCount  ULINT   503
+Press :kbd:`F5` twice more, and the same thing happens twice more:
+``RingCount`` follows ``scanCount``, one for one.
 
 There it is. ``RingCount`` rises by one every scan, and ``Buzzer`` was
 already ``TRUE`` on every one of those scans. The doorbell rang once. The
@@ -204,7 +188,7 @@ previous scan. Stop the session with :kbd:`Shift+F5` and change the program:
 changes only on the scan where the buzzer turns on --- the **rising edge**.
 
 Press :kbd:`F5`, then :kbd:`F5` again to leave the entry pause. The program
-stops on the counter line once, at ``scanCount`` 500, exactly as before.
+stops on the counter line once, at the same point as before.
 
 Press :kbd:`F5` again. Nothing stops. The program keeps scanning, the
 condition is never true again, and ``RingCount`` stays where it is.

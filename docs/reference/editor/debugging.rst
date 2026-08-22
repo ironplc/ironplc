@@ -15,20 +15,14 @@ See :doc:`/reference/runtime/ironplcdap` for the server itself.
 Before You Start
 ================
 
-Debugging needs three things:
+Debugging needs two things:
 
 * **The IronPLC compiler.** The extension discovers :program:`ironplcc` and
   finds :program:`ironplcdap` beside it. See :doc:`problems/E0007` if the
   server cannot be found.
-* **A program that compiles on its own.** The debugger compiles the single
-  file you point it at. A file that references POUs or types defined in
-  sibling files does not compile in isolation --- compile the project first
-  and debug the container instead. See `Debug a Compiled Container`_.
 * **A single program instance.** The configuration must declare exactly one
   ``PROGRAM ... WITH ...`` instance. A program that declares more is refused
-  at launch, because a breakpoint would stop the first instance to reach it
-  while the others still hold state from the previous scan. See
-  :doc:`/reference/runtime/problems/V6010`.
+  at launch. See :doc:`/reference/runtime/problems/V6010`.
 
 Starting a Session
 ==================
@@ -195,14 +189,6 @@ While the program is paused:
 
 .. note::
 
-   :guilabel:`Pause` and :guilabel:`Restart` are not supported. The debug
-   server services requests only when the program is stopped, so a running
-   program cannot be interrupted from the toolbar --- set a breakpoint before
-   you launch, or use ``scanLimit``. To restart, stop the session and launch
-   again.
-
-.. note::
-
    The :guilabel:`Step Scan Cycle` button on the debug toolbar is not yet
    implemented. Pressing it reports that the request is not supported. Use
    :guilabel:`Continue` to advance to the next scan, and watch ``scanCount``
@@ -249,32 +235,6 @@ State the virtual machine owns rather than your program:
    watch expressions are not supported, and expressions typed into the Debug
    Console are not evaluated. To change what the program does, edit the source
    and launch again.
-
-   Forcing is absent rather than merely missing. In a PLC, forcing a variable
-   means holding it at a value across scans, overriding what the program
-   writes. A value set only while paused is overwritten on the next scan, a
-   few milliseconds later, which looks like a debugger that does not work.
-
-.. note::
-
-   Two kinds of value do not render yet. A ``WSTRING`` shows
-   ``<not available>``. A function block instance shows its name and type ---
-   ``PulseTimer  TON  0`` --- but not its fields, so the ``ET`` of a ``TON``
-   cannot be read here. Read the variable the function block writes to
-   instead.
-
-Program Time
-============
-
-The debugger drives the clock itself. Program time advances by one
-millisecond for every scan cycle, rather than following the real clock, so a
-``TON`` declared ``PT := T#500ms`` elapses on scan 500 no matter how long you
-spend paused.
-
-This makes a debug session repeatable: the same program stops at the same
-breakpoint with the same values every time. It also means a timer under the
-debugger measures scans rather than seconds. Outside the debugger,
-:doc:`/reference/runtime/ironplcvm` uses the real clock.
 
 Call Stack
 ==========
