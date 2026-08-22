@@ -623,9 +623,33 @@ pub fn parse_and_try_run(
     let mut bufs = VmBuffers::from_container(&container);
     {
         let mut vm = load_and_start(&container, &mut bufs)?;
+        assert_stack_balanced(&vm, "after init");
         vm.run_round(0)?;
+        assert_stack_balanced(&vm, "after scan round");
     }
     Ok((container, bufs))
+}
+
+/// Asserts the VM's operand stack is empty.
+///
+/// Every function body is stack-balanced, so a completed scan must leave
+/// the operand stack exactly as it found it. Nothing truncates that buffer
+/// between rounds (`compiler/vm/src/stack.rs` has no `clear`, and
+/// `run_round` does not call `truncate_by`), so a single leaked slot
+/// survives every subsequent round and accumulates until the stack
+/// overflows -- surfacing as a `Trap::StackOverflow` arbitrarily far in
+/// time and code from the codegen path that leaked it.
+///
+/// Calling this from the shared harness makes every end-to-end test in
+/// this suite a balance regression test, including tests written long
+/// after this check was added.
+pub fn assert_stack_balanced(vm: &ironplc_vm::VmRunning<'_>, phase: &str) {
+    assert_eq!(
+        vm.operand_stack_depth(),
+        0,
+        "operand stack not empty {phase}: {} value(s) left behind",
+        vm.operand_stack_depth()
+    );
 }
 
 /// Parses, analyzes, compiles, and runs a multi-round test scenario.
@@ -650,7 +674,12 @@ pub fn parse_and_run_rounds(
     .unwrap();
     let mut bufs = VmBuffers::from_container(&container);
     let mut vm = load_and_start(&container, &mut bufs).unwrap();
+    assert_stack_balanced(&vm, "after init");
     f(&mut vm);
+    // The closure may have run any number of rounds. Each individual round
+    // is covered by the `debug_assert` at the end of `VmRunning::run_round`;
+    // this catches the final state even when that assertion is compiled out.
+    assert_stack_balanced(&vm, "after scenario");
 }
 
 /// A single step in a function-block (`TON`/`CTU`/`R_TRIG`/`RS`/…) driver
@@ -690,6 +719,7 @@ pub fn drive_fb(source: &str, options: &CompilerOptions, steps: &[FbStep]) {
                 }
                 FbStep::Run(time_us) => {
                     vm.run_round(time_us).unwrap();
+                    assert_stack_balanced(&*vm, "after scan round");
                 }
                 FbStep::Expect(index, value) => {
                     assert_eq!(
@@ -702,8 +732,10 @@ pub fn drive_fb(source: &str, options: &CompilerOptions, steps: &[FbStep]) {
                     for i in 0..n {
                         vm.write_variable(VarIndex::new(var), 1).unwrap();
                         vm.run_round(time_base + i * 2).unwrap();
+                        assert_stack_balanced(&*vm, "after rising-edge round");
                         vm.write_variable(VarIndex::new(var), 0).unwrap();
                         vm.run_round(time_base + i * 2 + 1).unwrap();
+                        assert_stack_balanced(&*vm, "after falling-edge round");
                     }
                 }
             }

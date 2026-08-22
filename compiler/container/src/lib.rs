@@ -31,6 +31,8 @@ pub mod debug_section;
 pub mod task_table;
 #[cfg(feature = "std")]
 mod type_section;
+#[cfg(feature = "std")]
+pub mod verify;
 
 // Always-available re-exports
 pub use char_width::CharWidth;
@@ -72,6 +74,8 @@ pub use task_table::{ProgramInstanceEntry, TaskEntry, TaskTable};
 pub use type_section::{
     ArrayDescriptor, FbTypeDescriptor, FieldEntry, FieldType, TypeSection, UserFbDescriptor,
 };
+#[cfg(feature = "std")]
+pub use verify::{verify_stack_balance, StackImbalance};
 
 // Spec conformance testing infrastructure (test-only)
 #[cfg(test)]
