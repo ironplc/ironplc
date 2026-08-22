@@ -131,7 +131,7 @@ pub fn build_response(
     // compile guarantees both.
     let (Some(library), Some(context)) = (project.analyzed_library(), project.semantic_context())
     else {
-        let err = Diagnostic::internal_error(file!(), line!());
+        let err = Diagnostic::internal_error();
         diagnostics.push(serialize_diagnostic(&err));
         return CompileResponse {
             ok: false,

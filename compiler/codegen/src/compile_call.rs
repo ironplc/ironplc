@@ -369,7 +369,7 @@ fn compile_generic_builtin(
 ) -> Result<(), Diagnostic> {
     let func_name = func.name.original().to_uppercase();
     let func_id = lookup_builtin(&func_name, op_type.0, op_type.1)
-        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span(), file!(), line!()))?;
+        .ok_or_else(|| Diagnostic::todo_with_span(func.name.span()))?;
 
     let expected_args = opcode::builtin::arg_count(func_id) as usize;
 
@@ -383,11 +383,7 @@ fn compile_generic_builtin(
         .collect();
 
     if args.len() != expected_args {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let is_sel = func_name == "SEL";
@@ -428,11 +424,7 @@ fn compile_two_arg_operator(
         .collect();
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     compile_expr(emitter, ctx, args[0], op_type)?;
@@ -453,11 +445,7 @@ fn extract_two_positional_args(func: &Function) -> Result<(&Expr, &Expr), Diagno
         .collect();
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     Ok((args[0], args[1]))
@@ -524,11 +512,7 @@ fn compile_dt_to_date(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let op_type = (OpWidth::W32, Signedness::Unsigned);
@@ -565,11 +549,7 @@ fn compile_dt_to_tod(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let op_type = (OpWidth::W32, Signedness::Unsigned);
@@ -678,11 +658,7 @@ fn compile_not_function(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     compile_expr(emitter, ctx, args[0], op_type)?;
@@ -710,11 +686,7 @@ fn compile_move(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     compile_expr(emitter, ctx, args[0], op_type)?;
@@ -744,11 +716,7 @@ fn compile_trunc(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     // Determine the argument's float type from its resolved type.
@@ -800,11 +768,7 @@ fn compile_sizeof(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     // Check if the argument is a variable that maps to an array.
@@ -832,9 +796,8 @@ fn sizeof_from_resolved_type(expr: &Expr) -> Result<u32, Diagnostic> {
     let resolved = expr
         .resolved_type
         .as_ref()
-        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-    let info =
-        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+        .ok_or_else(|| Diagnostic::todo())?;
+    let info = resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo())?;
     // Ceiling division: types like BOOL (1 bit) still occupy 1 byte.
     Ok((info.storage_bits as u32).div_ceil(8))
 }
@@ -859,11 +822,7 @@ fn compile_bcd_to_int(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let arg_op_type = op_type(args[0])?;
@@ -875,13 +834,7 @@ fn compile_bcd_to_int(
         16 => opcode::builtin::BCD_TO_INT_16,
         32 => opcode::builtin::BCD_TO_INT_32,
         64 => opcode::builtin::BCD_TO_INT_64,
-        _ => {
-            return Err(Diagnostic::todo_with_span(
-                func.name.span(),
-                file!(),
-                line!(),
-            ))
-        }
+        _ => return Err(Diagnostic::todo_with_span(func.name.span())),
     };
     emitter.emit_builtin(func_id);
     Ok(())
@@ -907,11 +860,7 @@ fn compile_int_to_bcd(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let arg_op_type = op_type(args[0])?;
@@ -928,13 +877,7 @@ fn compile_int_to_bcd(
             match target_op_type.0 {
                 OpWidth::W32 => opcode::builtin::INT_TO_BCD_32,
                 OpWidth::W64 => opcode::builtin::INT_TO_BCD_64,
-                _ => {
-                    return Err(Diagnostic::todo_with_span(
-                        func.name.span(),
-                        file!(),
-                        line!(),
-                    ))
-                }
+                _ => return Err(Diagnostic::todo_with_span(func.name.span())),
             }
         }
     };
@@ -966,21 +909,13 @@ fn compile_mux(
 
     // Must have at least 3 args (K + 2 IN values)
     if args.len() < 3 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let num_inputs = (args.len() - 1) as u16; // subtract K
 
     if num_inputs > opcode::builtin::MUX_MAX_INPUTS {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     let base = match op_type.0 {
@@ -1039,11 +974,7 @@ pub(crate) fn compile_type_conversion(
         .collect();
 
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     compile_expr(emitter, ctx, args[0], source_op_type)?;
@@ -1056,11 +987,7 @@ pub(crate) fn compile_type_conversion(
             OpWidth::W32 => emitter.emit_builtin(opcode::builtin::CONV_I32_TO_BOOL),
             OpWidth::W64 => emitter.emit_builtin(opcode::builtin::CONV_I64_TO_BOOL),
             _ => {
-                return Err(Diagnostic::todo_with_span(
-                    func.name.span(),
-                    file!(),
-                    line!(),
-                ));
+                return Err(Diagnostic::todo_with_span(func.name.span()));
             }
         }
     } else {
@@ -1154,11 +1081,7 @@ fn compile_shift_rotate(
         .collect();
 
     if args.len() != 2 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     // Compile IN (value) with the inferred op_type
@@ -1190,13 +1113,7 @@ fn compile_shift_rotate(
             16 => opcode::builtin::ROR_U16,
             _ => opcode::builtin::ROR_I32,
         },
-        _ => {
-            return Err(Diagnostic::todo_with_span(
-                func.name.span(),
-                file!(),
-                line!(),
-            ))
-        }
+        _ => return Err(Diagnostic::todo_with_span(func.name.span())),
     };
 
     emitter.emit_builtin(func_id);
@@ -1356,11 +1273,7 @@ pub(crate) fn compile_string_conversion(
 ) -> Result<(), Diagnostic> {
     let args = collect_positional_args(func);
     if args.len() != 1 {
-        return Err(Diagnostic::todo_with_span(
-            func.name.span(),
-            file!(),
-            line!(),
-        ));
+        return Err(Diagnostic::todo_with_span(func.name.span()));
     }
 
     match conv {
@@ -1373,11 +1286,7 @@ pub(crate) fn compile_string_conversion(
                 (OpWidth::W32, Signedness::Unsigned) => opcode::builtin::CONV_U32_TO_STR,
                 (OpWidth::F32, _) => opcode::builtin::CONV_F32_TO_STR,
                 _ => {
-                    return Err(Diagnostic::todo_with_span(
-                        func.name.span(),
-                        file!(),
-                        line!(),
-                    ));
+                    return Err(Diagnostic::todo_with_span(func.name.span()));
                 }
             };
             emitter.emit_builtin(func_id);
@@ -1393,11 +1302,7 @@ pub(crate) fn compile_string_conversion(
                 OpWidth::W32 => opcode::builtin::CONV_STR_TO_I32,
                 OpWidth::F32 => opcode::builtin::CONV_STR_TO_F32,
                 _ => {
-                    return Err(Diagnostic::todo_with_span(
-                        func.name.span(),
-                        file!(),
-                        line!(),
-                    ));
+                    return Err(Diagnostic::todo_with_span(func.name.span()));
                 }
             };
             emitter.emit_builtin(func_id);

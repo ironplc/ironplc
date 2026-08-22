@@ -283,7 +283,7 @@ fn resolve_field_type(
         }
         _other => {
             // Other types are not yet supported
-            Err(Diagnostic::todo(file!(), line!()))
+            Err(Diagnostic::todo())
         }
     }
 }

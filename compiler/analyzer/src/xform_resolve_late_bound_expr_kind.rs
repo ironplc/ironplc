@@ -323,7 +323,7 @@ impl Fold<Diagnostic> for DeclarationResolver<'_> {
                 VariableType::FunctionBlock => {
                     // Function block variables are parsed as LateResolvedType, not FunctionBlock.
                     // If we reach this branch, it indicates an internal error.
-                    Err(Diagnostic::internal_error(file!(), line!()))
+                    Err(Diagnostic::internal_error())
                 }
                 VariableType::Subrange => Ok(self.resolve_late_bound(node.value)),
                 VariableType::Structure => Ok(self.resolve_late_bound(node.value)),
