@@ -225,7 +225,12 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
     drop(guard);
 
     // --- Execute ---
-    let outcome = match runner::execute(&cached_snapshot, &trace_set, effective_limits) {
+    let outcome = match runner::execute(
+        &cached_snapshot,
+        &trace_set,
+        input.duration_ms,
+        effective_limits,
+    ) {
         Ok(o) => o,
         Err(msg) => {
             let diag = Diagnostic::internal_error_at(Label::span(SourceSpan::default(), msg));
@@ -239,7 +244,7 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
 fn build_success_response(
     outcome: RunOutcome,
     requested_duration_ms: u64,
-    _limits: EffectiveLimits,
+    limits: EffectiveLimits,
 ) -> RunResponse {
     let trace: Vec<TraceEntry> = outcome
         .trace
@@ -263,8 +268,9 @@ fn build_success_response(
     if reason != TerminatedReason::Completed {
         let msg = match reason {
             TerminatedReason::Duration => format!(
-                "Simulated duration limit reached before the run completed (requested {} ms).",
-                requested_duration_ms
+                "Requested simulated duration ({} ms) exceeds the server limit ({} ms); \
+                 the run stopped at the limit.",
+                requested_duration_ms, limits.max_duration_ms
             ),
             TerminatedReason::Fuel => {
                 "VM fuel budget exhausted (checked between task cycles).".to_string()
@@ -776,8 +782,37 @@ END_CONFIGURATION
             ..Default::default()
         });
         let resp = build_response(&input, &cache);
-        assert_eq!(resp.terminated_reason, "duration");
+        // Zero simulated time requested and zero delivered: a clean finish, not
+        // a limit violation.
+        assert_eq!(resp.terminated_reason, "completed");
         assert!(resp.trace.is_empty());
+    }
+
+    #[test]
+    fn build_response_when_duration_exceeds_server_limit_then_terminates_on_duration() {
+        let cache = make_cache();
+        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let mut input = base_input(id);
+        input.duration_ms = 500;
+        input.limits = Some(LimitOverrides {
+            max_duration_ms: Some(200),
+            ..Default::default()
+        });
+        let resp = build_response(&input, &cache);
+        assert!(!resp.ok);
+        assert_eq!(resp.terminated_reason, "duration");
+    }
+
+    #[test]
+    fn build_response_when_cyclic_task_then_cycle_count_follows_interval() {
+        // COUNTER_PROGRAM declares INTERVAL := T#100ms and the run asks for
+        // 500 ms, so the task releases at 0, 100, 200, 300 and 400 ms.
+        let cache = make_cache();
+        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let resp = build_response(&base_input(id), &cache);
+
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(resp.summary.completed_cycles["plc_task"], Value::from(5u64));
     }
 
     #[test]
