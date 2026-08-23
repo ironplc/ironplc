@@ -1131,7 +1131,7 @@ empty list rather than defaulting to the program variables.
 and `__SYSTEM_UP_LTIME` are written only when the program was compiled with
 `--allow-system-uptime-global` (`FLAG_HAS_SYSTEM_UPTIME`), but the VM receives
 the clock at the start of every scan either way. `VmRunning` records it
-(`system_time_us`, read through `uptime_ms()`) independently of the flag, so the
+(an `uptime: Duration`, read through `uptime()`) independently of the flag, so the
 debugger can show time for any program. The recorded value moves on a *fresh*
 scan only — resuming a paused scan keeps it — so what is on screen is the time
 the paused code is executing against.

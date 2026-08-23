@@ -47,19 +47,23 @@ change exists to make verifiable.
 
 ### VM
 
-`VmRunning` gains a `system_time_us` field: the clock value the most recently
-*started* scan cycle runs against. `inject_system_uptime` is renamed
-`set_system_time` and records the value **before** the `FLAG_HAS_SYSTEM_UPTIME`
+`VmRunning` gains an `uptime: Duration` field: how long the VM has been running
+as of the most recently *started* scan cycle. `inject_system_uptime` is renamed
+`set_uptime` and records the value **before** the `FLAG_HAS_SYSTEM_UPTIME`
 check, so tracking is independent of whether the globals are written. Both
 drivers already funnel through it — `run_round` once per round with ready
 tasks, `run_round_debug` once per *fresh* scan — so the recorded value follows
 scan starts, not calls: resuming a paused scan does not move it, which is what
 makes the displayed value the one the paused code is reading.
 
-A new accessor `VmRunning::uptime_ms() -> i64` returns
-`(system_time_us / 1000) as i64`, the same arithmetic and the same signed
-64-bit type the `__SYSTEM_UP_LTIME` injection uses, so the debugger and the
-program cannot disagree about the number.
+A new accessor `VmRunning::uptime() -> Duration` returns it as a duration rather
+than a bare integer, leaving the choice of unit to the caller. Rendered in
+milliseconds it is the same number the `__SYSTEM_UP_LTIME` injection writes, so
+the debugger and the program cannot disagree about it.
+
+The VM's clock parameter is renamed `current_time_us` -> `uptime_us` throughout
+(`run_round`, `run_round_debug`, the scheduler, and every caller's local): every
+caller passes elapsed-since-start, so "current time" named it wrongly.
 
 ### DAP server
 
@@ -68,7 +72,7 @@ program cannot disagree about the number.
 
 | Name | Type | Value |
 |------|------|-------|
-| `systemUptime` | `LINT` | `running.uptime_ms()`, milliseconds |
+| `systemUptime` | `LINT` | `running.uptime().as_millis()` |
 
 `LINT` is the IEC 61131-3 spelling of the i64 the VM keeps, and matches the
 type of `__SYSTEM_UP_LTIME`. `scanCount` stays first, so existing clients and
@@ -79,7 +83,7 @@ re-issues at every stop, so it tracks execution with no polling.
 
 ## Testing
 
-- `vm.rs`: `uptime_ms` is 0 before the first round; it reports the clock a
+- `vm.rs`: `uptime` is zero before the first round; it reports the clock a
   round ran with when the container has **no** uptime globals; and it stays put
   across a resumed (paused) scan rather than following the resume's clock.
 - `server.rs`: the `Runtime` scope reports `systemUptime` as `LINT`, and the

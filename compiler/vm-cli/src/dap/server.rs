@@ -234,7 +234,7 @@ fn launched_session<R: BufRead, W: Write>(
     // A monotonic clock for the debug driver. `run_round_debug` bypasses the
     // scheduler and watchdog, so the exact value only feeds the uptime system
     // variable; a per-round bump keeps it non-decreasing.
-    let mut current_time_us: u64 = 0;
+    let mut uptime_us: u64 = 0;
     // Set after a breakpoint pause so the next resume skips that one location
     // instead of re-triggering in place.
     let mut suppress_bp = false;
@@ -283,9 +283,9 @@ fn launched_session<R: BufRead, W: Write>(
                         StepMode::None => {}
                     }
                 }
-                running.run_round_debug(current_time_us, &mut hook)
+                running.run_round_debug(uptime_us, &mut hook)
             };
-            current_time_us = current_time_us.saturating_add(1000);
+            uptime_us = uptime_us.saturating_add(1000);
 
             match outcome {
                 // A completed scan keeps the debugger scanning: run the next
@@ -604,11 +604,11 @@ fn runtime_variables_body(running: &VmRunning) -> Option<Value> {
         },
         Variable {
             name: "systemUptime".to_string(),
-            // Milliseconds, the clock the current scan cycle runs against. The
-            // VM tracks it whether or not the program declares the uptime
-            // globals, so this shows time even for a program compiled without
-            // `--allow-system-uptime-global`.
-            value: running.uptime_ms().to_string(),
+            // How long the VM has run as of the current scan cycle, rendered in
+            // milliseconds. The VM tracks it whether or not the program
+            // declares the uptime globals, so this shows time even for a
+            // program compiled without `--allow-system-uptime-global`.
+            value: (running.uptime().as_millis() as i64).to_string(),
             // The same i64 milliseconds `__SYSTEM_UP_LTIME` holds; LINT is its
             // IEC 61131-3 spelling.
             type_name: Some("LINT".to_string()),
