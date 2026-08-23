@@ -257,10 +257,13 @@ fn extract_task_program_metadata(library: &Library) -> (Vec<TaskMeta>, Vec<Progr
                 })
                 .unwrap_or_else(|| "default".to_string());
 
+            // No CONFIGURATION: codegen keeps the freewheeling task that
+            // `ContainerBuilder` synthesizes, so that is what `run` will
+            // schedule and what the caller needs to see.
             let tasks = vec![TaskMeta {
                 name: program_name.clone(),
                 priority: 0,
-                kind: "event".to_string(),
+                kind: "freewheeling".to_string(),
                 interval_ms: None,
             }];
             let programs = vec![ProgramMeta {
@@ -290,19 +293,30 @@ fn extract_from_configuration(
     (tasks, programs)
 }
 
+/// Reports the kind of task the *container* will carry, which is not always
+/// the kind the source appears to declare: codegen compiles a task with no
+/// `INTERVAL` — and one whose `INTERVAL` is zero — to a freewheeling task,
+/// because a zero-interval cyclic task would be permanently overdue (see
+/// `codegen::compile::apply_task_configuration`). Reporting the declaration
+/// instead of the outcome would leave a caller unable to tell that `run` needs
+/// an assumed cycle time for this container.
 fn task_meta_from_config(task: &TaskConfiguration) -> TaskMeta {
-    let kind = if task.interval.is_some() {
+    // Microseconds, matching what codegen writes to the task table: a
+    // sub-millisecond INTERVAL is a cyclic task, and rounding it to whole
+    // milliseconds would report it as 0 and misclassify it as freewheeling.
+    let interval_us = task
+        .interval
+        .as_ref()
+        .map(|d| d.interval.whole_microseconds());
+    let interval_ms = interval_us.map(|us| us as f64 / 1_000.0);
+
+    let kind = if interval_us.is_some_and(|us| us > 0) {
         "cyclic"
     } else if task.single.is_some() {
         "single"
     } else {
-        "event"
+        "freewheeling"
     };
-
-    let interval_ms = task
-        .interval
-        .as_ref()
-        .map(|d| d.interval.whole_milliseconds() as f64);
 
     TaskMeta {
         name: task.name.to_string(),

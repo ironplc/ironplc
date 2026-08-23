@@ -23,6 +23,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use ironplc_vm::DEFAULT_FREEWHEELING_INTERVAL_US;
+
 use crate::cache::{ContainerCache, ResolvedVar, VariableSymbolMap};
 use crate::runner::{self, EffectiveLimits, RunOutcome, TerminatedReason};
 use crate::tools::common::{serialize_diagnostic, serialize_diagnostics};
@@ -39,6 +41,11 @@ pub struct RunInput {
     pub container_base64: Option<String>,
     /// Simulated time to run, in milliseconds.
     pub duration_ms: u64,
+    /// Cycle time to assume for tasks that declare no `INTERVAL`, in
+    /// milliseconds. Defaults to 100 ms. Ignored by containers whose tasks all
+    /// declare an `INTERVAL`.
+    #[serde(default)]
+    pub freewheeling_interval_ms: Option<f64>,
     /// Fully-qualified variable names to include in the trace.
     #[serde(default)]
     pub variables: Vec<String>,
@@ -122,6 +129,12 @@ pub struct RunSummary {
     pub final_values: Map<String, Value>,
     pub completed_cycles: Map<String, Value>,
     pub terminated_reason: String,
+    /// The cycle time assumed for the container's freewheeling tasks, in
+    /// milliseconds (REQ-TOL-mcp-049). Absent when the container declared an
+    /// `INTERVAL` for every task, so every timestamp in the trace follows from
+    /// the program itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assumed_freewheeling_interval_ms: Option<f64>,
 }
 
 /// Entry point. Validates input, resolves the trace set, runs the VM,
@@ -168,6 +181,14 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
             }
         }
     }
+
+    // --- Freewheeling cycle time (REQ-TOL-mcp-049) ---
+    let freewheeling_interval_us = match resolve_freewheeling_interval_us(
+        input.freewheeling_interval_ms,
+    ) {
+        Ok(us) => us,
+        Err(diag) => return fail(vec![diag]),
+    };
 
     // --- Limit override validation (REQ-ARC-mcp-031) ---
     let defaults = EffectiveLimits::DEFAULTS;
@@ -229,6 +250,7 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
         &cached_snapshot,
         &trace_set,
         input.duration_ms,
+        freewheeling_interval_us,
         effective_limits,
     ) {
         Ok(o) => o,
@@ -303,9 +325,39 @@ fn build_success_response(
             final_values,
             completed_cycles,
             terminated_reason: reason_str,
+            assumed_freewheeling_interval_ms: outcome
+                .assumed_freewheeling_interval_us
+                .map(|us| us as f64 / 1_000.0),
         },
         diagnostics,
     }
+}
+
+/// Resolves the cycle time to assume for freewheeling tasks (REQ-TOL-mcp-049).
+///
+/// An omitted value means the documented default. A supplied one must be a
+/// duration a task could actually run at: zero or negative would leave the
+/// rewritten task permanently overdue, and a non-finite value has no
+/// microsecond representation at all. The upper bound is a sanity check — an
+/// interval longer than the maximum run produces an empty trace, which is a
+/// confusing way to learn the value was a mistake.
+fn resolve_freewheeling_interval_us(interval_ms: Option<f64>) -> Result<u64, Diagnostic> {
+    const MAX_INTERVAL_MS: f64 = 3_600_000.0;
+
+    let Some(ms) = interval_ms else {
+        return Ok(DEFAULT_FREEWHEELING_INTERVAL_US);
+    };
+
+    if !ms.is_finite() || ms <= 0.0 || ms > MAX_INTERVAL_MS {
+        return Err(validation(&format!(
+            "freewheeling_interval_ms ({ms}) must be greater than 0 and at most {MAX_INTERVAL_MS} \
+             (one hour). It is the cycle time to assume for tasks that declare no INTERVAL."
+        )));
+    }
+
+    // Microsecond granularity: a freewheeling scan is often well under a
+    // millisecond, so the fractional part is the interesting part.
+    Ok((ms * 1_000.0).round() as u64)
 }
 
 fn resolve_limits(
@@ -504,6 +556,7 @@ fn fail(diags: Vec<Diagnostic>) -> RunResponse {
             final_values: Map::new(),
             completed_cycles: Map::new(),
             terminated_reason: "error".into(),
+            assumed_freewheeling_interval_ms: None,
         },
         diagnostics: serialize_diagnostics(&diags),
     }
@@ -568,6 +621,7 @@ END_CONFIGURATION
             container_id: Some(container_id),
             container_base64: None,
             duration_ms: 500,
+            freewheeling_interval_ms: None,
             variables: vec!["Main.Counter".into()],
             trace_outputs: false,
             stimuli: vec![],
@@ -598,6 +652,7 @@ END_CONFIGURATION
             container_id: None,
             container_base64: None,
             duration_ms: 100,
+            freewheeling_interval_ms: None,
             variables: vec![],
             trace_outputs: false,
             stimuli: vec![],
@@ -617,6 +672,7 @@ END_CONFIGURATION
             container_id: Some("c_0".into()),
             container_base64: Some("ignored".into()),
             duration_ms: 100,
+            freewheeling_interval_ms: None,
             variables: vec![],
             trace_outputs: false,
             stimuli: vec![],
@@ -635,6 +691,7 @@ END_CONFIGURATION
             container_id: None,
             container_base64: Some("abc".into()),
             duration_ms: 100,
+            freewheeling_interval_ms: None,
             variables: vec![],
             trace_outputs: false,
             stimuli: vec![],
@@ -648,6 +705,109 @@ END_CONFIGURATION
             .as_str()
             .unwrap_or("")
             .contains("container_base64")));
+    }
+
+    /// The reproduction from issue #1413: no CONFIGURATION, so codegen keeps
+    /// the synthesized freewheeling task and there is no declared interval to
+    /// advance simulated time by.
+    const FREEWHEELING_PROGRAM: &str = r#"
+PROGRAM Main
+VAR
+  Counter : INT;
+END_VAR
+  Counter := Counter + 1;
+END_PROGRAM
+"#;
+
+    #[test]
+    fn build_response_when_freewheeling_program_then_runs_for_full_duration() {
+        let cache = make_cache();
+        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let input = base_input(id);
+
+        let resp = build_response(&input, &cache);
+
+        // 500 ms at the default 100 ms assumed cycle time. Before #1413 this
+        // stopped after a single cycle and still reported `completed`.
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(resp.summary.completed_cycles["Main"], Value::from(5u64));
+        assert_eq!(resp.trace.len(), 5);
+    }
+
+    #[test]
+    fn build_response_when_freewheeling_program_then_summary_reports_assumption() {
+        let cache = make_cache();
+        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let input = base_input(id);
+
+        let resp = build_response(&input, &cache);
+
+        assert_eq!(resp.summary.assumed_freewheeling_interval_ms, Some(100.0));
+    }
+
+    #[test]
+    fn build_response_when_freewheeling_interval_supplied_then_cycle_count_follows_it() {
+        let cache = make_cache();
+        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let mut input = base_input(id);
+        input.freewheeling_interval_ms = Some(50.0);
+
+        let resp = build_response(&input, &cache);
+
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(resp.summary.completed_cycles["Main"], Value::from(10u64));
+        assert_eq!(resp.summary.assumed_freewheeling_interval_ms, Some(50.0));
+    }
+
+    #[test]
+    fn build_response_when_freewheeling_interval_subms_then_honored_at_microsecond_granularity() {
+        let cache = make_cache();
+        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let mut input = base_input(id);
+        input.duration_ms = 1;
+        input.freewheeling_interval_ms = Some(0.25);
+
+        let resp = build_response(&input, &cache);
+
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(resp.summary.completed_cycles["Main"], Value::from(4u64));
+    }
+
+    #[test]
+    fn build_response_when_cyclic_program_then_declared_interval_wins_and_nothing_assumed() {
+        let cache = make_cache();
+        let id = compile_into(&cache, COUNTER_PROGRAM);
+        let mut input = base_input(id);
+        // Supplied but inapplicable: every task declares an INTERVAL.
+        input.freewheeling_interval_ms = Some(1.0);
+
+        let resp = build_response(&input, &cache);
+
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        // 500 ms at the program's own 100 ms INTERVAL, not the supplied 1 ms.
+        assert_eq!(resp.summary.completed_cycles["plc_task"], Value::from(5u64));
+        assert_eq!(resp.summary.assumed_freewheeling_interval_ms, None);
+    }
+
+    #[rstest::rstest]
+    #[case(0.0)]
+    #[case(-1.0)]
+    #[case(f64::NAN)]
+    #[case(f64::INFINITY)]
+    #[case(3_600_001.0)]
+    fn build_response_when_freewheeling_interval_out_of_range_then_ok_false(#[case] ms: f64) {
+        let cache = make_cache();
+        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let mut input = base_input(id);
+        input.freewheeling_interval_ms = Some(ms);
+
+        let resp = build_response(&input, &cache);
+
+        assert!(!resp.ok);
+        assert!(resp.diagnostics.iter().any(|d| d["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("freewheeling_interval_ms")));
     }
 
     #[test]

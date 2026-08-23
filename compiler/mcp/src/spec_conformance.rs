@@ -470,6 +470,18 @@ fn mcp_spec_req_tol_032_compile_returns_tasks_array() {
     assert!(!resp.tasks.is_empty());
     assert_eq!(resp.tasks[0].name, "plc_task");
     assert_eq!(resp.tasks[0].kind, "cyclic");
+    assert_eq!(resp.tasks[0].interval_ms, Some(100.0));
+
+    // `kind` reports the task the container carries: a program with no
+    // CONFIGURATION compiles to the freewheeling task the builder synthesizes.
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nVAR\n  x : INT;\nEND_VAR\n  x := 1;\nEND_PROGRAM".into(),
+    }];
+    let resp = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    assert_eq!(resp.tasks[0].kind, "freewheeling");
+    assert_eq!(resp.tasks[0].interval_ms, None);
 }
 
 /// REQ-TOL-mcp-033: The `compile` tool returns a `programs` array with metadata
@@ -619,6 +631,77 @@ fn mcp_spec_req_tol_047_resource_limits() {}
 #[spec_test(REQ_TOL_mcp_048)]
 #[ignore]
 fn mcp_spec_req_tol_048_run_returns_summary() {}
+
+/// REQ-TOL-mcp-049: a freewheeling task runs at an assumed cycle time,
+/// defaulting to 100 ms, and the response reports the assumption.
+#[spec_test(REQ_TOL_mcp_049)]
+fn mcp_spec_req_tol_049_freewheeling_task_runs_at_assumed_cycle_time() {
+    use std::sync::Mutex;
+
+    use crate::cache::ContainerCache;
+    use crate::tools::common::SourceInput;
+    use crate::tools::run::RunInput;
+
+    let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
+    // No CONFIGURATION, so the compiled container carries a freewheeling task.
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM Main\nVAR\n  Counter : INT;\nEND_VAR\n  Counter := Counter + 1;\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let compiled = tools::compile::build_response(&sources, &options, false, &cache);
+    assert!(compiled.ok, "diagnostics: {:?}", compiled.diagnostics);
+    assert_eq!(compiled.tasks[0].kind, "freewheeling");
+
+    let run = |freewheeling_interval_ms| {
+        let input = RunInput {
+            container_id: compiled.container_id.clone(),
+            container_base64: None,
+            duration_ms: 1_000,
+            freewheeling_interval_ms,
+            variables: vec!["Main.Counter".into()],
+            trace_outputs: false,
+            stimuli: vec![],
+            trace: None,
+            limits: None,
+            tasks: None,
+        };
+        tools::run::build_response(&input, &cache)
+    };
+
+    // Default: 1000 ms of simulated time at the assumed 100 ms cycle time.
+    let defaulted = run(None);
+    assert!(defaulted.ok, "diagnostics: {:?}", defaulted.diagnostics);
+    assert_eq!(
+        defaulted.summary.completed_cycles["Main"],
+        serde_json::Value::from(10u64)
+    );
+    assert_eq!(
+        defaulted.summary.assumed_freewheeling_interval_ms,
+        Some(100.0)
+    );
+
+    // Supplied: the caller's cycle time is what the run uses.
+    let supplied = run(Some(200.0));
+    assert!(supplied.ok, "diagnostics: {:?}", supplied.diagnostics);
+    assert_eq!(
+        supplied.summary.completed_cycles["Main"],
+        serde_json::Value::from(5u64)
+    );
+    assert_eq!(
+        supplied.summary.assumed_freewheeling_interval_ms,
+        Some(200.0)
+    );
+
+    // Out of range: rejected before the VM starts.
+    let rejected = run(Some(0.0));
+    assert!(!rejected.ok);
+    assert!(rejected.diagnostics.iter().any(|d| d["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("freewheeling_interval_ms")));
+}
 
 // ===========================================================================
 // `symbols` tool (REQ-TOL-mcp-050..055) — Milestone 1 (later)
