@@ -23,7 +23,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use ironplc_vm::DEFAULT_FREEWHEELING_INTERVAL_US;
+use ironplc_vm::{
+    interval_us_from_ms, DEFAULT_FREEWHEELING_INTERVAL_US, MAX_FREEWHEELING_INTERVAL_MS,
+};
 
 use crate::cache::{ContainerCache, ResolvedVar, VariableSymbolMap};
 use crate::runner::{self, EffectiveLimits, RunOutcome, TerminatedReason};
@@ -183,12 +185,11 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
     }
 
     // --- Freewheeling cycle time (REQ-TOL-mcp-049) ---
-    let freewheeling_interval_us = match resolve_freewheeling_interval_us(
-        input.freewheeling_interval_ms,
-    ) {
-        Ok(us) => us,
-        Err(diag) => return fail(vec![diag]),
-    };
+    let freewheeling_interval_us =
+        match resolve_freewheeling_interval_us(input.freewheeling_interval_ms) {
+            Ok(us) => us,
+            Err(diags) => return fail(diags),
+        };
 
     // --- Limit override validation (REQ-ARC-mcp-031) ---
     let defaults = EffectiveLimits::DEFAULTS;
@@ -336,28 +337,20 @@ fn build_success_response(
 /// Resolves the cycle time to assume for freewheeling tasks (REQ-TOL-mcp-049).
 ///
 /// An omitted value means the documented default. A supplied one must be a
-/// duration a task could actually run at: zero or negative would leave the
-/// rewritten task permanently overdue, and a non-finite value has no
-/// microsecond representation at all. The upper bound is a sanity check — an
-/// interval longer than the maximum run produces an empty trace, which is a
-/// confusing way to learn the value was a mistake.
-fn resolve_freewheeling_interval_us(interval_ms: Option<f64>) -> Result<u64, Diagnostic> {
-    const MAX_INTERVAL_MS: f64 = 3_600_000.0;
-
+/// duration a task could actually run at, which `interval_us_from_ms` decides
+/// — the debugger takes the same input and applies the same rule.
+fn resolve_freewheeling_interval_us(interval_ms: Option<f64>) -> Result<u64, Vec<Diagnostic>> {
     let Some(ms) = interval_ms else {
         return Ok(DEFAULT_FREEWHEELING_INTERVAL_US);
     };
 
-    if !ms.is_finite() || ms <= 0.0 || ms > MAX_INTERVAL_MS {
-        return Err(validation(&format!(
-            "freewheeling_interval_ms ({ms}) must be greater than 0 and at most {MAX_INTERVAL_MS} \
-             (one hour). It is the cycle time to assume for tasks that declare no INTERVAL."
-        )));
-    }
-
-    // Microsecond granularity: a freewheeling scan is often well under a
-    // millisecond, so the fractional part is the interesting part.
-    Ok((ms * 1_000.0).round() as u64)
+    interval_us_from_ms(ms).ok_or_else(|| {
+        vec![validation(&format!(
+            "freewheeling_interval_ms ({ms}) must be greater than 0 and at most \
+             {MAX_FREEWHEELING_INTERVAL_MS} (one hour). It is the cycle time to assume for tasks \
+             that declare no INTERVAL."
+        ))]
+    })
 }
 
 fn resolve_limits(

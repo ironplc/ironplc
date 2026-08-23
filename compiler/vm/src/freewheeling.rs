@@ -29,6 +29,29 @@ use ironplc_container::{Container, TaskType};
 /// task whose whole definition is "as fast as possible".
 pub const DEFAULT_FREEWHEELING_INTERVAL_US: u64 = 100_000;
 
+/// The largest assumed cycle time a caller may ask for, in milliseconds.
+///
+/// An interval longer than any plausible run produces an empty trace, which is
+/// a confusing way to learn the value was a mistake.
+pub const MAX_FREEWHEELING_INTERVAL_MS: f64 = 3_600_000.0;
+
+/// Converts a caller-supplied cycle time in milliseconds to microseconds,
+/// returning `None` when it is not a duration a task could run at.
+///
+/// Zero or negative would leave the rewritten task permanently overdue, and a
+/// non-finite value has no microsecond representation at all. Conversion is at
+/// microsecond granularity because a freewheeling scan is often well under a
+/// millisecond, which is where the interesting values are.
+///
+/// Both the `run` MCP tool and the debugger take the cycle time from their
+/// caller, so the rule for what counts as one lives here rather than in either.
+pub fn interval_us_from_ms(ms: f64) -> Option<u64> {
+    if !ms.is_finite() || ms <= 0.0 || ms > MAX_FREEWHEELING_INTERVAL_MS {
+        return None;
+    }
+    Some((ms * 1_000.0).round() as u64)
+}
+
 /// Returns true when `container` has at least one enabled freewheeling task,
 /// and therefore needs an assumed cycle time to run under simulated time.
 pub fn has_freewheeling_task(container: &Container) -> bool {
@@ -72,9 +95,7 @@ fn is_enabled(flags: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_container::{
-        ContainerBuilder, FunctionId, TaskEntry, TaskId, TaskTable, VarIndex,
-    };
+    use ironplc_container::{ContainerBuilder, FunctionId, TaskEntry, TaskId, TaskTable, VarIndex};
 
     /// A task entry in the shape `ContainerBuilder` synthesizes, so the tests
     /// exercise the same flags the real path produces.
@@ -102,6 +123,33 @@ mod tests {
             ..container.task_table
         };
         container
+    }
+
+    #[test]
+    fn interval_us_from_ms_when_whole_ms_then_converts() {
+        assert_eq!(interval_us_from_ms(100.0), Some(100_000));
+    }
+
+    #[test]
+    fn interval_us_from_ms_when_sub_millisecond_then_keeps_microseconds() {
+        assert_eq!(interval_us_from_ms(0.25), Some(250));
+    }
+
+    #[test]
+    fn interval_us_from_ms_when_not_a_runnable_duration_then_none() {
+        assert_eq!(interval_us_from_ms(0.0), None);
+        assert_eq!(interval_us_from_ms(-1.0), None);
+        assert_eq!(interval_us_from_ms(f64::NAN), None);
+        assert_eq!(interval_us_from_ms(f64::INFINITY), None);
+        assert_eq!(
+            interval_us_from_ms(MAX_FREEWHEELING_INTERVAL_MS + 1.0),
+            None
+        );
+    }
+
+    #[test]
+    fn interval_us_from_ms_when_at_maximum_then_converts() {
+        assert!(interval_us_from_ms(MAX_FREEWHEELING_INTERVAL_MS).is_some());
     }
 
     #[test]

@@ -646,7 +646,9 @@ fn mcp_spec_req_tol_049_freewheeling_task_runs_at_assumed_cycle_time() {
     // No CONFIGURATION, so the compiled container carries a freewheeling task.
     let sources = vec![SourceInput {
         name: "main.st".into(),
-        content: "PROGRAM Main\nVAR\n  Counter : INT;\nEND_VAR\n  Counter := Counter + 1;\nEND_PROGRAM".into(),
+        content:
+            "PROGRAM Main\nVAR\n  Counter : INT;\nEND_VAR\n  Counter := Counter + 1;\nEND_PROGRAM"
+                .into(),
     }];
     let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
 

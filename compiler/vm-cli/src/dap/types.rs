@@ -214,6 +214,12 @@ pub struct LaunchRequestArguments {
     /// single-threaded loop has no interactive `pause`).
     #[serde(default)]
     pub scan_limit: Option<u64>,
+    /// Cycle time to assume for a program whose task declares no `INTERVAL`,
+    /// in milliseconds. Defaults to 100 ms. A freewheeling task has no rate of
+    /// its own, so the debugger has nothing to advance program time by; the
+    /// session reports whichever value it used.
+    #[serde(default)]
+    pub freewheeling_interval_ms: Option<f64>,
 }
 
 // ---------------------------------------------------------------------------

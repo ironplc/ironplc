@@ -254,8 +254,7 @@ pub fn execute(
     // step — `next_due_us()`, the round loop, `time_ms` stamping — works off
     // the task table as usual, with no freewheeling special case.
     let rewritten = assume_freewheeling_interval(&mut container, freewheeling_interval_us);
-    let assumed_freewheeling_interval_us =
-        (rewritten > 0).then_some(freewheeling_interval_us);
+    let assumed_freewheeling_interval_us = (rewritten > 0).then_some(freewheeling_interval_us);
 
     let task_names: Vec<String> = cached.tasks.iter().map(|t| t.name.clone()).collect();
 
