@@ -22,8 +22,8 @@ pub use debug::{BreakpointId, BreakpointTable, DebuggerHook, PauseReason, StepMo
 pub use debug_hook::{DebugHook, HookAction, NoopDebugHook};
 pub use frame_stack::{FbCallReturn, Frame, FrameStack};
 pub use freewheeling::{
-    assume_freewheeling_interval, has_freewheeling_task, interval_us_from_ms,
-    DEFAULT_FREEWHEELING_INTERVAL_US, MAX_FREEWHEELING_INTERVAL_MS,
+    assume_freewheeling_interval, first_task_interval, has_freewheeling_task, interval_from_ms,
+    interval_us, IntervalError, DEFAULT_FREEWHEELING_INTERVAL, MAX_FREEWHEELING_INTERVAL,
 };
 #[cfg(feature = "profiling")]
 pub use profile::InstructionProfile;

@@ -455,7 +455,7 @@ fn mcp_spec_req_tol_031_compile_returns_diagnostics_on_failure() {
 fn mcp_spec_req_tol_032_compile_returns_tasks_array() {
     use std::sync::Mutex;
 
-    use crate::cache::ContainerCache;
+    use crate::cache::{ContainerCache, TaskKind};
     use crate::tools::common::SourceInput;
 
     let cache = Mutex::new(ContainerCache::new(64, 64 * 1024 * 1024));
@@ -469,7 +469,7 @@ fn mcp_spec_req_tol_032_compile_returns_tasks_array() {
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
     assert!(!resp.tasks.is_empty());
     assert_eq!(resp.tasks[0].name, "plc_task");
-    assert_eq!(resp.tasks[0].kind, "cyclic");
+    assert_eq!(resp.tasks[0].kind, TaskKind::Cyclic);
     assert_eq!(resp.tasks[0].interval_ms, Some(100.0));
 
     // `kind` reports the task the container carries: a program with no
@@ -480,7 +480,7 @@ fn mcp_spec_req_tol_032_compile_returns_tasks_array() {
     }];
     let resp = tools::compile::build_response(&sources, &options, false, &cache);
     assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
-    assert_eq!(resp.tasks[0].kind, "freewheeling");
+    assert_eq!(resp.tasks[0].kind, TaskKind::Freewheeling);
     assert_eq!(resp.tasks[0].interval_ms, None);
 }
 
@@ -638,7 +638,7 @@ fn mcp_spec_req_tol_048_run_returns_summary() {}
 fn mcp_spec_req_tol_049_freewheeling_task_runs_at_assumed_cycle_time() {
     use std::sync::Mutex;
 
-    use crate::cache::ContainerCache;
+    use crate::cache::{ContainerCache, TaskKind};
     use crate::tools::common::SourceInput;
     use crate::tools::run::RunInput;
 
@@ -654,7 +654,7 @@ fn mcp_spec_req_tol_049_freewheeling_task_runs_at_assumed_cycle_time() {
 
     let compiled = tools::compile::build_response(&sources, &options, false, &cache);
     assert!(compiled.ok, "diagnostics: {:?}", compiled.diagnostics);
-    assert_eq!(compiled.tasks[0].kind, "freewheeling");
+    assert_eq!(compiled.tasks[0].kind, TaskKind::Freewheeling);
 
     let run = |freewheeling_interval_ms| {
         let input = RunInput {
@@ -679,10 +679,7 @@ fn mcp_spec_req_tol_049_freewheeling_task_runs_at_assumed_cycle_time() {
         defaulted.summary.completed_cycles["Main"],
         serde_json::Value::from(10u64)
     );
-    assert_eq!(
-        defaulted.summary.assumed_freewheeling_interval_ms,
-        Some(100.0)
-    );
+    assert_eq!(defaulted.summary.interval_ms, 100.0);
 
     // Supplied: the caller's cycle time is what the run uses.
     let supplied = run(Some(200.0));
@@ -691,10 +688,7 @@ fn mcp_spec_req_tol_049_freewheeling_task_runs_at_assumed_cycle_time() {
         supplied.summary.completed_cycles["Main"],
         serde_json::Value::from(5u64)
     );
-    assert_eq!(
-        supplied.summary.assumed_freewheeling_interval_ms,
-        Some(200.0)
-    );
+    assert_eq!(supplied.summary.interval_ms, 200.0);
 
     // Out of range: rejected before the VM starts.
     let rejected = run(Some(0.0));

@@ -73,8 +73,7 @@ assumes one, and writes the value it used to the debug console:
 .. code-block:: text
 
    This program declares no INTERVAL, so it has no scan cycle time of its
-   own. Assuming 100 ms per scan. Set 'freewheelingIntervalMs' in the launch
-   configuration to change it.
+   own. Assuming 100 ms per scan; change it in the launch configuration.
 
 The assumed cycle time is what the program's timers measure against, so a
 ``TON`` with ``PT := T#500ms`` completes after five scans at the default.

@@ -18,12 +18,13 @@
 //! replace this with strict per-opcode enforcement.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use ironplc_analyzer::symbol_environment::ScopeKind;
 use ironplc_analyzer::SemanticContext;
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, VarNameEntry};
 use ironplc_container::Container;
-use ironplc_vm::{assume_freewheeling_interval, Vm, VmBuffers};
+use ironplc_vm::{assume_freewheeling_interval, first_task_interval, Vm, VmBuffers};
 use serde_json::Value;
 
 use crate::cache::{CachedContainer, ResolvedVar, VariableSymbolMap};
@@ -186,10 +187,9 @@ pub struct RunOutcome {
     pub truncated: bool,
     /// Diagnostic message when `terminated_reason == Error`.
     pub error_message: Option<String>,
-    /// The cycle time assumed for the container's freewheeling tasks, in
-    /// microseconds. `None` when the container declared an `INTERVAL` for
-    /// every task, so nothing was assumed.
-    pub assumed_freewheeling_interval_us: Option<u64>,
+    /// The cycle time the run executed at — the task's declared `INTERVAL`, or
+    /// the assumed one for a task that declares none.
+    pub interval: Duration,
 }
 
 /// Why the run stopped (REQ-TOL-mcp-047).
@@ -232,17 +232,17 @@ impl TerminatedReason {
 /// (REQ-ARC-mcp-030); being cut short by it is not, and reports
 /// [`TerminatedReason::Duration`].
 ///
-/// `freewheeling_interval_us` is the cycle time to assume for tasks that
-/// declare no `INTERVAL` (REQ-TOL-mcp-049). A freewheeling task has no rate of
-/// its own, so without one there is nothing to advance simulated time by and
-/// the round loop would stop after a single cycle. The assumption is applied by
-/// rewriting the task table before the VM loads it, and is reported back in
-/// [`RunOutcome::assumed_freewheeling_interval_us`] when it actually applied.
+/// `freewheeling_interval` is the cycle time to assume for tasks that declare
+/// no `INTERVAL` (REQ-TOL-mcp-049). A freewheeling task has no rate of its own,
+/// so without one there is nothing to advance simulated time by and the round
+/// loop would stop after a single cycle. The assumption is applied by rewriting
+/// the task table before the VM loads it; whichever cycle time the run ended up
+/// executing at comes back as [`RunOutcome::interval`].
 pub fn execute(
     cached: &CachedContainer,
     trace_set: &[ResolvedVar],
     duration_ms: u64,
-    freewheeling_interval_us: u64,
+    freewheeling_interval: Duration,
     limits: EffectiveLimits,
 ) -> Result<RunOutcome, String> {
     let mut bytes = cached.iplc_bytes.as_slice();
@@ -252,9 +252,11 @@ pub fn execute(
     // A freewheeling task is a cyclic task whose rate the container does not
     // know. Applying the caller's assumed rate here means every downstream
     // step — `next_due_us()`, the round loop, `time_ms` stamping — works off
-    // the task table as usual, with no freewheeling special case.
-    let rewritten = assume_freewheeling_interval(&mut container, freewheeling_interval_us);
-    let assumed_freewheeling_interval_us = (rewritten > 0).then_some(freewheeling_interval_us);
+    // the task table as usual, with no freewheeling special case. Reading the
+    // interval back afterwards therefore reports one cycle time whether the
+    // program declared it or the caller supplied it.
+    assume_freewheeling_interval(&mut container, freewheeling_interval);
+    let interval = first_task_interval(&container).unwrap_or_default();
 
     let task_names: Vec<String> = cached.tasks.iter().map(|t| t.name.clone()).collect();
 
@@ -271,7 +273,7 @@ pub fn execute(
                 terminated_reason: TerminatedReason::Error,
                 truncated: false,
                 error_message: Some(format!("VM start fault: {}", ctx.trap)),
-                assumed_freewheeling_interval_us,
+                interval,
             });
         }
     };
@@ -355,7 +357,7 @@ pub fn execute(
                 terminated_reason: TerminatedReason::Error,
                 truncated,
                 error_message: Some(trap_msg),
-                assumed_freewheeling_interval_us,
+                interval,
             });
         }
 
@@ -420,7 +422,7 @@ pub fn execute(
         terminated_reason,
         truncated,
         error_message: None,
-        assumed_freewheeling_interval_us,
+        interval,
     })
 }
 

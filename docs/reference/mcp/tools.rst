@@ -196,8 +196,8 @@ not merely that it compiles.
 
 **Returns:** an object with ``ok``, a ``trace`` array, a ``truncated``
 flag, a ``terminated_reason``, a ``summary`` (final values, completed
-cycles per task, and the assumed cycle time when one was used), and
-``diagnostics``.
+cycles per task, and ``interval_ms`` --- the cycle time the run
+executed at), and ``diagnostics``.
 
 .. _mcp-freewheeling-cycle-time:
 
@@ -211,10 +211,10 @@ property of the machine, not of the program, so under simulated time
 there is nothing to advance the clock by.
 
 :literal:`run` therefore executes such a task at an assumed cycle time
-of 100 ms, which you can change with ``freewheeling_interval_ms``.
-Whenever the assumption is used, the response reports it as
-``summary.assumed_freewheeling_interval_ms``, because every timestamp
-in the trace --- and every timer in the program --- depends on it.
+of 100 ms, which you can change with ``freewheeling_interval_ms``. The
+response reports the cycle time it used as ``summary.interval_ms``,
+whether assumed or declared, because every timestamp in the trace ---
+and every timer in the program --- depends on it.
 
 :literal:`compile` reports these tasks with ``kind: "freewheeling"``,
 which is how you can tell in advance that the assumption applies.

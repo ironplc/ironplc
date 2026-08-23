@@ -15,6 +15,7 @@
 //! Sandboxing (REQ-ARC-mcp-030..035).
 
 use std::sync::Mutex;
+use std::time::Duration;
 
 use ironplc_dsl::core::SourceSpan;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -23,9 +24,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use ironplc_vm::{
-    interval_us_from_ms, DEFAULT_FREEWHEELING_INTERVAL_US, MAX_FREEWHEELING_INTERVAL_MS,
-};
+use ironplc_vm::{interval_from_ms, DEFAULT_FREEWHEELING_INTERVAL};
 
 use crate::cache::{ContainerCache, ResolvedVar, VariableSymbolMap};
 use crate::runner::{self, EffectiveLimits, RunOutcome, TerminatedReason};
@@ -131,12 +130,10 @@ pub struct RunSummary {
     pub final_values: Map<String, Value>,
     pub completed_cycles: Map<String, Value>,
     pub terminated_reason: String,
-    /// The cycle time assumed for the container's freewheeling tasks, in
-    /// milliseconds (REQ-TOL-mcp-049). Absent when the container declared an
-    /// `INTERVAL` for every task, so every timestamp in the trace follows from
-    /// the program itself.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub assumed_freewheeling_interval_ms: Option<f64>,
+    /// The cycle time the run executed at, in milliseconds — the task's
+    /// declared `INTERVAL`, or the assumed one when it declares none
+    /// (REQ-TOL-mcp-049). Every `time_ms` in the trace is a multiple of it.
+    pub interval_ms: f64,
 }
 
 /// Entry point. Validates input, resolves the trace set, runs the VM,
@@ -185,11 +182,11 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
     }
 
     // --- Freewheeling cycle time (REQ-TOL-mcp-049) ---
-    let freewheeling_interval_us =
-        match resolve_freewheeling_interval_us(input.freewheeling_interval_ms) {
-            Ok(us) => us,
-            Err(diags) => return fail(diags),
-        };
+    let freewheeling_interval = match resolve_freewheeling_interval(input.freewheeling_interval_ms)
+    {
+        Ok(interval) => interval,
+        Err(diags) => return fail(diags),
+    };
 
     // --- Limit override validation (REQ-ARC-mcp-031) ---
     let defaults = EffectiveLimits::DEFAULTS;
@@ -251,7 +248,7 @@ pub fn build_response(input: &RunInput, cache: &Mutex<ContainerCache>) -> RunRes
         &cached_snapshot,
         &trace_set,
         input.duration_ms,
-        freewheeling_interval_us,
+        freewheeling_interval,
         effective_limits,
     ) {
         Ok(o) => o,
@@ -326,9 +323,7 @@ fn build_success_response(
             final_values,
             completed_cycles,
             terminated_reason: reason_str,
-            assumed_freewheeling_interval_ms: outcome
-                .assumed_freewheeling_interval_us
-                .map(|us| us as f64 / 1_000.0),
+            interval_ms: outcome.interval.as_secs_f64() * 1_000.0,
         },
         diagnostics,
     }
@@ -337,18 +332,19 @@ fn build_success_response(
 /// Resolves the cycle time to assume for freewheeling tasks (REQ-TOL-mcp-049).
 ///
 /// An omitted value means the documented default. A supplied one must be a
-/// duration a task could actually run at, which `interval_us_from_ms` decides
-/// — the debugger takes the same input and applies the same rule.
-fn resolve_freewheeling_interval_us(interval_ms: Option<f64>) -> Result<u64, Vec<Diagnostic>> {
+/// duration a task could actually run at, which `interval_from_ms` decides —
+/// the debugger takes the same input and applies the same rule. The rejection
+/// quotes that rule rather than restating it, so the message cannot claim a
+/// bound the check does not enforce.
+fn resolve_freewheeling_interval(interval_ms: Option<f64>) -> Result<Duration, Vec<Diagnostic>> {
     let Some(ms) = interval_ms else {
-        return Ok(DEFAULT_FREEWHEELING_INTERVAL_US);
+        return Ok(DEFAULT_FREEWHEELING_INTERVAL);
     };
 
-    interval_us_from_ms(ms).ok_or_else(|| {
+    interval_from_ms(ms).map_err(|e| {
         vec![validation(&format!(
-            "freewheeling_interval_ms ({ms}) must be greater than 0 and at most \
-             {MAX_FREEWHEELING_INTERVAL_MS} (one hour). It is the cycle time to assume for tasks \
-             that declare no INTERVAL."
+            "freewheeling_interval_ms ({ms}) {e}. It is the cycle time to assume for tasks that \
+             declare no INTERVAL."
         ))]
     })
 }
@@ -549,7 +545,7 @@ fn fail(diags: Vec<Diagnostic>) -> RunResponse {
             final_values: Map::new(),
             completed_cycles: Map::new(),
             terminated_reason: "error".into(),
-            assumed_freewheeling_interval_ms: None,
+            interval_ms: 0.0,
         },
         diagnostics: serialize_diagnostics(&diags),
     }
@@ -728,14 +724,14 @@ END_PROGRAM
     }
 
     #[test]
-    fn build_response_when_freewheeling_program_then_summary_reports_assumption() {
+    fn build_response_when_freewheeling_program_then_summary_reports_interval_used() {
         let cache = make_cache();
         let id = compile_into(&cache, FREEWHEELING_PROGRAM);
         let input = base_input(id);
 
         let resp = build_response(&input, &cache);
 
-        assert_eq!(resp.summary.assumed_freewheeling_interval_ms, Some(100.0));
+        assert_eq!(resp.summary.interval_ms, 100.0);
     }
 
     #[test]
@@ -749,7 +745,7 @@ END_PROGRAM
 
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert_eq!(resp.summary.completed_cycles["Main"], Value::from(10u64));
-        assert_eq!(resp.summary.assumed_freewheeling_interval_ms, Some(50.0));
+        assert_eq!(resp.summary.interval_ms, 50.0);
     }
 
     #[test]
@@ -779,7 +775,8 @@ END_PROGRAM
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         // 500 ms at the program's own 100 ms INTERVAL, not the supplied 1 ms.
         assert_eq!(resp.summary.completed_cycles["plc_task"], Value::from(5u64));
-        assert_eq!(resp.summary.assumed_freewheeling_interval_ms, None);
+        // The program's own INTERVAL is what the run used, and what it reports.
+        assert_eq!(resp.summary.interval_ms, 100.0);
     }
 
     #[rstest::rstest]

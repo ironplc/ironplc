@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use super::common::{
     parse_options, serialize_diagnostic, serialize_diagnostics, validate_sources, SourceInput,
 };
-use crate::cache::{CachedContainer, ContainerCache, InsertError, ProgramMeta, TaskMeta};
+use crate::cache::{CachedContainer, ContainerCache, InsertError, ProgramMeta, TaskKind, TaskMeta};
 
 /// Combined input accepted by `compile`.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -51,7 +51,7 @@ pub struct CompileResponse {
 pub struct TaskInfo {
     pub name: String,
     pub priority: u32,
-    pub kind: String,
+    pub kind: TaskKind,
     pub interval_ms: Option<f64>,
 }
 
@@ -170,7 +170,7 @@ pub fn build_response(
         .map(|t| TaskInfo {
             name: t.name.clone(),
             priority: t.priority,
-            kind: t.kind.clone(),
+            kind: t.kind,
             interval_ms: t.interval_ms,
         })
         .collect();
@@ -263,7 +263,7 @@ fn extract_task_program_metadata(library: &Library) -> (Vec<TaskMeta>, Vec<Progr
             let tasks = vec![TaskMeta {
                 name: program_name.clone(),
                 priority: 0,
-                kind: "freewheeling".to_string(),
+                kind: TaskKind::Freewheeling,
                 interval_ms: None,
             }];
             let programs = vec![ProgramMeta {
@@ -311,17 +311,17 @@ fn task_meta_from_config(task: &TaskConfiguration) -> TaskMeta {
     let interval_ms = interval_us.map(|us| us as f64 / 1_000.0);
 
     let kind = if interval_us.is_some_and(|us| us > 0) {
-        "cyclic"
+        TaskKind::Cyclic
     } else if task.single.is_some() {
-        "single"
+        TaskKind::Single
     } else {
-        "freewheeling"
+        TaskKind::Freewheeling
     };
 
     TaskMeta {
         name: task.name.to_string(),
         priority: task.priority,
-        kind: kind.to_string(),
+        kind,
         interval_ms,
     }
 }
@@ -402,7 +402,7 @@ END_CONFIGURATION
         assert!(resp.ok);
         assert!(!resp.tasks.is_empty());
         assert_eq!(resp.tasks[0].name, "plc_task");
-        assert_eq!(resp.tasks[0].kind, "cyclic");
+        assert_eq!(resp.tasks[0].kind, TaskKind::Cyclic);
         assert_eq!(resp.tasks[0].priority, 1);
         assert!(resp.tasks[0].interval_ms.is_some());
     }

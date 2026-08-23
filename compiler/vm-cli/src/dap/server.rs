@@ -20,12 +20,13 @@
 
 use std::io::{self, BufRead, Write};
 use std::path::Path;
+use std::time::Duration;
 
 use ironplc_container::debug_section::DebugSection;
 use ironplc_container::{Container, VarIndex};
 use ironplc_vm::{
-    has_freewheeling_task, interval_us_from_ms, BreakpointTable, DebuggerHook, PauseReason,
-    RoundOutcome, StepMode, VmBuffers, VmRunning, DEFAULT_FREEWHEELING_INTERVAL_US,
+    has_freewheeling_task, interval_from_ms, interval_us, BreakpointTable, DebuggerHook,
+    PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning, DEFAULT_FREEWHEELING_INTERVAL,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -244,15 +245,15 @@ fn launched_session<R: BufRead, W: Write>(
     // still advances a flat 1 ms per scan; honoring the declared interval is
     // issue #1397.
     let mut current_time_us: u64 = 0;
-    let scan_advance_us = if has_freewheeling_task(&container) {
-        let assumed = assumed_freewheeling_interval_us(args.freewheeling_interval_ms);
+    let scan_advance = if has_freewheeling_task(&container) {
+        let assumed = assumed_freewheeling_interval(args.freewheeling_interval_ms);
         send(
             writer,
             &console_output(take_seq(seq), &freewheeling_notice(assumed)),
         )?;
         assumed
     } else {
-        DEBUG_SCAN_ADVANCE_US
+        DEBUG_SCAN_ADVANCE
     };
     // Set after a breakpoint pause so the next resume skips that one location
     // instead of re-triggering in place.
@@ -304,7 +305,7 @@ fn launched_session<R: BufRead, W: Write>(
                 }
                 running.run_round_debug(current_time_us, &mut hook)
             };
-            current_time_us = current_time_us.saturating_add(scan_advance_us);
+            current_time_us = current_time_us.saturating_add(interval_us(scan_advance));
 
             match outcome {
                 // A completed scan keeps the debugger scanning: run the next
@@ -479,35 +480,33 @@ fn launched_session<R: BufRead, W: Write>(
     }
 }
 
-/// Whether the launch's `scanLimit` bound (if any) has been reached, so the
-/// session should terminate rather than start another cycle.
 /// How far program time advances per scan for a program that declares an
 /// `INTERVAL`. A flat 1 ms, pending #1397.
-const DEBUG_SCAN_ADVANCE_US: u64 = 1_000;
+const DEBUG_SCAN_ADVANCE: Duration = Duration::from_millis(1);
 
-/// The cycle time to assume for a freewheeling program, in microseconds.
+/// The cycle time to assume for a freewheeling program.
 ///
 /// An out-of-range `freewheelingIntervalMs` falls back to the default rather
 /// than failing the launch — a debug session that will not start is a poor
 /// answer to a typo in a launch configuration — and the notice reports the
 /// value actually used either way.
-fn assumed_freewheeling_interval_us(interval_ms: Option<f64>) -> u64 {
+fn assumed_freewheeling_interval(interval_ms: Option<f64>) -> Duration {
     interval_ms
-        .and_then(interval_us_from_ms)
-        .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL_US)
+        .and_then(|ms| interval_from_ms(ms).ok())
+        .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL)
 }
 
 /// The console line telling the user which cycle time the session assumed.
 ///
 /// Every timer in a freewheeling program elapses on this assumption, so a
 /// session that did not state it would leave the user unable to explain what
-/// they are watching.
-fn freewheeling_notice(interval_us: u64) -> String {
+/// they are watching. It points at the launch configuration rather than at a
+/// named setting, which would go stale the moment the setting is renamed.
+fn freewheeling_notice(interval: Duration) -> String {
     format!(
         "This program declares no INTERVAL, so it has no scan cycle time of its own. \
-         Assuming {} ms per scan. Set 'freewheelingIntervalMs' in the launch configuration \
-         to change it.\n",
-        interval_us as f64 / 1_000.0
+         Assuming {} ms per scan; change it in the launch configuration.\n",
+        interval.as_secs_f64() * 1_000.0
     )
 }
 
@@ -520,6 +519,8 @@ fn console_output(seq: i64, text: &str) -> Event {
     )
 }
 
+/// Whether the launch's `scanLimit` bound (if any) has been reached, so the
+/// session should terminate rather than start another cycle.
 fn scan_limit_reached(scan_limit: Option<u64>, running: &VmRunning) -> bool {
     scan_limit.is_some_and(|limit| running.scan_count() >= limit)
 }
@@ -1173,8 +1174,8 @@ mod tests {
         assert_eq!(lines.len(), 1, "console: {lines:?}");
         assert!(lines[0].contains("100 ms"), "console: {lines:?}");
         assert!(
-            lines[0].contains("freewheelingIntervalMs"),
-            "the notice names the setting that changes it: {lines:?}"
+            lines[0].contains("launch configuration"),
+            "the notice says where to change it: {lines:?}"
         );
     }
 
