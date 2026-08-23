@@ -11,5 +11,5 @@ FUNCTION FUNC : UINT
       ARR : ARRAY [ 0.. 3 ] OF INT;
    END_VAR
 
-   array_avg := ( array_avg + arr [ idx ] [ idx ] ) ;
+   array_avg := ( array_avg + arr[ idx ][ idx ] ) ;
 END_FUNCTION

@@ -1,6 +1,6 @@
 FUNCTION_BLOCK BLOCK
    NUM_INT := 10 ;
-   NUM_FLOAT := 10 ;
+   NUM_FLOAT := 10.0 ;
    IF ( NUM1 < NUM2 ) THEN
       NUM1 := 1 ;
    ELSIF ( NUM2 = NUM3 ) THEN

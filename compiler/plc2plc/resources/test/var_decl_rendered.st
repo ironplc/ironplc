@@ -53,7 +53,7 @@ VAR
 END_VAR
 
 VAR
-   INIT : ARRAY [ 1.. 12 ] OF SINT := 2 , 7 , 18;
+   INIT : ARRAY [ 1.. 12 ] OF SINT := [ 2 , 7 , 18 ];
 END_VAR
 
 VAR
@@ -61,7 +61,7 @@ VAR
 END_VAR
 
 VAR
-   PARENTHESIS_ARRAY : ARRAY [ 0.. 3 ] OF SINT := 3 2;
+   PARENTHESIS_ARRAY : ARRAY [ 0.. 3 ] OF SINT := [ 3 ( 2 ) ];
 END_VAR
 
 VAR

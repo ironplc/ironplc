@@ -12,5 +12,5 @@ FUNCTION FUNC : UINT
       G : BOOL R_EDGE;
    END_VAR
 
-   array_avg := ( array_avg + arr [ idx ] [ idx ] ) ;
+   array_avg := ( array_avg + arr[ idx ][ idx ] ) ;
 END_FUNCTION
