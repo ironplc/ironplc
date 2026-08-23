@@ -15,7 +15,7 @@ When adding new syntax, ensure every applicable item is complete:
 - [ ] **Analyzer**: Add semantic validation in `analyzer/`
 - [ ] **Codegen**: Add bytecode emission in `codegen/`
 - [ ] **plc2plc renderer**: Update `plc2plc/src/renderer.rs` to render the new syntax
-- [ ] **plc2plc round-trip test**: Parse → render → compare against expected output (in a focused file under `plc2plc/src/tests/` — see [Test File Organization](#test-file-organization-avoid-merge-conflicts))
+- [ ] **plc2plc round-trip test**: Parse → render → **re-parse** (in a focused file under `plc2plc/src/tests/` — see [Test File Organization](#test-file-organization-avoid-merge-conflicts) and [plc2plc round-trip tests](#plc2plc-round-trip-tests-always-re-parse))
 - [ ] **End-to-end execution test**: Parse → compile → run → verify variable values
 - [ ] **Non-standard gating**: If not standard IEC 61131-3, gate behind `--allow-x` flag
 - [ ] **LSP integration**: If a new `--allow-x` flag, add to LSP `extract_compiler_options`
@@ -26,6 +26,42 @@ Not every syntax change requires all items. A new operator might not need new to
 Each test leg must assert something the others do not — a parser test that only
 checks "it parses" is subsumed by the round-trip test on the same snippet. See
 [Which leg asserts what](#which-leg-asserts-what-avoid-duplicate-tests).
+
+## plc2plc round-trip tests: always re-parse
+
+Rendering is only half the job — what the renderer emits has to be text the
+parser accepts. A test that only compares the rendering against a golden
+`*_rendered.st` file cannot tell correct output from output the parser
+rejects: it records the broken spelling as "expected".
+
+So every renderer test **re-parses what it rendered**. A plc2plc test is one
+of two shapes, both provided by `plc2plc/src/tests/common.rs`:
+
+1. **Round trip** — `assert_round_trips(source, &options)`: parse → render →
+   re-parse, requiring the same AST. This is the default; reach for it first.
+2. **Round trip pinned to a golden file** — `assert_resource_renders_to(
+   source_name, rendered_name, &options)`: the same round trip, plus an
+   equality check of the rendered text against the committed
+   `*_rendered.st`. Use it when the exact layout is worth freezing.
+
+Both return the rendered text. Add `assert!(rendered.contains(...))` on top
+only for what AST equality cannot see — identifier casing (`Id` compares
+case-insensitively) or a spelling the AST does not record, such as
+`STRING [ 255 ]` where the DSL keeps no bracket/paren marker. A `contains`
+that merely restates something the re-parse already proves is redundant;
+drop it. Never assert only `contains`.
+
+When the rendering deliberately normalizes to a *different* AST spelling — a
+bit-string literal that decimalizes, a mixed `VAR` block that renders one
+block per declaration — use `assert_round_trips_idempotently` and say why at
+the call site. It still re-parses; it asserts a second render reproduces
+identical text instead of AST equality.
+
+A rendering is re-parsed under the **same** options as its source. A
+rendering that needs a laxer dialect than its source did is a renderer bug.
+Where a normalization makes the output *stricter*-grammar-valid (`STRING(255)`
+→ `STRING [ 255 ]`, `.%X0` → `.0`), add an explicit second parse under
+`CompilerOptions::default()` to pin that.
 
 ## Test File Organization (avoid merge conflicts)
 
@@ -59,7 +95,7 @@ adds no signal — it is subsumed. Keep the legs distinct:
 | Leg | Asserts | Do **not** write |
 |---|---|---|
 | **Parser** (`parser/src/tests/`) | The AST *shape*: the node variant, its fields, counts, nesting | A bare "it parses" on a snippet a plc2plc round-trip already covers |
-| **plc2plc** (`plc2plc/src/tests/`) | Text → AST → text fidelity against a golden file | A second assertion that the source parsed |
+| **plc2plc** (`plc2plc/src/tests/`) | Text → AST → text → AST fidelity: the rendering re-parses to the same AST, optionally pinned against a golden file | A render assertion that never re-parses the rendering |
 | **Analyzer** (`analyzer/src/rule_*.rs`) | The semantic outcome (accepted, or a specific problem code) | Anything about parse success or failure |
 | **codegen `compile_*`** | The emitted instruction sequence / container structure | Run results |
 | **codegen `end_to_end_*`** | Run results — the nominal behavior matrix reachable from ST | — |
