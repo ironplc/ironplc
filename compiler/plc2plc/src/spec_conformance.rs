@@ -27,7 +27,19 @@ fn all_spec_requirements_have_tests() {
 
 fn render(source: &str, options: &CompilerOptions) -> String {
     let library = parse_program(source, &FileId::default(), options).unwrap();
-    write_to_string(&library).unwrap()
+    let rendered = write_to_string(&library).unwrap();
+
+    // Rendering is only half the requirement: what comes out has to be
+    // valid input. Re-parsing here is what stops a rendering the parser
+    // rejects from satisfying a `contains` assertion.
+    let reparsed = parse_program(&rendered, &FileId::default(), options)
+        .unwrap_or_else(|e| panic!("Rendered output did not re-parse: {e:?}\n{rendered}"));
+    assert_eq!(
+        library, reparsed,
+        "Round trip changed the AST. Rendered:\n{rendered}"
+    );
+
+    rendered
 }
 
 fn reference_to_options() -> CompilerOptions {

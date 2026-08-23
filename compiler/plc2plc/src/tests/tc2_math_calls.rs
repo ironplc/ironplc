@@ -22,9 +22,7 @@ angle := LTRUNC(position);
 angle := FRAC(position);
 END_PROGRAM
 ";
-    let options = CompilerOptions::default();
-    let library_original = parse_program(source, &FileId::default(), &options).unwrap();
-    let rendered = write_to_string(&library_original).unwrap();
+    let rendered = assert_round_trips(source, &CompilerOptions::default());
 
     // The calls come through unchanged, under their exact vendor names.
     for name in ["MODABS", "LMOD", "LTRUNC", "FRAC"] {
@@ -36,7 +34,4 @@ END_PROGRAM
     // Nothing of the library implementation leaks into rendered user source.
     assert!(!rendered.contains("__TRUNC"));
     assert!(!rendered.contains("__MOD"));
-
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
-    assert_eq!(library_original, library_rendered);
 }

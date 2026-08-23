@@ -22,9 +22,7 @@ display := LREAL_TO_FMTSTR(measured, 2, TRUE);
 display := LREAL_TO_FMTSTR(in := measured, iPrecision := 3, bRound := FALSE);
 END_PROGRAM
 ";
-    let options = CompilerOptions::default();
-    let library_original = parse_program(source, &FileId::default(), &options).unwrap();
-    let rendered = write_to_string(&library_original).unwrap();
+    let rendered = assert_round_trips(source, &CompilerOptions::default());
 
     // The calls come through unchanged, under the exact vendor name and the
     // vendor's formal parameter names.
@@ -37,7 +35,4 @@ END_PROGRAM
     // Nothing of the library implementation leaks into rendered user source.
     assert!(!rendered.contains("__TRUNC"));
     assert!(!rendered.contains("0123456789"));
-
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
-    assert_eq!(library_original, library_rendered);
 }

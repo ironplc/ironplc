@@ -18,13 +18,9 @@ END_FUNCTION_BLOCK
         allow_short_circuit_operators: true,
         ..CompilerOptions::default()
     };
-    let library_original = parse_program(source, &FileId::default(), &options).unwrap();
-    let rendered = write_to_string(&library_original).unwrap();
+    let rendered = assert_round_trips(source, &options);
 
     // Must not be silently normalized to "AND" -- the short-circuit
     // spelling is real, externally-visible behavior in TwinCAT/CODESYS.
     assert!(rendered.contains("AND_THEN"));
-
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
-    assert_eq!(library_original, library_rendered);
 }

@@ -24,12 +24,8 @@ END_FUNCTION_BLOCK
         allow_ref_to: true,
         ..CompilerOptions::default()
     };
-    let library_original = parse_program(source, &FileId::default(), &options).unwrap();
-    let rendered = write_to_string(&library_original).unwrap();
+    let rendered = assert_round_trips(source, &options);
 
     assert!(rendered.contains("pDevice"));
     assert!(rendered.contains("Delta"));
-
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
-    assert_eq!(library_original, library_rendered);
 }

@@ -18,21 +18,20 @@ END_FUNCTION_BLOCK
         allow_mixed_located_var_declarations: true,
         ..CompilerOptions::default()
     };
-    let library_original = parse_program(source, &FileId::default(), &options).unwrap();
-    let rendered = write_to_string(&library_original).unwrap();
+
+    // The renderer emits one VAR...END_VAR block per declaration
+    // (pre-existing behavior, not specific to this feature), so the
+    // located and plain variables end up in separate rendered blocks.
+    // Re-parsing therefore no longer sees them as "mixed" (each rendered
+    // block contains only one variable), so AST equality against the
+    // original is not the right assertion here -- idempotency is.
+    let rendered = assert_round_trips_idempotently(source, &options);
 
     assert!(rendered.contains("AT %I*"));
     assert!(rendered.contains("tempSensor"));
     assert!(rendered.contains("fbComm"));
 
-    // The renderer emits one VAR...END_VAR block per declaration
-    // (pre-existing behavior, not specific to this feature), so the
-    // located and plain variables end up in separate rendered blocks.
-    // Re-parsing therefore no longer sees them as "mixed" (each
-    // rendered block contains only one variable), so a strict library
-    // equality check against the original isn't meaningful here.
-    // Instead, verify the rendered output re-parses cleanly under the
-    // same flag and both variables keep their original shape.
+    // Both variables keep their original shape through the round trip.
     let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
 
     let fb = match &library_rendered.elements[0] {

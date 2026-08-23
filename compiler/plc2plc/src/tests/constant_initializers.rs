@@ -19,12 +19,8 @@ END_PROGRAM
         allow_constant_initializer_expressions: true,
         ..CompilerOptions::default()
     };
-    let library_original = parse_program(source, &FileId::default(), &options).unwrap();
-    let rendered = write_to_string(&library_original).unwrap();
+    let rendered = assert_round_trips(source, &options);
 
     assert!(rendered.contains("SCALE"));
     assert!(rendered.contains("180.5"));
-
-    let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();
-    assert_eq!(library_original, library_rendered);
 }
