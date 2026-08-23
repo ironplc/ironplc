@@ -27,4 +27,7 @@ statically, so this trap is reached only via:
 2. **A tampered or hand-crafted ``.iplc`` file** that holds an
    unrecognized encoding tag.
 
+This error should not occur during normal operation. It indicates a bug in
+the IronPLC compiler or VM, or a corrupted ``.iplc`` file.
+
 .. include:: ../../../includes/report-internal-vm-error.rst

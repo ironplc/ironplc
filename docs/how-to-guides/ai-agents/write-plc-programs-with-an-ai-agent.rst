@@ -13,9 +13,7 @@ access to the IronPLC compiler — the agent can check syntax, run semantic
 analysis, look up error explanations, and compile programs without you
 running commands manually.
 
-.. note::
-   This guide assumes you have installed the IronPLC Compiler. See
-   :ref:`installation steps target` if you have not already installed it.
+.. include:: ../../includes/requires-compiler.rst
 
 --------------------------------------
 Prerequisites

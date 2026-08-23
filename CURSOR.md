@@ -84,5 +84,6 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 3. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
 4. **BDD-style test names**: `function_when_condition_then_result`
 5. **Module size limit**: Max 1000 lines per module
-6. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
-7. **Version numbers**: Automatically managed - do not edit manually
+6. **No duplicated content** - Including in documentation; share via `docs/includes/` and `.. include::` ([Avoid Duplication](specs/steering/development-standards.md#avoid-duplication))
+7. **Problem codes**: Must be documented in `docs/compiler/problems/P####.rst`
+8. **Version numbers**: Automatically managed - do not edit manually
