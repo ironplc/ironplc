@@ -21,6 +21,6 @@ END_VAR
 r REF= counter ;
 value := r^ ;
 r^ := 99 ;
-refs [ 0 ] REF= counter ;
-value := refs [ 0 ]^ ;
+refs[ 0 ] REF= counter ;
+value := refs[ 0 ]^ ;
 END_PROGRAM
