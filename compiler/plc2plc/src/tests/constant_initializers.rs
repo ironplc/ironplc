@@ -19,8 +19,5 @@ END_PROGRAM
         allow_constant_initializer_expressions: true,
         ..CompilerOptions::default()
     };
-    let rendered = assert_round_trips(source, &options);
-
-    assert!(rendered.contains("SCALE"));
-    assert!(rendered.contains("180.5"));
+    assert_round_trips(source, &options);
 }

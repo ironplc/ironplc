@@ -24,8 +24,8 @@ END_PROGRAM
 ";
     let rendered = assert_round_trips(source, &CompilerOptions::default());
 
-    // The calls come through unchanged, under the exact vendor name and the
-    // vendor's formal parameter names.
+    // `Id` equality is case-insensitive, so the round trip alone does not
+    // pin the spelling: these check the vendor casing survives verbatim.
     for name in ["LREAL_TO_FMTSTR", "iPrecision", "bRound"] {
         assert!(
             rendered.contains(name),

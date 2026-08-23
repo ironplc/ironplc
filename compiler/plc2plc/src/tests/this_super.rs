@@ -67,8 +67,7 @@ END_METHOD
 END_FUNCTION_BLOCK
 "
 )]
-// Subscript after `THIS^.field`: the chain `THIS^ . values [ 2 ]` used to
-// render with a space before `[`, which does not re-parse (issue #1407).
+// Subscript after `THIS^.field`: every element of the chain renders tight.
 #[case::this_field_subscript(
     "
 FUNCTION_BLOCK FB_Motor

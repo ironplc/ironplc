@@ -1,10 +1,8 @@
 //! Shared imports and the round-trip assertions every renderer test uses.
 //!
-//! Rendering alone does not prove the output is usable: the renderer can
-//! emit text the parser rejects, and a golden-file comparison happily
-//! records the broken spelling as "expected" (that is how `myRef ^` and
-//! `refs [ 0 ]` survived — issues #1404 and #1407). So every test here
-//! re-parses what it rendered. A renderer test is therefore one of:
+//! Rendering alone does not prove the output is usable: a golden-file
+//! comparison cannot tell correct output from output the parser rejects. So
+//! every test here re-parses what it rendered, and is one of:
 //!
 //! 1. [`assert_round_trips`] — parse → render → re-parse, same AST; or
 //! 2. [`assert_resource_renders_to`] — the same round trip, plus the
@@ -14,8 +12,9 @@
 //! that deliberately normalize to a different AST spelling. It still
 //! re-parses; it just compares text-to-text instead of AST-to-AST.
 //!
-//! All three return the rendered text, so a test that wants to pin a
-//! specific spelling can add its own `contains` assertions on top.
+//! All three return the rendered text. Add a `contains` assertion on top
+//! only for what AST equality cannot see -- identifier casing (`Id` compares
+//! case-insensitively) or a spelling the AST does not record.
 
 pub(crate) use std::fs;
 pub(crate) use std::path::PathBuf;
@@ -45,13 +44,9 @@ pub(crate) fn edition3() -> CompilerOptions {
 /// re-parse to succeed and to produce the same AST. Returns the rendered
 /// text.
 ///
-/// This is the default assertion for a renderer test. The re-parse is the
-/// part that matters: it is what turns a stray space into a test failure
-/// instead of a silently-recorded golden value.
-///
-/// The rendering is re-parsed with the *same* options as the source. A
-/// rendering that only re-parses under a laxer dialect than its source
-/// needed is still a renderer bug.
+/// This is the default assertion for a renderer test. The rendering is
+/// re-parsed with the *same* options as the source: a rendering that needs a
+/// laxer dialect than its source did is a renderer bug.
 pub(crate) fn assert_round_trips(source: &str, options: &CompilerOptions) -> String {
     let library_original = parse_program(source, &FileId::default(), options)
         .unwrap_or_else(|e| panic!("Source did not parse: {e:?}\n{source}"));
@@ -98,9 +93,9 @@ pub(crate) fn assert_round_trips_idempotently(source: &str, options: &CompilerOp
 /// additionally pins the rendered text against the committed golden file
 /// `rendered_name` under `plc2plc/resources/test`.
 ///
-/// Use this when the exact rendered layout is worth freezing. The round
-/// trip is what proves the golden file is *valid* input; the comparison is
-/// what proves it has not changed.
+/// Use this when the exact rendered layout is worth freezing. The round trip
+/// proves the golden file is *valid* input; the comparison proves it has not
+/// changed.
 pub(crate) fn assert_resource_renders_to(
     source_name: &'static str,
     rendered_name: &'static str,
@@ -117,8 +112,8 @@ pub(crate) fn assert_resource_renders_to(
 /// unchanged. Returns the rendered text.
 ///
 /// A hand-built library has no source to compare against, so this is the
-/// round trip's other half: proof that what the renderer emits for that
-/// AST shape is text the parser accepts.
+/// round trip's other half: proof that what the renderer emits for that AST
+/// shape is text the parser accepts.
 pub(crate) fn assert_library_renders_to_parseable_text(
     library: &dsl::common::Library,
     options: &CompilerOptions,

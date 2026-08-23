@@ -12,7 +12,7 @@ fn inheritance_options() -> CompilerOptions {
 
 #[test]
 fn write_to_string_when_extends_implements_and_interface_then_round_trips() {
-    let rendered = assert_round_trips(
+    assert_round_trips(
         "
 INTERFACE I_Drivable
 END_INTERFACE
@@ -34,16 +34,11 @@ END_FUNCTION_BLOCK
 ",
         &inheritance_options(),
     );
-
-    assert!(rendered.contains("EXTENDS FB_Motor"));
-    assert!(rendered.contains("IMPLEMENTS I_Drivable , I_Loggable"));
-    assert!(rendered.contains("INTERFACE I_Drivable"));
-    assert!(rendered.contains("END_INTERFACE"));
 }
 
 #[test]
 fn write_to_string_when_interface_extends_base_then_round_trips() {
-    let rendered = assert_round_trips(
+    assert_round_trips(
         "
 INTERFACE I_BaseAxis
 END_INTERFACE
@@ -53,14 +48,11 @@ END_INTERFACE
 ",
         &inheritance_options(),
     );
-
-    assert!(rendered.contains("INTERFACE I_Focus"));
-    assert!(rendered.contains("EXTENDS I_BaseAxis"));
 }
 
 #[test]
 fn write_to_string_when_abstract_fb_then_round_trips() {
-    let rendered = assert_round_trips(
+    assert_round_trips(
         "
 FUNCTION_BLOCK ABSTRACT FB_BaseAxis IMPLEMENTS I_BaseAxis
 VAR
@@ -73,6 +65,4 @@ END_INTERFACE
 ",
         &inheritance_options(),
     );
-
-    assert!(rendered.contains("FUNCTION_BLOCK ABSTRACT FB_BaseAxis"));
 }

@@ -18,9 +18,7 @@ END_FUNCTION_BLOCK
         allow_short_circuit_operators: true,
         ..CompilerOptions::default()
     };
-    let rendered = assert_round_trips(source, &options);
-
-    // Must not be silently normalized to "AND" -- the short-circuit
-    // spelling is real, externally-visible behavior in TwinCAT/CODESYS.
-    assert!(rendered.contains("AND_THEN"));
+    // `AND_THEN` and `AND` are distinct operators, so the round trip is what
+    // proves the short-circuit spelling is not normalized away.
+    assert_round_trips(source, &options);
 }

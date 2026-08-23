@@ -24,7 +24,8 @@ END_PROGRAM
 ";
     let rendered = assert_round_trips(source, &CompilerOptions::default());
 
-    // The calls come through unchanged, under their exact vendor names.
+    // `Id` equality is case-insensitive, so the round trip alone does not
+    // pin the spelling: these check the vendor casing survives verbatim.
     for name in ["MODABS", "LMOD", "LTRUNC", "FRAC"] {
         assert!(
             rendered.contains(name),

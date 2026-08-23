@@ -19,17 +19,11 @@ END_FUNCTION_BLOCK
         ..CompilerOptions::default()
     };
 
-    // The renderer emits one VAR...END_VAR block per declaration
-    // (pre-existing behavior, not specific to this feature), so the
-    // located and plain variables end up in separate rendered blocks.
-    // Re-parsing therefore no longer sees them as "mixed" (each rendered
-    // block contains only one variable), so AST equality against the
-    // original is not the right assertion here -- idempotency is.
+    // The renderer emits one VAR...END_VAR block per declaration, so the
+    // located and plain variables land in separate rendered blocks and the
+    // re-parse no longer sees them as "mixed". AST equality against the
+    // original is therefore not the right assertion here -- idempotency is.
     let rendered = assert_round_trips_idempotently(source, &options);
-
-    assert!(rendered.contains("AT %I*"));
-    assert!(rendered.contains("tempSensor"));
-    assert!(rendered.contains("fbComm"));
 
     // Both variables keep their original shape through the round trip.
     let library_rendered = parse_program(&rendered, &FileId::default(), &options).unwrap();

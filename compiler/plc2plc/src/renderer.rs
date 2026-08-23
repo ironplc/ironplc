@@ -175,9 +175,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &ironplc_dsl::common::SignedInteger,
     ) -> Result<Self::Value, Diagnostic> {
         if node.is_neg {
-            // The separating space goes *before* the sign, not between the
-            // sign and the digits: the parser's signed-integer rule joins
-            // them into one token, so `- 10` does not parse.
+            // The sign belongs to the literal, so the separating space goes
+            // before it, never between it and the digits.
             self.write_ws("-");
             self.write(node.value.value.to_string().as_str());
             return Ok(());
@@ -191,10 +190,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             val.push_str(data_type.as_id().original());
             val.push('#');
         }
-        // A whole-valued real must keep its decimal point. `f64::to_string`
-        // renders 11.0 as "11", which either re-parses as an integer literal
-        // (changing the AST) or, after a `LREAL#` prefix, does not parse at
-        // all -- the grammar requires a fixed or floating point there.
+        // A real literal always carries a decimal point; `f64::to_string`
+        // drops it for whole values.
         let mut value = node.value.to_string();
         if node.value.is_finite() && !value.contains(['.', 'e', 'E']) {
             value.push_str(".0");
@@ -520,10 +517,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("]");
 
         if let Some(init) = &node.init {
-            // Single quotes delimit a STRING, double quotes a WSTRING (IEC
-            // 61131-3 2.2.2) -- the same mapping visit_string_initializer
-            // uses. These two were swapped, so a STRING initializer rendered
-            // as a WSTRING literal and re-parsed to a different AST.
+            // Single quotes delimit a STRING, double quotes a WSTRING.
             let char = match node.width {
                 StringType::String => "'",
                 StringType::WString => "\"",
@@ -860,8 +854,6 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         if !node.initial_values.is_empty() {
             self.write_ws(":=");
 
-            // The list is bracketed: `:= [2, 7, 18]`. Without the brackets
-            // the rendering does not parse.
             self.write_ws("[");
             visit_comma_separated!(self, node.initial_values.iter(), ArrayInitialElementKind);
             self.write_ws("]");
@@ -870,9 +862,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    /// A repeated array element renders as `count(value)`. Without the
-    /// parentheses the default recursive visit writes `3 2`, which does not
-    /// parse.
+    /// Renders a repeated array element, `count(value)`.
     fn visit_repeated(
         &mut self,
         node: &ironplc_dsl::common::Repeated,
@@ -1270,9 +1260,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         }
         self.outdent();
 
-        // Every instance-specific initialization goes in *one* VAR_CONFIG
-        // block: the grammar allows a configuration at most one, so a block
-        // per initializer does not re-parse.
+        // A configuration has a single VAR_CONFIG block holding every
+        // instance-specific initialization.
         if !node.fb_inits.is_empty() || !node.located_var_inits.is_empty() {
             self.indent();
             self.write_ws("VAR_CONFIG");
@@ -1836,11 +1825,9 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_symbolic_variable_kind(&node.subscripted_variable)?;
 
-        // No separating space before `[`: the parser's `symbolic_variable`
-        // rule chains `.field`, `[i]` and `^` with no optional-whitespace
-        // rule between them, so `refs [ 0 ]` does not re-parse. The space
-        // *inside* the brackets is fine -- `subscript_list` allows `_`
-        // after `[` and before `]`.
+        // No space before `[`: the parser's `symbolic_variable` rule admits
+        // none between a variable and its subscript. Inside the brackets is
+        // fine -- `subscript_list` allows it.
         self.write("[");
         visit_comma_separated!(self, node.subscripts.iter(), Expr);
         self.write_ws("]");

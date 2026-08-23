@@ -31,11 +31,8 @@ checks "it parses" is subsumed by the round-trip test on the same snippet. See
 
 Rendering is only half the job — what the renderer emits has to be text the
 parser accepts. A test that only compares the rendering against a golden
-`*_rendered.st` file cannot tell the difference between correct output and
-output the parser rejects: it records the broken spelling as "expected". That
-is how `myRef ^` (#1404), `refs [ 0 ]` (#1407), a bracket-less array
-initializer, and swapped STRING/WSTRING quotes all survived in committed
-fixtures.
+`*_rendered.st` file cannot tell correct output from output the parser
+rejects: it records the broken spelling as "expected".
 
 So every renderer test **re-parses what it rendered**. A plc2plc test is one
 of two shapes, both provided by `plc2plc/src/tests/common.rs`:
@@ -47,8 +44,12 @@ of two shapes, both provided by `plc2plc/src/tests/common.rs`:
    equality check of the rendered text against the committed
    `*_rendered.st`. Use it when the exact layout is worth freezing.
 
-Both return the rendered text, so a test that wants to pin one spelling can
-add `assert!(rendered.contains(...))` on top. Never assert only `contains`.
+Both return the rendered text. Add `assert!(rendered.contains(...))` on top
+only for what AST equality cannot see — identifier casing (`Id` compares
+case-insensitively) or a spelling the AST does not record, such as
+`STRING [ 255 ]` where the DSL keeps no bracket/paren marker. A `contains`
+that merely restates something the re-parse already proves is redundant;
+drop it. Never assert only `contains`.
 
 When the rendering deliberately normalizes to a *different* AST spelling — a
 bit-string literal that decimalizes, a mixed `VAR` block that renders one

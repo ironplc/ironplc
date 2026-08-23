@@ -24,8 +24,5 @@ END_FUNCTION_BLOCK
         allow_ref_to: true,
         ..CompilerOptions::default()
     };
-    let rendered = assert_round_trips(source, &options);
-
-    assert!(rendered.contains("pDevice"));
-    assert!(rendered.contains("Delta"));
+    assert_round_trips(source, &options);
 }

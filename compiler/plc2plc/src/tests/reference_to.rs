@@ -22,9 +22,7 @@ fn write_to_string_ref() {
 /// Each case parses a small program under the edition-3 dialect, renders it
 /// back to text, re-parses the rendering (same AST required), and checks the
 /// rendering contains the expected fragment. The re-parse is what catches a
-/// stray space the fragment check would miss: `myRef ^` (#1404) and
-/// `refs [ 0 ]` (#1407) both rendered "correctly enough" to satisfy a
-/// `contains` while being text the parser rejects.
+/// stray space the fragment check would miss.
 #[rstest]
 #[case::ref_to_var_decl(
     "PROGRAM main
@@ -97,10 +95,9 @@ END_VAR
 END_PROGRAM",
     "NULL"
 )]
-// Array subscripts, in expression and assignment-target position: the
-// renderer used to emit `refs [ 0 ]`, which the parser rejects because
-// `symbolic_variable` chains its elements with no whitespace rule between
-// them (issue #1407).
+// Array subscripts, in expression and assignment-target position. A
+// subscript renders tight against its variable -- `symbolic_variable`
+// chains its elements with no whitespace rule between them.
 #[case::subscript_expression(
     "PROGRAM main
 VAR

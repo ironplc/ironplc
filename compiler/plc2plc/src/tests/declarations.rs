@@ -8,12 +8,9 @@ fn write_to_string_late_bound_declaration() {
         DataTypeDeclarationKind, LateBoundDeclaration, Library, LibraryElementKind, TypeName,
     };
 
-    // A late-bound declaration is what the parser produces when the base
-    // type is a name it cannot resolve yet, so the base must be a
-    // user-defined name -- an elementary base like `INT` resolves to a
-    // simple type declaration instead and never reaches this node. The
-    // library is built directly because there is no other way to reach the
-    // node from a single source file.
+    // The base type must be a user-defined name: an elementary base resolves
+    // to a simple type declaration and never reaches this node. Building the
+    // library directly is the only way to reach it from one source file.
     let late_bound_decl = LateBoundDeclaration {
         data_type_name: TypeName::from("MY_ALIAS"),
         base_type_name: TypeName::from("MY_BASE"),
@@ -85,8 +82,8 @@ END_FUNCTION_BLOCK
     // length: Option<IntegerRef> with no delimiter distinction.
     assert!(rendered.contains("STRING [ 255 ]"));
 
-    // The normalized output therefore parses under any dialect, including
-    // the strict default the source itself could not use.
+    // The normalized output parses under any dialect, including the strict
+    // default the source itself could not use.
     parse_program(&rendered, &FileId::default(), &CompilerOptions::default())
         .expect("normalized bracket form must parse without allow_paren_string_length");
 }
@@ -98,7 +95,7 @@ END_FUNCTION_BLOCK
 
 #[test]
 fn write_to_string_when_fb_instance_call_style_init_then_round_trips() {
-    let rendered = assert_round_trips(
+    assert_round_trips(
         "
 FUNCTION_BLOCK FB_Comm
 VAR_INPUT
@@ -114,6 +111,4 @@ END_FUNCTION_BLOCK
 ",
         &CompilerOptions::default(),
     );
-
-    assert!(rendered.contains("FB_Comm ( retries := 3 , THIS )"));
 }
