@@ -411,7 +411,12 @@ pub(crate) fn array_spec_for_declaration(
                 dimensions,
             } = array_type
             else {
-                unreachable!("resolve_array_type guarantees Array variant");
+                // `resolve_array_type` returns only the Array variant, so this
+                // is a compiler invariant rather than anything the program did.
+                return Err(Diagnostic::internal_error_at(Label::span(
+                    type_name.span(),
+                    "Array type resolved to a non-array representation",
+                )));
             };
             array_spec_from_named(element_type, dimensions)
         }

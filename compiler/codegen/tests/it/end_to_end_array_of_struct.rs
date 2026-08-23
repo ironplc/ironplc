@@ -558,11 +558,45 @@ END_PROGRAM
 // the assertion is on the compile result rather than on run values.
 
 /// Compiles `source` with default options and asserts codegen rejects it
-/// with the not-implemented problem code.
+/// with the not-implemented problem code (P9999) -- a capability we intend to
+/// support but have not built yet.
 fn assert_codegen_rejects(source: &str, what: &str) {
+    assert_codegen_rejects_with(source, what, "P9999");
+}
+
+/// Compiles `source` with default options and asserts codegen rejects it with
+/// `expected_code`.
+fn assert_codegen_rejects_with(source: &str, what: &str, expected_code: &str) {
     let result = try_parse_and_compile(source, &CompilerOptions::default());
     assert!(result.is_err(), "expected compilation to fail for {}", what);
-    assert_eq!(result.unwrap_err().code, "P9999", "for {}", what);
+    assert_eq!(result.unwrap_err().code, expected_code, "for {}", what);
+}
+
+// A fixed limit of the bytecode format, not a missing feature, so it reports
+// P9997 (NotSupported) rather than P9999 (NotImplemented) -- P9999 promises
+// "not yet", and this limit is not going to be lifted by a later release.
+//
+// This is the example in docs/reference/compiler/problems/P9997.rst; keep the
+// two in step.
+#[test]
+fn compile_when_top_level_array_of_struct_exceeds_slot_limit_then_not_supported() {
+    assert_codegen_rejects_with(
+        "
+TYPE Item : STRUCT
+  a : DINT;
+  b : DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    readings : ARRAY[1..40000] OF Item;
+  END_VAR
+END_PROGRAM
+",
+        "an array of structures over the slot limit",
+        "P9997",
+    );
 }
 
 #[test]

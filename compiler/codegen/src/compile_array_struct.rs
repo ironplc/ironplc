@@ -226,14 +226,14 @@ fn struct_array_element_field<'ctx, 'ast>(
     let mut dimensions = dimensions_from_intermediate(array_dims);
     for dim in &mut dimensions {
         dim.stride = dim.stride.checked_mul(element_slots).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(array_span.clone(), "Array too large"))
+            Diagnostic::not_supported(Label::span(array_span.clone(), "Array too large"))
         })?;
     }
 
     let combined_offset = base_slot_offset
         .checked_add(leaf_slot_offset.raw())
         .ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(array_span.clone(), "Array too large"))
+            Diagnostic::not_supported(Label::span(array_span.clone(), "Array too large"))
         })?;
 
     Ok(ResolvedAccess::StructFieldArrayElement {
@@ -343,18 +343,18 @@ pub(crate) fn register_struct_array_variable(
     for dim in dimensions {
         let size = (dim.upper as i64 - dim.lower as i64 + 1).max(0) as u32;
         total_elements = total_elements.checked_mul(size).ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Array too large"))
+            Diagnostic::not_supported(Label::span(span.clone(), "Array too large"))
         })?;
     }
 
     let total_slots = total_elements
         .checked_mul(element_slots)
-        .ok_or_else(|| Diagnostic::not_implemented(Label::span(span.clone(), "Array too large")))?;
+        .ok_or_else(|| Diagnostic::not_supported(Label::span(span.clone(), "Array too large")))?;
 
     // The flat index is computed in slots, so the slot count -- not the
     // element count -- is what must stay within i32 arithmetic.
     if total_slots > super::compile::MAX_DATA_REGION_SLOTS {
-        return Err(Diagnostic::not_implemented(Label::span(
+        return Err(Diagnostic::not_supported(Label::span(
             span.clone(),
             "Array exceeds maximum 32768 slots",
         )));
@@ -362,18 +362,18 @@ pub(crate) fn register_struct_array_variable(
 
     let data_offset = ctx.data_region_offset;
     let total_bytes = total_slots.checked_mul(8).ok_or_else(|| {
-        Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
+        Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
     })?;
     ctx.data_region_offset = ctx
         .data_region_offset
         .checked_add(total_bytes)
         .ok_or_else(|| {
-            Diagnostic::not_implemented(Label::span(span.clone(), "Data region overflow"))
+            Diagnostic::not_supported(Label::span(span.clone(), "Data region overflow"))
         })?;
 
     // The offset is stored in the variable slot via LOAD_CONST_I32.
     if ctx.data_region_offset > i32::MAX as u32 {
-        return Err(Diagnostic::not_implemented(Label::span(
+        return Err(Diagnostic::not_supported(Label::span(
             span.clone(),
             "Data region exceeds 2 GiB limit",
         )));
