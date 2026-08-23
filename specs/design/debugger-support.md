@@ -301,7 +301,7 @@ The DAP server scans the debug section directory for the tags it needs and ignor
 |-------------|---------------|-------------------|
 | `setBreakpoints` | Line maps | Resolve source line → (function_id, bytecode_offset); snap to nearest valid line |
 | `stackTrace` | Function names + line maps | Frame name (FuncNameEntry.name) + source location (LineMapEntry.source_line) |
-| `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL). Alongside these program scopes sits a **`Runtime`** scope carrying VM-level state that is not a program variable — currently `scanCount` (see §Scopes). |
+| `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL). Alongside these program scopes sits a **`Runtime`** scope carrying VM-level state that is not a program variable — currently `scanCount` and `systemUptime` (see §Scopes). |
 | `variables` | Variable names + type section | Name (VarNameEntry.name), type (VarNameEntry.type_name), value (read from VariableTable, formatted according to type) |
 | `evaluate` | Variable names | Look up variable by name, return formatted value |
 
@@ -1082,7 +1082,7 @@ The "Legal in" column lists the VM `Phase` values in which each request is accep
 | `threads` | RUNNING, PausedAt | One DAP thread for the single program instance (v1 hard limit: one instance, enforced at launch) |
 | `stackTrace` | PausedAt | Walk `frames` top-to-bottom; for each frame produce `name = func_names[function_id]`, `line/column = line_map.lookup(function_id, pc)` |
 | `scopes` | PausedAt | IEC-specific scopes, filtered by `var_section` of the topmost frame's `function_id`, plus the `Runtime` scope (see §Scopes) |
-| `variables` | PausedAt | Dispatch on `variablesReference`: program scopes read from `VariableTable` and format per `iec_type_tag`; the `Runtime` scope reports VM state (see §Scopes) |
+| `variables` | PausedAt | Dispatch on `variablesReference`: program scopes read from `VariableTable` and format per `iec_type_tag`; the `Runtime` scope reports VM state — scan count and uptime (see §Scopes) |
 | `continue` | PausedAt (non-terminal) | Clear step mode; re-enter `run_round_debug` |
 | `next` | PausedAt (non-terminal) | Set `StepMode::StepOver` (origin = current line, depth = current depth); re-enter |
 | `stepIn` | PausedAt (non-terminal) | Set `StepMode::StepIn`; re-enter |
@@ -1102,7 +1102,7 @@ is not a program scope at all:
 | Scope | Contents |
 |-------|----------|
 | `Program` | The program's ST variables, unfiltered — locals and globals together. (Splitting this into per-`var_section` scopes — Locals, Inputs, Outputs, In/Out, Globals — is the eventual shape; today it is one flat scope.) |
-| `Runtime` | VM-level state that is not a program variable. Currently `scanCount` (type `ULINT`), the number of *completed* scan cycles. |
+| `Runtime` | VM-level state that is not a program variable. Currently `scanCount` (type `ULINT`), the number of *completed* scan cycles, and `systemUptime` (type `LINT`), the VM's monotonic clock in milliseconds as of the start of the paused scan. |
 
 **Why `Runtime` is a scope rather than a button.** The scan count changes every
 cycle, so it is a value to *watch* while stepping, not one to *ask for*. A
@@ -1126,6 +1126,15 @@ globals — and would have to be corrected when the `var_section` split lands.
 Because there is now more than one scope, `variables` dispatches on the
 requested `variablesReference`. A reference the server never issued returns an
 empty list rather than defaulting to the program variables.
+
+**Why `systemUptime` does not depend on the uptime globals.** `__SYSTEM_UP_TIME`
+and `__SYSTEM_UP_LTIME` are written only when the program was compiled with
+`--allow-system-uptime-global` (`FLAG_HAS_SYSTEM_UPTIME`), but the VM receives
+the clock at the start of every scan either way. `VmRunning` records it
+(`system_time_us`, read through `uptime_ms()`) independently of the flag, so the
+debugger can show time for any program. The recorded value moves on a *fresh*
+scan only — resuming a paused scan keeps it — so what is on screen is the time
+the paused code is executing against.
 
 Future runtime metrics (cycle time, next-due) belong in `Runtime` and need no
 further scope.
