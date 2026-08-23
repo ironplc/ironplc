@@ -24,7 +24,9 @@ use ironplc_analyzer::symbol_environment::ScopeKind;
 use ironplc_analyzer::SemanticContext;
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, VarNameEntry};
 use ironplc_container::Container;
-use ironplc_vm::{assume_freewheeling_interval, first_task_interval, Vm, VmBuffers};
+use ironplc_vm::{
+    assume_freewheeling_interval, first_task_interval, has_freewheeling_task, Vm, VmBuffers,
+};
 use serde_json::Value;
 
 use crate::cache::{CachedContainer, ResolvedVar, VariableSymbolMap};
@@ -233,16 +235,20 @@ impl TerminatedReason {
 /// [`TerminatedReason::Duration`].
 ///
 /// `freewheeling_interval` is the cycle time to assume for tasks that declare
-/// no `INTERVAL` (REQ-TOL-mcp-049). A freewheeling task has no rate of its own,
-/// so without one there is nothing to advance simulated time by and the round
-/// loop would stop after a single cycle. The assumption is applied by rewriting
-/// the task table before the VM loads it; whichever cycle time the run ended up
-/// executing at comes back as [`RunOutcome::interval`].
+/// no `INTERVAL` (REQ-TOL-mcp-049), and is applied by rewriting the task table
+/// before the VM loads it. Whichever cycle time the run ended up executing at
+/// comes back as [`RunOutcome::interval`].
+///
+/// `None` keeps such tasks freewheeling — run as fast as you can, the thing a
+/// freewheeling task means on real hardware. Nothing then defines how much
+/// program time a cycle takes, so simulated time does not advance and
+/// `duration_ms` cannot end the run: it scans until a sandbox limit stops it,
+/// and reports that limit as the reason.
 pub fn execute(
     cached: &CachedContainer,
     trace_set: &[ResolvedVar],
     duration_ms: u64,
-    freewheeling_interval: Duration,
+    freewheeling_interval: Option<Duration>,
     limits: EffectiveLimits,
 ) -> Result<RunOutcome, String> {
     let mut bytes = cached.iplc_bytes.as_slice();
@@ -254,9 +260,16 @@ pub fn execute(
     // step — `next_due_us()`, the round loop, `time_ms` stamping — works off
     // the task table as usual, with no freewheeling special case. Reading the
     // interval back afterwards therefore reports one cycle time whether the
-    // program declared it or the caller supplied it.
-    assume_freewheeling_interval(&mut container, freewheeling_interval);
+    // program declared it or the caller supplied it — and zero when the caller
+    // asked for no rate at all.
+    if let Some(assumed) = freewheeling_interval {
+        assume_freewheeling_interval(&mut container, assumed);
+    }
     let interval = first_task_interval(&container).unwrap_or_default();
+    // With no rate to advance time by, a freewheeling task still has to run.
+    // The scheduler reports it ready every round, so the loop keeps scanning
+    // at a standstill clock until a sandbox limit ends the run.
+    let freewheeling = has_freewheeling_task(&container);
 
     let task_names: Vec<String> = cached.tasks.iter().map(|t| t.name.clone()).collect();
 
@@ -397,12 +410,15 @@ pub fn execute(
             });
         }
 
-        // Advance simulated time past this cycle. Freewheeling tasks were
-        // rewritten to cyclic above, so `None` here means the container has
-        // nothing left that can ever be scheduled; break rather than spin.
+        // Advance simulated time past this cycle. `None` means no cyclic task
+        // is left to wait for: either the run is freewheeling with no assumed
+        // rate — where time standing still is the point, and a limit ends the
+        // run — or the container has nothing that can ever be scheduled, and
+        // spinning would be pointless.
         match running.next_due_us() {
             Some(next) if next > current_us => simulated_us = next,
             Some(_) => simulated_us = current_us.saturating_add(1),
+            None if freewheeling => {}
             None => break TerminatedReason::Completed,
         }
     };

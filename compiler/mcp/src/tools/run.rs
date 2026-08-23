@@ -336,12 +336,14 @@ fn build_success_response(
 /// the debugger takes the same input and applies the same rule. The rejection
 /// quotes that rule rather than restating it, so the message cannot claim a
 /// bound the check does not enforce.
-fn resolve_freewheeling_interval(interval_ms: Option<f64>) -> Result<Duration, Vec<Diagnostic>> {
+fn resolve_freewheeling_interval(
+    interval_ms: Option<f64>,
+) -> Result<Option<Duration>, Vec<Diagnostic>> {
     let Some(ms) = interval_ms else {
-        return Ok(DEFAULT_FREEWHEELING_INTERVAL);
+        return Ok(Some(DEFAULT_FREEWHEELING_INTERVAL));
     };
 
-    interval_from_ms(ms).map_err(|e| {
+    interval_from_ms(ms).map(Some).map_err(|e| {
         vec![validation(&format!(
             "freewheeling_interval_ms ({ms}) {e}. It is the cycle time to assume for tasks that \
              declare no INTERVAL."
@@ -707,6 +709,33 @@ END_VAR
   Counter := Counter + 1;
 END_PROGRAM
 "#;
+
+    /// `runner::execute` with no assumed cycle time is the "run as fast as you
+    /// can" mode: nothing defines how long a cycle takes, so simulated time
+    /// stands still and a sandbox limit is what ends the run. The `run` tool
+    /// always supplies a cycle time, so this exercises the runner directly.
+    #[test]
+    fn execute_when_no_assumed_interval_then_scans_until_a_limit_stops_it() {
+        let cache = make_cache();
+        let id = compile_into(&cache, FREEWHEELING_PROGRAM);
+        let snapshot = {
+            let mut guard = cache.lock().unwrap();
+            guard.get(&id).unwrap().clone_for_run()
+        };
+        let limits = EffectiveLimits {
+            max_samples: 25,
+            ..EffectiveLimits::DEFAULTS
+        };
+
+        let outcome = runner::execute(&snapshot, &[], 500, None, limits).unwrap();
+
+        // Not one cycle, and not bounded by the requested duration.
+        assert_eq!(outcome.terminated_reason, TerminatedReason::SampleCap);
+        assert_eq!(outcome.completed_cycles[0].1, 25);
+        // No cycle time was defined, so no simulated time passed.
+        assert_eq!(outcome.interval, Duration::ZERO);
+        assert!(outcome.trace.iter().all(|s| s.time_ms == 0));
+    }
 
     #[test]
     fn build_response_when_freewheeling_program_then_runs_for_full_duration() {
