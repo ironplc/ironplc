@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.239.0">
+<meta name="ironplc-version" content="0.240.0">
 </head>
   <body>
     
@@ -224,6 +224,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/sense-control-actuate.html">How a PLC Program Works</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/helloworld.html">Your First Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/configuring.html">Configuring Your Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../quickstart/debugging.html">Debugging Your Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/multiple-files.html">Working with Multiple Files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/compiling-and-running.html">Connecting to Hardware</a></li>
 </ul>
@@ -232,6 +233,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../how-to-guides/getting-started/index.html">Getting Started</a><input aria-label="Toggle navigation of Getting Started" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../how-to-guides/getting-started/check-compile-run-from-cli.html">Check, Compile, and Run from the CLI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../how-to-guides/getting-started/structure-a-multi-file-project.html">Structure a Multi-File Project</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../how-to-guides/getting-started/debug-a-program.html">Debug a Program</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../how-to-guides/getting-started/read-compiler-error-messages.html">Read Compiler Error Messages</a></li>
 </ul>
 </li>
@@ -325,6 +327,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/implements.html">IMPLEMENTS</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/interface.html">INTERFACE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/language/structured-text/index.html">Structured Text</a><input aria-label="Toggle navigation of Structured Text" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -553,6 +557,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4045.html">P4045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4046.html">P4046</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4047.html">P4047</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4048.html">P4048</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -578,6 +584,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../reference/runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../reference/runtime/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/runtime/ironplcvm.html">Command Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/runtime/ironplcvmd.html">Debug Server</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/runtime/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" role="switch" type="checkbox"/><label for="toctree-checkbox-27"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4001.html">V4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4002.html">V4002</a></li>
@@ -624,6 +631,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../reference/editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-29" name="toctree-checkbox-29" role="switch" type="checkbox"/><label for="toctree-checkbox-29"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/build-tasks.html">Build Tasks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/editor/debugging.html">Debugging</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/bytecode-viewer.html">Bytecode Viewer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/settings.html">Settings</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-30" name="toctree-checkbox-30" role="switch" type="checkbox"/><label for="toctree-checkbox-30"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -695,8 +703,9 @@ the terminology the standard uses for them.</p>
 <p>The object-oriented syntax described here is recognized only when it is
 enabled; otherwise the keywords are ordinary identifiers. See
 <a class="reference internal" href="enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for the flag and dialects reference.
-IronPLC currently <em>parses</em> this syntax but does not yet analyze or execute
-it — a program that uses it reports
+How far IronPLC takes each construct beyond parsing varies —
+<a class="reference internal" href="../reference/language/object-orientation/index.html"><span class="doc">Object Oriented Programming</span></a> gives the per-keyword
+status, and what is not yet analyzed reports
 <a class="reference internal" href="../reference/compiler/problems/P9999.html"><span class="doc">P9999</span></a>. This page describes the
 language concepts; it is not a statement of what IronPLC executes today.</p>
 </div>
@@ -765,6 +774,30 @@ one <code class="docutils literal notranslate"><span class="pre">VAR</span></cod
 (<a class="reference internal" href="../reference/compiler/problems/P4014.html"><span class="doc">P4014</span></a>). Hiding involves two
 <em>different</em> scopes, the base type and the derived type, so the name is
 resolved by choosing the nearer declaration rather than reported as an error.</p>
+</section>
+<section id="referring-to-the-instance-and-to-the-base-type">
+<h3>Referring to the instance and to the base type<a class="headerlink" href="#referring-to-the-instance-and-to-the-base-type" title="Link to this heading">¶</a></h3>
+<p>Hiding raises a question: once a derived type has hidden an inherited name,
+how does it reach the hidden one? The standard answers with two names for the
+instance a method is running on —
+<a class="reference internal" href="../reference/language/object-orientation/this-and-super.html"><span class="doc">THIS and SUPER</span></a>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">THIS^</span></code> is the instance itself. It is what makes an instance variable
+reachable when a nearer name — a method parameter, say — hides it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">SUPER^</span></code> is the same instance seen as its base type. A derived type that
+overrides an inherited method uses it to call the implementation it
+overrode, so the derived behavior can add to the base behavior rather than
+replace it:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">FUNCTION_BLOCK</span> <span class="n">FB_LoggingMotor</span> <span class="n">EXTENDS</span> <span class="n">FB_Motor</span>
+    <span class="n">METHOD</span> <span class="n">Stop</span>
+        <span class="n">SUPER</span><span class="o">^.</span><span class="n">Stop</span><span class="p">();</span>
+    <span class="n">END_METHOD</span>
+<span class="n">END_FUNCTION_BLOCK</span>
+</pre></div>
+</div>
+<p>Both are pointers to an instance, which is why each is written with the
+dereference operator <code class="docutils literal notranslate"><span class="pre">^</span></code>. <code class="docutils literal notranslate"><span class="pre">SUPER^</span></code> is resolved when the program is
+compiled, not while it runs: “the base type’s implementation” is decided by
+the declaration, not by what the instance turns out to be.</p>
 </section>
 </section>
 <section id="interfaces">
@@ -875,8 +908,12 @@ time.</p></td>
 </table>
 </div>
 <p>Beyond <code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code>, <code class="docutils literal notranslate"><span class="pre">IMPLEMENTS</span></code>, <code class="docutils literal notranslate"><span class="pre">ABSTRACT</span></code>, and <code class="docutils literal notranslate"><span class="pre">INTERFACE</span></code>, Edition 3
-also defines <code class="docutils literal notranslate"><span class="pre">METHOD</span></code>, <code class="docutils literal notranslate"><span class="pre">PROPERTY</span></code>, <code class="docutils literal notranslate"><span class="pre">OVERRIDE</span></code>, <code class="docutils literal notranslate"><span class="pre">FINAL</span></code>, <code class="docutils literal notranslate"><span class="pre">THIS</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">SUPER</span></code> for writing and refining methods. IronPLC does not parse those yet.</p>
+also defines
+<a class="reference internal" href="../reference/language/object-orientation/method.html"><span class="doc">METHOD</span></a>,
+<a class="reference internal" href="../reference/language/object-orientation/this-and-super.html"><span class="doc">THIS and SUPER</span></a>,
+<code class="docutils literal notranslate"><span class="pre">PROPERTY</span></code>, <code class="docutils literal notranslate"><span class="pre">OVERRIDE</span></code>, and <code class="docutils literal notranslate"><span class="pre">FINAL</span></code> for writing and refining methods.
+IronPLC parses <code class="docutils literal notranslate"><span class="pre">METHOD</span></code>, <code class="docutils literal notranslate"><span class="pre">THIS</span></code>, and <code class="docutils literal notranslate"><span class="pre">SUPER</span></code>; it does not parse
+<code class="docutils literal notranslate"><span class="pre">PROPERTY</span></code>, <code class="docutils literal notranslate"><span class="pre">OVERRIDE</span></code>, or <code class="docutils literal notranslate"><span class="pre">FINAL</span></code> yet.</p>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
@@ -973,6 +1010,7 @@ class and function block inheritance)</p></li>
 <li><a class="reference internal" href="#why-object-oriented-programming">Why object-oriented programming?</a></li>
 <li><a class="reference internal" href="#inheritance">Inheritance</a><ul>
 <li><a class="reference internal" href="#hiding-inherited-names">Hiding inherited names</a></li>
+<li><a class="reference internal" href="#referring-to-the-instance-and-to-the-base-type">Referring to the instance and to the base type</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#interfaces">Interfaces</a></li>

@@ -40,6 +40,27 @@ Example values:
 * macOS: ``/usr/local/bin/ironplcc``
 * Linux: ``/home/username/ironplc/ironplcc``
 
+ironplc.debugServerPath
+-----------------------
+
+:Type: String
+:Default: Empty (auto-discovery)
+
+Specifies the path to the :program:`ironplcvmd` debug server. When empty (the
+default), the extension looks for the server next to the :program:`ironplcc`
+compiler it discovered.
+
+Use this setting when the debug server is installed apart from the compiler,
+or when :doc:`problems/E0007` reports that the server was not found.
+
+Example values:
+
+* Windows: ``C:\Program Files\IronPLC\bin\ironplcvmd.exe``
+* macOS: ``/usr/local/bin/ironplcvmd``
+* Linux: ``/home/username/ironplc/ironplcvmd``
+
+See :doc:`debugging` for what the debug server does.
+
 ironplc.logLevel
 ----------------
 
@@ -118,6 +139,7 @@ You can also configure these settings directly in your :file:`settings.json` fil
 
    {
      "ironplc.path": "/custom/path/to/ironplcc",
+     "ironplc.debugServerPath": "/custom/path/to/ironplcvmd",
      "ironplc.logLevel": "DEBUG",
      "ironplc.logFile": "/tmp/ironplc-debug.log",
      "ironplc.dialect": "rusty"

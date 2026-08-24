@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.239.0">
+<meta name="ironplc-version" content="0.240.0">
 </head>
   <body>
     
@@ -224,6 +224,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/sense-control-actuate.html">How a PLC Program Works</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/helloworld.html">Your First Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/configuring.html">Configuring Your Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../quickstart/debugging.html">Debugging Your Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/multiple-files.html">Working with Multiple Files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../quickstart/compiling-and-running.html">Connecting to Hardware</a></li>
 </ul>
@@ -232,6 +233,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="getting-started/index.html">Getting Started</a><input aria-label="Toggle navigation of Getting Started" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="getting-started/check-compile-run-from-cli.html">Check, Compile, and Run from the CLI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="getting-started/structure-a-multi-file-project.html">Structure a Multi-File Project</a></li>
+<li class="toctree-l3"><a class="reference internal" href="getting-started/debug-a-program.html">Debug a Program</a></li>
 <li class="toctree-l3"><a class="reference internal" href="getting-started/read-compiler-error-messages.html">Read Compiler Error Messages</a></li>
 </ul>
 </li>
@@ -325,6 +327,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/implements.html">IMPLEMENTS</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/interface.html">INTERFACE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/language/object-orientation/this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/language/structured-text/index.html">Structured Text</a><input aria-label="Toggle navigation of Structured Text" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -553,6 +557,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4045.html">P4045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4046.html">P4046</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4047.html">P4047</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P4048.html">P4048</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/compiler/problems/P6003.html">P6003</a></li>
@@ -578,6 +584,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../reference/runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../reference/runtime/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/runtime/ironplcvm.html">Command Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/runtime/ironplcvmd.html">Debug Server</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/runtime/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" role="switch" type="checkbox"/><label for="toctree-checkbox-27"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4001.html">V4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../reference/runtime/problems/V4002.html">V4002</a></li>
@@ -624,6 +631,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../reference/editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-29" name="toctree-checkbox-29" role="switch" type="checkbox"/><label for="toctree-checkbox-29"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/build-tasks.html">Build Tasks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../reference/editor/debugging.html">Debugging</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/bytecode-viewer.html">Bytecode Viewer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../reference/editor/settings.html">Settings</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../reference/editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-30" name="toctree-checkbox-30" role="switch" type="checkbox"/><label for="toctree-checkbox-30"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -727,6 +735,28 @@ tab, and look for messages containing “ironplc”.</p></li>
 reinstall it.</p></li>
 </ol>
 </section>
+<section id="the-debugger-does-not-start">
+<h2>The Debugger Does Not Start<a class="headerlink" href="#the-debugger-does-not-start" title="Link to this heading">¶</a></h2>
+<p><strong>Symptom</strong>: Pressing <kbd class="kbd docutils literal notranslate">F5</kbd> reports a problem, or the session ends
+immediately.</p>
+<p><strong>Solutions</strong>:</p>
+<ol class="arabic simple">
+<li><p><strong>Check the output channel</strong>: Open the Output panel
+(<span class="menuselection">View ‣ Output</span>) and select “IronPLC Debug” from the
+dropdown. It shows the compiler command the debugger ran and its full
+diagnostics.</p></li>
+<li><p><strong>Check the reported problem code</strong>: Each failure reports a code.
+<a class="reference internal" href="getting-started/debug-a-program.html"><span class="doc">Debug a Program</span></a> lists the symptoms
+and what each one means.</p></li>
+<li><p><strong>Check the debug server is installed</strong>: <strong class="program">ironplcvmd</strong> installs
+beside <strong class="program">ironplcc</strong>. If it is somewhere else, set
+<code class="docutils literal notranslate"><span class="pre">ironplc.debugServerPath</span></code>. See <a class="reference internal" href="../reference/editor/problems/E0007.html"><span class="doc">E0007</span></a>.</p></li>
+<li><p><strong>Compile the project first</strong>: The debugger compiles the single file you
+point it at. A file that uses POUs or types from other files does not
+compile on its own — compile the project and set <code class="docutils literal notranslate"><span class="pre">program</span></code> to the
+resulting <code class="docutils literal notranslate"><span class="pre">.iplc</span></code> container.</p></li>
+</ol>
+</section>
 <section id="collecting-debug-information">
 <h2>Collecting Debug Information<a class="headerlink" href="#collecting-debug-information" title="Link to this heading">¶</a></h2>
 <p>When reporting issues, please collect the following information:</p>
@@ -792,10 +822,13 @@ structures. Simplify where possible.</p></li>
 </ul>
 </li>
 <li><p>Reload the development environment</p></li>
-<li><p>Reinstall the extension by downloading the latest
+<li><p>Reinstall the extension from the Extensions view: search for <code class="docutils literal notranslate"><span class="pre">ironplc</span></code>,
+then select <span class="guilabel">IronPLC IDE</span> in Visual Studio Code or
+<span class="guilabel">IronPLC</span> in editors that install from Open VSX (Cursor, Kiro,
+Devin, VSCodium). If neither registry is reachable, download the latest
 <code class="docutils literal notranslate"><span class="pre">ironplc-vscode-extension.vsix</span></code> from the
 <a class="reference external" href="https://github.com/ironplc/ironplc/releases/">IronPLC GitHub releases</a>
-and using <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span>
+and use <span class="menuselection">… (View and More Actions) ‣ Install from VSIX…</span>
 in the Extensions view</p></li>
 </ol>
 </section>
@@ -868,6 +901,7 @@ in the Extensions view</p></li>
 <li><a class="reference internal" href="#no-syntax-highlighting">No Syntax Highlighting</a></li>
 <li><a class="reference internal" href="#no-diagnostics-appearing">No Diagnostics Appearing</a></li>
 <li><a class="reference internal" href="#extension-not-activating">Extension Not Activating</a></li>
+<li><a class="reference internal" href="#the-debugger-does-not-start">The Debugger Does Not Start</a></li>
 <li><a class="reference internal" href="#collecting-debug-information">Collecting Debug Information</a></li>
 <li><a class="reference internal" href="#performance-issues">Performance Issues</a></li>
 <li><a class="reference internal" href="#resetting-the-extension">Resetting the Extension</a></li>

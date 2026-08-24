@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/object-orientation/index.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="IEC 61131-3 Edition 3 (2013) added object-oriented programming to the standard. A function block type can be derived from another by extension, one or more interfaces can describe a shared set of m..." />
-<meta name="description" content="IEC 61131-3 Edition 3 (2013) added object-oriented programming to the standard. A function block type can be derived from another by extension, one or more interfaces can describe a shared set of m..." />
+<meta property="og:description" content="IEC 61131-3 Edition 3 (2013) added object-oriented programming to the standard. A function block type can declare methods, it can be derived from another by extension, one or more interfaces can de..." />
+<meta name="description" content="IEC 61131-3 Edition 3 (2013) added object-oriented programming to the standard. A function block type can declare methods, it can be derived from another by extension, one or more interfaces can de..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="EXTENDS" href="extends.html"><link rel="prev" title="TASK" href="../pous/task.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/object-orientation/index.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.239.0">
+<meta name="ironplc-version" content="0.240.0">
 </head>
   <body>
     
@@ -224,6 +224,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/sense-control-actuate.html">How a PLC Program Works</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/helloworld.html">Your First Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/configuring.html">Configuring Your Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../quickstart/debugging.html">Debugging Your Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/multiple-files.html">Working with Multiple Files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/compiling-and-running.html">Connecting to Hardware</a></li>
 </ul>
@@ -232,6 +233,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../../how-to-guides/getting-started/index.html">Getting Started</a><input aria-label="Toggle navigation of Getting Started" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../../how-to-guides/getting-started/check-compile-run-from-cli.html">Check, Compile, and Run from the CLI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../how-to-guides/getting-started/structure-a-multi-file-project.html">Structure a Multi-File Project</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../how-to-guides/getting-started/debug-a-program.html">Debug a Program</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../how-to-guides/getting-started/read-compiler-error-messages.html">Read Compiler Error Messages</a></li>
 </ul>
 </li>
@@ -325,6 +327,8 @@
 <li class="toctree-l4"><a class="reference internal" href="implements.html">IMPLEMENTS</a></li>
 <li class="toctree-l4"><a class="reference internal" href="abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="interface.html">INTERFACE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../structured-text/index.html">Structured Text</a><input aria-label="Toggle navigation of Structured Text" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -553,6 +557,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4045.html">P4045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4047.html">P4047</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4048.html">P4048</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -578,6 +584,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../runtime/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../runtime/ironplcvm.html">Command Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../runtime/ironplcvmd.html">Debug Server</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../runtime/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" role="switch" type="checkbox"/><label for="toctree-checkbox-27"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4001.html">V4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4002.html">V4002</a></li>
@@ -624,6 +631,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-29" name="toctree-checkbox-29" role="switch" type="checkbox"/><label for="toctree-checkbox-29"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/build-tasks.html">Build Tasks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../editor/debugging.html">Debugging</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/bytecode-viewer.html">Bytecode Viewer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/settings.html">Settings</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-30" name="toctree-checkbox-30" role="switch" type="checkbox"/><label for="toctree-checkbox-30"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -686,10 +694,11 @@
           <section id="object-oriented-programming">
 <h1>Object Oriented Programming<a class="headerlink" href="#object-oriented-programming" title="Link to this heading">¶</a></h1>
 <p>IEC 61131-3 Edition 3 (2013) added object-oriented programming to the
-standard. A function block type can be <strong>derived</strong> from another by
-<strong>extension</strong>, one or more <strong>interfaces</strong> can describe a shared set of
-method signatures, and a type can be declared <strong>abstract</strong> when it is meant
-to be extended rather than instantiated directly.</p>
+standard. A function block type can declare <strong>methods</strong>, it can be
+<strong>derived</strong> from another by <strong>extension</strong>, one or more <strong>interfaces</strong> can
+describe a shared set of method signatures, and a type can be declared
+<strong>abstract</strong> when it is meant to be extended rather than instantiated
+directly.</p>
 <p>This section documents the keywords that introduce these features. For the
 concepts behind them — inheritance, interfaces, and abstract types — see
 <a class="reference internal" href="../../../explanation/object-orientation.html"><span class="doc">Object Oriented Programming</span></a>.</p>
@@ -698,39 +707,55 @@ concepts behind them — inheritance, interfaces, and abstract types — see
 <p>These keywords are recognized only when object-oriented syntax is
 enabled; otherwise each word is an ordinary identifier. See
 <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a> for the flag and
-dialects reference. IronPLC currently parses this syntax but does not yet
-perform semantic analysis or code generation for it — see
-<a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a>.</p>
+dialects reference.</p>
 </div>
 <section id="keywords">
 <h2>Keywords<a class="headerlink" href="#keywords" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 30.0%" />
-<col style="width: 70.0%" />
+<col style="width: 25.0%" />
+<col style="width: 40.0%" />
+<col style="width: 35.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Keyword</p></th>
 <th class="head"><p>Description</p></th>
+<th class="head"><p>Support</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="extends.html"><span class="doc">EXTENDS</span></a></p></td>
 <td><p>Derive a function block type or interface from a base type</p></td>
+<td><p>Parsed and analyzed; inherited variables are not yet compiled</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="implements.html"><span class="doc">IMPLEMENTS</span></a></p></td>
 <td><p>Declare that a function block type provides one or more interfaces</p></td>
+<td><p>Parsed only</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="abstract.html"><span class="doc">ABSTRACT</span></a></p></td>
 <td><p>Mark a function block type as not directly instantiable</p></td>
+<td><p>Parsed only</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="interface.html"><span class="doc">INTERFACE</span></a></p></td>
 <td><p>Declare an interface — a named set of method signatures</p></td>
+<td><p>Parsed only</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="method.html"><span class="doc">METHOD</span></a></p></td>
+<td><p>Declare a method on a function block type</p></td>
+<td><p>Parsed and analyzed; calls are not yet compiled</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="this-and-super.html"><span class="doc">THIS and SUPER</span></a></p></td>
+<td><p>Refer to the instance a method is running on, or to its base type</p></td>
+<td><p>Parsed only</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<p>“Parsed only” means the syntax is accepted and the names it introduces are
+recognized, but the construct is not yet analyzed or executed — using it
+reports <a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a>. Each keyword’s
+page states exactly what it supports today.</p>
 <div class="toctree-wrapper compound">
 </div>
 </section>

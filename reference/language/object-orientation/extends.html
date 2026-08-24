@@ -7,8 +7,8 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://www.ironplc.com/reference/language/object-orientation/extends.html" />
 <meta property="og:site_name" content="IronPLC" />
-<meta property="og:description" content="EXTENDS derives a function block type from a single base type, so the derived type inherits the base type’s variables (and, once supported, its methods). It also derives an interface from one or mo..." />
-<meta name="description" content="EXTENDS derives a function block type from a single base type, so the derived type inherits the base type’s variables (and, once supported, its methods). It also derives an interface from one or mo..." />
+<meta property="og:description" content="EXTENDS derives a function block type from a single base type, so the derived type inherits the base type’s variables and methods. It also derives an interface from one or more base interfaces. Thi..." />
+<meta name="description" content="EXTENDS derives a function block type from a single base type, so the derived type inherits the base type’s variables and methods. It also derives an interface from one or more base interfaces. Thi..." />
 <link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html"><link rel="next" title="IMPLEMENTS" href="implements.html"><link rel="prev" title="Object Oriented Programming" href="index.html">
         <link rel="canonical" href="https://www.ironplc.com/reference/language/object-orientation/extends.html">
 
@@ -61,7 +61,7 @@
   }
 </style>
 
-<meta name="ironplc-version" content="0.239.0">
+<meta name="ironplc-version" content="0.240.0">
 </head>
   <body>
     
@@ -224,6 +224,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/sense-control-actuate.html">How a PLC Program Works</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/helloworld.html">Your First Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/configuring.html">Configuring Your Application</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../quickstart/debugging.html">Debugging Your Program</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/multiple-files.html">Working with Multiple Files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../quickstart/compiling-and-running.html">Connecting to Hardware</a></li>
 </ul>
@@ -232,6 +233,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../../how-to-guides/getting-started/index.html">Getting Started</a><input aria-label="Toggle navigation of Getting Started" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../../how-to-guides/getting-started/check-compile-run-from-cli.html">Check, Compile, and Run from the CLI</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../how-to-guides/getting-started/structure-a-multi-file-project.html">Structure a Multi-File Project</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../how-to-guides/getting-started/debug-a-program.html">Debug a Program</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../../how-to-guides/getting-started/read-compiler-error-messages.html">Read Compiler Error Messages</a></li>
 </ul>
 </li>
@@ -325,6 +327,8 @@
 <li class="toctree-l4"><a class="reference internal" href="implements.html">IMPLEMENTS</a></li>
 <li class="toctree-l4"><a class="reference internal" href="abstract.html">ABSTRACT</a></li>
 <li class="toctree-l4"><a class="reference internal" href="interface.html">INTERFACE</a></li>
+<li class="toctree-l4"><a class="reference internal" href="method.html">METHOD</a></li>
+<li class="toctree-l4"><a class="reference internal" href="this-and-super.html">THIS and SUPER</a></li>
 </ul>
 </li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../structured-text/index.html">Structured Text</a><input aria-label="Toggle navigation of Structured Text" class="toctree-checkbox" id="toctree-checkbox-14" name="toctree-checkbox-14" role="switch" type="checkbox"/><label for="toctree-checkbox-14"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -553,6 +557,8 @@
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4044.html">P4044</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4045.html">P4045</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4046.html">P4046</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4047.html">P4047</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P4048.html">P4048</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6001.html">P6001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6002.html">P6002</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../compiler/problems/P6003.html">P6003</a></li>
@@ -578,6 +584,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../runtime/index.html">Runtime</a><input aria-label="Toggle navigation of Runtime" class="toctree-checkbox" id="toctree-checkbox-26" name="toctree-checkbox-26" role="switch" type="checkbox"/><label for="toctree-checkbox-26"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../runtime/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../runtime/ironplcvm.html">Command Reference</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../runtime/ironplcvmd.html">Debug Server</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../runtime/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-27" name="toctree-checkbox-27" role="switch" type="checkbox"/><label for="toctree-checkbox-27"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4001.html">V4001</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../../runtime/problems/V4002.html">V4002</a></li>
@@ -624,6 +631,7 @@
 <li class="toctree-l2 has-children"><a class="reference internal" href="../../editor/index.html">Editor Extension</a><input aria-label="Toggle navigation of Editor Extension" class="toctree-checkbox" id="toctree-checkbox-29" name="toctree-checkbox-29" role="switch" type="checkbox"/><label for="toctree-checkbox-29"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/overview.html">Overview</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/build-tasks.html">Build Tasks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../editor/debugging.html">Debugging</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/bytecode-viewer.html">Bytecode Viewer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../../editor/settings.html">Settings</a></li>
 <li class="toctree-l3 has-children"><a class="reference internal" href="../../editor/problems/index.html">Problem Code Index</a><input aria-label="Toggle navigation of Problem Code Index" class="toctree-checkbox" id="toctree-checkbox-30" name="toctree-checkbox-30" role="switch" type="checkbox"/><label for="toctree-checkbox-30"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
@@ -686,9 +694,10 @@
           <section id="extends">
 <h1>EXTENDS<a class="headerlink" href="#extends" title="Link to this heading">¶</a></h1>
 <p><code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> derives a function block type from a single base type, so the
-derived type <strong>inherits</strong> the base type’s variables (and, once supported,
-its methods). It also derives an interface from one or more base interfaces.
-This is the inheritance mechanism introduced in IEC 61131-3 Edition 3.</p>
+derived type <strong>inherits</strong> the base type’s variables and
+<a class="reference internal" href="method.html"><span class="doc">methods</span></a>. It also derives an interface from one or more base
+interfaces. This is the inheritance mechanism introduced in
+IEC 61131-3 Edition 3.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p><code class="docutils literal notranslate"><span class="pre">EXTENDS</span></code> is a keyword only when the <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code> flag is enabled. When the flag
@@ -709,9 +718,12 @@ flags reference.</p>
 <td><p>Edition 3 (object-oriented programming)</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Support</strong></p></td>
-<td><p>Parsed only — not yet analyzed or executed
-(<a class="reference internal" href="../../compiler/problems/P9999.html"><span class="doc">P9999</span></a>). Enable with
-<code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>; see
+<td><p>Parsed and analyzed: an inherited variable resolves and type-checks
+in the derived type. Code generation does not yet give a derived
+type storage for what it inherits, so reading or writing an
+inherited variable reports
+<a class="reference internal" href="../../compiler/problems/P4007.html"><span class="doc">P4007</span></a> when compiled.
+Enable with <code class="docutils literal notranslate"><span class="pre">--allow-fb-inheritance</span></code>; see
 <a class="reference internal" href="../../../explanation/enabling-dialects-and-features.html"><span class="doc">Enabling Dialects and Features</span></a>.</p></td>
 </tr>
 </tbody>
@@ -754,6 +766,7 @@ A function block type extends at most one base type.</p>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
+<li><p><a class="reference internal" href="method.html"><span class="doc">METHOD</span></a> — declare a method on a function block type</p></li>
 <li><p><a class="reference internal" href="implements.html"><span class="doc">IMPLEMENTS</span></a> — provide the methods declared by an interface</p></li>
 <li><p><a class="reference internal" href="abstract.html"><span class="doc">ABSTRACT</span></a> — mark a base type as not directly instantiable</p></li>
 <li><p><a class="reference internal" href="interface.html"><span class="doc">INTERFACE</span></a> — declare an interface</p></li>
