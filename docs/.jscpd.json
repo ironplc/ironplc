@@ -1,0 +1,20 @@
+{
+  "formatsExts": {
+    "rest": ["rst"]
+  },
+  "format": ["rest"],
+  "ignore": [
+    "**/.venv/**",
+    "**/_build/**",
+    "**/_duplication/**",
+    "**/node_modules/**",
+    "**/reference/standard-library/**",
+    "**/reference/compatibility-libraries/**"
+  ],
+  "minTokens": 20,
+  "minLines": 3,
+  "threshold": 19,
+  "reporters": ["console", "json"],
+  "output": "_duplication",
+  "absolute": false
+}
