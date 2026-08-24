@@ -184,9 +184,9 @@ not merely that it compiles.
   prior :literal:`compile` call.
 * ``duration_ms`` (number, required) --- How much simulated time to
   run. The number of scan cycles follows from each task's cycle time.
-* ``freewheeling_interval_ms`` (number, optional, default ``100``) ---
-  The cycle time to assume for a task that declares no ``INTERVAL``.
-  See :ref:`mcp-freewheeling-cycle-time` below.
+* ``freewheeling_interval_ms`` (number) --- The cycle time to run a
+  task that declares no ``INTERVAL`` at. Required when the container
+  has such a task. See :ref:`mcp-freewheeling-cycle-time` below.
 * ``variables`` (array of strings, optional) --- Fully-qualified names
   to trace, such as ``Main.Counter``.
 * ``trace_outputs`` (boolean, optional, default ``false``) --- Trace
@@ -210,11 +210,18 @@ compiler supplies for a program with no ``CONFIGURATION`` --- is
 property of the machine, not of the program, so under simulated time
 there is nothing to advance the clock by.
 
-:literal:`run` therefore executes such a task at an assumed cycle time
-of 100 ms, which you can change with ``freewheeling_interval_ms``. The
-response reports the cycle time it used as ``summary.interval_ms``,
-whether assumed or declared, because every timestamp in the trace ---
-and every timer in the program --- depends on it.
+:literal:`run` will not choose a rate for you --- a scan time belongs to
+the hardware the program would run on, and a trace built on a number
+you never chose reads as fact. Running such a container without
+``freewheeling_interval_ms`` returns ``ok: false`` and a diagnostic
+naming the task. Supply the scan time you want to simulate, and the
+response reports what it used as ``summary.interval_ms``, because every
+timestamp in the trace --- and every timer in the program --- depends
+on it.
+
+The debugger is deliberately more forgiving: it assumes 100 ms and says
+so on the console, because a debug session that refuses to start is a
+poor answer to a missing setting. See :doc:`/reference/runtime/ironplcvmd`.
 
 :literal:`compile` reports these tasks with ``kind: "freewheeling"``,
 which is how you can tell in advance that the assumption applies.

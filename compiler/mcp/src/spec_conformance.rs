@@ -632,10 +632,10 @@ fn mcp_spec_req_tol_047_resource_limits() {}
 #[ignore]
 fn mcp_spec_req_tol_048_run_returns_summary() {}
 
-/// REQ-TOL-mcp-049: a freewheeling task runs at an assumed cycle time,
-/// defaulting to 100 ms, and the response reports the assumption.
+/// REQ-TOL-mcp-049: a freewheeling task needs a caller-supplied cycle time;
+/// without one the run is rejected rather than run at an invented rate.
 #[spec_test(REQ_TOL_mcp_049)]
-fn mcp_spec_req_tol_049_freewheeling_task_runs_at_assumed_cycle_time() {
+fn mcp_spec_req_tol_049_freewheeling_task_needs_a_supplied_cycle_time() {
     use std::sync::Mutex;
 
     use crate::cache::{ContainerCache, TaskKind};
@@ -672,16 +672,16 @@ fn mcp_spec_req_tol_049_freewheeling_task_runs_at_assumed_cycle_time() {
         tools::run::build_response(&input, &cache)
     };
 
-    // Default: 1000 ms of simulated time at the assumed 100 ms cycle time.
-    let defaulted = run(None);
-    assert!(defaulted.ok, "diagnostics: {:?}", defaulted.diagnostics);
-    assert_eq!(
-        defaulted.summary.completed_cycles["Main"],
-        serde_json::Value::from(10u64)
-    );
-    assert_eq!(defaulted.summary.interval_ms, 100.0);
+    // Omitted: rejected, naming the task and what to set.
+    let omitted = run(None);
+    assert!(!omitted.ok);
+    assert!(omitted.diagnostics.iter().any(|d| d["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("freewheeling_interval_ms")));
 
-    // Supplied: the caller's cycle time is what the run uses.
+    // Supplied: the caller's cycle time is what the run uses, and what it
+    // reports back.
     let supplied = run(Some(200.0));
     assert!(supplied.ok, "diagnostics: {:?}", supplied.diagnostics);
     assert_eq!(

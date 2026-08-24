@@ -239,11 +239,13 @@ impl TerminatedReason {
 /// before the VM loads it. Whichever cycle time the run ended up executing at
 /// comes back as [`RunOutcome::interval`].
 ///
-/// `None` keeps such tasks freewheeling — run as fast as you can, the thing a
-/// freewheeling task means on real hardware. Nothing then defines how much
-/// program time a cycle takes, so simulated time does not advance and
-/// `duration_ms` cannot end the run: it scans until a sandbox limit stops it,
-/// and reports that limit as the reason.
+/// `None` means the caller supplied no cycle time, which is only valid when
+/// every task declares an `INTERVAL`. A freewheeling task with no rate cannot
+/// be run under simulated time — nothing would advance the clock, so
+/// `duration_ms` could never end the run — and is an error rather than a rate
+/// this module picks. The `run` tool rejects that combination up front with a
+/// diagnostic naming the task (REQ-TOL-mcp-049); the check here keeps the
+/// invariant with the code that depends on it.
 pub fn execute(
     cached: &CachedContainer,
     trace_set: &[ResolvedVar],
@@ -262,14 +264,18 @@ pub fn execute(
     // interval back afterwards therefore reports one cycle time whether the
     // program declared it or the caller supplied it — and zero when the caller
     // asked for no rate at all.
-    if let Some(assumed) = freewheeling_interval {
-        assume_freewheeling_interval(&mut container, assumed);
+    match freewheeling_interval {
+        Some(assumed) => {
+            assume_freewheeling_interval(&mut container, assumed);
+        }
+        None if has_freewheeling_task(&container) => {
+            return Err(
+                "container has a freewheeling task but no cycle time to run it at".to_string(),
+            );
+        }
+        None => {}
     }
     let interval = first_task_interval(&container).unwrap_or_default();
-    // With no rate to advance time by, a freewheeling task still has to run.
-    // The scheduler reports it ready every round, so the loop keeps scanning
-    // at a standstill clock until a sandbox limit ends the run.
-    let freewheeling = has_freewheeling_task(&container);
 
     let task_names: Vec<String> = cached.tasks.iter().map(|t| t.name.clone()).collect();
 
@@ -410,15 +416,12 @@ pub fn execute(
             });
         }
 
-        // Advance simulated time past this cycle. `None` means no cyclic task
-        // is left to wait for: either the run is freewheeling with no assumed
-        // rate — where time standing still is the point, and a limit ends the
-        // run — or the container has nothing that can ever be scheduled, and
-        // spinning would be pointless.
+        // Advance simulated time past this cycle. Every task has a cycle time
+        // by now — declared or supplied — so `None` means the container has
+        // nothing that can ever be scheduled; break rather than spin.
         match running.next_due_us() {
             Some(next) if next > current_us => simulated_us = next,
             Some(_) => simulated_us = current_us.saturating_add(1),
-            None if freewheeling => {}
             None => break TerminatedReason::Completed,
         }
     };
