@@ -212,9 +212,10 @@ struct FileArgs {
     #[arg(long)]
     allow_struct_initializer_expressions: bool,
 
-    /// Allow function-block inheritance syntax: EXTENDS/IMPLEMENTS on
-    /// FUNCTION_BLOCK and INTERFACE declarations. This is a dialect
-    /// extension not part of the IEC 61131-3 standard.
+    /// Allow IEC 61131-3:2013 object-oriented syntax: EXTENDS/IMPLEMENTS/
+    /// ABSTRACT on FUNCTION_BLOCK declarations, INTERFACE declarations,
+    /// METHOD declarations, and THIS/SUPER. Enabled by
+    /// `--dialect=iec61131-3-ed3` and by the vendor dialects.
     #[arg(long)]
     allow_fb_inheritance: bool,
 }

@@ -69,6 +69,7 @@ See Also
 --------
 
 - :doc:`implements` — provide the methods declared by an interface
+- :doc:`method` — declare a method on a function block type
 - :doc:`extends` — derive an interface or function block from a base
 - :doc:`abstract` — mark a function block type as not directly instantiable
 - :doc:`/explanation/object-orientation` — inheritance, interfaces, and
