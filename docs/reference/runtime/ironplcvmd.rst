@@ -57,6 +57,28 @@ The ``launch`` request accepts these arguments:
    * - ``scanLimit``
      - number
      - Stop after this many scan cycles. ``0`` means unlimited.
+   * - ``freewheelingIntervalMs``
+     - number
+     - Cycle time to assume for a program whose task declares no
+       ``INTERVAL``. Defaults to ``100``.
+
+Programs With No Task Interval
+==============================
+
+A task that declares no ``INTERVAL`` --- including the task the compiler
+supplies for a program with no ``CONFIGURATION`` --- runs as fast as the
+hardware allows, so it has no scan cycle time of its own. The debug session
+assumes one, and writes the value it used to the debug console:
+
+.. code-block:: text
+
+   This program declares no INTERVAL, so it has no scan cycle time of its
+   own. Assuming 100 ms per scan; change it in the launch configuration.
+
+The assumed cycle time is what the program's timers measure against, so a
+``TON`` with ``PT := T#500ms`` completes after five scans at the default.
+Set ``freewheelingIntervalMs`` to match the hardware you are targeting, or
+declare a ``CONFIGURATION`` so the program fixes its own rate.
 
 Launch Preconditions
 ====================
