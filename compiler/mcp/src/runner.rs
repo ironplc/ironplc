@@ -332,11 +332,11 @@ pub fn execute(
 
         // Advance simulated time to the next cycle that's due.
         let next_due = running.next_due_us().unwrap_or(simulated_us);
-        let current_us = simulated_us.max(next_due);
+        let uptime_us = simulated_us.max(next_due);
 
-        // Re-check the duration gate against `current_us` so a cyclic task
+        // Re-check the duration gate against `uptime_us` so a cyclic task
         // due after the deadline doesn't execute.
-        if current_us / 1_000 >= run_duration_ms {
+        if uptime_us / 1_000 >= run_duration_ms {
             break duration_stop;
         }
 
@@ -353,11 +353,11 @@ pub fn execute(
         //
         // Simpler: just read from `running.scan_count()` (total) and
         // attribute the delta to the task the scheduler ran. The scheduler
-        // runs at most one task per round at the chosen `current_us`, so
+        // runs at most one task per round at the chosen `uptime_us`, so
         // this attribution is accurate.
         let before_total = running.scan_count();
 
-        if let Err(ctx) = running.run_round(current_us) {
+        if let Err(ctx) = running.run_round(uptime_us) {
             let trap_msg = ctx.trap.to_string();
             let faulted = running.fault(ctx);
             let final_values =
@@ -410,7 +410,7 @@ pub fn execute(
                 .collect();
 
             trace.push(TraceSample {
-                time_ms: current_us / 1_000,
+                time_ms: uptime_us / 1_000,
                 task: task_name,
                 variables,
             });
@@ -420,8 +420,8 @@ pub fn execute(
         // by now — declared or supplied — so `None` means the container has
         // nothing that can ever be scheduled; break rather than spin.
         match running.next_due_us() {
-            Some(next) if next > current_us => simulated_us = next,
-            Some(_) => simulated_us = current_us.saturating_add(1),
+            Some(next) if next > uptime_us => simulated_us = next,
+            Some(_) => simulated_us = uptime_us.saturating_add(1),
             None => break TerminatedReason::Completed,
         }
     };

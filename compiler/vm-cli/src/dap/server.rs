@@ -235,16 +235,16 @@ fn launched_session<R: BufRead, W: Write>(
     let mut phase = Phase::Configuring;
     // A monotonic clock for the debug driver. `run_round_debug` bypasses the
     // scheduler and watchdog, so the value only feeds the uptime system
-    // variable — but that is what timers read, so how fast it moves decides
-    // when a TON elapses.
+    // variable — but that is what timers read, and what the Runtime scope
+    // shows, so how fast it moves decides when a TON elapses.
     //
     // A program whose task declares no INTERVAL is freewheeling: it has no
     // cycle rate of its own, so the session runs it at an assumed one and says
     // which (see `specs/design/mcp-server.md` REQ-TOL-mcp-049 — the `run` MCP
-    // tool assumes the same default). A program that declares an INTERVAL
-    // still advances a flat 1 ms per scan; honoring the declared interval is
-    // issue #1397.
-    let mut current_time_us: u64 = 0;
+    // tool requires the caller to supply that rate instead of assuming it).
+    // A program that declares an INTERVAL still advances a flat 1 ms per scan;
+    // honoring the declared interval is issue #1397.
+    let mut uptime_us: u64 = 0;
     let scan_advance = if has_freewheeling_task(&container) {
         let assumed = assumed_freewheeling_interval(args.freewheeling_interval_ms);
         send(
@@ -303,9 +303,9 @@ fn launched_session<R: BufRead, W: Write>(
                         StepMode::None => {}
                     }
                 }
-                running.run_round_debug(current_time_us, &mut hook)
+                running.run_round_debug(uptime_us, &mut hook)
             };
-            current_time_us = current_time_us.saturating_add(interval_us(scan_advance));
+            uptime_us = uptime_us.saturating_add(interval_us(scan_advance));
 
             match outcome {
                 // A completed scan keeps the debugger scanning: run the next
@@ -648,18 +648,32 @@ fn program_variables_body(running: &VmRunning, debug: Option<&DebugSection>) -> 
 }
 
 /// Builds the `Runtime` scope's contents: VM-level state that is not a program
-/// variable. Today that is the completed-scan-cycle count, which the client
-/// re-reads at every stop, so it replaces the earlier "show scan count" button
-/// with a value that is simply on screen. Cycle timing and next-due can join
-/// this list without adding another scope.
+/// variable — the completed-scan-cycle count and the VM's monotonic uptime,
+/// which the client re-reads at every stop, so they are simply on screen rather
+/// than behind a "show me" button. Cycle timing and next-due can join this list
+/// without adding another scope.
 fn runtime_variables_body(running: &VmRunning) -> Option<Value> {
-    let variables = vec![Variable {
-        name: "scanCount".to_string(),
-        value: running.scan_count().to_string(),
-        // The VM counter is a u64; ULINT is its IEC 61131-3 spelling.
-        type_name: Some("ULINT".to_string()),
-        variables_reference: 0,
-    }];
+    let variables = vec![
+        Variable {
+            name: "scanCount".to_string(),
+            value: running.scan_count().to_string(),
+            // The VM counter is a u64; ULINT is its IEC 61131-3 spelling.
+            type_name: Some("ULINT".to_string()),
+            variables_reference: 0,
+        },
+        Variable {
+            name: "systemUptime".to_string(),
+            // How long the VM has run as of the current scan cycle, rendered in
+            // milliseconds. The VM tracks it whether or not the program
+            // declares the uptime globals, so this shows time even for a
+            // program compiled without `--allow-system-uptime-global`.
+            value: (running.uptime().as_millis() as i64).to_string(),
+            // The same i64 milliseconds `__SYSTEM_UP_LTIME` holds; LINT is its
+            // IEC 61131-3 spelling.
+            type_name: Some("LINT".to_string()),
+            variables_reference: 0,
+        },
+    ];
     serde_json::to_value(VariablesResponseBody { variables }).ok()
 }
 
@@ -1478,6 +1492,65 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(second, first + 1, "runtime scan count must advance a cycle");
+    }
+
+    #[test]
+    fn serve_when_runtime_scope_at_entry_then_reports_zero_uptime() {
+        // The container under test declares no uptime globals, so the program
+        // itself cannot read the clock -- the VM tracks it regardless, which is
+        // the whole point of the entry. At the entry stop no scan has started,
+        // so it is 0.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let uptime = &responses(&out, "variables")[0]["body"]["variables"][1];
+        assert_eq!(uptime["name"], "systemUptime");
+        assert_eq!(uptime["type"], "LINT");
+        assert_eq!(uptime["value"], "0");
+    }
+
+    #[test]
+    fn serve_when_runtime_scope_expanded_then_shows_system_uptime_advancing() {
+        // Time must be observable from one stop to the next; how *fast* it
+        // advances is the debug driver's business (issue #1397), so this only
+        // asserts that it moves forward.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": 11}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 5, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 6, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let vars = responses(&out, "variables");
+        let uptime_of = |scope: &Value| -> i64 {
+            let entry = &scope["body"]["variables"][1];
+            assert_eq!(entry["name"], "systemUptime");
+            assert_eq!(entry["type"], "LINT");
+            entry["value"].as_str().unwrap().parse().unwrap()
+        };
+        assert!(
+            uptime_of(vars[1]) > uptime_of(vars[0]),
+            "runtime uptime must advance between stops"
+        );
     }
 
     #[test]

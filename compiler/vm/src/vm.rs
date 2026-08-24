@@ -1,3 +1,4 @@
+use core::time::Duration;
 use ironplc_container::{
     CharWidth, ConstantIndex, Container, FbTypeId, FunctionId, InstanceId, TaskId, TaskType,
     VarIndex, STRING_HEADER_BYTES,
@@ -220,6 +221,7 @@ impl<'a> VmReady<'a> {
             frames: self.frames,
             shared_globals_size,
             scan_count: 0,
+            uptime: Duration::ZERO,
             stop_requested: false,
             phase: Phase::Ready,
             debug_frame_count: 0,
@@ -250,6 +252,7 @@ impl<'a> VmReady<'a> {
             frames: self.frames,
             shared_globals_size,
             scan_count: initial_scan_count,
+            uptime: Duration::ZERO,
             stop_requested: false,
             phase: Phase::Ready,
             debug_frame_count: 0,
@@ -330,6 +333,11 @@ pub struct VmRunning<'a> {
     frames: &'a mut [Frame],
     shared_globals_size: u16,
     scan_count: u64,
+    /// How long the VM has been running as of the most recently *started* scan
+    /// cycle. Recorded whether or not the container declares the uptime
+    /// globals, so an observer (the debugger) can read the time even for a
+    /// program compiled without them.
+    uptime: Duration,
     stop_requested: bool,
     /// Debug driver phase. `Ready` for the non-debug path.
     phase: Phase,
@@ -345,20 +353,20 @@ impl<'a> VmRunning<'a> {
     /// Executes one scheduling round: collects ready tasks, executes them
     /// in priority order, and updates timing.
     ///
-    /// The caller provides `current_time_us` (microseconds since VM start).
+    /// The caller provides `uptime_us` (microseconds since VM start).
     /// Sleep logic is the caller's responsibility.
     ///
     /// Returns `Ok(())` if the round completes. Returns `Err(FaultContext)` if
     /// a trap occurs during execution. The caller should transition to
     /// `VmFaulted` on trap.
-    pub fn run_round(&mut self, current_time_us: u64) -> Result<(), FaultContext> {
+    pub fn run_round(&mut self, uptime_us: u64) -> Result<(), FaultContext> {
         // Build a scheduler temporarily borrowing task_states.
         // We need to collect ready task indices into ready_buf, then drop the scheduler
         // before iterating, so we can mutably borrow task_states during record_execution.
         let ready_count;
         {
             let scheduler = TaskScheduler::new(self.task_states);
-            let ready = scheduler.collect_ready_tasks(current_time_us, self.ready_buf);
+            let ready = scheduler.collect_ready_tasks(uptime_us, self.ready_buf);
             ready_count = ready.len();
         }
 
@@ -366,8 +374,9 @@ impl<'a> VmRunning<'a> {
             return Ok(());
         }
 
-        // System variable injection: write monotonic uptime before task execution.
-        self.inject_system_uptime(current_time_us);
+        // Record this scan's clock, and inject the uptime system variables
+        // before task execution when the container declares them.
+        self.set_uptime(uptime_us);
 
         // Stub: INPUT_FREEZE (no-op)
 
@@ -390,7 +399,7 @@ impl<'a> VmRunning<'a> {
                 // Production scan: run the instance to completion with the
                 // zero-cost hook and fresh (non-resumable) frame state.
                 let (outcome, _, _) = self
-                    .run_instance(pi, current_time_us, 0, 0, &mut NoopDebugHook)
+                    .run_instance(pi, uptime_us, 0, 0, &mut NoopDebugHook)
                     .map_err(|trap| FaultContext {
                         trap,
                         task_id,
@@ -419,7 +428,7 @@ impl<'a> VmRunning<'a> {
             }
 
             let mut scheduler = TaskScheduler::new(self.task_states);
-            scheduler.record_execution(task_idx, elapsed_us, current_time_us);
+            scheduler.record_execution(task_idx, elapsed_us, uptime_us);
         }
 
         // Stub: OUTPUT_FLUSH (no-op)
@@ -469,7 +478,7 @@ impl<'a> VmRunning<'a> {
     /// scheduling/lifecycle policy around it differs between the two drivers.
     pub fn run_round_debug<H: DebugHook>(
         &mut self,
-        current_time_us: u64,
+        uptime_us: u64,
         hook: &mut H,
     ) -> Result<RoundOutcome, FaultContext> {
         // No program instance → nothing to debug; the scan is a no-op.
@@ -485,11 +494,12 @@ impl<'a> VmRunning<'a> {
         let task_id = self.program_instances[0].task_id;
 
         if !resuming {
-            // Fresh scan: inject system uptime, then reset the resume state so
+            // Fresh scan: record the clock (and inject the uptime system
+            // variables), then reset the resume state so
             // run_instance starts with an empty frame stack (the dispatch loop
             // pushes the entry frame). When resuming, the preserved frame count
             // is non-zero and the paused frames survive in place.
-            self.inject_system_uptime(current_time_us);
+            self.set_uptime(uptime_us);
             self.debug_frame_count = 0;
             self.debug_temp_alloc_next = 0;
         }
@@ -499,7 +509,7 @@ impl<'a> VmRunning<'a> {
         let frame_count_in = self.debug_frame_count;
         let temp_alloc_next_in = self.debug_temp_alloc_next;
         let (outcome, frame_count, temp_alloc_next) = self
-            .run_instance(0, current_time_us, frame_count_in, temp_alloc_next_in, hook)
+            .run_instance(0, uptime_us, frame_count_in, temp_alloc_next_in, hook)
             .map_err(|trap| {
                 self.phase = Phase::Faulted;
                 FaultContext {
@@ -533,14 +543,20 @@ impl<'a> VmRunning<'a> {
         }
     }
 
-    /// Writes the monotonic uptime system variables before task execution,
-    /// if the loaded container declares them. Shared by [`run_round`] and
-    /// [`run_round_debug`] so the injection lives in exactly one place.
-    fn inject_system_uptime(&mut self, current_time_us: u64) {
+    /// Records the uptime this scan cycle runs against and, if the loaded
+    /// container declares the uptime system variables, writes them before task
+    /// execution. Shared by [`run_round`] and [`run_round_debug`] so both the
+    /// recording and the injection live in exactly one place.
+    ///
+    /// The recording happens before the flag check: the program only *sees* the
+    /// uptime when it was compiled with the globals, but the VM knows it either
+    /// way, which is what [`uptime`](Self::uptime) reports.
+    fn set_uptime(&mut self, uptime_us: u64) {
+        self.uptime = Duration::from_micros(uptime_us);
         if self.container.header.flags & ironplc_container::FLAG_HAS_SYSTEM_UPTIME == 0 {
             return;
         }
-        let time_ms = (current_time_us / 1000) as i64;
+        let time_ms = (uptime_us / 1000) as i64;
         // __SYSTEM_UP_TIME at VarIndex(0): i32 milliseconds (wrapping)
         self.variables
             .store(VarIndex::new(0), Slot::from_i32(time_ms as i32))
@@ -570,7 +586,7 @@ impl<'a> VmRunning<'a> {
     fn run_instance<H: DebugHook>(
         &mut self,
         instance_index: usize,
-        current_time_us: u64,
+        uptime_us: u64,
         frame_count: usize,
         temp_alloc_next: u16,
         hook: &mut H,
@@ -596,7 +612,7 @@ impl<'a> VmRunning<'a> {
             self.max_temp_buf_bytes,
             self.frames,
             &scope,
-            current_time_us,
+            uptime_us,
             entry_function_id,
             &mut frame_count,
             &mut temp_alloc_next,
@@ -683,6 +699,21 @@ impl<'a> VmRunning<'a> {
     /// Returns the number of completed scan cycles.
     pub fn scan_count(&self) -> u64 {
         self.scan_count
+    }
+
+    /// Returns how long the VM has been running as of the most recently started
+    /// scan cycle.
+    ///
+    /// In milliseconds this is the number the program reads from
+    /// `__SYSTEM_UP_LTIME`, and it is tracked whether or not the container
+    /// declares those globals — the VM always knows how long it has run, so a
+    /// debugger can show time for a program compiled without
+    /// `--allow-system-uptime-global`.
+    ///
+    /// Resuming a scan paused mid-cycle does not move it: the value stays the
+    /// one the paused code is executing against.
+    pub fn uptime(&self) -> Duration {
+        self.uptime
     }
 
     /// Returns the earliest `next_due_us` across all enabled cyclic tasks,
@@ -889,7 +920,7 @@ fn execute(
     max_temp_buf_bytes: usize,
     frames: &mut [Frame],
     entry_scope: &VariableScope,
-    current_time_us: u64,
+    uptime_us: u64,
     entry_function_id: FunctionId,
     #[cfg(feature = "profiling")] profile: &mut InstructionProfile,
 ) -> Result<(), Trap> {
@@ -908,7 +939,7 @@ fn execute(
         max_temp_buf_bytes,
         frames,
         entry_scope,
-        current_time_us,
+        uptime_us,
         entry_function_id,
         &mut frame_count,
         &mut temp_alloc_next,
@@ -964,7 +995,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
     max_temp_buf_bytes: usize,
     frames: &mut [Frame],
     entry_scope: &VariableScope,
-    current_time_us: u64,
+    uptime_us: u64,
     entry_function_id: FunctionId,
     frame_count: &mut usize,
     temp_alloc_next: &mut u16,
@@ -2325,7 +2356,7 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                             return Err(Trap::DataRegionOutOfBounds(instance_start as u32));
                         }
                         let slice = &mut data_region[instance_start..instance_end];
-                        let time = current_time_us as i64;
+                        let time = uptime_us as i64;
                         match type_id {
                             opcode::fb_type::TON => crate::intrinsic::ton(slice, time)?,
                             opcode::fb_type::TOF => crate::intrinsic::tof(slice, time)?,
@@ -3185,5 +3216,39 @@ mod tests {
         let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
 
         assert!(vm.run_round(0).is_ok());
+    }
+
+    #[test]
+    fn uptime_when_no_round_run_then_zero() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        assert_eq!(vm.uptime(), Duration::ZERO);
+    }
+
+    #[test]
+    fn uptime_when_container_lacks_uptime_globals_then_reports_round_clock() {
+        // This container has no FLAG_HAS_SYSTEM_UPTIME, so nothing is written
+        // to the uptime globals -- the VM still knows the clock it ran with.
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        vm.run_round(2_500_000).unwrap();
+
+        assert_eq!(vm.uptime(), Duration::from_millis(2500));
+    }
+
+    #[test]
+    fn uptime_when_round_advances_then_follows_the_clock() {
+        let c = steel_thread_container();
+        let mut b = VmBuffers::from_container(&c);
+        let mut vm = Vm::new().load(&c, &mut b).start().unwrap();
+
+        vm.run_round(1_000).unwrap();
+        assert_eq!(vm.uptime(), Duration::from_millis(1));
+        vm.run_round(7_500).unwrap();
+        assert_eq!(vm.uptime(), Duration::from_micros(7_500));
     }
 }

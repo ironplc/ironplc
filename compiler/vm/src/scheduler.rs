@@ -45,11 +45,7 @@ impl<'a> TaskScheduler<'a> {
     /// sorted by priority (ascending) then task_id (ascending).
     ///
     /// Writes into the caller-provided buffer and returns a sub-slice of ready indices.
-    pub fn collect_ready_tasks<'b>(
-        &self,
-        current_time_us: u64,
-        buf: &'b mut [usize],
-    ) -> &'b [usize] {
+    pub fn collect_ready_tasks<'b>(&self, uptime_us: u64, buf: &'b mut [usize]) -> &'b [usize] {
         let mut count = 0;
         for (i, t) in self.task_states.iter().enumerate() {
             if !t.enabled {
@@ -57,7 +53,7 @@ impl<'a> TaskScheduler<'a> {
             }
             let ready = match t.task_type {
                 TaskType::Freewheeling => true,
-                TaskType::Cyclic => current_time_us >= t.next_due_us,
+                TaskType::Cyclic => uptime_us >= t.next_due_us,
                 TaskType::Event => false, // Phase 3
             };
             if ready && count < buf.len() {
@@ -94,7 +90,7 @@ impl<'a> TaskScheduler<'a> {
     }
 
     /// Records that a task executed, updating timing and overrun tracking.
-    pub fn record_execution(&mut self, task_index: usize, elapsed_us: u64, current_time_us: u64) {
+    pub fn record_execution(&mut self, task_index: usize, elapsed_us: u64, uptime_us: u64) {
         let task = &mut self.task_states[task_index];
         task.scan_count += 1;
         task.last_execute_us = elapsed_us;
@@ -104,9 +100,9 @@ impl<'a> TaskScheduler<'a> {
 
         if task.task_type == TaskType::Cyclic {
             task.next_due_us += task.interval_us;
-            if task.next_due_us <= current_time_us {
+            if task.next_due_us <= uptime_us {
                 task.overrun_count += 1;
-                task.next_due_us = current_time_us + task.interval_us;
+                task.next_due_us = uptime_us + task.interval_us;
             }
         }
     }
