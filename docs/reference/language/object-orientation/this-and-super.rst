@@ -72,6 +72,7 @@ See Also
 --------
 
 - :doc:`extends` — derive from a base type
+- :doc:`method` — declare a method on a function block type
 - :doc:`abstract` — mark a type as not directly instantiable
 - :doc:`interface` — declare an interface
 - :doc:`/explanation/object-orientation` — inheritance, interfaces, and
