@@ -142,3 +142,46 @@ END_PROGRAM
     assert_eq!(bufs.vars[1].as_i32(), 1);
     assert_eq!(bufs.vars[2].as_i32(), 2);
 }
+
+#[test]
+fn end_to_end_when_void_method_has_early_return_then_repeated_calls_do_not_overflow_stack() {
+    // Regression test: an early RETURN; inside a void method must emit
+    // RET_VOID, not a value-pushing RET. Calling the method many times in
+    // a single scan (a loop, not separate rounds) exercises the same
+    // operand stack repeatedly without any reset between calls -- if RETURN
+    // ever leaves a stray value behind, this traps with StackOverflow long
+    // before the loop completes.
+    let source = "
+FUNCTION_BLOCK FB_Guard
+VAR
+    nCount : DINT;
+END_VAR
+METHOD Tick
+VAR_INPUT
+    nLimit : DINT;
+END_VAR
+    IF nCount >= nLimit THEN
+        RETURN;
+    END_IF;
+    nCount := nCount + 1;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    g : FB_Guard;
+    i : DINT;
+    x : DINT;
+END_VAR
+FOR i := 1 TO 50 DO
+    g.Tick(3);
+END_FOR;
+x := g.nCount;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+
+    // g has no top-level slot of its own (see other tests in this file);
+    // i and x follow in declared order.
+    assert_eq!(bufs.vars[2].as_i32(), 3);
+}

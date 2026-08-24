@@ -180,7 +180,7 @@ fn compile_user_method(
     };
 
     let saved_return_ctx = ctx.current_function_return.take();
-    ctx.current_function_return = Some(CurrentFunctionReturn::Scalar {
+    ctx.current_function_return = has_return_value.then_some(CurrentFunctionReturn::Scalar {
         var_index: return_var_index,
         op_type: return_op_type,
     });
