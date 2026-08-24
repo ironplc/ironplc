@@ -173,8 +173,8 @@ fn run_step_scans(
     let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
     for _ in 0..scans {
-        let current_us = running.scan_count() * cycle_time_us;
-        if let Err(ctx) = running.run_round(current_us) {
+        let uptime_us = running.scan_count() * cycle_time_us;
+        if let Err(ctx) = running.run_round(uptime_us) {
             let total_scans = running.scan_count();
             let faulted = running.fault(ctx);
             let debug_map = build_var_debug_map(container);

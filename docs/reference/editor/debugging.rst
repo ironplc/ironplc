@@ -246,6 +246,12 @@ State the virtual machine owns rather than your program:
      - ``ULINT``
      - The number of scan cycles the program has completed. It increments as
        you continue, which is how you tell one scan from the next.
+   * - ``systemUptime``
+     - ``LINT``
+     - The virtual machine's monotonic clock, in milliseconds, as of the start
+       of the scan cycle you are paused in. This is the value a program reads
+       from ``__SYSTEM_UP_LTIME``, and the debugger shows it whether or not the
+       program was compiled with ``--allow-system-uptime-global``.
 
 .. note::
 
