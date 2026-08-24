@@ -269,7 +269,7 @@ Dialects (`--dialect`) set the base configuration. Individual `--allow-*` flags 
 | Dialect | `--dialect` value | Edition 3 types | REF_TO | Extensions |
 |---------|-------------------|----------------|--------|-------------------|
 | IEC 61131-3 Ed 2 (default) | `iec61131-3-ed2` | OFF | OFF | all OFF |
-| IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF |
+| IEC 61131-3 Ed 3 | `iec61131-3-ed3` | ON | ON | all OFF except `allow_partial_access_syntax` and `allow_fb_inheritance` — those two gate Edition 3 *standard* syntax (partial access, object orientation), not vendor extensions |
 | RuSTy | `rusty` | OFF | ON | all ON |
 | CODESYS | `codesys` | OFF | ON | all ON except `allow_system_uptime_global` |
 | TwinCAT | `twincat` | OFF | OFF | CODESYS set minus the whole `REF_TO` family (`allow_ref_to`, `allow_ref_arithmetic`, `allow_ref_stack_variables`, `allow_ref_type_punning`), plus `allow_reference_to`, `allow_pointer_to`, and `allow_adr` — TwinCAT spells references `REFERENCE TO` (bound with `REF=`) and pointers `POINTER TO` (bound with `ADR()`) |
