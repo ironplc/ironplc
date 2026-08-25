@@ -121,6 +121,9 @@ const ARGS_POU_SCOPE_MISSING: &str = r#"{"sources":[{"name":"main.st","content":
 /// Program + FB where Main depends on Counter — used by `pou_lineage`.
 const ARGS_POU_LINEAGE_VALID: &str = r#"{"sources":[{"name":"main.st","content":"FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"Main"}"#;
 
+/// Program whose only dependency is a standard library function block.
+const ARGS_POU_LINEAGE_STDLIB: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM MotorStartStop\nVAR Star_Timer : TON; Run : BOOL; END_VAR\nStar_Timer(IN := Run, PT := T#5s);\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"MotorStartStop"}"#;
+
 /// Same valid sources but an unknown POU name.
 const ARGS_POU_LINEAGE_MISSING: &str = r#"{"sources":[{"name":"main.st","content":"PROGRAM p\nEND_PROGRAM"}],"options":{"dialect":"iec61131-3-ed2"},"pou":"nonexistent"}"#;
 
@@ -194,6 +197,11 @@ const ARGS_TYPES_ALL_VALID: &str = r#"{"sources":[{"name":"main.st","content":"T
 #[case::pou_scope_missing_found_false("pou_scope", ARGS_POU_SCOPE_MISSING, r#"\"found\":false"#)]
 // pou_lineage
 #[case::pou_lineage_valid_upstream_has_counter("pou_lineage", ARGS_POU_LINEAGE_VALID, "Counter")]
+#[case::pou_lineage_stdlib_upstream_tagged(
+    "pou_lineage",
+    ARGS_POU_LINEAGE_STDLIB,
+    r#"\"name\":\"TON\",\"source\":\"stdlib\""#
+)]
 #[case::pou_lineage_missing_found_false(
     "pou_lineage",
     ARGS_POU_LINEAGE_MISSING,

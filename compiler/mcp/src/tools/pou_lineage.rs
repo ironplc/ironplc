@@ -1,11 +1,13 @@
 //! The `pou_lineage` MCP tool.
 //!
 //! Returns the upstream (dependencies) and downstream (dependents) of a
-//! named POU, derived from the library's call graph. Implements REQ-TOL-mcp-230
-//! and REQ-TOL-mcp-231.
+//! named POU, derived from the library's call graph. Standard library POUs
+//! participate in the graph like any other. Implements REQ-TOL-mcp-230,
+//! REQ-TOL-mcp-231, and REQ-TOL-mcp-232.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use ironplc_analyzer::SemanticContext;
 use ironplc_dsl::common::{
     FunctionBlockCallInitializer, FunctionBlockDeclaration, FunctionBlockInitialValueAssignment,
     FunctionDeclaration, Library, LibraryElementKind, ProgramDeclaration, VarDecl,
@@ -29,13 +31,33 @@ pub struct PouLineageInput {
     pub pou: String,
 }
 
+/// Where a POU is declared.
+///
+/// `Stdlib` marks the function blocks and functions the compiler provides
+/// itself (TON, R_TRIG, MAX, ...); everything else is `User`, including POUs
+/// that arrive through an activated compatibility library, which are files
+/// the caller can supply like any other source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PouSource {
+    User,
+    Stdlib,
+}
+
+/// One POU in an `upstream` or `downstream` list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LineageEntry {
+    pub name: String,
+    pub source: PouSource,
+}
+
 #[derive(Debug, Serialize)]
 pub struct PouLineageResponse {
     pub ok: bool,
     pub found: bool,
     pub pou: String,
-    pub upstream: Vec<String>,
-    pub downstream: Vec<String>,
+    pub upstream: Vec<LineageEntry>,
+    pub downstream: Vec<LineageEntry>,
     pub diagnostics: Vec<serde_json::Value>,
 }
 
@@ -103,7 +125,8 @@ pub fn build_response(
         }
     };
 
-    let graph = build_graph(library);
+    let context = project.semantic_context();
+    let graph = build_graph(library, context);
     let canonical = match graph.canonical_name(pou_name) {
         Some(n) => n,
         None => {
@@ -139,6 +162,8 @@ pub fn build_response(
 struct PouGraph {
     /// Lowercase → display name for every POU in the library.
     display: BTreeMap<String, String>,
+    /// Lowercase → where the POU is declared.
+    source: BTreeMap<String, PouSource>,
     /// Outgoing edges (upstream): caller lowercase → set of callee lowercase.
     edges_out: BTreeMap<String, BTreeSet<String>>,
     /// Incoming edges (downstream): callee lowercase → set of caller lowercase.
@@ -149,16 +174,21 @@ impl PouGraph {
     fn new() -> Self {
         Self {
             display: BTreeMap::new(),
+            source: BTreeMap::new(),
             edges_out: BTreeMap::new(),
             edges_in: BTreeMap::new(),
         }
     }
 
-    fn add_pou(&mut self, name: &str) {
+    /// Registers a POU. The first registration of a name wins, so user
+    /// declarations are recorded before standard library ones.
+    fn add_pou(&mut self, name: &str, source: PouSource) {
         let lower = name.to_lowercase();
-        self.display
-            .entry(lower.clone())
-            .or_insert_with(|| name.to_string());
+        if self.display.contains_key(&lower) {
+            return;
+        }
+        self.display.insert(lower.clone(), name.to_string());
+        self.source.insert(lower.clone(), source);
         self.edges_out.entry(lower.clone()).or_default();
         self.edges_in.entry(lower).or_default();
     }
@@ -170,7 +200,7 @@ impl PouGraph {
             return; // no self edges in lineage
         }
         if !self.display.contains_key(&e_lower) {
-            return; // ignore references to non-POUs (e.g. stdlib functions)
+            return; // the name resolves to no POU at all
         }
         self.edges_out
             .entry(c_lower.clone())
@@ -183,15 +213,19 @@ impl PouGraph {
         self.display.get(&name.to_lowercase()).cloned()
     }
 
-    fn transitive_upstream(&self, start: &str) -> Vec<String> {
+    fn transitive_upstream(&self, start: &str) -> Vec<LineageEntry> {
         self.transitive(&self.edges_out, start)
     }
 
-    fn transitive_downstream(&self, start: &str) -> Vec<String> {
+    fn transitive_downstream(&self, start: &str) -> Vec<LineageEntry> {
         self.transitive(&self.edges_in, start)
     }
 
-    fn transitive(&self, edges: &BTreeMap<String, BTreeSet<String>>, start: &str) -> Vec<String> {
+    fn transitive(
+        &self,
+        edges: &BTreeMap<String, BTreeSet<String>>,
+        start: &str,
+    ) -> Vec<LineageEntry> {
         let start_lower = start.to_lowercase();
         let mut visited = BTreeSet::new();
         let mut stack = vec![start_lower.clone()];
@@ -206,26 +240,44 @@ impl PouGraph {
         }
         // Exclude the starting POU from its own lineage.
         visited.remove(&start_lower);
-        let mut out: Vec<String> = visited
+        let mut out: Vec<LineageEntry> = visited
             .into_iter()
-            .filter_map(|l| self.display.get(&l).cloned())
+            .filter_map(|l| {
+                Some(LineageEntry {
+                    name: self.display.get(&l).cloned()?,
+                    source: *self.source.get(&l)?,
+                })
+            })
             .collect();
-        out.sort_by_key(|a| a.to_lowercase());
+        out.sort_by_key(|e| e.name.to_lowercase());
         out
     }
 }
 
-fn build_graph(library: &Library) -> PouGraph {
+fn build_graph(library: &Library, context: Option<&SemanticContext>) -> PouGraph {
     let mut graph = PouGraph::new();
 
     // First pass: register every POU so references can be resolved.
     for element in &library.elements {
         match element {
-            LibraryElementKind::ProgramDeclaration(p) => graph.add_pou(&p.name.to_string()),
-            LibraryElementKind::FunctionDeclaration(f) => graph.add_pou(&f.name.to_string()),
-            LibraryElementKind::FunctionBlockDeclaration(fb) => graph.add_pou(&fb.name.to_string()),
+            LibraryElementKind::ProgramDeclaration(p) => {
+                graph.add_pou(&p.name.to_string(), PouSource::User)
+            }
+            LibraryElementKind::FunctionDeclaration(f) => {
+                graph.add_pou(&f.name.to_string(), PouSource::User)
+            }
+            LibraryElementKind::FunctionBlockDeclaration(fb) => {
+                graph.add_pou(&fb.name.to_string(), PouSource::User)
+            }
             _ => {}
         }
+    }
+
+    // The standard library POUs the compiler supplies itself are real
+    // dependencies but never library elements, so register them from the
+    // semantic environments.
+    if let Some(context) = context {
+        register_stdlib_pous(&mut graph, context);
     }
 
     // Second pass: record edges.
@@ -241,6 +293,32 @@ fn build_graph(library: &Library) -> PouGraph {
     }
 
     graph
+}
+
+/// Registers the standard library function blocks and functions as POUs.
+///
+/// A standard library declaration is the one the compiler builds itself, and
+/// it is the only kind carrying a builtin span: everything reaching the
+/// environments from a file — user source and activated compatibility
+/// libraries alike — carries that file's span.
+fn register_stdlib_pous(graph: &mut PouGraph, context: &SemanticContext) {
+    for (name, attributes) in context.types().iter() {
+        if attributes.span.is_builtin() && attributes.representation.is_function_block() {
+            // The type environment case-normalizes its keys, so the spelling
+            // stored for a standard library function block is lowercase and
+            // says nothing about how the POU is named. IEC 61131-3 names every
+            // one of them in upper case (TON, R_TRIG, CTUD_UDINT), so report
+            // that rather than a registry artifact.
+            graph.add_pou(&name.to_string().to_uppercase(), PouSource::Stdlib);
+        }
+    }
+
+    // Function signatures keep the spelling they were declared with.
+    for (_, signature) in context.functions().iter() {
+        if signature.is_stdlib() {
+            graph.add_pou(signature.name.original(), PouSource::Stdlib);
+        }
+    }
 }
 
 fn record_program(graph: &mut PouGraph, p: &ProgramDeclaration) {
@@ -290,7 +368,9 @@ fn record_variables(graph: &mut PouGraph, caller: &str, variables: &[VarDecl]) {
 /// into the graph. FB calls are recorded by dispatching the variable name
 /// against the caller's own FB variables; for cross-POU references we rely
 /// on the VAR block walk in `record_variables`, which captures the FB
-/// *type* dependency.
+/// *type* dependency. Calls to standard library functions record an edge
+/// like any other call — those POUs are registered by
+/// `register_stdlib_pous`.
 struct ReferenceCollector<'a> {
     caller: String,
     graph: &'a mut PouGraph,
@@ -341,6 +421,17 @@ mod tests {
     use super::*;
     use crate::tools::test_support::ed2_options;
 
+    fn contains(entries: &[LineageEntry], name: &str) -> bool {
+        entries.iter().any(|e| e.name.eq_ignore_ascii_case(name))
+    }
+
+    fn source_of(entries: &[LineageEntry], name: &str) -> Option<PouSource> {
+        entries
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case(name))
+            .map(|e| e.source)
+    }
+
     fn build(src: &str, pou: &str) -> PouLineageResponse {
         let sources = vec![SourceInput {
             name: "main.st".into(),
@@ -357,10 +448,8 @@ mod tests {
         );
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
-        assert!(resp
-            .upstream
-            .iter()
-            .any(|n| n.eq_ignore_ascii_case("Counter")));
+        assert!(contains(&resp.upstream, "Counter"));
+        assert_eq!(source_of(&resp.upstream, "Counter"), Some(PouSource::User));
         assert!(resp.downstream.is_empty());
     }
 
@@ -373,10 +462,7 @@ mod tests {
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
         assert!(resp.upstream.is_empty());
-        assert!(resp
-            .downstream
-            .iter()
-            .any(|n| n.eq_ignore_ascii_case("Main")));
+        assert!(contains(&resp.downstream, "Main"));
     }
 
     #[test]
@@ -387,10 +473,7 @@ mod tests {
         );
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
-        assert!(resp
-            .upstream
-            .iter()
-            .any(|n| n.eq_ignore_ascii_case("AddPair")));
+        assert!(contains(&resp.upstream, "AddPair"));
     }
 
     #[test]
@@ -402,14 +485,8 @@ mod tests {
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
         // Main → Twice → AddPair.
-        assert!(resp
-            .upstream
-            .iter()
-            .any(|n| n.eq_ignore_ascii_case("Twice")));
-        assert!(resp
-            .upstream
-            .iter()
-            .any(|n| n.eq_ignore_ascii_case("AddPair")));
+        assert!(contains(&resp.upstream, "Twice"));
+        assert!(contains(&resp.upstream, "AddPair"));
     }
 
     #[test]
@@ -421,14 +498,78 @@ mod tests {
         assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
         assert!(resp.found);
         // Downstream of AddPair is {Twice, Main}.
-        assert!(resp
-            .downstream
+        assert!(contains(&resp.downstream, "Twice"));
+        assert!(contains(&resp.downstream, "Main"));
+    }
+
+    #[test]
+    fn build_response_when_program_uses_stdlib_fb_then_upstream_has_stdlib_entry() {
+        let resp = build(
+            "PROGRAM MotorStartStop\nVAR Star_Timer : TON; Run : BOOL; END_VAR\nStar_Timer(IN := Run, PT := T#5s);\nEND_PROGRAM",
+            "MotorStartStop",
+        );
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert!(resp.found);
+        // Reported under the IEC spelling, not the type registry's key.
+        assert_eq!(resp.upstream[0].name, "TON");
+        assert_eq!(source_of(&resp.upstream, "TON"), Some(PouSource::Stdlib));
+    }
+
+    #[test]
+    fn build_response_when_queried_pou_is_stdlib_fb_then_found_with_downstream() {
+        let resp = build(
+            "PROGRAM MotorStartStop\nVAR Star_Timer : TON; Run : BOOL; END_VAR\nStar_Timer(IN := Run, PT := T#5s);\nEND_PROGRAM",
+            "TON",
+        );
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert!(resp.found);
+        assert!(contains(&resp.downstream, "MotorStartStop"));
+        // Standard library POUs are leaves: nothing of ours is upstream.
+        assert!(resp.upstream.is_empty());
+    }
+
+    #[test]
+    fn build_response_when_pou_calls_stdlib_function_then_upstream_has_stdlib_entry() {
+        let resp = build(
+            "PROGRAM Main\nVAR r : INT; END_VAR\nr := MAX(IN1 := 1, IN2 := 2);\nEND_PROGRAM",
+            "Main",
+        );
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert!(resp.found);
+        assert!(contains(&resp.upstream, "MAX"));
+        assert_eq!(source_of(&resp.upstream, "MAX"), Some(PouSource::Stdlib));
+    }
+
+    #[test]
+    fn build_response_when_stdlib_fb_unused_then_absent_from_lineage() {
+        // Registering the standard library must not put its POUs into the
+        // lineage of a POU that does not use them.
+        let resp = build(
+            "FUNCTION_BLOCK Counter\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR c : Counter; END_VAR\nEND_PROGRAM",
+            "Main",
+        );
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        assert_eq!(resp.upstream.len(), 1);
+        assert!(contains(&resp.upstream, "Counter"));
+    }
+
+    #[test]
+    fn build_response_when_mixed_origins_then_sorted_by_name() {
+        let resp = build(
+            "FUNCTION_BLOCK Zebra\nVAR_INPUT Inc : BOOL; END_VAR\nEND_FUNCTION_BLOCK\nPROGRAM Main\nVAR z : Zebra; t : TON; END_VAR\nEND_PROGRAM",
+            "Main",
+        );
+        assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+        let names: Vec<String> = resp
+            .upstream
             .iter()
-            .any(|n| n.eq_ignore_ascii_case("Twice")));
-        assert!(resp
-            .downstream
-            .iter()
-            .any(|n| n.eq_ignore_ascii_case("Main")));
+            .map(|e| e.name.to_lowercase())
+            .collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted);
+        assert_eq!(source_of(&resp.upstream, "Zebra"), Some(PouSource::User));
+        assert_eq!(source_of(&resp.upstream, "TON"), Some(PouSource::Stdlib));
     }
 
     #[test]
@@ -449,14 +590,8 @@ mod tests {
             "Main",
         );
         assert!(resp.ok);
-        assert!(resp
-            .upstream
-            .iter()
-            .all(|n| !n.eq_ignore_ascii_case("Main")));
-        assert!(resp
-            .downstream
-            .iter()
-            .all(|n| !n.eq_ignore_ascii_case("Main")));
+        assert!(!contains(&resp.upstream, "Main"));
+        assert!(!contains(&resp.downstream, "Main"));
     }
 
     #[test]
@@ -491,7 +626,7 @@ mod tests {
         );
         assert!(resp.ok);
         let mut sorted = resp.upstream.clone();
-        sorted.sort_by_key(|a| a.to_lowercase());
+        sorted.sort_by_key(|e| e.name.to_lowercase());
         assert_eq!(resp.upstream, sorted);
     }
 }

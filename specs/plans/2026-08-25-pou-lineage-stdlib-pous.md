@@ -100,6 +100,16 @@ is experimental and its consumers are in-tree.
 Ordering is unchanged: case-insensitive by name, both origins in one
 list.
 
+### Naming
+
+The type environment case-normalizes its keys and the standard library
+function blocks are registered through `leak_lowercase`, so the spelling
+stored for `TON` is `ton` — a registry artifact, not a name. IEC 61131-3
+spells every standard function block in upper case, so lineage reports
+the upper-case form. Function signatures keep the spelling they were
+declared with (`FunctionSignature::name` preserves the original), so they
+are reported as-is.
+
 ### Lineage queries for standard library POUs
 
 Registering standard library POUs as nodes makes them addressable:
