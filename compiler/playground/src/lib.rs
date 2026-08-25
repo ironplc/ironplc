@@ -697,8 +697,8 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     let string_layouts = build_string_layout_map(&container);
 
     for round in 0..scans {
-        let current_us = (round as u64) * 1000;
-        if let Err(ctx) = running.run_round(current_us) {
+        let uptime_us = (round as u64) * 1000;
+        if let Err(ctx) = running.run_round(uptime_us) {
             // Snapshot variables (incl. data-region strings) before consuming
             // `running` via `fault`, which releases its borrow on the buffers.
             let num_vars = running.num_variables();
@@ -1086,8 +1086,8 @@ fn run_vm_scans(
     let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
     for _ in 0..scans {
-        let current_us = running.scan_count() * cycle_time_us;
-        if let Err(ctx) = running.run_round(current_us) {
+        let uptime_us = running.scan_count() * cycle_time_us;
+        if let Err(ctx) = running.run_round(uptime_us) {
             let total_scans = running.scan_count();
             let debug_map = build_var_debug_map(container);
             let enum_map = build_enum_value_map(container);

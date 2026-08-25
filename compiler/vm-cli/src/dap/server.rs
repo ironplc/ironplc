@@ -20,14 +20,16 @@
 
 use std::io::{self, BufRead, Write};
 use std::path::Path;
+use std::time::Duration;
 
 use ironplc_container::debug_section::DebugSection;
 use ironplc_container::{Container, VarIndex};
 use ironplc_vm::{
-    BreakpointTable, DebuggerHook, PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning,
+    has_freewheeling_task, interval_from_ms, interval_us, BreakpointTable, DebuggerHook,
+    PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning, DEFAULT_FREEWHEELING_INTERVAL,
 };
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::debug_info;
 use super::framing;
@@ -232,9 +234,27 @@ fn launched_session<R: BufRead, W: Write>(
     // sends `configurationDone` to begin the run.
     let mut phase = Phase::Configuring;
     // A monotonic clock for the debug driver. `run_round_debug` bypasses the
-    // scheduler and watchdog, so the exact value only feeds the uptime system
-    // variable; a per-round bump keeps it non-decreasing.
-    let mut current_time_us: u64 = 0;
+    // scheduler and watchdog, so the value only feeds the uptime system
+    // variable — but that is what timers read, and what the Runtime scope
+    // shows, so how fast it moves decides when a TON elapses.
+    //
+    // A program whose task declares no INTERVAL is freewheeling: it has no
+    // cycle rate of its own, so the session runs it at an assumed one and says
+    // which (see `specs/design/mcp-server.md` REQ-TOL-mcp-049 — the `run` MCP
+    // tool requires the caller to supply that rate instead of assuming it).
+    // A program that declares an INTERVAL still advances a flat 1 ms per scan;
+    // honoring the declared interval is issue #1397.
+    let mut uptime_us: u64 = 0;
+    let scan_advance = if has_freewheeling_task(&container) {
+        let assumed = assumed_freewheeling_interval(args.freewheeling_interval_ms);
+        send(
+            writer,
+            &console_output(take_seq(seq), &freewheeling_notice(assumed)),
+        )?;
+        assumed
+    } else {
+        DEBUG_SCAN_ADVANCE
+    };
     // Set after a breakpoint pause so the next resume skips that one location
     // instead of re-triggering in place.
     let mut suppress_bp = false;
@@ -283,9 +303,9 @@ fn launched_session<R: BufRead, W: Write>(
                         StepMode::None => {}
                     }
                 }
-                running.run_round_debug(current_time_us, &mut hook)
+                running.run_round_debug(uptime_us, &mut hook)
             };
-            current_time_us = current_time_us.saturating_add(1000);
+            uptime_us = uptime_us.saturating_add(interval_us(scan_advance));
 
             match outcome {
                 // A completed scan keeps the debugger scanning: run the next
@@ -460,6 +480,45 @@ fn launched_session<R: BufRead, W: Write>(
     }
 }
 
+/// How far program time advances per scan for a program that declares an
+/// `INTERVAL`. A flat 1 ms, pending #1397.
+const DEBUG_SCAN_ADVANCE: Duration = Duration::from_millis(1);
+
+/// The cycle time to assume for a freewheeling program.
+///
+/// An out-of-range `freewheelingIntervalMs` falls back to the default rather
+/// than failing the launch — a debug session that will not start is a poor
+/// answer to a typo in a launch configuration — and the notice reports the
+/// value actually used either way.
+fn assumed_freewheeling_interval(interval_ms: Option<f64>) -> Duration {
+    interval_ms
+        .and_then(|ms| interval_from_ms(ms).ok())
+        .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL)
+}
+
+/// The console line telling the user which cycle time the session assumed.
+///
+/// Every timer in a freewheeling program elapses on this assumption, so a
+/// session that did not state it would leave the user unable to explain what
+/// they are watching. It points at the launch configuration rather than at a
+/// named setting, which would go stale the moment the setting is renamed.
+fn freewheeling_notice(interval: Duration) -> String {
+    format!(
+        "This program declares no INTERVAL, so it has no scan cycle time of its own. \
+         Assuming {} ms per scan; change it in the launch configuration.\n",
+        interval.as_secs_f64() * 1_000.0
+    )
+}
+
+/// A DAP `output` event carrying one line to the debug console.
+fn console_output(seq: i64, text: &str) -> Event {
+    Event::new(
+        seq,
+        "output",
+        Some(json!({ "category": "console", "output": text })),
+    )
+}
+
 /// Whether the launch's `scanLimit` bound (if any) has been reached, so the
 /// session should terminate rather than start another cycle.
 fn scan_limit_reached(scan_limit: Option<u64>, running: &VmRunning) -> bool {
@@ -589,18 +648,32 @@ fn program_variables_body(running: &VmRunning, debug: Option<&DebugSection>) -> 
 }
 
 /// Builds the `Runtime` scope's contents: VM-level state that is not a program
-/// variable. Today that is the completed-scan-cycle count, which the client
-/// re-reads at every stop, so it replaces the earlier "show scan count" button
-/// with a value that is simply on screen. Cycle timing and next-due can join
-/// this list without adding another scope.
+/// variable — the completed-scan-cycle count and the VM's monotonic uptime,
+/// which the client re-reads at every stop, so they are simply on screen rather
+/// than behind a "show me" button. Cycle timing and next-due can join this list
+/// without adding another scope.
 fn runtime_variables_body(running: &VmRunning) -> Option<Value> {
-    let variables = vec![Variable {
-        name: "scanCount".to_string(),
-        value: running.scan_count().to_string(),
-        // The VM counter is a u64; ULINT is its IEC 61131-3 spelling.
-        type_name: Some("ULINT".to_string()),
-        variables_reference: 0,
-    }];
+    let variables = vec![
+        Variable {
+            name: "scanCount".to_string(),
+            value: running.scan_count().to_string(),
+            // The VM counter is a u64; ULINT is its IEC 61131-3 spelling.
+            type_name: Some("ULINT".to_string()),
+            variables_reference: 0,
+        },
+        Variable {
+            name: "systemUptime".to_string(),
+            // How long the VM has run as of the current scan cycle, rendered in
+            // milliseconds. The VM tracks it whether or not the program
+            // declares the uptime globals, so this shows time even for a
+            // program compiled without `--allow-system-uptime-global`.
+            value: (running.uptime().as_millis() as i64).to_string(),
+            // The same i64 milliseconds `__SYSTEM_UP_LTIME` holds; LINT is its
+            // IEC 61131-3 spelling.
+            type_name: Some("LINT".to_string()),
+            variables_reference: 0,
+        },
+    ];
     serde_json::to_value(VariablesResponseBody { variables }).ok()
 }
 
@@ -795,14 +868,14 @@ mod tests {
                    "arguments": {"program": path}}),
             json!({"seq": 3, "type": "request", "command": "disconnect"}),
         ]);
-        // initialize response, initialized event, launch response, disconnect response.
-        assert_eq!(out.len(), 4);
-        let launch = &out[2];
-        assert_eq!(launch["command"], "launch");
+        // initialize response, initialized event, launch response, the
+        // assumed-cycle-time notice (this container's task is freewheeling),
+        // disconnect response.
+        assert_eq!(out.len(), 5);
+        let launch = responses(&out, "launch")[0];
         assert_eq!(launch["success"], true);
         assert_eq!(launch["request_seq"], 2);
-        let disconnect = &out[3];
-        assert_eq!(disconnect["command"], "disconnect");
+        let disconnect = responses(&out, "disconnect")[0];
         assert_eq!(disconnect["success"], true);
     }
 
@@ -943,13 +1016,11 @@ mod tests {
             json!({"seq": 4, "type": "request", "command": "disconnect"}),
         ]);
         // Post-launch `threads` is refused for now.
-        let threads = &out[3];
-        assert_eq!(threads["command"], "threads");
+        let threads = responses(&out, "threads")[0];
         assert_eq!(threads["success"], false);
         assert_eq!(threads["message"], "requestNotApplicable");
         // Then disconnect is honored.
-        let disconnect = out.last().unwrap();
-        assert_eq!(disconnect["command"], "disconnect");
+        let disconnect = responses(&out, "disconnect")[0];
         assert_eq!(disconnect["success"], true);
     }
 
@@ -1062,6 +1133,113 @@ mod tests {
     /// Index of the first message matching `pred`, for ordering assertions.
     fn index_of(out: &[Value], pred: impl Fn(&Value) -> bool) -> usize {
         out.iter().position(pred).unwrap()
+    }
+
+    /// The same container as [`scan_container_file`], but with a task that
+    /// declares an `INTERVAL` — so the session has a cycle time to work from
+    /// and assumes nothing.
+    fn cyclic_scan_container_file() -> (tempfile::NamedTempFile, String) {
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_function(FunctionId::INIT, &[0x8C], 0, 1, 0)
+            .add_function(FunctionId::SCAN, &[0x8C], 0, 1, 0)
+            .max_call_depth(1)
+            .add_var_name(a_var_name())
+            .add_func_name(FuncNameEntry {
+                function_id: FunctionId::SCAN,
+                name: "MAIN".into(),
+            })
+            .add_source_file(demo_source_file())
+            .add_line_map_entry(line_entry(FunctionId::SCAN, 0, 10))
+            .add_task(TaskEntry {
+                task_type: TaskType::Cyclic,
+                interval_us: 100_000,
+                ..a_task(TaskId::new(0))
+            })
+            .add_program_instance(a_program(InstanceId::new(0), TaskId::new(0)))
+            .build();
+        write_container_to_temp(&container)
+    }
+
+    /// The `output` event bodies the session wrote to the debug console.
+    fn console_lines(out: &[Value]) -> Vec<String> {
+        events(out, "output")
+            .iter()
+            .filter(|e| e["body"]["category"] == "console")
+            .map(|e| e["body"]["output"].as_str().unwrap_or("").to_string())
+            .collect()
+    }
+
+    #[test]
+    fn serve_when_freewheeling_program_then_reports_assumed_cycle_time() {
+        // A program with no INTERVAL has no cycle time of its own, so the
+        // session assumes one — and has to say so, because every timer in the
+        // program elapses on that assumption.
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let lines = console_lines(&out);
+        assert_eq!(lines.len(), 1, "console: {lines:?}");
+        assert!(lines[0].contains("100 ms"), "console: {lines:?}");
+        assert!(
+            lines[0].contains("launch configuration"),
+            "the notice says where to change it: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn serve_when_freewheeling_interval_supplied_then_reports_that_cycle_time() {
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1,
+                                 "freewheelingIntervalMs": 5}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let lines = console_lines(&out);
+        assert!(lines[0].contains("5 ms"), "console: {lines:?}");
+    }
+
+    #[test]
+    fn serve_when_freewheeling_interval_out_of_range_then_reports_the_default() {
+        // A typo in a launch configuration should not stop the session from
+        // starting, but the notice still reports what was actually used.
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1,
+                                 "freewheelingIntervalMs": 0}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        assert_eq!(responses(&out, "launch")[0]["success"], true);
+        let lines = console_lines(&out);
+        assert!(lines[0].contains("100 ms"), "console: {lines:?}");
+    }
+
+    #[test]
+    fn serve_when_cyclic_program_then_assumes_nothing() {
+        let (_file, path) = cyclic_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        assert!(console_lines(&out).is_empty());
     }
 
     #[test]
@@ -1314,6 +1492,65 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(second, first + 1, "runtime scan count must advance a cycle");
+    }
+
+    #[test]
+    fn serve_when_runtime_scope_at_entry_then_reports_zero_uptime() {
+        // The container under test declares no uptime globals, so the program
+        // itself cannot read the clock -- the VM tracks it regardless, which is
+        // the whole point of the entry. At the entry stop no scan has started,
+        // so it is 0.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "stopOnEntry": true}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 5, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let uptime = &responses(&out, "variables")[0]["body"]["variables"][1];
+        assert_eq!(uptime["name"], "systemUptime");
+        assert_eq!(uptime["type"], "LINT");
+        assert_eq!(uptime["value"], "0");
+    }
+
+    #[test]
+    fn serve_when_runtime_scope_expanded_then_shows_system_uptime_advancing() {
+        // Time must be observable from one stop to the next; how *fast* it
+        // advances is the debug driver's business (issue #1397), so this only
+        // asserts that it moves forward.
+        let (_file, path) = incrementing_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": 11}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 5, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 6, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": 7, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 8, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let vars = responses(&out, "variables");
+        let uptime_of = |scope: &Value| -> i64 {
+            let entry = &scope["body"]["variables"][1];
+            assert_eq!(entry["name"], "systemUptime");
+            assert_eq!(entry["type"], "LINT");
+            entry["value"].as_str().unwrap().parse().unwrap()
+        };
+        assert!(
+            uptime_of(vars[1]) > uptime_of(vars[0]),
+            "runtime uptime must advance between stops"
+        );
     }
 
     #[test]

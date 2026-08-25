@@ -179,7 +179,9 @@ fn ironplcvmd_when_initialize_launch_disconnect_then_handshake_succeeds() {
         json!({"seq": 3, "type": "request", "command": "disconnect"}),
     ]);
 
-    assert_eq!(messages.len(), 4, "messages: {messages:?}");
+    // The container's task is freewheeling, so the session also writes the
+    // assumed-cycle-time notice to the debug console after the launch response.
+    assert_eq!(messages.len(), 5, "messages: {messages:?}");
 
     // initialize response with the single advertised capability.
     assert_eq!(messages[0]["type"], "response");
@@ -199,9 +201,17 @@ fn ironplcvmd_when_initialize_launch_disconnect_then_handshake_succeeds() {
     assert_eq!(messages[2]["success"], true);
     assert_eq!(messages[2]["request_seq"], 2);
 
+    // The assumed-cycle-time notice, naming the value the run used.
+    assert_eq!(messages[3]["event"], "output");
+    assert_eq!(messages[3]["body"]["category"], "console");
+    assert!(messages[3]["body"]["output"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("100 ms"));
+
     // disconnect response.
-    assert_eq!(messages[3]["command"], "disconnect");
-    assert_eq!(messages[3]["success"], true);
+    assert_eq!(messages[4]["command"], "disconnect");
+    assert_eq!(messages[4]["success"], true);
 }
 
 #[test]
