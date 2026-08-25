@@ -68,16 +68,16 @@ out of this change; it is tracked separately.
 
 ## Tasks
 
-- [ ] Rewrite the container's freewheeling tasks in `launched_session` and take
+- [x] Rewrite the container's freewheeling tasks in `launched_session` and take
       the scan advance from `first_task_interval`
-- [ ] Delete `DEBUG_SCAN_ADVANCE` and the `has_freewheeling_task` branch that
+- [x] Delete `DEBUG_SCAN_ADVANCE` and the `has_freewheeling_task` branch that
       selected it
-- [ ] Advance `uptime_us` only when the round completed a scan
-- [ ] Document the default-application policy on `DEFAULT_FREEWHEELING_INTERVAL`
-- [ ] Unit tests: declared interval drives uptime; a pause does not advance it
-- [ ] End-to-end test: `TON` with `PT := T#500ms` on a 100 ms task elapses at
+- [x] Advance `uptime_us` only when the round completed a scan
+- [x] Document the default-application policy on `DEFAULT_FREEWHEELING_INTERVAL`
+- [x] Unit tests: declared interval drives uptime; a pause does not advance it
+- [x] End-to-end test: `TON` with `PT := T#500ms` on a 100 ms task elapses at
       scan 5
-- [ ] `cd compiler && just`
+- [x] `cd compiler && just`
 
 ## Verification
 

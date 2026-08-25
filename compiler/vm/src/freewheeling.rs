@@ -30,6 +30,17 @@ use ironplc_container::{Container, TaskType};
 /// 100 ms is a plausible scan time for a small program on modest hardware. It
 /// is deliberately not a measured or derived value: no such value exists for a
 /// task whose whole definition is "as fast as possible".
+///
+/// The two callers deliberately differ on whether to reach for it, and the
+/// reason is recorded here rather than in either so that neither has to
+/// restate the other's:
+///
+/// - The `run` MCP tool never applies it. Its caller is an agent, and a trace
+///   built on a rate the agent never chose is a trap, so the run is rejected
+///   with a diagnostic naming what to supply (REQ-TOL-mcp-049).
+/// - The debugger applies it. Its caller is a person mid-session, and a debug
+///   session that refuses to start is a poor answer to an omitted or mistyped
+///   launch setting. The session says which rate it assumed instead.
 pub const DEFAULT_FREEWHEELING_INTERVAL: Duration = Duration::from_millis(100);
 
 /// The longest cycle time a caller may ask for.
