@@ -109,7 +109,7 @@ pub(crate) fn opts_with_partial_access() -> CompilerOptions {
 
 pub(crate) fn wrap_program(body: &str) -> String {
     format!(
-            "PROGRAM main\nVAR\n  b : BYTE;\n  r : BOOL;\n  arr : ARRAY[0..1] OF BYTE;\n  s : MY_STRUCT;\nEND_VAR\n{}\nEND_PROGRAM",
+            "PROGRAM main\nVAR\n  b : BYTE;\n  r : BOOL;\n  v : INT;\n  arr : ARRAY[0..1] OF BYTE;\n  grid : ARRAY[0..3, 0..3] OF INT;\n  s : MY_STRUCT;\nEND_VAR\n{}\nEND_PROGRAM",
             body
         )
 }
