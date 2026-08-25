@@ -25,9 +25,9 @@ use std::time::Duration;
 use ironplc_container::debug_section::DebugSection;
 use ironplc_container::{Container, VarIndex};
 use ironplc_vm::{
-    assume_freewheeling_interval, first_task_interval, has_freewheeling_task, interval_from_ms,
-    interval_us, BreakpointTable, DebuggerHook, PauseReason, RoundOutcome, StepMode, VmBuffers,
-    VmRunning, DEFAULT_FREEWHEELING_INTERVAL,
+    has_freewheeling_task, interval_from_ms, interval_us, resolve_cycle_time, BreakpointTable,
+    DebuggerHook, PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning,
+    DEFAULT_FREEWHEELING_INTERVAL,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -207,18 +207,22 @@ fn launched_session<R: BufRead, W: Write>(
     args: LaunchRequestArguments,
     launch_request: &Request,
 ) -> io::Result<()> {
-    // A task that declares no INTERVAL is freewheeling: it has no cycle rate of
-    // its own, so the session runs it at an assumed one. Applying that
-    // assumption to the task table here -- before the VM loads the container --
-    // makes it a property of the program rather than of the debug driver, which
-    // is how `run` applies the same assumption (see `specs/design/mcp-server.md`
-    // REQ-TOL-mcp-049; that tool requires its caller to supply the rate instead
-    // of assuming one, but where the rate comes from is the only difference).
+    // How far program time moves per scan. `run_round_debug` bypasses the
+    // scheduler, so this only feeds the uptime system variable -- but that is
+    // what timers read, so it decides when a TON elapses. Resolving it before
+    // the VM loads the container puts the rate in the task table rather than in
+    // this driver, through the same call `run` makes.
+    //
+    // The fallbacks are this session's policy, not the shared rule: a container
+    // naming no rate would otherwise freeze the clock and stop every timer
+    // without saying why.
     let freewheeling = has_freewheeling_task(&container);
-    if freewheeling {
-        let assumed = assumed_freewheeling_interval(args.freewheeling_interval_ms);
-        assume_freewheeling_interval(&mut container, assumed);
-    }
+    let scan_advance = resolve_cycle_time(
+        &mut container,
+        Some(assumed_freewheeling_interval(args.freewheeling_interval_ms)),
+    )
+    .filter(|interval| !interval.is_zero())
+    .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL);
 
     let mut bufs = VmBuffers::from_container(&container);
 
@@ -247,25 +251,7 @@ fn launched_session<R: BufRead, W: Write>(
     // The session opens in `Configuring`: the client sets breakpoints and then
     // sends `configurationDone` to begin the run.
     let mut phase = Phase::Configuring;
-    // A monotonic clock for the debug driver. `run_round_debug` bypasses the
-    // scheduler and watchdog, so the value only feeds the uptime system
-    // variable — but that is what timers read, and what the Runtime scope
-    // shows, so how fast it moves decides when a TON elapses.
-    //
-    // The rate is the one the task table names, which by now carries an assumed
-    // cycle time for the freewheeling case too. Reading it back rather than
-    // choosing one means a debugged run and a `run` of the same program agree
-    // on when a timer elapses without either driver holding an interval of its
-    // own to keep in sync.
-    //
-    // A table that still names no positive rate — no enabled task, or a
-    // hand-built entry with a zero interval — falls back to the same
-    // assumption, because it is the same situation: nothing says how fast to
-    // scan, and a frozen clock would stop every timer without saying why.
     let mut uptime_us: u64 = 0;
-    let scan_advance = first_task_interval(&container)
-        .filter(|interval| !interval.is_zero())
-        .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL);
     if freewheeling {
         // Report the rate actually used, not the one requested: an out-of-range
         // or vanishingly small request lands on the fallback above.

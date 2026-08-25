@@ -114,7 +114,7 @@ pub fn has_freewheeling_task(container: &Container) -> bool {
 /// interval would make the rewritten task permanently overdue, inflating
 /// `overrun_count` on every round; codegen avoids the same trap by compiling
 /// `INTERVAL := T#0s` to a freewheeling task in the first place.
-pub fn assume_freewheeling_interval(container: &mut Container, interval: Duration) -> usize {
+fn assume_freewheeling_interval(container: &mut Container, interval: Duration) -> usize {
     let interval_us = interval_us(interval);
     if interval_us == 0 {
         return 0;
@@ -138,13 +138,42 @@ pub fn assume_freewheeling_interval(container: &mut Container, interval: Duratio
 /// [`assume_freewheeling_interval`] has given the freewheeling tasks one. The
 /// VM is single-task today; a container with several would need this reported
 /// per task.
-pub fn first_task_interval(container: &Container) -> Option<Duration> {
+fn first_task_interval(container: &Container) -> Option<Duration> {
     container
         .task_table
         .tasks
         .iter()
         .find(|t| is_enabled(t.flags))
         .map(|t| Duration::from_micros(t.interval_us))
+}
+
+/// The cycle time `container` will run at under simulated time, after applying
+/// `assumed` to any task that declares none.
+///
+/// This is the whole sequence a simulated driver performs before it can start a
+/// clock — decide whether an assumed rate is needed, apply it to the task
+/// table, and read back the rate the container ends up at. The `run` MCP tool
+/// and the debugger both need it, and having it here is what stops them
+/// answering it differently.
+///
+/// Mechanism only: what to *do* about a missing rate stays with the caller,
+/// because the two deliberately differ (see
+/// [`DEFAULT_FREEWHEELING_INTERVAL`]). `None` comes back in exactly one case —
+/// the container has a freewheeling task and `assumed` is `None`, so nothing
+/// names a rate. A container with no enabled task resolves to
+/// `Some(Duration::ZERO)`: it names a rate, and that rate is "never".
+pub fn resolve_cycle_time(
+    container: &mut Container,
+    assumed: Option<Duration>,
+) -> Option<Duration> {
+    match assumed {
+        Some(interval) => {
+            assume_freewheeling_interval(container, interval);
+        }
+        None if has_freewheeling_task(container) => return None,
+        None => {}
+    }
+    Some(first_task_interval(container).unwrap_or_default())
 }
 
 /// A `Duration` as the whole microseconds the container format and the VM
@@ -321,6 +350,56 @@ mod tests {
         assert_eq!(
             container.task_table.tasks[0].task_type,
             TaskType::Freewheeling
+        );
+    }
+
+    #[test]
+    fn resolve_cycle_time_when_freewheeling_and_assumed_then_applies_it() {
+        let mut container = container_with(vec![task(TaskType::Freewheeling, 0, true)]);
+
+        assert_eq!(
+            resolve_cycle_time(&mut container, Some(Duration::from_millis(100))),
+            Some(Duration::from_millis(100))
+        );
+        assert_eq!(container.task_table.tasks[0].task_type, TaskType::Cyclic);
+    }
+
+    #[test]
+    fn resolve_cycle_time_when_declared_then_assumption_is_unused() {
+        let mut container = container_with(vec![task(TaskType::Cyclic, 10_000, true)]);
+
+        assert_eq!(
+            resolve_cycle_time(&mut container, Some(Duration::from_millis(100))),
+            Some(Duration::from_millis(10)),
+            "a declared INTERVAL outranks the caller's assumption"
+        );
+    }
+
+    #[test]
+    fn resolve_cycle_time_when_freewheeling_and_no_assumption_then_none() {
+        let mut container = container_with(vec![task(TaskType::Freewheeling, 0, true)]);
+
+        assert_eq!(resolve_cycle_time(&mut container, None), None);
+    }
+
+    #[test]
+    fn resolve_cycle_time_when_declared_and_no_assumption_then_reads_it_back() {
+        let mut container = container_with(vec![task(TaskType::Cyclic, 10_000, true)]);
+
+        assert_eq!(
+            resolve_cycle_time(&mut container, None),
+            Some(Duration::from_millis(10))
+        );
+    }
+
+    #[test]
+    fn resolve_cycle_time_when_no_enabled_task_then_zero() {
+        // Not `None`: nothing is missing, the container simply never runs.
+        let mut container = container_with(vec![task(TaskType::Cyclic, 10_000, false)]);
+
+        assert_eq!(
+            resolve_cycle_time(&mut container, Some(Duration::from_millis(100))),
+            Some(Duration::ZERO)
         );
     }
 
