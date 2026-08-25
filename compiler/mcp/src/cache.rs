@@ -11,6 +11,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
 use ironplc_container::VarIndex;
+use serde::Serialize;
 
 /// Default maximum number of cached containers.
 pub const DEFAULT_MAX_ENTRIES: usize = 64;
@@ -137,12 +138,30 @@ fn bare_component(name: &str) -> &str {
     name.rsplit('.').next().unwrap_or(name)
 }
 
+/// How a task is scheduled.
+///
+/// This names the task the *container* carries rather than the syntax the
+/// source declares — see `compile::task_meta_from_config`. Serializing to the
+/// lowercase JSON strings the `run` and `compile` contracts use is the
+/// representation's business, so callers of this type deal in variants.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskKind {
+    /// Runs on a declared `INTERVAL`.
+    Cyclic,
+    /// Runs once, on a `SINGLE` trigger.
+    Single,
+    /// Declares no `INTERVAL`, so it runs as fast as the hardware allows and
+    /// needs an assumed cycle time under simulated time (REQ-TOL-mcp-049).
+    Freewheeling,
+}
+
 /// Task metadata for the compile tool response.
 #[derive(Clone, Debug)]
 pub struct TaskMeta {
     pub name: String,
     pub priority: u32,
-    pub kind: String,
+    pub kind: TaskKind,
     pub interval_ms: Option<f64>,
 }
 
@@ -274,6 +293,17 @@ impl ContainerCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The JSON spelling is the `compile` tool's published contract
+    /// (REQ-TOL-mcp-032), so it is pinned here rather than left to the
+    /// enum's variant names.
+    #[test]
+    fn task_kind_when_serialized_then_lowercase_contract_strings() {
+        let json = |kind| serde_json::to_string(&kind).unwrap();
+        assert_eq!(json(TaskKind::Cyclic), "\"cyclic\"");
+        assert_eq!(json(TaskKind::Single), "\"single\"");
+        assert_eq!(json(TaskKind::Freewheeling), "\"freewheeling\"");
+    }
 
     fn make_container(size: usize) -> CachedContainer {
         CachedContainer::new(vec![0u8; size], vec![], vec![], VariableSymbolMap::new())
