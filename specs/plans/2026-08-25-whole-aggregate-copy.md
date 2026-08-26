@@ -35,7 +35,8 @@ x := y   =>   LOAD_VAR_I32  y
 ```
 
 Since an array variable's slot holds its data-region byte offset, that copies
-the offset. Structures are unaffected — they already have a copy protocol.
+the offset. Structures are unaffected — they already have a copy protocol,
+written out in full in [the appendix](#appendix-the-existing-struct-copy-protocol).
 
 IEC 61131-3 §7.3.3.1 defines the assignment statement over a "single or
 multi-element variable" — arrays and structures alike — as a value copy. There
@@ -67,11 +68,54 @@ Ranges appear only in declarations (`ARRAY[1..10] OF INT`), subrange types, and
 CASE labels. Array sections are a Fortran/Ada feature.
 
 The one other construct that could give an aggregate a runtime size is the
-Ed. 3 variable-length array (`ARRAY[*]`, VAR_IN_OUT only), which ironplc does
-not implement.
+Ed. 3 variable-length array (`ARRAY[*]`), which ironplc does not implement —
+there is no `ARRAY[*]` in the grammar and no `LOWER_BOUND`/`UPPER_BOUND` in the
+stdlib.
 
-So no whole-aggregate copy has a runtime-variable length, and no runtime length
-arithmetic is needed anywhere.
+So today no whole-aggregate copy has a runtime-variable length, and no runtime
+length arithmetic is needed anywhere. Since that is load-bearing for the opcode
+design, the next section works out what happens when it stops being true.
+
+### If variable-length arrays arrive later
+
+The design must not foreclose them, so here is how they would fit.
+
+A variable-length array is only ever a **formal parameter** bound to a caller's
+actual array (Ed. 3 restricts `ARRAY[*]` to `VAR_IN_OUT`), with bounds queried
+at runtime via `LOWER_BOUND`/`UPPER_BOUND`. So the callee cannot have a
+container-level array descriptor for it: its size is a property of the *call*,
+not of the program text. Implementing them means the parameter carries a
+**runtime descriptor** — bounds per dimension alongside the data offset —
+which is also what `LOWER_BOUND`/`UPPER_BOUND` would read.
+
+That gives a second region operation rather than a change to this one:
+
+```
+COPY_REGION     = encode_opcode(OP_CLASS_REGION_OP, 0)   // sizes from container descriptors
+COPY_REGION_DYN = encode_opcode(OP_CLASS_REGION_OP, 1)   // sizes from runtime descriptors
+```
+
+Reserving the type tag for region operations — rather than spending the op class
+on a single instruction — is precisely what buys this. `COPY_REGION_DYN` costs
+zero op-class slots, and `0x3F` still stays free.
+
+Two consequences worth deciding now, because they shape the current work:
+
+1. **The size check stops being a backstop and becomes the real check.** For a
+   VLA operand the analyzer can compare element types but not extents, so a
+   mismatch is only detectable at runtime. `RegionSizeMismatch` (V9018) is then
+   a legitimate runtime error a correct compiler can produce from a correct
+   program — not, as it is under this change, a signal that codegen is broken.
+   The V9018 documentation should be written so that later reframing does not
+   contradict it: describe it as "source and destination regions differ in
+   size", and put "indicates a compiler defect" in the *cause* section rather
+   than in the definition.
+2. **Nothing about `COPY_REGION` needs to change.** A fixed-size aggregate keeps
+   a container descriptor whether or not VLAs exist, so the tag-0 form stays
+   correct as-is.
+
+None of this is implemented here. It is recorded so the opcode's shape is a
+deliberate choice rather than an accident of what the language supports today.
 
 ### Why a new opcode rather than an emitted loop
 
@@ -342,3 +386,63 @@ aligned.
 - Whole-array function arguments, array return values, and `x := PT^` (deep copy
   through a dereferenced `REF_TO ARRAY`). Each reports
   `Diagnostic::not_implemented`, as it does now.
+
+## Appendix: the existing struct copy protocol
+
+Recorded here because this change deletes it, and because two of its properties
+are what motivate the replacement.
+
+Emitted by `compile_stmt.rs:222-253` for `dst := src` where `dst` is a struct
+variable with `n = dst_info.total_slots`:
+
+```
+    <compile RHS>                       ; leaves the SOURCE data_offset on the stack
+    STORE_VAR_I32  dst_var              ; dst_var now points at the SOURCE region
+
+    LOAD_CONST_I32 0                    ; -- read every slot through dst_var,
+    LOAD_ARRAY     dst_var, dst_desc    ;    which is currently aliasing src
+    LOAD_CONST_I32 1
+    LOAD_ARRAY     dst_var, dst_desc
+    ...                                 ; n times, values accumulate on the stack
+    LOAD_CONST_I32 n-1
+    LOAD_ARRAY     dst_var, dst_desc
+
+    LOAD_CONST_I32 <dst_data_offset>    ; -- restore dst_var to its own region
+    STORE_VAR_I32  dst_var
+
+    LOAD_CONST_I32 n-1                  ; -- write them back, LIFO
+    STORE_ARRAY    dst_var, dst_desc
+    ...
+    LOAD_CONST_I32 0
+    STORE_ARRAY    dst_var, dst_desc
+```
+
+The store loop runs in reverse because `STORE_ARRAY` pops the index first and
+the value second (`vm.rs:2537-2538`), so the index pushed last sits on top and
+the value beneath it is the most recently loaded slot — `n-1`.
+
+Cost: roughly `4n + 4` instructions and a **peak operand stack of `n + 1`**.
+`COPY_REGION` is 2 instructions and a peak of 1.
+
+Three properties motivate replacing it:
+
+1. **The operand-stack ceiling.** A variable may occupy up to
+   `MAX_DATA_REGION_SLOTS` = 32768 slots, so the peak of `n + 1` is unbounded
+   in practice. This is the reason the protocol cannot simply be extended to
+   arrays, and it is a latent bug for a large struct today.
+2. **`dst_var` transiently aliases the source.** Between the first
+   `STORE_VAR_I32` and the restore, the destination variable's slot holds the
+   *source's* offset — the same aliasing this issue is about, as an intended
+   intermediate state. Any trap or debugger stop in that window observes a
+   variable pointing at another variable's storage, and the sequence is not
+   re-entrant.
+3. **It reads the source through the *destination's* descriptor and slot
+   count.** `LOAD_ARRAY dst_var, dst_desc` is run `dst_info.total_slots` times
+   regardless of how large the source actually is, so `a := b` between different
+   struct types silently over-reads past `b`'s region when `a` is the larger.
+   Nothing checks this today; the new analyzer rule (P2037) is what closes it.
+
+Note that the protocol is *correct* for the case it was written for — two
+variables of the same struct type — which is why whole-struct assignment behaves
+correctly in the issue's test matrix. It is the ceiling and the missing
+type check that make it the wrong foundation to build the array case on.
