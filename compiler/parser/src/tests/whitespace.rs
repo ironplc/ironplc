@@ -24,9 +24,11 @@
 //! error. That table is the tripwire: if a row starts passing, a grammar
 //! change widened the accepted language too far.
 //!
-//! Every row here passes on unmodified `main`. Rows for the rules that reject
-//! legal whitespace today are added by the fix for
-//! <https://github.com/ironplc/ironplc/issues/1437>, one `#[case]` line each.
+//! The accepted table has two halves: rows that pin optional-whitespace rules
+//! the grammar has always had, and rows added with the fix for
+//! <https://github.com/ironplc/ironplc/issues/1437>, each a spelling that
+//! returned P0002 before the variable-reference chain and the dotted qualified
+//! paths gained their `_`.
 
 use super::common::*;
 
@@ -164,6 +166,22 @@ END_FUNCTION_BLOCK"
     )
 }
 
+/// A `VAR_CONFIG` entry. The block is only legal in a `CONFIGURATION`, and
+/// only after at least one `RESOURCE`, so the wrapper supplies both.
+fn in_var_config(entry: &str) -> String {
+    format!(
+        "CONFIGURATION config
+RESOURCE resource1 ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : plc_prg;
+END_RESOURCE
+VAR_CONFIG
+{entry}
+END_VAR
+END_CONFIGURATION"
+    )
+}
+
 // ---------------------------------------------------------------------
 // Gaps the grammar already permits.
 // ---------------------------------------------------------------------
@@ -216,10 +234,40 @@ END_FUNCTION_BLOCK"
 )]
 // `this_super.rs` also spells out THIS/space/comment before the caret, but
 // asserts the AST *shape* (that the head is a SelfRef). This row asserts
-// invariance instead, and is the control proving the expansion works on a
-// construct from the #1437 family -- the issue's matrix confirms `THIS ^.count`
-// parses today while `THIS^ .count` does not.
+// invariance instead. It is the one gap in the #1437 family that `self_ref`
+// already permitted -- `self_ref_chain` below covers the rest of the same
+// construct.
 #[case::self_ref_caret("THIS·^.count := 1;", in_method, opts_with_fb_inheritance)]
+// ---------------------------------------------------------------------
+// Gaps issue #1437 reported as rejected. Each row is a spelling that
+// returned P0002 before the grammar was widened.
+// ---------------------------------------------------------------------
+#[case::structured_field("v := s·.·x;", in_program, CompilerOptions::default)]
+#[case::subscript_read("v := arr·[0];", in_program, CompilerOptions::default)]
+#[case::subscript_assign("arr·[0] := 5;", in_program, CompilerOptions::default)]
+#[case::deref_operator("v := myRef·^;", in_program, CompilerOptions::default)]
+#[case::deref_then_field("v := myRef·^·.·field;", in_program, CompilerOptions::default)]
+#[case::deref_then_subscript("v := myRef·^·[0];", in_program, CompilerOptions::default)]
+#[case::bit_access("v := b·.·0;", in_program, CompilerOptions::default)]
+#[case::partial_access("v := b·.·%X0;", in_program, opts_with_partial_access)]
+#[case::mixed_chain("v := s·.·inner·[0]·.·field;", in_program, CompilerOptions::default)]
+#[case::self_ref_chain("THIS·^·.·count := 1;", in_method, opts_with_fb_inheritance)]
+#[case::super_ref_chain("SUPER·^·.·count := 1;", in_method, opts_with_fb_inheritance)]
+#[case::access_path(
+    "PROGRAM main VAR_ACCESS p : VarName·.·Path : BOOL READ_ONLY; END_VAR v := 1; END_PROGRAM",
+    verbatim,
+    CompilerOptions::default
+)]
+#[case::var_config_located(
+    "Some·.·Located·.·Item·.·Path AT %QB1 : BYTE;",
+    in_var_config,
+    CompilerOptions::default
+)]
+#[case::var_config_fb_init(
+    "Some·.·Block·.·Item·.·Path : FB_TYPE := (ELEM := VAL);",
+    in_var_config,
+    CompilerOptions::default
+)]
 fn parse_when_gap_filled_then_same_ast(
     #[case] template: &'static str,
     #[case] wrap: fn(&str) -> String,
