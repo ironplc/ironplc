@@ -287,7 +287,7 @@ parser! {
 
     // Lists of separated items with required ending separator
     rule periodsep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) _ period() {v}
-    rule periodsep_oneplus_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ++ period()) {v}
+    rule periodsep_oneplus_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ period() _)) {v}
     rule periodsep_no_trailing<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ period() _)) {v}
     rule semisep<T>(x: rule<T>) -> Vec<T> = v:(x() ** (_ semicolon() _)) _ semicolon() {v}
     rule semisep_oneplus<T>(x: rule<T>) -> Vec<T> = v:(x() ++ (_ semicolon() _)) _ semicolon() {v}
@@ -866,7 +866,23 @@ parser! {
     rule symbolic_variable_head() -> SymbolicVariableKind =
       s:self_ref() { SymbolicVariableKind::SelfRef(s) }
       / name:variable_identifier() { SymbolicVariableKind::Named(NamedVariable { name }) }
-    rule symbolic_variable() -> SymbolicVariableKind = head:symbolic_variable_head() elements:(tok(TokenType::Period) n:integer() { Element::Bit(n) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessByte) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Byte, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) } / tok(TokenType::Period) pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) } / tok(TokenType::Period) id:identifier() { Element::Struct(id) } / sub:subscript_list() {Element::Array(sub)} / tok(TokenType::Caret) &(tok(TokenType::LeftBracket) / tok(TokenType::Period)) { Element::Deref })* {
+    rule symbolic_variable_element() -> Element =
+      tok(TokenType::Period) _ n:integer() { Element::Bit(n) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessBit) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(Element::Bit) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessByte) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Byte, i)) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::Word, i)) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessDWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::DWord, i)) }
+      / tok(TokenType::Period) _ pa:tok(TokenType::PartialAccessLWord) {? Integer::new(&pa.text[2..], SourceSpan::default()).map(|i| Element::PartialAccess(PartialAccessSize::LWord, i)) }
+      / tok(TokenType::Period) _ id:identifier() { Element::Struct(id) }
+      / sub:subscript_list() { Element::Array(sub) }
+      // A caret is only a dereference *within* the chain -- a trailing one is
+      // the deref operator, handled by `unary_expression`.
+      / tok(TokenType::Caret) &(_ (tok(TokenType::LeftBracket) / tok(TokenType::Period))) { Element::Deref }
+    // IEC 61131-3 is free-format, so each element in the chain may be
+    // separated from what precedes it by whitespace or a comment: `s . x`,
+    // `refs [0]` and `THIS^ .count` are the same variable references as their
+    // tight spellings. See https://github.com/ironplc/ironplc/issues/1437.
+    rule symbolic_variable() -> SymbolicVariableKind = head:symbolic_variable_head() elements:(_ e:symbolic_variable_element() { e })* {
       // Start from whatever the head matched (a plain name, or THIS^/SUPER^)
       let mut head = head;
 
@@ -935,7 +951,7 @@ parser! {
     rule subscripted_variable() -> SymbolicVariableKind = symbolic_variable()
     rule subscript_list() -> Vec<Expr> = tok(TokenType::LeftBracket) _ list:subscript()++ (_ tok(TokenType::Comma) _) _ tok(TokenType::RightBracket) { list }
     rule subscript() -> Expr = e:expression() { Expr::new(e) }
-    rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() tok(TokenType::Period) f:field_selector() { (r, f) }
+    rule structured_variable() -> (SymbolicVariableKind, Id) = r:record_variable() _ tok(TokenType::Period) _ f:field_selector() { (r, f) }
     rule record_variable() -> SymbolicVariableKind = symbolic_variable()
     rule field_selector() -> Id = identifier()
 
@@ -1603,13 +1619,13 @@ parser! {
       }
     }
     rule access_path() -> AccessPathKind =
-      resource_name:(r:resource_name() tok(TokenType::Period) { r })? var:direct_variable() {
+      resource_name:(r:resource_name() _ tok(TokenType::Period) _ { r })? var:direct_variable() {
         AccessPathKind::Direct(DirectAccessPath { resource_name, variable: var })
       }
-      / resource_name:(r:resource_name() tok(TokenType::Period) { r })? program_name:(p:program_name() tok(TokenType::Period) { p })? fb_name:periodsep(<fb_name()>) variable:symbolic_variable() {
+      / resource_name:(r:resource_name() _ tok(TokenType::Period) _ { r })? program_name:(p:program_name() _ tok(TokenType::Period) _ { p })? fb_name:periodsep(<fb_name()>) _ variable:symbolic_variable() {
         AccessPathKind::Symbolic(SymbolicAccessPath { resource_name, program_name, fb_name, variable })
       }
-    rule global_var_reference() -> GlobalVarReference =  resource_name:(r:resource_name() tok(TokenType::Period) { r })? name:global_var_name() s:(tok(TokenType::Period) s:structure_element_name() { s } )? {
+    rule global_var_reference() -> GlobalVarReference =  resource_name:(r:resource_name() _ tok(TokenType::Period) _ { r })? name:global_var_name() s:(_ tok(TokenType::Period) _ s:structure_element_name() { s } )? {
       GlobalVarReference {
         resource_name,
         global_var_name: name,
@@ -1699,7 +1715,7 @@ parser! {
       / dv:direct_variable() { ProgramConnectionSinkKind::DirectVariable(dv) }
     rule instance_specific_initializations() -> Vec<InstanceInitKind> = tok(TokenType::VarConfig) _ init:semisep_oneplus(<instance_specific_init()>) _ tok(TokenType::EndVar) { init }
     rule instance_specific_init() -> InstanceInitKind = instance_specific_init__fb_init() / instance_specific_init__located()
-    rule instance_specific_init__located() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_no_trailing(<identifier()>) _ address:location()? _ tok(TokenType::Colon) _ initializer:located_var_spec_init() {
+    rule instance_specific_init__located() -> InstanceInitKind = resource_name:resource_name() _ tok(TokenType::Period) _ program_name:program_name() _ tok(TokenType::Period) _ fb_path:periodsep_no_trailing(<identifier()>) _ address:location()? _ tok(TokenType::Colon) _ initializer:located_var_spec_init() {
       InstanceInitKind::LocatedVarInit(Box::new(LocatedVarInit {
         resource_name,
         program_name,
@@ -1708,7 +1724,7 @@ parser! {
         initializer,
       }))
     }
-    rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() tok(TokenType::Period) program_name:program_name() tok(TokenType::Period) fb_path:periodsep_oneplus_no_trailing(<identifier()>) _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
+    rule instance_specific_init__fb_init() -> InstanceInitKind = resource_name:resource_name() _ tok(TokenType::Period) _ program_name:program_name() _ tok(TokenType::Period) _ fb_path:periodsep_oneplus_no_trailing(<identifier()>) _ tok(TokenType::Colon) _ type_name:function_block_type_name() _ tok(TokenType::Assignment) _ initializer:structure_initialization() {
       InstanceInitKind::FunctionBlockInit(Box::new(FunctionBlockInit {
         resource_name,
         program_name,
@@ -1768,7 +1784,7 @@ parser! {
       tok(TokenType::LeftParen) _ e:expression() _ tok(TokenType::RightParen) { ExprKind::Expression(Box::new(Expr::new(e))) }
       f:function_expression() { f }
     }
-    rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() carets:(tok(TokenType::Caret))* {
+    rule unary_expression() -> ExprKind = unary:unary_operator()? _ expr:primary_expression() carets:(_ c:tok(TokenType::Caret) { c })* {
       let mut result = expr;
       for _ in &carets {
         result = ExprKind::Deref(Box::new(Expr::new(result)));
