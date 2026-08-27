@@ -264,8 +264,16 @@ return Err(Diagnostic::internal_error_at(Label::span(
 )));
 
 // Internal error with the generic message (no custom label):
-return Err(Diagnostic::internal_error(file!(), line!()));
+return Err(Diagnostic::internal_error());
+
+// Unimplemented capability with the generic message; the `todo_with_*`
+// variants attach an IEC 61131-3 span (id, type name or span):
+return Err(Diagnostic::todo());
+return Err(Diagnostic::todo_with_span(span.clone()));
 ```
+
+None of these constructors take `file!()`/`line!()` — they are `#[track_caller]`
+and record the call site themselves.
 
 
 ### Error Message Guidelines

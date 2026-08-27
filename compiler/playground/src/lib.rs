@@ -232,7 +232,7 @@ fn internal_run_error(message: String) -> RunError {
     let loc = std::panic::Location::caller();
     // Derive the stable code from the shared diagnostic constructor rather than
     // hard-coding "P9998", so it tracks the compiler's internal-error code.
-    let code = Diagnostic::internal_error(loc.file(), loc.line()).code;
+    let code = Diagnostic::internal_error().code;
     RunError {
         message,
         code: Some(code),
@@ -255,7 +255,7 @@ fn fallback_error_json(err: &RunError) -> String {
 #[track_caller]
 fn internal_diagnostic(message: String) -> DiagnosticInfo {
     let loc = std::panic::Location::caller();
-    let code = Diagnostic::internal_error(loc.file(), loc.line()).code;
+    let code = Diagnostic::internal_error().code;
     DiagnosticInfo {
         code,
         message,
@@ -697,8 +697,8 @@ fn run_bytes(bytes: &[u8], scans: u32) -> RunResult {
     let string_layouts = build_string_layout_map(&container);
 
     for round in 0..scans {
-        let current_us = (round as u64) * 1000;
-        if let Err(ctx) = running.run_round(current_us) {
+        let uptime_us = (round as u64) * 1000;
+        if let Err(ctx) = running.run_round(uptime_us) {
             // Snapshot variables (incl. data-region strings) before consuming
             // `running` via `fault`, which releases its borrow on the buffers.
             let num_vars = running.num_variables();
@@ -1086,8 +1086,8 @@ fn run_vm_scans(
     let mut running = Vm::new().load(container, bufs).resume(base_scan_count);
 
     for _ in 0..scans {
-        let current_us = running.scan_count() * cycle_time_us;
-        if let Err(ctx) = running.run_round(current_us) {
+        let uptime_us = running.scan_count() * cycle_time_us;
+        if let Err(ctx) = running.run_round(uptime_us) {
             let total_scans = running.scan_count();
             let debug_map = build_var_debug_map(container);
             let enum_map = build_enum_value_map(container);

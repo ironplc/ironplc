@@ -18,12 +18,13 @@
 //! replace this with strict per-opcode enforcement.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use ironplc_analyzer::symbol_environment::ScopeKind;
 use ironplc_analyzer::SemanticContext;
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, VarNameEntry};
 use ironplc_container::Container;
-use ironplc_vm::{Vm, VmBuffers};
+use ironplc_vm::{resolve_cycle_time, Vm, VmBuffers};
 use serde_json::Value;
 
 use crate::cache::{CachedContainer, ResolvedVar, VariableSymbolMap};
@@ -186,6 +187,9 @@ pub struct RunOutcome {
     pub truncated: bool,
     /// Diagnostic message when `terminated_reason == Error`.
     pub error_message: Option<String>,
+    /// The cycle time the run executed at — the task's declared `INTERVAL`, or
+    /// the assumed one for a task that declares none.
+    pub interval: Duration,
 }
 
 /// Why the run stopped (REQ-TOL-mcp-047).
@@ -212,7 +216,8 @@ impl TerminatedReason {
     }
 }
 
-/// Executes a cached container for `trace_set` variables under `limits`.
+/// Executes a cached container for `trace_set` variables for `duration_ms` of
+/// simulated time, under `limits`.
 ///
 /// This is the core of the `run` tool. Control flow:
 /// 1. Deserialize bytes → `Container`.
@@ -221,14 +226,42 @@ impl TerminatedReason {
 ///    advanced its `scan_count`, append to trace.
 /// 4. On trap: capture diagnostic, drain final values from `VmFaulted`.
 /// 5. On clean stop: drain final values from `VmStopped`.
+///
+/// `duration_ms` is what the agent asked for (REQ-TOL-mcp-040); reaching it is
+/// a clean finish. `limits.max_duration_ms` is the sandbox ceiling
+/// (REQ-ARC-mcp-030); being cut short by it is not, and reports
+/// [`TerminatedReason::Duration`].
+///
+/// `freewheeling_interval` is the cycle time to assume for tasks that declare
+/// no `INTERVAL` (REQ-TOL-mcp-049), and is applied by rewriting the task table
+/// before the VM loads it. Whichever cycle time the run ended up executing at
+/// comes back as [`RunOutcome::interval`].
+///
+/// `None` means the caller supplied no cycle time, which is only valid when
+/// every task declares an `INTERVAL`. A freewheeling task with no rate cannot
+/// be run under simulated time — nothing would advance the clock, so
+/// `duration_ms` could never end the run — and is an error rather than a rate
+/// this module picks. The `run` tool rejects that combination up front with a
+/// diagnostic naming the task (REQ-TOL-mcp-049); the check here keeps the
+/// invariant with the code that depends on it.
 pub fn execute(
     cached: &CachedContainer,
     trace_set: &[ResolvedVar],
+    duration_ms: u64,
+    freewheeling_interval: Option<Duration>,
     limits: EffectiveLimits,
 ) -> Result<RunOutcome, String> {
     let mut bytes = cached.iplc_bytes.as_slice();
-    let container =
+    let mut container =
         Container::read_from(&mut bytes).map_err(|e| format!("container read error: {e}"))?;
+
+    // Applying the caller's assumed rate to the task table means every
+    // downstream step — `next_due_us()`, the round loop, `time_ms` stamping —
+    // works off it as usual, with no freewheeling special case. `None` means
+    // nothing named a rate, which this tool treats as an error rather than
+    // invent one the agent never chose.
+    let interval = resolve_cycle_time(&mut container, freewheeling_interval)
+        .ok_or("container has a freewheeling task but no cycle time to run it at")?;
 
     let task_names: Vec<String> = cached.tasks.iter().map(|t| t.name.clone()).collect();
 
@@ -245,6 +278,7 @@ pub fn execute(
                 terminated_reason: TerminatedReason::Error,
                 truncated: false,
                 error_message: Some(format!("VM start fault: {}", ctx.trap)),
+                interval,
             });
         }
     };
@@ -255,10 +289,21 @@ pub fn execute(
     let mut prev_scan_counts: Vec<u64> = vec![0; task_names.len()];
     let mut truncated = false;
 
+    // The run stops at whichever comes first: the simulated duration the agent
+    // asked for, or the sandbox ceiling. Which one it was decides the reason —
+    // reaching the request is a clean finish, being clamped by the ceiling is
+    // an early termination (REQ-TOL-mcp-047).
+    let run_duration_ms = duration_ms.min(limits.max_duration_ms);
+    let duration_stop = if duration_ms > limits.max_duration_ms {
+        TerminatedReason::Duration
+    } else {
+        TerminatedReason::Completed
+    };
+
     let terminated_reason = loop {
         // Between-rounds limit gates (REQ-ARC-mcp-032/035).
-        if simulated_us / 1_000 >= limits.max_duration_ms {
-            break TerminatedReason::Duration;
+        if simulated_us / 1_000 >= run_duration_ms {
+            break duration_stop;
         }
         if wall_start.elapsed().as_millis() as u64 >= limits.max_wall_clock_ms {
             break TerminatedReason::WallClock;
@@ -273,12 +318,12 @@ pub fn execute(
 
         // Advance simulated time to the next cycle that's due.
         let next_due = running.next_due_us().unwrap_or(simulated_us);
-        let current_us = simulated_us.max(next_due);
+        let uptime_us = simulated_us.max(next_due);
 
-        // Re-check the duration gate against `current_us` so a cyclic task
+        // Re-check the duration gate against `uptime_us` so a cyclic task
         // due after the deadline doesn't execute.
-        if current_us / 1_000 >= limits.max_duration_ms {
-            break TerminatedReason::Duration;
+        if uptime_us / 1_000 >= run_duration_ms {
+            break duration_stop;
         }
 
         // Snapshot scan counts before the round so we can tell which tasks
@@ -294,11 +339,11 @@ pub fn execute(
         //
         // Simpler: just read from `running.scan_count()` (total) and
         // attribute the delta to the task the scheduler ran. The scheduler
-        // runs at most one task per round at the chosen `current_us`, so
+        // runs at most one task per round at the chosen `uptime_us`, so
         // this attribution is accurate.
         let before_total = running.scan_count();
 
-        if let Err(ctx) = running.run_round(current_us) {
+        if let Err(ctx) = running.run_round(uptime_us) {
             let trap_msg = ctx.trap.to_string();
             let faulted = running.fault(ctx);
             let final_values =
@@ -317,6 +362,7 @@ pub fn execute(
                 terminated_reason: TerminatedReason::Error,
                 truncated,
                 error_message: Some(trap_msg),
+                interval,
             });
         }
 
@@ -350,18 +396,18 @@ pub fn execute(
                 .collect();
 
             trace.push(TraceSample {
-                time_ms: current_us / 1_000,
+                time_ms: uptime_us / 1_000,
                 task: task_name,
                 variables,
             });
         }
 
-        // Advance simulated time past this cycle. When the VM has no more
-        // due cyclic tasks, break with Completed to avoid an infinite
-        // freewheeling loop.
+        // Advance simulated time past this cycle. Every task has a cycle time
+        // by now — declared or supplied — so `None` means the container has
+        // nothing that can ever be scheduled; break rather than spin.
         match running.next_due_us() {
-            Some(next) if next > current_us => simulated_us = next,
-            Some(_) => simulated_us = current_us.saturating_add(1),
+            Some(next) if next > uptime_us => simulated_us = next,
+            Some(_) => simulated_us = uptime_us.saturating_add(1),
             None => break TerminatedReason::Completed,
         }
     };
@@ -381,6 +427,7 @@ pub fn execute(
         terminated_reason,
         truncated,
         error_message: None,
+        interval,
     })
 }
 

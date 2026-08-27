@@ -254,12 +254,15 @@ Options
    flag.
 
 ``--allow-fb-inheritance``
-   Allow function-block inheritance syntax: ``EXTENDS``/``IMPLEMENTS`` on
-   ``FUNCTION_BLOCK`` and ``INTERFACE`` declarations. Parsed and registered
-   as known types; inheritance, interface dispatch, and method/property
-   declarations are not yet semantically supported (produces
-   :doc:`P9999 </reference/compiler/problems/P9999>`). Enabled by
-   ``--dialect=rusty`` and ``--dialect=codesys``.
+   Allow the IEC 61131-3:2013 object-oriented syntax:
+   ``EXTENDS``/``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK``
+   declarations, ``INTERFACE`` declarations, ``METHOD`` declarations, and
+   ``THIS``/``SUPER``. Support beyond parsing varies by keyword — see
+   :doc:`/reference/language/object-orientation/index`; the parts that are
+   parsed but not yet analyzed produce
+   :doc:`P9999 </reference/compiler/problems/P9999>`. Enabled by
+   ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``, ``--dialect=codesys``,
+   and ``--dialect=twincat``.
 
 Examples
 ========

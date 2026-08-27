@@ -94,9 +94,9 @@ The debugger is four layers:
 
 ### Why a separate DAP binary?
 
-The DAP server is its own binary, `ironplcdap`, built from `dap_main.rs` in the `vm-cli` crate. An earlier draft made it an `ironplcvm debug` subcommand to avoid duplicating the VM embedding code; sharing the crate achieves that without coupling the two entry points, and keeps the DAP protocol loop out of the production VM's argument parsing and lifecycle.
+The DAP server is its own binary, `ironplcvmd`, built from `dap_main.rs` in the `vm-cli` crate. Sharing the crate with `ironplcvm` reuses the VM embedding code without coupling the two entry points, and keeps the DAP protocol loop out of the production VM's argument parsing and lifecycle.
 
-`ironplcdap` takes **no command-line arguments**. It speaks DAP on stdin/stdout, and the program under debug arrives in the `launch` request's `arguments.program` field as a path to a compiled `.iplc` container.
+`ironplcvmd` takes **no command-line arguments**. It speaks DAP on stdin/stdout, and the program under debug arrives in the `launch` request's `arguments.program` field as a path to a compiled `.iplc` container.
 
 ## Layer 1: Debug Info
 
@@ -301,7 +301,7 @@ The DAP server scans the debug section directory for the tags it needs and ignor
 |-------------|---------------|-------------------|
 | `setBreakpoints` | Line maps | Resolve source line → (function_id, bytecode_offset); snap to nearest valid line |
 | `stackTrace` | Function names + line maps | Frame name (FuncNameEntry.name) + source location (LineMapEntry.source_line) |
-| `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL). Alongside these program scopes sits a **`Runtime`** scope carrying VM-level state that is not a program variable — currently `scanCount` (see §Scopes). |
+| `scopes` | Variable names | Group variables by var_section: Locals (VAR, VAR_TEMP), Inputs (VAR_INPUT), Outputs (VAR_OUTPUT), In/Out (VAR_IN_OUT), Globals (VAR_EXTERNAL, VAR_GLOBAL). Alongside these program scopes sits a **`Runtime`** scope carrying VM-level state that is not a program variable — currently `scanCount` and `systemUptime` (see §Scopes). |
 | `variables` | Variable names + type section | Name (VarNameEntry.name), type (VarNameEntry.type_name), value (read from VariableTable, formatted according to type) |
 | `evaluate` | Variable names | Look up variable by name, return formatted value |
 
@@ -760,6 +760,9 @@ enum StepMode {
     /// DAP "stepOut".
     StepOut,
     /// Run until the next scan cycle boundary. Custom DAP request.
+    /// (Shipped as `StepMode::Scan`; it has no intra-scan landing, so
+    /// `StepController::check` returns false for it and the round driver
+    /// reports the boundary instead.)
     StepScan,
 }
 ```
@@ -808,7 +811,7 @@ The natural stop points are:
 | Breakpoint | `DebuggerHook` returns `HookAction::Pause(Breakpoint)` |
 | Step landing | `DebuggerHook` returns `HookAction::Pause(Step)` |
 | Scan boundary | `run_round_debug` returns `RoundOutcome::Completed` (one complete scan finished) |
-| Step Scan landing | `run_round_debug` returns `RoundOutcome::PausedAfterScan` |
+| Step Scan landing | `run_round_debug` returns `RoundOutcome::PausedAfterScan`, and the loop stops on the following round's first instruction (frames have drained at the boundary itself) |
 | Trap | `Err(Trap)` from the dispatch loop, with trap-bp enabled |
 | Disconnect timer | `scanLimit` reached (launch-config; runaway prevention) |
 
@@ -845,7 +848,7 @@ For PLC-specific debugging, users need scan-level control:
 
 | Command | Behavior |
 |---------|----------|
-| **Step Scan** | Run one complete scan cycle (INPUT_FREEZE → EXECUTE → OUTPUT_FLUSH), then pause before the next |
+| **Step Scan** | Run one complete scan cycle (INPUT_FREEZE → EXECUTE → OUTPUT_FLUSH), then pause before the next. *Implemented;* the pause is reported at the next scan's first instruction rather than at the frame-less boundary, so the stop has a call stack and variables to show. |
 | **Pause Between Scans** | Always pause after OUTPUT_FLUSH, before the next INPUT_FREEZE |
 | **Run to Scan N** | Continue until `scan_count` reaches a target value |
 
@@ -861,8 +864,8 @@ For PLC-specific debugging, users need scan-level control:
 > `pause`-while-running remains the Phase 6 cut. This continuous-loop work is a
 > tracked server follow-up (Phase 4c) and is **not** part of Phase 5 (VS Code
 > integration). The scan count is now surfaced by the `Runtime` scope rather
-> than a custom request (2026-08-16); `ironplc/stepScan` is still answered
-> `requestNotApplicable` — see §Custom DAP Requests and §Scopes.
+> than a custom request (2026-08-16), and `ironplc/stepScan` landed on
+> 2026-08-22 — see §Custom DAP Requests and §Scopes.
 
 A new `VmRunning::run_round_debug` method drives a single round under a `DebuggerHook`. v1 supports a single program instance only (see §Multi-instance: not supported in v1), so the `instances_for_task` loop is collapsed to "the one instance":
 
@@ -897,7 +900,7 @@ impl<'a> VmRunning<'a> {
         // OUTPUT_FLUSH and scan_count++ run only when the instance completed.
         self.flush_outputs();
         self.scan_count += 1;
-        if hook.took_step_scan_now() {
+        if hook.stepping_scan() {
             return Ok(RoundOutcome::PausedAfterScan);
         }
         Ok(RoundOutcome::Completed)
@@ -1060,10 +1063,10 @@ The DAP server speaks the [Debug Adapter Protocol](https://microsoft.github.io/d
 The DAP server is launched as a subprocess by the VS Code extension:
 
 ```
-ironplcdap
+ironplcvmd
 ```
 
-`ironplcdap` is always in DAP mode: it reads Content-Length-framed JSON on stdin and writes responses and events on stdout. It takes no arguments — the container to debug arrives in the `launch` request.
+`ironplcvmd` is always in DAP mode: it reads Content-Length-framed JSON on stdin and writes responses and events on stdout. It takes no arguments — the container to debug arrives in the `launch` request.
 
 ### DAP Request Mapping
 
@@ -1079,7 +1082,7 @@ The "Legal in" column lists the VM `Phase` values in which each request is accep
 | `threads` | RUNNING, PausedAt | One DAP thread for the single program instance (v1 hard limit: one instance, enforced at launch) |
 | `stackTrace` | PausedAt | Walk `frames` top-to-bottom; for each frame produce `name = func_names[function_id]`, `line/column = line_map.lookup(function_id, pc)` |
 | `scopes` | PausedAt | IEC-specific scopes, filtered by `var_section` of the topmost frame's `function_id`, plus the `Runtime` scope (see §Scopes) |
-| `variables` | PausedAt | Dispatch on `variablesReference`: program scopes read from `VariableTable` and format per `iec_type_tag`; the `Runtime` scope reports VM state (see §Scopes) |
+| `variables` | PausedAt | Dispatch on `variablesReference`: program scopes read from `VariableTable` and format per `iec_type_tag`; the `Runtime` scope reports VM state — scan count and uptime (see §Scopes) |
 | `continue` | PausedAt (non-terminal) | Clear step mode; re-enter `run_round_debug` |
 | `next` | PausedAt (non-terminal) | Set `StepMode::StepOver` (origin = current line, depth = current depth); re-enter |
 | `stepIn` | PausedAt (non-terminal) | Set `StepMode::StepIn`; re-enter |
@@ -1099,7 +1102,7 @@ is not a program scope at all:
 | Scope | Contents |
 |-------|----------|
 | `Program` | The program's ST variables, unfiltered — locals and globals together. (Splitting this into per-`var_section` scopes — Locals, Inputs, Outputs, In/Out, Globals — is the eventual shape; today it is one flat scope.) |
-| `Runtime` | VM-level state that is not a program variable. Currently `scanCount` (type `ULINT`), the number of *completed* scan cycles. |
+| `Runtime` | VM-level state that is not a program variable. Currently `scanCount` (type `ULINT`), the number of *completed* scan cycles, and `systemUptime` (type `LINT`), the VM's monotonic clock in milliseconds as of the start of the paused scan. |
 
 **Why `Runtime` is a scope rather than a button.** The scan count changes every
 cycle, so it is a value to *watch* while stepping, not one to *ask for*. A
@@ -1124,6 +1127,15 @@ Because there is now more than one scope, `variables` dispatches on the
 requested `variablesReference`. A reference the server never issued returns an
 empty list rather than defaulting to the program variables.
 
+**Why `systemUptime` does not depend on the uptime globals.** `__SYSTEM_UP_TIME`
+and `__SYSTEM_UP_LTIME` are written only when the program was compiled with
+`--allow-system-uptime-global` (`FLAG_HAS_SYSTEM_UPTIME`), but the VM receives
+the clock at the start of every scan either way. `VmRunning` records it
+(an `uptime: Duration`, read through `uptime()`) independently of the flag, so the
+debugger can show time for any program. The recorded value moves on a *fresh*
+scan only — resuming a paused scan keeps it — so what is on screen is the time
+the paused code is executing against.
+
 Future runtime metrics (cycle time, next-due) belong in `Runtime` and need no
 further scope.
 
@@ -1141,7 +1153,7 @@ It does **not** support arithmetic, function calls, or non-constant subscripts. 
 
 | Custom Request | Description | Status |
 |----------------|-------------|--------|
-| `ironplc/stepScan` | Run one complete scan cycle, then pause | Deferred — `RoundOutcome::PausedAfterScan` has no producer and `StepMode` has no scan-level variant, so this needs debug-engine work. Answered `requestNotApplicable`. |
+| `ironplc/stepScan` | Run one complete scan cycle, then pause at the start of the next | **Implemented (2026-08-22).** `StepMode::Scan` + `DebuggerHook::step_scan()` run the cycle out; `run_round_debug` reports `RoundOutcome::PausedAfterScan` at the boundary; the DAP loop then lands the stop on the next scan's first instruction with `DebuggerHook::land_scan_step()` (the boundary itself has no frames to inspect). Legal at a non-terminal pause, like the other execution-control requests. |
 | ~~`ironplc/scanCount`~~ | Return the current scan_count | **Dropped (2026-08-16).** Superseded by the `Runtime` scope (see §Scopes), which carries the same value over standard `scopes`/`variables`. A custom request would be the *less* portable path — every DAP client can read a scope, but only an IronPLC-aware client knows this request — and having both meant two ways to read one counter. |
 
 Removed from v1 (deferred):
@@ -1262,7 +1274,7 @@ The VS Code extension registers a debug adapter in `package.json`:
 The extension implements a `DebugAdapterDescriptorFactory` that:
 
 1. If `compileFirst` is true and `program` ends with `.st`, compiles the source to a temp `.iplc` file using the IronPLC compiler (same binary used for LSP)
-2. Launches `ironplcdap` as a child process, passing the `.iplc` path in the `launch` request
+2. Launches `ironplcvmd` as a child process, passing the `.iplc` path in the `launch` request
 3. Connects stdin/stdout to VS Code's DAP client
 
 ### Scan Cycle Toolbar
@@ -1367,16 +1379,16 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 
 **Goal:** Launch `ironplcvm debug --dap <file.iplc>` and debug from VS Code using standard DAP.
 
-**Packaging decision (revised 2026-08-16).** DAP support is a **second, always-built binary** in the `vm-cli` crate: `ironplcdap`, whose entry point is `dap_main.rs`. Distribution ships it alongside `ironplcc`, `ironplcvm`, and `ironplcmcp` in every installer, because the VS Code extension resolves the debug adapter from the directory holding the discovered `ironplcc`.
+**Packaging decision (revised 2026-08-16).** DAP support is a **second, always-built binary** in the `vm-cli` crate: `ironplcvmd`, whose entry point is `dap_main.rs`. Distribution ships it alongside `ironplcc`, `ironplcvm`, and `ironplcmcp` in every installer, because the VS Code extension resolves the debug adapter from the directory holding the discovered `ironplcc`.
 
-This supersedes the original decision to feature-gate DAP behind `--features dap`. The gate did not do what it claimed: `mod dap` is declared only in `dap_main.rs`, and separate `[[bin]]` targets are separate compilation units, so `ironplcvm` never compiled the DAP layer either way. What the gate did do was exclude `ironplcdap` from `cargo build` entirely, so local builds silently kept a stale binary and no release ever shipped one. The `shipped_binaries_guard` test (`compiler/test/tests/`) now asserts that every `[[bin]]` target appears in every packaging manifest. See `specs/plans/2026-08-16-always-build-ship-dap-server.md`.
+This supersedes the original decision to feature-gate DAP behind `--features dap`. The gate did not do what it claimed: `mod dap` is declared only in `dap_main.rs`, and separate `[[bin]]` targets are separate compilation units, so `ironplcvm` never compiled the DAP layer either way. What the gate did do was exclude `ironplcvmd` from `cargo build` entirely, so local builds silently kept a stale binary and no release ever shipped one. The `shipped_binaries_guard` test (`compiler/test/tests/`) now asserts that every `[[bin]]` target appears in every packaging manifest. See `specs/plans/2026-08-16-always-build-ship-dap-server.md`.
 
 **Changes:**
 
 | Crate | Files | Changes |
 |-------|-------|---------|
-| `vm-cli` | `Cargo.toml` | Second `[[bin]]` target, `ironplcdap`, built unconditionally |
-| `vm-cli` | new `dap_main.rs` | Entry point for `ironplcdap`; speaks DAP on stdin/stdout and takes no arguments (the program under debug arrives in the `launch` request). `main.rs`/`ironplcvm` is untouched. |
+| `vm-cli` | `Cargo.toml` | Second `[[bin]]` target, `ironplcvmd`, built unconditionally |
+| `vm-cli` | new `dap_main.rs` | Entry point for `ironplcvmd`; speaks DAP on stdin/stdout and takes no arguments (the program under debug arrives in the `launch` request). `main.rs`/`ironplcvm` is untouched. |
 | `vm-cli` | new `dap/framing.rs` | Content-Length framing reader/writer |
 | `vm-cli` | new `dap/types.rs` | DAP protocol types (Request, Response, Event, Capabilities). Prefer the `dap-types` crate if it's a fit; otherwise hand-rolled with `serde`. |
 | `vm-cli` | new `dap/server.rs` | **Single-threaded** event loop: alternate between draining queued DAP requests at natural stop points and running the VM under `run_round_debug` (see §Single-threaded DAP loop). No I/O thread, no `Send`/`Sync`, no `Arc`, no `AtomicBool`. |
@@ -1399,23 +1411,23 @@ This supersedes the original decision to feature-gate DAP behind `--features dap
 Implemented in `specs/plans/2026-08-02-dap-vscode-integration.md`.
 
 **Adapter invocation (as shipped).** Phase 4 shipped the DAP server as a
-**separate binary, `ironplcdap`** (feature-gated on `vm-cli`), that speaks DAP
+**separate binary, `ironplcvmd`** (feature-gated on `vm-cli`), that speaks DAP
 over stdin/stdout and takes **no CLI arguments**; the program under debug is
 delivered by the `launch` request's `arguments.program` field (a path to a
 compiled `.iplc` container). Phase 5 matches that: the adapter spawns
-`ironplcdap` with no arguments and, when `program` is a source file, compiles it
+`ironplcvmd` with no arguments and, when `program` is a source file, compiles it
 to a temp `.iplc` first so the `launch` sees a debug-enabled container.
 
 | Location | Files | Changes |
 |----------|-------|---------|
-| `integrations/vscode` | `package.json` | Add `debuggers` (type `ironplc`) and `breakpoints` contributions; **`commands` and `menus.debug/toolBar` entries for `ironplc.stepScan` and `ironplc.scanCount`** (otherwise custom DAP requests are unreachable); `ironplc.dapServerPath` setting |
-| `integrations/vscode/src` | new `debugAdapterLogic.ts` | Pure, unit-tested decision logic: source-vs-container detection, temp container path, `ironplcdap` discovery (env → setting → bundled), program-path fallback, compile args |
-| `integrations/vscode/src` | new `debugAdapter.ts` | `DebugConfigurationProvider` (fills defaults; if `program` is a source file, runs the compiler with debug info to emit a temp `.iplc`) and `DebugAdapterDescriptorFactory` (spawns `ironplcdap`, resolved via `debugAdapterLogic`) |
+| `integrations/vscode` | `package.json` | Add `debuggers` (type `ironplc`) and `breakpoints` contributions; **`commands` and `menus.debug/toolBar` entries for `ironplc.stepScan` and `ironplc.scanCount`** (otherwise custom DAP requests are unreachable); `ironplc.debugServerPath` setting |
+| `integrations/vscode/src` | new `debugAdapterLogic.ts` | Pure, unit-tested decision logic: source-vs-container detection, temp container path, `ironplcvmd` discovery (env → setting → bundled), program-path fallback, compile args |
+| `integrations/vscode/src` | new `debugAdapter.ts` | `DebugConfigurationProvider` (fills defaults; if `program` is a source file, runs the compiler with debug info to emit a temp `.iplc`) and `DebugAdapterDescriptorFactory` (spawns `ironplcvmd`, resolved via `debugAdapterLogic`) |
 | `integrations/vscode/src` | new `customRequests.ts` | Wraps `ironplc/stepScan` as a VS Code command forwarding to the active session. (Scan count is a scope, not a command — see §Scopes. No force/unforce — those are out of v1 scope.) |
 | `integrations/vscode/src` | `extension.ts` | Register debug config provider, adapter factory, and custom-request commands |
 
 **Tests:**
-- Unit: `debugAdapterLogic` — `ironplcdap` path resolution (env var, setting,
+- Unit: `debugAdapterLogic` — `ironplcvmd` path resolution (env var, setting,
   then bundled), source-vs-container detection, temp container path, program
   fallback, compile args, scan-count formatting.
 - Extension (functional): `ironplc.stepScan` / `ironplc.scanCount` commands
@@ -1425,10 +1437,12 @@ to a temp `.iplc` first so the `launch` sees a debug-enabled container.
 
 Single-stepping landed in #1305. The scan count landed on 2026-08-16 as the
 `Runtime` scope rather than a custom request, and its toolbar button was retired
-(see `specs/plans/2026-08-16-dap-scan-count.md`). `ironplc/stepScan` is still
-answered `requestNotApplicable`, so that toolbar button remains inert; a refused
-custom request is now reported to the user rather than escaping the command
-handler as an unhandled rejection.
+(see `specs/plans/2026-08-16-dap-scan-count.md`). `ironplc/stepScan` landed on
+2026-08-22 (see `specs/plans/2026-08-22-dap-step-scan.md`), so the Step Scan
+Cycle toolbar button now works; a refused custom request — the button is on the
+toolbar for the whole session, including after termination — is still reported
+to the user rather than escaping the command handler as an unhandled
+rejection.
 
 ### Phase 6: Beyond v1 (Future)
 
@@ -1518,7 +1532,7 @@ For reviewers familiar with the prior version of this document:
 5. **Optimizer contract** spelled out: post-optimization line map, snap-forward, instruction-boundary invariant, breakpoint-resolution feedback.
 6. **State machine documented** with a Phase enum and a per-DAP-request legality column.
 7. **Tag registry reconciled** with the existing `Tag 9 = ENUM_DEF` implementation.
-8. **DAP packaging** is a second always-built `[[bin]]` on `vm-cli`, `ironplcdap`, shipped by every installer beside `ironplcc` (revised 2026-08-16; it was previously `--features dap`, which meant the binary was never built or shipped at all).
+8. **DAP packaging** is a second always-built `[[bin]]` on `vm-cli`, `ironplcvmd`, shipped by every installer beside `ironplcc` (revised 2026-08-16; it was previously `--features dap`, which meant the binary was never built or shipped at all).
 
 ### v1 scope cuts (changes vs. earlier drafts)
 

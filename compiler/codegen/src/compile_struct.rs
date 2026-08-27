@@ -305,7 +305,7 @@ pub(crate) fn walk_struct_chain(
             ))
         }
         // Array access within struct chain handled in PR 8
-        _ => Err(Diagnostic::todo_with_span(record.span(), file!(), line!())),
+        _ => Err(Diagnostic::todo_with_span(record.span())),
     }
 }
 

@@ -45,14 +45,14 @@ use ironplc_container::debug_section::{
     EnumDefEntry, FuncNameEntry, StringLayoutEntry, VarNameEntry,
 };
 use ironplc_container::{
-    CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, UserFbDescriptor, VarIndex,
-    STRING_HEADER_BYTES,
+    CharWidth, Container, ContainerBuilder, FbTypeId, FunctionId, TaskType, UserFbDescriptor,
+    VarIndex, STRING_HEADER_BYTES,
 };
 use ironplc_dsl::common::{
     FunctionBlockDeclaration, FunctionDeclaration, InitialValueAssignmentKind, Library,
     LibraryElementKind, ProgramDeclaration, StringType, VarDecl, VariableType,
 };
-use ironplc_dsl::configuration::ConfigurationDeclaration;
+use ironplc_dsl::configuration::{ConfigurationDeclaration, TaskConfiguration};
 use ironplc_dsl::core::{FileId, Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_problems::Problem;
@@ -231,7 +231,6 @@ pub fn compile(
     }
 
     // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
-    // These are common in the RuSTy dialect and OSCAT libraries.
     for element in &library.elements {
         if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
             synthetic_globals.extend_from_slice(decls);
@@ -290,7 +289,110 @@ pub fn compile(
         container.header.flags |= ironplc_container::FLAG_HAS_SYSTEM_UPTIME;
     }
 
+    if let Some(config) = config {
+        apply_task_configuration(&mut container, config, &program.name)?;
+    }
+
     Ok(container)
+}
+
+/// Applies the `TASK` that the configuration binds to the compiled program.
+///
+/// `ContainerBuilder` synthesizes a freewheeling task and a single program
+/// instance. The VM is single-instance in v1 and [`find_program`] compiles
+/// exactly one `PROGRAM`, so the table keeps that one task and one instance —
+/// only the task entry's scheduling fields change. A program with no
+/// `CONFIGURATION`, or one that no resource instantiates, or an instance
+/// declared without a `WITH` clause, keeps the synthesized freewheeling task.
+fn apply_task_configuration(
+    container: &mut Container,
+    config: &ConfigurationDeclaration,
+    program_name: &Id,
+) -> Result<(), Diagnostic> {
+    let Some(task) = find_bound_task(config, program_name) else {
+        return Ok(());
+    };
+
+    // The VM stubs event-triggered tasks out of `collect_ready_tasks`, so
+    // emitting one would produce a program whose task body never runs. Reject
+    // it rather than compile something that silently does nothing.
+    if task.single.is_some() {
+        return Err(Diagnostic::problem(
+            Problem::TaskSingleNotSupported,
+            Label::span(task.name.span(), "Task declares SINGLE"),
+        ));
+    }
+
+    let priority = u16::try_from(task.priority).map_err(|_| {
+        Diagnostic::problem(
+            Problem::TaskParameterOutOfRange,
+            Label::span(
+                task.name.span(),
+                format!(
+                    "Task declares PRIORITY := {}, which exceeds the maximum of {}",
+                    task.priority,
+                    u16::MAX
+                ),
+            ),
+        )
+    })?;
+
+    let interval_us = task_interval_us(task)?;
+
+    if let Some(entry) = container.task_table.tasks.first_mut() {
+        entry.priority = priority;
+        entry.interval_us = interval_us;
+        // A zero interval means "as fast as possible", which is what a
+        // freewheeling task already does. A cyclic task with `interval_us` of
+        // zero would instead be permanently overdue, inflating `overrun_count`
+        // on every round.
+        entry.task_type = if interval_us > 0 {
+            TaskType::Cyclic
+        } else {
+            TaskType::Freewheeling
+        };
+    }
+
+    Ok(())
+}
+
+/// Converts a task's `INTERVAL` to microseconds, or 0 when it declares none.
+fn task_interval_us(task: &TaskConfiguration) -> Result<u64, Diagnostic> {
+    let Some(interval) = &task.interval else {
+        return Ok(0);
+    };
+
+    let micros = interval.interval.whole_microseconds();
+    u64::try_from(micros).map_err(|_| {
+        Diagnostic::problem(
+            Problem::TaskParameterOutOfRange,
+            Label::span(
+                interval.span.clone(),
+                format!("Task declares an INTERVAL of {micros} microseconds"),
+            ),
+        )
+    })
+}
+
+/// Finds the `TASK` that `config` binds to the program type `program_name`.
+///
+/// `PROGRAM <instance> WITH <task> : <type>` names the program *type*, so the
+/// match is on `type_name`. Returns `None` when no resource instantiates the
+/// program or the instance has no `WITH` clause. A `WITH` naming a task that
+/// does not exist cannot reach here — the analyzer rejects it first (see
+/// `rule_program_task_definition_exists`).
+fn find_bound_task<'a>(
+    config: &'a ConfigurationDeclaration,
+    program_name: &Id,
+) -> Option<&'a TaskConfiguration> {
+    config.resource_decl.iter().find_map(|resource| {
+        let program = resource
+            .programs
+            .iter()
+            .find(|program| &program.type_name == program_name)?;
+        let task_name = program.task_name.as_ref()?;
+        resource.tasks.iter().find(|task| &task.name == task_name)
+    })
 }
 
 /// Finds the first PROGRAM declaration in the library.
@@ -866,7 +968,14 @@ fn compile_program_with_functions(
         });
     }
 
-    Ok(builder.build())
+    let container = builder.build();
+
+    // Verify operand-stack discipline before the container escapes codegen.
+    // See `crate::stack_balance` for why this is a hard error and
+    // `specs/design/bytecode-verifier-rules.md` for the rules it enforces.
+    crate::stack_balance::verify_container(&container)?;
+
+    Ok(container)
 }
 
 #[derive(Clone)]
@@ -1347,6 +1456,149 @@ END_FUNCTION_BLOCK
         assert!(result.is_err());
         let diagnostic = result.unwrap_err();
         assert_eq!(diagnostic.code, Problem::NoProgramDeclaration.code());
+    }
+
+    /// Builds a program whose CONFIGURATION declares one task with the given
+    /// initialization parameters and binds the program to it.
+    fn program_with_task(task_init: &str) -> String {
+        format!(
+            "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    TASK task1({task_init});
+    PROGRAM instance1 WITH task1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+"
+        )
+    }
+
+    fn compile_source(source: &str) -> Result<Container, Diagnostic> {
+        let (library, context) = parse(source);
+        compile(
+            &library,
+            &context,
+            &CodegenOptions::default(),
+            &crate::EmptyLookup,
+        )
+    }
+
+    #[test]
+    fn compile_when_task_has_interval_then_cyclic_task_with_interval_us() {
+        let source = program_with_task("INTERVAL := T#100ms, PRIORITY := 3");
+        let container = compile_source(&source).unwrap();
+
+        let task = &container.task_table.tasks[0];
+        assert_eq!(task.task_type, TaskType::Cyclic);
+        assert_eq!(task.interval_us, 100_000);
+        assert_eq!(task.priority, 3);
+    }
+
+    #[test]
+    fn compile_when_task_interval_is_sub_millisecond_then_interval_us_keeps_precision() {
+        let source = program_with_task("INTERVAL := T#0.5ms, PRIORITY := 0");
+        let container = compile_source(&source).unwrap();
+
+        assert_eq!(container.task_table.tasks[0].interval_us, 500);
+    }
+
+    #[test]
+    fn compile_when_no_configuration_then_freewheeling_task() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+";
+        let container = compile_source(source).unwrap();
+
+        let task = &container.task_table.tasks[0];
+        assert_eq!(task.task_type, TaskType::Freewheeling);
+        assert_eq!(task.interval_us, 0);
+    }
+
+    #[test]
+    fn compile_when_program_instance_has_no_task_then_freewheeling_task() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+
+CONFIGURATION config
+  RESOURCE resource1 ON PLC
+    TASK task1(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM instance1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+        let container = compile_source(source).unwrap();
+
+        let task = &container.task_table.tasks[0];
+        assert_eq!(task.task_type, TaskType::Freewheeling);
+        assert_eq!(task.interval_us, 0);
+    }
+
+    #[test]
+    fn compile_when_task_interval_is_zero_then_freewheeling_task() {
+        let source = program_with_task("INTERVAL := T#0ms, PRIORITY := 1");
+        let container = compile_source(&source).unwrap();
+
+        let task = &container.task_table.tasks[0];
+        assert_eq!(task.task_type, TaskType::Freewheeling);
+        assert_eq!(task.interval_us, 0);
+    }
+
+    #[test]
+    fn compile_when_task_has_single_then_p4047_error() {
+        let source = "
+PROGRAM main
+  VAR
+    x : INT;
+  END_VAR
+  x := 1;
+END_PROGRAM
+
+CONFIGURATION config
+  VAR_GLOBAL
+    Trigger : BOOL;
+  END_VAR
+  RESOURCE resource1 ON PLC
+    TASK task1(SINGLE := Trigger, PRIORITY := 1);
+    PROGRAM instance1 WITH task1 : main;
+  END_RESOURCE
+END_CONFIGURATION
+";
+        let result = compile_source(source);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().code,
+            Problem::TaskSingleNotSupported.code()
+        );
+    }
+
+    #[test]
+    fn compile_when_task_priority_exceeds_u16_then_p4048_error() {
+        let source = program_with_task("INTERVAL := T#100ms, PRIORITY := 100000");
+        let result = compile_source(&source);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().code,
+            Problem::TaskParameterOutOfRange.code()
+        );
     }
 
     #[test]

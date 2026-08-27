@@ -83,7 +83,7 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
         match node.qualifier {
             DeclarationQualifier::Constant => match &node.initializer {
                 InitialValueAssignmentKind::None(sp) => {
-                    return Err(Diagnostic::todo_with_span(sp.clone(), file!(), line!()))
+                    return Err(Diagnostic::todo_with_span(sp.clone()))
                 }
                 InitialValueAssignmentKind::Simple(si) => match si.initial_value {
                     Some(_) => {}
@@ -138,9 +138,7 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                     // Function blocks cannot be CONSTANT - this is handled by
                     // rule_var_decl_const_not_fb, so skip initialization checking here.
                 }
-                InitialValueAssignmentKind::Subrange(_) => {
-                    return Err(Diagnostic::internal_error(file!(), line!()))
-                }
+                InitialValueAssignmentKind::Subrange(_) => return Err(Diagnostic::internal_error()),
                 InitialValueAssignmentKind::Structure(struct_init) => {
                     // For const structures, verify that all fields without defaults
                     // are explicitly initialized in the variable declaration.
@@ -169,7 +167,7 @@ impl<'a> Visitor<Diagnostic> for RuleConstantVarsInitialized<'a> {
                     }
                 }
                 InitialValueAssignmentKind::LateResolvedType(_) => {
-                    return Err(Diagnostic::internal_error(file!(), line!()))
+                    return Err(Diagnostic::internal_error())
                 }
                 InitialValueAssignmentKind::SimpleExpr(_) => {
                     // A constant-expression initializer — normalized to

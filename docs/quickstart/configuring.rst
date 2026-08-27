@@ -158,7 +158,7 @@ Next Steps
 --------------------------------------
 
 Your :file:`main.st` file now contains everything needed for a working
-IEC 61131-3 application. As your project grows, you will want to organize
-code across multiple files.
+IEC 61131-3 application. Before you grow it, take a look inside it while it
+runs.
 
-Continue to :doc:`multiple-files`.
+Continue to :doc:`debugging`.

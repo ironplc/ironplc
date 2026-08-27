@@ -34,7 +34,7 @@ pub(crate) fn op_type(expr: &Expr) -> Result<OpType, Diagnostic> {
     let resolved = expr
         .resolved_type
         .as_ref()
-        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+        .ok_or_else(|| Diagnostic::todo())?;
     // Enum types resolve to user-defined names (e.g. "COLOR") which
     // resolve_type_name doesn't handle. Fall back to DINT since all
     // enums use W32/Signed at codegen level (REQ-EN-codegen-003).
@@ -86,9 +86,8 @@ pub(crate) fn storage_bits(expr: &Expr) -> Result<u8, Diagnostic> {
     let resolved = expr
         .resolved_type
         .as_ref()
-        .ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
-    let info =
-        resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo(file!(), line!()))?;
+        .ok_or_else(|| Diagnostic::todo())?;
+    let info = resolve_type_name(&resolved.name).ok_or_else(|| Diagnostic::todo())?;
     Ok(info.storage_bits)
 }
 
@@ -383,7 +382,7 @@ pub(crate) fn compile_constant(
                 emitter.emit_load_const_f64(pool_index);
                 Ok(())
             }
-            _ => Err(Diagnostic::todo(file!(), line!())),
+            _ => Err(Diagnostic::todo()),
         },
         ConstantKind::Boolean(lit) => {
             match lit.value {
@@ -848,6 +847,11 @@ pub(crate) fn resolve_symbolic_variable_name(
             resolve_symbolic_variable_name(&structured.record)
         }
         SymbolicVariableKind::Deref(deref) => resolve_symbolic_variable_name(&deref.variable),
+        // THIS^/SUPER^ names the executing instance, not a variable in the
+        // table. Giving it a receiver-pointer parameter is the codegen
+        // slice that also owns method-call codegen; until then this is an
+        // error, never a guess at some enclosing name.
+        SymbolicVariableKind::SelfRef(self_ref) => Err(Diagnostic::todo_with_span(self_ref.span())),
     }
 }
 
@@ -859,31 +863,20 @@ pub(crate) fn resolve_variable(
     match variable {
         Variable::Symbolic(symbolic) => match symbolic {
             SymbolicVariableKind::Named(named) => ctx.var_index(&named.name),
-            SymbolicVariableKind::Array(array) => {
-                Err(Diagnostic::todo_with_span(array.span(), file!(), line!()))
+            SymbolicVariableKind::Array(array) => Err(Diagnostic::todo_with_span(array.span())),
+            SymbolicVariableKind::Structured(structured) => {
+                Err(Diagnostic::todo_with_span(structured.span()))
             }
-            SymbolicVariableKind::Structured(structured) => Err(Diagnostic::todo_with_span(
-                structured.span(),
-                file!(),
-                line!(),
-            )),
-            SymbolicVariableKind::BitAccess(bit_access) => Err(Diagnostic::todo_with_span(
-                bit_access.span(),
-                file!(),
-                line!(),
-            )),
-            SymbolicVariableKind::PartialAccess(pa) => {
-                Err(Diagnostic::todo_with_span(pa.span(), file!(), line!()))
+            SymbolicVariableKind::BitAccess(bit_access) => {
+                Err(Diagnostic::todo_with_span(bit_access.span()))
             }
-            SymbolicVariableKind::Deref(deref) => {
-                Err(Diagnostic::todo_with_span(deref.span(), file!(), line!()))
+            SymbolicVariableKind::PartialAccess(pa) => Err(Diagnostic::todo_with_span(pa.span())),
+            SymbolicVariableKind::Deref(deref) => Err(Diagnostic::todo_with_span(deref.span())),
+            SymbolicVariableKind::SelfRef(self_ref) => {
+                Err(Diagnostic::todo_with_span(self_ref.span()))
             }
         },
-        Variable::Direct(direct) => Err(Diagnostic::todo_with_span(
-            direct.position.clone(),
-            file!(),
-            line!(),
-        )),
+        Variable::Direct(direct) => Err(Diagnostic::todo_with_span(direct.position.clone())),
     }
 }
 

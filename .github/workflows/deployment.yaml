@@ -100,8 +100,15 @@ jobs:
       extension-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override }}
       compiler-version: ${{ needs.release.outputs.version || inputs.dryrun-test-version-override  }}
       ironplcc-installer-x86_64-windows-filename: "ironplcc-x86_64-windows.exe"
-      ironplc-vscode-extension-filename: "ironplc-vscode-extension.vsix"
-      ironplc-vscode-extension-name: "garretfick.ironplc"
+      # Smoke test the Visual Studio Marketplace build: it is the channel most
+      # users install from, and its extension ID (ironplc.ironplc-vscode)
+      # differs from the Open VSX build's, so it is the one worth exercising
+      # end to end. The two VSIXs are otherwise identical -- only `name` and
+      # `displayName` differ. The name below must match the VSIX's real
+      # extension ID because the test sideloads it into
+      # .vscode/extensions/<id>-<version> and writes a matching extensions.json.
+      ironplc-vscode-extension-filename: "ironplc-vscode-extension-marketplace.vsix"
+      ironplc-vscode-extension-name: "ironplc.ironplc-vscode"
 
   install-script-smoke-test:
     name: Install Script Smoke Test
@@ -183,10 +190,21 @@ jobs:
       - name: Checkout HEAD
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         if: ${{ !needs.release.outputs.commit-tag }}
+      # The Open VSX build (extension ID ironplc.ironplc).
       - name: Download VSIX Build Artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ironplc-vscode-extension.vsix
+          path: ./integrations/vscode
+      # The Visual Studio Marketplace build (extension ID
+      # ironplc.ironplc-vscode). The two registries are independent namespaces
+      # and each VSIX carries its own extension ID, so each registry is
+      # published from its own artifact. See
+      # specs/plans/vscode-marketplace-extension-id.md.
+      - name: Download Marketplace VSIX Build Artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: ironplc-vscode-extension-marketplace.vsix
           path: ./integrations/vscode
       
       # Configure the execution environment
@@ -196,17 +214,14 @@ jobs:
       # Execute build recipes
       - name: Install dependencies
         run: just setup
-      # TODO: Restore once the ironplc publisher and ironplc.ironplc
-      # extension are reinstated on the Visual Studio Marketplace.
-      # The publisher was blocked and the extension removed by Microsoft;
-      # publish attempts return RequestBlockedException (VSID/Concurrency)
-      # until the listing is restored. Users install via the GitHub
-      # release VSIX in the meantime (see docs/quickstart/installation.rst).
-      # - name: Publish VS Code Extension to Marketplace
-      #   if: ${{ !inputs.dryrun }}
-      #   run: just publish ironplc-vscode-extension.vsix
-      #   env:
-      #     VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+      # Publishes the Marketplace-specific VSIX (extension ID
+      # ironplc.ironplc-vscode), not the Open VSX one: the original
+      # ironplc.ironplc ID is retired on the Marketplace and cannot be reused.
+      - name: Publish VS Code Extension to Marketplace
+        if: ${{ !inputs.dryrun }}
+        run: just publish ironplc-vscode-extension-marketplace.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
       - name: Publish VS Code Extension to Open VSX
         if: ${{ !inputs.dryrun }}
         run: just publish-openvsx ironplc-vscode-extension.vsix

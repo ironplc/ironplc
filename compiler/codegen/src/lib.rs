@@ -43,6 +43,7 @@ mod compile_struct;
 mod emit;
 mod optimize;
 mod source_lookup;
+mod stack_balance;
 
 pub use compile::{compile, CodegenOptions};
 pub use source_lookup::{EmptyLookup, SourceLookup};

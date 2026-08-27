@@ -101,6 +101,42 @@ Name plan files with a date prefix: `YYYY-MM-DD-short-description.md` (e.g., `20
 - Use descriptive module names that reflect their purpose in the compilation pipeline
 - Keep modules focused on a single responsibility
 
+### Avoid Duplication
+
+**Do not repeat content that has a single source of truth.** This applies to
+prose and configuration as much as to code: a fact stated in two places
+drifts, and a reader has no way to tell which copy is stale.
+
+In Rust, factor shared behaviour into a function, trait, or shared crate
+rather than copying it between crates.
+
+In the documentation website, the mechanisms for sharing are, in order of
+preference:
+
+1. **`.. include::` a file in `docs/includes/`** for a paragraph or admonition
+   that appears verbatim on more than one page. Reach for this as soon as the
+   second copy appears — most of the duplication found in `docs/` was text
+   that already had an include, added after the copies.
+2. **A substitution** (`.. |name| replace::`) when the shared text varies by a
+   word or two between pages, such as a flag name or a keyboard shortcut.
+3. **A cross-reference** (`:doc:`, `:ref:`) when the reader should be sent to
+   the authoritative page instead of being shown the text again.
+
+Duplication that is acceptable, and should be left alone:
+
+- **Generated content.** Problem summaries come from the compiler via
+  `problem-summary`; the compiler is the source of truth.
+- **Parallel reference pages.** Sibling entries such as `CTU`/`CTD` or
+  `TON`/`TOF` describe symmetric behaviour in symmetric sentences. Each page
+  must stand alone for a reader who arrives from search.
+- **Worked examples repeated across quadrants.** The same program may appear
+  in an explanation and in a reference page; the reader of either should not
+  have to navigate away to see it.
+
+`cd docs && just duplicates` checks this. See
+[docs/CONTRIBUTING.md](../../docs/CONTRIBUTING.md) for what the check can and
+cannot currently see.
+
 ### Naming Conventions
 - Use `snake_case` for functions, variables, and module names
 - Use `PascalCase` for types, structs, and enums

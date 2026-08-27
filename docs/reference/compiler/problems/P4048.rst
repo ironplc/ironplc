@@ -1,0 +1,38 @@
+=====
+P4048
+=====
+
+.. problem-summary:: P4048
+
+This error occurs when a ``TASK`` declares a ``PRIORITY`` or an ``INTERVAL``
+that the runtime cannot represent. Task priority is stored as a 16-bit value,
+so the largest supported priority is 65535. Task interval is stored as a count
+of microseconds in a 64-bit value.
+
+Lower priority numbers run first: a task with ``PRIORITY := 0`` is scheduled
+ahead of a task with ``PRIORITY := 1`` when both are due in the same scan cycle.
+
+Example
+-------
+
+The following code will generate error P4048:
+
+.. code-block::
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#100ms, PRIORITY := 100000);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION
+
+To fix this error, use a priority within the supported range:
+
+.. code-block::
+
+   CONFIGURATION config
+       RESOURCE resource1 ON PLC
+           TASK task1(INTERVAL := T#100ms, PRIORITY := 1);
+           PROGRAM instance1 WITH task1 : main;
+       END_RESOURCE
+   END_CONFIGURATION

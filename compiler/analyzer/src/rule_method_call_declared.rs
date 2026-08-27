@@ -183,14 +183,32 @@ impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
     }
 
     fn visit_method_call(&mut self, call: &MethodCall) -> Result<Self::Value, Diagnostic> {
-        let fb_type = match self.var_to_fb.get(&call.instance) {
+        // `THIS^.M()` / `SUPER^.M()` resolve against the enclosing function
+        // block (and, for SUPER^, its base) rather than a variable's declared
+        // type. That resolution is not implemented yet, so say so rather than
+        // skipping the call: a silent skip would keep quietly passing once
+        // the receiver becomes resolvable. Tracked in issue #1406.
+        let instance = match &call.receiver {
+            MethodReceiver::Instance(id) => id,
+            MethodReceiver::SelfRef(self_ref) => {
+                return Err(Diagnostic::not_implemented(Label::span(
+                    self_ref.span(),
+                    format!(
+                        "{} method invocation is recognized but not yet resolved by IronPLC",
+                        self_ref.kind.spelling()
+                    ),
+                )))
+            }
+        };
+
+        let fb_type = match self.var_to_fb.get(instance) {
             Some(t) => t,
             None => {
                 return Err(Diagnostic::problem(
                     Problem::FunctionBlockNotInScope,
                     Label::span(call.span(), "Method invocation"),
                 )
-                .with_context_id("invocation", &call.instance))
+                .with_context_id("invocation", instance))
             }
         };
 
@@ -199,7 +217,7 @@ impl Visitor<Diagnostic> for RuleMethodCallDeclared<'_> {
                 Problem::FunctionBlockNotInScope,
                 Label::span(call.span(), "Method invocation"),
             )
-            .with_context_id("invocation", &call.instance));
+            .with_context_id("invocation", instance));
         }
 
         match self.resolve_method(fb_type, &call.method) {

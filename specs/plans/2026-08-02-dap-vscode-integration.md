@@ -1,10 +1,15 @@
 # Plan: DAP Phase 5 — VS Code Integration
 
+> **Renamed 2026-08-22.** This plan was written when the debug server was
+> named `ironplcdap`. The name below has been updated to `ironplcvmd` so it
+> matches the shipped binary; see
+> [the rename plan](2026-08-22-rename-ironplcdap-to-ironplcvmd.md).
+
 ## Context
 
 Phases 1–4 of the debugger (`specs/design/debugger-support.md`) delivered debug
 info in the container, the iterative VM, the VM debug engine, and a
-single-threaded DAP server binary (`ironplcdap`, feature-gated on the `vm-cli`
+single-threaded DAP server binary (`ironplcvmd`, feature-gated on the `vm-cli`
 crate). The server speaks DAP over stdin/stdout and drives
 `initialize → launch → setBreakpoints → configurationDone → (run) → stopped →
 inspect → continue → terminated → disconnect`.
@@ -18,7 +23,7 @@ variables, and drive scan-cycle stepping.
 The design's Phase 5 table sketched the adapter as launching
 `ironplcvm-debug --dap <file.iplc>`. The **actual** Phase 4 implementation is:
 
-- binary name is **`ironplcdap`** (see `compiler/vm-cli/Cargo.toml`), not
+- binary name is **`ironplcvmd`** (see `compiler/vm-cli/Cargo.toml`), not
   `ironplcvm-debug`;
 - it takes **no CLI arguments** — it reads/writes DAP on stdin/stdout
   (`compiler/vm-cli/src/dap_main.rs`);
@@ -34,9 +39,9 @@ Phase 5 matches the shipped server, not the older sketch.
 1. A `debuggers` contribution of type `ironplc` so VS Code offers the debugger
    for Structured Text files.
 2. Pressing F5 on a `.st`/`.iec`/TwinCAT source: compile it (with debug info)
-   to a temporary `.iplc` and launch `ironplcdap` against it. Pressing F5 on an
+   to a temporary `.iplc` and launch `ironplcvmd` against it. Pressing F5 on an
    already-compiled `.iplc`: launch directly.
-3. A `DebugAdapterDescriptorFactory` that resolves the `ironplcdap` binary via
+3. A `DebugAdapterDescriptorFactory` that resolves the `ironplcvmd` binary via
    **env var → setting → bundled** (alongside the discovered `ironplcc`).
 4. Custom-request commands `ironplc.stepScan` and `ironplc.scanCount` on the
    debug toolbar, forwarding `ironplc/stepScan` / `ironplc/scanCount` to the
@@ -65,7 +70,7 @@ files do not dilute the 80% line threshold.
 | File | Kind | Responsibility |
 |------|------|----------------|
 | `src/debugAdapterLogic.ts` | pure | `isSourceProgram`, `containerOutputPath`, `findDapServerPath`, `resolveProgramPath`, `buildDebugCompileArgs`, `scanCountMessage` |
-| `src/debugAdapter.ts` | vscode | `IronplcDebugConfigurationProvider` (fill defaults, compile source→`.iplc`), `IronplcDebugAdapterDescriptorFactory` (spawn `ironplcdap`) |
+| `src/debugAdapter.ts` | vscode | `IronplcDebugConfigurationProvider` (fill defaults, compile source→`.iplc`), `IronplcDebugAdapterDescriptorFactory` (spawn `ironplcvmd`) |
 | `src/customRequests.ts` | vscode | register `ironplc.stepScan` / `ironplc.scanCount` commands forwarding to `vscode.debug.activeDebugSession.customRequest` |
 | `src/test/unit/debugAdapterLogic.test.ts` | test | BDD-style tests for every pure function |
 
@@ -76,8 +81,8 @@ files do not dilute the 80% line threshold.
 - `containerOutputPath(program, tmpDir): string` — deterministic temp `.iplc`
   path derived from the source basename.
 - `findDapServerPath(env, compilerDir?): DapDiscoveryResult | undefined` —
-  resolves `ironplcdap[.exe]` in order **env `IRONPLCDAP` → setting
-  `ironplc.dapServerPath` → bundled (compilerDir)**, mirroring
+  resolves `ironplcvmd[.exe]` in order **env `IRONPLCVMD` → setting
+  `ironplc.debugServerPath` → bundled (compilerDir)**, mirroring
   `CompilerEnvironment` injection so it is testable without a filesystem.
 - `resolveProgramPath(configProgram, activeEditorPath): string | undefined` —
   default the program to the active editor when the launch config omits it.
@@ -92,7 +97,7 @@ files do not dilute the 80% line threshold.
 - `breakpoints`: `[{ language: '61131-3-st' }, { language: 'twincat-pou' }]`.
 - `commands`: `ironplc.stepScan`, `ironplc.scanCount`.
 - `menus.debug/toolBar`: both commands, gated `when: debugType == 'ironplc'`.
-- `configuration`: `ironplc.dapServerPath` (override for the DAP binary).
+- `configuration`: `ironplc.debugServerPath` (override for the DAP binary).
 - `activationEvents`: `onDebugResolve:ironplc`.
 
 ### `extension.ts`

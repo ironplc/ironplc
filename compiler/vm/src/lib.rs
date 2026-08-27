@@ -4,6 +4,7 @@ pub mod debug;
 pub mod debug_hook;
 pub mod error;
 pub(crate) mod frame_stack;
+pub mod freewheeling;
 pub(crate) mod intrinsic;
 #[cfg(feature = "profiling")]
 mod profile;
@@ -20,6 +21,10 @@ pub use buffers::VmBuffers;
 pub use debug::{BreakpointId, BreakpointTable, DebuggerHook, PauseReason, StepMode};
 pub use debug_hook::{DebugHook, HookAction, NoopDebugHook};
 pub use frame_stack::{FbCallReturn, Frame, FrameStack};
+pub use freewheeling::{
+    has_freewheeling_task, interval_from_ms, interval_us, resolve_cycle_time, IntervalError,
+    DEFAULT_FREEWHEELING_INTERVAL, MAX_FREEWHEELING_INTERVAL,
+};
 #[cfg(feature = "profiling")]
 pub use profile::InstructionProfile;
 pub use scheduler::{ProgramInstanceState, TaskState};

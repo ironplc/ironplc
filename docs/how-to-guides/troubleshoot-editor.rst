@@ -55,6 +55,32 @@ Extension Not Activating
 4. **Reinstall the extension**: Uninstall the extension, reload the window, then
    reinstall it.
 
+The Debugger Does Not Start
+===========================
+
+**Symptom**: Pressing :kbd:`F5` reports a problem, or the session ends
+immediately.
+
+**Solutions**:
+
+1. **Check the output channel**: Open the Output panel
+   (:menuselection:`View --> Output`) and select "IronPLC Debug" from the
+   dropdown. It shows the compiler command the debugger ran and its full
+   diagnostics.
+
+2. **Check the reported problem code**: Each failure reports a code.
+   :doc:`/how-to-guides/getting-started/debug-a-program` lists the symptoms
+   and what each one means.
+
+3. **Check the debug server is installed**: :program:`ironplcvmd` installs
+   beside :program:`ironplcc`. If it is somewhere else, set
+   ``ironplc.debugServerPath``. See :doc:`/reference/editor/problems/E0007`.
+
+4. **Compile the project first**: The debugger compiles the single file you
+   point it at. A file that uses POUs or types from other files does not
+   compile on its own --- compile the project and set ``program`` to the
+   resulting ``.iplc`` container.
+
 Collecting Debug Information
 ============================
 
@@ -122,8 +148,11 @@ If all else fails, try a clean reset:
    * macOS/Linux: ``~/.vscode/extensions/ironplc.*`` (or ``~/.cursor/extensions/ironplc.*`` for Cursor)
 
 3. Reload the development environment
-4. Reinstall the extension by downloading the latest
+4. Reinstall the extension from the Extensions view: search for ``ironplc``,
+   then select :guilabel:`IronPLC IDE` in Visual Studio Code or
+   :guilabel:`IronPLC` in editors that install from Open VSX (Cursor, Kiro,
+   Devin, VSCodium). If neither registry is reachable, download the latest
    ``ironplc-vscode-extension.vsix`` from the
    `IronPLC GitHub releases <https://github.com/ironplc/ironplc/releases/>`_
-   and using :menuselection:`... (View and More Actions) --> Install from VSIX...`
+   and use :menuselection:`... (View and More Actions) --> Install from VSIX...`
    in the Extensions view

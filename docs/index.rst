@@ -20,11 +20,13 @@ so you can use IronPLC alongside your existing PLC development environment.
    Structured Text with syntax highlighting in Visual Studio Code.
 
 IronPLC supports most of IEC 61131-3 edition 2 and parts of edition 3
-but doesn't yet provide I/O mapping or debugging capabilities. Still,
-there is plenty you can do with IronPLC today including running
-code using the `IronPLC Playground <https://playground.ironplc.com>`_,
-authoring code with an AI agent using IronPLC's Model Context Protocol
-(MCP) server, and running applications locally.
+but doesn't yet provide I/O mapping. Debugging is early and in
+development: you can set breakpoints, step through Structured Text, and
+inspect variables, with the limits each page describes. There is plenty
+you can do with IronPLC today including running code using the
+`IronPLC Playground <https://playground.ironplc.com>`_, authoring code
+with an AI agent using IronPLC's Model Context Protocol (MCP) server,
+and running applications locally.
 
 IronPLC is free (subject to MIT license terms) and works on Windows,
 macOS and Linux.

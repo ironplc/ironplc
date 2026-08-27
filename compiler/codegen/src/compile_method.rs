@@ -150,7 +150,7 @@ fn compile_user_method(
         Some(FunctionReturnType::String(_)) | Some(FunctionReturnType::WString(_)) => {
             // STRING/WSTRING method returns aren't implemented in this
             // slice -- see specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md.
-            return Err(Diagnostic::todo(file!(), line!()));
+            return Err(Diagnostic::todo());
         }
         None => DEFAULT_OP_TYPE,
     };

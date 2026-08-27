@@ -378,9 +378,9 @@ fn transform_data_type(data_type: &DataType, file_id: &FileId) -> Result<TypeNam
         DataType::Derived(derived) => Ok(make_type_name(&derived.name, file_id)),
 
         // Complex types that need context
-        DataType::Array(_) => Err(Diagnostic::todo(file!(), line!())),
-        DataType::Enum(_) => Err(Diagnostic::todo(file!(), line!())),
-        DataType::Struct(_) => Err(Diagnostic::todo(file!(), line!())),
+        DataType::Array(_) => Err(Diagnostic::todo()),
+        DataType::Enum(_) => Err(Diagnostic::todo()),
+        DataType::Struct(_) => Err(Diagnostic::todo()),
 
         // Generic types (usually for library functions)
         DataType::Any => Ok(TypeName::from("ANY")),
@@ -395,10 +395,8 @@ fn transform_data_type(data_type: &DataType, file_id: &FileId) -> Result<TypeNam
         DataType::AnyDate => Ok(TypeName::from("ANY_DATE")),
 
         // Subranges and pointers
-        DataType::SubrangeSigned(_) | DataType::SubrangeUnsigned(_) => {
-            Err(Diagnostic::todo(file!(), line!()))
-        }
-        DataType::Pointer(_) => Err(Diagnostic::todo(file!(), line!())),
+        DataType::SubrangeSigned(_) | DataType::SubrangeUnsigned(_) => Err(Diagnostic::todo()),
+        DataType::Pointer(_) => Err(Diagnostic::todo()),
     }
 }
 

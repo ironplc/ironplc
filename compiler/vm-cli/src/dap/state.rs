@@ -59,6 +59,9 @@ pub enum Command {
     Next,
     StepIn,
     StepOut,
+    /// The `ironplc/stepScan` custom request: run the rest of the current scan
+    /// cycle and stop at the start of the next.
+    StepScan,
     Disconnect,
     // Known DAP requests deliberately unsupported in v1: always illegal.
     Pause,
@@ -86,6 +89,7 @@ impl Command {
             "next" => Command::Next,
             "stepIn" => Command::StepIn,
             "stepOut" => Command::StepOut,
+            "ironplc/stepScan" => Command::StepScan,
             "disconnect" => Command::Disconnect,
             "pause" => Command::Pause,
             "setVariable" => Command::SetVariable,
@@ -112,8 +116,9 @@ pub fn legal(phase: Phase, command: Command) -> bool {
         // count is inspected through the `Runtime` scope, so it needs no
         // request of its own — `scopes`/`variables` already carry it.
         Threads | StackTrace | Scopes | Variables => matches!(phase, Paused | Faulted),
-        // Execution control: only at a non-terminal pause.
-        Continue | Next | StepIn | StepOut => phase == Paused,
+        // Execution control: only at a non-terminal pause. Scan stepping is
+        // execution control like the rest — it just measures in cycles.
+        Continue | Next | StepIn | StepOut | StepScan => phase == Paused,
         // Teardown is always accepted.
         Disconnect => true,
         // Cut from v1: refused in every phase.
@@ -134,7 +139,7 @@ mod tests {
         Phase::Faulted,
     ];
 
-    const ALL_COMMANDS: [Command; 17] = [
+    const ALL_COMMANDS: [Command; 18] = [
         Command::Initialize,
         Command::Launch,
         Command::SetBreakpoints,
@@ -147,6 +152,7 @@ mod tests {
         Command::Next,
         Command::StepIn,
         Command::StepOut,
+        Command::StepScan,
         Command::Disconnect,
         Command::Pause,
         Command::SetVariable,
@@ -166,7 +172,7 @@ mod tests {
             ConfigurationDone => &[Configuring],
             SetBreakpoints => &[Configuring, Paused],
             Threads | StackTrace | Scopes | Variables => &[Paused, Faulted],
-            Continue | Next | StepIn | StepOut => &[Paused],
+            Continue | Next | StepIn | StepOut | StepScan => &[Paused],
             Disconnect => &[
                 Initialized,
                 Configuring,
@@ -243,6 +249,7 @@ mod tests {
             Command::Next,
             Command::StepIn,
             Command::StepOut,
+            Command::StepScan,
         ] {
             assert!(!legal(Phase::Faulted, command));
         }
@@ -255,6 +262,11 @@ mod tests {
             Some(Command::ConfigurationDone)
         );
         assert_eq!(Command::from_request("stepIn"), Some(Command::StepIn));
+        // The one custom (non-DAP-standard) request the server models.
+        assert_eq!(
+            Command::from_request("ironplc/stepScan"),
+            Some(Command::StepScan)
+        );
         // Known-but-cut requests still map, so the caller can answer
         // requestNotApplicable rather than "unknown command".
         assert_eq!(Command::from_request("pause"), Some(Command::Pause));
@@ -262,7 +274,10 @@ mod tests {
 
     #[test]
     fn from_request_when_unknown_command_then_none() {
-        assert_eq!(Command::from_request("ironplc/stepScan"), None);
+        // A custom request in IronPLC's namespace that the server does not
+        // implement is as unknown as any other.
+        assert_eq!(Command::from_request("ironplc/forceVariable"), None);
+        assert_eq!(Command::from_request("stepScan"), None);
         assert_eq!(Command::from_request(""), None);
     }
 }

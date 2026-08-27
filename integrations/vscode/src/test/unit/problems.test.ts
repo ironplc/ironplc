@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ProblemCode, PROBLEM_MESSAGES, formatProblem } from '../../problems';
+import { DEBUG_SERVER_BINARY } from '../../debugAdapterLogic';
 
 suite('ProblemCode', () => {
   test('ProblemCode_when_accessed_then_returns_expected_codes', () => {
@@ -15,6 +16,16 @@ suite('ProblemCode', () => {
     assert.strictEqual(ProblemCode.DebugProgramNotDebuggable, 'E0005');
     assert.strictEqual(ProblemCode.DebugCompileFailed, 'E0006');
     assert.strictEqual(ProblemCode.DebugServerNotFound, 'E0007');
+  });
+
+  test('PROBLEM_MESSAGES_when_debug_server_not_found_then_names_the_binary', () => {
+    // problem-codes.csv is not TypeScript and cannot import the constant, so
+    // this is what keeps the generated message in step with the binary name.
+    assert.ok(
+      PROBLEM_MESSAGES[ProblemCode.DebugServerNotFound].includes(DEBUG_SERVER_BINARY),
+      `E0007 must name ${DEBUG_SERVER_BINARY}, but says: `
+      + PROBLEM_MESSAGES[ProblemCode.DebugServerNotFound],
+    );
   });
 
   test('PROBLEM_MESSAGES_when_accessed_then_has_entry_for_each_code', () => {
@@ -63,6 +74,6 @@ suite('formatProblem', () => {
 
   test('formatProblem_when_debug_server_not_found_then_includes_code', () => {
     const result = formatProblem(ProblemCode.DebugServerNotFound);
-    assert.strictEqual(result, 'E0007 - IronPLC debug server (ironplcdap) not found');
+    assert.strictEqual(result, `E0007 - IronPLC debug server (${DEBUG_SERVER_BINARY}) not found`);
   });
 });

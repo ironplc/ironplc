@@ -529,6 +529,8 @@ impl From<LspTokenType> for Option<SemanticToken> {
             TokenType::EndInterface => Some(KEYWORD_INDEX),
             TokenType::Abstract => Some(KEYWORD_INDEX),
             TokenType::Method => Some(KEYWORD_INDEX),
+            TokenType::This => Some(KEYWORD_INDEX),
+            TokenType::Super => Some(KEYWORD_INDEX),
             TokenType::EndMethod => Some(KEYWORD_INDEX),
             TokenType::Configuration => Some(KEYWORD_INDEX),
             TokenType::EndConfiguration => Some(KEYWORD_INDEX),

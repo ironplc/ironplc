@@ -10,4 +10,5 @@ and IEC 61131-3.
 
    Check, Compile, and Run from the CLI <check-compile-run-from-cli>
    Structure a Multi-File Project <structure-a-multi-file-project>
+   Debug a Program <debug-a-program>
    Read Compiler Error Messages <read-compiler-error-messages>

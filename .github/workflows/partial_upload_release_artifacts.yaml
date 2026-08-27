@@ -66,9 +66,10 @@ jobs:
 
           # Marketplace VSIX (Visual Studio Marketplace build, extension ID
           # ironplc.ironplc-vscode). Attached to the GitHub Release so users can
-          # install the Marketplace build manually until automated Marketplace
-          # publishing is reinstated (Stage 2 of
-          # specs/plans/vscode-marketplace-extension-id.md).
+          # install the Marketplace build manually, and so the smoke test can
+          # download the exact artifact that deployment.yaml::publish-release
+          # ships to the Marketplace. See
+          # specs/plans/vscode-marketplace-extension-id.md.
           cp ./artifacts/ironplc-vscode-extension-marketplace.vsix/ironplc-vscode-extension-marketplace.vsix release-assets/
 
           # SBOMs (renamed with the version number).

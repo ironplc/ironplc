@@ -1315,9 +1315,20 @@ pub mod builtin {
     /// the codegen emitter (for stack depth tracking) and can be validated
     /// against the VM dispatch implementation.
     ///
-    /// Panics if `func_id` is not a known built-in function ID.
+    /// Panics if `func_id` is not a known built-in function ID. Callers
+    /// that must not panic on malformed input use [`arg_count_opt`].
     pub fn arg_count(func_id: u16) -> u16 {
-        match func_id {
+        arg_count_opt(func_id)
+            .unwrap_or_else(|| panic!("unknown builtin function ID: 0x{:04X}", func_id))
+    }
+
+    /// Returns the number of arguments `func_id` pops, or `None` when it is
+    /// not a known built-in function ID.
+    ///
+    /// The non-panicking form of [`arg_count`], used by the bytecode
+    /// verifier, which must report a malformed operand rather than abort.
+    pub fn arg_count_opt(func_id: u16) -> Option<u16> {
+        Some(match func_id {
             ABS_I32 | ABS_F32 | ABS_F64 | ABS_I64 | SQRT_F32 | SQRT_F64 | LN_F32 | LN_F64
             | LOG_F32 | LOG_F64 | EXP_F32 | EXP_F64 | SIN_F32 | SIN_F64 | COS_F32 | COS_F64
             | TAN_F32 | TAN_F64 | ASIN_F32 | ASIN_F64 | ACOS_F32 | ACOS_F64 | ATAN_F32
@@ -1339,10 +1350,10 @@ pub mod builtin {
             | SEL_F32 | SEL_F64 | SEL_I64 => 3,
             id if is_mux(id) => {
                 // MUX pops n IN values + 1 K selector
-                mux_info(id).unwrap() + 1
+                mux_info(id)? + 1
             }
-            _ => panic!("unknown builtin function ID: 0x{:04X}", func_id),
-        }
+            _ => return None,
+        })
     }
 }
 

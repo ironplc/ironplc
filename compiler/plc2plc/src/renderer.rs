@@ -175,7 +175,11 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         node: &ironplc_dsl::common::SignedInteger,
     ) -> Result<Self::Value, Diagnostic> {
         if node.is_neg {
-            self.write("-");
+            // The sign belongs to the literal, so the separating space goes
+            // before it, never between it and the digits.
+            self.write_ws("-");
+            self.write(node.value.value.to_string().as_str());
+            return Ok(());
         }
         self.visit_integer(&node.value)
     }
@@ -186,7 +190,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             val.push_str(data_type.as_id().original());
             val.push('#');
         }
-        val.push_str(node.value.to_string().as_str());
+        // A real literal always carries a decimal point; `f64::to_string`
+        // drops it for whole values.
+        let mut value = node.value.to_string();
+        if node.value.is_finite() && !value.contains(['.', 'e', 'E']) {
+            value.push_str(".0");
+        }
+        val.push_str(value.as_str());
 
         self.write_ws(val.as_str());
         Ok(())
@@ -507,9 +517,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.write_ws("]");
 
         if let Some(init) = &node.init {
+            // Single quotes delimit a STRING, double quotes a WSTRING.
             let char = match node.width {
-                StringType::String => "\"",
-                StringType::WString => "'",
+                StringType::String => "'",
+                StringType::WString => "\"",
             };
 
             self.write_ws(":=");
@@ -843,9 +854,25 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         if !node.initial_values.is_empty() {
             self.write_ws(":=");
 
+            self.write_ws("[");
             visit_comma_separated!(self, node.initial_values.iter(), ArrayInitialElementKind);
+            self.write_ws("]");
         }
 
+        Ok(())
+    }
+
+    /// Renders a repeated array element, `count(value)`.
+    fn visit_repeated(
+        &mut self,
+        node: &ironplc_dsl::common::Repeated,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.visit_integer(&node.size)?;
+        self.write_ws("(");
+        if let Some(init) = node.init.as_ref() {
+            self.visit_array_initial_element_kind(init)?;
+        }
+        self.write_ws(")");
         Ok(())
     }
 
@@ -1233,18 +1260,27 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         }
         self.outdent();
 
-        self.indent();
-        for fb_init in node.fb_inits.iter() {
-            self.visit_function_block_init(fb_init)?;
-        }
-        self.outdent();
+        // A configuration has a single VAR_CONFIG block holding every
+        // instance-specific initialization.
+        if !node.fb_inits.is_empty() || !node.located_var_inits.is_empty() {
+            self.indent();
+            self.write_ws("VAR_CONFIG");
+            self.newline();
 
-        self.indent();
-        for loc_var_init in node.located_var_inits.iter() {
-            self.visit_located_var_init(loc_var_init)?;
+            self.indent();
+            for fb_init in node.fb_inits.iter() {
+                self.visit_function_block_init(fb_init)?;
+            }
+            for loc_var_init in node.located_var_inits.iter() {
+                self.visit_located_var_init(loc_var_init)?;
+            }
+            self.outdent();
+
+            self.write_ws("END_VAR");
+            self.newline();
+            self.outdent();
         }
 
-        self.outdent();
         self.newline();
 
         self.write_ws("END_CONFIGURATION");
@@ -1252,15 +1288,12 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
+    /// Renders one initializer line; the enclosing `VAR_CONFIG` block is
+    /// written once by `visit_configuration_declaration`.
     fn visit_function_block_init(
         &mut self,
         node: &dsl::configuration::FunctionBlockInit,
     ) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("VAR_CONFIG");
-        self.newline();
-
-        self.indent();
-
         let mut vars: Vec<&String> = Vec::new();
         vars.push(node.resource_name.original());
         vars.push(node.program_name.original());
@@ -1278,22 +1311,15 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
         visit_comma_separated!(self, node.initializer.iter(), StructureElementInit);
 
-        self.write_ws(");");
-
-        self.outdent();
+        self.write_ws(")");
+        self.write_ws(";");
         self.newline();
 
-        self.write_ws("END_VAR");
-        self.newline();
         Ok(())
     }
 
+    /// Renders one initializer line; see `visit_function_block_init`.
     fn visit_located_var_init(&mut self, node: &LocatedVarInit) -> Result<Self::Value, Diagnostic> {
-        self.write_ws("VAR_CONFIG");
-
-        self.indent();
-        self.newline();
-
         let mut vars: Vec<&String> = Vec::new();
         vars.push(node.resource_name.original());
         vars.push(node.program_name.original());
@@ -1311,12 +1337,8 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_initial_value_assignment_kind(&node.initializer)?;
 
         self.write_ws(";");
-
-        self.outdent();
         self.newline();
 
-        self.write_ws("END_VAR");
-        self.newline();
         Ok(())
     }
 
@@ -1368,12 +1390,13 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         Ok(())
     }
 
-    // OOP extension: `instance.MethodName(args)` (ADR-0041 Phase 1).
+    // OOP extension: `instance.MethodName(args)`, `THIS^.MethodName(args)`
+    // (ADR-0041 Phase 1).
     fn visit_method_call(
         &mut self,
         node: &dsl::textual::MethodCall,
     ) -> Result<Self::Value, Diagnostic> {
-        self.visit_id(&node.instance)?;
+        self.visit_method_receiver(&node.receiver)?;
         self.write(".");
         self.visit_id(&node.method)?;
 
@@ -1678,7 +1701,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
             }
             dsl::textual::ExprKind::Deref(expr) => {
                 self.visit_expr(expr)?;
-                self.write_ws("^");
+                // No separating space: the parser's `unary_expression`
+                // rule allows no whitespace between the operand and the
+                // `^`, so `myRef ^` would not re-parse.
+                self.write("^");
                 Ok(())
             }
             dsl::textual::ExprKind::Null(_) => {
@@ -1696,6 +1722,30 @@ impl Visitor<Diagnostic> for LibraryRenderer {
         self.visit_symbolic_variable_kind(&node.variable)?;
         self.write("^");
         Ok(())
+    }
+
+    // OOP extension: `THIS^` / `SUPER^`. The caret is part of the node's
+    // spelling, so it can never be split from the keyword, and whatever
+    // element follows (`.field`, `[i]`) is written with no gap -- which is
+    // what the parser requires after a caret.
+    fn visit_self_ref_variable(
+        &mut self,
+        node: &dsl::textual::SelfRefVariable,
+    ) -> Result<Self::Value, Diagnostic> {
+        self.write_ws(node.kind.spelling());
+        Ok(())
+    }
+
+    fn visit_method_receiver(
+        &mut self,
+        node: &dsl::textual::MethodReceiver,
+    ) -> Result<Self::Value, Diagnostic> {
+        match node {
+            dsl::textual::MethodReceiver::Instance(name) => self.visit_id(name),
+            dsl::textual::MethodReceiver::SelfRef(self_ref) => {
+                self.visit_self_ref_variable(self_ref)
+            }
+        }
     }
 
     fn visit_reference_declaration(
@@ -1775,7 +1825,10 @@ impl Visitor<Diagnostic> for LibraryRenderer {
     ) -> Result<Self::Value, Diagnostic> {
         self.visit_symbolic_variable_kind(&node.subscripted_variable)?;
 
-        self.write_ws("[");
+        // No space before `[`: the parser's `symbolic_variable` rule admits
+        // none between a variable and its subscript. Inside the brackets is
+        // fine -- `subscript_list` allows it.
+        self.write("[");
         visit_comma_separated!(self, node.subscripts.iter(), Expr);
         self.write_ws("]");
 

@@ -86,7 +86,7 @@ Workflow:
 1. Run the pre-PR checks described below.
 1. Push the branch and open a pull request.
 
-You may **skip the plan** for mechanical changes: typo fixes, formatting,
+You SHOULD **skip the plan** for mechanical changes: typo fixes, formatting,
 dependency bumps, single-line bug fixes, or documentation-only edits.
 
 ## Before You Open a PR
