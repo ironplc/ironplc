@@ -40,6 +40,13 @@ ironplc-spec-requirements-gen = { path = "../spec_requirements_gen" }
 [dev-dependencies]
 assert_cmd = { version = "2.2" }
 ironplc-container = { path = "../container", version = "0.240.0" }
+# The debugger's timing regression test (issue #1397) needs a real compiled
+# program: a TASK with an INTERVAL and a TON whose PT spans several cycles.
+# Hand-writing that container would test the test's arithmetic, not codegen's.
+ironplc-analyzer = { path = "../analyzer", version = "0.240.0" }
+ironplc-codegen = { path = "../codegen", version = "0.240.0" }
+ironplc-dsl = { path = "../dsl", version = "0.240.0" }
+ironplc-parser = { path = "../parser", version = "0.240.0" }
 blake3 = "1"
 predicates = { version = "3.1" }
 tempfile = "3"

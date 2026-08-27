@@ -24,9 +24,7 @@ use ironplc_analyzer::symbol_environment::ScopeKind;
 use ironplc_analyzer::SemanticContext;
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, VarNameEntry};
 use ironplc_container::Container;
-use ironplc_vm::{
-    assume_freewheeling_interval, first_task_interval, has_freewheeling_task, Vm, VmBuffers,
-};
+use ironplc_vm::{resolve_cycle_time, Vm, VmBuffers};
 use serde_json::Value;
 
 use crate::cache::{CachedContainer, ResolvedVar, VariableSymbolMap};
@@ -257,25 +255,13 @@ pub fn execute(
     let mut container =
         Container::read_from(&mut bytes).map_err(|e| format!("container read error: {e}"))?;
 
-    // A freewheeling task is a cyclic task whose rate the container does not
-    // know. Applying the caller's assumed rate here means every downstream
-    // step — `next_due_us()`, the round loop, `time_ms` stamping — works off
-    // the task table as usual, with no freewheeling special case. Reading the
-    // interval back afterwards therefore reports one cycle time whether the
-    // program declared it or the caller supplied it — and zero when the caller
-    // asked for no rate at all.
-    match freewheeling_interval {
-        Some(assumed) => {
-            assume_freewheeling_interval(&mut container, assumed);
-        }
-        None if has_freewheeling_task(&container) => {
-            return Err(
-                "container has a freewheeling task but no cycle time to run it at".to_string(),
-            );
-        }
-        None => {}
-    }
-    let interval = first_task_interval(&container).unwrap_or_default();
+    // Applying the caller's assumed rate to the task table means every
+    // downstream step — `next_due_us()`, the round loop, `time_ms` stamping —
+    // works off it as usual, with no freewheeling special case. `None` means
+    // nothing named a rate, which this tool treats as an error rather than
+    // invent one the agent never chose.
+    let interval = resolve_cycle_time(&mut container, freewheeling_interval)
+        .ok_or("container has a freewheeling task but no cycle time to run it at")?;
 
     let task_names: Vec<String> = cached.tasks.iter().map(|t| t.name.clone()).collect();
 

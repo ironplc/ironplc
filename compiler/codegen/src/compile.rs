@@ -231,7 +231,6 @@ pub fn compile(
     }
 
     // Collect top-level VAR_GLOBAL declarations (outside CONFIGURATION blocks).
-    // These are common in the RuSTy dialect and OSCAT libraries.
     for element in &library.elements {
         if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
             synthetic_globals.extend_from_slice(decls);

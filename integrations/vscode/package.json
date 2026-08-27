@@ -313,6 +313,10 @@
               "scanLimit": {
                 "type": "number",
                 "description": "Maximum number of scan cycles to run before disconnecting (runaway prevention). 0 means unlimited."
+              },
+              "freewheelingIntervalMs": {
+                "type": "number",
+                "description": "Simulated interval for freewheeling tasks."
               }
             }
           }
