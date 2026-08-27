@@ -204,7 +204,9 @@ fn format_const_value(const_type: ConstType, bytes: &[u8]) -> String {
         // Wide strings are UTF-16LE: pair up bytes into code units.
         ConstType::WStr if bytes.len().is_multiple_of(2) => {
             let units: Vec<u16> = bytes
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|c| u16::from_le_bytes([c[0], c[1]]))
                 .collect();
             format!("\"{}\"", String::from_utf16_lossy(&units))
