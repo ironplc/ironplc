@@ -2,7 +2,7 @@
 Enabling Dialects and Features
 ==============================
 
-IronPLC aims to let you take code from another PLC environment and use it
+IronPLC lets you take code from another PLC environment and use it
 without changes. To support this, IronPLC uses **dialects** — named presets
 that select the IEC 61131-3 edition and a default set of extensions.
 Individual ``--allow-*`` flags provide fine-grained control on top of the
