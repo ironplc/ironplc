@@ -1192,10 +1192,12 @@ fn mcp_spec_req_tol_221_pou_scope_unknown_pou() {
 // ===========================================================================
 
 /// REQ-TOL-mcp-230: `pou_lineage` returns `pou`, `upstream`, and `downstream`
-/// adjacency lists derived from the project dependency DAG.
+/// adjacency lists derived from the project dependency DAG, each entry
+/// carrying its `name` and `source`.
 #[spec_test(REQ_TOL_mcp_230)]
 fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {
     use crate::tools::common::SourceInput;
+    use crate::tools::pou_lineage::PouSource;
 
     let sources = vec![SourceInput {
         name: "main.st".into(),
@@ -1207,10 +1209,12 @@ fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {
     let main_resp = tools::pou_lineage::build_response(&sources, &options, "Main");
     assert!(main_resp.ok, "diagnostics: {:?}", main_resp.diagnostics);
     assert!(main_resp.found);
-    assert!(main_resp
+    let counter = main_resp
         .upstream
         .iter()
-        .any(|n| n.eq_ignore_ascii_case("Counter")));
+        .find(|e| e.name.eq_ignore_ascii_case("Counter"))
+        .expect("Counter is upstream of Main");
+    assert_eq!(counter.source, PouSource::User);
 
     // Counter has Main as downstream.
     let counter_resp = tools::pou_lineage::build_response(&sources, &options, "Counter");
@@ -1219,7 +1223,39 @@ fn mcp_spec_req_tol_230_pou_lineage_returns_dependencies() {
     assert!(counter_resp
         .downstream
         .iter()
-        .any(|n| n.eq_ignore_ascii_case("Main")));
+        .any(|e| e.name.eq_ignore_ascii_case("Main")));
+}
+
+/// REQ-TOL-mcp-232: standard library POUs appear in lineage tagged
+/// `source: "stdlib"` and are addressable as the queried POU.
+#[spec_test(REQ_TOL_mcp_232)]
+fn mcp_spec_req_tol_232_pou_lineage_reports_stdlib_pous() {
+    use crate::tools::common::SourceInput;
+    use crate::tools::pou_lineage::PouSource;
+
+    let sources = vec![SourceInput {
+        name: "main.st".into(),
+        content: "PROGRAM MotorStartStop\nVAR Star_Timer : TON; Run : BOOL; END_VAR\nStar_Timer(IN := Run, PT := T#5s);\nEND_PROGRAM".into(),
+    }];
+    let options = serde_json::json!({"dialect": "iec61131-3-ed2"});
+
+    let resp = tools::pou_lineage::build_response(&sources, &options, "MotorStartStop");
+    assert!(resp.ok, "diagnostics: {:?}", resp.diagnostics);
+    assert!(resp.found);
+    let timer = resp
+        .upstream
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("TON"))
+        .expect("TON is upstream of MotorStartStop");
+    assert_eq!(timer.source, PouSource::Stdlib);
+
+    // The standard library POU is itself addressable.
+    let ton_resp = tools::pou_lineage::build_response(&sources, &options, "TON");
+    assert!(ton_resp.found);
+    assert!(ton_resp
+        .downstream
+        .iter()
+        .any(|e| e.name.eq_ignore_ascii_case("MotorStartStop")));
 }
 
 /// REQ-TOL-mcp-231: `pou_lineage` returns `ok:false`, `found:false`, empty

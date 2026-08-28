@@ -362,9 +362,11 @@ Returns the upstream and downstream dependencies of the named POU, derived from 
 - `options`: required object; same schema as `check`
 - `pou`: required string — the POU name to query
 
-**REQ-TOL-mcp-230** The `pou_lineage` tool returns a JSON object with three fields: `pou` (the requested POU name), `upstream` (an array of POU names that the requested POU depends on, directly or transitively), and `downstream` (an array of POU names that depend on the requested POU, directly or transitively). JSON adjacency-list is the only format this tool produces; callers that want a DOT rendering should convert client-side.
+**REQ-TOL-mcp-230** The `pou_lineage` tool returns a JSON object with three fields: `pou` (the requested POU name), `upstream` (the POUs the requested POU depends on, directly or transitively), and `downstream` (the POUs that depend on the requested POU, directly or transitively). Each `upstream` and `downstream` entry is an object with `name` and `source`, sorted case-insensitively by `name`. JSON adjacency-list is the only format this tool produces; callers that want a DOT rendering should convert client-side.
 
 **REQ-TOL-mcp-231** When no POU with the given name exists, the tool returns `ok: false`, `found: false`, empty `upstream` and `downstream` arrays, and a diagnostic.
+
+**REQ-TOL-mcp-232** Standard library POUs — the function blocks and functions the compiler supplies itself, such as `TON` and `MAX` — participate in lineage like any other POU: they appear in `upstream` with `source: "stdlib"`, they are addressable as the requested `pou` and then report their users as `downstream`, and they have no `upstream` of their own. Every other POU, including one declared by an activated compatibility library, has `source: "user"` — a compatibility library is source the caller can supply, so it needs no separate origin.
 
 **Output:**
 ```json
@@ -372,8 +374,14 @@ Returns the upstream and downstream dependencies of the named POU, derived from 
   "ok": true,
   "found": true,
   "pou": "Motor",
-  "upstream":   ["PID", "Scale"],
-  "downstream": ["Main"],
+  "upstream": [
+    { "name": "PID",   "source": "user" },
+    { "name": "Scale", "source": "user" },
+    { "name": "TON",   "source": "stdlib" }
+  ],
+  "downstream": [
+    { "name": "Main", "source": "user" }
+  ],
   "diagnostics": []
 }
 ```
