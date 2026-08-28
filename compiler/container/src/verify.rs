@@ -132,8 +132,9 @@ pub enum StackImbalance {
         offset: usize,
         builtin_id: u16,
     },
-    /// A `CALL` names a function that is not in the function directory, so
-    /// its parameter count — and therefore its stack effect — is unknown.
+    /// A `CALL` or `METHOD_CALL` names a function that is not in the function
+    /// directory, so its parameter count — and therefore its stack effect —
+    /// is unknown.
     UnknownCallee {
         function_id: FunctionId,
         offset: usize,
@@ -243,7 +244,7 @@ impl fmt::Display for StackImbalance {
             ),
             StackImbalance::UnknownCallee { callee, .. } => write!(
                 f,
-                "function {func} offset {at}: CALL targets function {callee}, which is not in \
+                "function {func} offset {at}: call targets function {callee}, which is not in \
                  the function directory"
             ),
         }
@@ -498,6 +499,33 @@ fn instruction_boundaries(
     Ok(boundaries)
 }
 
+/// The operand-stack depth a `METHOD_CALL` callee leaves for its caller:
+/// [`RET_DEPTH`] when the method has a return value, [`RET_VOID_DEPTH`]
+/// when it is void.
+///
+/// A METHOD_CALL instruction encodes only addressing (`function_id`, the
+/// field and param scratch offsets), so whether the method returns a value
+/// has to come from the body it calls. Decoding the callee linearly is
+/// enough: a body that returns a value ends every path in `RET`, and a void
+/// body has no `RET` at all. A callee whose bytes do not decode is left at
+/// [`RET_VOID_DEPTH`] here; verifying that function in its own right is what
+/// reports the malformed body.
+fn method_return_depth(code: &CodeSection, callee: FunctionId) -> u16 {
+    let bytecode = code.get_function_bytecode(callee).unwrap_or_default();
+    let mut pc = 0usize;
+    while pc < bytecode.len() {
+        let op = bytecode[pc];
+        if !opcode::is_assigned(op) {
+            break;
+        }
+        if op == opcode::RET {
+            return RET_DEPTH;
+        }
+        pc += opcode::instruction_size(op);
+    }
+    RET_VOID_DEPTH
+}
+
 /// Reads a little-endian `u16` from the start of `operands`.
 fn u16_at(operands: &[u8], index: usize) -> u16 {
     u16::from_le_bytes([operands[index], operands[index + 1]])
@@ -617,6 +645,22 @@ fn effect_of(
             // Arguments are popped into the callee's parameter slots; the
             // callee's RET leaves exactly one value behind.
             Effect::new(entry.num_params, RET_DEPTH)
+        }
+        METHOD_CALL => {
+            let callee = FunctionId::new(u16_at(operands, 0));
+            let entry = code
+                .get_function(callee)
+                .ok_or(StackImbalance::UnknownCallee {
+                    function_id,
+                    offset,
+                    callee,
+                })?;
+            // Arguments are popped into the method's own parameter slots,
+            // exactly as for CALL. The fb_ref underneath them stays where it
+            // is (as with FB_CALL). Unlike a FUNCTION, a METHOD may be void,
+            // and the calling convention carries no flag saying which it is,
+            // so the callee's own returns are the record.
+            Effect::new(entry.num_params, method_return_depth(code, callee))
         }
 
         _ => {
@@ -918,6 +962,114 @@ mod tests {
         };
 
         assert_eq!(verify_stack_balance(&code), Ok(()));
+    }
+
+    /// Builds a two-function section: function 0 is the caller, function 1
+    /// the method body it invokes.
+    fn caller_and_method(caller: Vec<u8>, method: Vec<u8>, caller_max: u16) -> CodeSection {
+        let caller_len = caller.len() as u32;
+        let method_len = method.len() as u32;
+        let mut bytecode = caller;
+        bytecode.extend_from_slice(&method);
+
+        CodeSection {
+            functions: vec![
+                FuncEntry {
+                    function_id: FunctionId::new(0),
+                    code_offset: 0,
+                    code_length: caller_len,
+                    max_stack_depth: caller_max,
+                    num_locals: 1,
+                    num_params: 0,
+                },
+                FuncEntry {
+                    function_id: FunctionId::new(1),
+                    code_offset: caller_len,
+                    code_length: method_len,
+                    max_stack_depth: 1,
+                    num_locals: 1,
+                    num_params: 1,
+                },
+            ],
+            bytecode,
+        }
+    }
+
+    /// METHOD_CALL of function 1: [op][func u16][field_var_off u16][num_fields u8][param_var_off u16].
+    fn method_call_bytes() -> [u8; 8] {
+        [
+            opcode::METHOD_CALL,
+            0x01,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        ]
+    }
+
+    #[test]
+    fn verify_stack_balance_when_method_call_returns_value_then_pops_params_and_pushes_result() {
+        // fb_ref, one argument, the call, then discard the result and fb_ref.
+        let mut caller = vec![opcode::FB_LOAD_INSTANCE, 0x00, 0x00, opcode::LOAD_TRUE];
+        caller.extend_from_slice(&method_call_bytes());
+        caller.extend_from_slice(&[opcode::POP, opcode::POP, opcode::RET_VOID]);
+
+        // The method body ends in RET, so it leaves a value for the caller.
+        let method = vec![opcode::LOAD_TRUE, opcode::RET];
+
+        assert_eq!(
+            verify_stack_balance(&caller_and_method(caller, method, 3)),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn verify_stack_balance_when_method_call_is_void_then_pushes_nothing() {
+        // Same call site, but only fb_ref is discarded: a void method
+        // leaves no result behind.
+        let mut caller = vec![opcode::FB_LOAD_INSTANCE, 0x00, 0x00, opcode::LOAD_TRUE];
+        caller.extend_from_slice(&method_call_bytes());
+        caller.extend_from_slice(&[opcode::POP, opcode::RET_VOID]);
+
+        // No RET anywhere in the body: the method is void.
+        let method = vec![opcode::RET_VOID];
+
+        assert_eq!(
+            verify_stack_balance(&caller_and_method(caller, method, 3)),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn verify_stack_balance_when_void_method_result_popped_then_stack_underflow() {
+        // Popping a result a void method never pushed must not verify.
+        let mut caller = vec![opcode::FB_LOAD_INSTANCE, 0x00, 0x00, opcode::LOAD_TRUE];
+        caller.extend_from_slice(&method_call_bytes());
+        caller.extend_from_slice(&[opcode::POP, opcode::POP, opcode::RET_VOID]);
+
+        let method = vec![opcode::RET_VOID];
+
+        assert!(matches!(
+            verify_stack_balance(&caller_and_method(caller, method, 3)),
+            Err(StackImbalance::Underflow { .. })
+        ));
+    }
+
+    #[test]
+    fn verify_stack_balance_when_method_callee_missing_then_unknown_callee() {
+        let mut caller = vec![opcode::FB_LOAD_INSTANCE, 0x00, 0x00, opcode::LOAD_TRUE];
+        caller.extend_from_slice(&method_call_bytes());
+        caller.extend_from_slice(&[opcode::POP, opcode::POP, opcode::RET_VOID]);
+
+        // Only function 0 exists, so the call target is out of range.
+        let code = section(caller, 3);
+
+        assert!(matches!(
+            verify_stack_balance(&code),
+            Err(StackImbalance::UnknownCallee { .. })
+        ));
     }
 
     #[test]

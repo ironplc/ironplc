@@ -9,7 +9,7 @@ use ironplc_container::debug_section::{
 };
 use ironplc_container::{ContainerBuilder, VarIndex};
 use ironplc_dsl::common::{
-    ConstantKind, ElementaryTypeName, FunctionDeclaration, FunctionReturnType, GenericTypeName,
+    ConstantKind, ElementaryTypeName, FunctionReturnType, GenericTypeName,
     InitialValueAssignmentKind, ReferenceInitialValue, SpecificationKind, VarDecl, VariableType,
 };
 use ironplc_dsl::core::{Id, Located};
@@ -684,12 +684,13 @@ pub(crate) fn emit_initial_values(
 pub(crate) fn emit_function_local_prologue(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
-    func_decl: &FunctionDeclaration,
+    variables: &[VarDecl],
+    return_id: &Id,
     return_var_index: VarIndex,
     return_op_type: OpType,
 ) -> Result<(), Diagnostic> {
     // Re-initialize VAR locals (not Input parameters).
-    for decl in &func_decl.variables {
+    for decl in variables {
         if decl.var_type != VariableType::Var {
             continue;
         }
@@ -770,7 +771,7 @@ pub(crate) fn emit_function_local_prologue(
     }
 
     // Zero-initialize the return variable.
-    if let Some(struct_info) = ctx.struct_vars.get(&func_decl.name).cloned() {
+    if let Some(struct_info) = ctx.struct_vars.get(return_id).cloned() {
         // Struct return: store data_offset into the return var slot and
         // zero all struct fields. Functions are stateless, so the struct
         // must be re-initialized on every call.
@@ -799,7 +800,7 @@ pub(crate) fn emit_function_local_prologue(
             &fields,
             &[],
         )?;
-    } else if let Some(info) = ctx.string_vars.get(&func_decl.name) {
+    } else if let Some(info) = ctx.string_vars.get(return_id) {
         // STRING/WSTRING return: initialize the string header in the data region.
         emitter.emit_str_init(info.data_offset, info.max_length, info.char_width);
     } else {

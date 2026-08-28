@@ -178,7 +178,9 @@ pub const OP_CLASS_STR_STORE_ARRAY_ELEM: u8 = 0x3C;
 /// (`T_I32`/`T_I64`; floats reserved). The comparison operator is encoded
 /// as a 1-byte operand (`cmp_op` enum). See `vm-performance.md` §11.
 pub const OP_CLASS_CMP_BR: u8 = 0x3D;
-// 0x3E..0x3F free (2 op-class slots reserved for future use).
+/// Op class: METHOD_CALL (OOP extension, ADR-0041 Phase 1 static dispatch).
+pub const OP_CLASS_METHOD_CALL: u8 = 0x3E;
+// 0x3F free (1 op-class slot reserved for future use).
 
 /// Decompose a primary opcode byte into `(op_class, type_tag)`.
 #[inline]
@@ -362,6 +364,29 @@ pub const FB_LOAD_PARAM: Opcode = encode_opcode(OP_CLASS_FB_LOAD_PARAM, 0);
 /// Call function block (VM dispatches to intrinsic or bytecode body).
 /// Operand: u16 type_id (little-endian).
 pub const FB_CALL: Opcode = encode_opcode(OP_CLASS_FB_CALL, 0);
+
+/// Call a METHOD declared on a function block (OOP extension, ADR-0041
+/// Phase 1 static dispatch). Deliberately simpler than `FB_CALL`: a
+/// method call is always user-defined, never an intrinsic FB type.
+///
+/// Stack effect: `[..., fb_ref, arg1, .., argN] -> [..., fb_ref (,
+/// return_value)]` — copies the instance's fields into the shared
+/// per-type scratch region (same copy-in `FB_CALL` uses), pops `N`
+/// positional args (read from the resolved function's own parameter
+/// count) into the method's own param slots, and runs the method body.
+/// A method with a return type leaves the value on the stack (ends with
+/// `RET`); a void method does not (ends with `RET_VOID`). Either way,
+/// `fb_ref` is left underneath for the caller to discard, matching
+/// `FB_CALL`.
+///
+/// Operands (u16 fields little-endian):
+/// - u16 `function_id`: the method's compiled function
+/// - u16 `field_var_off`: start of the owning FB type's field scratch region
+/// - u8 `num_fields`: number of fields to copy in/out (matches the u8
+///   width already used for `num_fields` throughout the FB-instance
+///   machinery, e.g. `FbCallReturn::num_fields`)
+/// - u16 `param_var_off`: start of the method's own param/local scratch region
+pub const METHOD_CALL: Opcode = encode_opcode(OP_CLASS_METHOD_CALL, 0);
 
 // --- String opcodes ---
 
@@ -881,6 +906,9 @@ fn instruction_size_opt(op: Opcode) -> Option<usize> {
 
         // 9-byte: opcode + u32 + u32.
         FIND_STR | REPLACE_STR | INSERT_STR | CONCAT_STR => 9,
+
+        // 8-byte: opcode + u16 function_id + u16 field_var_off + u8 num_fields + u16 param_var_off.
+        METHOD_CALL => 8,
 
         // Unassigned byte.
         _ => return None,

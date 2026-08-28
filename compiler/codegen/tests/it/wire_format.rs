@@ -234,6 +234,11 @@ fn opcode_constants_when_fb_family_then_pinned_bytes() {
 }
 
 #[test]
+fn opcode_constants_when_method_call_then_pinned_byte() {
+    assert_eq!(opcode::METHOD_CALL, 0xF8);
+}
+
+#[test]
 fn opcode_constants_when_array_family_then_pinned_bytes() {
     assert_eq!(opcode::LOAD_ARRAY, 0xA8);
     assert_eq!(opcode::STORE_ARRAY, 0xAC);
@@ -848,6 +853,7 @@ fn opcode_pins_when_compared_to_assigned_set_then_complete() {
         opcode::REPLACE_STR,
         opcode::INSERT_STR,
         opcode::CONCAT_STR,
+        opcode::METHOD_CALL,
     ];
 
     let mut pinned_sorted = pinned.to_vec();

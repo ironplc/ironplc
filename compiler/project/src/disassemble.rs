@@ -668,6 +668,20 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                     "comment": "",
                 }));
             }
+            opcode::METHOD_CALL => {
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "METHOD_CALL",
+                    "operands": format!(
+                        "func[{}], fields[{}..+{}], params[{}]",
+                        read_u16(bytecode, pc + 1),
+                        read_u16(bytecode, pc + 3),
+                        bytecode[pc + 5],
+                        read_u16(bytecode, pc + 6)
+                    ),
+                    "comment": "",
+                }));
+            }
             opcode::LOAD_CONST_STR => {
                 instructions.push(json!({
                     "offset": offset,
@@ -1433,6 +1447,37 @@ mod tests {
         let instr = builtin_instruction(func_id);
         let operands = instr["operands"].as_str().unwrap();
         assert!(operands.starts_with(expected_prefix), "got: {operands}");
+    }
+
+    // ---------------------------------------------------------------
+    // decode_instructions: METHOD_CALL (8-byte OOP call)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn decode_when_method_call_then_shows_func_fields_and_params() {
+        // METHOD_CALL func_id=3, field_var_off=7, num_fields=2, param_var_off=9
+        let bytecode = vec![
+            opcode::METHOD_CALL,
+            0x03,
+            0x00,
+            0x07,
+            0x00,
+            0x02,
+            0x09,
+            0x00,
+            opcode::RET_VOID,
+        ];
+        let container = container_with_bytecode(bytecode);
+        let result = disassemble(&container);
+        let instructions = result["functions"][0]["instructions"].as_array().unwrap();
+        // The 8-byte instruction must be consumed whole, leaving only RET_VOID.
+        assert_eq!(instructions.len(), 2);
+        assert_eq!(instructions[0]["opcode"], "METHOD_CALL");
+        assert_eq!(
+            instructions[0]["operands"],
+            "func[3], fields[7..+2], params[9]"
+        );
+        assert_eq!(instructions[1]["opcode"], "RET_VOID");
     }
 
     // ---------------------------------------------------------------
