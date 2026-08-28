@@ -1407,73 +1407,85 @@ mod tests {
         assert_eq!(instr["comment"], "-> 0x0000");
     }
 
-    #[test]
-    fn decode_when_jmp_backward_then_operand_shows_magnitude() {
-        // JMP offset=-3: the operand is the magnitude, not the two's complement
-        // encoding (which would print as -0xFFFD).
-        let bytecode = vec![opcode::JMP, 0xFD, 0xFF, opcode::RET_VOID];
-        let instr = first_instruction(bytecode);
-        assert_eq!(instr["opcode"], "JMP");
-        assert_eq!(instr["operands"], "offset: -0x0003");
-        assert_eq!(instr["comment"], "-> 0x0000");
-    }
-
-    #[test]
-    fn decode_when_jmp_offset_zero_then_operand_shows_positive_sign() {
-        let bytecode = vec![opcode::JMP, 0x00, 0x00, opcode::RET_VOID];
-        let instr = first_instruction(bytecode);
-        assert_eq!(instr["opcode"], "JMP");
-        assert_eq!(instr["operands"], "offset: +0x0000");
-        assert_eq!(instr["comment"], "-> 0x0003");
-    }
-
-    #[test]
-    fn decode_when_jmp_offset_min_then_operand_does_not_panic() {
-        // i16::MIN has no positive counterpart; unsigned_abs keeps this total.
-        let bytecode = vec![opcode::JMP, 0x00, 0x80, opcode::RET_VOID];
-        let instr = first_instruction(bytecode);
-        assert_eq!(instr["opcode"], "JMP");
-        assert_eq!(instr["operands"], "offset: -0x8000");
-    }
-
-    #[test]
-    fn decode_when_cmp_br_backward_then_operand_shows_magnitude() {
-        // CMP_BR_I32 LT_S, var[1], const[2], offset=-3: target = 0 + 8 + (-3) = 5
+    #[rstest]
+    #[case::jmp_forward(opcode::JMP, "JMP", 2, "offset: +0x0002")]
+    // A backward offset prints its magnitude, not the two's complement encoding
+    // (which would read as -0xFFFD).
+    #[case::jmp_backward(opcode::JMP, "JMP", -3, "offset: -0x0003")]
+    #[case::jmp_zero(opcode::JMP, "JMP", 0, "offset: +0x0000")]
+    // i16::MIN has no positive counterpart; unsigned_abs keeps the format total.
+    #[case::jmp_min(opcode::JMP, "JMP", i16::MIN, "offset: -0x8000")]
+    #[case::jmp_if_not_forward(opcode::JMP_IF_NOT, "JMP_IF_NOT", 2, "offset: +0x0002")]
+    #[case::jmp_if_not_backward(opcode::JMP_IF_NOT, "JMP_IF_NOT", -3, "offset: -0x0003")]
+    fn decode_when_jump_then_operand_is_sign_and_magnitude(
+        #[case] opcode_byte: u8,
+        #[case] expected_opcode: &str,
+        #[case] jump_offset: i16,
+        #[case] expected_operands: &str,
+    ) {
+        let offset_bytes = jump_offset.to_le_bytes();
         let bytecode = vec![
-            opcode::CMP_BR_I32,
-            opcode::cmp_op::LT_S,
+            opcode_byte,
+            offset_bytes[0],
+            offset_bytes[1],
+            opcode::RET_VOID,
+        ];
+        let instr = first_instruction(bytecode);
+        assert_eq!(instr["opcode"], expected_opcode);
+        assert_eq!(instr["operands"], expected_operands);
+    }
+
+    // CMP_BR_* is 8 bytes: opcode, cmp op, var index, const index, offset. The
+    // cases below use var[1] and const[2], so target = 0 + 8 + offset.
+    #[rstest]
+    #[case::i32_backward(
+        opcode::CMP_BR_I32,
+        "CMP_BR_I32",
+        opcode::cmp_op::LT_S,
+        -3,
+        "LT_S, var[1], const[2], offset: -0x0003",
+        "-> 0x0005"
+    )]
+    #[case::i64_forward(
+        opcode::CMP_BR_I64,
+        "CMP_BR_I64",
+        opcode::cmp_op::EQ,
+        2,
+        "EQ, var[1], const[2], offset: +0x0002",
+        "-> 0x000A"
+    )]
+    #[case::i32_zero(
+        opcode::CMP_BR_I32,
+        "CMP_BR_I32",
+        opcode::cmp_op::GE_S,
+        0,
+        "GE_S, var[1], const[2], offset: +0x0000",
+        "-> 0x0008"
+    )]
+    fn decode_when_cmp_br_then_operand_is_sign_and_magnitude(
+        #[case] opcode_byte: u8,
+        #[case] expected_opcode: &str,
+        #[case] cmp_op_byte: u8,
+        #[case] jump_offset: i16,
+        #[case] expected_operands: &str,
+        #[case] expected_comment: &str,
+    ) {
+        let offset_bytes = jump_offset.to_le_bytes();
+        let bytecode = vec![
+            opcode_byte,
+            cmp_op_byte,
             0x01,
             0x00,
             0x02,
             0x00,
-            0xFD,
-            0xFF,
+            offset_bytes[0],
+            offset_bytes[1],
             opcode::RET_VOID,
         ];
         let instr = first_instruction(bytecode);
-        assert_eq!(instr["opcode"], "CMP_BR_I32");
-        assert_eq!(instr["operands"], "LT_S, var[1], const[2], offset: -0x0003");
-        assert_eq!(instr["comment"], "-> 0x0005");
-    }
-
-    #[test]
-    fn decode_when_cmp_br_forward_then_operand_shows_positive_sign() {
-        // CMP_BR_I64 EQ, var[0], const[0], offset=+2: target = 0 + 8 + 2 = 10
-        let bytecode = vec![
-            opcode::CMP_BR_I64,
-            opcode::cmp_op::EQ,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x02,
-            0x00,
-            opcode::RET_VOID,
-        ];
-        let instr = first_instruction(bytecode);
-        assert_eq!(instr["opcode"], "CMP_BR_I64");
-        assert_eq!(instr["operands"], "EQ, var[0], const[0], offset: +0x0002");
-        assert_eq!(instr["comment"], "-> 0x000A");
+        assert_eq!(instr["opcode"], expected_opcode);
+        assert_eq!(instr["operands"], expected_operands);
+        assert_eq!(instr["comment"], expected_comment);
     }
 
     // ---------------------------------------------------------------
