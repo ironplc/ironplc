@@ -20,14 +20,17 @@
 
 use std::io::{self, BufRead, Write};
 use std::path::Path;
+use std::time::Duration;
 
 use ironplc_container::debug_section::DebugSection;
 use ironplc_container::{Container, VarIndex};
 use ironplc_vm::{
-    BreakpointTable, DebuggerHook, PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning,
+    has_freewheeling_task, interval_from_ms, interval_us, resolve_cycle_time, BreakpointTable,
+    DebuggerHook, PauseReason, RoundOutcome, StepMode, VmBuffers, VmRunning,
+    DEFAULT_FREEWHEELING_INTERVAL,
 };
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::debug_info;
 use super::framing;
@@ -200,10 +203,27 @@ fn launched_session<R: BufRead, W: Write>(
     reader: &mut R,
     writer: &mut W,
     seq: &mut i64,
-    container: Container,
+    mut container: Container,
     args: LaunchRequestArguments,
     launch_request: &Request,
 ) -> io::Result<()> {
+    // How far program time moves per scan. `run_round_debug` bypasses the
+    // scheduler, so this only feeds the uptime system variable -- but that is
+    // what timers read, so it decides when a TON elapses. Resolving it before
+    // the VM loads the container puts the rate in the task table rather than in
+    // this driver, through the same call `run` makes.
+    //
+    // The fallbacks are this session's policy, not the shared rule: a container
+    // naming no rate would otherwise freeze the clock and stop every timer
+    // without saying why.
+    let freewheeling = has_freewheeling_task(&container);
+    let scan_advance = resolve_cycle_time(
+        &mut container,
+        Some(assumed_freewheeling_interval(args.freewheeling_interval_ms)),
+    )
+    .filter(|interval| !interval.is_zero())
+    .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL);
+
     let mut bufs = VmBuffers::from_container(&container);
 
     // Construct + start the VM. Buffer sizing (operand stack, variable table,
@@ -231,10 +251,15 @@ fn launched_session<R: BufRead, W: Write>(
     // The session opens in `Configuring`: the client sets breakpoints and then
     // sends `configurationDone` to begin the run.
     let mut phase = Phase::Configuring;
-    // A monotonic clock for the debug driver. `run_round_debug` bypasses the
-    // scheduler and watchdog, so the exact value only feeds the uptime system
-    // variable; a per-round bump keeps it non-decreasing.
     let mut uptime_us: u64 = 0;
+    if freewheeling {
+        // Report the rate actually used, not the one requested: an out-of-range
+        // or vanishingly small request lands on the fallback above.
+        send(
+            writer,
+            &console_output(take_seq(seq), &freewheeling_notice(scan_advance)),
+        )?;
+    }
     // Set after a breakpoint pause so the next resume skips that one location
     // instead of re-triggering in place.
     let mut suppress_bp = false;
@@ -285,7 +310,18 @@ fn launched_session<R: BufRead, W: Write>(
                 }
                 running.run_round_debug(uptime_us, &mut hook)
             };
-            uptime_us = uptime_us.saturating_add(1000);
+            // Program time moves one cycle per *completed* scan. A round that
+            // paused mid-scan ran no cycle, so advancing there would make a
+            // timer depend on how the user stepped — the clock would jump a
+            // cycle for every breakpoint hit, and the scan after a pause would
+            // start late. `PausedAfterScan` did finish its cycle and stops at
+            // the boundary, so it counts.
+            if matches!(
+                outcome,
+                Ok(RoundOutcome::Completed | RoundOutcome::PausedAfterScan)
+            ) {
+                uptime_us = uptime_us.saturating_add(interval_us(scan_advance));
+            }
 
             match outcome {
                 // A completed scan keeps the debugger scanning: run the next
@@ -458,6 +494,41 @@ fn launched_session<R: BufRead, W: Write>(
             }
         }
     }
+}
+
+/// The cycle time to assume for a freewheeling program.
+///
+/// An out-of-range `freewheelingIntervalMs` falls back to the default rather
+/// than failing the launch — a debug session that will not start is a poor
+/// answer to a typo in a launch configuration — and the notice reports the
+/// value actually used either way.
+fn assumed_freewheeling_interval(interval_ms: Option<f64>) -> Duration {
+    interval_ms
+        .and_then(|ms| interval_from_ms(ms).ok())
+        .unwrap_or(DEFAULT_FREEWHEELING_INTERVAL)
+}
+
+/// The console line telling the user which cycle time the session assumed.
+///
+/// Every timer in a freewheeling program elapses on this assumption, so a
+/// session that did not state it would leave the user unable to explain what
+/// they are watching. It points at the launch configuration rather than at a
+/// named setting, which would go stale the moment the setting is renamed.
+fn freewheeling_notice(interval: Duration) -> String {
+    format!(
+        "This program declares no INTERVAL, so it has no scan cycle time of its own. \
+         Assuming {} ms per scan; change it in the launch configuration.\n",
+        interval.as_secs_f64() * 1_000.0
+    )
+}
+
+/// A DAP `output` event carrying one line to the debug console.
+fn console_output(seq: i64, text: &str) -> Event {
+    Event::new(
+        seq,
+        "output",
+        Some(json!({ "category": "console", "output": text })),
+    )
 }
 
 /// Whether the launch's `scanLimit` bound (if any) has been reached, so the
@@ -809,14 +880,14 @@ mod tests {
                    "arguments": {"program": path}}),
             json!({"seq": 3, "type": "request", "command": "disconnect"}),
         ]);
-        // initialize response, initialized event, launch response, disconnect response.
-        assert_eq!(out.len(), 4);
-        let launch = &out[2];
-        assert_eq!(launch["command"], "launch");
+        // initialize response, initialized event, launch response, the
+        // assumed-cycle-time notice (this container's task is freewheeling),
+        // disconnect response.
+        assert_eq!(out.len(), 5);
+        let launch = responses(&out, "launch")[0];
         assert_eq!(launch["success"], true);
         assert_eq!(launch["request_seq"], 2);
-        let disconnect = &out[3];
-        assert_eq!(disconnect["command"], "disconnect");
+        let disconnect = responses(&out, "disconnect")[0];
         assert_eq!(disconnect["success"], true);
     }
 
@@ -957,13 +1028,11 @@ mod tests {
             json!({"seq": 4, "type": "request", "command": "disconnect"}),
         ]);
         // Post-launch `threads` is refused for now.
-        let threads = &out[3];
-        assert_eq!(threads["command"], "threads");
+        let threads = responses(&out, "threads")[0];
         assert_eq!(threads["success"], false);
         assert_eq!(threads["message"], "requestNotApplicable");
         // Then disconnect is honored.
-        let disconnect = out.last().unwrap();
-        assert_eq!(disconnect["command"], "disconnect");
+        let disconnect = responses(&out, "disconnect")[0];
         assert_eq!(disconnect["success"], true);
     }
 
@@ -1022,6 +1091,12 @@ mod tests {
     /// a breakpoint on line 11 pauses *after* the increment — letting a test
     /// observe the variable evolve across scans.
     fn incrementing_scan_container_file() -> (tempfile::NamedTempFile, String) {
+        incrementing_scan_container_with_task(a_task(TaskId::new(0)))
+    }
+
+    /// [`incrementing_scan_container_file`] with a caller-chosen task entry, so
+    /// a test can pick whether the program declares a cycle time.
+    fn incrementing_scan_container_with_task(task: TaskEntry) -> (tempfile::NamedTempFile, String) {
         #[rustfmt::skip]
         let scan: Vec<u8> = vec![
             0x0C, 0x00, 0x00, // LOAD_VAR_I32  var[0]   (offset 0, line 10)
@@ -1044,7 +1119,7 @@ mod tests {
             .add_source_file(demo_source_file())
             .add_line_map_entry(line_entry(FunctionId::SCAN, 0, 10))
             .add_line_map_entry(line_entry(FunctionId::SCAN, 10, 11))
-            .add_task(a_task(TaskId::new(0)))
+            .add_task(task)
             .add_program_instance(ProgramInstanceEntry {
                 instance_id: InstanceId::new(0),
                 task_id: TaskId::new(0),
@@ -1076,6 +1151,113 @@ mod tests {
     /// Index of the first message matching `pred`, for ordering assertions.
     fn index_of(out: &[Value], pred: impl Fn(&Value) -> bool) -> usize {
         out.iter().position(pred).unwrap()
+    }
+
+    /// The same container as [`scan_container_file`], but with a task that
+    /// declares an `INTERVAL` — so the session has a cycle time to work from
+    /// and assumes nothing.
+    fn cyclic_scan_container_file() -> (tempfile::NamedTempFile, String) {
+        let container = ContainerBuilder::new()
+            .num_variables(1)
+            .add_function(FunctionId::INIT, &[0x8C], 0, 1, 0)
+            .add_function(FunctionId::SCAN, &[0x8C], 0, 1, 0)
+            .max_call_depth(1)
+            .add_var_name(a_var_name())
+            .add_func_name(FuncNameEntry {
+                function_id: FunctionId::SCAN,
+                name: "MAIN".into(),
+            })
+            .add_source_file(demo_source_file())
+            .add_line_map_entry(line_entry(FunctionId::SCAN, 0, 10))
+            .add_task(TaskEntry {
+                task_type: TaskType::Cyclic,
+                interval_us: 100_000,
+                ..a_task(TaskId::new(0))
+            })
+            .add_program_instance(a_program(InstanceId::new(0), TaskId::new(0)))
+            .build();
+        write_container_to_temp(&container)
+    }
+
+    /// The `output` event bodies the session wrote to the debug console.
+    fn console_lines(out: &[Value]) -> Vec<String> {
+        events(out, "output")
+            .iter()
+            .filter(|e| e["body"]["category"] == "console")
+            .map(|e| e["body"]["output"].as_str().unwrap_or("").to_string())
+            .collect()
+    }
+
+    #[test]
+    fn serve_when_freewheeling_program_then_reports_assumed_cycle_time() {
+        // A program with no INTERVAL has no cycle time of its own, so the
+        // session assumes one — and has to say so, because every timer in the
+        // program elapses on that assumption.
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let lines = console_lines(&out);
+        assert_eq!(lines.len(), 1, "console: {lines:?}");
+        assert!(lines[0].contains("100 ms"), "console: {lines:?}");
+        assert!(
+            lines[0].contains("launch configuration"),
+            "the notice says where to change it: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn serve_when_freewheeling_interval_supplied_then_reports_that_cycle_time() {
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1,
+                                 "freewheelingIntervalMs": 5}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        let lines = console_lines(&out);
+        assert!(lines[0].contains("5 ms"), "console: {lines:?}");
+    }
+
+    #[test]
+    fn serve_when_freewheeling_interval_out_of_range_then_reports_the_default() {
+        // A typo in a launch configuration should not stop the session from
+        // starting, but the notice still reports what was actually used.
+        let (_file, path) = scan_container_file(&[0x8C], 0, &[(0, 10)]);
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1,
+                                 "freewheelingIntervalMs": 0}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        assert_eq!(responses(&out, "launch")[0]["success"], true);
+        let lines = console_lines(&out);
+        assert!(lines[0].contains("100 ms"), "console: {lines:?}");
+    }
+
+    #[test]
+    fn serve_when_cyclic_program_then_assumes_nothing() {
+        let (_file, path) = cyclic_scan_container_file();
+        let out = run_server(&[
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path, "scanLimit": 1}}),
+            json!({"seq": 3, "type": "request", "command": "configurationDone"}),
+            json!({"seq": 4, "type": "request", "command": "disconnect"}),
+        ]);
+
+        assert!(console_lines(&out).is_empty());
     }
 
     #[test]
@@ -1386,6 +1568,111 @@ mod tests {
         assert!(
             uptime_of(vars[1]) > uptime_of(vars[0]),
             "runtime uptime must advance between stops"
+        );
+    }
+
+    /// Drives the incrementing container on a cyclic task at `interval_us`,
+    /// with a breakpoint on `line` and `body` between `configurationDone` and
+    /// `disconnect`.
+    ///
+    /// The container's scan maps offset 0 to line 10 and its `RET_VOID` to line
+    /// 11, so a breakpoint on line 11 puts each stop one whole scan after the
+    /// last, and one on line 10 stops before the cycle's work.
+    fn timed_session(interval_us: u64, line: i64, body: &[Value]) -> Vec<Value> {
+        let (_file, path) = incrementing_scan_container_with_task(TaskEntry {
+            task_type: TaskType::Cyclic,
+            interval_us,
+            ..a_task(TaskId::new(0))
+        });
+        let mut msgs = vec![
+            json!({"seq": 1, "type": "request", "command": "initialize"}),
+            json!({"seq": 2, "type": "request", "command": "launch",
+                   "arguments": {"program": path}}),
+            json!({"seq": 3, "type": "request", "command": "setBreakpoints",
+                   "arguments": {"source": {"path": "demo.st"},
+                                 "breakpoints": [{"line": line}]}}),
+            json!({"seq": 4, "type": "request", "command": "configurationDone"}),
+        ];
+        msgs.extend(body.iter().cloned());
+        msgs.push(json!({"seq": 90, "type": "request", "command": "disconnect"}));
+        run_server(&msgs)
+    }
+
+    /// A `continue` request, then a read of the Runtime scope at the next stop.
+    fn resume_and_read_uptime(seq: i64) -> [Value; 2] {
+        [
+            json!({"seq": seq, "type": "request", "command": "continue",
+                   "arguments": {"threadId": 1}}),
+            json!({"seq": seq + 1, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+        ]
+    }
+
+    /// The `systemUptime` value, in milliseconds, from each `variables`
+    /// response in order.
+    fn uptimes(out: &[Value]) -> Vec<i64> {
+        responses(out, "variables")
+            .iter()
+            .map(|scope| {
+                let entry = &scope["body"]["variables"][1];
+                assert_eq!(entry["name"], "systemUptime");
+                entry["value"].as_str().unwrap().parse().unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn serve_when_task_declares_interval_then_uptime_advances_by_that_interval() {
+        // Issue #1397: program time advanced a flat 1 ms per scan whatever the
+        // task declared, so a timer elapsed after a scan count unrelated to the
+        // configuration. The rate is the task's, which is also the rate `run`
+        // works from, so the two agree on when a timer elapses.
+        let mut body = vec![json!({"seq": 5, "type": "request", "command": "variables",
+                                   "arguments": {"variablesReference": 2}})];
+        body.extend(resume_and_read_uptime(6));
+        let out = timed_session(100_000, 11, &body);
+
+        assert_eq!(
+            uptimes(&out),
+            vec![0, 100],
+            "the first scan runs at time zero and each scan is one 100 ms cycle"
+        );
+    }
+
+    #[test]
+    fn serve_when_scan_pauses_midway_then_next_scan_advances_one_interval() {
+        // A round that paused mid-scan ran no cycle, so it must not move the
+        // clock: otherwise a timer would depend on how many times the user
+        // stopped, and the scan after a breakpoint would start late. The stop
+        // is on the scan's first line and the step lands on its second, so no
+        // cycle finishes between the two readings.
+        let mut body = vec![
+            json!({"seq": 5, "type": "request", "command": "variables",
+                   "arguments": {"variablesReference": 2}}),
+            json!({"seq": 6, "type": "request", "command": "next",
+                   "arguments": {"threadId": 1}}),
+        ];
+        body.extend(resume_and_read_uptime(7));
+        let out = timed_session(100_000, 10, &body);
+
+        assert_eq!(
+            uptimes(&out),
+            vec![0, 100],
+            "one cycle ran, so program time moved one interval; the breakpoint \
+             and the step in between moved it none"
+        );
+    }
+
+    #[test]
+    fn serve_when_task_interval_is_zero_then_falls_back_to_the_assumed_rate() {
+        // A task table that names no positive rate says nothing about how fast
+        // to scan, which is the freewheeling situation under another name. A
+        // frozen clock would stop every timer without saying why.
+        let out = timed_session(0, 11, &resume_and_read_uptime(5));
+
+        assert_eq!(
+            uptimes(&out),
+            vec![DEFAULT_FREEWHEELING_INTERVAL.as_millis() as i64]
         );
     }
 
