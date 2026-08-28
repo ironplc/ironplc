@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="MAIN" Id="{9a3f04d7-2e6b-4c81-b5a0-73f18d92c6e4}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    motor : FB_Motor;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[motor.SetSpeed(value := 1.0);
+motor.Stop();]]></ST>
+    </Implementation>
+  </POU>
+</TcPlcObject>

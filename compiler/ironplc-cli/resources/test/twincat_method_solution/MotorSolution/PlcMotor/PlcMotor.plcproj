@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <FileVersion>1.0.0.0</FileVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{a05b72d4-1e93-4c6f-8b20-7f4a9c3e15d8}</ProjectGuid>
+    <SubObjectsSortedByName>True</SubObjectsSortedByName>
+    <DownloadApplicationInfo>true</DownloadApplicationInfo>
+    <DefaultNamespace>PlcMotor</DefaultNamespace>
+    <Name>PlcMotor</Name>
+    <ProgramVersion>3.1.4024.0</ProgramVersion>
+    <Application>{4b16d8e2-7c35-49a0-95f8-2d0e6b17a3c9}</Application>
+    <TypeSystem>{e72f04b6-8d51-4a37-b0c9-63a1f5d82e07}</TypeSystem>
+    <Implicit_Task_Info>{16c9b3f8-5027-4e1d-84ab-9f70e2d5c641}</Implicit_Task_Info>
+    <Implicit_KindOfTask>{8d240a71-9b6e-4f53-a2c8-05e13f7b96d4}</Implicit_KindOfTask>
+    <Implicit_Jitter_Distribution>{5f81e6c3-204b-4d97-8a15-c39d6072be48}</Implicit_Jitter_Distribution>
+    <LibraryReferences>{b34e17f9-6a80-4c25-91d3-7e05fa62d8c1}</LibraryReferences>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="POUs\FB_Motor.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="POUs\MAIN.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <ProjectExtensions>
+    <PlcProjectOptions>
+      <XmlArchive>
+        <Data/>
+        <TypeList/>
+      </XmlArchive>
+    </PlcProjectOptions>
+  </ProjectExtensions>
+</Project>

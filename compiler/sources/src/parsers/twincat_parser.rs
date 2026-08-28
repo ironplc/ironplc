@@ -9,6 +9,11 @@
 //! the body statements. The closing keyword (e.g. `END_PROGRAM`) is implicit
 //! in the XML structure and must be reconstructed for the ST parser.
 //!
+//! A function block's methods are split out the same way, each into its own
+//! `<Method>` element with the same `<Declaration>`/`<Implementation>` pair.
+//! They are reconstructed as `METHOD ... END_METHOD` and appended after the
+//! function block body, where the grammar expects them.
+//!
 //! Since the ST parser produces byte positions relative to the concatenated
 //! text, this module adjusts all positions to point to the correct locations
 //! in the original XML file using the CDATA byte offsets from roxmltree.
@@ -25,15 +30,72 @@ use log::debug;
 
 use super::st_parser;
 
+/// A run of bytes copied verbatim out of one CDATA section of the XML
+/// document into the combined ST text.
+struct CdataSegment {
+    /// Byte offset where this run starts in the combined ST text.
+    combined_start: usize,
+    /// Length of the run, in bytes.
+    len: usize,
+    /// Byte offset where the same bytes start in the XML document.
+    xml_start: usize,
+}
+
 /// Byte offset information for CDATA sections in the original XML document.
+///
+/// The combined ST text handed to the parser is a sequence of segments — one
+/// per CDATA section copied out of the XML — joined by synthetic text that
+/// exists only in the reconstruction (the separating newlines, `END_METHOD`,
+/// and the POU's closing keyword). Segments appear in combined-text order and
+/// do not overlap.
 struct CdataOffsets {
-    /// Byte offset where Declaration CDATA text starts in the XML document.
-    declaration_start: usize,
-    /// Length of the declaration text.
-    declaration_len: usize,
-    /// Byte offset where Implementation/ST CDATA text starts in the XML document.
-    /// None if there is no implementation section.
-    implementation_start: Option<usize>,
+    segments: Vec<CdataSegment>,
+}
+
+/// Assembles the combined ST text while recording, for every run of bytes
+/// copied out of the XML, where it came from.
+///
+/// Keeping the text and the offsets in one place is what makes the mapping
+/// back to XML positions reliable: text can only be added through
+/// `push_cdata` (copied, and therefore mapped) or `push_synthetic`
+/// (reconstructed, and therefore unmapped).
+struct CombinedText {
+    text: String,
+    segments: Vec<CdataSegment>,
+}
+
+impl CombinedText {
+    fn new() -> Self {
+        CombinedText {
+            text: String::new(),
+            segments: Vec::new(),
+        }
+    }
+
+    /// Append text copied from a CDATA section starting at `xml_start` in the
+    /// XML document.
+    fn push_cdata(&mut self, text: &str, xml_start: usize) {
+        self.segments.push(CdataSegment {
+            combined_start: self.text.len(),
+            len: text.len(),
+            xml_start,
+        });
+        self.text.push_str(text);
+    }
+
+    /// Append reconstructed text that has no counterpart in the XML document.
+    fn push_synthetic(&mut self, text: &str) {
+        self.text.push_str(text);
+    }
+
+    fn finish(self) -> (String, CdataOffsets) {
+        (
+            self.text,
+            CdataOffsets {
+                segments: self.segments,
+            },
+        )
+    }
 }
 
 /// Parse TwinCAT XML files into an IronPLC Library
@@ -140,16 +202,27 @@ fn parse_pou(
     file_id: &FileId,
     compiler_options: &CompilerOptions,
 ) -> Result<Library, Diagnostic> {
-    let (impl_text, impl_byte_offset) = extract_pou_implementation(object, file_id)?;
+    let (impl_text, impl_byte_offset) = extract_implementation(object, file_id)?;
     let closing = closing_keyword(&declaration_text);
 
-    let offsets = CdataOffsets {
-        declaration_start: declaration_byte_offset,
-        declaration_len: declaration_text.len(),
-        implementation_start: impl_byte_offset,
-    };
+    let mut builder = CombinedText::new();
+    builder.push_cdata(&declaration_text, declaration_byte_offset);
+    builder.push_synthetic("\n");
+    match impl_byte_offset {
+        Some(offset) => builder.push_cdata(&impl_text, offset),
+        None => builder.push_synthetic(&impl_text),
+    }
 
-    let combined = format!("{declaration_text}\n{impl_text}\n{closing}");
+    // Methods follow the function block body and precede END_FUNCTION_BLOCK,
+    // which is where `function_block_declaration` expects them.
+    if closing == "END_FUNCTION_BLOCK" {
+        append_methods(&mut builder, object, file_id)?;
+    }
+
+    builder.push_synthetic("\n");
+    builder.push_synthetic(closing);
+
+    let (combined, offsets) = builder.finish();
     debug!("POU combined ST ({} bytes)", combined.len());
 
     let result = st_parser::parse(&combined, file_id, compiler_options);
@@ -173,9 +246,11 @@ fn parse_dut(
     debug!("DUT declaration ST ({} bytes)", declaration_text.len());
 
     let offsets = CdataOffsets {
-        declaration_start: declaration_byte_offset,
-        declaration_len: declaration_text.len(),
-        implementation_start: None,
+        segments: vec![CdataSegment {
+            combined_start: 0,
+            len: declaration_text.len(),
+            xml_start: declaration_byte_offset,
+        }],
     };
 
     let result = st_parser::parse(&declaration_text, file_id, compiler_options);
@@ -216,25 +291,34 @@ fn adjust_diagnostic(offsets: &CdataOffsets, mut diag: Diagnostic) -> Diagnostic
     diag
 }
 
-/// Map a byte offset in the concatenated ST text to a byte offset in the
+/// Map a byte offset in the combined ST text to a byte offset in the
 /// original XML document.
 ///
-/// Positions within the declaration part (0..declaration_len) are shifted by
-/// the declaration CDATA offset. Positions in the implementation part
-/// (declaration_len+1..) are shifted by the implementation CDATA offset.
+/// A position inside a segment is shifted by that segment's CDATA offset. A
+/// position in the synthetic text between or after segments (the joining
+/// newlines, `END_METHOD`, the POU's closing keyword) has no counterpart in
+/// the XML, so it maps to the end of the nearest preceding segment — the
+/// closest real location the reader can be pointed at.
 fn adjust_byte_offset(offsets: &CdataOffsets, pos: usize) -> usize {
-    if pos <= offsets.declaration_len {
-        // Position is in the declaration part
-        pos + offsets.declaration_start
-    } else if let Some(impl_start) = offsets.implementation_start {
-        // Position is in the implementation part (after declaration + newline)
-        let impl_relative = pos - offsets.declaration_len - 1;
-        impl_relative + impl_start
-    } else {
-        // No implementation section — position is in the synthetic closing keyword.
-        // Point to the end of the declaration instead.
-        offsets.declaration_start + offsets.declaration_len
+    let mut preceding_end = None;
+
+    for segment in &offsets.segments {
+        if pos < segment.combined_start {
+            break;
+        }
+        if pos <= segment.combined_start + segment.len {
+            return segment.xml_start + (pos - segment.combined_start);
+        }
+        preceding_end = Some(segment.xml_start + segment.len);
     }
+
+    // Position is past the end of a segment and before the next one starts.
+    preceding_end.unwrap_or_else(|| {
+        offsets
+            .segments
+            .first()
+            .map_or(0, |segment| segment.xml_start)
+    })
 }
 
 /// Fold transform that adjusts all SourceSpan positions in a Library.
@@ -270,8 +354,74 @@ fn closing_keyword(declaration: &str) -> &'static str {
     }
 }
 
-/// Extract the ST implementation text and its byte offset from a POU element.
-fn extract_pou_implementation(
+/// Append every `<Method>` child of a POU to the combined text as an inline
+/// `METHOD ... END_METHOD` declaration.
+///
+/// TwinCAT stores each method as a sibling `<Method>` element rather than
+/// inline in the POU's own `<Declaration>`. A method element has the same
+/// shape as the POU itself: a `<Declaration>` (which already begins with the
+/// `METHOD` keyword and holds the signature and VAR blocks) and an optional
+/// `<Implementation><ST>` with the body. Only the closing `END_METHOD` is
+/// implicit in the XML structure and has to be reconstructed.
+///
+/// Only function block methods are appended. `method_declaration` is
+/// reachable only from `function_block_declaration`, so a method on a
+/// `PROGRAM`, a `FUNCTION`, or an interface has nowhere to go in the grammar
+/// and is still dropped — see issue #1418.
+fn append_methods(
+    builder: &mut CombinedText,
+    pou: &roxmltree::Node,
+    file_id: &FileId,
+) -> Result<(), Diagnostic> {
+    for method in pou
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "Method")
+    {
+        let declaration = match find_child_element(&method, "Declaration") {
+            Some(elem) => elem,
+            None => {
+                return Err(Diagnostic::problem(
+                    Problem::TwinCatMalformed,
+                    Label::file(
+                        file_id.clone(),
+                        format!(
+                            "Method '{}' is missing required 'Declaration' element",
+                            method.attribute("Name").unwrap_or("<unnamed>")
+                        ),
+                    ),
+                ));
+            }
+        };
+
+        let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
+        let (impl_text, impl_byte_offset) = extract_implementation(&method, file_id)?;
+
+        builder.push_synthetic("\n");
+        builder.push_cdata(&declaration_text, declaration_byte_offset);
+        builder.push_synthetic("\n");
+        match impl_byte_offset {
+            Some(offset) => builder.push_cdata(&impl_text, offset),
+            None => builder.push_synthetic(&impl_text),
+        }
+
+        // A method body must hold at least one statement, unlike a function
+        // block body which may be empty. TwinCAT writes a do-nothing method
+        // as a `<Method>` with no `<Implementation>` at all, so stand in an
+        // empty statement; the parser discards it and the method keeps the
+        // empty body it declares.
+        if impl_text.trim().is_empty() {
+            builder.push_synthetic(";");
+        }
+
+        builder.push_synthetic("\nEND_METHOD");
+    }
+
+    Ok(())
+}
+
+/// Extract the ST implementation text and its byte offset from an element
+/// that has an `<Implementation>` child — a POU or one of its methods.
+fn extract_implementation(
     pou: &roxmltree::Node,
     file_id: &FileId,
 ) -> Result<(String, Option<usize>), Diagnostic> {
@@ -343,8 +493,8 @@ fn cdata_text_with_offset(node: &roxmltree::Node) -> (String, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironplc_dsl::common::{LibraryElementKind, TypeName};
-    use ironplc_dsl::core::FileId;
+    use ironplc_dsl::common::{FunctionBlockDeclaration, LibraryElementKind, TypeName};
+    use ironplc_dsl::core::{FileId, Id};
 
     fn test_file_id() -> FileId {
         FileId::from_string("test.TcPOU")
@@ -852,34 +1002,70 @@ END_VAR]]></Declaration>
         );
     }
 
+    /// A declaration of 50 bytes at XML offset 100, then a newline, then an
+    /// implementation at XML offset 200 — the layout `parse_pou` builds for a
+    /// POU that has an implementation.
+    fn declaration_and_implementation_offsets() -> CdataOffsets {
+        CdataOffsets {
+            segments: vec![
+                CdataSegment {
+                    combined_start: 0,
+                    len: 50,
+                    xml_start: 100,
+                },
+                CdataSegment {
+                    combined_start: 51,
+                    len: 20,
+                    xml_start: 200,
+                },
+            ],
+        }
+    }
+
     #[test]
     fn adjust_byte_offset_when_pos_in_implementation_then_adjusts_correctly() {
-        let offsets = CdataOffsets {
-            declaration_start: 100,
-            declaration_len: 50,
-            implementation_start: Some(200),
-        };
+        let offsets = declaration_and_implementation_offsets();
 
         // Position 0 is in declaration: 0 + 100 = 100
         assert_eq!(adjust_byte_offset(&offsets, 0), 100);
 
-        // Position 50 (= declaration_len) is in declaration: 50 + 100 = 150
+        // Position 50 (= declaration length) is in declaration: 50 + 100 = 150
         assert_eq!(adjust_byte_offset(&offsets, 50), 150);
 
-        // Position 52 is in implementation: (52 - 50 - 1) + 200 = 201
+        // Position 52 is in implementation: (52 - 51) + 200 = 201
         assert_eq!(adjust_byte_offset(&offsets, 52), 201);
+    }
+
+    #[test]
+    fn adjust_byte_offset_when_pos_past_last_segment_then_points_to_its_end() {
+        let offsets = declaration_and_implementation_offsets();
+
+        // Position 90 is in the synthetic closing keyword, past every
+        // segment: it maps to the end of the implementation.
+        assert_eq!(adjust_byte_offset(&offsets, 90), 220);
     }
 
     #[test]
     fn adjust_byte_offset_when_no_implementation_and_pos_past_declaration_then_points_to_end() {
         let offsets = CdataOffsets {
-            declaration_start: 100,
-            declaration_len: 50,
-            implementation_start: None,
+            segments: vec![CdataSegment {
+                combined_start: 0,
+                len: 50,
+                xml_start: 100,
+            }],
         };
 
-        // Position beyond declaration with no impl: returns declaration_start + declaration_len
+        // Position beyond the declaration with no implementation: returns the
+        // end of the declaration.
         assert_eq!(adjust_byte_offset(&offsets, 60), 150);
+    }
+
+    #[test]
+    fn adjust_byte_offset_when_no_segments_then_returns_zero() {
+        let offsets = CdataOffsets { segments: vec![] };
+
+        assert_eq!(adjust_byte_offset(&offsets, 0), 0);
+        assert_eq!(adjust_byte_offset(&offsets, 42), 0);
     }
 
     #[test]
@@ -902,5 +1088,349 @@ END_VAR]]></Declaration>
         assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
         let library = result.unwrap();
         assert_eq!(library.elements.len(), 1);
+    }
+
+    /// The `<Method>` shape TwinCAT writes into a `.TcPOU`: the method's own
+    /// `<Declaration>` already carries the `METHOD` keyword and the signature,
+    /// and the body lives in a sibling `<Implementation><ST>`.
+    const FB_WITH_METHOD: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Motor" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[speed := 0.0;]]></ST>
+    </Implementation>
+    <Method Name="SetSpeed" Id="{00000000-0000-0000-0000-000000000001}">
+      <Declaration><![CDATA[METHOD SetSpeed
+VAR_INPUT
+    value : REAL;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[speed := value;]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>"#;
+
+    /// Extract the single function block from a library, or panic describing
+    /// what was found instead.
+    fn only_function_block(library: Library) -> FunctionBlockDeclaration {
+        assert_eq!(library.elements.len(), 1);
+        match library.elements.into_iter().next() {
+            Some(LibraryElementKind::FunctionBlockDeclaration(decl)) => decl,
+            other => panic!("expected FunctionBlockDeclaration, got {other:?}"),
+        }
+    }
+
+    /// Collect every source span in a library.
+    fn collect_spans(library: Library) -> Vec<SourceSpan> {
+        struct SpanCollector<'a> {
+            spans: &'a mut Vec<SourceSpan>,
+        }
+        impl Fold<()> for SpanCollector<'_> {
+            fn fold_source_span(&mut self, node: SourceSpan) -> Result<SourceSpan, ()> {
+                self.spans.push(node.clone());
+                Ok(node)
+            }
+        }
+
+        let mut spans = Vec::new();
+        let mut collector = SpanCollector { spans: &mut spans };
+        let _ = collector.fold_library(library);
+        spans
+    }
+
+    #[test]
+    fn parse_when_pou_with_method_element_then_method_is_declared() {
+        let result = parse(FB_WITH_METHOD, &test_file_id(), &opts_with_fb_inheritance());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+
+        let function_block = only_function_block(result.unwrap());
+        assert_eq!(function_block.methods.len(), 1);
+        assert_eq!(function_block.methods[0].name, Id::from("SetSpeed"));
+        // VAR_INPUT of the method, not of the enclosing function block.
+        assert_eq!(function_block.methods[0].variables.len(), 1);
+        assert_eq!(function_block.variables.len(), 1);
+    }
+
+    #[test]
+    fn parse_when_pou_with_multiple_method_elements_then_all_kept_in_document_order() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Motor" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[speed := 0.0;]]></ST>
+    </Implementation>
+    <Method Name="Start" Id="{00000000-0000-0000-0000-000000000001}">
+      <Declaration><![CDATA[METHOD Start]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[speed := 1.0;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Stop" Id="{00000000-0000-0000-0000-000000000002}">
+      <Declaration><![CDATA[METHOD Stop]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[speed := 0.0;]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+
+        let function_block = only_function_block(result.unwrap());
+        let names: Vec<&Id> = function_block.methods.iter().map(|m| &m.name).collect();
+        assert_eq!(names, vec![&Id::from("Start"), &Id::from("Stop")]);
+    }
+
+    #[test]
+    fn parse_when_method_declares_return_type_then_return_type_is_kept() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Motor" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[speed := 0.0;]]></ST>
+    </Implementation>
+    <Method Name="IsRunning" Id="{00000000-0000-0000-0000-000000000001}">
+      <Declaration><![CDATA[METHOD IsRunning : BOOL]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[IsRunning := speed > 0.0;]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+
+        let function_block = only_function_block(result.unwrap());
+        assert_eq!(function_block.methods.len(), 1);
+        assert!(function_block.methods[0].return_type.is_some());
+    }
+
+    #[test]
+    fn parse_when_method_has_no_implementation_then_method_has_empty_body() {
+        // TwinCAT writes a method with an empty body as a `<Method>` with no
+        // `<Implementation>` child at all.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Motor" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[speed := 0.0;]]></ST>
+    </Implementation>
+    <Method Name="Reset" Id="{00000000-0000-0000-0000-000000000001}">
+      <Declaration><![CDATA[METHOD Reset]]></Declaration>
+    </Method>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+
+        let function_block = only_function_block(result.unwrap());
+        assert_eq!(function_block.methods.len(), 1);
+        assert!(function_block.methods[0].body.is_empty());
+    }
+
+    #[test]
+    fn parse_when_pou_with_method_then_method_spans_point_into_method_cdata() {
+        let result = parse(FB_WITH_METHOD, &test_file_id(), &opts_with_fb_inheritance());
+        // Restrict to the method's own spans by measuring against the XML
+        // region the `<Method>` element occupies.
+        let method_element_start = FB_WITH_METHOD.find("<Method ").unwrap();
+        let method_spans: Vec<SourceSpan> = collect_spans(result.unwrap())
+            .into_iter()
+            .filter(|span| span.start >= method_element_start)
+            .collect();
+
+        assert!(
+            !method_spans.is_empty(),
+            "expected spans inside the <Method> element"
+        );
+
+        // `value` is declared only inside the method, so its span must fall
+        // inside the method's declaration CDATA rather than the POU's.
+        let value_offset = FB_WITH_METHOD.find("value : REAL").unwrap();
+        assert!(
+            method_spans.iter().any(|span| span.start == value_offset),
+            "expected a span at the method's `value` declaration ({value_offset})"
+        );
+
+        // The method body assignment must map into the method's own ST CDATA.
+        let body_offset = FB_WITH_METHOD.find("speed := value;").unwrap();
+        assert!(
+            method_spans.iter().any(|span| span.start == body_offset),
+            "expected a span at the method's body ({body_offset})"
+        );
+    }
+
+    #[test]
+    fn parse_when_method_body_has_syntax_error_then_position_points_into_method_cdata() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Motor" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[speed := 0.0;]]></ST>
+    </Implementation>
+    <Method Name="SetSpeed" Id="{00000000-0000-0000-0000-000000000001}">
+      <Declaration><![CDATA[METHOD SetSpeed]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[INVALID SYNTAX HERE !!!]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
+        assert!(result.is_err());
+
+        let diagnostic = result.unwrap_err();
+        let method_body_start = xml.find("INVALID").unwrap();
+        assert!(
+            diagnostic.primary.location.start >= method_body_start,
+            "Error position {} should be >= method body start {} (pointing into the method's CDATA)",
+            diagnostic.primary.location.start,
+            method_body_start
+        );
+    }
+
+    #[test]
+    fn parse_when_method_uses_fbd_implementation_then_returns_p9003() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Motor" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[speed := 0.0;]]></ST>
+    </Implementation>
+    <Method Name="SetSpeed" Id="{00000000-0000-0000-0000-000000000001}">
+      <Declaration><![CDATA[METHOD SetSpeed]]></Declaration>
+      <Implementation>
+        <FBD/>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
+        assert!(result.is_err());
+
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, Problem::XmlBodyTypeNotSupported.code());
+        assert!(diagnostic.primary.message.contains("FBD"));
+    }
+
+    #[test]
+    fn parse_when_method_missing_declaration_then_returns_p0009() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="FB_Motor" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[speed := 0.0;]]></ST>
+    </Implementation>
+    <Method Name="SetSpeed" Id="{00000000-0000-0000-0000-000000000001}">
+      <Implementation>
+        <ST><![CDATA[speed := 1.0;]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
+        assert!(result.is_err());
+
+        let diagnostic = result.unwrap_err();
+        assert_eq!(diagnostic.code, "P0009");
+        assert!(diagnostic.primary.message.contains("SetSpeed"));
+    }
+
+    #[test]
+    fn parse_when_pou_with_method_and_default_dialect_then_err() {
+        // Without allow_fb_inheritance, METHOD is demoted to an identifier.
+        // The methods are no longer silently dropped, so the file reports the
+        // unsupported syntax instead of parsing as a method-less type.
+        let result = parse(FB_WITH_METHOD, &test_file_id(), &CompilerOptions::default());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_when_program_pou_with_method_element_then_method_is_dropped() {
+        // `method_declaration` is reachable only from
+        // `function_block_declaration`, so a method on a PROGRAM has nowhere
+        // to go in the grammar and is left alone rather than turned into a
+        // parse error. See issue #1418.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
+    <Declaration><![CDATA[PROGRAM MAIN
+VAR
+    speed : REAL;
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[speed := 0.0;]]></ST>
+    </Implementation>
+    <Method Name="SetSpeed" Id="{00000000-0000-0000-0000-000000000001}">
+      <Declaration><![CDATA[METHOD SetSpeed]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[speed := 1.0;]]></ST>
+      </Implementation>
+    </Method>
+  </POU>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+    }
+
+    #[test]
+    fn parse_when_itf_with_method_element_then_method_is_dropped() {
+        // `interface_declaration` parses the header only, so an interface's
+        // `<Method>` children are still ignored. Appending them would turn
+        // every real `.TcIO` file into a parse error.
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1">
+  <Itf Name="I_Drivable" Id="{00000000-0000-0000-0000-000000000000}">
+    <Declaration><![CDATA[INTERFACE I_Drivable
+]]></Declaration>
+    <Method Name="Start" Id="{00000000-0000-0000-0000-000000000001}">
+      <Declaration><![CDATA[METHOD Start : BOOL]]></Declaration>
+    </Method>
+  </Itf>
+</TcPlcObject>"#;
+
+        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+        let library = result.unwrap();
+        assert!(matches!(
+            library.elements[0],
+            LibraryElementKind::InterfaceDeclaration(_)
+        ));
     }
 }

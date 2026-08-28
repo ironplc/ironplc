@@ -23,6 +23,14 @@ Scope is deliberately narrow — **methods on function blocks only**:
   the same reason: `method_declaration` is reachable only from
   `function_block_declaration`.
 
+## Design doc reference
+
+`specs/design/beckhoff-twincat-dialect.md` §1.1 already specifies the
+intended shape — "the `twincat_parser.rs` module needs to iterate over
+`Method` child elements and parse each one, then attach the parsed methods to
+the parent FB in the AST". §1.2 covers `<Property>`/`<Get>`/`<Set>`, which
+this change does not implement.
+
 ## Architecture
 
 `parse_pou` already reconstructs an ST source text by concatenating the
@@ -86,4 +94,8 @@ Modified:
       method body reports a position inside that method's CDATA; a method
       with an FBD body reports P9003; interfaces and non-function-block
       POUs are unaffected.
+- [ ] End-to-end CLI test: a TwinCAT solution fixture whose function block
+      declares methods and whose `MAIN` calls them, checked with
+      `--dialect twincat`. This is the scenario from the issue that reported
+      P4046 against a method declared in the file being checked.
 - [ ] `cd compiler && just`
