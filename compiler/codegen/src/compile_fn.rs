@@ -17,9 +17,9 @@ use ironplc_analyzer::{FunctionEnvironment, TypeEnvironment};
 
 use super::compile::{
     char_width_for_string_type, finalize_function, string_region_size, CompileContext,
-    CompiledFunction, CurrentFunctionReturn, OpType, OpWidth, Signedness, StringParamInfo,
-    StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo, DEFAULT_OP_TYPE,
-    NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
+    CompiledFunction, CurrentFunctionReturn, OpType, OpWidth, SavedFbScope, Signedness,
+    StringParamInfo, StringReturnInfo, StringVarInfo, UserFunctionInfo, VarTypeInfo,
+    DEFAULT_OP_TYPE, NARROW_CHAR_WIDTH, WIDE_CHAR_WIDTH,
 };
 use super::compile_expr::emit_load_var;
 use super::compile_setup::{
@@ -346,7 +346,8 @@ pub(crate) fn compile_user_function(
     emit_function_local_prologue(
         &mut func_emitter,
         ctx,
-        func_decl,
+        &func_decl.variables,
+        &func_decl.name,
         return_var_index,
         return_op_type,
     )?;
@@ -496,7 +497,7 @@ pub(crate) fn compile_user_function_block(
     builder: &mut ContainerBuilder,
     _types: &TypeEnvironment,
     num_globals: u16,
-) -> Result<CompiledFunction, Diagnostic> {
+) -> Result<(CompiledFunction, SavedFbScope), Diagnostic> {
     let fb_name = fb_decl.name.name.to_string().to_uppercase();
 
     // Collect fields in a stable order: inputs first, then outputs, then locals.
@@ -638,21 +639,32 @@ pub(crate) fn compile_user_function_block(
 
     let finalized = finalize_function(&mut fb_emitter, ctx);
 
-    // Restore the program's variable mappings.
-    ctx.variables = saved_variables;
-    ctx.var_types = saved_var_types;
-    ctx.string_vars = saved_string_vars;
-    ctx.array_vars = saved_array_vars;
-    ctx.struct_vars = saved_struct_vars;
-    ctx.fb_instances = saved_fb_instances;
+    // Note: `ctx`'s variable mappings are intentionally NOT restored
+    // here (unlike `compile_user_function`). This type's METHODs (OOP
+    // extension, ADR-0041 Phase 1) are compiled next, right after this
+    // function returns, and need `ctx.variables` to still hold this
+    // type's field mappings for `self` access. The caller
+    // (`compile_program_with_functions`) restores from the returned
+    // `SavedFbScope` once both this body and its methods are compiled.
+    let saved = SavedFbScope {
+        variables: saved_variables,
+        var_types: saved_var_types,
+        string_vars: saved_string_vars,
+        array_vars: saved_array_vars,
+        struct_vars: saved_struct_vars,
+        fb_instances: saved_fb_instances,
+    };
 
-    Ok(CompiledFunction {
-        function_id,
-        bytecode: finalized.bytecode,
-        max_stack_depth: finalized.max_stack_depth,
-        num_locals,
-        num_params: 0,
-        name: fb_name,
-        line_map: finalized.line_map,
-    })
+    Ok((
+        CompiledFunction {
+            function_id,
+            bytecode: finalized.bytecode,
+            max_stack_depth: finalized.max_stack_depth,
+            num_locals,
+            num_params: 0,
+            name: fb_name,
+            line_map: finalized.line_map,
+        },
+        saved,
+    ))
 }

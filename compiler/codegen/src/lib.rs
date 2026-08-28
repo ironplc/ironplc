@@ -35,6 +35,7 @@ mod compile_call;
 mod compile_enum;
 mod compile_expr;
 mod compile_fn;
+mod compile_method;
 mod compile_setup;
 mod compile_stmt;
 mod compile_string;

@@ -73,7 +73,7 @@ Three small op-classes pack multiple opcodes into a single op-class slot using t
 
 ### Op-class assignments
 
-The full op-class table (62 of 64 slots used; 0x3E–0x3F free):
+The full op-class table (63 of 64 slots used; 0x3F free):
 
 | Class | Op class | Type variants used | Notes |
 |---|---|---|---|
@@ -107,7 +107,8 @@ The full op-class table (62 of 64 slots used; 0x3E–0x3F free):
 | `LOAD_ARRAY`, `STORE_ARRAY`, `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF` | 0x2A–0x2D | only tag 0 | |
 | `STR_INIT`, `STR_LOAD_VAR`, `STR_STORE_VAR`, `LEN_STR`, `FIND_STR`, `REPLACE_STR`, `INSERT_STR`, `DELETE_STR`, `LEFT_STR`, `RIGHT_STR`, `MID_STR`, `CONCAT_STR`, `STR_INIT_ARRAY`, `STR_LOAD_ARRAY_ELEM`, `STR_STORE_ARRAY_ELEM` | 0x2E–0x3C | only tag 0 | one slot each |
 | `CMP_BR` | 0x3D | tags 0=I32, 1=I64 | fused compare-and-branch; F32/F64 tags reserved |
-| _free_ | 0x3E–0x3F | — | 2 slots reserved for future use |
+| `METHOD_CALL` | 0x3E | only tag 0 | OOP extension (ADR-0041 Phase 1 static dispatch) |
+| _free_ | 0x3F | — | 1 slot reserved for future use |
 
 ### Migration status
 
@@ -447,6 +448,18 @@ POP                           -- discard fb_ref
 ```
 
 `FB_STORE_PARAM`, `FB_LOAD_PARAM`, and `FB_CALL` all keep the instance reference on the stack, so parameter stores, the call, and output loads chain without reloading it. The caller must `POP` the fb_ref when done.
+
+#### Method calls
+
+`METHOD_CALL` (OOP extension, ADR-0041 Phase 1 static dispatch) invokes a method declared on a function block type. It reuses `FB_CALL`'s copy-in/copy-out machinery, but the call site is fully resolved at compile time, so all addressing is carried in the operands rather than looked up by `type_id`.
+
+| Byte | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xF8 | METHOD_CALL | function_id: u16, field_var_off: u16, num_fields: u8, param_var_off: u16 | [fb_ref, arg…] → [fb_ref, result?] | Invoke a method on the instance; preserves fb_ref |
+
+Arguments are popped into the method's own parameter slots at `param_var_off` before `fb_ref` is read, matching `CALL`'s convention. The instance's fields are then copied from the data region into the owning type's field scratch region at `field_var_off`, the body runs as its own frame, and the fields are copied back on return. A method with a return type leaves its value above `fb_ref`; a void method leaves nothing. Either way the caller `POP`s what the method left, then the fb_ref.
+
+Methods reached only through a type's `EXTENDS` chain are not yet compiled: a derived type reserves no storage for its base type's fields, so there is nothing correct to copy in or out.
 
 ---
 
@@ -795,8 +808,9 @@ The encoding allocates 62 of 64 op-class slots and 125 opcode bytes. Within each
 | `STR_LOAD_ARRAY_ELEM` (0x3B) | 0xEC | 1 | Load a string from an array element |
 | `STR_STORE_ARRAY_ELEM` (0x3C) | 0xF0 | 1 | Store a temp buffer into a string array element |
 | `CMP_BR` (0x3D) | 0xF4–0xF5 | 2 | Fused compare-and-branch (tag: 0=I32, 1=I64) |
-| _free_ (0x3E–0x3F) | — | 0 | Reserved for future use |
-| **Total** | | **125** | 62 of 64 op-class slots in use |
+| `METHOD_CALL` (0x3E) | 0xF8 | 1 | Static-dispatch method call on a function block instance |
+| _free_ (0x3F) | — | 0 | Reserved for future use |
+| **Total** | | **126** | 63 of 64 op-class slots in use |
 
 Every byte not listed above is unassigned; executing one traps `V9003 InvalidInstruction`. `opcode::instruction_size` is the single source of truth for instruction lengths (shared by the emitter, the optimizer, and the disassembler), and `opcode::is_assigned` is derived from it.
 
@@ -808,7 +822,7 @@ Every byte not listed above is unassigned; executing one traps `V9003 InvalidIns
 | 2 bytes | `FB_STORE_PARAM`, `FB_LOAD_PARAM` (u8 field index) |
 | 3 bytes | `LOAD_CONST_*`, `LOAD_CONST_STR`, `LOAD_VAR_*`, `STORE_VAR_*`, `FB_LOAD_INSTANCE`, `FB_CALL`, `JMP`, `JMP_IF_NOT`, `BUILTIN` (u16) |
 | 5 bytes | `CALL`, `LOAD_ARRAY`, `STORE_ARRAY`, `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF`, `STR_INIT_ARRAY`, `STR_LOAD_ARRAY_ELEM`, `STR_STORE_ARRAY_ELEM` (u16 + u16); `STR_LOAD_VAR`, `STR_STORE_VAR`, `LEN_STR`, `DELETE_STR`, `LEFT_STR`, `RIGHT_STR`, `MID_STR` (u32) |
-| 8 bytes | `STR_INIT` (u32 + u16 + u8); `CMP_BR_I32`, `CMP_BR_I64` (u8 + u16 + u16 + i16) |
+| 8 bytes | `STR_INIT` (u32 + u16 + u8); `CMP_BR_I32`, `CMP_BR_I64` (u8 + u16 + u16 + i16); `METHOD_CALL` (u16 + u16 + u8 + u16) |
 | 9 bytes | `FIND_STR`, `REPLACE_STR`, `INSERT_STR`, `CONCAT_STR` (u32 + u32) |
 
 ## Compilation Examples
