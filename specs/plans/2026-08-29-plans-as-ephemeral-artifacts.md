@@ -16,6 +16,10 @@ Durable content is redirected rather than discarded. Anything in a plan worth
 keeping is an ADR (`specs/adrs/`) or a design document (`specs/design/`), both
 of which already exist and already carry this load.
 
+The work is ordered so the coupling goes first: every reference to
+`specs/plans/` is removed before any plan is deleted, so deletion is
+mechanical rather than breaking.
+
 **Design doc reference:** None. This is a process change; no system design is
 affected.
 
@@ -62,11 +66,11 @@ prefactoring step below.
 
 ## Prefactoring
 
-The citation migration (Phase 2) **is** the prefactoring: the existing
-references must be moved onto durable documents before plan files can be
-removed, otherwise deletion breaks 92 sites. No other simplification is
-needed — the change is additive to steering docs and subtractive from
-`specs/plans/`.
+Phase 1 — removing every reference to `specs/plans/` — is the prefactoring.
+It removes the coupling that makes plan files load-bearing, so that deleting
+them later is a mechanical change rather than a breaking one. Nothing else
+needs simplifying: the remaining work is additive to steering documents and
+subtractive from `specs/plans/`.
 
 ## The new process
 
@@ -96,23 +100,12 @@ No plan content reaches `main` in either case, and no PR needs a second
 surviving commit.
 
 **Citing plans is prohibited.** Code comments, workflows, `justfile`, design
-docs and ADRs must cite ADRs or design documents. A plan is a snapshot of
+documents and ADRs must cite ADRs or design documents. A plan is a snapshot of
 intent that is deleted at merge; it is never a stable reference target.
 
 ## File map
 
-**Modify — process documentation:**
-
-- `specs/steering/development-standards.md` — rewrite `specs/plans/` section
-  (line ~30), the location table row (line ~44), the split-document rule (line
-  ~47), and the Planning Requirement section (line ~83)
-- `specs/steering/steering-file-guidelines.md` — line ~492 routing rule
-- `CLAUDE.md` — workflow step 2, critical rule 2
-- `CURSOR.md` — workflow step 2, critical rule 2
-- `CONTRIBUTING.md` — "Planning Non-Trivial Changes" section
-- `.cursor/rules/ironplc-steering.mdc` — line ~27
-
-**Modify — citation migration:**
+**Phase 1 — reference removal:**
 
 - 77 comment sites across 11 crates under `compiler/`
 - `specs/design/debugger-support.md` (6), `vm-performance.md`,
@@ -122,68 +115,105 @@ intent that is deleted at merge; it is never a stable reference target.
 - `.github/workflows/deployment.yaml`,
   `.github/workflows/partial_upload_release_artifacts.yaml`
 - `justfile` (line ~310)
+- Create: ADRs and design-document sections where triage requires them
 
-**Create:** ADRs or design-doc sections as the triage requires.
+**Phase 2 — process documentation:**
 
-**Delete:** `specs/plans/*.md` (237 files), after triage.
+- `specs/steering/development-standards.md` — `specs/plans/` section (line
+  ~30), location table row (line ~44), split-document rule (line ~47),
+  Planning Requirement section (line ~83)
+- `specs/steering/steering-file-guidelines.md` — line ~492 routing rule
+- `CLAUDE.md` — workflow step 2, critical rule 2
+- `CURSOR.md` — workflow step 2, critical rule 2
+- `CONTRIBUTING.md` — "Planning Non-Trivial Changes" section
+- `.cursor/rules/ironplc-steering.mdc` — line ~27
+
+**Phase 3 — deletion:**
+
+- Delete `specs/plans/*.md` (237 files)
+- Create: ADRs and design-document sections where triage requires them
 
 ## Tasks
 
-### Phase 1 — Process change
+### Phase 1 — Remove every reference to `specs/plans/`
+
+Each of the 92 citation sites gets one of two outcomes:
+
+- **Not necessary** — delete the reference. Either the surrounding comment
+  stands on its own without it, or the whole comment goes. This is the default
+  and is expected to cover most sites: a citation exists because writing the
+  link was easier than writing the reason, not because the reason was
+  load-bearing.
+- **Necessary** — the rationale genuinely needs a home. Write or extend an ADR
+  (`specs/adrs/`) or a design document (`specs/design/`) and point the
+  reference there instead.
+
+Nothing is left pointing at `specs/plans/` when this phase completes.
+
+- [ ] Add the "do not cite `specs/plans/`" rule to
+      `development-standards.md` as the first change, so no new citations
+      appear while this phase is in progress
+- [ ] Triage the 40 cited plans; for each citation record **not necessary** or
+      the ADR/design document that will carry it
+- [ ] Migrate the 12 `specs/design/` and `specs/adrs/` citations first — a
+      design document citing a plan is the clearest inversion, and resolving
+      these establishes the pattern for the code comments
+- [ ] Migrate `compiler/` comments by crate, largest first: codegen (11),
+      analyzer (10), parser (7), vm-cli (6), plc2plc (5), sources (4), dsl (3),
+      mcp (2), project, ironplc-cli, benchmarks (1 each)
+- [ ] Migrate the 2 `.github/workflows/` citations and the 1 `justfile`
+      citation
+- [ ] Resolve the already-dangling `specs/plans/twincat-status.md` citation in
+      `compiler/dsl/src/common.rs` — the plan it names does not exist
+- [ ] Confirm `grep -rn "specs/plans" --exclude-dir=.git --exclude-dir=plans .`
+      returns only process-documentation mentions
+- [ ] `cd compiler && just` passes
+
+### Phase 2 — Process change
 
 - [ ] Rewrite the `specs/plans/` section of `development-standards.md` to
       describe plans as branch-local artifacts deleted before merge
 - [ ] Update the Planning Requirement section with the single-PR and multi-PR
-      flows above
-- [ ] Add the rule prohibiting citations of `specs/plans/` from any durable
-      file
+      flows described above
 - [ ] Update the "Choosing the Right Location" table
 - [ ] Update `steering-file-guidelines.md` routing rule
 - [ ] Update `CLAUDE.md`, `CURSOR.md`, `CONTRIBUTING.md`,
       `.cursor/rules/ironplc-steering.mdc`
-- [ ] Verify no remaining doc instructs a reader to keep a plan committed
+- [ ] Verify no remaining document instructs a reader to keep a plan committed
 
-### Phase 2 — Citation migration (prefactoring)
+### Phase 3 — Triage and delete the backlog
 
-Each citation is a judgment call: fold the rationale into an existing ADR or
-design doc, write a new one, or inline the explanation at the call site if it
-is narrow enough not to warrant a document.
+Phase 1 already extracted the rationale from the 40 cited plans. This phase
+covers the remaining ~197 that nothing references.
 
-- [ ] Triage the 40 cited plans; record for each whether its rationale becomes
-      an ADR, a design-doc section, or an inline comment
-- [ ] Migrate `specs/design/` and `specs/adrs/` citations first (12 sites) —
-      these are the most clearly wrong and unblock the rest
-- [ ] Migrate `compiler/` comments by crate, largest first: codegen (11),
-      analyzer (10), parser (7), vm-cli (6), plc2plc (5), sources (4), dsl (3),
-      mcp (2), project, ironplc-cli, benchmarks (1 each)
-- [ ] Migrate `.github/workflows/` (2) and `justfile` (1) citations
-- [ ] Resolve the dangling `specs/plans/twincat-status.md` citation in
-      `compiler/dsl/src/common.rs`
-- [ ] Confirm zero remaining `specs/plans/` references outside `specs/plans/`
-      itself
-
-### Phase 3 — Backlog triage and deletion
-
-- [ ] Review all 237 plans for content that should be a design document or
-      ADR but is not yet captured anywhere; the 11 plans over 25 KB and the 42
+- [ ] Review the uncited plans for content that should be a design document or
+      ADR but is not captured anywhere; the 11 plans over 25 KB and the 42
       between 10–25 KB are the highest-yield candidates
-- [ ] Write the resulting ADRs and design-doc sections
+- [ ] Write the resulting ADRs and design-document sections
 - [ ] Delete `specs/plans/*.md`
 - [ ] Decide whether `specs/plans/` remains as an empty staging directory
-      (with a `README.md` explaining the lifetime rule) or is removed entirely
-
-### Verification
-
+      (with a `README.md` stating the lifetime rule) or is removed entirely
 - [ ] `cd compiler && just` passes
-- [ ] `grep -rn "specs/plans" --exclude-dir=.git .` returns only the intended
-      process-documentation mentions
 
 ## Sequencing
 
-Phase 1 is independent and can merge on its own — it stops the growth
-immediately. Phase 2 is the prerequisite for Phase 3 and is best split across
-several PRs, since it is ~92 individual judgment calls. Phase 3 is a single
-delete once triage is complete.
+Phase 1 is the prerequisite for everything else: while 92 sites point at
+`specs/plans/`, no plan can be deleted without breaking them. It is ~92
+individual judgment calls and is best split across several PRs, one per crate
+or document group.
+
+Phase 2 lands after the references are gone and before the bulk deletion, so
+the rules already describe plans as ephemeral by the time the backlog is
+removed. Keeping it separate from Phase 3 matters for review: Phase 2 is a
+small, careful diff that should not be buried inside a 237-file deletion.
+
+Phase 3 is the deletion, gated on its own triage pass.
+
+One consequence of this ordering worth accepting deliberately: plans continue
+to accumulate at roughly 58 per month during Phase 1, and some will be new
+plans. The first task of Phase 1 — prohibiting new citations — is what keeps
+the phase from becoming a moving target; the extra plan files themselves are
+swept up by Phase 3 regardless of how many arrive.
 
 ## Note
 
