@@ -3,13 +3,47 @@ use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::Diagnostic;
 use std::collections::HashMap;
 
+/// A scope's position in the nesting tree: the chain of declaration
+/// names from the library root.
+///
+/// A function block is `⟨FB_Motor⟩`; a method declared on it is
+/// `⟨FB_Motor, GetSpeed⟩`. Scopes are nameable, which is why this is a
+/// path of names rather than an id assigned to an AST node -- see
+/// `specs/plans/2026-08-28-method-scoping-and-scope-paths.md`.
+///
+/// Never empty: an empty path would be the global scope, which
+/// [`ScopeKind::Global`] already represents.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ScopePath(Vec<Id>);
+
+impl ScopePath {
+    pub fn new(segments: Vec<Id>) -> Self {
+        debug_assert!(
+            !segments.is_empty(),
+            "a scope path is never empty; the empty scope is ScopeKind::Global"
+        );
+        Self(segments)
+    }
+
+    pub fn segments(&self) -> &[Id] {
+        &self.0
+    }
+}
+
+impl From<Id> for ScopePath {
+    /// A scope directly inside the library, such as a function block.
+    fn from(name: Id) -> Self {
+        Self::new(vec![name])
+    }
+}
+
 /// Represents the kind of scope a symbol belongs to
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ScopeKind {
     /// Global scope (library level)
     Global,
-    /// Named scope (function, function block, program, etc.)
-    Named(Id),
+    /// Named scope (function, function block, program, method, etc.)
+    Named(ScopePath),
 }
 
 /// Represents the kind of symbol
@@ -146,11 +180,8 @@ impl SymbolEnvironment {
                 }
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
-            ScopeKind::Named(scope_name) => {
-                let scope_symbols = self
-                    .scoped_symbols
-                    .entry(ScopeKind::Named(scope_name.clone()))
-                    .or_default();
+            ScopeKind::Named(_) => {
+                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
 
                 // Check for duplicate symbols in the same scope
                 if let Some(_existing) = scope_symbols.get(name) {
@@ -187,11 +218,8 @@ impl SymbolEnvironment {
             ScopeKind::Global => {
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
-            ScopeKind::Named(scope_name) => {
-                let scope_symbols = self
-                    .scoped_symbols
-                    .entry(ScopeKind::Named(scope_name.clone()))
-                    .or_default();
+            ScopeKind::Named(_) => {
+                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
                 scope_symbols.insert(name.clone(), symbol_info);
             }
         }
@@ -213,11 +241,8 @@ impl SymbolEnvironment {
             ScopeKind::Global => {
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
-            ScopeKind::Named(scope_name) => {
-                let scope_symbols = self
-                    .scoped_symbols
-                    .entry(ScopeKind::Named(scope_name.clone()))
-                    .or_default();
+            ScopeKind::Named(_) => {
+                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
 
                 scope_symbols.insert(name.clone(), symbol_info);
             }
@@ -240,11 +265,8 @@ impl SymbolEnvironment {
             ScopeKind::Global => {
                 self.global_symbols.insert(name.clone(), symbol_info);
             }
-            ScopeKind::Named(scope_name) => {
-                let scope_symbols = self
-                    .scoped_symbols
-                    .entry(ScopeKind::Named(scope_name.clone()))
-                    .or_default();
+            ScopeKind::Named(_) => {
+                let scope_symbols = self.scoped_symbols.entry(scope.clone()).or_default();
 
                 scope_symbols.insert(name.clone(), symbol_info);
             }
@@ -308,12 +330,23 @@ impl SymbolEnvironment {
         Ok(())
     }
 
-    /// Find a symbol in the given scope, with fallback to global scope
+    /// Finds a symbol visible from the given scope.
+    ///
+    /// Walks outward through the enclosing scopes and then the global
+    /// scope, so a method body sees its function block's fields and an
+    /// inner declaration shadows an outer one of the same name.
     pub fn find(&self, name: &Id, scope: &ScopeKind) -> Option<&SymbolInfo> {
-        // First try to find in the specified scope
-        if let Some(scope_symbols) = self.scoped_symbols.get(scope) {
-            if let Some(symbol) = scope_symbols.get(name) {
-                return Some(symbol);
+        if let ScopeKind::Named(path) = scope {
+            let segments = path.segments();
+            for depth in (1..=segments.len()).rev() {
+                let enclosing = ScopeKind::Named(ScopePath::new(segments[..depth].to_vec()));
+                if let Some(symbol) = self
+                    .scoped_symbols
+                    .get(&enclosing)
+                    .and_then(|symbols| symbols.get(name))
+                {
+                    return Some(symbol);
+                }
             }
         }
 
@@ -439,7 +472,7 @@ mod tests {
         assert_eq!(symbol2.kind, SymbolKind::Program);
 
         // Test scoped symbols
-        let scope = ScopeKind::Named(Id::from("FUNCTION_BLOCK"));
+        let scope = ScopeKind::Named(Id::from("FUNCTION_BLOCK").into());
         let id3 = Id::from("LOCAL_VAR");
 
         env.insert(&id3, SymbolKind::Variable, &scope).unwrap();
@@ -470,7 +503,7 @@ mod tests {
             .unwrap();
 
         // Insert local symbol in function scope
-        let function_scope = ScopeKind::Named(function_id.clone());
+        let function_scope = ScopeKind::Named(function_id.clone().into());
         env.insert(&local_id, SymbolKind::Variable, &function_scope)
             .unwrap();
 
@@ -546,8 +579,8 @@ mod tests {
 
         // Test Named scope
         let function_id = Id::from("TEST_FUNCTION");
-        let named_scope = ScopeKind::Named(function_id.clone());
-        assert_eq!(named_scope, ScopeKind::Named(function_id));
+        let named_scope = ScopeKind::Named(function_id.clone().into());
+        assert_eq!(named_scope, ScopeKind::Named(function_id.into()));
 
         // Test scope comparison
         assert_ne!(global_scope, named_scope);
@@ -573,13 +606,13 @@ mod tests {
         env.insert(&global_id, SymbolKind::Variable, &ScopeKind::Global)
             .unwrap();
 
-        let wrong_scope = ScopeKind::Named(Id::from("WRONG_FUNCTION"));
+        let wrong_scope = ScopeKind::Named(Id::from("WRONG_FUNCTION").into());
         let found = env.find(&global_id, &wrong_scope);
         // Global symbols are accessible from any scope, so this should find the symbol
         assert!(found.is_some());
 
         // Test scope hierarchy with non-existent scope
-        let non_existent_scope = ScopeKind::Named(Id::from("NON_EXISTENT"));
+        let non_existent_scope = ScopeKind::Named(Id::from("NON_EXISTENT").into());
         let found = env.find(&global_id, &non_existent_scope);
         assert!(found.is_some()); // Should find in global scope
     }
@@ -595,7 +628,7 @@ mod tests {
         env.insert_enumeration_value(&Id::from("RED"), &enum_type, &ScopeKind::Global)
             .unwrap();
         // Scoped enumeration value of the requested type.
-        let scope = ScopeKind::Named(Id::from("FB"));
+        let scope = ScopeKind::Named(Id::from("FB").into());
         env.insert_enumeration_value(&Id::from("GREEN"), &enum_type, &scope)
             .unwrap();
         // Enumeration value of a different type (should be excluded).
@@ -631,7 +664,7 @@ mod tests {
         env.insert_structure_field(&Id::from("X"), &struct_type, &ScopeKind::Global)
             .unwrap();
         // Scoped structure field of the requested type.
-        let scope = ScopeKind::Named(Id::from("FB"));
+        let scope = ScopeKind::Named(Id::from("FB").into());
         env.insert_structure_field(&Id::from("Y"), &struct_type, &scope)
             .unwrap();
         // Structure field of a different type (should be excluded).
@@ -660,7 +693,7 @@ mod tests {
     #[test]
     fn symbol_info_span_and_scope_when_creating_symbol_info_then_has_correct_span_and_scope() {
         let span = ironplc_dsl::core::SourceSpan::default();
-        let scope = ScopeKind::Named(Id::from("TEST_FUNCTION"));
+        let scope = ScopeKind::Named(Id::from("TEST_FUNCTION").into());
 
         let symbol_info = SymbolInfo::new(SymbolKind::Variable, scope.clone(), span);
 
@@ -670,5 +703,64 @@ mod tests {
         assert_eq!(symbol_info.span, ironplc_dsl::core::SourceSpan::default());
         assert!(!symbol_info.is_external);
         assert!(symbol_info.data_type.is_none());
+    }
+
+    /// A scope path nests, so a symbol declared in an enclosing scope is
+    /// visible from an inner one -- how a method body sees the fields of
+    /// the function block it is declared on.
+    #[test]
+    fn find_when_symbol_is_in_enclosing_scope_then_found_from_inner_scope() {
+        let mut env = SymbolEnvironment::new();
+
+        let outer = ScopeKind::Named(Id::from("FB_Motor").into());
+        let inner = ScopeKind::Named(ScopePath::new(vec![
+            Id::from("FB_Motor"),
+            Id::from("GetSpeed"),
+        ]));
+
+        let field = Id::from("speed");
+        env.insert(&field, SymbolKind::Variable, &outer).unwrap();
+
+        assert!(
+            env.find(&field, &inner).is_some(),
+            "an enclosing scope's symbol should be visible from the inner scope"
+        );
+    }
+
+    /// The innermost declaration of a name wins, so a method local
+    /// shadows a function block field of the same name.
+    #[test]
+    fn find_when_inner_scope_redeclares_name_then_inner_symbol_shadows_outer() {
+        let mut env = SymbolEnvironment::new();
+
+        let outer = ScopeKind::Named(Id::from("FB_Motor").into());
+        let inner = ScopeKind::Named(ScopePath::new(vec![
+            Id::from("FB_Motor"),
+            Id::from("GetSpeed"),
+        ]));
+
+        let name = Id::from("v");
+        env.insert(&name, SymbolKind::Variable, &outer).unwrap();
+        env.insert(&name, SymbolKind::Parameter, &inner).unwrap();
+
+        assert_eq!(env.find(&name, &inner).unwrap().kind, SymbolKind::Parameter);
+        assert_eq!(env.find(&name, &outer).unwrap().kind, SymbolKind::Variable);
+    }
+
+    /// A name declared only in an inner scope does not leak outward.
+    #[test]
+    fn find_when_symbol_is_in_inner_scope_then_not_found_from_enclosing_scope() {
+        let mut env = SymbolEnvironment::new();
+
+        let outer = ScopeKind::Named(Id::from("FB_Motor").into());
+        let inner = ScopeKind::Named(ScopePath::new(vec![
+            Id::from("FB_Motor"),
+            Id::from("GetSpeed"),
+        ]));
+
+        let local = Id::from("q");
+        env.insert(&local, SymbolKind::Variable, &inner).unwrap();
+
+        assert!(env.find(&local, &outer).is_none());
     }
 }

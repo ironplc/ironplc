@@ -65,7 +65,7 @@ struct EnvironmentResolver<'a> {
 impl<'a> EnvironmentResolver<'a> {
     fn current_scope(&self) -> ScopeKind {
         match &self.scope {
-            Some(name) => ScopeKind::Named(name.clone()),
+            Some(name) => ScopeKind::Named(name.clone().into()),
             None => ScopeKind::Global,
         }
     }
@@ -377,7 +377,10 @@ END_FUNCTION_BLOCK";
 
         assert!(result.is_ok());
         let attributes = symbol_env
-            .get(&Id::from("LEVEL"), &ScopeKind::Named(Id::from("LOGGER")))
+            .get(
+                &Id::from("LEVEL"),
+                &ScopeKind::Named(Id::from("LOGGER").into()),
+            )
             .unwrap();
         assert_eq!(attributes.kind, SymbolKind::Parameter);
 
@@ -412,24 +415,36 @@ END_FUNCTION_BLOCK";
 
         // Check that input parameters are captured
         let reset_symbol = symbol_env
-            .get(&Id::from("Reset"), &ScopeKind::Named(Id::from("Counter")))
+            .get(
+                &Id::from("Reset"),
+                &ScopeKind::Named(Id::from("Counter").into()),
+            )
             .unwrap();
         assert_eq!(reset_symbol.kind, SymbolKind::Parameter);
 
         let count_symbol = symbol_env
-            .get(&Id::from("Count"), &ScopeKind::Named(Id::from("Counter")))
+            .get(
+                &Id::from("Count"),
+                &ScopeKind::Named(Id::from("Counter").into()),
+            )
             .unwrap();
         assert_eq!(count_symbol.kind, SymbolKind::Parameter);
 
         // Check that output parameters are captured
         let out_symbol = symbol_env
-            .get(&Id::from("OUT"), &ScopeKind::Named(Id::from("Counter")))
+            .get(
+                &Id::from("OUT"),
+                &ScopeKind::Named(Id::from("Counter").into()),
+            )
             .unwrap();
         assert_eq!(out_symbol.kind, SymbolKind::OutputParameter);
 
         // Check that local variables are captured
         let cnt_symbol = symbol_env
-            .get(&Id::from("Cnt"), &ScopeKind::Named(Id::from("Counter")))
+            .get(
+                &Id::from("Cnt"),
+                &ScopeKind::Named(Id::from("Counter").into()),
+            )
             .unwrap();
         assert_eq!(cnt_symbol.kind, SymbolKind::Variable);
 
