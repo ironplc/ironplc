@@ -44,6 +44,7 @@ use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
@@ -99,38 +100,45 @@ struct SymbolScopeChecker<'a> {
 impl Visitor<Diagnostic> for SymbolScopeChecker<'_> {
     type Value = ();
 
-    fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Diagnostic> {
+    /// Opens the scope of a declaration and seeds the names that are in
+    /// scope by virtue of the declaration itself.
+    ///
+    /// The traversal calls this for every declaration marked
+    /// `#[recurse(scope)]`, so this rule states what a scope *contains*
+    /// and never which node kinds have one. The match is exhaustive on
+    /// purpose: a new kind of scope must be a compile error here rather
+    /// than a silently unseeded scope.
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
         self.table.enter();
 
-        self.table.add(&node.name, DummyNode {});
-        let ret = node.recurse_visit(self);
-        self.table.exit();
-        ret
-    }
-
-    fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Diagnostic> {
-        self.table.enter();
-        self.table.add(&node.name, DummyNode {});
-        let ret = node.recurse_visit(self);
-        self.table.exit();
-        ret
-    }
-
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<(), Diagnostic> {
-        self.table.enter();
-        self.table.add(&node.name.name, DummyNode {});
-        if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
-            for field in &fields {
-                self.table
-                    .add_if(field.identifier.symbolic_id(), DummyNode {});
+        match node {
+            // A function's own name is its implicit result variable, so
+            // `FOO := ...` inside `FUNCTION FOO` resolves.
+            ScopeNode::Function(node) => {
+                self.table.add(&node.name, DummyNode {});
+            }
+            ScopeNode::Program(node) => {
+                self.table.add(&node.name, DummyNode {});
+            }
+            // A derived function block's scope also holds the fields it
+            // inherits through `EXTENDS`, so an unqualified reference to
+            // an ancestor's field resolves.
+            ScopeNode::FunctionBlock(node) => {
+                self.table.add(&node.name.name, DummyNode {});
+                if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
+                    for field in &fields {
+                        self.table
+                            .add_if(field.identifier.symbolic_id(), DummyNode {});
+                    }
+                }
             }
         }
-        let ret = node.recurse_visit(self);
+
+        Ok(())
+    }
+
+    fn exit_scope(&mut self) {
         self.table.exit();
-        ret
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
