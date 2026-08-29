@@ -71,7 +71,7 @@ pub fn build_symbol_map(context: &SemanticContext, container: &Container) -> Var
     // Program-scoped variables: qualify as `<program>.<var>`.
     for (program_name, _) in context.symbols().get_programs() {
         let program = program_name.original().to_string();
-        let scope = ScopeKind::Named((*program_name).clone());
+        let scope = ScopeKind::Named((*program_name).clone().into());
         for (var_name, info) in context.symbols().get_variables_in_scope(&scope) {
             let bare = var_name.original().as_str();
             let Some(entries) = bare_index.get(bare) else {

@@ -90,8 +90,16 @@ to that borrow, and `find` took `&mut self` although it bottoms out in
 `HashMap::get`. Without that one-word change the conversion would have had
 to widen unrelated signatures to `&mut`.
 
-PR 4's prefactoring is giving `ScopeKind` a path before anything pushes a
-nested scope onto it.
+PR 4 carries two prefactoring commits before its behaviour change.
+First, removing the unused `SymbolEnvironment` API — thirteen items
+reachable only from that module's own tests, seven of them typed in terms
+of `ScopeKind`, so the path change has seven fewer signatures to carry.
+Second, giving `ScopeKind` a path while every scope is still one segment
+deep, so `find` resolves exactly what it did before.
+
+No `ScopeKind::parent()`, which earlier drafts of this plan named: `find`
+walks the path by slicing it and nothing else needs one, so building it
+would be the speculative generality the standard warns against.
 
 ## Design
 
@@ -483,7 +491,7 @@ them fire correctly.
 - [x] Confirm reproductions 1, 2, 4 and 5 in *Problem* now behave correctly
 - [x] PR 3 — `xform_resolve_expr_types` on `ScopedTable`
 - [x] Confirm reproduction 3 in *Problem* now behaves correctly
-- [ ] PR 4 — scope paths in `SymbolEnvironment`
+- [x] PR 4 — scope paths in `SymbolEnvironment`
 
 ## Verification
 
