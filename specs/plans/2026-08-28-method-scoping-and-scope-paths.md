@@ -63,6 +63,29 @@ wrong thing. **The defect is omission at a call site.** Fixing five call
 sites leaves the sixth to be discovered the same way, so the fix has to
 make the omission impossible instead.
 
+## Prefactoring
+
+The prefactoring is PR 1, and it is the whole shape of this change: move
+scope entry out of the passes and into the traversal, with no behaviour
+change, so that making a `METHOD` a scope is an attribute and a match arm
+rather than an edit in five places.
+
+It was landed as its own pull request ([#1454](https://github.com/ironplc/ironplc/pull/1454))
+before any behaviour change, and the existing suite passed unchanged.
+The signal it answers is the first one in
+[Signals that a change needs prefactoring](../steering/development-standards.md#signals-that-a-change-needs-prefactoring):
+the new behaviour needed a new arm in more than one place, so the
+distinction wanted to be a type rather than repeated branching.
+
+What good looked like, measured after the fact: PR 2 adds one enum
+variant, flips one attribute, and adds two match arms — and the compiler
+named both arms itself, because adding `ScopeNode::Method` made every
+pass that discriminates fail to compile until it was handled.
+
+PR 3 and PR 4 each carry their own prefactoring, stated in their
+sections: converting `ExprTypeResolver`'s flat maps to `ScopedTable`, and
+giving `ScopeKind` a path before anything pushes a nested scope onto it.
+
 ## Design
 
 ### The traversal opens scopes, not the passes
@@ -421,8 +444,8 @@ them fire correctly.
 
 ## Tasks
 
-- [ ] Commit this plan
-- [ ] PR 1 — prefactor: hooks, derive guard, migrate the two pure-move passes
+- [x] Commit this plan
+- [x] PR 1 — prefactor: hooks, derive guard, migrate the two pure-move passes (#1454)
 - [ ] PR 2 — `METHOD` is a scope: dsl, analyzer, codegen, docs, tests
 - [ ] Confirm reproductions 1, 2, 4 and 5 in *Problem* now behave correctly
 - [ ] PR 3 — `xform_resolve_expr_types` on `ScopedTable`
