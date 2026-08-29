@@ -2789,12 +2789,7 @@ pub struct FunctionBlockDeclaration {
 /// (own methods first, then the `EXTENDS` chain) is implemented outside
 /// the AST, in `ironplc-analyzer`.
 #[derive(Clone, Debug, PartialEq, Recurse, Located)]
-// A `METHOD` *should* open a scope -- its parameters and locals belong to it,
-// not to the function block, and its own name should be assignable to set the
-// result value. It does not today, which is
-// https://github.com/ironplc/ironplc/issues/1439. Stated explicitly rather than
-// left to an omission so that the fix is a one-word change here.
-#[recurse(no_scope)]
+#[recurse(scope)]
 pub struct MethodDeclaration {
     pub name: Id,
     pub return_type: Option<FunctionReturnType>,
