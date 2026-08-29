@@ -13,6 +13,10 @@ pub struct Instruction {
     pub mnemonic: &'static str,
     /// The operands that follow the opcode byte, in order.
     pub operands: &'static [Operand],
+    /// What an instruction's operands do not say -- where an implicit value
+    /// comes from, say. Empty for most instructions, whose operands speak for
+    /// themselves.
+    pub note: &'static str,
 }
 
 /// The role one operand plays in an instruction.
@@ -81,8 +85,8 @@ impl Operand {
 }
 
 /// Declares the instruction set: one row per opcode, giving its name, its
-/// `(op_class, type_tag)` encoding, and the operands that follow the opcode
-/// byte.
+/// `(op_class, type_tag)` encoding, the operands that follow the opcode byte,
+/// and optionally a `note` for what those operands leave unsaid.
 ///
 /// A row is the *only* declaration of an opcode. The opcode byte, the
 /// mnemonic, the operand layout and -- because the layout gives each
@@ -94,7 +98,8 @@ impl Operand {
 macro_rules! declare_instruction_set {
     ($(
         $(#[$meta:meta])*
-        $name:ident = ($op_class:expr, $type_tag:expr) => [$($operand:ident),* $(,)?];
+        $name:ident = ($op_class:expr, $type_tag:expr) => [$($operand:ident),* $(,)?]
+            $(note $note:literal)?;
     )*) => {
         $(
             $(#[$meta])*
@@ -109,6 +114,7 @@ macro_rules! declare_instruction_set {
                     $($name => Some(Instruction {
                         mnemonic: stringify!($name),
                         operands: &[$(Operand::$operand),*],
+                        note: concat!("" $(, $note)?),
                     }),)*
                     _ => None,
                 }

@@ -61,6 +61,11 @@ pub(crate) struct ArrayVarInfo {
     pub string_max_len: u16,
     /// For STRING/WSTRING arrays, the per-code-unit byte width of each element.
     pub string_char_width: CharWidth,
+    /// True when this entry describes a `REF_TO ARRAY` parameter rather than a
+    /// real array. Such a slot holds the target's variable index, not a
+    /// data-region offset, and no region is allocated for it -- so it must
+    /// never be used as the source or destination of a whole-value copy.
+    pub is_ref: bool,
 }
 
 /// The resolved target of a variable access.
@@ -766,6 +771,7 @@ pub(crate) fn register_array_variable(
             is_string_element: is_string,
             string_max_len,
             string_char_width,
+            is_ref: false,
         },
     );
 
@@ -846,6 +852,7 @@ pub(crate) fn register_ref_to_array_metadata(
                 is_string_element: false,
                 string_max_len: 0,
                 string_char_width: CharWidth::Narrow,
+                is_ref: true,
             },
         );
     }

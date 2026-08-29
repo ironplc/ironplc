@@ -153,7 +153,9 @@ pub const OP_CLASS_FB_LOAD_PARAM: u8 = 0x28;
 pub const OP_CLASS_FB_CALL: u8 = 0x29;
 /// Op class: load array element.
 pub const OP_CLASS_LOAD_ARRAY: u8 = 0x2A;
-/// Op class: store array element.
+/// Op class: store into an array's storage. Type tag selects the granularity:
+/// 0 = STORE_ARRAY (one element at a runtime index), 1 = COPY_REGION (the
+/// whole region). Tags 2..3 are free.
 pub const OP_CLASS_STORE_ARRAY: u8 = 0x2B;
 /// Op class: load array element via reference.
 pub const OP_CLASS_LOAD_ARRAY_DEREF: u8 = 0x2C;
@@ -517,6 +519,36 @@ declare_instruction_set! {
     /// Operand 2: u16 array descriptor index (little-endian).
     /// Pops 2 (value, flat index). Net stack: -2.
     STORE_ARRAY_DEREF = (OP_CLASS_STORE_ARRAY_DEREF, 0) => [RefIndex, ArrayDescIndex];
+
+    /// Copy a whole aggregate (array or structure) within the data region.
+    ///
+    /// Operand 1: u16 destination variable index (little-endian). The slot holds
+    ///            the destination's data-region byte offset.
+    /// Operand 2: u16 destination array descriptor index (little-endian).
+    /// Operand 3: u16 source array descriptor index (little-endian).
+    /// Pops 1 (source data-region byte offset). Net stack: -1.
+    ///
+    /// The copy length is *not* an operand: the VM derives it from both
+    /// descriptors and traps [`crate::opcode`] callers with `RegionSizeMismatch`
+    /// if the two disagree. Carrying a length immediate instead would let a
+    /// codegen defect over-copy into a neighbouring variable, which is precisely
+    /// the class of bug this opcode exists to prevent.
+    ///
+    /// The destination is named by variable index so it is scope-checked; the
+    /// source arrives as a stack offset so that a struct-returning function call,
+    /// which leaves its `data_offset` on the stack and has no variable index in
+    /// the caller's scope, uses the same instruction.
+    ///
+    /// Overlapping regions are well defined (the VM uses `copy_within`), so
+    /// `x := x` is a no-op rather than corruption.
+    ///
+    /// Encoded as a type-tag variant of `STORE_ARRAY` — the same op class, one
+    /// granularity coarser — rather than as an op class of its own. Op classes
+    /// exist to keep the dispatch table small, not to name operations, and
+    /// spending one on a single instruction would have consumed the last free
+    /// slot.
+    COPY_REGION = (OP_CLASS_STORE_ARRAY, 1) => [VarIndex, ArrayDescIndex, ArrayDescIndex]
+        note "size from descriptors; source offset from stack";
 
     // --- Truncation opcodes ---
 
