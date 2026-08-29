@@ -1623,7 +1623,6 @@ END_PROGRAM"
 
     // ---------------------------------------------------------------------
     // METHOD scoping.
-    // See specs/plans/2026-08-29-call-type-check-scoping.md.
     // ---------------------------------------------------------------------
 
     fn apply_with_methods(program: &str) -> crate::result::SemanticResult {
