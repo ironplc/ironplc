@@ -45,12 +45,11 @@
 //! END_PROGRAM
 //! ```
 
-use std::collections::HashMap;
-
 use ironplc_dsl::{
     common::*,
     core::{Id, Located},
     diagnostic::{Diagnostic, Label},
+    scope::ScopeNode,
     textual::*,
     visitor::Visitor,
 };
@@ -59,6 +58,7 @@ use ironplc_problems::Problem;
 use crate::{
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
+    scoped_table::ScopedTable,
     semantic_context::SemanticContext,
 };
 use ironplc_parser::options::CompilerOptions;
@@ -230,7 +230,7 @@ pub fn apply(
             context,
             options,
             diagnostics: vec![],
-            var_types: HashMap::new(),
+            var_types: ScopedTable::new(),
         },
         lib,
     )
@@ -240,8 +240,12 @@ struct RuleFunctionCallTypeCheck<'a> {
     context: &'a SemanticContext,
     options: &'a CompilerOptions,
     diagnostics: Vec<Diagnostic>,
-    /// Maps variable name to declared type for the current scope.
-    var_types: HashMap<Id, TypeName>,
+    /// Maps variable name to declared type, scoped.
+    ///
+    /// Each declaration the traversal enters pushes a frame, so a
+    /// method's locals do not outlive the method and a local shadows a
+    /// field of the same name only within its own body.
+    var_types: ScopedTable<'static, Id, TypeName>,
 }
 
 impl DiagnosticVisitor for RuleFunctionCallTypeCheck<'_> {
@@ -260,7 +264,7 @@ impl RuleFunctionCallTypeCheck<'_> {
                     return;
                 }
                 if let Variable::Symbolic(SymbolicVariableKind::Named(ref nv)) = target {
-                    if let Some(target_type) = self.var_types.get(&nv.name) {
+                    if let Some(target_type) = self.var_types.find(&nv.name) {
                         if let Some(ref return_type) = value.resolved_type {
                             if !are_types_compatible(target_type, return_type, self.options) {
                                 self.diagnostics.push(
@@ -305,7 +309,7 @@ impl RuleFunctionCallTypeCheck<'_> {
         let Variable::Symbolic(SymbolicVariableKind::Named(nv)) = target else {
             return;
         };
-        let Some(declared) = self.var_types.get(&nv.name) else {
+        let Some(declared) = self.var_types.find(&nv.name) else {
             return;
         };
         // Resolve aliases/subranges to the underlying elementary type so the
@@ -343,34 +347,30 @@ impl RuleFunctionCallTypeCheck<'_> {
 impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
     type Value = ();
 
-    fn visit_function_declaration(
-        &mut self,
-        node: &FunctionDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.var_types.clear();
-        node.recurse_visit(self)
+    /// Opens a declaration's scope.
+    ///
+    /// Replaces the per-POU `clear()` this rule used to do, which could
+    /// not express a method: clearing at a method boundary would discard
+    /// the enclosing function block's fields, and not clearing left a
+    /// method's locals shadowing those fields for every later method.
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+        match node {
+            ScopeNode::Function(_)
+            | ScopeNode::FunctionBlock(_)
+            | ScopeNode::Program(_)
+            | ScopeNode::Method(_) => self.var_types.enter(),
+        }
+        Ok(())
     }
 
-    fn visit_function_block_declaration(
-        &mut self,
-        node: &FunctionBlockDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.var_types.clear();
-        node.recurse_visit(self)
-    }
-
-    fn visit_program_declaration(
-        &mut self,
-        node: &ProgramDeclaration,
-    ) -> Result<Self::Value, Diagnostic> {
-        self.var_types.clear();
-        node.recurse_visit(self)
+    fn exit_scope(&mut self) {
+        self.var_types.exit();
     }
 
     fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
         if let VariableIdentifier::Symbol(ref id) = node.identifier {
             if let TypeReference::Named(ref type_name) = node.type_name() {
-                self.var_types.insert(id.clone(), type_name.clone());
+                self.var_types.add(id, type_name.clone());
             }
         }
         node.recurse_visit(self)
@@ -1601,5 +1601,98 @@ END_PROGRAM"
             &TypeName::from("ANY_REAL"),
             &opts,
         ));
+    }
+
+    // ---------------------------------------------------------------------
+    // METHOD scoping.
+    // See specs/plans/2026-08-29-call-type-check-scoping.md.
+    // ---------------------------------------------------------------------
+
+    fn apply_with_methods(program: &str) -> crate::result::SemanticResult {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        };
+        let (library, context) =
+            crate::test_helpers::parse_and_resolve_types_with_options(program, &options);
+        super::apply(&library, &context, &options)
+    }
+
+    /// A method's local belongs to the method. It used to be recorded
+    /// against the enclosing function block, so it overwrote a field of
+    /// the same name for every method compiled after it -- and the
+    /// mismatch below was accepted because `v` was still recorded as the
+    /// `REAL` from `A`.
+    #[test]
+    fn apply_when_method_local_shadows_field_then_sibling_method_uses_field_type() {
+        let errors = apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+VAR
+    v : INT;
+END_VAR
+METHOD A
+VAR
+    v : REAL;
+END_VAR
+    v := 1.5;
+END_METHOD
+METHOD B
+    v := 2.5;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .unwrap_err();
+
+        assert!(
+            errors
+                .iter()
+                .any(|d| d.code == Problem::AssignmentTypeMismatch.code()),
+            "expected an assignment type mismatch on the INT field, got {errors:?}"
+        );
+    }
+
+    /// A method's locals are still checked against their own declared
+    /// types once they live in the method's own scope.
+    #[test]
+    fn apply_when_method_local_assigned_wrong_type_then_error() {
+        let errors = apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+METHOD A
+VAR
+    b : BOOL;
+    i : INT;
+END_VAR
+    b := i;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .unwrap_err();
+
+        assert!(errors
+            .iter()
+            .any(|d| d.code == Problem::AssignmentTypeMismatch.code()));
+    }
+
+    /// A method reading the instance's field is not a mismatch: the
+    /// method scope nests inside the function block's.
+    #[test]
+    fn apply_when_method_assigns_field_from_matching_local_then_ok() {
+        assert!(apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+VAR
+    speed : INT;
+END_VAR
+METHOD SetSpeed
+VAR_INPUT
+    newSpeed : INT;
+END_VAR
+    speed := newSpeed;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .is_ok());
     }
 }
