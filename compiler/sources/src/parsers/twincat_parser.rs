@@ -9,6 +9,11 @@
 //! the body statements. The closing keyword (e.g. `END_PROGRAM`) is implicit
 //! in the XML structure and must be reconstructed for the ST parser.
 //!
+//! A function block's methods are split out the same way, each into its own
+//! `<Method>` element with the same `<Declaration>`/`<Implementation>` pair.
+//! They are reconstructed as `METHOD ... END_METHOD` and appended after the
+//! function block body, where the grammar expects them.
+//!
 //! Since the ST parser produces byte positions relative to the concatenated
 //! text, this module adjusts all positions to point to the correct locations
 //! in the original XML file using the CDATA byte offsets from roxmltree.
@@ -25,15 +30,72 @@ use log::debug;
 
 use super::st_parser;
 
+/// A run of bytes copied verbatim out of one CDATA section of the XML
+/// document into the combined ST text.
+struct CdataSegment {
+    /// Byte offset where this run starts in the combined ST text.
+    combined_start: usize,
+    /// Length of the run, in bytes.
+    len: usize,
+    /// Byte offset where the same bytes start in the XML document.
+    xml_start: usize,
+}
+
 /// Byte offset information for CDATA sections in the original XML document.
+///
+/// The combined ST text handed to the parser is a sequence of segments — one
+/// per CDATA section copied out of the XML — joined by synthetic text that
+/// exists only in the reconstruction (the separating newlines, `END_METHOD`,
+/// and the POU's closing keyword). Segments appear in combined-text order and
+/// do not overlap.
 struct CdataOffsets {
-    /// Byte offset where Declaration CDATA text starts in the XML document.
-    declaration_start: usize,
-    /// Length of the declaration text.
-    declaration_len: usize,
-    /// Byte offset where Implementation/ST CDATA text starts in the XML document.
-    /// None if there is no implementation section.
-    implementation_start: Option<usize>,
+    segments: Vec<CdataSegment>,
+}
+
+/// Assembles the combined ST text while recording, for every run of bytes
+/// copied out of the XML, where it came from.
+///
+/// Keeping the text and the offsets in one place is what makes the mapping
+/// back to XML positions reliable: text can only be added through
+/// `push_cdata` (copied, and therefore mapped) or `push_synthetic`
+/// (reconstructed, and therefore unmapped).
+struct CombinedText {
+    text: String,
+    segments: Vec<CdataSegment>,
+}
+
+impl CombinedText {
+    fn new() -> Self {
+        CombinedText {
+            text: String::new(),
+            segments: Vec::new(),
+        }
+    }
+
+    /// Append text copied from a CDATA section starting at `xml_start` in the
+    /// XML document.
+    fn push_cdata(&mut self, text: &str, xml_start: usize) {
+        self.segments.push(CdataSegment {
+            combined_start: self.text.len(),
+            len: text.len(),
+            xml_start,
+        });
+        self.text.push_str(text);
+    }
+
+    /// Append reconstructed text that has no counterpart in the XML document.
+    fn push_synthetic(&mut self, text: &str) {
+        self.text.push_str(text);
+    }
+
+    fn finish(self) -> (String, CdataOffsets) {
+        (
+            self.text,
+            CdataOffsets {
+                segments: self.segments,
+            },
+        )
+    }
 }
 
 /// Parse TwinCAT XML files into an IronPLC Library
@@ -140,16 +202,27 @@ fn parse_pou(
     file_id: &FileId,
     compiler_options: &CompilerOptions,
 ) -> Result<Library, Diagnostic> {
-    let (impl_text, impl_byte_offset) = extract_pou_implementation(object, file_id)?;
+    let (impl_text, impl_byte_offset) = extract_implementation(object, file_id)?;
     let closing = closing_keyword(&declaration_text);
 
-    let offsets = CdataOffsets {
-        declaration_start: declaration_byte_offset,
-        declaration_len: declaration_text.len(),
-        implementation_start: impl_byte_offset,
-    };
+    let mut builder = CombinedText::new();
+    builder.push_cdata(&declaration_text, declaration_byte_offset);
+    builder.push_synthetic("\n");
+    match impl_byte_offset {
+        Some(offset) => builder.push_cdata(&impl_text, offset),
+        None => builder.push_synthetic(&impl_text),
+    }
 
-    let combined = format!("{declaration_text}\n{impl_text}\n{closing}");
+    // Methods follow the function block body and precede END_FUNCTION_BLOCK,
+    // which is where `function_block_declaration` expects them.
+    if closing == "END_FUNCTION_BLOCK" {
+        append_methods(&mut builder, object, file_id)?;
+    }
+
+    builder.push_synthetic("\n");
+    builder.push_synthetic(closing);
+
+    let (combined, offsets) = builder.finish();
     debug!("POU combined ST ({} bytes)", combined.len());
 
     let result = st_parser::parse(&combined, file_id, compiler_options);
@@ -173,9 +246,11 @@ fn parse_dut(
     debug!("DUT declaration ST ({} bytes)", declaration_text.len());
 
     let offsets = CdataOffsets {
-        declaration_start: declaration_byte_offset,
-        declaration_len: declaration_text.len(),
-        implementation_start: None,
+        segments: vec![CdataSegment {
+            combined_start: 0,
+            len: declaration_text.len(),
+            xml_start: declaration_byte_offset,
+        }],
     };
 
     let result = st_parser::parse(&declaration_text, file_id, compiler_options);
@@ -216,25 +291,34 @@ fn adjust_diagnostic(offsets: &CdataOffsets, mut diag: Diagnostic) -> Diagnostic
     diag
 }
 
-/// Map a byte offset in the concatenated ST text to a byte offset in the
+/// Map a byte offset in the combined ST text to a byte offset in the
 /// original XML document.
 ///
-/// Positions within the declaration part (0..declaration_len) are shifted by
-/// the declaration CDATA offset. Positions in the implementation part
-/// (declaration_len+1..) are shifted by the implementation CDATA offset.
+/// A position inside a segment is shifted by that segment's CDATA offset. A
+/// position in the synthetic text between or after segments (the joining
+/// newlines, `END_METHOD`, the POU's closing keyword) has no counterpart in
+/// the XML, so it maps to the end of the nearest preceding segment — the
+/// closest real location the reader can be pointed at.
 fn adjust_byte_offset(offsets: &CdataOffsets, pos: usize) -> usize {
-    if pos <= offsets.declaration_len {
-        // Position is in the declaration part
-        pos + offsets.declaration_start
-    } else if let Some(impl_start) = offsets.implementation_start {
-        // Position is in the implementation part (after declaration + newline)
-        let impl_relative = pos - offsets.declaration_len - 1;
-        impl_relative + impl_start
-    } else {
-        // No implementation section — position is in the synthetic closing keyword.
-        // Point to the end of the declaration instead.
-        offsets.declaration_start + offsets.declaration_len
+    let mut preceding_end = None;
+
+    for segment in &offsets.segments {
+        if pos < segment.combined_start {
+            break;
+        }
+        if pos <= segment.combined_start + segment.len {
+            return segment.xml_start + (pos - segment.combined_start);
+        }
+        preceding_end = Some(segment.xml_start + segment.len);
     }
+
+    // Position is past the end of a segment and before the next one starts.
+    preceding_end.unwrap_or_else(|| {
+        offsets
+            .segments
+            .first()
+            .map_or(0, |segment| segment.xml_start)
+    })
 }
 
 /// Fold transform that adjusts all SourceSpan positions in a Library.
@@ -270,8 +354,74 @@ fn closing_keyword(declaration: &str) -> &'static str {
     }
 }
 
-/// Extract the ST implementation text and its byte offset from a POU element.
-fn extract_pou_implementation(
+/// Append every `<Method>` child of a POU to the combined text as an inline
+/// `METHOD ... END_METHOD` declaration.
+///
+/// TwinCAT stores each method as a sibling `<Method>` element rather than
+/// inline in the POU's own `<Declaration>`. A method element has the same
+/// shape as the POU itself: a `<Declaration>` (which already begins with the
+/// `METHOD` keyword and holds the signature and VAR blocks) and an optional
+/// `<Implementation><ST>` with the body. Only the closing `END_METHOD` is
+/// implicit in the XML structure and has to be reconstructed.
+///
+/// Only function block methods are appended. `method_declaration` is
+/// reachable only from `function_block_declaration`, so a method on a
+/// `PROGRAM`, a `FUNCTION`, or an interface has nowhere to go in the grammar
+/// and is still dropped.
+fn append_methods(
+    builder: &mut CombinedText,
+    pou: &roxmltree::Node,
+    file_id: &FileId,
+) -> Result<(), Diagnostic> {
+    for method in pou
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "Method")
+    {
+        let declaration = match find_child_element(&method, "Declaration") {
+            Some(elem) => elem,
+            None => {
+                return Err(Diagnostic::problem(
+                    Problem::TwinCatMalformed,
+                    Label::file(
+                        file_id.clone(),
+                        format!(
+                            "Method '{}' is missing required 'Declaration' element",
+                            method.attribute("Name").unwrap_or("<unnamed>")
+                        ),
+                    ),
+                ));
+            }
+        };
+
+        let (declaration_text, declaration_byte_offset) = cdata_text_with_offset(&declaration);
+        let (impl_text, impl_byte_offset) = extract_implementation(&method, file_id)?;
+
+        builder.push_synthetic("\n");
+        builder.push_cdata(&declaration_text, declaration_byte_offset);
+        builder.push_synthetic("\n");
+        match impl_byte_offset {
+            Some(offset) => builder.push_cdata(&impl_text, offset),
+            None => builder.push_synthetic(&impl_text),
+        }
+
+        // A method body must hold at least one statement, unlike a function
+        // block body which may be empty. TwinCAT writes a do-nothing method
+        // as a `<Method>` with no `<Implementation>` at all, so stand in an
+        // empty statement; the parser discards it and the method keeps the
+        // empty body it declares.
+        if impl_text.trim().is_empty() {
+            builder.push_synthetic(";");
+        }
+
+        builder.push_synthetic("\nEND_METHOD");
+    }
+
+    Ok(())
+}
+
+/// Extract the ST implementation text and its byte offset from an element
+/// that has an `<Implementation>` child — a POU or one of its methods.
+fn extract_implementation(
     pou: &roxmltree::Node,
     file_id: &FileId,
 ) -> Result<(String, Option<usize>), Diagnostic> {
@@ -341,566 +491,4 @@ fn cdata_text_with_offset(node: &roxmltree::Node) -> (String, usize) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use ironplc_dsl::common::{LibraryElementKind, TypeName};
-    use ironplc_dsl::core::FileId;
-
-    fn test_file_id() -> FileId {
-        FileId::from_string("test.TcPOU")
-    }
-
-    #[test]
-    fn parse_when_pou_with_declaration_and_st_then_succeeds() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    myVar : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-      <ST><![CDATA[myVar := myVar + 1;]]></ST>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-        let library = result.unwrap();
-        assert_eq!(library.elements.len(), 1);
-    }
-
-    #[test]
-    fn parse_when_pou_then_positions_point_into_xml() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    myVar : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-      <ST><![CDATA[myVar := myVar + 1;]]></ST>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default()).unwrap();
-
-        // Collect all spans to verify they point into the CDATA sections
-        use ironplc_dsl::fold::Fold;
-        let mut spans = Vec::new();
-        struct SpanCollector<'a> {
-            spans: &'a mut Vec<SourceSpan>,
-        }
-        impl Fold<()> for SpanCollector<'_> {
-            fn fold_source_span(&mut self, node: SourceSpan) -> Result<SourceSpan, ()> {
-                self.spans.push(node.clone());
-                Ok(node)
-            }
-        }
-        let mut collector = SpanCollector { spans: &mut spans };
-        let _ = collector.fold_library(result);
-
-        // All spans should point to positions within the XML document that
-        // fall inside CDATA sections
-        let cdata_start = xml.find("<![CDATA[").unwrap() + "<![CDATA[".len();
-        for span in &spans {
-            assert!(
-                span.start >= cdata_start,
-                "Span start {} should be >= CDATA start {} (pointing into XML CDATA)",
-                span.start,
-                cdata_start
-            );
-        }
-    }
-
-    #[test]
-    fn parse_when_pou_syntax_error_then_position_points_into_xml() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    myVar : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-      <ST><![CDATA[INVALID SYNTAX HERE !!!]]></ST>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let diag = result.unwrap_err();
-        // The error position should point into the Implementation CDATA
-        let impl_cdata_start = xml.find("INVALID").unwrap();
-        assert!(
-            diag.primary.location.start >= impl_cdata_start,
-            "Error position {} should be >= impl CDATA start {} (pointing into XML)",
-            diag.primary.location.start,
-            impl_cdata_start
-        );
-    }
-
-    #[test]
-    fn parse_when_function_block_pou_then_succeeds() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="FB_Counter" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[FUNCTION_BLOCK FB_Counter
-VAR
-    count : INT := 0;
-END_VAR]]></Declaration>
-    <Implementation>
-      <ST><![CDATA[count := count + 1;]]></ST>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-        let library = result.unwrap();
-        assert_eq!(library.elements.len(), 1);
-    }
-
-    #[test]
-    fn parse_when_gvl_then_succeeds() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <GVL Name="GVL_Main" Id="{00000000-0000-0000-0000-000000000000}">
-    <Declaration><![CDATA[VAR_GLOBAL
-    gCounter : INT := 0;
-    gRunning : BOOL := FALSE;
-END_VAR]]></Declaration>
-  </GVL>
-</TcPlcObject>"#;
-
-        let file_id = FileId::from_string("test.TcGVL");
-        let result = parse(xml, &file_id, &CompilerOptions::default());
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-    }
-
-    #[test]
-    fn parse_when_dut_then_succeeds() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <DUT Name="ST_MyStruct" Id="{00000000-0000-0000-0000-000000000000}">
-    <Declaration><![CDATA[TYPE ST_MyStruct :
-STRUCT
-    value : INT;
-    name : STRING;
-END_STRUCT;
-END_TYPE]]></Declaration>
-  </DUT>
-</TcPlcObject>"#;
-
-        let file_id = FileId::from_string("test.TcDUT");
-        let result = parse(xml, &file_id, &CompilerOptions::default());
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-    }
-
-    #[test]
-    fn parse_when_malformed_xml_then_returns_p0006() {
-        let xml = "NOT VALID XML <>";
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, "P0006");
-    }
-
-    #[test]
-    fn parse_when_wrong_root_element_then_returns_p0009() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<WrongRoot>
-  <POU Name="MAIN">
-    <Declaration><![CDATA[PROGRAM MAIN END_PROGRAM]]></Declaration>
-  </POU>
-</WrongRoot>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, "P0009");
-        assert!(diagnostic.primary.message.contains("TcPlcObject"));
-    }
-
-    #[test]
-    fn parse_when_missing_object_element_then_returns_p0009() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, "P0009");
-        assert!(diagnostic.primary.message.contains("POU, GVL, DUT, or Itf"));
-    }
-
-    #[test]
-    fn parse_when_missing_declaration_then_returns_p0009() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}">
-    <Implementation>
-      <ST><![CDATA[myVar := 1;]]></ST>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, "P0009");
-        assert!(diagnostic.primary.message.contains("Declaration"));
-    }
-
-    #[test]
-    fn parse_when_fbd_implementation_then_returns_p9003() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    myVar : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-      <FBD/>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let diagnostic = result.unwrap_err();
-        assert_eq!(diagnostic.code, Problem::XmlBodyTypeNotSupported.code());
-        assert!(diagnostic.primary.message.contains("FBD"));
-    }
-
-    #[test]
-    fn closing_keyword_when_program_then_returns_end_program() {
-        assert_eq!(closing_keyword("PROGRAM MAIN\nVAR\nEND_VAR"), "END_PROGRAM");
-    }
-
-    #[test]
-    fn closing_keyword_when_function_block_then_returns_end_function_block() {
-        assert_eq!(
-            closing_keyword("FUNCTION_BLOCK FB_Test\nVAR\nEND_VAR"),
-            "END_FUNCTION_BLOCK"
-        );
-    }
-
-    #[test]
-    fn closing_keyword_when_function_then_returns_end_function() {
-        assert_eq!(
-            closing_keyword("FUNCTION MyFunc : INT\nVAR\nEND_VAR"),
-            "END_FUNCTION"
-        );
-    }
-
-    #[test]
-    fn closing_keyword_when_interface_then_returns_end_interface() {
-        assert_eq!(closing_keyword("INTERFACE I_Drivable"), "END_INTERFACE");
-    }
-
-    #[test]
-    fn closing_keyword_when_unknown_keyword_then_returns_empty() {
-        // Unknown POU type — fallback returns empty string
-        assert_eq!(closing_keyword("UNKNOWN_TYPE Something"), "");
-    }
-
-    #[test]
-    fn closing_keyword_when_leading_whitespace_then_still_detects() {
-        assert_eq!(
-            closing_keyword("  PROGRAM MAIN\nVAR\nEND_VAR"),
-            "END_PROGRAM"
-        );
-    }
-
-    #[test]
-    fn parse_when_pou_with_no_implementation_then_succeeds() {
-        // POU with declaration only, no Implementation element
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    myVar : INT;
-END_VAR]]></Declaration>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-        let library = result.unwrap();
-        assert_eq!(library.elements.len(), 1);
-    }
-
-    fn opts_with_fb_inheritance() -> CompilerOptions {
-        CompilerOptions {
-            allow_fb_inheritance: true,
-            ..CompilerOptions::default()
-        }
-    }
-
-    #[test]
-    fn parse_when_itf_bare_interface_then_succeeds() {
-        // Modeled on a real .TcIO file's structure (Beckhoff TwinCAT
-        // interface, no base) — see
-        // specs/plans/2026-07-18-twincat-extends-implements-interface.md.
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <Itf Name="I_Drivable" Id="{00000000-0000-0000-0000-000000000000}">
-    <Declaration><![CDATA[INTERFACE I_Drivable
-]]></Declaration>
-  </Itf>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-        let library = result.unwrap();
-        assert_eq!(library.elements.len(), 1);
-        assert!(matches!(
-            library.elements[0],
-            LibraryElementKind::InterfaceDeclaration(_)
-        ));
-    }
-
-    #[test]
-    fn parse_when_itf_extends_base_interface_then_succeeds() {
-        // Modeled on a real .TcIO file's structure (e.g. `I_Focus.TcIO`
-        // extending `I_BaseAxis`).
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <Itf Name="I_Focus" Id="{00000000-0000-0000-0000-000000000000}">
-    <Declaration><![CDATA[INTERFACE I_Focus EXTENDS I_BaseAxis]]></Declaration>
-  </Itf>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &opts_with_fb_inheritance());
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-        let library = result.unwrap();
-        let interface = match &library.elements[0] {
-            LibraryElementKind::InterfaceDeclaration(decl) => decl,
-            other => panic!("expected InterfaceDeclaration, got {other:?}"),
-        };
-        assert_eq!(interface.extends, vec![TypeName::from("I_BaseAxis")]);
-    }
-
-    #[test]
-    fn parse_when_itf_and_default_dialect_then_err() {
-        // Without allow_fb_inheritance, INTERFACE is just an identifier.
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <Itf Name="I_Drivable" Id="{00000000-0000-0000-0000-000000000000}">
-    <Declaration><![CDATA[INTERFACE I_Drivable
-]]></Declaration>
-  </Itf>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn parse_when_pou_with_empty_implementation_then_succeeds() {
-        // Implementation exists but has no ST or other language child
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    myVar : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-    }
-
-    #[test]
-    fn parse_when_ld_implementation_then_returns_unsupported() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    myVar : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-      <LD/>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-        let diag = result.unwrap_err();
-        assert_eq!(diag.code, Problem::XmlBodyTypeNotSupported.code());
-        assert!(diag.primary.message.contains("LD"));
-    }
-
-    #[test]
-    fn parse_when_il_implementation_then_returns_unsupported() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    myVar : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-      <IL/>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-        let diag = result.unwrap_err();
-        assert_eq!(diag.code, Problem::XmlBodyTypeNotSupported.code());
-        assert!(diag.primary.message.contains("IL"));
-    }
-
-    #[test]
-    fn parse_when_sfc_implementation_then_returns_unsupported() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    myVar : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-      <SFC/>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-        let diag = result.unwrap_err();
-        assert_eq!(diag.code, Problem::XmlBodyTypeNotSupported.code());
-        assert!(diag.primary.message.contains("SFC"));
-    }
-
-    #[test]
-    fn parse_when_dut_with_invalid_syntax_then_returns_error_with_adjusted_position() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <DUT Name="ST_Bad" Id="{00000000-0000-0000-0000-000000000000}">
-    <Declaration><![CDATA[TYPE ST_Bad :
-INVALID SYNTAX HERE
-END_TYPE]]></Declaration>
-  </DUT>
-</TcPlcObject>"#;
-
-        let file_id = FileId::from_string("test.TcDUT");
-        let result = parse(xml, &file_id, &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let diag = result.unwrap_err();
-        // Position should point into the CDATA section in the XML
-        let cdata_start = xml.find("<![CDATA[").unwrap() + "<![CDATA[".len();
-        assert!(
-            diag.primary.location.start >= cdata_start,
-            "Error position {} should be >= CDATA start {}",
-            diag.primary.location.start,
-            cdata_start
-        );
-    }
-
-    #[test]
-    fn parse_when_pou_syntax_error_in_declaration_then_position_in_declaration() {
-        // Syntax error in the declaration section (not implementation)
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="MAIN" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[PROGRAM MAIN
-VAR
-    BAD SYNTAX : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-      <ST><![CDATA[x := 1;]]></ST>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_err());
-
-        let diag = result.unwrap_err();
-        // Should point into the first CDATA (declaration)
-        let decl_cdata_start = xml.find("<![CDATA[").unwrap() + "<![CDATA[".len();
-        assert!(
-            diag.primary.location.start >= decl_cdata_start,
-            "Error position {} should be >= declaration CDATA start {}",
-            diag.primary.location.start,
-            decl_cdata_start
-        );
-    }
-
-    #[test]
-    fn adjust_byte_offset_when_pos_in_implementation_then_adjusts_correctly() {
-        let offsets = CdataOffsets {
-            declaration_start: 100,
-            declaration_len: 50,
-            implementation_start: Some(200),
-        };
-
-        // Position 0 is in declaration: 0 + 100 = 100
-        assert_eq!(adjust_byte_offset(&offsets, 0), 100);
-
-        // Position 50 (= declaration_len) is in declaration: 50 + 100 = 150
-        assert_eq!(adjust_byte_offset(&offsets, 50), 150);
-
-        // Position 52 is in implementation: (52 - 50 - 1) + 200 = 201
-        assert_eq!(adjust_byte_offset(&offsets, 52), 201);
-    }
-
-    #[test]
-    fn adjust_byte_offset_when_no_implementation_and_pos_past_declaration_then_points_to_end() {
-        let offsets = CdataOffsets {
-            declaration_start: 100,
-            declaration_len: 50,
-            implementation_start: None,
-        };
-
-        // Position beyond declaration with no impl: returns declaration_start + declaration_len
-        assert_eq!(adjust_byte_offset(&offsets, 60), 150);
-    }
-
-    #[test]
-    fn parse_when_pou_with_function_declaration_then_succeeds() {
-        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
-<TcPlcObject Version="1.1.0.1">
-  <POU Name="FC_Add" Id="{00000000-0000-0000-0000-000000000000}" SpecialFunc="None">
-    <Declaration><![CDATA[FUNCTION FC_Add : INT
-VAR_INPUT
-    a : INT;
-    b : INT;
-END_VAR]]></Declaration>
-    <Implementation>
-      <ST><![CDATA[FC_Add := a + b;]]></ST>
-    </Implementation>
-  </POU>
-</TcPlcObject>"#;
-
-        let result = parse(xml, &test_file_id(), &CompilerOptions::default());
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
-        let library = result.unwrap();
-        assert_eq!(library.elements.len(), 1);
-    }
-}
+mod tests;

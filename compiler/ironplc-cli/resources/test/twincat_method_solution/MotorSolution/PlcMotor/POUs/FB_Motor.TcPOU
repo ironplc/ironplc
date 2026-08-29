@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.0">
+  <POU Name="FB_Motor" Id="{2f61c8a4-70d3-4b19-8e52-c0a7d9316bf5}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Method Name="SetSpeed" Id="{8c05e37b-4d92-41a6-b7f0-1e63a852d4c7}">
+      <Declaration><![CDATA[METHOD SetSpeed
+VAR_INPUT
+    value : REAL;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[speed := value;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Stop" Id="{d71b9e05-3a8c-4f62-90d1-6b47ce23a8f0}">
+      <Declaration><![CDATA[METHOD Stop
+]]></Declaration>
+    </Method>
+  </POU>
+</TcPlcObject>
