@@ -3,8 +3,8 @@
 //! Built into the dedicated `ironplcvmd` binary. The production `ironplcvm`
 //! binary does not include this module.
 //!
-//! Phase 4 lands incrementally (see
-//! `specs/plans/2026-06-25-dap-server-scaffold.md`). So far: the wire
+//! Phase 4 lands incrementally (see `specs/design/debugger-support.md`
+//! §"Layer 3: DAP Server"). So far: the wire
 //! [`framing`] layer, the hand-rolled message [`types`], the request [`state`]
 //! legality table, the [`launch`] preconditions, the isolated [`debug_info`]
 //! resolver, and the [`server`] event loop implementing the

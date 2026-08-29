@@ -1,7 +1,7 @@
 //! Hand-rolled Debug Adapter Protocol message types for the v1 server.
 //!
-//! These model only the small v1 surface (see
-//! `specs/plans/2026-06-25-dap-server-scaffold.md`): the handshake, line
+//! These model only the small v1 surface (see `specs/design/debugger-support.md`
+//! §"v1 Scope Decisions"): the handshake, line
 //! breakpoints, one synthetic thread, stack/scope/variable inspection, and the
 //! four execution-control commands. Everything wider — logpoints, `evaluate`,
 //! custom `ironplc/*` requests, variable forcing — is deferred and not modelled
