@@ -2,11 +2,12 @@
 
 Fixes [#1439](https://github.com/ironplc/ironplc/issues/1439).
 
-Delivered as eight slices, one pull request each. Every slice builds,
-passes `cd compiler && just`, and is independently releasable — no slice
-leaves the compiler in a state where `check` and `compile` disagree.
-Slices 1-6 close #1439; slices 7-8 are the symbol-environment half and
-can be deferred without reopening it.
+Delivered as four pull requests. Each builds, passes
+`cd compiler && just`, and is independently releasable — none leaves the
+compiler in a state where `check` and `compile` disagree. PR 1 is a
+prefactor with no behaviour change; PR 2 closes #1439; PR 3 fixes the
+type-checking half; PR 4 is the symbol-environment half and can be
+deferred without reopening the issue.
 
 ## Problem
 
@@ -204,104 +205,99 @@ stamping pass), so nothing here forecloses it.
 
 ### Behaviour change
 
-Source that compiles today starts erroring: the sibling-method leak
-(slice 4), the method-local constant leak (slice 5), and type errors
-inside method bodies that were previously invisible (slice 6). That is
+Source that compiles today starts erroring: the sibling-method leak and
+the method-local constant leak (PR 2), and type errors inside method
+bodies that were previously invisible (PR 3). That is
 the point of the change. No `.st` corpus file uses `METHOD`, and the
 existing METHOD tests are parser- and plc2plc-level, so the blast radius
 is small.
 
-## Slices
+## Pull requests
 
-| # | Slice | Crates | Behaviour |
+Four pull requests. The first is a prefactor that promises nothing
+changed; the second makes the change the prefactor made easy.
+
+| # | Pull request | Crates | Behaviour |
 |---|---|---|---|
-| 1 | Scope hooks in the traversal | `dsl`, `dsl_macro_derive` | none |
-| 2 | Derive guard for scope-bearing structs | `dsl_macro_derive` | none |
-| 3 | Codegen isolates method variables and binds the result name | `codegen` | fixes a latent miscompile |
-| 4 | `rule_use_declared_symbolic_var` on the hooks | `analyzer`, docs | **closes #1439** |
-| 5 | `xform_fold_initializer_expressions` on the hooks | `analyzer` | method-local constants stop leaking |
-| 6 | `xform_resolve_expr_types` on `ScopedTable` | `analyzer` | method bodies get type-checked |
-| 7 | `ScopePath` data model | `analyzer` | none |
-| 8 | `EnvironmentResolver` pushes method scopes | `analyzer`, `mcp` | method symbols scoped for LSP/MCP |
-
-**Why 3 precedes 4.** `ctx.var_index` (`compile.rs:1230`) reports
-`Problem::VariableUndefined` for a name it cannot resolve. If slice 4
-landed first, there would be a release where `check` accepts
-`GetSpeed := speed` and `compile` rejects it with the same P4007 the
-analyzer just stopped reporting. Binding the name in codegen first
-removes that window.
-
-Slices 5 and 6 are independent of each other and of 4; they may land in
-any order after 1. Slices 7-8 depend only on 1.
+| 1 | Prefactor: existing scopes move onto the traversal hooks | `dsl`, `dsl_macro_derive`, `analyzer` | **none** |
+| 2 | `METHOD` is a scope | `dsl`, `analyzer`, `codegen`, docs | **closes #1439** |
+| 3 | `xform_resolve_expr_types` on `ScopedTable` | `analyzer` | method bodies get type-checked |
+| 4 | Scope paths in `SymbolEnvironment` | `analyzer`, `mcp` | method symbols scoped for LSP/MCP |
 
 ---
 
-### Slice 1 — Scope hooks in the traversal
+### PR 1 — Prefactor: existing scopes move onto the traversal hooks
 
-*No behaviour change. Nothing implements the hooks yet.*
+*No behaviour change. No new tests. The existing suite is the proof.*
 
-- `compiler/dsl/src/scope.rs` (new) — `ScopeNode`, the `ScopeBearing`
-  trait, and the four impls. `MethodDeclaration::as_scope_node` documents
-  the `return_type.is_some()` rule, though each consuming pass makes the
-  decision.
-- `compiler/dsl/src/visitor.rs`, `compiler/dsl/src/fold.rs` — add
-  `enter_scope`/`exit_scope` with no-op defaults to both traits.
-- `compiler/dsl_macro_derive/src/lib.rs` — parse `scope` in the `recurse`
-  attribute. In `expand_struct_recurse_visit` and
+`ScopeNode` ships with **three** variants — `Function`, `FunctionBlock`,
+`Program` — and `MethodDeclaration` is deliberately not a scope yet. That
+is what keeps this pull request honest, and it sets up the next one: PR 2
+adds the fourth variant, and every exhaustive match fails to compile
+until it is handled. The enforcement mechanism gets exercised on its
+first real use rather than sitting untested until the next contributor
+needs it.
+
+- `compiler/dsl/src/scope.rs` (new) — `ScopeNode` (three variants), the
+  `ScopeBearing` trait, three impls.
+- `compiler/dsl/src/visitor.rs`, `compiler/dsl/src/fold.rs` —
+  `enter_scope`/`exit_scope` with no-op defaults on both traits.
+- `compiler/dsl_macro_derive/src/lib.rs` — parse `scope` and `no_scope`
+  in the `recurse` attribute; in `expand_struct_recurse_visit` and
   `expand_struct_recurse_fold`, move the existing body into a private
-  `*_inner` and emit the enter/exit wrapper when `scope` is set.
-- `compiler/dsl/src/common.rs` — `#[recurse(scope)]` on the four POU
-  structs.
+  `*_inner` and emit the enter/exit wrapper when `scope` is set. Add the
+  `variables: Vec<VarDecl>` guard described above.
+- `compiler/dsl/src/common.rs` — `#[recurse(scope)]` on
+  `FunctionDeclaration`, `FunctionBlockDeclaration` and
+  `ProgramDeclaration`; `#[recurse(no_scope)]` on `MethodDeclaration`,
+  with a comment citing #1439. The guard forces the annotation, so the
+  marker records today's (incorrect) behaviour explicitly rather than
+  leaving it implied by an omission — and PR 2's diff becomes one word
+  plus one match arm.
+- `compiler/analyzer/src/rule_use_declared_symbolic_var.rs` — three
+  `visit_*_declaration` overrides become one `enter_scope`/`exit_scope`
+  pair. A pure move: the same names are seeded into the same table at the
+  same points.
+- `compiler/analyzer/src/xform_fold_initializer_expressions.rs` — the
+  three enter/exit pairs at `:292`, `:303`, `:314` become the trait pair.
+  Also a pure move.
 
-Tests, in `dsl` beside the existing `Descender` visitor
-(`visitor.rs:456`): a recording visitor and a recording folder that
-capture enter/exit events and assert (a) the order and nesting for a
-function block containing two methods, (b) that depth returns to zero,
-and (c) that an error raised inside a body still fires `exit_scope`.
-These also keep the new code covered — no other slice exercises it.
+The only new test is the compile-fail case for the derive guard, which is
+the guarantee itself and cannot be deferred without weakening it. The
+generated wrapper needs no synthetic test: both migrated passes run under
+the existing suite, which is the point of migrating them in the same pull
+request.
 
-### Slice 2 — Derive guard for scope-bearing structs
+`xform_resolve_expr_types` is *not* migrated here — see PR 3.
 
-*No behaviour change.*
+### PR 2 — `METHOD` is a scope
 
-- `compiler/dsl_macro_derive/src/lib.rs` — a struct with a
-  `variables: Vec<VarDecl>` field must carry `#[recurse(scope)]` or
-  `#[recurse(no_scope)]`; otherwise emit a `syn::Error` naming the struct
-  and both spellings.
-- Compile-fail test (`trybuild` or equivalent) proving the rejection and
-  the message. **This test is the by-design guarantee** — without it the
-  guard can be silently weakened later.
+*Closes #1439 defects 1, 2 and 5.*
 
-### Slice 3 — Codegen isolates method variables and binds the result name
-
-*Fixes problem 4. No source-visible change yet.*
-
+- `compiler/dsl/src/scope.rs` — add `ScopeNode::Method` and the
+  `ScopeBearing` impl. Both migrated passes now fail to compile until
+  their match handles it, which is the mechanism doing its job.
+- `compiler/dsl/src/common.rs` — `no_scope` becomes `scope` on
+  `MethodDeclaration`.
+- `rule_use_declared_symbolic_var` — the `Method` arm seeds the method
+  name **only when `return_type` is `Some`**. Fixes defects 1 and 2.
+- `xform_fold_initializer_expressions` — the `Method` arm enters a scope
+  and seeds nothing. Fixes defect 5.
 - `compiler/codegen/src/compile_method.rs` — save and restore
   `ctx.variables` and `ctx.var_types` around each method, as
-  `compile_user_function` does at `compile_fn.rs:78`/`:467`; and insert
+  `compile_user_function` does at `compile_fn.rs:78`/`:467`; insert
   `return_id → return_var_index` before `emit_function_local_prologue`,
-  mirroring `compile_fn.rs:258`.
-
-Codegen keeps its own map — it binds names to `VarIndex` slots, not to
-declarations — so it shares the discipline, not the table.
-
-Test: two methods on one function block each declaring a local of the
-same name compile to *distinct* slots. That source is legal both before
-and after slice 4, so the test survives the analyzer change; a test built
-on the leak itself would not.
-
-### Slice 4 — `rule_use_declared_symbolic_var` on the hooks
-
-*Closes #1439 defects 1 and 2.*
-
-- `compiler/analyzer/src/rule_use_declared_symbolic_var.rs` — replace the
-  three `visit_*_declaration` overrides with one `enter_scope` matching
-  `ScopeNode` exhaustively (function block also seeds `inherited_fields`;
-  method seeds its name only when `return_type` is `Some`) and one
-  `exit_scope` calling `self.table.exit()`.
+  mirroring `compile_fn.rs:258`. Fixes defect 4, and must land no later
+  than this pull request: `ctx.var_index` (`compile.rs:1230`) reports
+  `Problem::VariableUndefined`, so an analyzer that accepts
+  `GetSpeed := speed` while codegen cannot resolve the name would ship a
+  release where `check` passes and `compile` fails with the same P4007
+  the analyzer just stopped reporting. It is ~40 lines and independently
+  justifiable as a latent-bug fix, so it can be split off to land first
+  if this pull request feels large.
 - `compiler/analyzer/src/scoped_table.rs` — debug assertion that the
   stack is back to depth 1 when a walk ends, so a leaked scope fails the
-  existing suite rather than surfacing later as a mis-resolution.
+  suite rather than surfacing later as a mis-resolution.
 - `docs/reference/language/object-orientation/method.rst:104-115` — the
   limitation currently covers both halves in one sentence. Narrow it: a
   method body assigns its own name to set the result value; `x :=
@@ -309,7 +305,7 @@ on the leak itself would not.
   `--allow-fb-inheritance` note at `:33-34` points at the same anchor and
   needs the same narrowing.
 
-Tests in the rule's own module:
+Tests in `rule_use_declared_symbolic_var`:
 
 - `apply_when_method_assigns_own_name_then_ok`
 - `apply_when_method_without_return_type_assigns_own_name_then_error`
@@ -317,6 +313,16 @@ Tests in the rule's own module:
 - `apply_when_method_references_function_block_field_then_ok`
 - `apply_when_method_references_inherited_field_then_ok`
 - `apply_when_two_methods_declare_same_local_name_then_ok`
+
+In `xform_fold_initializer_expressions`:
+`apply_when_method_local_constant_not_visible_in_sibling_method_then_error`,
+the sibling of the existing
+`apply_when_fb_local_constant_not_visible_in_other_fb_then_error`.
+
+In codegen: two methods on one function block each declaring a local of
+the same name compile to *distinct* slots. That source is legal both
+before and after this change, so the test does not depend on the leak it
+is proving absent.
 
 Plus, per the syntax-support guide, a `plc2plc` round-trip in
 `compiler/plc2plc/src/tests/methods.rs` and an execution test in
@@ -326,75 +332,70 @@ computes its result via `MethodName := …`. The execution test exercises
 blocked on #1421, so the value is observed through a field the method
 writes rather than through `v := m.GetSpeed()`.
 
-### Slice 5 — `xform_fold_initializer_expressions` on the hooks
+### PR 3 — `xform_resolve_expr_types` on `ScopedTable`
 
-*Fixes problem 5.*
+*Fixes defect 3.*
 
-- Replace the three enter/exit pairs at `:292`, `:303`, `:314` with the
-  trait pair.
-- Test:
-  `apply_when_method_local_constant_not_visible_in_sibling_method_then_error`,
-  the sibling of the existing
-  `apply_when_fb_local_constant_not_visible_in_other_fb_then_error`.
+Held out of PR 1 because it is not a call-site move. `ExprTypeResolver`
+keeps flat `var_types` / `array_element_types` maps that it `clear()`s at
+each POU boundary (`:526`, `:543`, `:555`); clearing at a method boundary
+would wipe the enclosing function block's fields, so the maps themselves
+have to become scoped. More importantly, this is the one pass where a
+mistake is silent — an unresolved name does not error, it skips the type
+check, which is exactly how defect 3 stayed hidden — so "existing tests
+pass" is a weaker promise here than elsewhere and deserves its own
+review.
 
-### Slice 6 — `xform_resolve_expr_types` on `ScopedTable`
+One deliberate behaviour delta: every POU fold inserts locals and then
+calls `seed_implicit_globals()` (`:513-514`), so a global currently
+overwrites a same-named local; under a scope stack the local shadows the
+global, which is correct. It is close to unreachable today — top-level
+`VAR_GLOBAL` never reaches `global_var_types` (verified: `y := i` with a
+`BOOL` global and an `INT` local exits 0), leaving only the two
+`__SYSTEM_UP_*` names — but it is a real change and is the reason this
+pull request cannot claim behaviour neutrality.
 
-*Fixes problem 3. The largest analyzer change.*
-
-`ExprTypeResolver` keeps flat `var_types` / `array_element_types` maps
-that it `clear()`s at each POU boundary (`:526`, `:543`, `:555`).
-Clearing at a method boundary would wipe the enclosing function block's
-fields, so the existing idiom cannot be extended to methods — the maps
-have to become scoped.
-
-Order within the slice, so review can follow it:
+Order within the pull request, so review can follow it:
 
 1. Convert both maps to `ScopedTable`, keeping function, function block
    and program behaviour identical. Move globals into the base frame in
    `fold_library`, which lets `seed_implicit_globals` and its per-POU
    re-seeding go away. Existing tests must pass unchanged.
 2. The `ScopeNode::Method` arm then falls out of the machinery, which is
-   what fixes problem 3.
+   what fixes defect 3.
 3. Seed the method's own name at its resolved return type, mirroring the
-   function case at `:520-525`, so the assignment slice 4 made legal is
-   also type-checked.
+   function case at `:520-525`, so the assignment PR 2 made legal is also
+   type-checked.
 
 Tests:
 
 - `apply_when_method_local_assigned_wrong_type_then_error` — the P4035
-  that problem 3 currently swallows
+  that defect 3 currently swallows
 - `apply_when_method_local_shadows_field_then_uses_local_type`
 - `apply_when_method_assigns_own_name_then_result_type_resolved`
 - `apply_when_method_assigns_own_name_wrong_type_then_error`
 
-### Slice 7 — `ScopePath` data model
+### PR 4 — Scope paths in `SymbolEnvironment`
 
-*No behaviour change: every path is still depth 1 until slice 8.*
+*Method symbols become correctly scoped for LSP and MCP consumers.*
 
 - `compiler/analyzer/src/symbol_environment.rs` — `ScopePath`, the new
   `ScopeKind`, `parent()`, and the chain-walking `find`. Delete
   `resolution_cache` (constructed and cleared, never read) and
   `find_in_scope_hierarchy` (`#[allow(dead_code)]`, subsumed by the new
   `find`).
-- Four production call sites construct `ScopeKind::Named` and each names
-  a POU scope at depth 1, so each becomes a one-segment path:
-  `extractors.rs:220` and `:238`,
-  `mcp/src/tools/project_io.rs:100`, `mcp/src/runner.rs:74`. Six further
-  sites are in tests.
-- Test: `find` reaches an outer scope through two levels of nesting, and
-  an inner declaration shadows an outer one of the same name.
-
-### Slice 8 — `EnvironmentResolver` pushes method scopes
-
-*Method symbols become correctly scoped for LSP and MCP consumers.*
-
 - `compiler/analyzer/src/xform_resolve_symbol_and_function_environment.rs`
   — `scope: Option<Id>` becomes a `Vec<Id>` stack driven by
   `enter_scope`/`exit_scope`; `current_scope()` reads it.
-- Tests: a method parameter resolves at `⟨FB, Method⟩` and not at
-  `⟨FB⟩`; two methods with the same local name keep distinct entries; a
-  function block field is still found from inside a method by the parent
-  walk.
+- Four production call sites construct `ScopeKind::Named` and each names
+  a POU scope at depth 1, so each becomes a one-segment path:
+  `extractors.rs:220` and `:238`, `mcp/src/tools/project_io.rs:100`,
+  `mcp/src/runner.rs:74`. Six further sites are in tests.
+- Tests: `find` reaches an outer scope through two levels of nesting; an
+  inner declaration shadows an outer one of the same name; a method
+  parameter resolves at `⟨FB, Method⟩` and not at `⟨FB⟩`; two methods
+  with the same local name keep distinct entries; a function block field
+  is still found from inside a method by the parent walk.
 - Check whether `specs/design/expression-type-resolution.md` needs a
   requirement for method-scoped resolution.
 
@@ -407,7 +408,7 @@ Tests:
   Both must land before `METHOD … : T` is usable end to end.
 - **`CONFIGURATION` and `RESOURCE` scopes.** Both implement
   `HasVariables` (`configuration.rs:41`, `:77`) over differently named
-  fields, so neither is caught by the slice 2 guard. Under IEC 61131-3
+  fields, so neither is caught by the PR 1 guard. Under IEC 61131-3
   §2.7.1 a resource's `VAR_GLOBAL` is visible to the programs on it, so
   they are arguably scopes; `EnvironmentResolver` does not handle them
   today either, and nothing in #1439 depends on it. Recorded here so the
@@ -421,16 +422,13 @@ them fire correctly.
 ## Tasks
 
 - [ ] Commit this plan
-- [ ] Slice 1 — scope hooks in the traversal (`dsl`, `dsl_macro_derive`)
-- [ ] Slice 2 — derive guard + compile-fail test
-- [ ] Slice 3 — codegen method variable isolation and result-name binding
-- [ ] Slice 4 — `rule_use_declared_symbolic_var`, balance assertion, docs, round-trip and execution tests
-- [ ] Slice 5 — `xform_fold_initializer_expressions`
-- [ ] Slice 6 — `xform_resolve_expr_types` on `ScopedTable`
-- [ ] Confirm every reproduction in *Problem* now behaves correctly
-- [ ] Slice 7 — `ScopePath` data model
-- [ ] Slice 8 — `EnvironmentResolver` method scopes
+- [ ] PR 1 — prefactor: hooks, derive guard, migrate the two pure-move passes
+- [ ] PR 2 — `METHOD` is a scope: dsl, analyzer, codegen, docs, tests
+- [ ] Confirm reproductions 1, 2, 4 and 5 in *Problem* now behave correctly
+- [ ] PR 3 — `xform_resolve_expr_types` on `ScopedTable`
+- [ ] Confirm reproduction 3 in *Problem* now behaves correctly
+- [ ] PR 4 — scope paths in `SymbolEnvironment`
 
 ## Verification
 
-`cd compiler && just` on every slice.
+`cd compiler && just` on every pull request.
