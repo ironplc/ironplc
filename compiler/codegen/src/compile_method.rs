@@ -166,7 +166,7 @@ fn compile_user_method(
             .unwrap_or(DEFAULT_OP_TYPE),
         Some(FunctionReturnType::String(_)) | Some(FunctionReturnType::WString(_)) => {
             // STRING/WSTRING method returns aren't implemented in this
-            // slice -- see specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md.
+            // slice.
             return Err(Diagnostic::todo());
         }
         None => DEFAULT_OP_TYPE,

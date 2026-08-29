@@ -137,7 +137,7 @@ pub fn parse(
     // Find the POU, GVL, DUT, or Itf (interface) child element. Itf holds
     // a Beckhoff TwinCAT INTERFACE declaration — a separate object type
     // from POU, stored in its own .TcIO file (see
-    // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+    // specs/design/beckhoff-twincat-dialect.md §1.3).
     let object = root
         .children()
         .find(|n| n.is_element() && matches!(n.tag_name().name(), "POU" | "GVL" | "DUT" | "Itf"))

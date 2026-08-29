@@ -1,8 +1,7 @@
 //! Marks AST nodes representing non-standard language extensions
 //! that IronPLC parses but does not yet semantically analyze.
 //!
-//! See `specs/design/beckhoff-twincat-dialect.md` and
-//! `specs/plans/2026-07-18-twincat-extends-implements-interface.md`.
+//! See `specs/design/beckhoff-twincat-dialect.md`.
 
 use crate::core::SourceSpan;
 

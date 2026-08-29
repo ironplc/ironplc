@@ -1,7 +1,5 @@
 //! Computes, for every `FUNCTION_BLOCK` with an `EXTENDS` clause, the set
 //! of fields inherited from its ancestor chain.
-//!
-//! See `specs/plans/2026-07-20-twincat-extends-field-inheritance.md`.
 
 use std::collections::{HashMap, HashSet};
 
