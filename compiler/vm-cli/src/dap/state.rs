@@ -1,7 +1,7 @@
 //! DAP request legality per VM phase.
 //!
-//! The v1 server is a single-threaded state machine (see
-//! `specs/plans/2026-06-25-dap-server-scaffold.md`). This module owns the
+//! The v1 server is a single-threaded state machine (see `specs/design/debugger-support.md`
+//! §"Single-threaded DAP loop (v1)"). This module owns the
 //! *legality table* only — a pure `legal(phase, command)` predicate. A request
 //! that is illegal in the current phase short-circuits to a DAP error response
 //! with the message `requestNotApplicable`, without touching the VM. The phase

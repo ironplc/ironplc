@@ -6,8 +6,7 @@
 //! path the production `ironplcvm` binary uses in `cli.rs`), so there is no
 //! duplicated sizing logic here.
 //!
-//! The preconditions (see the plan,
-//! `specs/plans/2026-06-25-dap-server-scaffold.md` §"Launch preconditions"):
+//! The preconditions:
 //! 1. A debug section must be present, else [`LaunchError::NoDebugInfo`].
 //! 2. There must be exactly one program instance, else
 //!    [`LaunchError::MultiInstanceUnsupported`] (the v1 limitation described in
