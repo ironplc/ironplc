@@ -301,6 +301,7 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
             ScopeNode::Function(node) => &node.variables,
             ScopeNode::FunctionBlock(node) => &node.variables,
             ScopeNode::Program(node) => &node.variables,
+            ScopeNode::Method(node) => &node.variables,
         };
         register_constants(&mut self.constants, variables, &mut self.diagnostics);
 
@@ -686,5 +687,44 @@ mod tests {
         assert!(diagnostics
             .iter()
             .all(|d| d.code == Problem::ConstantExpressionOverflow.code()));
+    }
+
+    /// A method's `VAR CONSTANT` belongs to that method. Before the
+    /// method scope existed every method's constants were registered in
+    /// the enclosing function block's scope, so a sibling could fold
+    /// against them. See
+    /// https://github.com/ironplc/ironplc/issues/1439.
+    #[test]
+    fn apply_when_method_local_constant_not_visible_in_sibling_method_then_error() {
+        let options = CompilerOptions {
+            allow_fb_inheritance: true,
+            ..opts()
+        };
+        let lib = parse(
+            "
+            FUNCTION_BLOCK fb1
+            VAR
+                x : LREAL;
+            END_VAR
+            METHOD m1
+            VAR CONSTANT
+                LOCAL_SCALE : LREAL := 2.0;
+            END_VAR
+                x := 1.0;
+            END_METHOD
+            METHOD m2
+            VAR
+                d2r : LREAL := LOCAL_SCALE*180.0;
+            END_VAR
+                x := 2.0;
+            END_METHOD
+            END_FUNCTION_BLOCK
+        ",
+            &options,
+        );
+        let diagnostics = apply_expect_diagnostics(lib, &options);
+        assert!(diagnostics
+            .iter()
+            .all(|d| d.code == Problem::InitializerNotConstantExpression.code()));
     }
 }

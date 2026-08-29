@@ -185,3 +185,76 @@ END_PROGRAM
     // i and x follow in declared order.
     assert_eq!(bufs.vars[2].as_i32(), 3);
 }
+
+/// A method produces its result by assigning its own name, the same way
+/// a `FUNCTION` body does. Consuming the result at the call site is a
+/// separate gap (#1421), so the body reads the result variable back into
+/// a field to prove the name really binds to the return slot rather than
+/// to a discarded scratch location.
+/// See https://github.com/ironplc/ironplc/issues/1439.
+#[test]
+fn end_to_end_when_method_assigns_own_name_then_result_variable_round_trips() {
+    let source = "
+FUNCTION_BLOCK FB_Doubler
+VAR
+    nLast : DINT;
+END_VAR
+METHOD Double : DINT
+VAR_INPUT
+    nIn : DINT;
+END_VAR
+    Double := nIn * 2;
+    nLast := Double;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    d : FB_Doubler;
+    x : DINT;
+END_VAR
+d.Double(21);
+x := d.nLast;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+
+    assert_eq!(bufs.vars[1].as_i32(), 42);
+}
+
+/// A method's local shadows a field of the same name for that method
+/// only. The next method compiled must still resolve the name to the
+/// field, which it does not if the method's bindings are left in the
+/// compile context after it finishes.
+#[test]
+fn end_to_end_when_method_local_shadows_field_then_sibling_method_writes_field() {
+    let source = "
+FUNCTION_BLOCK FB_Shadow
+VAR
+    v : DINT;
+END_VAR
+METHOD Shadows
+VAR
+    v : DINT;
+END_VAR
+    v := 99;
+END_METHOD
+METHOD WritesField
+    v := 7;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+    s : FB_Shadow;
+    x : DINT;
+END_VAR
+s.Shadows();
+s.WritesField();
+x := s.v;
+END_PROGRAM
+";
+    let (_c, bufs) = parse_and_run(source, &opts_with_fb_inheritance());
+
+    assert_eq!(bufs.vars[1].as_i32(), 7);
+}
