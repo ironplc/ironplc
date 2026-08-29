@@ -74,30 +74,46 @@ subtractive from `specs/plans/`.
 
 ## The new process
 
+**Every non-trivial change starts with a GitHub issue.** The issue is the
+durable record of the work, and it exists so that work cannot be forgotten.
+Because the plan file is deleted at merge, anything a plan described but did
+not deliver would otherwise disappear with it. The issue is what makes that
+impossible. It is not an archive of the plan text.
+
+The current backlog shows this failure mode in its existing form: 1,074
+unticked checkboxes across 108 plans, and 46 plans where no box was ever
+ticked. That work was written down, never done, and never surfaced again,
+because nobody re-reads a merged plan. Deleting plan files without issues
+would convert a quiet failure into a silent one.
+
 **Single-PR work:**
 
-1. Write the plan to `specs/plans/YYYY-MM-DD-short-description.md`.
-2. Commit it as the first commit on the branch. Review it as a file diff.
-3. Implement, following the plan.
-4. Any decision worth keeping lands as an ADR or a `specs/design/` update **in
+1. Open an issue describing the work.
+2. Write the plan to `specs/plans/YYYY-MM-DD-short-description.md`, referencing
+   the issue.
+3. Commit it as the first commit on the branch. Review it as a file diff.
+4. Implement, following the plan.
+5. Any decision worth keeping lands as an ADR or a `specs/design/` update **in
    the same PR**.
-5. `git rm` the plan file before merge.
-
-The squashed commit contains the implementation and any ADR or design change,
-and no plan. The plan's add-commit remains viewable on the PR page — GitHub
-retains `refs/pull/*/head` permanently (1,354 such refs on this repository
-today), so the reviewed artifact survives without a manual archiving step.
+6. Anything the plan described that the PR does not deliver goes back onto the
+   issue **before** the plan file is removed.
+7. `git rm` the plan file before merge.
+8. Close the issue only when nothing is outstanding.
 
 **Multi-PR work** (43 of 237 existing plans use phase/slice language, so
 roughly one change in five):
 
-- A GitHub **issue** holds the overall plan and slice breakdown. Its job is
-  coordination across the PR series, not archival.
+- The issue holds the overall plan and slice breakdown and stays open across
+  the PR series, tracking which slices remain.
 - Each PR commits only **its own slice's** plan, reviews it, and deletes it
   before merge.
 
 No plan content reaches `main` in either case, and no PR needs a second
-surviving commit.
+surviving commit. Because the repository squash-merges, the add and the delete
+cancel within the squashed commit. The plan's add-commit also remains viewable
+on the PR page — GitHub retains `refs/pull/*/head` permanently (1,354 such
+refs on this repository today) — so the reviewed text is recoverable, but the
+issue, not the PR page, is what carries unfinished work forward.
 
 **Citing plans is prohibited.** Code comments, workflows, `justfile`, design
 documents and ADRs must cite ADRs or design documents. A plan is a snapshot of
@@ -174,7 +190,9 @@ Nothing is left pointing at `specs/plans/` when this phase completes.
 - [ ] Rewrite the `specs/plans/` section of `development-standards.md` to
       describe plans as branch-local artifacts deleted before merge
 - [ ] Update the Planning Requirement section with the single-PR and multi-PR
-      flows described above
+      flows described above, including the requirement that every non-trivial
+      change opens an issue and that undelivered work returns to the issue
+      before the plan file is removed
 - [ ] Update the "Choosing the Right Location" table
 - [ ] Update `steering-file-guidelines.md` routing rule
 - [ ] Update `CLAUDE.md`, `CURSOR.md`, `CONTRIBUTING.md`,
