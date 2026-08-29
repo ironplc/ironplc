@@ -543,8 +543,7 @@ END_FUNCTION";
 
     // ---------------------------------------------------------------------
     // METHOD scoping.
-    // See specs/plans/2026-08-28-method-scoping-and-scope-paths.md and
-    // https://github.com/ironplc/ironplc/issues/1439.
+    // See https://github.com/ironplc/ironplc/issues/1439.
     // ---------------------------------------------------------------------
 
     fn resolve_with_methods(program: &str) -> (SymbolEnvironment, FunctionEnvironment) {

@@ -199,8 +199,7 @@ jobs:
       # The Visual Studio Marketplace build (extension ID
       # ironplc.ironplc-vscode). The two registries are independent namespaces
       # and each VSIX carries its own extension ID, so each registry is
-      # published from its own artifact. See
-      # specs/plans/vscode-marketplace-extension-id.md.
+      # published from its own artifact.
       - name: Download Marketplace VSIX Build Artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
