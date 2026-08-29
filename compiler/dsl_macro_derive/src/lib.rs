@@ -47,9 +47,24 @@ pub fn recurse_macro_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     let name = &ast.ident;
 
+    let scope = match scope_attr(&ast.attrs) {
+        Ok(scope) => scope,
+        Err(err) => return err.to_compile_error().into(),
+    };
+
+    if let syn::Data::Struct(data_struct) = &ast.data {
+        if let syn::Fields::Named(named_fields) = &data_struct.fields {
+            if let Err(err) = check_scope_declared(name, named_fields, scope) {
+                return err.to_compile_error().into();
+            }
+        }
+    }
+
     let visit_res: Result<TokenStream> = match &ast.data {
         syn::Data::Struct(data_struct) => match &data_struct.fields {
-            syn::Fields::Named(named_fields) => expand_struct_recurse_visit(name, named_fields),
+            syn::Fields::Named(named_fields) => {
+                expand_struct_recurse_visit(name, named_fields, scope)
+            }
             _ => {
                 unimplemented!("#[derive(Recurse)] is only supported for structs with named types")
             }
@@ -63,7 +78,9 @@ pub fn recurse_macro_derive(input: TokenStream) -> TokenStream {
 
     let fold_res: Result<TokenStream> = match &ast.data {
         syn::Data::Struct(data_struct) => match &data_struct.fields {
-            syn::Fields::Named(named_fields) => expand_struct_recurse_fold(name, named_fields),
+            syn::Fields::Named(named_fields) => {
+                expand_struct_recurse_fold(name, named_fields, scope)
+            }
             _ => {
                 unimplemented!("#[derive(Recurse)] is only supported for structs with named types")
             }
@@ -77,6 +94,100 @@ pub fn recurse_macro_derive(input: TokenStream) -> TokenStream {
 
     visit_res.extend(fold_res);
     visit_res
+}
+
+/// Whether a declaration says it opens a lexical scope.
+///
+/// See `ironplc_dsl::scope` for what a scope is and why the traversal
+/// rather than each pass is what opens one.
+#[derive(Clone, Copy, PartialEq)]
+enum ScopeAttr {
+    /// `#[recurse(scope)]` -- the derived traversal brackets the
+    /// recursion with `enter_scope`/`exit_scope`.
+    Scope,
+    /// `#[recurse(no_scope)]` -- it deliberately does not.
+    NoScope,
+    /// Neither, which is only allowed for a declaration that holds no
+    /// variables of its own. See `check_scope_declared`.
+    Absent,
+}
+
+/// Returns the scope attribute declared on a type, or `Absent`.
+fn scope_attr(attrs: &[Attribute]) -> Result<ScopeAttr> {
+    let mut scope = ScopeAttr::Absent;
+    for attr in attrs {
+        if attr.path().is_ident("recurse") {
+            attr.parse_nested_meta(|meta| {
+                // #[recurse(scope)]
+                if meta.path.is_ident("scope") {
+                    scope = ScopeAttr::Scope;
+                    return Ok(());
+                }
+                // #[recurse(no_scope)]
+                if meta.path.is_ident("no_scope") {
+                    scope = ScopeAttr::NoScope;
+                    return Ok(());
+                }
+                Err(meta.error("unrecognized value in recurse"))
+            })?;
+        }
+    }
+    Ok(scope)
+}
+
+/// Rejects a declaration that owns variables without saying whether it
+/// scopes them.
+///
+/// A struct holding `variables: Vec<VarDecl>` is a program organization
+/// unit or something shaped like one, so whether those variables are
+/// visible outside its own body is a question that has to be answered
+/// deliberately. Left unstated, it answers itself as "not a scope",
+/// silently and in every pass at once -- which is how a `METHOD`'s
+/// locals came to leak into its siblings
+/// (https://github.com/ironplc/ironplc/issues/1439). Requiring the
+/// attribute turns that omission into a build error at the declaration
+/// itself.
+///
+/// The check is syntactic, so a declaration that holds variables under
+/// another field name (`ResourceDeclaration::global_vars`,
+/// `ConfigurationDeclaration::global_var`) is not reached by it.
+fn check_scope_declared(name: &Ident, fields: &FieldsNamed, scope: ScopeAttr) -> Result<()> {
+    if scope != ScopeAttr::Absent {
+        return Ok(());
+    }
+
+    for field in &fields.named {
+        let Some(ident) = field.ident.as_ref().filter(|id| *id == "variables") else {
+            continue;
+        };
+        let (inner, container) = extract_type_ident_from_path(&field.ty);
+        if container != DeclaredType::Vec || !type_is_named(inner, "VarDecl") {
+            continue;
+        }
+        return Err(Error::new(
+            ident.span(),
+            format!(
+                "`{name}` declares `variables: Vec<VarDecl>`, so it must say whether it opens a \
+                 lexical scope: add `#[recurse(scope)]` to bracket its contents with \
+                 `enter_scope`/`exit_scope`, or `#[recurse(no_scope)]` to state that its \
+                 variables are visible to the enclosing scope"
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Returns whether a type is the named path type, ignoring any qualifier.
+fn type_is_named(ty: &syn::Type, name: &str) -> bool {
+    match ty {
+        syn::Type::Path(type_path) => type_path
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == name),
+        _ => false,
+    }
 }
 
 /// Derives an implementation of the `Located` trait for a struct.
@@ -286,7 +397,11 @@ fn expand_enum_recurse_visit(name: &Ident, data_enum: &DataEnum) -> Result<Token
 }
 
 /// Returns a stream of tokens that implement recursive visit for a struct.
-fn expand_struct_recurse_visit(name: &Ident, fields: &FieldsNamed) -> Result<TokenStream> {
+fn expand_struct_recurse_visit(
+    name: &Ident,
+    fields: &FieldsNamed,
+    scope: ScopeAttr,
+) -> Result<TokenStream> {
     // Filter out all fields that are marked as do not included
     let included_fields: Result<Vec<&Field>> = fields
         .named
@@ -344,15 +459,46 @@ fn expand_struct_recurse_visit(name: &Ident, fields: &FieldsNamed) -> Result<Tok
         }
     });
 
-    // Create the recurse implementation method for the type.
-    let gen = quote! {
-        impl #name {
-            pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(
-                &self,
-                v: &mut V,
-            ) -> Result<V::Value, E> {
-                #(#visit_methods;)*
-                Ok(V::Value::default())
+    let body = quote! {
+        #(#visit_methods;)*
+        Ok(V::Value::default())
+    };
+
+    // Create the recurse implementation method for the type. A scope-bearing
+    // declaration brackets the recursion with the visitor's scope hooks. The
+    // body moves into a private method so that `exit_scope` runs even when it
+    // returns early through `?`, which is what makes the pair impossible for a
+    // visitor to leave unbalanced.
+    let gen = if scope == ScopeAttr::Scope {
+        quote! {
+            impl #name {
+                pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(
+                    &self,
+                    v: &mut V,
+                ) -> Result<V::Value, E> {
+                    v.enter_scope(ScopeBearing::as_scope_node(self))?;
+                    let result = self.recurse_visit_inner(v);
+                    v.exit_scope();
+                    result
+                }
+
+                fn recurse_visit_inner<V: Visitor<E> + ?Sized, E>(
+                    &self,
+                    v: &mut V,
+                ) -> Result<V::Value, E> {
+                    #body
+                }
+            }
+        }
+    } else {
+        quote! {
+            impl #name {
+                pub fn recurse_visit<V: Visitor<E> + ?Sized, E>(
+                    &self,
+                    v: &mut V,
+                ) -> Result<V::Value, E> {
+                    #body
+                }
             }
         }
     };
@@ -423,7 +569,11 @@ fn expand_enum_recurse_fold(name: &Ident, data_enum: &DataEnum) -> Result<TokenS
 }
 
 /// Returns a stream of tokens that implement recursive fold for a struct.
-fn expand_struct_recurse_fold(name: &Ident, fields: &FieldsNamed) -> Result<TokenStream> {
+fn expand_struct_recurse_fold(
+    name: &Ident,
+    fields: &FieldsNamed,
+    scope: ScopeAttr,
+) -> Result<TokenStream> {
     // Generate the dispatch methods for each of the items in the type.
     let fold_items = fields.named.iter().map(|f| {
         let name = &f.ident;
@@ -461,13 +611,41 @@ fn expand_struct_recurse_fold(name: &Ident, fields: &FieldsNamed) -> Result<Toke
         }
     });
 
-    // Create the recurse implementation method for the type.
-    let gen = quote! {
-        impl #name {
-            pub fn recurse_fold<F: Fold<E> + ?Sized, E>(self, f: &mut F) -> Result<#name, E> {
-                Ok(#name {
-                    #(#fold_items,)*
-                })
+    let body = quote! {
+        Ok(#name {
+            #(#fold_items,)*
+        })
+    };
+
+    // Create the recurse implementation method for the type. See
+    // `expand_struct_recurse_visit` for why a scope-bearing declaration splits
+    // the body into a private method. The scope node borrows `self` only for
+    // the duration of the `enter_scope` call, which is why the by-value fold
+    // signature still works.
+    let gen = if scope == ScopeAttr::Scope {
+        quote! {
+            impl #name {
+                pub fn recurse_fold<F: Fold<E> + ?Sized, E>(self, f: &mut F) -> Result<#name, E> {
+                    f.enter_scope(ScopeBearing::as_scope_node(&self))?;
+                    let result = self.recurse_fold_inner(f);
+                    f.exit_scope();
+                    result
+                }
+
+                fn recurse_fold_inner<F: Fold<E> + ?Sized, E>(
+                    self,
+                    f: &mut F,
+                ) -> Result<#name, E> {
+                    #body
+                }
+            }
+        }
+    } else {
+        quote! {
+            impl #name {
+                pub fn recurse_fold<F: Fold<E> + ?Sized, E>(self, f: &mut F) -> Result<#name, E> {
+                    #body
+                }
             }
         }
     };
@@ -477,6 +655,7 @@ fn expand_struct_recurse_fold(name: &Ident, fields: &FieldsNamed) -> Result<Toke
 
 /// Defines the types of containers objects.
 /// The containing object determines how we recurse into each field.
+#[derive(PartialEq)]
 enum DeclaredType {
     Option,
     Vec,
@@ -637,4 +816,116 @@ fn is_ignored(attrs: &Vec<Attribute>) -> Result<bool> {
         }
     }
     Ok(ignored)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Runs the scope guard over a struct definition, as
+    /// `recurse_macro_derive` does.
+    fn check(source: &str) -> Result<()> {
+        let ast: DeriveInput = syn::parse_str(source).expect("test source must parse");
+        let scope = scope_attr(&ast.attrs)?;
+        match &ast.data {
+            syn::Data::Struct(data_struct) => match &data_struct.fields {
+                syn::Fields::Named(named_fields) => {
+                    check_scope_declared(&ast.ident, named_fields, scope)
+                }
+                _ => panic!("test source must have named fields"),
+            },
+            _ => panic!("test source must be a struct"),
+        }
+    }
+
+    #[test]
+    fn check_scope_declared_when_holds_variables_and_no_attribute_then_error() {
+        let result = check(
+            "struct PouDeclaration {
+                pub name: Id,
+                pub variables: Vec<VarDecl>,
+            }",
+        );
+        let message = result.expect_err("must reject").to_string();
+        assert!(message.contains("PouDeclaration"), "{message}");
+        assert!(message.contains("#[recurse(scope)]"), "{message}");
+        assert!(message.contains("#[recurse(no_scope)]"), "{message}");
+    }
+
+    #[test]
+    fn check_scope_declared_when_holds_variables_and_scope_then_ok() {
+        assert!(check(
+            "#[recurse(scope)]
+            struct PouDeclaration {
+                pub variables: Vec<VarDecl>,
+            }",
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn check_scope_declared_when_holds_variables_and_no_scope_then_ok() {
+        assert!(check(
+            "#[recurse(no_scope)]
+            struct PouDeclaration {
+                pub variables: Vec<VarDecl>,
+            }",
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn check_scope_declared_when_holds_no_variables_then_ok() {
+        assert!(check(
+            "struct NotAPou {
+                pub name: Id,
+                pub body: Vec<StmtKind>,
+            }",
+        )
+        .is_ok());
+    }
+
+    /// The guard is deliberately syntactic: it asks about
+    /// `variables: Vec<VarDecl>` and nothing else, so a declaration
+    /// holding some other kind of variable is not swept in.
+    #[test]
+    fn check_scope_declared_when_variables_are_not_var_decls_then_ok() {
+        assert!(check(
+            "struct NotAPou {
+                pub variables: Vec<TypeName>,
+            }",
+        )
+        .is_ok());
+    }
+
+    /// A single `VarDecl` rather than a collection of them is a field of
+    /// a declaration, not the declaration's variable block.
+    #[test]
+    fn check_scope_declared_when_variables_field_is_not_a_vec_then_ok() {
+        assert!(check(
+            "struct NotAPou {
+                pub variables: VarDecl,
+            }",
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn scope_attr_when_unrecognized_value_then_error() {
+        let ast: DeriveInput = syn::parse_str(
+            "#[recurse(nonsense)]
+            struct Thing {
+                pub name: Id,
+            }",
+        )
+        .expect("test source must parse");
+        assert!(scope_attr(&ast.attrs).is_err());
+    }
+
+    #[test]
+    fn scope_attr_when_no_attribute_then_absent() {
+        let ast: DeriveInput =
+            syn::parse_str("struct Thing { pub name: Id }").expect("test source must parse");
+        assert!(scope_attr(&ast.attrs).expect("must parse") == ScopeAttr::Absent);
+    }
 }

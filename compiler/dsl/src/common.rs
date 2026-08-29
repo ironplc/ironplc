@@ -13,6 +13,7 @@ use crate::configuration::{ConfigurationDeclaration, Direction};
 use crate::core::{Id, Located, SourceSpan};
 use crate::extension::LanguageExtension;
 use crate::fold::Fold;
+use crate::scope::ScopeBearing;
 use crate::sfc::{Network, Sfc};
 use crate::textual::*;
 use crate::time::*;
@@ -2728,6 +2729,7 @@ impl From<TypeName> for FunctionReturnType {
 ///
 /// See section 2.5.1.
 #[derive(Clone, Debug, PartialEq, Recurse)]
+#[recurse(scope)]
 pub struct FunctionDeclaration {
     pub name: Id,
     pub return_type: FunctionReturnType,
@@ -2750,6 +2752,7 @@ impl HasVariables for FunctionDeclaration {
 ///
 /// See section 2.5.2.
 #[derive(Clone, Debug, PartialEq, Recurse, Located)]
+#[recurse(scope)]
 pub struct FunctionBlockDeclaration {
     pub name: TypeName,
     pub variables: Vec<VarDecl>,
@@ -2786,6 +2789,12 @@ pub struct FunctionBlockDeclaration {
 /// (own methods first, then the `EXTENDS` chain) is implemented outside
 /// the AST, in `ironplc-analyzer`.
 #[derive(Clone, Debug, PartialEq, Recurse, Located)]
+// A `METHOD` *should* open a scope -- its parameters and locals belong to it,
+// not to the function block, and its own name should be assignable to set the
+// result value. It does not today, which is
+// https://github.com/ironplc/ironplc/issues/1439. Stated explicitly rather than
+// left to an omission so that the fix is a one-word change here.
+#[recurse(no_scope)]
 pub struct MethodDeclaration {
     pub name: Id,
     pub return_type: Option<FunctionReturnType>,
@@ -2910,6 +2919,7 @@ impl LanguageExtension for InterfaceDeclaration {
 ///
 /// See section 2.5.3.
 #[derive(Clone, Debug, PartialEq, Recurse)]
+#[recurse(scope)]
 pub struct ProgramDeclaration {
     pub name: Id,
     pub variables: Vec<VarDecl>,
