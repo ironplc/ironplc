@@ -295,7 +295,7 @@ fn run_when_stimuli_supplied_then_ok_false() -> Result<(), Box<dyn std::error::E
 // tool list when any single tool does so. `schemars` emits a bare `true` for an
 // untyped `serde_json::Value` field unless that field carries a description, so
 // this test guards every tool's input schema against silently regressing the
-// integration. See specs/plans/2026-06-12-opencode-integration-e2e.md.
+// integration.
 // ---------------------------------------------------------------------------
 
 /// Recursively asserts that every value inside any `properties` object is a

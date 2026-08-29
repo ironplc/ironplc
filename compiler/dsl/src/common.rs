@@ -910,9 +910,8 @@ impl ElementaryTypeName {
     /// directions, despite being equal width. Beckhoff's own
     /// documentation states no implicit conversion exists between
     /// bit-string and integer types even at equal width, but this was
-    /// confirmed permissive against a real TcXaeShell build (see
-    /// `specs/plans/twincat-status.md`, "Resolved: UDINT → DWORD implicit
-    /// conversion"). Scoped to exactly this pair -- other same-width
+    /// confirmed permissive against a real TcXaeShell build. Scoped to
+    /// exactly this pair -- other same-width
     /// bit-string/unsigned-integer pairs (`BYTE`↔`USINT`, `WORD`↔`UINT`,
     /// `LWORD`↔`ULINT`) and signed integers are not verified and must not
     /// be assumed to behave the same.

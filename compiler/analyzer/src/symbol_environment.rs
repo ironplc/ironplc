@@ -8,8 +8,7 @@ use std::collections::HashMap;
 ///
 /// A function block is `⟨FB_Motor⟩`; a method declared on it is
 /// `⟨FB_Motor, GetSpeed⟩`. Scopes are nameable, which is why this is a
-/// path of names rather than an id assigned to an AST node -- see
-/// `specs/plans/2026-08-28-method-scoping-and-scope-paths.md`.
+/// path of names rather than an id assigned to an AST node.
 ///
 /// Never empty: an empty path would be the global scope, which
 /// [`ScopeKind::Global`] already represents.

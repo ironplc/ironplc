@@ -67,16 +67,19 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    let mut rule = RuleAggregateAssignment {
-        type_environment: context.types(),
-        declarations: scoped_table::ScopedTable::new(),
-        diagnostics: Vec::new(),
-    };
-    // The outermost scope holds declarations made outside any POU --
-    // a CONFIGURATION's VAR_GLOBAL block, most importantly -- so a POU
-    // scope's lookups fall through to them.
-    rule.declarations.enter();
-    run_rule(rule, lib)
+    run_rule(
+        RuleAggregateAssignment {
+            type_environment: context.types(),
+            // `ScopedTable::new` opens the base scope. That is where
+            // declarations made outside any POU land -- a CONFIGURATION's
+            // VAR_GLOBAL block, most importantly -- so a POU scope's lookups
+            // fall through to them. Opening another here would leave the
+            // stack unbalanced when the table drops.
+            declarations: scoped_table::ScopedTable::new(),
+            diagnostics: Vec::new(),
+        },
+        lib,
+    )
 }
 
 /// A variable's declared type, as spelled at its declaration site.

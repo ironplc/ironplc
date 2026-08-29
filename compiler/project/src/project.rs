@@ -469,7 +469,6 @@ mod test {
 
     // -----------------------------------------------------------------
     // Compatibility-library activation.
-    // See specs/plans/2026-08-04-compatibility-libraries.md (Phase 1).
     // -----------------------------------------------------------------
 
     fn library_options() -> CompilerOptions {

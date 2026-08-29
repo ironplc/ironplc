@@ -171,7 +171,6 @@ END_PROGRAM",
 
 // ---------------------------------------------------------------------
 // CODESYS/TwinCAT FB-instance call-style initializer (distinct node).
-// See specs/plans/2026-08-01-fb-call-style-initializer-distinct-node.md.
 // ---------------------------------------------------------------------
 
 #[test]
