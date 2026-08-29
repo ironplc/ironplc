@@ -5,10 +5,12 @@
 extern crate std;
 
 // Always available (no_std)
+pub mod builtin;
 mod char_width;
 mod const_type;
 mod container_ref;
 mod error;
+pub mod fb_type;
 mod header;
 pub mod id_types;
 pub mod opcode;
