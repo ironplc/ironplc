@@ -586,6 +586,10 @@ fn effect_of(
         // FB_STORE_PARAM consumes the value; the fb_ref below it survives.
         FB_STORE_PARAM => Effect::new(1, 0),
 
+        // COPY_REGION consumes the source data offset. The destination and
+        // both sizes are immediates, so nothing else is taken from the stack.
+        COPY_REGION => Effect::new(1, 0),
+
         // --- Pop two, push nothing ---
         STORE_INDIRECT | STORE_ARRAY | STORE_ARRAY_DEREF | STR_STORE_ARRAY_ELEM => {
             Effect::new(2, 0)

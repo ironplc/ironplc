@@ -1,0 +1,36 @@
+=====
+V9018
+=====
+
+.. problem-summary:: V9018
+
+A ``COPY_REGION`` instruction named a source and a destination whose array
+descriptors describe spans of different byte sizes, so the VM halted rather
+than copy a number of bytes that fits neither end.
+
+``COPY_REGION`` implements assignment between whole arrays and whole
+structures. It carries no length operand: the VM computes each side's size
+from the array descriptor named in the instruction, and this trap is what
+happens when the two do not agree. Deriving the length this way, rather than
+trusting a number stored in the bytecode, is deliberate — a wrong length would
+otherwise read or write past the variable and into whatever the compiler
+placed next to it.
+
+Cause
+-----
+
+In the current compiler this indicates a defect. Before emitting
+``COPY_REGION`` the compiler requires both sides to have identical declared
+types, reporting :doc:`P2037 </reference/compiler/problems/P2037>` when they do
+not, so a program that reaches the VM should never present two sizes.
+
+The likely causes are:
+
+* A defect in IronPLC's code generation. Please report it, with the source
+  program, at https://github.com/ironplc/ironplc/issues.
+* A ``.iplc`` container that was modified after compilation, or built by
+  something other than ``ironplcc``.
+
+To resolve, recompile the program from source with a current ``ironplcc``. If
+the trap persists on a freshly compiled program, it is a compiler defect
+rather than anything you can correct in the PLC source.
