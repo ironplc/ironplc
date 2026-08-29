@@ -458,11 +458,11 @@ fn check_when_twincat_solution_tc2_math_reference_removed_then_undefined(
     Ok(())
 }
 
-/// End-to-end coverage for TwinCAT `<Method>` elements (issue #1418): a
-/// realistic solution whose `FB_Motor.TcPOU` declares `SetSpeed` and `Stop`
-/// as sibling `<Method>` elements, and whose `MAIN` calls both. Before the
-/// method elements were read, this reported P4046 against a method declared
-/// in the very file being checked.
+/// End-to-end coverage for TwinCAT `<Method>` elements: a realistic solution
+/// whose `FB_Motor.TcPOU` declares `SetSpeed` and `Stop` as sibling
+/// `<Method>` elements, and whose `MAIN` calls both. Before the method
+/// elements were read, this reported P4046 against a method declared in the
+/// very file being checked.
 #[test]
 fn check_when_twincat_solution_declares_pou_methods_then_ok(
 ) -> Result<(), Box<dyn std::error::Error>> {

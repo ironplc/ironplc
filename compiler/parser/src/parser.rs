@@ -1347,7 +1347,7 @@ parser! {
     // element; `ironplc-sources` reconstructs the textual form from that
     // element and appends it after the function block body, so the XML form
     // reaches `MethodDeclaration` through this rule as well. See ADR-0041
-    // Phase 1 and `specs/plans/2026-08-28-twincat-method-elements.md`.
+    // Phase 1.
     rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body() _ end:tok(TokenType::EndMethod) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
