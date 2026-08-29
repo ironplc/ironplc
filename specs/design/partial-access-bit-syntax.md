@@ -1,7 +1,5 @@
 # Partial Access Bit Syntax (`.%Xn`)
 
-**Implementation plan:** [`specs/plans/2026-04-15-partial-access-bit-syntax.md`](../plans/2026-04-15-partial-access-bit-syntax.md)
-
 ## Overview
 
 IronPLC supports bit-level access on integer-typed variables using the non-standard
