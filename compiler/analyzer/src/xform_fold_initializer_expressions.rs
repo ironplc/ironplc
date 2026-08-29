@@ -38,6 +38,7 @@ use ironplc_dsl::common::*;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
+use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::*;
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
@@ -285,37 +286,29 @@ impl Fold<Diagnostic> for InitializerFolder<'_> {
         }
     }
 
-    fn fold_function_block_declaration(
-        &mut self,
-        node: FunctionBlockDeclaration,
-    ) -> Result<FunctionBlockDeclaration, Diagnostic> {
+    /// Opens the scope of a declaration and registers the constants it
+    /// declares, so that a `VAR CONSTANT` is visible to initializers
+    /// within the declaration and to nothing outside it.
+    ///
+    /// The match is exhaustive because every kind registers the same
+    /// thing: should a new kind of scope not want its constants
+    /// registered, that has to be said here rather than inferred from an
+    /// absent arm.
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
         self.constants.enter();
-        register_constants(&mut self.constants, &node.variables, &mut self.diagnostics);
-        let result = node.recurse_fold(self);
-        self.constants.exit();
-        result
+
+        let variables = match node {
+            ScopeNode::Function(node) => &node.variables,
+            ScopeNode::FunctionBlock(node) => &node.variables,
+            ScopeNode::Program(node) => &node.variables,
+        };
+        register_constants(&mut self.constants, variables, &mut self.diagnostics);
+
+        Ok(())
     }
 
-    fn fold_function_declaration(
-        &mut self,
-        node: FunctionDeclaration,
-    ) -> Result<FunctionDeclaration, Diagnostic> {
-        self.constants.enter();
-        register_constants(&mut self.constants, &node.variables, &mut self.diagnostics);
-        let result = node.recurse_fold(self);
+    fn exit_scope(&mut self) {
         self.constants.exit();
-        result
-    }
-
-    fn fold_program_declaration(
-        &mut self,
-        node: ProgramDeclaration,
-    ) -> Result<ProgramDeclaration, Diagnostic> {
-        self.constants.enter();
-        register_constants(&mut self.constants, &node.variables, &mut self.diagnostics);
-        let result = node.recurse_fold(self);
-        self.constants.exit();
-        result
     }
 }
 
