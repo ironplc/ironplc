@@ -3,7 +3,7 @@
   "displayName": "IronPLC",
   "publisher": "ironplc",
   "description": "IEC 61131-3 Structured Text language support with real-time error checking, syntax highlighting, and build tools for PLC programs.",
-  "version": "0.239.0",
+  "version": "0.240.0",
   "icon": "images/logo.png",
   "engines": {
     "vscode": "^1.75.0",
@@ -125,7 +125,7 @@
           "editPresentation": "singlelineText"
         },
         "ironplc.dialect": {
-          "markdownDescription": "Language dialect preset. Controls IEC edition and extensions.\n\n- `iec61131-3-ed2`: Strict IEC 61131-3:2003 (Edition 2)\n- `iec61131-3-ed3`: IEC 61131-3:2013 (Edition 3) with `LTIME`, `REF_TO`, etc.\n- `rusty`: RuSTy-compatible — Edition 2 base with `REF_TO` and the extensions RuSTy accepts\n- `codesys`: CODESYS-compatible — Edition 2 base with `REF_TO` and the CODESYS extensions\n- `twincat`: TwinCAT-compatible — Edition 2 base with the extensions TwinCAT shares with CODESYS (no `REF_TO`; TwinCAT uses `REFERENCE TO`/`POINTER TO`)",
+          "markdownDescription": "Language dialect preset. Controls IEC edition and extensions.\n\n- `iec61131-3-ed2`: Strict IEC 61131-3:2003 (Edition 2)\n- `iec61131-3-ed3`: IEC 61131-3:2013 (Edition 3) with `LTIME`, `REF_TO`, and the object-oriented keywords (`EXTENDS`, `INTERFACE`, `METHOD`, etc.)\n- `rusty`: RuSTy-compatible — Edition 2 base with `REF_TO` and the extensions RuSTy accepts\n- `codesys`: CODESYS-compatible — Edition 2 base with `REF_TO` and the CODESYS extensions\n- `twincat`: TwinCAT-compatible — Edition 2 base with the extensions TwinCAT shares with CODESYS (no `REF_TO`; TwinCAT uses `REFERENCE TO`/`POINTER TO`)",
           "type": "string",
           "default": "iec61131-3-ed2",
           "enum": [
@@ -313,6 +313,10 @@
               "scanLimit": {
                 "type": "number",
                 "description": "Maximum number of scan cycles to run before disconnecting (runaway prevention). 0 means unlimited."
+              },
+              "freewheelingIntervalMs": {
+                "type": "number",
+                "description": "Simulated interval for freewheeling tasks."
               }
             }
           }

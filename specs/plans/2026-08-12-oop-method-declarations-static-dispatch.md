@@ -193,6 +193,75 @@ directly (likely yes, same pattern as `transform_function`/
 `transform_function_block` already reusing `FunctionDeclaration`/
 `FunctionBlockDeclaration`).
 
+## Codegen design (researched 2026-08-12, for the codegen slice)
+
+The VM (`ironplc-vm`) has no heap and no true pointers (ADR-0021 "flat
+variable table"). Confirmed by reading `vm/src/vm.rs`'s `FB_CALL` handler
+and `vm/src/variable_table.rs`:
+
+- Each FB **type** (not instance) gets ONE fixed, shared scratch region
+  in the VM's flat `variables` table (`var_off..var_off+num_fields`),
+  reused sequentially by whichever instance is currently executing —
+  never concurrently, never recursively.
+- Each FB **instance**'s actual persistent field values live in a
+  separate `data_region`, addressed by that instance's own `VarIndex`
+  (`fb_ref`).
+- `FB_CALL`'s "user-defined FB" branch: copies the instance's fields from
+  `data_region` into the type's shared `variables[var_off..]` scratch
+  ("copy-in"), pushes a `Frame` with `fb_return: Some(FbCallReturn {
+  instance_start, var_offset, num_fields })`, runs the body. On
+  `RET`/`RET_VOID`, `handle_frame_return` (the single choke point for
+  both) copies the scratch back out to `data_region` ("copy-out") if
+  `fb_return.is_some()`.
+- `VariableScope { instance_offset, instance_count }` is a **bounds
+  check only** (`check_access`), not an address-translation mechanism —
+  `VarIndex` operands in bytecode are genuine absolute indices into the
+  flat table, fixed at compile time per function/FB-type.
+- Plain function `CALL` passes args via the shared operand stack (push
+  args, `CALL` pops them into `var_offset..var_offset+num_params`) and
+  returns a value by leaving it on the stack before `RET` —
+  `handle_frame_return` doesn't care whether it was `RET` or `RET_VOID`,
+  so a frame can have both a stack return value *and* `fb_return`
+  copy-out at once.
+
+This means a method can reuse the exact same copy-in/copy-out machinery
+FB bodies already use, with one addition: a method needs its own
+param/local slots *in addition to* the type's field slots. Design:
+
+- **One shared "method scratch" region per FB type**, sized to the max
+  param+local count across all its methods (methods never run
+  concurrently for the same type, same non-reentrancy assumption as
+  fields), allocated immediately after that type's field region so
+  `[var_off, var_off + num_fields + max_method_locals)` is one
+  contiguous block. Every method of that type compiles against the same
+  `param_var_off = var_off + num_fields` and reports
+  `num_locals = num_fields + own_locals` on its `CompiledFunction`, so
+  the pushed `Frame`'s single contiguous `VariableScope` covers both the
+  type's fields (for `self` access) and the method's own params/locals.
+- **New opcode `METHOD_CALL(function_id: u16, field_var_off: u16,
+  num_fields: u16, param_var_off: u16)`** — deliberately simpler than
+  `FB_CALL` (no intrinsic-FB-type branch; a method call is always
+  user-defined). At runtime: copy-in fields (same loop as `FB_CALL`),
+  pop `num_params` (read from the resolved function's own metadata) args
+  off the stack into `param_var_off..`, push a `Frame` with
+  `fb_return: Some(FbCallReturn { instance_start: fb_ref, var_offset:
+  field_var_off, num_fields })`, run. A method with a return type ends
+  its body with `RET` (value on stack, exactly like a plain function);
+  a method with no return type ends with `RET_VOID`, matching FB bodies.
+- **Call site** (`instance.Method(args)`): `FB_LOAD_INSTANCE(var_index)`
+  (identical to `FbCall`) to push `fb_ref`, push args in the method's
+  declared `VAR_INPUT` order (named args resolved to position at codegen
+  time, mirroring how `compile_fb_call` already resolves named args
+  against field declarations), `METHOD_CALL`, then pop the discarded
+  return value (if any, since this slice is statement-only and always
+  discards it) and finally pop `fb_ref` — mirroring `compile_fb_call`'s
+  trailing `emit_pop()` for the same purpose.
+- No container/type-section schema changes needed — `function_id`,
+  `field_var_off`, `num_fields`, and `param_var_off` are all literal
+  constants baked into the opcode operands at compile time, since the
+  instance's static FB type (and therefore which method function to
+  call) is already resolved by `rule_method_call_declared`.
+
 ## Testing Strategy
 
 - Parser: new `parser/src/tests/` cases for a method with no params/no
@@ -218,27 +287,46 @@ directly (likely yes, same pattern as `transform_function`/
 - [x] Parser unit tests (`parser/src/tests/methods.rs`, 7 tests) + plc2plc round-trip tests (`plc2plc/src/tests/methods.rs`, 4 tests)
 - [x] Method resolution analyzer rule (own methods, then `EXTENDS` chain) + problem code P4046 `MethodNotFound` (`rule_method_call_declared.rs`)
 - [x] Method call arity/type-check (reuses the existing `FunctionCallMixedArgTypes`/`FunctionInvocationMissingInput`/`FunctionInvocationRequiresFormal`/`FunctionInvocationUndefinedOutput` diagnostics, same as `rule_function_block_invocation.rs` does for plain FB calls)
-- [ ] Codegen: compile method bodies with receiver param — **not started**. `compile_stmt.rs` currently returns `Diagnostic::todo` for `StmtKind::MethodCall`, so `ironplcc check`/analysis works end-to-end but `compile`/execution does not yet.
-- [ ] Codegen: compile call sites — not started, same as above
-- [ ] e2e test proving field mutation through a method call — blocked on codegen
-- [ ] Decide + implement (or explicitly defer) `.TcPOU` XML method wiring — not started; `transform.rs` currently always sets `methods: vec![]` for TwinCAT XML POUs
-- [x] Full CI clean (compile + all tests + clippy + fmt) as of each commit on `feature/twincat-oop-method-declarations`
-- [ ] Update `specs/plans/twincat-status.md`
+- [x] Codegen: compile method bodies (`compile_method.rs`, new `METHOD_CALL` opcode — see "Codegen design" above)
+- [x] Codegen: compile call sites (`compile_stmt.rs::compile_method_call`)
+- [x] e2e test proving field mutation through a method call (`codegen/tests/it/end_to_end_methods.rs`, 4 tests, real VM execution)
+- [x] Decide + implement (or explicitly defer) `.TcPOU` XML method wiring — **deferred**; `transform.rs` still always sets `methods: vec![]` for TwinCAT XML POUs, unchanged from slice 1
+- [x] Full CI clean (compile + coverage ≥85% + clippy + fmt + dupes) via `cd compiler && just`
+- [x] Update `specs/plans/twincat-status.md`
 
-### Status (2026-08-12)
+### Status (2026-08-12, codegen slice)
 
-Parsing, round-tripping, and semantic resolution/diagnostics for
-`METHOD` declarations and `instance.Method(args)` calls are complete,
-tested, and committed to `feature/twincat-oop-method-declarations`
-(3 commits). This means `ironplcc check` against real TwinCAT code that
-uses methods will now produce real diagnostics (P4046 for a genuinely
-missing method, or a clean pass) instead of a parse error — a real,
-shippable improvement even before codegen exists.
+Codegen is done: a method call now actually executes and mutates the FB
+instance's own persistent field, proven end-to-end through real VM
+execution (not just unit-tested opcode plumbing). Key implementation
+notes, in case of future debugging:
 
-Codegen (making method calls actually execute) is unstarted and is the
-largest, highest-risk remaining piece: it needs a receiver-pointer
-calling convention, symbol mangling that doesn't collide with existing
-conventions in `call_graph.rs`/`emit.rs`, and careful interaction with
-however FB instance memory layout already works in `compile.rs`. Given
-its size, it's its own slice/PR rather than something to rush behind the
-front-end work above.
+- Confirmed by reading the VM (`vm/src/vm.rs`'s `FB_CALL` handler,
+  `vm/src/variable_table.rs`) that there is no heap/pointers at all
+  (ADR-0021 flat variable table): each FB *type* gets one shared scratch
+  region in the flat table, reused sequentially across all its
+  instances via copy-in/copy-out with the instance's own persistent
+  `data_region` storage.
+- New opcode `METHOD_CALL` (`ironplc_container::opcode`, byte `0xF8`,
+  pinned in `codegen/tests/it/wire_format.rs`) reuses that exact
+  copy-in/copy-out machinery (`FbCallReturn`/`handle_frame_return`,
+  unchanged) rather than inventing a new one.
+- A method's own params/locals are allocated *contiguously after* its
+  owning type's field region specifically so the VM's single
+  contiguous `VariableScope` bounds check can cover both the fields
+  (for `self` access) and the method's own slots in one window — see
+  `compile_method.rs`'s `num_locals` computation, which deliberately
+  reports a span starting at the type's field offset, not the method's
+  own param offset.
+- **Scoped to methods declared directly on the instance's own type.**
+  A method reached only via `EXTENDS` (already accepted by the
+  analyzer) is explicitly NOT supported by codegen yet: a derived FB
+  type's data-region layout doesn't currently reserve storage for a
+  base type's fields at all (confirmed — `inherited_fields.rs` is used
+  only for name-duplication checking, never to flatten storage), so
+  there's nothing correct to copy in/out for an inherited method. That
+  gap predates this work and is a separate, deeper fix. Calling an
+  inherited method today hits `Diagnostic::todo` in
+  `compile_method_call`.
+- Statement-position only, as scoped: the return value (if any) is
+  always discarded at the call site.

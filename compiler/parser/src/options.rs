@@ -349,9 +349,9 @@ define_compiler_options! {
     [Rusty, Codesys, TwinCat],
     allow_struct_initializer_expressions,
 
-    "Allow function-block inheritance syntax: EXTENDS/IMPLEMENTS on FUNCTION_BLOCK and INTERFACE declarations",
+    "Allow IEC 61131-3:2013 object-oriented syntax: EXTENDS/IMPLEMENTS/ABSTRACT on FUNCTION_BLOCK declarations, INTERFACE declarations, METHOD declarations, and THIS/SUPER",
     "--allow-fb-inheritance",
-    [Rusty, Codesys, TwinCat],
+    [Rusty, Iec61131_3Ed3, Codesys, TwinCat],
     allow_fb_inheritance,
 }
 
@@ -420,7 +420,9 @@ mod tests {
 
     /// IEC 61131-3 Ed. 3 is a preset assembled from the descriptors tagged with
     /// `Iec61131_3Ed3`: the long-time-type keywords, the `REF_TO`/`REF`/`NULL`
-    /// reference keywords, and partial-access syntax.
+    /// reference keywords, partial-access syntax, and the object-oriented
+    /// syntax (`allow_fb_inheritance`) that is the headline addition of the
+    /// 2013 edition.
     #[test]
     fn ed3_dialect_enables_edition3_descriptors() {
         assert_enabled_flags(
@@ -429,6 +431,7 @@ mod tests {
                 "allow_long_time_types",
                 "allow_ref_to",
                 "allow_partial_access_syntax",
+                "allow_fb_inheritance",
             ],
         );
     }

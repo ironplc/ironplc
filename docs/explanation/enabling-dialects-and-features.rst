@@ -2,7 +2,7 @@
 Enabling Dialects and Features
 ==============================
 
-IronPLC aims to let you take code from another PLC environment and use it
+IronPLC lets you take code from another PLC environment and use it
 without changes. To support this, IronPLC uses **dialects** — named presets
 that select the IEC 61131-3 edition and a default set of extensions.
 Individual ``--allow-*`` flags provide fine-grained control on top of the
@@ -25,11 +25,15 @@ Supported Dialects
    :doc:`LTIME_OF_DAY </reference/language/data-types/elementary/ltime-of-day>`,
    :doc:`LDATE_AND_TIME </reference/language/data-types/elementary/ldate-and-time>`,
    :doc:`REF_TO </reference/language/data-types/derived/reference-types>`,
-   :doc:`REF </reference/language/data-types/derived/reference-types>`, and
-   :doc:`NULL </reference/language/data-types/derived/reference-types>`. No extensions.
+   :doc:`REF </reference/language/data-types/derived/reference-types>`,
+   :doc:`NULL </reference/language/data-types/derived/reference-types>`, and the
+   :doc:`object-oriented keywords </reference/language/object-orientation/index>`
+   (``EXTENDS``, ``IMPLEMENTS``, ``ABSTRACT``, ``INTERFACE``, ``METHOD``,
+   ``THIS``, and ``SUPER``). No extensions.
 
-   **Enables:** ``--allow-long-time-types`` and ``--allow-ref-to`` (the
-   Edition 3 keywords), plus ``--allow-partial-access-syntax``.
+   **Enables:** ``--allow-long-time-types``, ``--allow-ref-to`` (the
+   Edition 3 keywords), ``--allow-partial-access-syntax``, and
+   ``--allow-fb-inheritance``.
 
 **rusty**
    RuSTy-compatible dialect. Uses Edition 2 as a base (so Edition 3 type
@@ -374,15 +378,17 @@ which flags a dialect already enables by default, see `Supported Dialects`_.
    standard syntax and is always allowed.
 
 ``--allow-fb-inheritance``
-   Allow function-block inheritance syntax: ``EXTENDS``/
-   ``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK`` declarations, and
-   ``INTERFACE`` declarations. These are parsed and the
-   ``EXTENDS``/``IMPLEMENTS``/``INTERFACE`` names are recognized as valid
-   types, but inheritance, interface dispatch, method/property
-   declarations, and abstract-instantiation checking are not yet
-   semantically supported — using them produces problem
+   Allow the IEC 61131-3:2013 :doc:`object-oriented syntax
+   </reference/language/object-orientation/index>`:
+   ``EXTENDS``/``IMPLEMENTS``/``ABSTRACT`` on ``FUNCTION_BLOCK``
+   declarations, ``INTERFACE`` declarations, ``METHOD`` declarations, and
+   ``THIS``/``SUPER``. Support beyond parsing varies by keyword — see
+   :doc:`/reference/language/object-orientation/index` for what each one
+   analyzes and executes today; the parts that are parsed but not yet
+   analyzed produce problem
    :doc:`P9999 </reference/compiler/problems/P9999>` rather than a parse
-   error. Enabled by ``--dialect=rusty`` and ``--dialect=codesys``.
+   error. Enabled by ``--dialect=iec61131-3-ed3``, ``--dialect=rusty``,
+   ``--dialect=codesys``, and ``--dialect=twincat``.
 
 Pass the flag when running :program:`ironplcc`:
 

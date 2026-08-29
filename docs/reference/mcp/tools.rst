@@ -170,6 +170,64 @@ later reference, an optional ``container_base64`` when
 ``include_bytes`` is ``true``, arrays ``tasks`` and ``programs``
 describing the compiled configuration, and ``diagnostics``.
 
+run
+---
+
+Executes a previously compiled container in the IronPLC virtual machine
+for a span of simulated time, returning a time-ordered trace of the
+variables you name. Use it to check that a program behaves correctly,
+not merely that it compiles.
+
+**Inputs:**
+
+* ``container_id`` (string, required) --- The identifier returned by a
+  prior :literal:`compile` call.
+* ``duration_ms`` (number, required) --- How much simulated time to
+  run. The number of scan cycles follows from each task's cycle time.
+* ``freewheeling_interval_ms`` (number) --- The cycle time to run a
+  task that declares no ``INTERVAL`` at. Required when the container
+  has such a task. See :ref:`mcp-freewheeling-cycle-time` below.
+* ``variables`` (array of strings, optional) --- Fully-qualified names
+  to trace, such as ``Main.Counter``.
+* ``trace_outputs`` (boolean, optional, default ``false``) --- Trace
+  every observable output in addition to ``variables``.
+* ``limits`` (object, optional) --- Tightens the server's resource
+  limits for this call. It cannot loosen them.
+
+**Returns:** an object with ``ok``, a ``trace`` array, a ``truncated``
+flag, a ``terminated_reason``, a ``summary`` (final values, completed
+cycles per task, and ``interval_ms`` --- the cycle time the run
+executed at), and ``diagnostics``.
+
+.. _mcp-freewheeling-cycle-time:
+
+Programs with no task interval
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A task that declares no ``INTERVAL`` --- including the task the
+compiler supplies for a program with no ``CONFIGURATION`` --- is
+*freewheeling*: it runs as fast as the hardware allows. That rate is a
+property of the machine, not of the program, so under simulated time
+there is nothing to advance the clock by.
+
+:literal:`run` will not choose a rate for you --- a scan time belongs to
+the hardware the program would run on, and a trace built on a number
+you never chose reads as fact. Running such a container without
+``freewheeling_interval_ms`` returns ``ok: false`` and a diagnostic
+naming the task. Supply the scan time you want to simulate, and the
+response reports what it used as ``summary.interval_ms``, because every
+timestamp in the trace --- and every timer in the program --- depends
+on it.
+
+The debugger is deliberately more forgiving: it assumes 100 ms and says
+so on the console, because a debug session that refuses to start is a
+poor answer to a missing setting. See :doc:`/reference/runtime/ironplcvmd`.
+
+:literal:`compile` reports these tasks with ``kind: "freewheeling"``,
+which is how you can tell in advance that the assumption applies.
+Declare a ``CONFIGURATION`` with ``TASK plc_task(INTERVAL := T#100ms)``
+when you want the program itself to fix the rate.
+
 container_drop
 --------------
 

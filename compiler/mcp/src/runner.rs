@@ -18,12 +18,13 @@
 //! replace this with strict per-opcode enforcement.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use ironplc_analyzer::symbol_environment::ScopeKind;
 use ironplc_analyzer::SemanticContext;
 use ironplc_container::debug_section::{iec_type_tag, DebugSection, VarNameEntry};
 use ironplc_container::Container;
-use ironplc_vm::{Vm, VmBuffers};
+use ironplc_vm::{resolve_cycle_time, Vm, VmBuffers};
 use serde_json::Value;
 
 use crate::cache::{CachedContainer, ResolvedVar, VariableSymbolMap};
@@ -186,6 +187,9 @@ pub struct RunOutcome {
     pub truncated: bool,
     /// Diagnostic message when `terminated_reason == Error`.
     pub error_message: Option<String>,
+    /// The cycle time the run executed at — the task's declared `INTERVAL`, or
+    /// the assumed one for a task that declares none.
+    pub interval: Duration,
 }
 
 /// Why the run stopped (REQ-TOL-mcp-047).
@@ -227,15 +231,37 @@ impl TerminatedReason {
 /// a clean finish. `limits.max_duration_ms` is the sandbox ceiling
 /// (REQ-ARC-mcp-030); being cut short by it is not, and reports
 /// [`TerminatedReason::Duration`].
+///
+/// `freewheeling_interval` is the cycle time to assume for tasks that declare
+/// no `INTERVAL` (REQ-TOL-mcp-049), and is applied by rewriting the task table
+/// before the VM loads it. Whichever cycle time the run ended up executing at
+/// comes back as [`RunOutcome::interval`].
+///
+/// `None` means the caller supplied no cycle time, which is only valid when
+/// every task declares an `INTERVAL`. A freewheeling task with no rate cannot
+/// be run under simulated time — nothing would advance the clock, so
+/// `duration_ms` could never end the run — and is an error rather than a rate
+/// this module picks. The `run` tool rejects that combination up front with a
+/// diagnostic naming the task (REQ-TOL-mcp-049); the check here keeps the
+/// invariant with the code that depends on it.
 pub fn execute(
     cached: &CachedContainer,
     trace_set: &[ResolvedVar],
     duration_ms: u64,
+    freewheeling_interval: Option<Duration>,
     limits: EffectiveLimits,
 ) -> Result<RunOutcome, String> {
     let mut bytes = cached.iplc_bytes.as_slice();
-    let container =
+    let mut container =
         Container::read_from(&mut bytes).map_err(|e| format!("container read error: {e}"))?;
+
+    // Applying the caller's assumed rate to the task table means every
+    // downstream step — `next_due_us()`, the round loop, `time_ms` stamping —
+    // works off it as usual, with no freewheeling special case. `None` means
+    // nothing named a rate, which this tool treats as an error rather than
+    // invent one the agent never chose.
+    let interval = resolve_cycle_time(&mut container, freewheeling_interval)
+        .ok_or("container has a freewheeling task but no cycle time to run it at")?;
 
     let task_names: Vec<String> = cached.tasks.iter().map(|t| t.name.clone()).collect();
 
@@ -252,6 +278,7 @@ pub fn execute(
                 terminated_reason: TerminatedReason::Error,
                 truncated: false,
                 error_message: Some(format!("VM start fault: {}", ctx.trap)),
+                interval,
             });
         }
     };
@@ -335,6 +362,7 @@ pub fn execute(
                 terminated_reason: TerminatedReason::Error,
                 truncated,
                 error_message: Some(trap_msg),
+                interval,
             });
         }
 
@@ -374,9 +402,9 @@ pub fn execute(
             });
         }
 
-        // Advance simulated time past this cycle. When the VM has no more
-        // due cyclic tasks, break with Completed to avoid an infinite
-        // freewheeling loop.
+        // Advance simulated time past this cycle. Every task has a cycle time
+        // by now — declared or supplied — so `None` means the container has
+        // nothing that can ever be scheduled; break rather than spin.
         match running.next_due_us() {
             Some(next) if next > uptime_us => simulated_us = next,
             Some(_) => simulated_us = uptime_us.saturating_add(1),
@@ -399,6 +427,7 @@ pub fn execute(
         terminated_reason,
         truncated,
         error_message: None,
+        interval,
     })
 }
 

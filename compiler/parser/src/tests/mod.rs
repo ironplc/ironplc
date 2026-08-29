@@ -28,3 +28,4 @@ mod this_super;
 mod time_functions;
 mod types_and_returns;
 mod var_declarations;
+mod whitespace;
