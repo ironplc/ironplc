@@ -9,7 +9,7 @@ binaries := "ironplcc ironplcvm ironplcmcp ironplcvmd"
 
 alias ci := default
 # Coverage runs all tests with instrumentation, so separate test step is redundant
-default: compile coverage lint dupes
+default: compile coverage lint dupes plan-citations
 
 setup:
   cargo install cargo-release
@@ -43,6 +43,32 @@ lint:
 # Check for duplicate code (AST-based).
 dupes:
   cargo dupes check --max-exact-percent 10 --max-near-percent 5 --exclude-tests --min-lines 10
+
+# Fail if anything cites specs/plans/. A plan is deleted before its own PR
+# merges, so a reference to one is either already dead or about to be. Rationale
+# that something needs to point at belongs in specs/adrs/ or specs/design/.
+#
+# The process documents below describe the rule, so they are allowed to name the
+# directory. Everything else -- code, tests, workflows, this justfile, design
+# documents, ADRs -- is not.
+plan-citations:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd {{justfile_directory()}}/..
+  hits=$(git grep -n "specs/plans" -- . \
+    ':!specs/plans' \
+    ':!CLAUDE.md' ':!CURSOR.md' ':!CONTRIBUTING.md' \
+    ':!.cursor' ':!specs/steering' \
+    ':!compiler/justfile' || true)
+  if [ -n "$hits" ]; then
+    echo "error: specs/plans/ is cited outside specs/plans/ itself." >&2
+    echo "A plan is deleted before its PR merges and is not a stable reference" >&2
+    echo "target. Cite an ADR or a design document instead." >&2
+    echo >&2
+    echo "$hits" >&2
+    exit 1
+  fi
+  echo "Plan citations: none. Check passed."
 
 # Report duplication including test code (informational only; does not gate CI).
 # The blocking `dupes` recipe above uses `--exclude-tests`, so test duplication is

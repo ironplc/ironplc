@@ -73,18 +73,32 @@ environment.
 
 ## Planning Non-Trivial Changes
 
-**Non-trivial changes must start with a plan committed to `specs/plans/`.**
-This keeps design discussion in the open and makes review easier.
+**Non-trivial changes must start with an issue and a plan.** The plan is
+committed so it can be reviewed as a file diff, then deleted before merge. The
+issue is what survives.
 
 Workflow:
 
+1. Open an issue describing the work.
 1. Create a feature branch from `main`. Do not commit directly to `main`.
-1. Write an implementation plan and save it under `specs/plans/` (follow the
-   naming convention used by existing files there).
+1. Write an implementation plan referencing the issue and save it under
+   `specs/plans/` (follow the naming convention used by existing files there).
 1. Commit the plan to the feature branch before the implementation code.
 1. Implement the changes following the plan.
+1. Land any decision worth keeping as an ADR (`specs/adrs/`) or a design
+   document (`specs/design/`) in the same pull request.
+1. Open an issue for anything the plan describes that this pull request does
+   not deliver — a comment saying "follow-up" is not tracking.
+1. `git rm` the plan file. Because the repository squash-merges, the add and
+   the delete cancel, so no plan content reaches `main`; the plan stays
+   viewable on the pull request.
 1. Run the pre-PR checks described below.
 1. Push the branch and open a pull request.
+
+Do not reference `specs/plans/` from code, comments, workflows, the `justfile`,
+design documents or ADRs. A plan is deleted before its pull request merges, so
+it is never a stable link target — cite an ADR or a design document instead.
+`just plan-citations` fails the build on a violation.
 
 You SHOULD **skip the plan** for mechanical changes: typo fixes, formatting,
 dependency bumps, single-line bug fixes, or documentation-only edits.

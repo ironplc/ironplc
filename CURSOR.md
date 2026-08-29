@@ -28,10 +28,12 @@ This repository also defines Claude Code slash commands under `.claude/commands/
 ### Workflow
 
 1. Create a feature branch from `main`
-2. **Write an implementation plan** in `specs/plans/` and commit it to the branch (see [Development Standards — Planning Requirement](specs/steering/development-standards.md#planning-requirement))
+2. **Open an issue**, then **write an implementation plan** in `specs/plans/` referencing it and commit the plan as the first commit on the branch (see [Development Standards — Planning Requirement](specs/steering/development-standards.md#planning-requirement))
 3. Implement the changes following the plan
-4. Run the full CI pipeline: `cd compiler && just`
-5. Push the feature branch and create a PR via `gh pr create`
+4. Land any decision worth keeping as an ADR or `specs/design/` update, and open an issue for anything the plan describes that you are not delivering
+5. **`git rm` the plan file** — plans are deleted before merge, so no plan content reaches `main`
+6. Run the full CI pipeline: `cd compiler && just`
+7. Push the feature branch and create a PR via `gh pr create`
 
 > **Skip the plan** for mechanical changes: typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits.
 
@@ -80,7 +82,7 @@ See [specs/steering/common-tasks.md](specs/steering/common-tasks.md) for complet
 ### Critical Rules
 
 1. **NEVER push directly to `main`** - Always use a feature branch and pull request
-2. **Plan first** - Non-trivial changes must start with a plan in `specs/plans/` committed before implementation code
+2. **Plan first, then delete it** - Non-trivial changes start with an issue and a plan in `specs/plans/`, committed before implementation code and removed before merge; never cite a plan from code, docs or workflows (`just plan-citations` enforces this)
 3. **Run `cd compiler && just` before creating any PR** - This runs clippy, tests, and all checks
 4. **BDD-style test names**: `function_when_condition_then_result`
 5. **Module size limit**: Max 1000 lines per module

@@ -24,5 +24,6 @@ alwaysApply: true
 ## Non-negotiables
 
 - Do not commit or push to `main`; use a feature branch and PR.
-- Non-trivial work: add a plan under `specs/plans/` before implementation (see development standards); skip for trivial/mechanical changes only.
+- Non-trivial work: open an issue, add a plan under `specs/plans/` before implementation, and `git rm` the plan before merge (see development standards); skip for trivial/mechanical changes only.
+- Never cite `specs/plans/` from code, workflows, design docs or ADRs — plans are deleted at merge; `just plan-citations` fails the build.
 - Before opening a PR: run `cd compiler && just` and fix failures (compile, coverage, clippy, fmt).
