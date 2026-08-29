@@ -228,7 +228,7 @@ END_PROGRAM
     assert_eq!(bytecode[7], opcode::cmp_op::LT_S);
 }
 
-// FOR-loop TRUNC elision (specs/plans/2026-04-30-elide-for-loop-trunc.md):
+// FOR-loop TRUNC elision (specs/design/vm-performance.md §13):
 // the per-iteration TRUNC opcode is elided when the control variable's bounds
 // are constants that keep every visible value (init, body, and the
 // post-final-increment) within the declared narrow type's range.
