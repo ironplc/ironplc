@@ -219,38 +219,11 @@ fn compile_statement(
                 return Ok(());
             }
 
-            // Check if the target is a struct variable (whole-struct assignment).
-            if let Some(target_name) = resolve_variable_name(&assignment.target) {
-                if let Some(dst_info) = ctx.struct_vars.get(target_name).cloned() {
-                    let dst_var = ctx.var_index(target_name)?;
-                    // Compile RHS (for struct-returning functions, leaves
-                    // the source struct's data_offset on the stack).
-                    compile_expr(emitter, ctx, &assignment.value, DEFAULT_OP_TYPE)?;
-
-                    // Copy protocol: temporarily point dst_var to source data,
-                    // load all fields, restore dst_var, store all fields.
-                    emit_store_var(emitter, dst_var, DEFAULT_OP_TYPE);
-
-                    let total = dst_info.total_slots.raw();
-                    for i in 0..total {
-                        let idx = ctx.add_i32_constant(i as i32);
-                        emitter.emit_load_const_i32(idx);
-                        emitter.emit_load_array(dst_var, dst_info.desc_index);
-                    }
-
-                    // Restore dst_var's own data_offset.
-                    let dst_offset = ctx.add_i32_constant(dst_info.data_offset as i32);
-                    emitter.emit_load_const_i32(dst_offset);
-                    emit_store_var(emitter, dst_var, DEFAULT_OP_TYPE);
-
-                    // Store fields in reverse order (LIFO stack consumption).
-                    for i in (0..total).rev() {
-                        let idx = ctx.add_i32_constant(i as i32);
-                        emitter.emit_load_const_i32(idx);
-                        emitter.emit_store_array(dst_var, dst_info.desc_index);
-                    }
-                    return Ok(());
-                }
+            // Whole-aggregate assignment (`x := y` where x is an array or a
+            // structure). Emits COPY_REGION, which moves the bytes rather
+            // than the data-region offset the scalar arm below would copy.
+            if crate::compile_aggregate::try_compile_whole_assignment(emitter, ctx, assignment)? {
+                return Ok(());
             }
 
             // Look up the target variable's type info.

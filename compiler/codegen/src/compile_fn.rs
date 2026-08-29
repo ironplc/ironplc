@@ -326,6 +326,9 @@ pub(crate) fn compile_user_function(
             None
         }
     };
+    // Captured here because `ctx.struct_vars` is restored to the caller's
+    // scope at the end of this function, losing the return variable's entry.
+    let return_struct_desc_index = ctx.struct_vars.get(&return_id).map(|info| info.desc_index);
     current_index = VarIndex::new(current_index.raw() + 1);
 
     let num_locals = current_index.raw() - var_offset.raw();
@@ -458,6 +461,7 @@ pub(crate) fn compile_user_function(
             param_op_types,
             param_string_info,
             return_string_info,
+            return_struct_desc_index,
             max_stack_depth: finalized.max_stack_depth,
         },
     );

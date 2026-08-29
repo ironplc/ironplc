@@ -30,6 +30,7 @@
 
 mod call_graph;
 mod compile;
+mod compile_aggregate;
 mod compile_array;
 mod compile_call;
 mod compile_enum;

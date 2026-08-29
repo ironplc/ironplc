@@ -242,6 +242,11 @@ fn opcode_constants_when_array_family_then_pinned_bytes() {
 }
 
 #[test]
+fn opcode_constants_when_region_family_then_pinned_bytes() {
+    assert_eq!(opcode::COPY_REGION, 0xF8);
+}
+
+#[test]
 fn opcode_constants_when_string_family_then_pinned_bytes() {
     assert_eq!(opcode::STR_INIT, 0xB8);
     assert_eq!(opcode::STR_LOAD_VAR, 0xBC);
@@ -555,6 +560,44 @@ END_PROGRAM
 }
 
 #[test]
+fn wire_when_seven_byte_copy_region_then_three_le_u16_operands() {
+    // COPY_REGION emits opcode + LE u16 dst_var + LE u16 dst_desc + LE u16
+    // src_desc. It is the only 7-byte shape.
+    let bc = bytecode_of(
+        "
+PROGRAM main
+  VAR
+    x : ARRAY[1..2] OF DINT;
+    y : ARRAY[1..2] OF DINT;
+  END_VAR
+  x := y;
+END_PROGRAM
+",
+    );
+    assert_eq!(opcode::instruction_size(opcode::COPY_REGION), 7);
+    let pos = bc
+        .iter()
+        .position(|&b| b == opcode::COPY_REGION)
+        .expect("whole-array assignment emits COPY_REGION");
+    assert!(pos + 7 <= bc.len(), "COPY_REGION has 6 trailing operand bytes");
+
+    // x is var 0 and y is var 1. Both arrays are ARRAY[1..2] OF DINT, so
+    // `add_array_descriptor` dedupes them onto one descriptor index.
+    assert_eq!(
+        u16::from_le_bytes([bc[pos + 1], bc[pos + 2]]),
+        0,
+        "dst_var is x"
+    );
+    let dst_desc = u16::from_le_bytes([bc[pos + 3], bc[pos + 4]]);
+    let src_desc = u16::from_le_bytes([bc[pos + 5], bc[pos + 6]]);
+    assert_eq!(dst_desc, src_desc, "identical types share a descriptor");
+
+    // The source offset is delivered by a preceding LOAD_VAR_I32 of y.
+    assert_eq!(bc[pos - 3], opcode::LOAD_VAR_I32);
+    assert_eq!(u16::from_le_bytes([bc[pos - 2], bc[pos - 1]]), 1, "src is y");
+}
+
+#[test]
 fn wire_when_five_byte_call_then_two_le_u16_operands() {
     // CALL emits opcode + LE u16 func_id + LE u16 var_offset.
     // The CALL appears in the program function (the caller), whose
@@ -844,6 +887,7 @@ fn opcode_pins_when_compared_to_assigned_set_then_complete() {
         opcode::STR_INIT,
         opcode::CMP_BR_I32,
         opcode::CMP_BR_I64,
+        opcode::COPY_REGION,
         opcode::FIND_STR,
         opcode::REPLACE_STR,
         opcode::INSERT_STR,

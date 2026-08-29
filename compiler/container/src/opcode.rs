@@ -178,7 +178,14 @@ pub const OP_CLASS_STR_STORE_ARRAY_ELEM: u8 = 0x3C;
 /// (`T_I32`/`T_I64`; floats reserved). The comparison operator is encoded
 /// as a 1-byte operand (`cmp_op` enum). See `vm-performance.md` §11.
 pub const OP_CLASS_CMP_BR: u8 = 0x3D;
-// 0x3E..0x3F free (2 op-class slots reserved for future use).
+/// Op class: whole-region operations (consolidated). Type tag selects the
+/// operation: 0 = COPY_REGION. Tags 1..3 are reserved for further region
+/// operations — notably a `COPY_REGION_DYN` taking its sizes from a runtime
+/// array descriptor, which is what variable-length arrays (`ARRAY[*]`) would
+/// need. Consolidating under one op class rather than one class per operation
+/// keeps 0x3F free.
+pub const OP_CLASS_REGION_OP: u8 = 0x3E;
+// 0x3F free (1 op-class slot reserved for future use).
 
 /// Decompose a primary opcode byte into `(op_class, type_tag)`.
 #[inline]
@@ -476,6 +483,31 @@ pub const LOAD_ARRAY_DEREF: Opcode = encode_opcode(OP_CLASS_LOAD_ARRAY_DEREF, 0)
 /// Operand 2: u16 array descriptor index (little-endian).
 /// Pops 2 (value, flat index). Net stack: -2.
 pub const STORE_ARRAY_DEREF: Opcode = encode_opcode(OP_CLASS_STORE_ARRAY_DEREF, 0);
+
+// --- Region opcodes ---
+
+/// Copy a whole aggregate (array or structure) within the data region.
+///
+/// Operand 1: u16 destination variable index (little-endian). The slot holds
+///            the destination's data-region byte offset.
+/// Operand 2: u16 destination array descriptor index (little-endian).
+/// Operand 3: u16 source array descriptor index (little-endian).
+/// Pops 1 (source data-region byte offset). Net stack: -1.
+///
+/// The copy length is *not* an operand: the VM derives it from both
+/// descriptors and traps [`crate::opcode`] callers with `RegionSizeMismatch`
+/// if the two disagree. Carrying a length immediate instead would let a
+/// codegen defect over-copy into a neighbouring variable, which is precisely
+/// the class of bug this opcode exists to prevent.
+///
+/// The destination is named by variable index so it is scope-checked; the
+/// source arrives as a stack offset so that a struct-returning function call,
+/// which leaves its `data_offset` on the stack and has no variable index in
+/// the caller's scope, uses the same instruction.
+///
+/// Overlapping regions are well defined (the VM uses `copy_within`), so
+/// `x := x` is a no-op rather than corruption.
+pub const COPY_REGION: Opcode = encode_opcode(OP_CLASS_REGION_OP, 0);
 
 // --- Truncation opcodes ---
 
@@ -872,6 +904,9 @@ fn instruction_size_opt(op: Opcode) -> Option<usize> {
 
         // 5-byte: opcode + u32.
         STR_LOAD_VAR | STR_STORE_VAR | LEN_STR | DELETE_STR | LEFT_STR | RIGHT_STR | MID_STR => 5,
+
+        // 7-byte: opcode + u16 + u16 + u16.
+        COPY_REGION => 7,
 
         // 8-byte: opcode + u32 data_offset + u16 max_length + u8 char_width.
         STR_INIT => 8,
