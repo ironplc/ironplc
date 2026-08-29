@@ -10,7 +10,6 @@ Related documents:
 - [ADR-0022: Edition 3 compiler flag](../adrs/0022-edition-3-compiler-flag.md) — gating mechanism for Edition 3 features
 - [Beckhoff TwinCAT dialect](beckhoff-twincat-dialect.md) — `REFERENCE TO` syntax (maps to same AST)
 - [Siemens SCL dialect](siemens-scl-dialect.md) — `REF_TO` as dialect keyword (superseded by this design)
-- Implementation plan: [specs/plans/ref-to.md](../plans/ref-to.md)
 
 ## Scope
 

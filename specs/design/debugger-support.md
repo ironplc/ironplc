@@ -114,7 +114,7 @@ The container format spec defines a debug section with three sub-tables: source 
 | 6 | No FB field name table | FB instance fields show as "field[0]" instead of "IN", "PT", "Q", "ET" | No — FB type/field name display is in development |
 | 7 | ~~No source file table~~ Closed (2026-05-22) | Line maps now carry a `file_id` indexing into the SOURCE_FILE_TABLE (tag 6); per-file BLAKE3 hashes enable drift detection between an `.iplc` and the user's working copy. | — |
 
-Gaps 1–3 must be addressed in the debug section format before ST debugging can work. Gap 4 is deferred. Gaps 5–6 (FB type/field name display) are in development. Gap 7 is closed by the SOURCE_FILE_TABLE introduced in `specs/plans/2026-05-22-debug-source-file-table.md`.
+Gaps 1–3 must be addressed in the debug section format before ST debugging can work. Gap 4 is deferred. Gaps 5–6 (FB type/field name display) are in development. Gap 7 is closed by the SOURCE_FILE_TABLE (tag 6).
 
 ### Revised Debug Section Format
 
@@ -1381,7 +1381,7 @@ The phasing is reorganized so that the iterative-dispatch rewrite (the prerequis
 
 **Packaging decision (revised 2026-08-16).** DAP support is a **second, always-built binary** in the `vm-cli` crate: `ironplcvmd`, whose entry point is `dap_main.rs`. Distribution ships it alongside `ironplcc`, `ironplcvm`, and `ironplcmcp` in every installer, because the VS Code extension resolves the debug adapter from the directory holding the discovered `ironplcc`.
 
-This supersedes the original decision to feature-gate DAP behind `--features dap`. The gate did not do what it claimed: `mod dap` is declared only in `dap_main.rs`, and separate `[[bin]]` targets are separate compilation units, so `ironplcvm` never compiled the DAP layer either way. What the gate did do was exclude `ironplcvmd` from `cargo build` entirely, so local builds silently kept a stale binary and no release ever shipped one. The `shipped_binaries_guard` test (`compiler/test/tests/`) now asserts that every `[[bin]]` target appears in every packaging manifest. See `specs/plans/2026-08-16-always-build-ship-dap-server.md`.
+This supersedes the original decision to feature-gate DAP behind `--features dap`. The gate did not do what it claimed: `mod dap` is declared only in `dap_main.rs`, and separate `[[bin]]` targets are separate compilation units, so `ironplcvm` never compiled the DAP layer either way. What the gate did do was exclude `ironplcvmd` from `cargo build` entirely, so local builds silently kept a stale binary and no release ever shipped one. The `shipped_binaries_guard` test (`compiler/test/tests/`) now asserts that every `[[bin]]` target appears in every packaging manifest.
 
 **Changes:**
 
@@ -1408,7 +1408,7 @@ This supersedes the original decision to feature-gate DAP behind `--features dap
 
 ### Phase 5: VS Code Integration
 
-Implemented in `specs/plans/2026-08-02-dap-vscode-integration.md`.
+**Status:** implemented.
 
 **Adapter invocation (as shipped).** Phase 4 shipped the DAP server as a
 **separate binary, `ironplcvmd`** (feature-gated on `vm-cli`), that speaks DAP
@@ -1436,9 +1436,8 @@ to a temp `.iplc` first so the `launch` sees a debug-enabled container.
   toolbar works.
 
 Single-stepping landed in #1305. The scan count landed on 2026-08-16 as the
-`Runtime` scope rather than a custom request, and its toolbar button was retired
-(see `specs/plans/2026-08-16-dap-scan-count.md`). `ironplc/stepScan` landed on
-2026-08-22 (see `specs/plans/2026-08-22-dap-step-scan.md`), so the Step Scan
+`Runtime` scope rather than a custom request, and its toolbar button was
+retired. `ironplc/stepScan` landed on 2026-08-22, so the Step Scan
 Cycle toolbar button now works; a refused custom request — the button is on the
 toolbar for the whole session, including after termination — is still reported
 to the user rather than escaping the command handler as an unhandled
@@ -1478,7 +1477,7 @@ This spec **replaces** the debug section format defined in the container format 
 3. **LineMapEntry is 10 bytes** — grew from 6 → 8 (adding `source_column: u16`) and then 8 → 10 (adding `file_id: u16` for multi-file source maps)
 4. **VarNameEntry gains scope and type fields** — adds `function_id`, `var_section`, `type_name`
 5. **Additional implemented sub-tables** — function names (tag 3), string layout (tag 4, `STRING_LAYOUT`), source files (tag 6), enum definitions (tag 9). FB type/field name display (tag 5, FB_FIELD_NAME) is in development.
-6. **Reserved tags** — LD rung map (tag 7), FBD network map (tag 8). Tag 6 (source file table) is now implemented; see `specs/plans/2026-05-22-debug-source-file-table.md`.
+6. **Reserved tags** — LD rung map (tag 7), FBD network map (tag 8). Tag 6 (source file table) is now implemented.
 
 These changes affect only the debug section, which is independently hashed and signed (via `debug_hash` and the debug signature section). Adding or modifying debug info does not affect the content signature or the content hash, so existing containers remain valid.
 
