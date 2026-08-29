@@ -1,0 +1,84 @@
+=====
+P2037
+=====
+
+.. problem-summary:: P2037
+
+This error occurs when the two sides of an assignment between whole arrays or
+whole structures do not have identical types.
+
+IEC 61131-3 defines assignment over a multi-element variable as a copy of the
+values, so the compiler must know that the source and the destination have the
+same shape. Unlike a numeric assignment, there is no conversion between two
+different array or structure types: the element type, the number of dimensions,
+each dimension's bounds, and any ``STRING`` length must all match.
+
+This check applies only when the assignment target is a whole array or whole
+structure. Writing a single element or field (``a[1] := b[1]``,
+``a.x := b.x``) is unaffected.
+
+Example
+-------
+
+The following code will generate error P2037:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           a : ARRAY[1..2] OF DINT;
+           b : ARRAY[1..5] OF DINT;
+       END_VAR
+
+       a := b;  (* Error: 2 elements cannot receive 5 *)
+   END_PROGRAM
+
+To fix this error, declare both variables with the same type:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           a : ARRAY[1..2] OF DINT;
+           b : ARRAY[1..2] OF DINT;
+       END_VAR
+
+       a := b;  (* Correct: identical types *)
+   END_PROGRAM
+
+Or, when the shapes genuinely differ, copy the elements you want:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           a : ARRAY[1..2] OF DINT;
+           b : ARRAY[1..5] OF DINT;
+           i : DINT;
+       END_VAR
+
+       FOR i := 1 TO 2 DO
+           a[i] := b[i];
+       END_FOR;
+   END_PROGRAM
+
+Types that look compatible but are not
+--------------------------------------
+
+Two arrays with the same number of elements are still different types when
+their dimensions differ, because subscripting them is different:
+
+.. code-block::
+
+   PROGRAM Main
+       VAR
+           a : ARRAY[1..6] OF DINT;
+           b : ARRAY[1..2, 1..3] OF DINT;
+       END_VAR
+
+       a := b;  (* Error: one dimension cannot receive two *)
+   END_PROGRAM
+
+The same applies to element types that occupy the same storage
+(``ARRAY[1..2] OF INT`` and ``ARRAY[1..2] OF DINT``) and to ``STRING`` arrays
+whose maximum lengths differ (``STRING[8]`` and ``STRING[16]``).

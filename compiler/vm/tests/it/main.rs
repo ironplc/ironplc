@@ -47,6 +47,7 @@ mod execute_builtin_trunc_mod_f32;
 mod execute_builtin_trunc_mod_f64;
 mod execute_call_ret;
 mod execute_cmp_i32;
+mod execute_copy_region;
 mod execute_data_region_oob;
 mod execute_div_i32;
 mod execute_dup_swap;

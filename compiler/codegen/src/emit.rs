@@ -491,6 +491,19 @@ impl Emitter {
         self.pop_stack(2);
     }
 
+    /// Emits COPY_REGION with dst_var, dst_desc and src_desc operands.
+    ///
+    /// The source's data-region offset must already be on the stack. The copy
+    /// length is not emitted — the VM derives it from the two descriptors and
+    /// traps if they disagree. Pops 1 (source offset). Net: -1.
+    pub fn emit_copy_region(&mut self, dst_var: VarIndex, dst_desc: u16, src_desc: u16) {
+        self.emit_opcode(opcode::COPY_REGION);
+        self.bytecode.extend_from_slice(&dst_var.to_le_bytes());
+        self.bytecode.extend_from_slice(&dst_desc.to_le_bytes());
+        self.bytecode.extend_from_slice(&src_desc.to_le_bytes());
+        self.pop_stack(1);
+    }
+
     /// Emits STR_INIT_ARRAY with var_index and desc_index operands.
     /// Initializes all string headers in an array. No stack effect.
     pub fn emit_str_init_array(&mut self, var_index: VarIndex, desc_index: u16) {
