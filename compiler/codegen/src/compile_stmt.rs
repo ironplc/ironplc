@@ -538,8 +538,7 @@ fn compile_fb_call(
 /// data-region layout doesn't currently reserve storage for a base
 /// type's fields at all (`compile_user_function_block`'s field list
 /// comes from `fb_decl.variables` only, never flattened with inherited
-/// fields), so there is nothing correct to copy-in/copy-out from. See
-/// specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md.
+/// fields), so there is nothing correct to copy-in/copy-out from.
 fn compile_method_call(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -1231,7 +1230,7 @@ fn try_classify_for_head(
 /// The continuation predicate is `i <= to` (positive step) / `i >= to`
 /// (negative step). Inverting the predicate lets the body fall through
 /// from the conditional branch, eliminating one `JMP` dispatch per
-/// iteration. See `specs/plans/2026-04-30-elide-for-loop-exit-jmp.md`.
+/// iteration.
 fn compile_for(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -1256,7 +1255,8 @@ fn compile_for(
     };
 
     // Decide whether the per-loop TRUNC can be elided based on a local interval
-    // check over the constant bounds. See specs/plans/2026-04-30-elide-for-loop-trunc.md.
+    // check over the constant bounds. See `specs/design/vm-performance.md`
+    // §13 "Layer 1: Abstract Interpretation with Richer Domains".
     let elide_trunc = match type_info {
         Some(ti) => {
             for_loop_trunc_can_be_elided(&for_stmt.from, &for_stmt.to, for_stmt.step.as_ref(), ti)

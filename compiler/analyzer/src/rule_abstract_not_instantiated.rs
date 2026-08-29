@@ -4,8 +4,6 @@
 //! An `ABSTRACT` function block exists only to be extended via
 //! `EXTENDS` -- it cannot be instantiated directly.
 //!
-//! See `specs/plans/2026-07-20-twincat-abstract-instantiation.md`.
-//!
 //! Deliberately works directly off the AST rather than threading
 //! `is_abstract` through `IntermediateType::FunctionBlock` -- by the
 //! time semantic rules run, a `VAR`'s initializer has already been

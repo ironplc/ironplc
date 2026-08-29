@@ -49,7 +49,19 @@ pub(crate) fn compile_user_fb_methods(
         let function_id = ctx.user_fb_types[fb_name].methods[&method_name].function_id;
         let param_var_off = *var_offset;
 
-        let result = compile_user_method(
+        // A method's parameters, locals and result name belong to the
+        // method, not to the function block or to whichever method is
+        // compiled next. `compile_user_function` gets this by starting
+        // from an empty map (`compile_fn.rs:78`); a method cannot,
+        // because the enclosing type's field mappings have to stay
+        // visible for `self` access -- so snapshot and restore instead.
+        // Without this, a name declared by one method still resolves in
+        // the next, to a `VarIndex` that may fall outside that method's
+        // frame bounds window.
+        let saved_variables = ctx.variables.clone();
+        let saved_var_types = ctx.var_types.clone();
+
+        let compiled_method = compile_user_method(
             method,
             function_id,
             field_var_off,
@@ -57,7 +69,12 @@ pub(crate) fn compile_user_fb_methods(
             ctx,
             builder,
             types,
-        )?;
+        );
+
+        ctx.variables = saved_variables;
+        ctx.var_types = saved_var_types;
+
+        let result = compiled_method?;
 
         // `result.num_locals` spans from `field_var_off` (not
         // `param_var_off`) through this method's own locals -- see the
@@ -149,11 +166,28 @@ fn compile_user_method(
             .unwrap_or(DEFAULT_OP_TYPE),
         Some(FunctionReturnType::String(_)) | Some(FunctionReturnType::WString(_)) => {
             // STRING/WSTRING method returns aren't implemented in this
-            // slice -- see specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md.
+            // slice.
             return Err(Diagnostic::todo());
         }
         None => DEFAULT_OP_TYPE,
     };
+
+    // Bind the method's own name to that slot, as
+    // `compile_user_function` does at `compile_fn.rs:258`, so a body
+    // that produces its result the standard way -- `GetSpeed := speed`
+    // -- resolves the name to the slot the epilogue loads before `RET`.
+    // Only when the method declares a return type: one without a return
+    // type has no result to assign, and the analyzer rejects the
+    // assignment rather than letting it reach here.
+    if has_return_value {
+        ctx.variables.insert(return_id.clone(), return_var_index);
+        if let Some(FunctionReturnType::Named(type_name)) = &method.return_type {
+            if let Some(type_info) = resolve_type_name(&type_name.name) {
+                ctx.var_types.insert(return_id.clone(), type_info);
+            }
+        }
+    }
+
     current_index = VarIndex::new(current_index.raw() + 1);
 
     // Reported num_locals spans from the *type's field region* (not just

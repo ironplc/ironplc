@@ -1343,10 +1343,11 @@ parser! {
     rule type_name_list() -> Vec<TypeName> = names:type_name() ++ (_ tok(TokenType::Comma) _) { names }
 
     // OOP extension: METHOD ... END_METHOD, declared on a function block.
-    // Only the textual inline form is parsed here; TwinCAT's `.TcPOU` XML
-    // form stores each method as a separate `<Method>` element and is
-    // transformed directly to `MethodDeclaration` in `ironplc-sources`
-    // without going through this grammar. See ADR-0041 Phase 1.
+    // TwinCAT's `.TcPOU` XML form stores each method as a separate `<Method>`
+    // element; `ironplc-sources` reconstructs the textual form from that
+    // element and appends it after the function block body, so the XML form
+    // reaches `MethodDeclaration` through this rule as well. See ADR-0041
+    // Phase 1.
     rule method_declaration() -> MethodDeclaration = start:tok(TokenType::Method) _ name:identifier() _ rt:(tok(TokenType::Colon) _ rt:function_return_type() {rt})? _ decls:(io:io_var_declarations() { io } / other:other_var_declarations() { vec![other] } / temp:temp_var_decls() { vec![temp] }) ** _ _ body:function_body() _ end:tok(TokenType::EndMethod) {
       let decls = VarDeclarations::flatten(decls);
       let (variables, remainder) = VarDeclarations::drain_var_decl(decls);
@@ -1412,7 +1413,7 @@ parser! {
     // OOP extension: INTERFACE ... END_INTERFACE. Only the
     // header (name + optional EXTENDS list) is parsed — method/property
     // signatures are not yet supported (see
-    // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+    // specs/design/beckhoff-twincat-dialect.md §1.3).
     rule interface_declaration() -> InterfaceDeclaration = tok(TokenType::Interface) _ name:identifier() _ extends:(tok(TokenType::Extends) _ names:type_name_list() {names})? _ tok(TokenType::EndInterface) {
       InterfaceDeclaration {
         name,
@@ -1949,8 +1950,7 @@ parser! {
     // BitStringLiteral instead of a SignedInteger). Radix-prefixed
     // literals are already lexically distinct tokens from plain decimal
     // digits, so this alternative can only ever fire for the genuinely
-    // new shape. See
-    // specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    // new shape.
     rule case_bit_string_literal() -> BitStringLiteral = value:(bi:binary_integer() { bi } / oi:octal_integer() { oi } / hi:hex_integer() { hi }) {
       BitStringLiteral { value, data_type: None }
     }

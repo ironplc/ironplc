@@ -137,7 +137,7 @@ END_PROGRAM
     &[(1, 0)],
 );
 
-// FOR-loop TRUNC elision (specs/plans/2026-04-30-elide-for-loop-trunc.md):
+// FOR-loop TRUNC elision (specs/design/vm-performance.md §13):
 // the optimisation must preserve runtime behaviour for narrow integer types,
 // including at the type-range boundaries where TRUNC must remain.
 

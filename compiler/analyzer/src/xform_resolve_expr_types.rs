@@ -12,14 +12,18 @@ use ironplc_dsl::common::*;
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::fold::Fold;
+use ironplc_dsl::scope::ScopeNode;
 use ironplc_dsl::textual::*;
 use std::collections::HashMap;
 
 use crate::function_environment::FunctionEnvironment;
 use crate::intermediate_type::IntermediateType;
 use crate::intermediates::inherited_fields::collect_inherited_fields;
+use crate::scoped_table::{ScopedTable, Value};
 use crate::type_environment::TypeEnvironment;
 use ironplc_parser::options::CompilerOptions;
+
+impl Value for TypeName {}
 
 pub fn apply(
     lib: Library,
@@ -29,14 +33,24 @@ pub fn apply(
 ) -> Result<Library, Vec<Diagnostic>> {
     let inherited_fields = collect_inherited_fields(&lib);
     let mut resolver = ExprTypeResolver {
-        var_types: HashMap::new(),
-        global_var_types: HashMap::new(),
-        array_element_types: HashMap::new(),
+        var_types: ScopedTable::new(),
+        array_element_types: ScopedTable::new(),
         inherited_fields,
         type_environment,
         function_environment,
-        options,
     };
+
+    // Implicit system globals live in the outermost scope, so every POU
+    // body sees them and a POU-local of the same name shadows them.
+    if options.allow_system_uptime_global {
+        resolver
+            .var_types
+            .add(&Id::from("__SYSTEM_UP_TIME"), TypeName::from("TIME"));
+        resolver
+            .var_types
+            .add(&Id::from("__SYSTEM_UP_LTIME"), TypeName::from("LTIME"));
+    }
+
     resolver.fold_library(lib).map_err(|e| vec![e])
 }
 
@@ -91,17 +105,21 @@ fn find_base_variable_name(var: &SymbolicVariableKind) -> Option<&Id> {
 }
 
 struct ExprTypeResolver<'a> {
-    /// Maps variable names to their declared TypeName within the current POU scope.
-    var_types: HashMap<Id, TypeName>,
-    /// Maps global variable names to their declared TypeName, persists across POU folds.
-    global_var_types: HashMap<Id, TypeName>,
+    /// Maps variable names to their declared TypeName, scoped.
+    ///
+    /// The outermost scope holds `VAR_GLOBAL` and the implicit system
+    /// globals; each POU the traversal enters pushes a scope of its own.
+    /// A method's scope nests inside its function block's, so a method
+    /// body sees the instance's fields and a method local shadows a
+    /// field of the same name.
+    var_types: ScopedTable<'static, Id, TypeName>,
     /// For variables declared as arrays or REF_TO arrays, stores the element type.
     ///
     /// For `arr : ARRAY[0..10] OF INT`, stores `"int"` keyed by `"arr"`.
     /// For `pt : REF_TO ARRAY[1..255] OF BYTE`, stores `"byte"` keyed by `"pt"`.
     /// This enables `resolve_variable_type` to return the correct element type
     /// when resolving `arr[i]` or `pt^[i]` expressions.
-    array_element_types: HashMap<Id, TypeName>,
+    array_element_types: ScopedTable<'static, Id, TypeName>,
     /// Fields inherited via `EXTENDS`, per function block -- see
     /// `intermediates::inherited_fields`. Seeded into `var_types` before a
     /// function block's own fields so unqualified references to a base
@@ -109,22 +127,19 @@ struct ExprTypeResolver<'a> {
     inherited_fields: HashMap<TypeName, Vec<VarDecl>>,
     type_environment: &'a TypeEnvironment,
     function_environment: &'a FunctionEnvironment,
-    options: &'a CompilerOptions,
 }
 
 impl ExprTypeResolver<'_> {
-    /// Registers implicit system globals and top-level VAR_GLOBAL variables
-    /// so direct references resolve correctly within each POU scope.
-    fn seed_implicit_globals(&mut self) {
-        if self.options.allow_system_uptime_global {
-            self.var_types
-                .insert(Id::from("__SYSTEM_UP_TIME"), TypeName::from("TIME"));
-            self.var_types
-                .insert(Id::from("__SYSTEM_UP_LTIME"), TypeName::from("LTIME"));
-        }
-        for (id, type_name) in &self.global_var_types {
-            self.var_types.insert(id.clone(), type_name.clone());
-        }
+    /// Registers a declaration's own name as its result variable, so
+    /// `Foo := ...` inside `FUNCTION Foo` (or a `METHOD Foo : T`)
+    /// resolves to the declared return type.
+    fn insert_result_variable(&mut self, name: &Id, return_type: &FunctionReturnType) {
+        let return_type_name = return_type.to_type_name();
+        let resolved = self
+            .type_environment
+            .resolve_elementary_type_name(&return_type_name)
+            .unwrap_or(return_type_name);
+        self.var_types.add(name, resolved);
     }
 
     /// Extracts the TypeName from a variable declaration and inserts it into the
@@ -161,11 +176,11 @@ impl ExprTypeResolver<'_> {
 
         match &node.identifier {
             VariableIdentifier::Symbol(id) => {
-                self.var_types.insert(id.clone(), type_name);
+                self.var_types.add(id, type_name);
             }
             VariableIdentifier::Direct(direct) => {
                 if let Some(name) = &direct.name {
-                    self.var_types.insert(name.clone(), type_name);
+                    self.var_types.add(name, type_name);
                 }
             }
         }
@@ -210,7 +225,7 @@ impl ExprTypeResolver<'_> {
         };
 
         if let Some(elem_tn) = elem_type_name {
-            self.array_element_types.insert(id, elem_tn);
+            self.array_element_types.add(&id, elem_tn);
         }
     }
 
@@ -384,7 +399,7 @@ impl ExprTypeResolver<'_> {
     ) -> Option<&'b IntermediateType> {
         match kind {
             SymbolicVariableKind::Named(nv) => {
-                let var_type = self.var_types.get(&nv.name)?;
+                let var_type = self.var_types.find(&nv.name)?;
                 self.type_environment.resolve_member_access_type(var_type)
             }
             SymbolicVariableKind::Structured(sv) => {
@@ -424,7 +439,7 @@ impl ExprTypeResolver<'_> {
     fn resolve_variable_type(&self, var: &Variable) -> Option<TypeName> {
         match var {
             Variable::Symbolic(SymbolicVariableKind::Named(nv)) => {
-                let declared = self.var_types.get(&nv.name)?;
+                let declared = self.var_types.find(&nv.name)?;
                 // Try to resolve to an elementary type. If the type is complex
                 // (enum, struct, etc.), keep the declared name.
                 Some(
@@ -444,7 +459,7 @@ impl ExprTypeResolver<'_> {
 
                 // Array subscript: walk to base variable, return element type.
                 let base_name = find_base_variable_name(&arr_var.subscripted_variable)?;
-                let elem_type = self.array_element_types.get(base_name)?;
+                let elem_type = self.array_element_types.find(base_name)?;
                 Some(
                     self.type_environment
                         .resolve_elementary_type_name(elem_type)
@@ -467,7 +482,7 @@ impl ExprTypeResolver<'_> {
             Variable::Symbolic(SymbolicVariableKind::Deref(deref_var)) => {
                 // Dereference: resolve the target type of the reference.
                 let base_name = find_base_variable_name(&deref_var.variable)?;
-                let declared = self.var_types.get(base_name)?;
+                let declared = self.var_types.find(base_name)?;
                 let attrs = self.type_environment.get(declared)?;
                 if let Some(target) = attrs.representation.referenced_type() {
                     self.type_environment.elementary_type_name_for(target)
@@ -492,8 +507,8 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
         &mut self,
         node: ironplc_dsl::common::Library,
     ) -> Result<ironplc_dsl::common::Library, Diagnostic> {
-        // Pre-collect top-level VAR_GLOBAL variable types so they are
-        // available when folding FUNCTION/FB/PROGRAM bodies.
+        // Collect top-level VAR_GLOBAL types into the outermost scope,
+        // where they stay visible to every POU body the fold enters.
         for element in &node.elements {
             if let LibraryElementKind::GlobalVarDeclarations(decls) = element {
                 for decl in decls {
@@ -501,60 +516,57 @@ impl Fold<Diagnostic> for ExprTypeResolver<'_> {
                 }
             }
         }
-        self.global_var_types = self.var_types.clone();
-        self.var_types.clear();
         node.recurse_fold(self)
     }
 
-    fn fold_function_declaration(
-        &mut self,
-        node: FunctionDeclaration,
-    ) -> Result<FunctionDeclaration, Diagnostic> {
-        node.variables.iter().for_each(|v| self.insert(v));
-        self.seed_implicit_globals();
-        // Register the implicit return variable (function name = return type)
-        // so that references like `FOO := SHR(FOO, 1)` inside FUNCTION FOO
-        // can resolve the type of the FOO variable.
-        let return_type_name = node.return_type.to_type_name();
-        let resolved_return_type = self
-            .type_environment
-            .resolve_elementary_type_name(&return_type_name)
-            .unwrap_or(return_type_name);
-        self.var_types
-            .insert(node.name.clone(), resolved_return_type);
-        let result = node.recurse_fold(self);
-        self.var_types.clear();
-        self.array_element_types.clear();
-        result
-    }
+    /// Opens a declaration's scope and registers the types it declares.
+    ///
+    /// Replaces the per-POU `clear()` this pass used to do: clearing at a
+    /// method boundary would discard the enclosing function block's
+    /// fields, which a method body needs. A scope stack drops only what
+    /// the declaration itself added.
+    ///
+    /// The match is exhaustive so a new kind of scope has to state what
+    /// it contributes rather than silently contributing nothing -- which
+    /// in this pass means silently skipping type checks, not failing.
+    fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+        self.var_types.enter();
+        self.array_element_types.enter();
 
-    fn fold_function_block_declaration(
-        &mut self,
-        node: FunctionBlockDeclaration,
-    ) -> Result<FunctionBlockDeclaration, Diagnostic> {
-        // Insert inherited fields first so the FB's own fields (inserted
-        // next) correctly shadow a same-named ancestor field.
-        if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
-            fields.iter().for_each(|v| self.insert(v));
+        match node {
+            ScopeNode::Function(node) => {
+                node.variables.iter().for_each(|v| self.insert(v));
+                self.insert_result_variable(&node.name, &node.return_type);
+            }
+            ScopeNode::FunctionBlock(node) => {
+                // Inherited fields first so the function block's own
+                // fields, inserted next into the same scope, shadow a
+                // same-named ancestor field.
+                if let Some(fields) = self.inherited_fields.get(&node.name).cloned() {
+                    fields.iter().for_each(|v| self.insert(v));
+                }
+                node.variables.iter().for_each(|v| self.insert(v));
+            }
+            ScopeNode::Program(node) => {
+                node.variables.iter().for_each(|v| self.insert(v));
+            }
+            ScopeNode::Method(node) => {
+                node.variables.iter().for_each(|v| self.insert(v));
+                // Only a method that declares a return type has a result
+                // variable; see `rule_use_declared_symbolic_var`, which
+                // rejects the assignment for one that does not.
+                if let Some(return_type) = &node.return_type {
+                    self.insert_result_variable(&node.name, return_type);
+                }
+            }
         }
-        node.variables.iter().for_each(|v| self.insert(v));
-        self.seed_implicit_globals();
-        let result = node.recurse_fold(self);
-        self.var_types.clear();
-        self.array_element_types.clear();
-        result
+
+        Ok(())
     }
 
-    fn fold_program_declaration(
-        &mut self,
-        node: ProgramDeclaration,
-    ) -> Result<ProgramDeclaration, Diagnostic> {
-        node.variables.iter().for_each(|v| self.insert(v));
-        self.seed_implicit_globals();
-        let result = node.recurse_fold(self);
-        self.var_types.clear();
-        self.array_element_types.clear();
-        result
+    fn exit_scope(&mut self) {
+        self.var_types.exit();
+        self.array_element_types.exit();
     }
 
     fn fold_self_ref_variable(
@@ -920,7 +932,7 @@ END_PROGRAM";
 
     // -----------------------------------------------------------------
     // AND_THEN short-circuit boolean operator.
-    // See specs/plans/2026-07-20-twincat-and-then-operator.md.
+    // See specs/design/beckhoff-twincat-dialect.md §3.4.
     // -----------------------------------------------------------------
 
     #[test]
@@ -946,7 +958,6 @@ END_FUNCTION_BLOCK";
 
     // -----------------------------------------------------------------
     // EXTENDS field inheritance.
-    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
     // -----------------------------------------------------------------
 
     #[test]
@@ -1405,5 +1416,182 @@ END_FUNCTION_BLOCK";
         let types = collect_assignment_types(&result);
         assert_eq!(types.len(), 1);
         assert_eq!(types[0], None);
+    }
+
+    // ---------------------------------------------------------------------
+    // METHOD scoping.
+    // See specs/plans/2026-08-28-method-scoping-and-scope-paths.md and
+    // https://github.com/ironplc/ironplc/issues/1439.
+    // ---------------------------------------------------------------------
+
+    fn opts_with_fb_inheritance() -> CompilerOptions {
+        CompilerOptions {
+            allow_fb_inheritance: true,
+            ..CompilerOptions::default()
+        }
+    }
+
+    /// Before a method opened a scope this pass never saw a method's
+    /// variables at all, so every reference in a method body resolved to
+    /// `None` and every type rule downstream skipped it silently.
+    #[test]
+    fn apply_when_method_local_then_resolves_type() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+METHOD m
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    x := y;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
+        let types = collect_assignment_types(&result);
+
+        assert_eq!(types.len(), 1);
+        assert_eq!(types[0].as_ref().map(|t| t.to_string()), Some("int".into()));
+    }
+
+    /// The method scope nests inside the function block's, so a method
+    /// local shadows a field of the same name for that method only.
+    #[test]
+    fn apply_when_method_local_shadows_field_then_resolves_local_type() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    v : INT;
+    target : REAL;
+END_VAR
+METHOD m
+VAR
+    v : REAL;
+END_VAR
+    target := v;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
+        let types = collect_assignment_types(&result);
+
+        assert_eq!(types.len(), 1);
+        assert_eq!(
+            types[0].as_ref().map(|t| t.to_string()),
+            Some("real".into()),
+            "the method's own `v` should shadow the function block's"
+        );
+    }
+
+    /// Each method is its own scope, so the same name in two methods is
+    /// two variables and each resolves to its own declared type.
+    #[test]
+    fn apply_when_two_methods_declare_same_name_then_each_resolves_own_type() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    i : INT;
+    r : REAL;
+END_VAR
+METHOD a
+VAR
+    q : INT;
+END_VAR
+    i := q;
+END_METHOD
+METHOD b
+VAR
+    q : REAL;
+END_VAR
+    r := q;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
+        let types = collect_assignment_types(&result);
+
+        assert_eq!(types.len(), 2);
+        assert_eq!(types[0].as_ref().map(|t| t.to_string()), Some("int".into()));
+        assert_eq!(
+            types[1].as_ref().map(|t| t.to_string()),
+            Some("real".into())
+        );
+    }
+
+    /// A method that declares a return type has a result variable of that
+    /// type, the same way a function does, so reading the method's own
+    /// name inside its body resolves.
+    #[test]
+    fn apply_when_method_reads_own_name_then_resolves_return_type() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    nLast : DINT;
+END_VAR
+METHOD GetSpeed : DINT
+    GetSpeed := 1;
+    nLast := GetSpeed;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
+        let types = collect_assignment_types(&result);
+
+        assert_eq!(types.len(), 2);
+        assert_eq!(
+            types[1].as_ref().map(|t| t.to_string()),
+            Some("dint".into()),
+            "the method's own name should resolve to its return type"
+        );
+    }
+
+    /// A method with no return type has no result variable, so its name
+    /// is not a variable and resolves to nothing. The analyzer rejects
+    /// the reference outright; this pins the same rule in this pass.
+    #[test]
+    fn apply_when_method_has_no_return_type_then_own_name_unresolved() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    nLast : DINT;
+END_VAR
+METHOD DoThing
+    nLast := DoThing;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
+        let types = collect_assignment_types(&result);
+
+        assert_eq!(types.len(), 1);
+        assert_eq!(types[0], None);
+    }
+
+    /// A method's locals leave with the method: the enclosing function
+    /// block's body must not resolve them.
+    #[test]
+    fn apply_when_function_block_body_references_method_local_then_unresolved() {
+        let program = "
+FUNCTION_BLOCK FB_TEST
+VAR
+    target : INT;
+END_VAR
+    target := q;
+METHOD m
+VAR
+    q : INT;
+END_VAR
+    q := 1;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let result = run_pass_with_options(program, &opts_with_fb_inheritance());
+        let types = collect_assignment_types(&result);
+
+        assert_eq!(types.len(), 2);
+        assert_eq!(
+            types[0], None,
+            "the function block body must not see the method's local"
+        );
     }
 }

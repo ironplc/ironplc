@@ -1035,7 +1035,7 @@ impl Visitor<Diagnostic> for LibraryRenderer {
 
     // OOP extension: INTERFACE ... END_INTERFACE. Only the
     // header renders — method/property signatures are not yet parsed (see
-    // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+    // specs/design/beckhoff-twincat-dialect.md §1.3).
     fn visit_interface_declaration(
         &mut self,
         node: &InterfaceDeclaration,

@@ -26,11 +26,11 @@ introduced in IEC 61131-3 Edition 3.
    * - **IEC 61131-3**
      - Edition 3 (object-oriented programming)
    * - **Support**
-     - Parsed and analyzed: a declaration is checked, and a call is
-       resolved against the declared type of the instance, walking the
-       ``EXTENDS`` chain to find the method. Calls are not yet compiled or
-       executed (:doc:`P9999 </reference/compiler/problems/P9999>`), and a
-       return value cannot be produced or consumed yet (see
+     - Parsed, analyzed, compiled and executed: a declaration is checked,
+       and a call is resolved against the declared type of the instance,
+       walking the ``EXTENDS`` chain to find the method. A method body
+       sets its return value by assigning the method's own name; that
+       value cannot be consumed at the call site yet (see
        :ref:`method-limitations`). Enable with ``--allow-fb-inheritance``;
        see :doc:`/explanation/enabling-dialects-and-features`.
 
@@ -106,13 +106,13 @@ Example
 Current limitations
 -------------------
 
-A return type is accepted on a declaration, but nothing can be done with it
-yet. A method body cannot assign to the method's own name the way a
-:doc:`function </reference/language/pous/function>` body does — that reports
-:doc:`P4007 </reference/compiler/problems/P4007>` — and a call is a
-statement, not an expression, so ``x := instance.Method()`` is a syntax
-error. Write methods without a return type until return values are
-supported.
+A method body sets its return value by assigning the method's own name,
+the same way a :doc:`function </reference/language/pous/function>` body
+does. What is missing is the other half: a call is a statement, not an
+expression, so ``x := instance.Method()`` is a syntax error and the
+return value is discarded at the call site. Until that is supported, a
+method with a return type is useful only for what its body does — write
+the result to a field of the function block and read that field.
 
 See Also
 --------

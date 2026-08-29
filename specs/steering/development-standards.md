@@ -31,6 +31,8 @@ Specifications that describe **what** to build: architecture, formats, interface
 
 Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.
 
+**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan records intent at a single moment and is not maintained afterwards, so it is not a stable reference target. Rationale that something else needs to point at belongs in `specs/adrs/` or `specs/design/`.
+
 ### `specs/steering/` — AI Steering Files
 
 Guidance for AI assistants working with the codebase (conventions, patterns, workflows). See [steering-file-guidelines.md](./steering-file-guidelines.md).
@@ -44,7 +46,7 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 | What are the steps to implement the container format? | `specs/plans/` |
 | How should AI assistants name tests? | `specs/steering/` |
 
-When a document contains both design and plan content, split it into two files with cross-references between them. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`.
+When a document contains both design and plan content, split it into two files. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`. The reference is one-way: the plan cites the design it implements, and the design never cites the plan.
 
 **Important**: Plan and design documents must **never** be placed in `docs/`. The `docs/` directory is exclusively for the public Sphinx documentation website. All internal technical documents (plans, designs, ADRs, steering files) belong in `specs/`.
 
@@ -86,6 +88,9 @@ A plan document should include:
 
 - **Goal** — a concise statement of what the change accomplishes
 - **Architecture** — brief summary of the technical approach
+- **Prefactoring** — the simplification to make *before* adding the new
+  behaviour, or an explicit statement that none is needed and why (see
+  [Prefactoring](#prefactoring))
 - **Design doc reference** — link to `specs/design/` doc if one exists
 - **File map** — which files will be created or modified
 - **Tasks** — ordered steps with checkboxes (`- [ ]`) for tracking progress
@@ -93,6 +98,82 @@ A plan document should include:
 Name plan files with a date prefix: `YYYY-MM-DD-short-description.md` (e.g., `2026-04-01-planning-requirement.md`).
 
 **When a plan may be skipped:** Changes that are clearly mechanical and self-contained — typo fixes, formatting, dependency bumps, single-line bug fixes, or documentation-only edits — do not require a plan.
+
+## Prefactoring
+
+**Prefactoring** is refactoring done *before* new behaviour is added: reshape the
+existing code so the new behaviour drops in, then add it. It is the opposite
+order from the more familiar "make it work, then clean it up" — and it is the
+order this project uses.
+
+Every change **must** start by looking for a prefactoring opportunity. Without
+that step, each change is bolted onto whatever shape the code already has —
+another `if`, another flag, another near-copy of an existing function. The cost
+compounds twice: the code gets harder to read, and every new branch multiplies
+the paths that tests have to cover, so the suite grows faster than the feature
+set.
+
+### Requirement
+
+- For any change that needs a plan, the plan **must** contain a **Prefactoring**
+  section naming the simplification the change will make first — or stating
+  explicitly that none is needed and why.
+- The prefactoring lands in its own commit (or commits) **before** the commits
+  that add the new behaviour.
+- Mechanical changes that skip the plan (see
+  [Planning Requirement](#planning-requirement)) also skip this.
+
+### Signals that a change needs prefactoring
+
+Look for these while reading the code you are about to modify. Any one of them
+means stop and reshape first:
+
+- The new behaviour needs a new `match` arm or `if` in **more than one place** —
+  the distinction wants to be a type or a data table, not repeated branching
+- You would copy an existing function and change a few lines of it
+- You would add a boolean parameter (or a second one) to select behaviour inside
+  a function
+- The new tests would duplicate an existing test's setup wholesale, or you would
+  need a combinatorial matrix of tests to cover how the new flag interacts with
+  the existing ones
+- The module would cross the [1000-line limit](#module-structure) once the change
+  lands
+- The code has to know *where in the pipeline it is* to decide what to do
+- The change is easy to describe in a sentence but hard to place in the code —
+  usually a sign the responsibility it belongs to does not exist yet
+
+### How to prefactor
+
+1. **Change the shape, not the behaviour.** The existing tests must pass
+   unchanged. If they have to be edited to accept the prefactoring — beyond
+   mechanical renames — the commit is not behaviour-preserving; split it.
+2. **Commit the prefactoring separately.** A reviewer can then read a diff that
+   provably changes nothing, followed by a small diff that adds the feature.
+   Either can be reverted alone.
+3. **Add the new behaviour.** If the feature diff is still branchy and large,
+   the prefactoring picked the wrong shape — go back to step 1 rather than
+   pushing through.
+
+### When *not* to prefactor
+
+Prefactoring is a tool for reducing the cost of the change in hand, not a
+licence to rewrite:
+
+- **No speculative generality.** Do not build an abstraction for a case nobody
+  has asked for. Extract a shared shape when the second or third caller arrives,
+  not the first.
+- **No unbounded rewrites.** If the reshaping is far larger than the feature,
+  write it up as its own plan and change, and land the feature the simple way
+  in the meantime — with a note saying so.
+- **Not for one-line fixes.** Typos, dependency bumps, and single-line bug fixes
+  stay single-line.
+
+### What good looks like
+
+A well-prefactored change shows up as a *smaller* feature diff and *fewer* new
+tests than the same feature added on top of the old shape — because there are
+fewer distinct paths to cover, not because anything went untested. The coverage
+gate (see [Just Commands](#just-commands)) still applies unchanged.
 
 ## Code Organization
 

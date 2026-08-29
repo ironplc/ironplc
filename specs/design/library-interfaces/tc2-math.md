@@ -60,8 +60,7 @@ builtin, no func_id, no manifest binding. The two semantics IEC 61131-3
 source cannot express (real-preserving truncation, floating modulo) are
 reached through the typed compiler intrinsics `__TRUNC(ANY_REAL): ANY_REAL`
 and `__MOD(IN1, IN2: ANY_REAL): ANY_REAL`
-(merged in [#1348](https://github.com/ironplc/ironplc/pull/1348); see
-`specs/plans/2026-08-11-compiler-intrinsic-trunc-mod.md`), which library
+(merged in [#1348](https://github.com/ironplc/ironplc/pull/1348)), which library
 bodies may call. `MODABS` and `FRAC` are math-dictated compositions.
 
 The intrinsics obey IEEE-754 double-precision (binary64) arithmetic. All

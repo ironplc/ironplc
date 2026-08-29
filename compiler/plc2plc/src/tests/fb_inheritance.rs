@@ -1,5 +1,5 @@
 //! OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE round-trip.
-//! See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+//! See specs/design/beckhoff-twincat-dialect.md §1.3-1.4.
 
 use super::common::*;
 

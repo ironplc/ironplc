@@ -67,18 +67,17 @@ Lifts the 256-byte ceiling entirely. Permanently doubles the bytecode-fetch cost
 - Total `execute()` machine-code size reduction. The `vm-performance.md` §4b table predicts ~18KB → ~6-8KB, which depends on LLVM deduplicating per-arm prologue/epilogue code. Whether that deduplication actually happens is a question for the disassembler.
 - Wall-clock improvement on real workloads. Comes from BTB and possibly L1i; relative contribution is platform-specific.
 
-The implementation plan (`specs/plans/2026-04-28-opcode-encoding-reorganization.md`) requires baseline measurement before changes and post-change re-measurement to validate the size prediction. If the size reduction is small (<20%), the BTB win and structural headroom still justify the change but the L1i story is muted; we should not assume further BTB-only optimizations will compound usefully.
+Validating the size prediction requires baseline measurement before the change and re-measurement afterwards. If the size reduction is small (<20%), the BTB win and structural headroom still justify the change but the L1i story is muted; we should not assume further BTB-only optimizations will compound usefully.
 
 **Costs:**
 
 - `DIV` / `MOD` / `LT` / `LE` / `GT` / `GE` split into signed/unsigned op-class pairs because they need 6 type variants and only 4 fit per class. Adds 6 op-class slots to the count, but the split is semantically clean (signed and unsigned int division genuinely use different CPU instructions).
 - `STRING_OP`, `FB_OP`, `ARRAY_OP`, `BOOL_OP`, `STACK_OP` family consolidations add an inner sub-opcode dispatch. These op classes are not on any FOR-loop hot path; the string family is the only one that's hot in string-heavy programs, and string handlers are already large enough that the sub-opcode dispatch is a small relative cost.
 - Bytecode format break. The user has explicitly waived backwards compatibility for this work.
-- Test migration: ~445 raw-hex bytecode literals across ~30 VM test files need conversion to use named constants. The plan defers this work behind a cargo feature gate (`legacy_bytecode_tests`) until after the post-change measurement validates the encoding is worth keeping.
+- Test migration: ~445 raw-hex bytecode literals across ~30 VM test files need conversion to use named constants. This migration is deferred behind a cargo feature gate (`legacy_bytecode_tests`) until the post-change measurement validates the encoding is worth keeping.
 
 ## References
 
-- Plan: `specs/plans/2026-04-28-opcode-encoding-reorganization.md`
 - Design: `specs/design/vm-performance.md` §4b "Opcode Consolidation to Reduce Instruction Cache Pressure" (Option A is what this ADR adopts).
 - Measurement instrument: `compiler/benchmarks/tests/profile_for_loop.rs`.
 - ADR-0006 (verification requirement) — not implemented here, but the encoding's structural validity check (valid op-class, zero type bits on untyped ops, valid sub-opcode for family ops) is a partial form of what the verifier will eventually do.
