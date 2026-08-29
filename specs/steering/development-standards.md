@@ -31,6 +31,8 @@ Specifications that describe **what** to build: architecture, formats, interface
 
 Work breakdowns that describe **how** to implement: phased task lists, specific code changes, file modifications, and verification steps. A plan document answers "what steps do I follow to build this?" Plans reference the design they implement.
 
+**Never cite a plan from anywhere else.** Code comments, workflows, the `justfile`, design documents and ADRs must cite an ADR or a design document, never `specs/plans/`. A plan records intent at a single moment and is not maintained afterwards, so it is not a stable reference target. Rationale that something else needs to point at belongs in `specs/adrs/` or `specs/design/`.
+
 ### `specs/steering/` — AI Steering Files
 
 Guidance for AI assistants working with the codebase (conventions, patterns, workflows). See [steering-file-guidelines.md](./steering-file-guidelines.md).
@@ -44,7 +46,7 @@ Guidance for AI assistants working with the codebase (conventions, patterns, wor
 | What are the steps to implement the container format? | `specs/plans/` |
 | How should AI assistants name tests? | `specs/steering/` |
 
-When a document contains both design and plan content, split it into two files with cross-references between them. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`.
+When a document contains both design and plan content, split it into two files. The design file goes in `specs/design/` and the plan file goes in `specs/plans/`. The reference is one-way: the plan cites the design it implements, and the design never cites the plan.
 
 **Important**: Plan and design documents must **never** be placed in `docs/`. The `docs/` directory is exclusively for the public Sphinx documentation website. All internal technical documents (plans, designs, ADRs, steering files) belong in `specs/`.
 
