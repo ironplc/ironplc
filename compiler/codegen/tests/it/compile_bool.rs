@@ -161,7 +161,7 @@ fn compile_when_and_then_expression_then_returns_not_implemented() {
     // doesn't exist yet -- rather than silently emit eager (behaviorally
     // wrong) bytecode, compilation must fail clearly. `ironplcc check`
     // already fully supports AND_THEN; only codegen refuses.
-    // See specs/plans/2026-07-20-twincat-and-then-operator.md.
+    // See specs/design/beckhoff-twincat-dialect.md §3.4 and issue #1476.
     let source = "
 PROGRAM main
   VAR
