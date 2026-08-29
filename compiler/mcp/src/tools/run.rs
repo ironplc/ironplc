@@ -4,11 +4,11 @@
 //! it in the IronPLC VM, returning a time-ordered trace of observed
 //! variable values and a summary of task cycles completed.
 //!
-//! This implements Phase 10 of the MCP server plan (see
-//! `specs/plans/2026-04-23-mcp-run-tool.md`). Phase 11 features
-//! (stimuli, non-default trace modes, `tasks` filter, `container_base64`
-//! ingestion, full IEC value codec for STRING/DATE/struct/array) return
-//! `ok: false` with a diagnostic directing the caller to the follow-up.
+//! The tool surface is specified in `specs/design/mcp-server.md` §`run`.
+//! Not all of it is built: stimuli, non-default trace modes, the `tasks`
+//! filter, `container_base64` ingestion, and the full IEC value codec for
+//! STRING/DATE/struct/array return `ok: false` with a diagnostic directing
+//! the caller to the follow-up. See issue #1480 for that gap.
 //!
 //! Design references: `specs/design/mcp-server.md` §`run`
 //! (REQ-TOL-mcp-040..048), §Variable Naming (REQ-ARC-mcp-020..021), §VM

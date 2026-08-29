@@ -307,7 +307,7 @@ install-script-smoke compiler-version="":
 # OS either: every leg below hands two binary paths to the single shared script
 # tests/e2e/library/verify.sh. It used to exist twice -- once in sh, once in
 # PowerShell -- and the copies drifted, so a green Linux run said nothing about
-# Windows (see specs/plans/library-e2e-cross-platform-fix.md). Windows runs the
+# Windows. Windows runs the
 # same script through Git for Windows' bash. Keep new assertions in the script,
 # never in a recipe.
 #
