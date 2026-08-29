@@ -33,7 +33,7 @@ down.
 ## Architecture
 
 **One declaration per opcode, carrying its operand layout.** A
-`instruction_set!` macro in `container/src/opcode.rs` takes rows of
+`declare_instruction_set!` macro in `container/src/opcode.rs` takes rows of
 
 ```rust
 /// Load a 32-bit integer constant from the constant pool.
@@ -88,7 +88,7 @@ follow-up is a body swap.
 
 ## Prefactoring
 
-The prefactor is the `instruction_set!` table itself, landing in its own
+The prefactor is the `declare_instruction_set!` table itself, landing in its own
 commit before the viewer changes: the table reshapes the opcode space so the
 viewer rewrite is a deletion rather than an addition of 50 more arms. Only
 then does `decode_instructions` change, and it loses ~700 lines of
@@ -108,7 +108,7 @@ only so the relationship is on the record.
 
 ## File map
 
-- `compiler/container/src/opcode.rs` — modified: `instruction_set!` macro,
+- `compiler/container/src/opcode.rs` — modified: `declare_instruction_set!` macro,
   `Operand` enum, opcode rows; `instruction_size_opt` derived from the
   layouts.
 - `compiler/project/src/disassemble.rs` — modified: table-driven
@@ -116,7 +116,7 @@ only so the relationship is on the record.
 
 ## Tasks
 
-- [ ] Add `Operand` and `instruction_set!`; convert all 126 opcode constants
+- [ ] Add `Operand` and `declare_instruction_set!`; convert all 126 opcode constants
       to table rows; derive `instruction_size_opt` from the layouts
 - [ ] Verify no opcode byte changed (extract name → `(class, tag)` pairs
       before and after and diff)

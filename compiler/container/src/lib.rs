@@ -11,6 +11,7 @@ mod container_ref;
 mod error;
 mod header;
 pub mod id_types;
+mod instruction;
 pub mod opcode;
 mod task_type;
 
