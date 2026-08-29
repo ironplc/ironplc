@@ -2,4 +2,4 @@
 
 See [specs/steering/development-standards.md](../../specs/steering/development-standards.md) for the full development standards.
 
-This file defines core project conventions, testing patterns, error handling, and documentation standards for the IronPLC project.
+This file defines core project conventions, prefactoring expectations, testing patterns, error handling, and documentation standards for the IronPLC project.

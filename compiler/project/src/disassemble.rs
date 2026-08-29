@@ -492,22 +492,20 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
             opcode::JMP => {
                 let jump_offset = read_i16(bytecode, pc + 1);
                 let target = (pc as isize + size as isize + jump_offset as isize) as usize;
-                let sign = sign(jump_offset);
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": "JMP",
-                    "operands": format!("offset: {}0x{:04X}", sign, jump_offset),
+                    "operands": format!("offset: {}", format_jump_offset(jump_offset)),
                     "comment": format!("-> 0x{:04X}", target),
                 }));
             }
             opcode::JMP_IF_NOT => {
                 let jump_offset = read_i16(bytecode, pc + 1);
                 let target = (pc as isize + size as isize + jump_offset as isize) as usize;
-                let sign = sign(jump_offset);
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": "JMP_IF_NOT",
-                    "operands": format!("offset: {}0x{:04X}", sign, jump_offset),
+                    "operands": format!("offset: {}", format_jump_offset(jump_offset)),
                     "comment": format!("-> 0x{:04X}", target),
                 }));
             }
@@ -967,11 +965,10 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                     opcode::cmp_op::GE_S => "GE_S",
                     _ => "INVALID",
                 };
-                let sign = sign(jump_offset);
                 instructions.push(json!({
                     "offset": offset,
                     "opcode": mnemonic,
-                    "operands": format!("{}, var[{}], const[{}], offset: {}0x{:04X}", cmp_str, var_idx, const_idx, sign, jump_offset),
+                    "operands": format!("{}, var[{}], const[{}], offset: {}", cmp_str, var_idx, const_idx, format_jump_offset(jump_offset)),
                     "comment": format!("-> 0x{:04X}", target),
                 }));
             }
@@ -1010,12 +1007,16 @@ fn read_u32(bytecode: &[u8], pos: usize) -> u32 {
     ])
 }
 
-fn sign(value: i16) -> &'static str {
-    if value > 0 {
-        "+"
-    } else {
-        "-"
-    }
+/// Formats a jump offset as a sign and hexadecimal magnitude, for example
+/// `+0x0002` or `-0x0003`.
+///
+/// The magnitude comes from [`i16::unsigned_abs`] rather than from formatting
+/// the `i16` directly: `UpperHex` for a signed integer emits the two's
+/// complement bit pattern, which would print `-3` as `-0xFFFD`. `unsigned_abs`
+/// is also total, so `i16::MIN` in a corrupt container cannot panic.
+fn format_jump_offset(value: i16) -> String {
+    let sign = if value < 0 { "-" } else { "+" };
+    format!("{}0x{:04X}", sign, value.unsigned_abs())
 }
 
 /// Looks up a constant pool entry by index and returns a display comment.
@@ -1402,7 +1403,89 @@ mod tests {
         let bytecode = vec![opcode::JMP_IF_NOT, 0xFD, 0xFF, opcode::RET_VOID];
         let instr = first_instruction(bytecode);
         assert_eq!(instr["opcode"], "JMP_IF_NOT");
+        assert_eq!(instr["operands"], "offset: -0x0003");
         assert_eq!(instr["comment"], "-> 0x0000");
+    }
+
+    #[rstest]
+    #[case::jmp_forward(opcode::JMP, "JMP", 2, "offset: +0x0002")]
+    // A backward offset prints its magnitude, not the two's complement encoding
+    // (which would read as -0xFFFD).
+    #[case::jmp_backward(opcode::JMP, "JMP", -3, "offset: -0x0003")]
+    #[case::jmp_zero(opcode::JMP, "JMP", 0, "offset: +0x0000")]
+    // i16::MIN has no positive counterpart; unsigned_abs keeps the format total.
+    #[case::jmp_min(opcode::JMP, "JMP", i16::MIN, "offset: -0x8000")]
+    #[case::jmp_if_not_forward(opcode::JMP_IF_NOT, "JMP_IF_NOT", 2, "offset: +0x0002")]
+    #[case::jmp_if_not_backward(opcode::JMP_IF_NOT, "JMP_IF_NOT", -3, "offset: -0x0003")]
+    fn decode_when_jump_then_operand_is_sign_and_magnitude(
+        #[case] opcode_byte: u8,
+        #[case] expected_opcode: &str,
+        #[case] jump_offset: i16,
+        #[case] expected_operands: &str,
+    ) {
+        let offset_bytes = jump_offset.to_le_bytes();
+        let bytecode = vec![
+            opcode_byte,
+            offset_bytes[0],
+            offset_bytes[1],
+            opcode::RET_VOID,
+        ];
+        let instr = first_instruction(bytecode);
+        assert_eq!(instr["opcode"], expected_opcode);
+        assert_eq!(instr["operands"], expected_operands);
+    }
+
+    // CMP_BR_* is 8 bytes: opcode, cmp op, var index, const index, offset. The
+    // cases below use var[1] and const[2], so target = 0 + 8 + offset.
+    #[rstest]
+    #[case::i32_backward(
+        opcode::CMP_BR_I32,
+        "CMP_BR_I32",
+        opcode::cmp_op::LT_S,
+        -3,
+        "LT_S, var[1], const[2], offset: -0x0003",
+        "-> 0x0005"
+    )]
+    #[case::i64_forward(
+        opcode::CMP_BR_I64,
+        "CMP_BR_I64",
+        opcode::cmp_op::EQ,
+        2,
+        "EQ, var[1], const[2], offset: +0x0002",
+        "-> 0x000A"
+    )]
+    #[case::i32_zero(
+        opcode::CMP_BR_I32,
+        "CMP_BR_I32",
+        opcode::cmp_op::GE_S,
+        0,
+        "GE_S, var[1], const[2], offset: +0x0000",
+        "-> 0x0008"
+    )]
+    fn decode_when_cmp_br_then_operand_is_sign_and_magnitude(
+        #[case] opcode_byte: u8,
+        #[case] expected_opcode: &str,
+        #[case] cmp_op_byte: u8,
+        #[case] jump_offset: i16,
+        #[case] expected_operands: &str,
+        #[case] expected_comment: &str,
+    ) {
+        let offset_bytes = jump_offset.to_le_bytes();
+        let bytecode = vec![
+            opcode_byte,
+            cmp_op_byte,
+            0x01,
+            0x00,
+            0x02,
+            0x00,
+            offset_bytes[0],
+            offset_bytes[1],
+            opcode::RET_VOID,
+        ];
+        let instr = first_instruction(bytecode);
+        assert_eq!(instr["opcode"], expected_opcode);
+        assert_eq!(instr["operands"], expected_operands);
+        assert_eq!(instr["comment"], expected_comment);
     }
 
     // ---------------------------------------------------------------
