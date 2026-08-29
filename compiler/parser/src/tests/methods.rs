@@ -1,5 +1,5 @@
 //! OOP extension: METHOD ... END_METHOD declarations on a function block.
-//! See specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md.
+//! See ADR-0041 (specs/adrs/0041-staged-method-and-interface-dispatch.md).
 
 use super::common::*;
 

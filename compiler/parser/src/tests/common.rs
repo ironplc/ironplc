@@ -202,7 +202,7 @@ pub(crate) fn opts_with_constant_initializer_expressions() -> CompilerOptions {
 
 // ---------------------------------------------------------------------
 // OOP extensions: EXTENDS/IMPLEMENTS/INTERFACE.
-// See specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+// See specs/design/beckhoff-twincat-dialect.md §1.3-1.4.
 // ---------------------------------------------------------------------
 
 pub(crate) fn opts_with_fb_inheritance() -> CompilerOptions {

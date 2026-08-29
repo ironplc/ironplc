@@ -565,8 +565,7 @@ fn compile_fb_call(
 /// data-region layout doesn't currently reserve storage for a base
 /// type's fields at all (`compile_user_function_block`'s field list
 /// comes from `fb_decl.variables` only, never flattened with inherited
-/// fields), so there is nothing correct to copy-in/copy-out from. See
-/// specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md.
+/// fields), so there is nothing correct to copy-in/copy-out from.
 fn compile_method_call(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,

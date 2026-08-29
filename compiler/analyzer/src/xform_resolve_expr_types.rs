@@ -946,7 +946,6 @@ END_FUNCTION_BLOCK";
 
     // -----------------------------------------------------------------
     // EXTENDS field inheritance.
-    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
     // -----------------------------------------------------------------
 
     #[test]

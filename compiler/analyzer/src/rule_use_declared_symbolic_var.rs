@@ -376,7 +376,6 @@ END_PROGRAM"
 
     // ---------------------------------------------------------------------
     // EXTENDS field inheritance.
-    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
     // ---------------------------------------------------------------------
 
     fn opts_with_fb_inheritance() -> CompilerOptions {

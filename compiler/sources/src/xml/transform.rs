@@ -483,8 +483,7 @@ fn transform_function_block(
             oop: None,
             // TwinCAT's .TcPOU XML stores each method as a separate
             // <Method> element, not nested under the POU body handled
-            // here. Wiring those into `methods` is a follow-up slice
-            // (see specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md).
+            // here. Wiring those into `methods` is a follow-up slice.
             methods: vec![],
         },
     ))

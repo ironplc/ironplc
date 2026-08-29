@@ -2766,7 +2766,7 @@ pub struct FunctionBlockDeclaration {
     /// unrepresentable on a plain FB rather than "present but empty."
     /// `Some` only when the source actually uses `EXTENDS`, `IMPLEMENTS`,
     /// or `ABSTRACT`. See `LanguageExtension` impl on `FunctionBlockOop` and
-    /// `specs/plans/2026-07-18-twincat-extends-implements-interface.md`.
+    /// `specs/design/beckhoff-twincat-dialect.md` §1.4.
     pub oop: Option<FunctionBlockOop>,
     /// `METHOD ... END_METHOD` blocks declared on this function block
     /// (OOP extension). Empty for an ordinary function block — same
@@ -2869,7 +2869,7 @@ impl LanguageExtension for FunctionBlockOop {
 /// Only the header is represented — method and property signatures are not
 /// yet parsed (TwinCAT stores each as a separate `<Method>`/`<Property>` XML
 /// element, silently ignored today; see
-/// `specs/plans/2026-07-18-twincat-extends-implements-interface.md`). This
+/// `specs/design/beckhoff-twincat-dialect.md` §1.3). This
 /// is enough for an interface name to be recognized as a known type, so
 /// that variables declared with an interface type resolve instead of
 /// failing with "type not declared."
