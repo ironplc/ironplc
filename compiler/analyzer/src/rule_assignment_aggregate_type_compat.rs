@@ -72,10 +72,10 @@ pub fn apply(
         declarations: scoped_table::ScopedTable::new(),
         diagnostics: Vec::new(),
     };
-    // The outermost scope holds declarations made outside any POU --
-    // a CONFIGURATION's VAR_GLOBAL block, most importantly -- so a POU
-    // scope's lookups fall through to them.
-    rule.declarations.enter();
+    // The table's base scope holds declarations made outside any POU -- a
+    // CONFIGURATION's VAR_GLOBAL block, most importantly -- so a POU scope's
+    // lookups fall through to them. `new` opens it; entering another here
+    // would leave a scope that nothing exits.
     run_rule(rule, lib)
 }
 
