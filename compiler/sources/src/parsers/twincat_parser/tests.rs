@@ -317,7 +317,7 @@ fn opts_with_fb_inheritance() -> CompilerOptions {
 fn parse_when_itf_bare_interface_then_succeeds() {
     // Modeled on a real .TcIO file's structure (Beckhoff TwinCAT
     // interface, no base) — see
-    // specs/plans/2026-07-18-twincat-extends-implements-interface.md.
+    // specs/design/beckhoff-twincat-dialect.md §1.3.
     let xml = r#"<?xml version="1.0" encoding="utf-8"?>
 <TcPlcObject Version="1.1.0.1">
   <Itf Name="I_Drivable" Id="{00000000-0000-0000-0000-000000000000}">

@@ -2766,7 +2766,7 @@ pub struct FunctionBlockDeclaration {
     /// unrepresentable on a plain FB rather than "present but empty."
     /// `Some` only when the source actually uses `EXTENDS`, `IMPLEMENTS`,
     /// or `ABSTRACT`. See `LanguageExtension` impl on `FunctionBlockOop` and
-    /// `specs/plans/2026-07-18-twincat-extends-implements-interface.md`.
+    /// `specs/design/beckhoff-twincat-dialect.md` §1.4.
     pub oop: Option<FunctionBlockOop>,
     /// `METHOD ... END_METHOD` blocks declared on this function block
     /// (OOP extension). Empty for an ordinary function block — same
@@ -2789,12 +2789,7 @@ pub struct FunctionBlockDeclaration {
 /// (own methods first, then the `EXTENDS` chain) is implemented outside
 /// the AST, in `ironplc-analyzer`.
 #[derive(Clone, Debug, PartialEq, Recurse, Located)]
-// A `METHOD` *should* open a scope -- its parameters and locals belong to it,
-// not to the function block, and its own name should be assignable to set the
-// result value. It does not today, which is
-// https://github.com/ironplc/ironplc/issues/1439. Stated explicitly rather than
-// left to an omission so that the fix is a one-word change here.
-#[recurse(no_scope)]
+#[recurse(scope)]
 pub struct MethodDeclaration {
     pub name: Id,
     pub return_type: Option<FunctionReturnType>,
@@ -2874,7 +2869,7 @@ impl LanguageExtension for FunctionBlockOop {
 /// Only the header is represented — method and property signatures are not
 /// yet parsed (TwinCAT stores each as a separate `<Method>`/`<Property>` XML
 /// element, silently ignored today; see
-/// `specs/plans/2026-07-18-twincat-extends-implements-interface.md`). This
+/// `specs/design/beckhoff-twincat-dialect.md` §1.3). This
 /// is enough for an interface name to be recognized as a known type, so
 /// that variables declared with an interface type resolve instead of
 /// failing with "type not declared."

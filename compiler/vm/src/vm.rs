@@ -2632,6 +2632,60 @@ pub(crate) fn execute_with_hook<H: DebugHook>(
                 data_region[byte_offset..byte_offset + 8]
                     .copy_from_slice(&value_slot.as_i64().to_le_bytes());
             }
+            opcode::COPY_REGION => {
+                let dst_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
+                let dst_desc_index = read_u16_le(bytecode, &mut pc)?;
+                let src_desc_index = read_u16_le(bytecode, &mut pc)?;
+                let src_offset_slot = stack.pop()?;
+
+                // Both sizes come from the container's array descriptors
+                // rather than from an operand, so a codegen defect cannot ask
+                // for a copy that does not match the objects involved.
+                let descriptor_bytes = |desc_index: u16| {
+                    container
+                        .type_section
+                        .as_ref()
+                        .and_then(|ts| ts.array_descriptors.get(desc_index as usize))
+                        .and_then(|d| d.byte_size())
+                };
+                let dst_bytes = descriptor_bytes(dst_desc_index)
+                    .ok_or(Trap::InvalidVariableIndex(dst_var_index))?;
+                let src_bytes = descriptor_bytes(src_desc_index)
+                    .ok_or(Trap::InvalidVariableIndex(dst_var_index))?;
+                if dst_bytes != src_bytes {
+                    return Err(Trap::RegionSizeMismatch {
+                        dst_bytes,
+                        src_bytes,
+                    });
+                }
+                let count = dst_bytes as usize;
+
+                scope.check_access(dst_var_index)?;
+
+                let dst_offset = variables.load(dst_var_index)?.as_i32() as u32 as usize;
+                let src_offset = src_offset_slot.as_i32() as u32 as usize;
+
+                // Confine both ends to the data region. Checked arithmetic so
+                // an offset near u32::MAX cannot wrap into a valid-looking
+                // range on a 32-bit target.
+                let dst_end = dst_offset
+                    .checked_add(count)
+                    .ok_or(Trap::DataRegionOutOfBounds(dst_offset as u32))?;
+                let src_end = src_offset
+                    .checked_add(count)
+                    .ok_or(Trap::DataRegionOutOfBounds(src_offset as u32))?;
+                if dst_end > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(dst_offset as u32));
+                }
+                if src_end > data_region.len() {
+                    return Err(Trap::DataRegionOutOfBounds(src_offset as u32));
+                }
+
+                // copy_within is defined for overlapping ranges, so a
+                // self-assignment (`x := x`, identical offsets) is a no-op
+                // rather than corruption.
+                data_region.copy_within(src_offset..src_end, dst_offset);
+            }
             opcode::LOAD_ARRAY_DEREF => {
                 let ref_var_index = VarIndex::new(read_u16_le(bytecode, &mut pc)?);
                 let desc_index = read_u16_le(bytecode, &mut pc)?;

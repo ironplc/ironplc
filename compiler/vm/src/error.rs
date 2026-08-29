@@ -57,6 +57,21 @@ pub enum Trap {
     /// computed (a hand-built or legacy container). `VmReady::start`
     /// rejects it before any init code runs.
     ZeroCallDepth,
+    /// A `COPY_REGION` named a destination and a source whose array
+    /// descriptors describe spans of different byte sizes.
+    ///
+    /// The copy length is derived from the descriptors rather than carried as
+    /// an operand, so this is the check that a whole-aggregate assignment is
+    /// moving like for like. Today the analyzer proves the two declared types
+    /// are identical before codegen emits the instruction, so reaching this
+    /// trap indicates a compiler defect. It is defined as a size disagreement
+    /// rather than as an internal error because a future variable-length array
+    /// (`ARRAY[*]`) has extents the analyzer cannot compare statically, at
+    /// which point a correct compiler can produce this from a correct program.
+    RegionSizeMismatch {
+        dst_bytes: u32,
+        src_bytes: u32,
+    },
 }
 
 // v_code() and exit_code() are generated from resources/problem-codes.csv
@@ -113,6 +128,15 @@ impl fmt::Display for Trap {
             }
             Trap::ZeroCallDepth => {
                 write!(f, "container declares a maximum call depth of zero")
+            }
+            Trap::RegionSizeMismatch {
+                dst_bytes,
+                src_bytes,
+            } => {
+                write!(
+                    f,
+                    "region copy size mismatch: destination is {dst_bytes} bytes, source is {src_bytes} bytes"
+                )
             }
         }
     }

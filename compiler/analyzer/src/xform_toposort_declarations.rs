@@ -680,7 +680,6 @@ mod tests {
 
     // ---------------------------------------------------------------------
     // FUNCTION_BLOCK EXTENDS dependency edge.
-    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
     // ---------------------------------------------------------------------
 
     fn parse_with_fb_inheritance(program: &str) -> Library {

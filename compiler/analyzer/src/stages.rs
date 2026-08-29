@@ -14,8 +14,8 @@ use crate::{
     function_environment::FunctionEnvironmentBuilder,
     ironplc_dsl::common::Library,
     result::SemanticResult,
-    rule_abstract_not_instantiated, rule_bit_access_range, rule_case_bit_string_label,
-    rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
+    rule_abstract_not_instantiated, rule_assignment_aggregate_type_compat, rule_bit_access_range,
+    rule_case_bit_string_label, rule_decl_struct_element_unique_names, rule_decl_subrange_limits,
     rule_enumeration_values_unique, rule_extends_field_duplicated,
     rule_function_block_call_unsupported, rule_function_block_invocation,
     rule_function_call_declared, rule_function_call_type_check, rule_method_call_declared,
@@ -218,8 +218,7 @@ pub fn resolve_types(
 
     // Fold constant-expression VAR initializers (e.g. `scaled : LREAL := SCALE*4.0;`)
     // back into ordinary literal initializers, or diagnose. Must run before
-    // any other pass touches `InitialValueAssignmentKind::SimpleExpr` — see
-    // specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
+    // any other pass touches `InitialValueAssignmentKind::SimpleExpr`.
     // Recoverable: a diagnosed initializer is still normalized, so the
     // transformed library must be kept even when diagnostics are present —
     // reverting would leak `SimpleExpr` nodes to later passes.
@@ -335,6 +334,7 @@ pub(crate) fn semantic(
 ) -> SemanticResult {
     let functions: Vec<fn(&Library, &SemanticContext, &CompilerOptions) -> SemanticResult> = vec![
         rule_abstract_not_instantiated::apply,
+        rule_assignment_aggregate_type_compat::apply,
         rule_decl_struct_element_unique_names::apply,
         rule_decl_subrange_limits::apply,
         rule_enumeration_values_unique::apply,
@@ -448,8 +448,7 @@ END_FUNCTION_BLOCK";
     // A diagnosed constant-expression initializer must report only its own
     // problem. The initializer-fold transform used to be reverted when it
     // diagnosed, leaking `SimpleExpr` nodes to later rules and raising a
-    // P9998 internal error after every legitimate P4037. See
-    // specs/plans/2026-08-06-twincat-initializer-dialect-and-fold-revert-fixes.md.
+    // P9998 internal error after every legitimate P4037.
     // ---------------------------------------------------------------------
 
     #[test]
@@ -517,7 +516,6 @@ END_FUNCTION_BLOCK
 
     // ---------------------------------------------------------------------
     // Constant-expression VAR initializers.
-    // See specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
     // ---------------------------------------------------------------------
 
     fn opts_with_constant_initializer_expressions() -> CompilerOptions {

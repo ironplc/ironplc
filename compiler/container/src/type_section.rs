@@ -102,7 +102,39 @@ impl ArrayDescriptor {
             crate::CharWidth::Narrow
         }
     }
+
+    /// Returns the byte stride of one element in the data region.
+    ///
+    /// STRING/WSTRING elements are variable-length regions laid out as
+    /// `[max_length: u16][cur_length: u16][encoding: u16][data]` (ADR-0015,
+    /// ADR-0035), so their stride depends on `element_extra` (the max length in
+    /// code units) and the per-code-unit width. Every other element type
+    /// occupies exactly one 8-byte slot.
+    pub fn element_stride(&self) -> u32 {
+        if self.element_type == FieldType::String as u8
+            || self.element_type == FieldType::WString as u8
+        {
+            crate::STRING_HEADER_BYTES as u32
+                + (self.element_extra as u32) * (self.element_char_width().byte_width() as u32)
+        } else {
+            SLOT_BYTES
+        }
+    }
+
+    /// Returns the total size in bytes of the data-region span this descriptor
+    /// covers, or `None` on overflow.
+    ///
+    /// This is the single definition of an aggregate's byte size, shared by
+    /// codegen (when allocating the region) and the VM (when bounds-checking a
+    /// [`crate::opcode::COPY_REGION`]). Structure variables are described as a
+    /// flat array of [`FieldType::Slot`] elements, so they are covered too.
+    pub fn byte_size(&self) -> Option<u32> {
+        self.total_elements.checked_mul(self.element_stride())
+    }
 }
+
+/// Bytes occupied by a single data-region slot.
+pub const SLOT_BYTES: u32 = 8;
 
 /// Size of a single array descriptor on disk in bytes.
 const ARRAY_DESCRIPTOR_SIZE: usize = 8;

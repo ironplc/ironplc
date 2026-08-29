@@ -1006,7 +1006,6 @@ END_CONFIGURATION
 
     // -----------------------------------------------------------------
     // Multi-directory initialization.
-    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
     // Multi-directory merge semantics (clearing once, per-directory failures,

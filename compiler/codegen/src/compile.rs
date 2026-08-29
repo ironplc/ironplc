@@ -1021,6 +1021,11 @@ pub(crate) struct UserFunctionInfo {
     /// in the data region. Used at call sites to initialize the return string
     /// header before CALL.
     pub(crate) return_string_info: Option<StringReturnInfo>,
+    /// If the function returns a structure, the array descriptor index of its
+    /// return variable's data region. A call site assigning the result to a
+    /// whole variable (`s := f()`) needs it to emit `COPY_REGION`, whose
+    /// source size comes from the descriptor rather than an operand.
+    pub(crate) return_struct_desc_index: Option<u16>,
     /// Maximum stack depth used by this function's body.
     pub(crate) max_stack_depth: u16,
 }

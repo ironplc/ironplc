@@ -162,10 +162,12 @@ impl Emitter {
         }
     }
 
-    // The three line_map APIs below are scaffolding for the source-map
-    // work tracked in specs/plans/2026-04-07-debug-source-map-and-hook.md.
-    // They are exercised by unit tests; the consumer in compile_stmt /
-    // compile_fn lands in a follow-up.
+    // Source-map recording. `compile_stmt` sets a position per statement,
+    // `compile.rs` carries the entries through the optimizer's offset
+    // remapping into the container's LINE_MAP (tag 1), and
+    // `codegen/tests/it/end_to_end_debug_line_map.rs` asserts the result
+    // against real source. See `specs/design/debugger-support.md`
+    // §"Source Position Tracking".
 
     /// Sets the source position to associate with subsequently emitted
     /// opcodes. Each new opcode that actually pushes bytes records an
@@ -487,6 +489,19 @@ impl Emitter {
             .extend_from_slice(&ref_var_index.to_le_bytes());
         self.bytecode.extend_from_slice(&desc_index.to_le_bytes());
         self.pop_stack(2);
+    }
+
+    /// Emits COPY_REGION with dst_var, dst_desc and src_desc operands.
+    ///
+    /// The source's data-region offset must already be on the stack. The copy
+    /// length is not emitted — the VM derives it from the two descriptors and
+    /// traps if they disagree. Pops 1 (source offset). Net: -1.
+    pub fn emit_copy_region(&mut self, dst_var: VarIndex, dst_desc: u16, src_desc: u16) {
+        self.emit_opcode(opcode::COPY_REGION);
+        self.bytecode.extend_from_slice(&dst_var.to_le_bytes());
+        self.bytecode.extend_from_slice(&dst_desc.to_le_bytes());
+        self.bytecode.extend_from_slice(&src_desc.to_le_bytes());
+        self.pop_stack(1);
     }
 
     /// Emits STR_INIT_ARRAY with var_index and desc_index operands.

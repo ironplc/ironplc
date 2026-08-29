@@ -138,18 +138,18 @@ fn profile_for_loop_int_then_expected_hot_opcodes_dominate() {
     assert!(profile.count(opcode::STORE_VAR_I32) >= 100);
     // FOR head test is now fused into a single CMP_BR_I32 per iteration,
     // replacing the per-iteration LOAD_VAR + LOAD_CONST + LE_I32 +
-    // JMP_IF_NOT sequence. See specs/plans/2026-05-02-cmp-br-superinstruction.md.
+    // JMP_IF_NOT sequence. See specs/design/vm-performance.md §11.
     assert!(profile.count(opcode::CMP_BR_I32) >= 50);
     assert_eq!(profile.count(opcode::GT_I32), 0);
     assert_eq!(profile.count(opcode::LE_I32), 0);
 
     // The two FOR-loop-internal TRUNC_I16 sites (init and per-iteration
     // increment) are now elided because `1 TO 100` keeps every value of `i`
-    // safely inside INT's range. See
-    // specs/plans/2026-04-30-elide-for-loop-trunc.md. The 102 TRUNC_I16
-    // ops still observed are 100 from the body's `total := total + i`
-    // assignment plus 2 from initializing `total : INT` — narrow stores
-    // that this slice of interval analysis does not address.
+    // safely inside INT's range. See specs/design/vm-performance.md §13.
+    // The 102 TRUNC_I16 ops still observed are 100 from the body's
+    // `total := total + i` assignment plus 2 from initializing
+    // `total : INT` — narrow stores that this slice of interval analysis
+    // does not address.
     assert_eq!(profile.count(opcode::TRUNC_I16), 102);
 }
 

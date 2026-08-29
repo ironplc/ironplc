@@ -104,7 +104,8 @@ The full op-class table (63 of 64 slots used; 0x3F free):
 | `STACK_OP` | 0x24 | tags 0=POP, 1=DUP, 2=SWAP | type tag selects op |
 | `BUILTIN` | 0x25 | only tag 0 | u16 builtin func_id operand |
 | `FB_LOAD_INSTANCE`, `FB_STORE_PARAM`, `FB_LOAD_PARAM`, `FB_CALL` | 0x26–0x29 | only tag 0 | |
-| `LOAD_ARRAY`, `STORE_ARRAY`, `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF` | 0x2A–0x2D | only tag 0 | |
+| `LOAD_ARRAY`, `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF` | 0x2A, 0x2C–0x2D | only tag 0 | |
+| `STORE_ARRAY` | 0x2B | tags 0=element, 1=`COPY_REGION` | type tag selects the granularity of the store |
 | `STR_INIT`, `STR_LOAD_VAR`, `STR_STORE_VAR`, `LEN_STR`, `FIND_STR`, `REPLACE_STR`, `INSERT_STR`, `DELETE_STR`, `LEFT_STR`, `RIGHT_STR`, `MID_STR`, `CONCAT_STR`, `STR_INIT_ARRAY`, `STR_LOAD_ARRAY_ELEM`, `STR_STORE_ARRAY_ELEM` | 0x2E–0x3C | only tag 0 | one slot each |
 | `CMP_BR` | 0x3D | tags 0=I32, 1=I64 | fused compare-and-branch; F32/F64 tags reserved |
 | `METHOD_CALL` | 0x3E | only tag 0 | OOP extension (ADR-0041 Phase 1 static dispatch) |
@@ -668,6 +669,52 @@ These are dispatched inline in the VM main loop rather than through the shared b
 
 ---
 
+### Whole-Region Copy
+
+Whole-aggregate assignment (`x := y` where both sides are arrays or
+structures) is a value copy under IEC 61131-3 §7.3.3.1. An aggregate
+variable's slot holds its data-region byte offset, so a load/store pair would
+copy the offset and leave the destination aliasing the source; `COPY_REGION`
+moves the bytes instead.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xAD | COPY_REGION | dst_var: u16, dst_desc: u16, src_desc: u16 | [src_offset] → [] | Copy a whole aggregate within the data region |
+
+**The instruction carries no length.** The VM derives the byte size of each
+end from the array descriptor named in the operand and traps
+`RegionSizeMismatch` (V9018) if the two disagree. A length immediate would let
+a code-generation defect over-copy into a neighbouring variable — the class of
+bug this instruction exists to prevent — whereas a descriptor is container
+metadata the verifier can also inspect. It is the same discipline `LOAD_ARRAY`
+follows by taking `total_elements` from the descriptor rather than an operand.
+
+The destination is named by variable index so the access is scope-checked; it
+is the side that writes. The source arrives as a data-region offset on the
+stack so that both `s := t` (preceded by `LOAD_VAR_I32 t`) and `s := f()`,
+where a struct-returning call leaves its offset on the stack and has no
+variable index in the caller's scope, use one instruction.
+
+Overlapping ranges are well defined — the VM uses `copy_within` — so `x := x`
+is a no-op rather than corruption.
+
+Descriptors cannot distinguish `ARRAY[1..6] OF INT` from
+`ARRAY[1..2,1..3] OF INT`, nor `INT` elements from `DINT` elements (both are
+8-byte slots). Declared-type equality is checked statically instead, by the
+analyzer, which reports P2037 on a mismatch.
+
+**Encoding.** `COPY_REGION` is `STORE_ARRAY` at type tag 1 — the same op
+class, one granularity coarser — rather than an op class of its own. Op
+classes exist to keep the dispatch table small, not to name operations, so a
+single instruction does not earn one; measurement has not shown dispatch-table
+size to be a bottleneck. Tags 2–3 of the class remain free. The obvious
+candidate for one is a `COPY_REGION_DYN` taking its sizes from a runtime
+descriptor rather than a container descriptor, which is what an Ed. 3
+variable-length array (`ARRAY[*]`, a `VAR_IN_OUT` parameter whose extents are
+a property of the call rather than of the program text) would need.
+
+---
+
 ### String Operations
 
 IEC 61131-3 strings have a declared maximum length known at compile time (e.g. `STRING(20)` holds at most 20 characters). Strings are stored as fixed-size regions — never heap-allocated — matching PLC runtimes like CODESYS and TwinCAT and giving deterministic memory usage with no dynamic allocation during a scan.
@@ -742,7 +789,7 @@ There are no `NOP`, `BREAKPOINT`, or `LINE` opcodes. Debug information is carrie
 
 ## Opcode Summary
 
-The encoding allocates 62 of 64 op-class slots and 125 opcode bytes. Within each op-class, the type tag (low 2 bits) selects either the data-type variant or a family-member operation (for the consolidated `LOAD_BOOL`, `BOOL_OP`, and `STACK_OP` classes).
+The encoding allocates 63 of 64 op-class slots and 126 opcode bytes. Within each op-class, the type tag (low 2 bits) selects either the data-type variant or a family-member operation (for the consolidated `LOAD_BOOL`, `BOOL_OP`, and `STACK_OP` classes).
 
 | Op-class | Bytes | Count | Description |
 |----------|-------|-------|-------------|
@@ -789,7 +836,7 @@ The encoding allocates 62 of 64 op-class slots and 125 opcode bytes. Within each
 | `FB_LOAD_PARAM` (0x28) | 0xA0 | 1 | Load an FB parameter field |
 | `FB_CALL` (0x29) | 0xA4 | 1 | Invoke an FB (intrinsic or bytecode body) |
 | `LOAD_ARRAY` (0x2A) | 0xA8 | 1 | Load array element |
-| `STORE_ARRAY` (0x2B) | 0xAC | 1 | Store array element |
+| `STORE_ARRAY` (0x2B) | 0xAC–0xAD | 2 | Store into array storage (tag: 0=one element, 1=`COPY_REGION`) |
 | `LOAD_ARRAY_DEREF` (0x2C) | 0xB0 | 1 | Load array element via reference |
 | `STORE_ARRAY_DEREF` (0x2D) | 0xB4 | 1 | Store array element via reference |
 | `STR_INIT` (0x2E) | 0xB8 | 1 | Initialize a string header in the data region |
@@ -822,6 +869,7 @@ Every byte not listed above is unassigned; executing one traps `V9003 InvalidIns
 | 2 bytes | `FB_STORE_PARAM`, `FB_LOAD_PARAM` (u8 field index) |
 | 3 bytes | `LOAD_CONST_*`, `LOAD_CONST_STR`, `LOAD_VAR_*`, `STORE_VAR_*`, `FB_LOAD_INSTANCE`, `FB_CALL`, `JMP`, `JMP_IF_NOT`, `BUILTIN` (u16) |
 | 5 bytes | `CALL`, `LOAD_ARRAY`, `STORE_ARRAY`, `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF`, `STR_INIT_ARRAY`, `STR_LOAD_ARRAY_ELEM`, `STR_STORE_ARRAY_ELEM` (u16 + u16); `STR_LOAD_VAR`, `STR_STORE_VAR`, `LEN_STR`, `DELETE_STR`, `LEFT_STR`, `RIGHT_STR`, `MID_STR` (u32) |
+| 7 bytes | `COPY_REGION` (u16 + u16 + u16) |
 | 8 bytes | `STR_INIT` (u32 + u16 + u8); `CMP_BR_I32`, `CMP_BR_I64` (u8 + u16 + u16 + i16); `METHOD_CALL` (u16 + u16 + u8 + u16) |
 | 9 bytes | `FIND_STR`, `REPLACE_STR`, `INSERT_STR`, `CONCAT_STR` (u32 + u32) |
 

@@ -97,7 +97,7 @@ fn collect_io(context: &SemanticContext) -> (Vec<IoEntry>, Vec<IoEntry>) {
 
     // Programs: name variables as `<program>.<variable>`.
     for (program_name, _) in context.symbols().get_programs() {
-        let scope = ScopeKind::Named(program_name.clone());
+        let scope = ScopeKind::Named(program_name.clone().into());
         for (var_name, info) in context.symbols().get_variables_in_scope(&scope) {
             let qualified = format!("{}.{}", program_name, var_name);
             classify(&qualified, info, true, false, &mut inputs, &mut outputs);

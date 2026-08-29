@@ -103,8 +103,8 @@ fn write_steel_thread_container(path: &Path) {
     std::fs::write(path, &buf).unwrap();
 }
 
-/// Builds a container exercising the new debug section features added in
-/// `specs/plans/2026-05-22-debug-source-file-table.md`:
+/// Builds a container exercising the debug section features described in
+/// `specs/design/debugger-support.md` §"Tag Registry":
 ///
 /// - `SOURCE_FILE_TABLE` (tag 6) with two entries (`main.st`, `lib.st`)
 ///   whose `content_hash` fields are real BLAKE3 digests of synthetic
@@ -291,9 +291,8 @@ fn run_when_golden_container_file_then_ok() -> Result<(), Box<dyn std::error::Er
     // still loads and runs is itself the backwards-compatibility check —
     // bytes 40-71 (formerly `source_hash`) are silently accepted by the
     // new reader as `reserved_hash_slot`, and every other field offset is
-    // unchanged. See `specs/plans/2026-05-22-debug-source-file-table.md`.
-    // Its `max_call_depth` field (offset 194) was bumped 0 -> 1 when zero
-    // call depth became invalid; every other byte is preserved.
+    // unchanged. Its `max_call_depth` field (offset 194) was bumped 0 -> 1
+    // when zero call depth became invalid; every other byte is preserved.
     assert_eq!(contents, "x: 10\ny: 42\n");
 
     Ok(())

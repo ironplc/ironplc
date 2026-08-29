@@ -132,6 +132,20 @@ impl Visitor<Diagnostic> for SymbolScopeChecker<'_> {
                     }
                 }
             }
+            // A method's own name is its result variable, exactly as a
+            // function's is -- but only when it declares a return type.
+            // A method without one is a procedure with no result to
+            // assign, so `Foo := ...` inside `METHOD Foo` stays
+            // undefined rather than becoming silently legal.
+            //
+            // The enclosing function block's scope stays open beneath
+            // this one, so a method still reads and writes the
+            // instance's fields, which is the point of a method.
+            ScopeNode::Method(node) => {
+                if node.return_type.is_some() {
+                    self.table.add(&node.name, DummyNode {});
+                }
+            }
         }
 
         Ok(())
@@ -362,7 +376,6 @@ END_PROGRAM"
 
     // ---------------------------------------------------------------------
     // EXTENDS field inheritance.
-    // See specs/plans/2026-07-20-twincat-extends-field-inheritance.md.
     // ---------------------------------------------------------------------
 
     fn opts_with_fb_inheritance() -> CompilerOptions {
@@ -451,5 +464,179 @@ END_FUNCTION_BLOCK";
         let result = apply(&library, &context, &opts_with_fb_inheritance());
 
         assert!(result.is_err());
+    }
+
+    // ---------------------------------------------------------------------
+    // METHOD scoping.
+    // See specs/plans/2026-08-28-method-scoping-and-scope-paths.md and
+    // https://github.com/ironplc/ironplc/issues/1439.
+    // ---------------------------------------------------------------------
+
+    /// The standard way a method produces its result, and the same
+    /// spelling a `FUNCTION` body already uses.
+    #[test]
+    fn apply_when_method_assigns_own_name_then_ok() {
+        let program = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    speed : REAL;
+END_VAR
+METHOD GetSpeed : REAL
+    GetSpeed := speed;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
+
+        assert!(result.is_ok(), "unexpected errors: {result:?}");
+    }
+
+    /// A method with no return type has no result to assign, so its name
+    /// is not a variable and must stay undefined rather than becoming
+    /// silently assignable.
+    #[test]
+    fn apply_when_method_without_return_type_assigns_own_name_then_error() {
+        let program = "
+FUNCTION_BLOCK FB_Motor
+METHOD DoThing
+    DoThing := 1;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .first()
+            .unwrap()
+            .described
+            .contains(&"variable=DoThing".to_owned()));
+    }
+
+    /// Each method's parameters and locals belong to that method. Before
+    /// the method scope existed they all landed in the function block's
+    /// scope, so this program was accepted.
+    #[test]
+    fn apply_when_method_references_sibling_method_local_then_error() {
+        let program = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    speed : INT;
+END_VAR
+METHOD SetSpeed
+VAR_INPUT
+    newSpeed : INT;
+END_VAR
+    speed := newSpeed;
+END_METHOD
+METHOD Other
+    speed := newSpeed;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
+
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .first()
+            .unwrap()
+            .described
+            .contains(&"variable=newSpeed".to_owned()));
+    }
+
+    /// The method scope nests inside the function block's rather than
+    /// replacing it -- reading and writing the instance's fields is the
+    /// point of a method.
+    #[test]
+    fn apply_when_method_references_function_block_field_then_ok() {
+        let program = "
+FUNCTION_BLOCK FB_Motor
+VAR
+    speed : INT;
+END_VAR
+METHOD SetSpeed
+VAR_INPUT
+    newSpeed : INT;
+END_VAR
+    speed := newSpeed;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
+
+        assert!(result.is_ok(), "unexpected errors: {result:?}");
+    }
+
+    /// Nesting reaches the whole `EXTENDS` chain, not just the immediately
+    /// enclosing function block's own fields.
+    #[test]
+    fn apply_when_method_references_inherited_field_then_ok() {
+        let program = "
+FUNCTION_BLOCK FB_Base
+VAR
+    bEnabled : BOOL;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FB_Derived EXTENDS FB_Base
+METHOD Enable
+    bEnabled := TRUE;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
+
+        assert!(result.is_ok(), "unexpected errors: {result:?}");
+    }
+
+    /// Sibling scopes, so the same name in two methods is two variables
+    /// and not a redeclaration.
+    #[test]
+    fn apply_when_two_methods_declare_same_local_name_then_ok() {
+        let program = "
+FUNCTION_BLOCK FB_Motor
+METHOD A
+VAR
+    q : INT;
+END_VAR
+    q := 1;
+END_METHOD
+METHOD B
+VAR
+    q : INT;
+END_VAR
+    q := 2;
+END_METHOD
+END_FUNCTION_BLOCK";
+
+        let (library, context) = crate::test_helpers::parse_and_resolve_types_with_options(
+            program,
+            &opts_with_fb_inheritance(),
+        );
+        let result = apply(&library, &context, &opts_with_fb_inheritance());
+
+        assert!(result.is_ok(), "unexpected errors: {result:?}");
     }
 }

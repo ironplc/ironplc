@@ -91,8 +91,7 @@ END_FUNCTION_BLOCK";
 // dialect-agnostic: the parser always produces a
 // CaseSelectionKind::BitStringLiteral for these; the
 // --allow-bit-string-case-labels flag is enforced later, by the
-// analyzer (see rule_case_bit_string_label). See
-// specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+// analyzer (see rule_case_bit_string_label).
 // -----------------------------------------------------------------
 
 #[test]

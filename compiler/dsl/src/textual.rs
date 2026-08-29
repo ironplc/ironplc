@@ -366,8 +366,7 @@ pub struct FbCall {
 /// (OOP extension, ADR-0041 Phase 1). Any return value is discarded, same
 /// restriction as `FbCall` for a plain FB invocation. Method calls in
 /// expression position (e.g. `IF fb.IsMoving() THEN`) are a follow-up
-/// slice — see
-/// `specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md`.
+/// slice.
 /// The instance a [`MethodCall`] is invoked on.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum MethodReceiver {
@@ -975,8 +974,7 @@ pub enum CaseSelectionKind {
     SignedInteger(SignedInteger),
     EnumeratedValue(EnumeratedValue),
     /// A radix-prefixed bit-string literal used as a `CASE` label (e.g.
-    /// `16#D012:`, `2#1010:`). See
-    /// specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    /// `16#D012:`, `2#1010:`).
     BitStringLiteral(BitStringLiteral),
 }
 

@@ -77,6 +77,8 @@ Every operand that is an index into a table must be within bounds:
 | FB_LOAD_INSTANCE index | < variable table count AND variable type is FB_INSTANCE |
 | LOAD_VAR_REF index | < variable table count |
 | LOAD_ARRAY / STORE_ARRAY array | < variable table count AND variable has array flag set |
+| COPY_REGION dst_var | < variable table count |
+| COPY_REGION dst_desc / src_desc | < array descriptor count, and both descriptors must derive the same byte size |
 | CALL function_id | < function count |
 | FB_CALL type_id | < FB type count |
 | BUILTIN func_id | Must be a defined built-in function ID (see built-in function table in instruction set spec) |
