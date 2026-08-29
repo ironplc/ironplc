@@ -316,6 +316,8 @@ The basic verifier tracks stack depth (an integer) and validates static indices.
   - Division by zero cannot occur (divisor range excludes 0)
   - Integer overflow cannot occur for specific operations (value ranges fit)
   - MUX selector `K` is in-range (eliminating the `min/max` clamp)
+
+  **Status (partial):** a narrow, local form of this has shipped in codegen rather than the verifier. `for_loop_trunc_can_be_elided` (`codegen/src/compile_stmt.rs`) checks the interval spanned by a FOR loop's constant `from`/`to`/`step` bounds and elides the per-iteration `TRUNC` when every visible value of the control variable — including the post-final increment — stays inside the declared narrow type's range. It is deliberately conservative: any non-constant bound, or any boundary that could wrap, keeps the `TRUNC`. The scope is the loop's own init and increment only; narrow stores in the loop body (`total := total + i` where `total : INT`) still truncate, since that needs range tracking across arbitrary expressions rather than a single loop header.
 - **Type-state tracking**: Track which variables have been initialized, which string slots have valid headers. This eliminates the `cur_length <= max_length` defensive clamps.
 - **Control-flow abstract interpretation**: Walk all paths through the bytecode, merging abstract states at join points. This is what the JVM verifier and WASM validator do.
 
