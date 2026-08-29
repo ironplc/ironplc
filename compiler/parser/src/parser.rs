@@ -1413,7 +1413,7 @@ parser! {
     // OOP extension: INTERFACE ... END_INTERFACE. Only the
     // header (name + optional EXTENDS list) is parsed — method/property
     // signatures are not yet supported (see
-    // specs/plans/2026-07-18-twincat-extends-implements-interface.md).
+    // specs/design/beckhoff-twincat-dialect.md §1.3).
     rule interface_declaration() -> InterfaceDeclaration = tok(TokenType::Interface) _ name:identifier() _ extends:(tok(TokenType::Extends) _ names:type_name_list() {names})? _ tok(TokenType::EndInterface) {
       InterfaceDeclaration {
         name,

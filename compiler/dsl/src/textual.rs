@@ -366,8 +366,7 @@ pub struct FbCall {
 /// (OOP extension, ADR-0041 Phase 1). Any return value is discarded, same
 /// restriction as `FbCall` for a plain FB invocation. Method calls in
 /// expression position (e.g. `IF fb.IsMoving() THEN`) are a follow-up
-/// slice — see
-/// `specs/plans/2026-08-12-oop-method-declarations-static-dispatch.md`.
+/// slice.
 /// The instance a [`MethodCall`] is invoked on.
 #[derive(Debug, PartialEq, Clone, Recurse)]
 pub enum MethodReceiver {

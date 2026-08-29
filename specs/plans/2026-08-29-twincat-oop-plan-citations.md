@@ -79,8 +79,8 @@ comment itself, so removing the plan link loses nothing.
 **Modify — citations:**
 
 - `compiler/analyzer/src/` — `rule_unsupported_extension.rs` (4),
-  `xform_resolve_type_decl_environment.rs` (2), `stages.rs` sites in this
-  cluster, `inherited_fields.rs`, `rule_use_declared_symbolic_var.rs`,
+  `xform_resolve_type_decl_environment.rs` (2),
+  `intermediates/inherited_fields.rs`, `rule_use_declared_symbolic_var.rs`,
   `xform_resolve_expr_types.rs`, `xform_toposort_declarations.rs`,
   `rule_extends_field_duplicated.rs`, `rule_abstract_not_instantiated.rs`
 - `compiler/parser/src/` — `parser.rs` (2), `tests/common.rs` (2),
