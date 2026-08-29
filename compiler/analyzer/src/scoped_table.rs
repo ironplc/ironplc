@@ -70,7 +70,7 @@ impl<'a, K: Key, V: 'a + Value> Scope<'a, K, V> {
         }
     }
 
-    fn find(&mut self, name: &K) -> Option<&V> {
+    fn find(&self, name: &K) -> Option<&V> {
         self.table.get(name)
     }
 
@@ -149,8 +149,13 @@ impl<'a, K: Key, V: 'a + Value> ScopedTable<'a, K, V> {
     }
 
     /// Returns the value for the given name.
-    pub fn find(&mut self, name: &K) -> Option<&V> {
-        self.stack.iter_mut().find_map(|scope| scope.find(name))
+    ///
+    /// Takes `&self`: looking a name up does not change the table, and a
+    /// caller that only reads it should not need exclusive access. That
+    /// matters for a pass whose own lookup helpers borrow `&self` and
+    /// return a reference derived from the table.
+    pub fn find(&self, name: &K) -> Option<&V> {
+        self.stack.iter().find_map(|scope| scope.find(name))
     }
 
     /// Returns all keys across all scopes.
