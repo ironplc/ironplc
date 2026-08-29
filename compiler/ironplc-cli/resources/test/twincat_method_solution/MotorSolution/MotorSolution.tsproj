@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<TcSmProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" TcSmVersion="1.0" TcVersion="3.1.4024.0">
+	<Project ProjectGUID="{3C7A9E15-6D02-4B88-A47F-51D6E0B2C934}" ShowHideConfigurations="#x106">
+		<Plc>
+			<Project GUID="{A05B72D4-1E93-4C6F-8B20-7F4A9C3E15D8}" Name="PlcMotor" PrjFilePath="PlcMotor\PlcMotor.plcproj" TmcFilePath="" ReloadTmc="true" AmsPort="851" FileArchiveSettings="#x000e" SymbolicMapping="true"/>
+		</Plc>
+	</Project>
+</TcSmProject>
