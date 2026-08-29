@@ -208,6 +208,17 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
                     SymbolicVariableKind::Structured(structured) => {
                         levels.reverse();
                         let all_subscripts: Vec<&Expr> = levels.into_iter().flatten().collect();
+                        // `a[i].values[j]` -- the record is itself an array
+                        // element, so the subscripts collected here index the
+                        // *field*, and the element index is still inside the
+                        // record. The array-of-struct path combines the two.
+                        if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) {
+                            return crate::compile_array_struct::resolve_struct_array_element_field(
+                                ctx,
+                                structured,
+                                all_subscripts,
+                            );
+                        }
                         return resolve_struct_field_array(ctx, structured, all_subscripts);
                     }
                     other => {
@@ -222,7 +233,11 @@ pub(crate) fn resolve_access<'ctx, 'ast>(
         Variable::Symbolic(SymbolicVariableKind::Structured(structured))
             if matches!(structured.record.as_ref(), SymbolicVariableKind::Array(_)) =>
         {
-            crate::compile_array_struct::resolve_struct_array_element_field(ctx, structured)
+            crate::compile_array_struct::resolve_struct_array_element_field(
+                ctx,
+                structured,
+                Vec::new(),
+            )
         }
         _ => {
             // Fall through to existing resolve_variable() for scalars.
@@ -403,8 +418,14 @@ pub(crate) fn array_spec_for_declaration(
             array_spec_from_inline(subranges, span)
         }
         ironplc_dsl::common::SpecificationKind::Named(type_name) => {
+            // The caller reaches this arm only for a declaration the type
+            // environment already resolved to an array, so a miss here is a
+            // compiler invariant rather than anything the program did.
             let array_type = types.resolve_array_type(type_name).ok_or_else(|| {
-                Diagnostic::not_implemented(Label::span(type_name.span(), "Unknown array type"))
+                Diagnostic::internal_error_at(Label::span(
+                    type_name.span(),
+                    "Array type is absent from the type environment",
+                ))
             })?;
             let IntermediateType::Array {
                 element_type,

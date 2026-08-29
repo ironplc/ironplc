@@ -51,9 +51,14 @@ pub(crate) struct StructArrayVarInfo {
 ///
 /// The array itself is either a field of a structure or a variable in its own
 /// right; [`struct_array_element_field`] handles both once the base is known.
+///
+/// `field_subscripts` carries the subscripts applied to the selected field, so
+/// that `a[i].values[j]` -- an array inside the element structure -- resolves
+/// here too. It is empty for a plain `a[i].field`.
 pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
     ctx: &'ctx CompileContext,
     structured: &'ast ironplc_dsl::textual::StructuredVariable,
+    field_subscripts: Vec<&'ast Expr>,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
     let SymbolicVariableKind::Array(array_var) = structured.record.as_ref() else {
         return Err(Diagnostic::todo_with_span(structured.span()));
@@ -108,6 +113,7 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
                 array_dims,
                 &structured.field,
                 subscripts,
+                field_subscripts,
                 &base.field.span(),
             )
         }
@@ -127,6 +133,7 @@ pub(crate) fn resolve_struct_array_element_field<'ctx, 'ast>(
                 &info.dimensions,
                 &structured.field,
                 subscripts,
+                field_subscripts,
                 &name.span(),
             )
         }
@@ -171,7 +178,8 @@ fn struct_array_element_field<'ctx, 'ast>(
     element_type: &IntermediateType,
     array_dims: &[ArrayDimension],
     field: &Id,
-    subscripts: Vec<&'ast Expr>,
+    element_subscripts: Vec<&'ast Expr>,
+    field_subscripts: Vec<&'ast Expr>,
     array_span: &SourceSpan,
 ) -> Result<ResolvedAccess<'ctx, 'ast>, Diagnostic> {
     let IntermediateType::Structure {
@@ -197,11 +205,44 @@ fn struct_array_element_field<'ctx, 'ast>(
     let (leaf_slot_offset, leaf_type) =
         crate::compile_struct::find_field_in_type(element_fields, field, &field.span())?;
 
-    // A STRING leaf needs an element stride of `element_slots * 8`, which the
+    // Scale strides so the emitted flat index counts slots, not elements.
+    let mut dimensions = dimensions_from_intermediate(array_dims);
+    for dim in &mut dimensions {
+        dim.stride = dim.stride.checked_mul(element_slots).ok_or_else(|| {
+            Diagnostic::not_supported(Label::span(array_span.clone(), "Array too large"))
+        })?;
+    }
+    let mut subscripts = element_subscripts;
+
+    // `a[i].values[j]` -- the selected field is itself an array, so its own
+    // dimensions extend the index computation. Its elements are single slots
+    // sitting side by side inside the element structure, so their strides need
+    // no scaling: appending them after the (scaled) element dimensions makes
+    // `emit_flat_index` produce `i * element_slots + j` in one pass, and the
+    // field's own offset is still the compile-time part.
+    let value_type = if field_subscripts.is_empty() {
+        leaf_type
+    } else {
+        let IntermediateType::Array {
+            element_type: inner_element_type,
+            dimensions: inner_dims,
+        } = &leaf_type
+        else {
+            return Err(Diagnostic::not_implemented(Label::span(
+                field.span(),
+                format!("Field '{}' is not an array type", field),
+            )));
+        };
+        dimensions.extend(dimensions_from_intermediate(inner_dims));
+        subscripts.extend(field_subscripts);
+        inner_element_type.as_ref().clone()
+    };
+
+    // A STRING value needs an element stride of `element_slots * 8`, which the
     // 8-byte ArrayDescriptor cannot express (the VM derives a string array's
     // stride from `element_extra`). Tracked separately; reject explicitly
     // rather than emitting a wrong address.
-    if matches!(leaf_type, IntermediateType::String { .. }) {
+    if matches!(value_type, IntermediateType::String { .. }) {
         return Err(Diagnostic::not_implemented(Label::span(
             field.span(),
             format!(
@@ -211,8 +252,10 @@ fn struct_array_element_field<'ctx, 'ast>(
         )));
     }
 
+    // A composite value has no single-slot load or store, and the appended
+    // strides above assume one slot per innermost element.
     let element_op_type =
-        crate::compile_struct::resolve_field_op_type(&leaf_type).ok_or_else(|| {
+        crate::compile_struct::resolve_field_op_type(&value_type).ok_or_else(|| {
             Diagnostic::not_implemented(Label::span(
                 field.span(),
                 format!(
@@ -221,14 +264,6 @@ fn struct_array_element_field<'ctx, 'ast>(
                 ),
             ))
         })?;
-
-    // Scale strides so the emitted flat index counts slots, not elements.
-    let mut dimensions = dimensions_from_intermediate(array_dims);
-    for dim in &mut dimensions {
-        dim.stride = dim.stride.checked_mul(element_slots).ok_or_else(|| {
-            Diagnostic::not_supported(Label::span(array_span.clone(), "Array too large"))
-        })?;
-    }
 
     let combined_offset = base_slot_offset
         .checked_add(leaf_slot_offset.raw())
@@ -243,7 +278,7 @@ fn struct_array_element_field<'ctx, 'ast>(
         dimensions,
         subscripts,
         element_op_type,
-        element_type: leaf_type,
+        element_type: value_type,
     })
 }
 

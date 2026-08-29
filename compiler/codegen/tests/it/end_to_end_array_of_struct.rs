@@ -405,6 +405,156 @@ END_PROGRAM
     &[(1, 4294967296)],
 );
 
+// --- Array field inside the element ---
+//
+// `a[i].values[j]` needs both indices in one flat-index computation: the
+// element index scaled by the element's slot count, then the field's own
+// index at stride 1. The field's offset within the element stays the
+// compile-time part.
+
+// a 0, r1 1, r2 2, r3 3.
+e2e_i32!(
+    end_to_end_when_array_of_struct_element_has_array_field_then_reads_back,
+    "
+TYPE Item : STRUCT
+  values : ARRAY[1..4] OF DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    a : ARRAY[1..3] OF Item;
+    r1 : DINT;
+    r2 : DINT;
+    r3 : DINT;
+  END_VAR
+  a[1].values[1] := 11;
+  a[1].values[4] := 14;
+  a[3].values[2] := 32;
+  r1 := a[1].values[1];
+  r2 := a[1].values[4];
+  r3 := a[3].values[2];
+END_PROGRAM
+",
+    &[(1, 11), (2, 14), (3, 32)],
+);
+
+// Both subscripts variable, so the whole index is computed at runtime rather
+// than folded to a constant.
+//
+// a 0, i 1, j 2, r 3.
+e2e_i32!(
+    end_to_end_when_array_of_struct_array_field_indexed_by_variables_then_correct_element,
+    "
+TYPE Item : STRUCT
+  values : ARRAY[1..4] OF DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    a : ARRAY[1..3] OF Item;
+    i : INT;
+    j : INT;
+    r : DINT;
+  END_VAR
+  i := 2;
+  j := 3;
+  a[i].values[j] := 55;
+  r := a[i].values[j];
+END_PROGRAM
+",
+    &[(3, 55)],
+);
+
+// A scalar ahead of the array field, so the field's own offset has to be added
+// on top of the element stride. A wrong offset would alias `lead` with
+// `values[1]`.
+//
+// a 0, rl 1, rv 2.
+e2e_i32!(
+    end_to_end_when_array_of_struct_array_field_preceded_by_scalar_then_no_alias,
+    "
+TYPE Item : STRUCT
+  lead : DINT;
+  values : ARRAY[1..3] OF DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    a : ARRAY[1..3] OF Item;
+    rl : DINT;
+    rv : DINT;
+  END_VAR
+  a[2].lead := 9;
+  a[2].values[1] := 21;
+  rl := a[2].lead;
+  rv := a[2].values[1];
+END_PROGRAM
+",
+    &[(1, 9), (2, 21)],
+);
+
+// Nested FOR loops over both indices, the shape that would expose a wrong
+// stride on either axis. a[3].values[2] is 3 * 10 + 2.
+//
+// a 0, i 1, j 2, r 3.
+e2e_i32!(
+    end_to_end_when_array_of_struct_array_field_written_in_nested_loops_then_all_set,
+    "
+TYPE Item : STRUCT
+  values : ARRAY[1..2] OF DINT;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    a : ARRAY[1..3] OF Item;
+    i : INT;
+    j : INT;
+    r : DINT;
+  END_VAR
+  FOR i := 1 TO 3 DO
+    FOR j := 1 TO 2 DO
+      a[i].values[j] := i * 10 + j;
+    END_FOR;
+  END_FOR;
+  r := a[3].values[2];
+END_PROGRAM
+",
+    &[(3, 32)],
+);
+
+// The same shape reached through a struct field rather than a top-level
+// variable: `h.items[i].values[j]`.
+//
+// h 0, r 1.
+e2e_i32!(
+    end_to_end_when_struct_field_array_of_struct_has_array_field_then_reads_back,
+    "
+TYPE Item : STRUCT
+  values : ARRAY[1..3] OF DINT;
+END_STRUCT;
+END_TYPE
+
+TYPE Holder : STRUCT
+  items : ARRAY[1..2] OF Item;
+END_STRUCT;
+END_TYPE
+
+PROGRAM main
+  VAR
+    h : Holder;
+    r : DINT;
+  END_VAR
+  h.items[2].values[3] := 77;
+  r := h.items[2].values[3];
+END_PROGRAM
+",
+    &[(1, 77)],
+);
+
 // --- Named array type ---
 
 // `arr : Items` where `Items` is a named ARRAY OF <struct> type, rather than
