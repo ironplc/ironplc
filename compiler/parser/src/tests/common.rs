@@ -135,7 +135,7 @@ pub(crate) fn extract_duration(library: &Library) -> &DurationLiteral {
 
 // ---------------------------------------------------------------------
 // TwinCAT/Siemens `{ ... }` pragma skipping.
-// See specs/plans/2026-07-18-twincat-pragma-skipping.md.
+// See specs/design/beckhoff-twincat-dialect.md §3.3.
 // ---------------------------------------------------------------------
 
 pub(crate) fn enum_with_pragma_header() -> String {
@@ -150,7 +150,6 @@ pub(crate) fn enum_with_pragma_header() -> String {
 
 // -----------------------------------------------------------------
 // CASE branch with no statements.
-// See specs/plans/2026-07-20-twincat-empty-case-branch.md.
 // -----------------------------------------------------------------
 
 pub(crate) fn extract_case(library: &Library) -> Case {
@@ -166,7 +165,7 @@ pub(crate) fn extract_case(library: &Library) -> Case {
 
 // -----------------------------------------------------------------
 // AND_THEN short-circuit boolean operator.
-// See specs/plans/2026-07-20-twincat-and-then-operator.md.
+// See specs/design/beckhoff-twincat-dialect.md §3.4.
 // -----------------------------------------------------------------
 
 pub(crate) fn opts_with_short_circuit_operators() -> CompilerOptions {
@@ -190,7 +189,6 @@ pub(crate) fn extract_assignment_value(library: &Library) -> Expr {
 
 // ---------------------------------------------------------------------
 // Constant-expression VAR initializers.
-// See specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
 // ---------------------------------------------------------------------
 
 pub(crate) fn opts_with_constant_initializer_expressions() -> CompilerOptions {

@@ -450,7 +450,6 @@ mod tests {
 
     // -----------------------------------------------------------------
     // Multi-directory initialization.
-    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
     #[test]
