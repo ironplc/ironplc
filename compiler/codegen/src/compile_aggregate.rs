@@ -121,7 +121,10 @@ fn resolve_source_descriptor(
     match &value.kind {
         ExprKind::Variable(variable) => {
             let name = resolve_variable_name(variable)?;
-            resolve_region(ctx, name).ok().flatten().map(|r| r.desc_index)
+            resolve_region(ctx, name)
+                .ok()
+                .flatten()
+                .map(|r| r.desc_index)
         }
         ExprKind::Function(function) => ctx
             .user_functions

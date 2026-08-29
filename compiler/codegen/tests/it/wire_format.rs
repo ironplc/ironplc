@@ -579,7 +579,10 @@ END_PROGRAM
         .iter()
         .position(|&b| b == opcode::COPY_REGION)
         .expect("whole-array assignment emits COPY_REGION");
-    assert!(pos + 7 <= bc.len(), "COPY_REGION has 6 trailing operand bytes");
+    assert!(
+        pos + 7 <= bc.len(),
+        "COPY_REGION has 6 trailing operand bytes"
+    );
 
     // x is var 0 and y is var 1. Both arrays are ARRAY[1..2] OF DINT, so
     // `add_array_descriptor` dedupes them onto one descriptor index.
@@ -594,7 +597,11 @@ END_PROGRAM
 
     // The source offset is delivered by a preceding LOAD_VAR_I32 of y.
     assert_eq!(bc[pos - 3], opcode::LOAD_VAR_I32);
-    assert_eq!(u16::from_le_bytes([bc[pos - 2], bc[pos - 1]]), 1, "src is y");
+    assert_eq!(
+        u16::from_le_bytes([bc[pos - 2], bc[pos - 1]]),
+        1,
+        "src is y"
+    );
 }
 
 #[test]

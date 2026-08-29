@@ -636,6 +636,18 @@ fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
                 }));
                 pc += 8;
             }
+            opcode::COPY_REGION => {
+                let dst_var = read_u16(bytecode, pc + 1);
+                let dst_desc = read_u16(bytecode, pc + 3);
+                let src_desc = read_u16(bytecode, pc + 5);
+                instructions.push(json!({
+                    "offset": offset,
+                    "opcode": "COPY_REGION",
+                    "operands": format!("var[{}], desc[{}], desc[{}]", dst_var, dst_desc, src_desc),
+                    "comment": "size from descriptors; source offset from stack",
+                }));
+                pc += 7;
+            }
             unknown => {
                 instructions.push(json!({
                     "offset": offset,
@@ -693,6 +705,58 @@ mod tests {
     use std::io::Cursor;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    /// A COPY_REGION between two 2-slot regions, preceded and followed by
+    /// one-byte instructions so a wrong operand length would visibly
+    /// misalign what comes after it.
+    fn copy_region_container() -> Container {
+        #[rustfmt::skip]
+        let bytecode: Vec<u8> = vec![
+            0x0C, 0x01, 0x00,                          // LOAD_VAR_I32 var[1]
+            0xF8, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,  // COPY_REGION var[0], desc[0], desc[1]
+            0x8C,                                      // RET_VOID
+        ];
+
+        let mut builder = ContainerBuilder::new()
+            .num_variables(2)
+            .data_region_bytes(32);
+        builder.add_array_descriptor(0, 2, 0);
+        builder.add_array_descriptor(2, 2, 0);
+        let container = builder
+            .add_function(FunctionId::new(0), &bytecode, 2, 2, 0)
+            .build();
+
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+        Container::read_from(&mut Cursor::new(buf)).unwrap()
+    }
+
+    /// A missing disassembler arm renders the instruction as UNKNOWN *and*
+    /// misaligns everything after it, because this module advances `pc` by
+    /// hardcoded per-opcode steps rather than by `instruction_size`.
+    #[test]
+    fn decode_instructions_when_copy_region_then_decodes_and_stays_aligned() {
+        let container = copy_region_container();
+        let bytecode = container
+            .code
+            .get_function_bytecode(FunctionId::new(0))
+            .unwrap();
+        let instructions = decode_instructions(bytecode, &container);
+
+        let opcodes: Vec<&str> = instructions
+            .iter()
+            .map(|i| i["opcode"].as_str().unwrap())
+            .collect();
+        assert_eq!(opcodes, vec!["LOAD_VAR_I32", "COPY_REGION", "RET_VOID"]);
+
+        assert_eq!(
+            instructions[1]["operands"].as_str().unwrap(),
+            "var[0], desc[0], desc[1]"
+        );
+        // RET_VOID sits at 3 + 7 = 10; anything else means the operand
+        // length is wrong.
+        assert_eq!(instructions[2]["offset"].as_u64().unwrap(), 10);
+    }
 
     /// Builds the steel thread test container (x := 10; y := x + 32).
     fn steel_thread_container() -> Container {

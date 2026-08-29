@@ -104,7 +104,9 @@ The full op-class table (61 of 64 slots used; 0x3D-0x3F reserved):
 | `FB_LOAD_INSTANCE`, `FB_STORE_PARAM`, `FB_LOAD_PARAM`, `FB_CALL` | 0x26-0x29 | only tag 0 | |
 | `LOAD_ARRAY`, `STORE_ARRAY`, `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF` | 0x2A-0x2D | only tag 0 | |
 | `STR_INIT`, `STR_LOAD_VAR`, `STR_STORE_VAR`, `LEN_STR`, `FIND_STR`, `REPLACE_STR`, `INSERT_STR`, `DELETE_STR`, `LEFT_STR`, `RIGHT_STR`, `MID_STR`, `CONCAT_STR`, `STR_INIT_ARRAY`, `STR_LOAD_ARRAY_ELEM`, `STR_STORE_ARRAY_ELEM` | 0x2E-0x3C | only tag 0 | future Phase 2B may consolidate these under one `STRING_OP` class |
-| _free_ | 0x3D-0x3F | — | reserved for future fused superinstructions |
+| `CMP_BR` | 0x3D | tags 0=I32, 1=I64 | fused compare-and-branch; float tags reserved |
+| `REGION_OP` | 0x3E | tag 0=COPY_REGION | type tag selects the region operation; tags 1-3 reserved (see below) |
+| _free_ | 0x3F | — | reserved for future fused superinstructions |
 
 ### Migration status
 
@@ -691,6 +693,49 @@ STRING and WSTRING functions are in separate func_id ranges so the verifier can 
 
 ---
 
+### Region Operations
+
+Whole-aggregate assignment (`x := y` where both sides are arrays or
+structures) is a value copy under IEC 61131-3 §7.3.3.1. An aggregate
+variable's slot holds its data-region byte offset, so a load/store pair would
+copy the offset and leave the destination aliasing the source; `COPY_REGION`
+moves the bytes instead.
+
+| # | Opcode | Operands | Stack effect | Description |
+|---|--------|----------|-------------|-------------|
+| 0xF8 | COPY_REGION | dst_var: u16, dst_desc: u16, src_desc: u16 | [src_offset] → [] | Copy a whole aggregate within the data region |
+
+**The instruction carries no length.** The VM derives the byte size of each
+end from the array descriptor named in the operand and traps
+`RegionSizeMismatch` (V9018) if the two disagree. A length immediate would let
+a code-generation defect over-copy into a neighbouring variable — the class of
+bug this instruction exists to prevent — whereas a descriptor is container
+metadata the verifier can also inspect. It is the same discipline `LOAD_ARRAY`
+follows by taking `total_elements` from the descriptor rather than an operand.
+
+The destination is named by variable index so the access is scope-checked; it
+is the side that writes. The source arrives as a data-region offset on the
+stack so that both `s := t` (preceded by `LOAD_VAR_I32 t`) and `s := f()`,
+where a struct-returning call leaves its offset on the stack and has no
+variable index in the caller's scope, use one instruction.
+
+Overlapping ranges are well defined — the VM uses `copy_within` — so `x := x`
+is a no-op rather than corruption.
+
+Descriptors cannot distinguish `ARRAY[1..6] OF INT` from
+`ARRAY[1..2,1..3] OF INT`, nor `INT` elements from `DINT` elements (both are
+8-byte slots). Declared-type equality is checked statically instead, by the
+analyzer, which reports P2037 on a mismatch.
+
+**Reserved type tags.** `REGION_OP` tags 1–3 are unassigned. The intended
+first use is a `COPY_REGION_DYN` taking its sizes from a runtime descriptor
+rather than a container descriptor, which is what an Ed. 3 variable-length
+array (`ARRAY[*]`, a `VAR_IN_OUT` parameter whose extents are a property of
+the call) would need. Consolidating region operations under one op-class
+rather than one class each is what leaves room for it: 0x3F stays free.
+
+---
+
 ### String Operations
 
 IEC 61131-3 strings have a declared maximum length known at compile time (e.g., `STRING(20)` holds at most 20 characters). Strings are stored as fixed-size buffers — not heap-allocated — matching the behavior of PLC runtimes like CODESYS and TwinCAT. This ensures deterministic memory usage with no dynamic allocation during scan cycles.
@@ -744,8 +789,8 @@ String functions (LEN, CONCAT, LEFT, RIGHT, MID, FIND, INSERT, DELETE, REPLACE, 
 
 ## Opcode Summary
 
-The current encoding (post-Wave-8 migration, `FORMAT_VERSION = 2`)
-allocates 61 of 64 op-class slots. Within each op-class, the type tag
+The current encoding (`FORMAT_VERSION = 3`) allocates 63 of 64
+op-class slots. Within each op-class, the type tag
 (low 2 bits of the opcode byte) selects either the data-type variant
 or a family-member operation (for the consolidated `BOOL_OP` and
 `STACK_OP` classes).
@@ -813,8 +858,10 @@ or a family-member operation (for the consolidated `BOOL_OP` and
 | `STR_INIT_ARRAY` (0x3A) | 0xE8 | 1 | Initialize all string headers in array |
 | `STR_LOAD_ARRAY_ELEM` (0x3B) | 0xEC | 1 | Load string from array element |
 | `STR_STORE_ARRAY_ELEM` (0x3C) | 0xF0 | 1 | Store temp buffer into string array element |
-| _free_ (0x3D–0x3F) | — | 0 | Reserved for future fused superinstructions |
-| **Total** | | **123** | 61 of 64 op-class slots in use |
+| `CMP_BR` (0x3D) | 0xF4–0xF5 | 2 | Fused compare-and-branch (I32, I64) |
+| `REGION_OP` (0x3E) | 0xF8 | 1 | Whole-region operations — tag 0 = `COPY_REGION` |
+| _free_ (0x3F) | — | 0 | Reserved for future fused superinstructions |
+| **Total** | | **126** | 63 of 64 op-class slots in use |
 
 ## Compilation Examples
 
