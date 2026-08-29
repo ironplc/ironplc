@@ -63,6 +63,34 @@ text cannot get out of step with the recorded offsets. For a POU with no
 `<Method>` children the builder produces byte-for-byte the same combined text
 as today, so existing position behaviour is unchanged.
 
+## Prefactoring
+
+Three reshapes, each hitting a listed signal.
+
+**Generalize the position mapping** (signal: the new behaviour would need a
+new branch in more than one place). `CdataOffsets` hard-codes two CDATA
+regions and `adjust_byte_offset` is a matching two-branch mapping. Bolting
+methods onto that shape means a third case, then a list of method regions
+beside the pair, and every position query branching on which kind of region
+it landed in. Replacing the pair with a list of segments — the general form
+the two-region case already is — makes the method regions ordinary members
+of the same list, and `adjust_byte_offset` a single lookup with no case
+analysis. Behaviour-preserving: the parse-level tests pass untouched, and
+the combined text for a method-less POU stays byte-for-byte identical. Only
+the two unit tests that construct `CdataOffsets` directly change, to build
+the new shape.
+
+**Extract the text assembly into a builder** (signal: the alternative is a
+second near-copy of the `format!` concatenation, one per POU kind, each
+having to keep its own offset arithmetic in step). `CombinedText` accepts
+text as either copied-from-CDATA (mapped) or synthetic (unmapped), so the
+offsets cannot drift from the text by construction rather than by care.
+
+**Split the tests out of the parser module** (signal: the module crosses the
+1000-line limit once the change lands). This one was done in the wrong
+order — the tests were moved to `twincat_parser/tests.rs` after the feature
+landed, in response to review, rather than before it.
+
 ## File map
 
 Modified:
