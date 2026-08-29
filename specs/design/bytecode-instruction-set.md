@@ -104,11 +104,12 @@ The full op-class table (63 of 64 slots used; 0x3F free):
 | `STACK_OP` | 0x24 | tags 0=POP, 1=DUP, 2=SWAP | type tag selects op |
 | `BUILTIN` | 0x25 | only tag 0 | u16 builtin func_id operand |
 | `FB_LOAD_INSTANCE`, `FB_STORE_PARAM`, `FB_LOAD_PARAM`, `FB_CALL` | 0x26–0x29 | only tag 0 | |
-| `LOAD_ARRAY`, `STORE_ARRAY`, `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF` | 0x2A–0x2D | only tag 0 | |
+| `LOAD_ARRAY`, `LOAD_ARRAY_DEREF`, `STORE_ARRAY_DEREF` | 0x2A, 0x2C–0x2D | only tag 0 | |
+| `STORE_ARRAY` | 0x2B | tags 0=element, 1=`COPY_REGION` | type tag selects the granularity of the store |
 | `STR_INIT`, `STR_LOAD_VAR`, `STR_STORE_VAR`, `LEN_STR`, `FIND_STR`, `REPLACE_STR`, `INSERT_STR`, `DELETE_STR`, `LEFT_STR`, `RIGHT_STR`, `MID_STR`, `CONCAT_STR`, `STR_INIT_ARRAY`, `STR_LOAD_ARRAY_ELEM`, `STR_STORE_ARRAY_ELEM` | 0x2E–0x3C | only tag 0 | one slot each |
 | `CMP_BR` | 0x3D | tags 0=I32, 1=I64 | fused compare-and-branch; F32/F64 tags reserved |
 | `METHOD_CALL` | 0x3E | only tag 0 | OOP extension (ADR-0041 Phase 1 static dispatch) |
-| `REGION_OP` | 0x3F | tag 0=COPY_REGION | type tag selects the region operation; tags 1–3 reserved (see Region Operations) |
+| _free_ | 0x3F | — | 1 slot reserved for future use |
 
 ### Migration status
 
@@ -668,7 +669,7 @@ These are dispatched inline in the VM main loop rather than through the shared b
 
 ---
 
-### Region Operations
+### Whole-Region Copy
 
 Whole-aggregate assignment (`x := y` where both sides are arrays or
 structures) is a value copy under IEC 61131-3 §7.3.3.1. An aggregate
@@ -678,7 +679,7 @@ moves the bytes instead.
 
 | # | Opcode | Operands | Stack effect | Description |
 |---|--------|----------|-------------|-------------|
-| 0xFC | COPY_REGION | dst_var: u16, dst_desc: u16, src_desc: u16 | [src_offset] → [] | Copy a whole aggregate within the data region |
+| 0xAD | COPY_REGION | dst_var: u16, dst_desc: u16, src_desc: u16 | [src_offset] → [] | Copy a whole aggregate within the data region |
 
 **The instruction carries no length.** The VM derives the byte size of each
 end from the array descriptor named in the operand and traps
@@ -702,13 +703,15 @@ Descriptors cannot distinguish `ARRAY[1..6] OF INT` from
 8-byte slots). Declared-type equality is checked statically instead, by the
 analyzer, which reports P2037 on a mismatch.
 
-**Reserved type tags.** `REGION_OP` tags 1–3 are unassigned. The intended
-first use is a `COPY_REGION_DYN` taking its sizes from a runtime descriptor
-rather than a container descriptor, which is what an Ed. 3 variable-length
-array (`ARRAY[*]`, a `VAR_IN_OUT` parameter whose extents are a property of
-the call) would need. `REGION_OP` is the last op-class slot, so consolidating
-region operations under one class rather than one class each is what leaves
-room for it at all.
+**Encoding.** `COPY_REGION` is `STORE_ARRAY` at type tag 1 — the same op
+class, one granularity coarser — rather than an op class of its own. Op
+classes exist to keep the dispatch table small, not to name operations, so a
+single instruction does not earn one; measurement has not shown dispatch-table
+size to be a bottleneck. Tags 2–3 of the class remain free. The obvious
+candidate for one is a `COPY_REGION_DYN` taking its sizes from a runtime
+descriptor rather than a container descriptor, which is what an Ed. 3
+variable-length array (`ARRAY[*]`, a `VAR_IN_OUT` parameter whose extents are
+a property of the call rather than of the program text) would need.
 
 ---
 
@@ -786,7 +789,7 @@ There are no `NOP`, `BREAKPOINT`, or `LINE` opcodes. Debug information is carrie
 
 ## Opcode Summary
 
-The encoding allocates all 64 op-class slots and 126 opcode bytes. Within each op-class, the type tag (low 2 bits) selects either the data-type variant or a family-member operation (for the consolidated `LOAD_BOOL`, `BOOL_OP`, and `STACK_OP` classes).
+The encoding allocates 63 of 64 op-class slots and 126 opcode bytes. Within each op-class, the type tag (low 2 bits) selects either the data-type variant or a family-member operation (for the consolidated `LOAD_BOOL`, `BOOL_OP`, and `STACK_OP` classes).
 
 | Op-class | Bytes | Count | Description |
 |----------|-------|-------|-------------|
@@ -833,7 +836,7 @@ The encoding allocates all 64 op-class slots and 126 opcode bytes. Within each o
 | `FB_LOAD_PARAM` (0x28) | 0xA0 | 1 | Load an FB parameter field |
 | `FB_CALL` (0x29) | 0xA4 | 1 | Invoke an FB (intrinsic or bytecode body) |
 | `LOAD_ARRAY` (0x2A) | 0xA8 | 1 | Load array element |
-| `STORE_ARRAY` (0x2B) | 0xAC | 1 | Store array element |
+| `STORE_ARRAY` (0x2B) | 0xAC–0xAD | 2 | Store into array storage (tag: 0=one element, 1=`COPY_REGION`) |
 | `LOAD_ARRAY_DEREF` (0x2C) | 0xB0 | 1 | Load array element via reference |
 | `STORE_ARRAY_DEREF` (0x2D) | 0xB4 | 1 | Store array element via reference |
 | `STR_INIT` (0x2E) | 0xB8 | 1 | Initialize a string header in the data region |
@@ -853,13 +856,8 @@ The encoding allocates all 64 op-class slots and 126 opcode bytes. Within each o
 | `STR_STORE_ARRAY_ELEM` (0x3C) | 0xF0 | 1 | Store a temp buffer into a string array element |
 | `CMP_BR` (0x3D) | 0xF4–0xF5 | 2 | Fused compare-and-branch (tag: 0=I32, 1=I64) |
 | `METHOD_CALL` (0x3E) | 0xF8 | 1 | Static-dispatch method call on a function block instance |
-| `REGION_OP` (0x3F) | 0xFC | 1 | Whole-region operations — tag 0 = `COPY_REGION` |
-| **Total** | | **126** | 64 of 64 op-class slots in use |
-
-**The op-class space is now full.** Type tags remain available within existing
-classes (`REGION_OP` has three), which is where further variants of an
-existing operation belong. A genuinely new top-level operation would require
-widening the encoding — see ADR-0033.
+| _free_ (0x3F) | — | 0 | Reserved for future use |
+| **Total** | | **126** | 63 of 64 op-class slots in use |
 
 Every byte not listed above is unassigned; executing one traps `V9003 InvalidInstruction`. `opcode::instruction_size` is the single source of truth for instruction lengths (shared by the emitter, the optimizer, and the disassembler), and `opcode::is_assigned` is derived from it.
 

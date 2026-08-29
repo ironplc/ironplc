@@ -3,11 +3,12 @@
 //!
 //! IEC 61131-3 §7.3.3.1 makes assignment over a multi-element variable a
 //! value copy. Before COPY_REGION an array target copied the data-region
-//! offset instead, so the destination aliased the source (issue #1414).
+//! offset instead, so the destination aliased the source.
 //! Every test here reads back through *both* variables: reading only the
 //! destination cannot tell a copy from an alias.
 
-// The issue's exact reproduction. Under the defect ry was 99.
+// Writing through the destination after the copy must not disturb the
+// source. Under the aliasing defect ry was 99.
 // Variable order: x=0, y=1, rx=2, ry=3.
 e2e_i32!(
     end_to_end_when_array_assigned_then_source_is_not_aliased,
@@ -288,7 +289,86 @@ END_PROGRAM
 );
 
 // An array whose elements are structures is not covered here: declaring one
-// is itself unimplemented (`Unsupported array element type`,
-// compile_array.rs). COPY_REGION needs no special case for it -- the
+// is itself unimplemented and reports `Unsupported array element type` from
+// compile_array.rs. COPY_REGION needs no special case for it -- the
 // descriptor makes it one flat span of slots like any other -- so it comes
-// for free with array-of-struct support (#1383).
+// for free whenever such arrays become declarable.
+
+// --- Copies reached from scopes other than a program body ------------------
+
+// A global is redeclared with VAR_EXTERNAL inside the program, so the copy
+// crosses the global/local boundary of the variable table.
+e2e_i32!(
+    end_to_end_when_global_array_copied_to_local_then_source_is_not_aliased,
+    "
+CONFIGURATION config
+  VAR_GLOBAL
+    g : ARRAY[1..2] OF DINT;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    g : ARRAY[1..2] OF DINT;
+  END_VAR
+  VAR
+    a : ARRAY[1..2] OF DINT;
+    ra : DINT;
+    rg : DINT;
+  END_VAR
+  g[1] := 5;
+  a := g;
+  a[1] := 99;
+  ra := a[1];
+  rg := g[1];
+END_PROGRAM
+",
+    &[(2, 99), (3, 5)],
+);
+
+// ... and in the other direction, writing a global from a local.
+e2e_i32!(
+    end_to_end_when_local_array_copied_to_global_then_source_is_not_aliased,
+    "
+CONFIGURATION config
+  VAR_GLOBAL
+    g : ARRAY[1..2] OF DINT;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+  VAR_EXTERNAL
+    g : ARRAY[1..2] OF DINT;
+  END_VAR
+  VAR
+    a : ARRAY[1..2] OF DINT;
+    ra : DINT;
+    rg : DINT;
+  END_VAR
+  a[1] := 5;
+  g := a;
+  g[1] := 99;
+  rg := g[1];
+  ra := a[1];
+END_PROGRAM
+",
+    &[(2, 5), (3, 99)],
+);
+
+// Copies inside a FUNCTION, FUNCTION_BLOCK or METHOD body are not covered
+// here, because no aggregate can be declared as a POU local yet. Both kinds
+// fail before any copy is involved: a plain `a[1] := 5` on a function-local
+// array reports `Unsupported array element type` (compile_array.rs) and a
+// plain `b.x := 5` on a function-local structure reports
+// `Variable 'b' is not a structure` (compile_struct.rs). Only PROGRAM
+// variables and globals are registered as aggregates today, so those are
+// what the tests above exercise. When POU-local aggregates land, this file
+// is where their copies belong.

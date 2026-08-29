@@ -44,8 +44,8 @@ struct Region {
 /// No length is emitted. The VM derives both sizes from the descriptors and
 /// traps on a disagreement, so a defect here cannot silently over-copy into a
 /// neighbouring variable. Declared-type equality is the analyzer's job
-/// (P2037, `rule_assignment_aggregate_type_compat`); this function assumes it
-/// and only resolves the two regions.
+/// (`rule_assignment_aggregate_type_compat`); this function assumes it and
+/// only resolves the two regions.
 pub(crate) fn try_compile_whole_assignment(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
@@ -68,11 +68,13 @@ pub(crate) fn try_compile_whole_assignment(
         return Ok(false);
     };
 
+    // The analyzer rejects any aggregate assignment whose source is not a
+    // same-typed aggregate or a function result, so a source that does not
+    // resolve here means analysis and code generation disagree.
     let src_desc_index = resolve_source_descriptor(ctx, &assignment.value).ok_or_else(|| {
-        Diagnostic::not_implemented(Label::span(
+        Diagnostic::internal_error_at(Label::span(
             assignment.value.span(),
-            "Only another variable of the same type or a function result can be \
-             assigned to a whole array or structure",
+            "Source of a whole array or structure assignment has no data region",
         ))
     })?;
 

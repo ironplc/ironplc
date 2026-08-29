@@ -1060,7 +1060,7 @@ mod tests {
         #[rustfmt::skip]
         let bytecode: Vec<u8> = vec![
             0x0C, 0x01, 0x00,                          // LOAD_VAR_I32 var[1]
-            0xFC, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,  // COPY_REGION var[0], desc[0], desc[1]
+            0xAD, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,  // COPY_REGION var[0], desc[0], desc[1]
             0x8C,                                      // RET_VOID
         ];
 

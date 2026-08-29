@@ -5,8 +5,8 @@
 //! copy. Codegen implements that with `COPY_REGION`, whose length the VM
 //! derives from the two array descriptors — so the two ends must describe the
 //! same shape. The VM cross-checks the derived byte sizes and traps
-//! (`RegionSizeMismatch`, V9018), but that is a backstop against a compiler
-//! defect: declared-type equality is a static property and belongs here.
+//! (`RegionSizeMismatch`), but that is a backstop against a compiler defect:
+//! declared-type equality is a static property and belongs here.
 //!
 //! Descriptors cannot tell `ARRAY[1..6] OF INT` from `ARRAY[1..2,1..3] OF INT`
 //! (same element count, same element type), so the runtime check would accept
@@ -14,10 +14,21 @@
 //!
 //! ## Scope
 //!
-//! Only fires when the assignment *target* is a whole array or structure
-//! variable. Scalar assignment is deliberately untouched — checking it is the
-//! right end state but interacts with implicit widening (ADR-0029, ADR-0031)
-//! and would reject programs that compile today.
+//! Fires only when the assignment *target* is a whole array or structure
+//! variable. Two neighbouring cases belong elsewhere:
+//!
+//! * Scalar assignment is deliberately untouched — checking it is the right
+//!   end state but interacts with implicit widening (ADR-0029, ADR-0031) and
+//!   would reject programs that compile today.
+//! * A function result is left to `rule_function_call_type_check` (P4027),
+//!   which already compares a call's return type against its assignment
+//!   destination. Reporting here as well would produce two diagnostics for
+//!   one mistake.
+//!
+//! Everything else reaching an aggregate target is rejected, including a
+//! source whose type does not resolve at all. Codegen relies on that: having
+//! reached `COPY_REGION` emission with an aggregate destination, an
+//! unresolvable source is a compiler defect rather than a bad program.
 //!
 //! ## Examples
 //!
@@ -40,13 +51,13 @@ use ironplc_dsl::{
 };
 use ironplc_parser::options::CompilerOptions;
 use ironplc_problems::Problem;
-use std::collections::HashMap;
 
 use crate::{
     intermediate_type::IntermediateType,
     intermediates,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
+    scoped_table::{self, ScopedTable, Value},
     semantic_context::SemanticContext,
     type_environment::TypeEnvironment,
 };
@@ -56,21 +67,29 @@ pub fn apply(
     context: &SemanticContext,
     _options: &CompilerOptions,
 ) -> SemanticResult {
-    run_rule(
-        RuleAggregateAssignment {
-            type_environment: context.types(),
-            var_decls: HashMap::new(),
-            diagnostics: Vec::new(),
-        },
-        lib,
-    )
+    let mut rule = RuleAggregateAssignment {
+        type_environment: context.types(),
+        declarations: scoped_table::ScopedTable::new(),
+        diagnostics: Vec::new(),
+    };
+    // The outermost scope holds declarations made outside any POU --
+    // a CONFIGURATION's VAR_GLOBAL block, most importantly -- so a POU
+    // scope's lookups fall through to them.
+    rule.declarations.enter();
+    run_rule(rule, lib)
 }
+
+/// A variable's declared type, as spelled at its declaration site.
+#[derive(Debug)]
+struct Declared(InitialValueAssignmentKind);
+impl Value for Declared {}
 
 struct RuleAggregateAssignment<'a> {
     type_environment: &'a TypeEnvironment,
-    /// Declared initializer for each variable in the POU currently being
-    /// visited, which is what carries the declared type.
-    var_decls: HashMap<Id, InitialValueAssignmentKind>,
+    /// Declared type of every variable in scope. Nested scopes let a POU's
+    /// own declarations shadow outer ones while still resolving names the
+    /// POU does not declare itself.
+    declarations: ScopedTable<'a, Id, Declared>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -81,69 +100,39 @@ impl DiagnosticVisitor for RuleAggregateAssignment<'_> {
 }
 
 impl RuleAggregateAssignment<'_> {
-    fn collect_variables(&mut self, variables: &[VarDecl]) {
-        for var in variables {
-            if let VariableIdentifier::Symbol(id) = &var.identifier {
-                self.var_decls.insert(id.clone(), var.initializer.clone());
-            }
-        }
-    }
-
-    fn clear_variables(&mut self) {
-        self.var_decls.clear();
-    }
-
     /// Resolves a declared variable to its [`IntermediateType`].
     ///
     /// Handles both spellings a variable's type can take: a named type
     /// (`p : Point`) resolved through the type environment, and an inline
     /// specification (`a : ARRAY[1..2] OF DINT`) built from the declaration.
-    fn declared_type(&self, id: &Id) -> Option<IntermediateType> {
-        match self.var_decls.get(id)? {
+    fn declared_type(&mut self, id: &Id) -> Option<IntermediateType> {
+        let type_environment = self.type_environment;
+        let declared = self.declarations.find(id)?;
+        match &declared.0 {
             InitialValueAssignmentKind::Array(array) => {
-                // An inline array specification. `node_name` only feeds
-                // diagnostics inside the helper, which are discarded here:
+                // An inline array specification. The name passed here only
+                // feeds diagnostics inside the helper, which are discarded:
                 // a malformed declaration is already reported by the
                 // declaration rules, and this rule stays silent on it.
                 let name = TypeName::from_id(id);
-                match intermediates::array::try_from(&name, &array.spec, self.type_environment) {
+                match intermediates::array::try_from(&name, &array.spec, type_environment) {
                     Ok(intermediates::array::IntermediateResult::Type(attrs)) => {
                         Some(attrs.representation)
                     }
-                    Ok(intermediates::array::IntermediateResult::Alias(alias)) => self
-                        .type_environment
+                    Ok(intermediates::array::IntermediateResult::Alias(alias)) => type_environment
                         .get(&alias)
                         .map(|attrs| attrs.representation.clone()),
                     Err(_) => None,
                 }
             }
-            InitialValueAssignmentKind::Simple(simple) => self
-                .type_environment
+            InitialValueAssignmentKind::Simple(simple) => type_environment
                 .get(&simple.type_name)
                 .map(|attrs| attrs.representation.clone()),
-            InitialValueAssignmentKind::Structure(structure) => self
-                .type_environment
+            InitialValueAssignmentKind::Structure(structure) => type_environment
                 .get(&structure.type_name)
                 .map(|attrs| attrs.representation.clone()),
-            InitialValueAssignmentKind::LateResolvedType(type_name) => self
-                .type_environment
+            InitialValueAssignmentKind::LateResolvedType(type_name) => type_environment
                 .get(type_name)
-                .map(|attrs| attrs.representation.clone()),
-            _ => None,
-        }
-    }
-
-    /// Resolves an expression to the declared type it yields, for the two
-    /// shapes that can produce a whole aggregate: another variable, and a
-    /// function result.
-    fn expression_type(&self, expr: &Expr) -> Option<IntermediateType> {
-        match &expr.kind {
-            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(named))) => {
-                self.declared_type(&named.name)
-            }
-            ExprKind::Function(function) => self
-                .type_environment
-                .get(&TypeName::from_id(&function.name))
                 .map(|attrs| attrs.representation.clone()),
             _ => None,
         }
@@ -165,13 +154,20 @@ impl RuleAggregateAssignment<'_> {
         ) {
             return;
         }
-        // A source whose type cannot be resolved gets no opinion — an array
-        // literal or an expression is rejected by codegen as unimplemented,
-        // which is a clearer message than a type mismatch.
-        let Some(value_type) = self.expression_type(value) else {
+        // P4027 owns a call's return type against its destination.
+        if matches!(value.kind, ExprKind::Function(_)) {
             return;
+        }
+
+        let value_type = match &value.kind {
+            ExprKind::Variable(Variable::Symbolic(SymbolicVariableKind::Named(source))) => {
+                self.declared_type(&source.name)
+            }
+            _ => None,
         };
-        if target_type != value_type {
+        // An unresolvable source is a mismatch too: nothing other than a
+        // same-typed aggregate may be assigned to an aggregate.
+        if value_type.as_ref() != Some(&target_type) {
             self.diagnostics.push(Diagnostic::problem(
                 Problem::AggregateAssignmentTypeMismatch,
                 Label::span(
@@ -187,10 +183,9 @@ impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
     type Value = ();
 
     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Diagnostic> {
-        self.clear_variables();
-        self.collect_variables(&node.variables);
+        self.declarations.enter();
         let ret = node.recurse_visit(self);
-        self.clear_variables();
+        self.declarations.exit();
         ret
     }
 
@@ -198,19 +193,25 @@ impl Visitor<Diagnostic> for RuleAggregateAssignment<'_> {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Diagnostic> {
-        self.clear_variables();
-        self.collect_variables(&node.variables);
+        self.declarations.enter();
         let ret = node.recurse_visit(self);
-        self.clear_variables();
+        self.declarations.exit();
         ret
     }
 
     fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Diagnostic> {
-        self.clear_variables();
-        self.collect_variables(&node.variables);
+        self.declarations.enter();
         let ret = node.recurse_visit(self);
-        self.clear_variables();
+        self.declarations.exit();
         ret
+    }
+
+    fn visit_var_decl(&mut self, node: &VarDecl) -> Result<Self::Value, Diagnostic> {
+        self.declarations.add_if(
+            node.identifier.symbolic_id(),
+            Declared(node.initializer.clone()),
+        );
+        node.recurse_visit(self)
     }
 
     fn visit_assignment(&mut self, node: &Assignment) -> Result<(), Diagnostic> {
@@ -373,6 +374,236 @@ END_PROGRAM
             !codes.contains(&"P2037".to_string()),
             "scalars are out of scope, got {codes:?}"
         );
+    }
+
+    /// A global is reached through a `VAR_EXTERNAL` redeclaration, which is
+    /// what carries the type inside the POU. The outer scope still matters:
+    /// the `VAR_GLOBAL` block itself is visited outside any POU.
+    #[test]
+    fn apply_when_global_array_extent_differs_then_reports_mismatch() {
+        let codes = problem_codes(
+            "
+CONFIGURATION config
+  VAR_GLOBAL
+    g : ARRAY[1..5] OF DINT;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+VAR_EXTERNAL
+  g : ARRAY[1..5] OF DINT;
+END_VAR
+VAR
+  a : ARRAY[1..2] OF DINT;
+END_VAR
+  a := g;
+END_PROGRAM
+",
+        );
+        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+    }
+
+    #[test]
+    fn apply_when_global_array_type_matches_then_accepted() {
+        let codes = problem_codes(
+            "
+CONFIGURATION config
+  VAR_GLOBAL
+    g : ARRAY[1..2] OF DINT;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+VAR_EXTERNAL
+  g : ARRAY[1..2] OF DINT;
+END_VAR
+VAR
+  a : ARRAY[1..2] OF DINT;
+END_VAR
+  a := g;
+END_PROGRAM
+",
+        );
+        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    }
+
+    /// A POU's own declaration shadows an outer one of the same name, so the
+    /// inner type is what gets compared.
+    #[test]
+    fn apply_when_local_shadows_global_then_local_type_is_compared() {
+        let codes = problem_codes(
+            "
+CONFIGURATION config
+  VAR_GLOBAL
+    g : ARRAY[1..5] OF DINT;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK plc_task(INTERVAL := T#100ms, PRIORITY := 1);
+    PROGRAM plc_task_instance WITH plc_task : main;
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM main
+VAR
+  g : ARRAY[1..2] OF DINT;
+  a : ARRAY[1..2] OF DINT;
+END_VAR
+  a := g;
+END_PROGRAM
+",
+        );
+        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    }
+
+    #[test]
+    fn apply_when_array_assigned_inside_function_then_reports_mismatch() {
+        let codes = problem_codes(
+            "
+FUNCTION Copy : DINT
+VAR
+  a : ARRAY[1..2] OF DINT;
+  b : ARRAY[1..5] OF DINT;
+END_VAR
+  a := b;
+  Copy := 0;
+END_FUNCTION
+
+PROGRAM main
+VAR
+  r : DINT;
+END_VAR
+  r := Copy();
+END_PROGRAM
+",
+        );
+        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+    }
+
+    #[test]
+    fn apply_when_array_assigned_inside_function_block_then_reports_mismatch() {
+        let codes = problem_codes(
+            "
+FUNCTION_BLOCK Holder
+VAR
+  a : ARRAY[1..2] OF DINT;
+  b : ARRAY[1..5] OF DINT;
+END_VAR
+  a := b;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+  h : Holder;
+END_VAR
+  h();
+END_PROGRAM
+",
+        );
+        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
+    }
+
+    /// A function block's locals must not leak into a later POU's scope.
+    #[test]
+    fn apply_when_pou_ends_then_its_declarations_leave_scope() {
+        let codes = problem_codes(
+            "
+FUNCTION_BLOCK Holder
+VAR
+  a : ARRAY[1..2] OF DINT;
+END_VAR
+  a[1] := 1;
+END_FUNCTION_BLOCK
+
+PROGRAM main
+VAR
+  a : ARRAY[1..5] OF DINT;
+  b : ARRAY[1..5] OF DINT;
+END_VAR
+  a := b;
+END_PROGRAM
+",
+        );
+        assert!(
+            codes.is_empty(),
+            "main's own `a` is ARRAY[1..5], not the FB's ARRAY[1..2]; got {codes:?}"
+        );
+    }
+
+    /// A function result is P4027's business; reporting here too would give
+    /// two diagnostics for one mistake.
+    #[test]
+    fn apply_when_function_result_assigned_then_defers_to_return_type_rule() {
+        let codes = problem_codes(
+            "
+TYPE
+  Point : STRUCT
+    x : DINT;
+  END_STRUCT;
+  Other : STRUCT
+    x : DINT;
+    y : DINT;
+  END_STRUCT;
+END_TYPE
+
+FUNCTION MakePoint : Point
+  MakePoint.x := 1;
+END_FUNCTION
+
+PROGRAM main
+VAR
+  a : Other;
+END_VAR
+  a := MakePoint();
+END_PROGRAM
+",
+        );
+        assert!(
+            !codes.contains(&"P2037".to_string()),
+            "P4027 owns this case; got {codes:?}"
+        );
+        assert!(codes.contains(&"P4027".to_string()), "got {codes:?}");
+    }
+
+    #[test]
+    fn apply_when_matching_struct_returning_function_then_accepted() {
+        let codes = problem_codes(
+            "
+TYPE
+  Point : STRUCT
+    x : DINT;
+  END_STRUCT;
+END_TYPE
+
+FUNCTION MakePoint : Point
+  MakePoint.x := 1;
+END_FUNCTION
+
+PROGRAM main
+VAR
+  a : Point;
+END_VAR
+  a := MakePoint();
+END_PROGRAM
+",
+        );
+        assert!(codes.is_empty(), "expected no diagnostics, got {codes:?}");
+    }
+
+    /// Nothing but a same-typed aggregate may be assigned to an aggregate.
+    /// Codegen depends on this: it treats an unresolvable source at
+    /// COPY_REGION emission as a compiler defect.
+    #[test]
+    fn apply_when_constant_assigned_to_array_then_reports_mismatch() {
+        let codes = problem_codes(&program_with("a : ARRAY[1..2] OF DINT;\n", "a := 5;\n"));
+        assert!(codes.contains(&"P2037".to_string()), "got {codes:?}");
     }
 
     /// An element write is not a whole-aggregate assignment.

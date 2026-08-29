@@ -138,7 +138,9 @@ pub const OP_CLASS_FB_LOAD_PARAM: u8 = 0x28;
 pub const OP_CLASS_FB_CALL: u8 = 0x29;
 /// Op class: load array element.
 pub const OP_CLASS_LOAD_ARRAY: u8 = 0x2A;
-/// Op class: store array element.
+/// Op class: store into an array's storage. Type tag selects the granularity:
+/// 0 = STORE_ARRAY (one element at a runtime index), 1 = COPY_REGION (the
+/// whole region). Tags 2..3 are free.
 pub const OP_CLASS_STORE_ARRAY: u8 = 0x2B;
 /// Op class: load array element via reference.
 pub const OP_CLASS_LOAD_ARRAY_DEREF: u8 = 0x2C;
@@ -180,18 +182,7 @@ pub const OP_CLASS_STR_STORE_ARRAY_ELEM: u8 = 0x3C;
 pub const OP_CLASS_CMP_BR: u8 = 0x3D;
 /// Op class: METHOD_CALL (OOP extension, ADR-0041 Phase 1 static dispatch).
 pub const OP_CLASS_METHOD_CALL: u8 = 0x3E;
-/// Op class: whole-region operations (consolidated). Type tag selects the
-/// operation: 0 = COPY_REGION. Tags 1..3 are reserved for further region
-/// operations — notably a `COPY_REGION_DYN` taking its sizes from a runtime
-/// array descriptor, which is what variable-length arrays (`ARRAY[*]`) would
-/// need.
-///
-/// This is the **last** op-class slot. Consolidating region operations under
-/// one class rather than one class each is what keeps further region
-/// operations possible at all; anything needing a genuinely new op class now
-/// requires widening the encoding (see ADR-0033).
-pub const OP_CLASS_REGION_OP: u8 = 0x3F;
-// No free op-class slots remain.
+// 0x3F free (1 op-class slot reserved for future use).
 
 /// Decompose a primary opcode byte into `(op_class, type_tag)`.
 #[inline]
@@ -513,8 +504,6 @@ pub const LOAD_ARRAY_DEREF: Opcode = encode_opcode(OP_CLASS_LOAD_ARRAY_DEREF, 0)
 /// Pops 2 (value, flat index). Net stack: -2.
 pub const STORE_ARRAY_DEREF: Opcode = encode_opcode(OP_CLASS_STORE_ARRAY_DEREF, 0);
 
-// --- Region opcodes ---
-
 /// Copy a whole aggregate (array or structure) within the data region.
 ///
 /// Operand 1: u16 destination variable index (little-endian). The slot holds
@@ -536,7 +525,13 @@ pub const STORE_ARRAY_DEREF: Opcode = encode_opcode(OP_CLASS_STORE_ARRAY_DEREF, 
 ///
 /// Overlapping regions are well defined (the VM uses `copy_within`), so
 /// `x := x` is a no-op rather than corruption.
-pub const COPY_REGION: Opcode = encode_opcode(OP_CLASS_REGION_OP, 0);
+///
+/// Encoded as a type-tag variant of `STORE_ARRAY` — the same op class, one
+/// granularity coarser — rather than as an op class of its own. Op classes
+/// exist to keep the dispatch table small, not to name operations, and
+/// spending one on a single instruction would have consumed the last free
+/// slot.
+pub const COPY_REGION: Opcode = encode_opcode(OP_CLASS_STORE_ARRAY, 1);
 
 // --- Truncation opcodes ---
 

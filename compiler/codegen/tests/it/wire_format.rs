@@ -244,11 +244,9 @@ fn opcode_constants_when_array_family_then_pinned_bytes() {
     assert_eq!(opcode::STORE_ARRAY, 0xAC);
     assert_eq!(opcode::LOAD_ARRAY_DEREF, 0xB0);
     assert_eq!(opcode::STORE_ARRAY_DEREF, 0xB4);
-}
-
-#[test]
-fn opcode_constants_when_region_family_then_pinned_bytes() {
-    assert_eq!(opcode::COPY_REGION, 0xFC);
+    // COPY_REGION is STORE_ARRAY at type tag 1 -- the same op class, one
+    // granularity coarser -- rather than an op class of its own.
+    assert_eq!(opcode::COPY_REGION, 0xAD);
 }
 
 #[test]
