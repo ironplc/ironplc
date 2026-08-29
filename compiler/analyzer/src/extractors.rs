@@ -6,8 +6,7 @@
 //! variables out of a completed semantic analysis. Without a single
 //! shared traversal, each front-end re-implements iterate → filter →
 //! project and applies its own filter predicates, which has produced
-//! divergent behavior in the past (see plan
-//! `specs/plans/2026-04-25-shared-symbol-extractors.md`).
+//! divergent behavior in the past.
 //!
 //! This module owns the traversal. Methods on [`SemanticContext`] and
 //! [`SymbolEnvironment`] return borrow-based views that preserve the
