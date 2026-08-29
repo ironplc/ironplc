@@ -134,10 +134,10 @@ neutering the relevant arm before relying on it.
 
 ## Tasks
 
-- [ ] Commit this plan
-- [ ] Commit 1 — scope the variable types, with tests
-- [ ] Commit 2 — record the result variable, with tests
-- [ ] Confirm both reproductions in *Problem* now report P4035
+- [x] Commit this plan
+- [x] Commit 1 — scope the variable types, with tests
+- [x] Commit 2 — record the result variable, with tests
+- [x] Confirm both reproductions in *Problem* now report P4035
 - [ ] `cd compiler && just`
 
 ## Verification

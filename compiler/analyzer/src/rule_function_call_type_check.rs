@@ -354,12 +354,30 @@ impl Visitor<Diagnostic> for RuleFunctionCallTypeCheck<'_> {
     /// the enclosing function block's fields, and not clearing left a
     /// method's locals shadowing those fields for every later method.
     fn enter_scope(&mut self, node: ScopeNode<'_>) -> Result<(), Diagnostic> {
+        self.var_types.enter();
+
+        // A declaration's own name is its result variable, so assigning
+        // it is an assignment with a target type like any other. Without
+        // this the target lookup missed and the check returned early,
+        // leaving `Foo := <wrong type>` unreported -- for a FUNCTION as
+        // much as for a METHOD.
         match node {
-            ScopeNode::Function(_)
-            | ScopeNode::FunctionBlock(_)
-            | ScopeNode::Program(_)
-            | ScopeNode::Method(_) => self.var_types.enter(),
+            ScopeNode::Function(node) => {
+                self.var_types
+                    .add(&node.name, node.return_type.to_type_name());
+            }
+            // Only a method that declares a return type has a result to
+            // assign; `rule_use_declared_symbolic_var` rejects the
+            // assignment outright for one that does not.
+            ScopeNode::Method(node) => {
+                if let Some(return_type) = &node.return_type {
+                    self.var_types.add(&node.name, return_type.to_type_name());
+                }
+            }
+            // Neither has a result variable.
+            ScopeNode::FunctionBlock(_) | ScopeNode::Program(_) => {}
         }
+
         Ok(())
     }
 
@@ -1690,6 +1708,89 @@ VAR_INPUT
     newSpeed : INT;
 END_VAR
     speed := newSpeed;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .is_ok());
+    }
+
+    // ---------------------------------------------------------------------
+    // Result variables. A declaration's own name is an assignment target.
+    // ---------------------------------------------------------------------
+
+    rule_ctx_err_code!(
+        apply_when_function_result_assigned_wrong_type_then_error,
+        "
+FUNCTION GetFlag : BOOL
+VAR
+    n : INT;
+END_VAR
+    GetFlag := n;
+END_FUNCTION",
+        Problem::AssignmentTypeMismatch,
+    );
+
+    rule_ctx_ok!(
+        apply_when_function_result_assigned_correct_type_then_ok,
+        "
+FUNCTION GetN : INT
+VAR
+    n : INT;
+END_VAR
+    GetN := n;
+END_FUNCTION"
+    );
+
+    #[test]
+    fn apply_when_method_result_assigned_wrong_type_then_error() {
+        let errors = apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+METHOD GetFlag : BOOL
+VAR
+    n : INT;
+END_VAR
+    GetFlag := n;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .unwrap_err();
+
+        assert!(errors
+            .iter()
+            .any(|d| d.code == Problem::AssignmentTypeMismatch.code()));
+    }
+
+    #[test]
+    fn apply_when_method_result_assigned_correct_type_then_ok() {
+        assert!(apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+METHOD GetN : INT
+VAR
+    n : INT;
+END_VAR
+    GetN := n;
+END_METHOD
+END_FUNCTION_BLOCK",
+        )
+        .is_ok());
+    }
+
+    /// A method with no return type has no result variable, so its name
+    /// is not an assignment target here either. The assignment is
+    /// rejected earlier, by `rule_use_declared_symbolic_var`; this pins
+    /// that this rule adds no target type for it.
+    #[test]
+    fn apply_when_method_has_no_return_type_then_name_is_not_a_target() {
+        assert!(apply_with_methods(
+            "
+FUNCTION_BLOCK FB_Motor
+METHOD DoThing
+VAR
+    n : INT;
+END_VAR
+    DoThing := n;
 END_METHOD
 END_FUNCTION_BLOCK",
         )
