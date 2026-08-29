@@ -82,9 +82,16 @@ variant, flips one attribute, and adds two match arms — and the compiler
 named both arms itself, because adding `ScopeNode::Method` made every
 pass that discriminates fail to compile until it was handled.
 
-PR 3 and PR 4 each carry their own prefactoring, stated in their
-sections: converting `ExprTypeResolver`'s flat maps to `ScopedTable`, and
-giving `ScopeKind` a path before anything pushes a nested scope onto it.
+PR 3's prefactoring is *not* the `ScopedTable` conversion — that is the
+change itself. It is making `ScopedTable::find` take `&self`.
+`ExprTypeResolver` reads its maps from `&self` helpers, one of which
+(`resolve_parent_struct_type`) returns a reference whose lifetime is tied
+to that borrow, and `find` took `&mut self` although it bottoms out in
+`HashMap::get`. Without that one-word change the conversion would have had
+to widen unrelated signatures to `&mut`.
+
+PR 4's prefactoring is giving `ScopeKind` a path before anything pushes a
+nested scope onto it.
 
 ## Design
 
@@ -392,11 +399,18 @@ Order within the pull request, so review can follow it:
 
 Tests:
 
-- `apply_when_method_local_assigned_wrong_type_then_error` — the P4035
-  that defect 3 currently swallows
-- `apply_when_method_local_shadows_field_then_uses_local_type`
-- `apply_when_method_assigns_own_name_then_result_type_resolved`
-- `apply_when_method_assigns_own_name_wrong_type_then_error`
+- `apply_when_method_local_then_resolves_type` — the resolution defect 3
+  currently skips, and with it the P4035 that depended on it
+- `apply_when_method_local_shadows_field_then_resolves_local_type`
+- `apply_when_two_methods_declare_same_name_then_each_resolves_own_type`
+- `apply_when_method_reads_own_name_then_resolves_return_type`
+- `apply_when_method_has_no_return_type_then_own_name_unresolved`
+- `apply_when_function_block_body_references_method_local_then_unresolved`
+
+Not `apply_when_method_assigns_own_name_wrong_type_then_error`, which the
+plan previously listed: assigning the *result variable* a wrong-typed
+value is unchecked for a `FUNCTION` too, so there is no behaviour for a
+method to match. See *Out of scope*.
 
 ### PR 4 — Scope paths in `SymbolEnvironment`
 
@@ -436,6 +450,25 @@ Tests:
   they are arguably scopes; `EnvironmentResolver` does not handle them
   today either, and nothing in #1439 depends on it. Recorded here so the
   omission is deliberate rather than rediscovered.
+- **`rule_function_call_type_check`'s own scope tracking.** Found while
+  implementing PR 3: it is a *sixth* pass with its own flat
+  `var_types: HashMap<Id, TypeName>`, `clear()`ed at each of the three POU
+  boundaries (`:350`, `:358`, `:366`) and populated from `visit_var_decl`,
+  with no method handling and no result variable. Two consequences: a
+  method's locals are visible to its siblings for type-check purposes, and
+  assigning a wrong-typed value to a result variable is never diagnosed —
+  for a `FUNCTION` as much as for a `METHOD`, so it is not a regression
+  this change introduces. It is the same defect class and migrating it is
+  mechanical (three `clear()` overrides become one enter/exit pair), but it
+  *adds* diagnostics, so it belongs in its own pull request rather than
+  riding along in PR 3.
+
+  Worth noting for the design: the derive guard cannot catch this site.
+  The guard forces an *AST node* holding `variables: Vec<VarDecl>` to
+  declare whether it scopes them; it cannot force a *pass* to use the
+  hooks. Passes that keep their own flat map remain findable only by
+  reading them.
+
 - **Node ids and a resolution map.** See the scope-path rationale.
 - **`ScopeId` interning.** Only if profiling asks for it.
 
@@ -446,10 +479,10 @@ them fire correctly.
 
 - [x] Commit this plan
 - [x] PR 1 — prefactor: hooks, derive guard, migrate the two pure-move passes (#1454)
-- [ ] PR 2 — `METHOD` is a scope: dsl, analyzer, codegen, docs, tests
-- [ ] Confirm reproductions 1, 2, 4 and 5 in *Problem* now behave correctly
-- [ ] PR 3 — `xform_resolve_expr_types` on `ScopedTable`
-- [ ] Confirm reproduction 3 in *Problem* now behaves correctly
+- [x] PR 2 — `METHOD` is a scope: dsl, analyzer, codegen, docs, tests (#1463)
+- [x] Confirm reproductions 1, 2, 4 and 5 in *Problem* now behave correctly
+- [x] PR 3 — `xform_resolve_expr_types` on `ScopedTable`
+- [x] Confirm reproduction 3 in *Problem* now behaves correctly
 - [ ] PR 4 — scope paths in `SymbolEnvironment`
 
 ## Verification
