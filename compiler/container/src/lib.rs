@@ -7,6 +7,7 @@ extern crate std;
 // Always available (no_std)
 pub mod builtin;
 mod char_width;
+pub mod cmp_op;
 mod const_type;
 mod container_ref;
 mod error;
