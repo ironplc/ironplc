@@ -10,6 +10,7 @@ use std::io::BufReader;
 use std::path::Path;
 
 use ironplc_container::opcode;
+use ironplc_container::opcode::{Instruction, Operand};
 use ironplc_container::{ConstType, Container};
 use serde_json::{json, Value};
 
@@ -242,760 +243,234 @@ fn disassemble_functions(container: &Container) -> Value {
 }
 
 /// Decodes a bytecode slice into an array of instruction JSON objects.
+///
+/// Every row is rendered from the instruction's own declaration -- the
+/// mnemonic and operand layout the instruction set gives it -- so there is no
+/// per-opcode code here that can fall out of step with the instruction set.
+/// An `UNKNOWN(0x..)` row therefore means what it says: a byte that is not an
+/// assigned opcode, from a corrupt container or one written by a newer
+/// compiler.
 fn decode_instructions(bytecode: &[u8], container: &Container) -> Vec<Value> {
     let mut instructions = Vec::new();
     let mut pc = 0;
 
     while pc < bytecode.len() {
         let opcode_byte = bytecode[pc];
-        let offset = pc;
         let size = opcode::instruction_size(opcode_byte);
 
-        match opcode_byte {
-            opcode::LOAD_CONST_I32 => {
-                let pool_index = read_u16(bytecode, pc + 1);
-                let comment = lookup_const_comment(container, pool_index);
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_CONST_I32",
-                    "operands": format!("pool[{}]", pool_index),
-                    "comment": comment,
-                }));
-            }
-            opcode::LOAD_TRUE => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_TRUE",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::LOAD_FALSE => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_FALSE",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::LOAD_VAR_I32 => {
-                let var_index = read_u16(bytecode, pc + 1);
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_VAR_I32",
-                    "operands": format!("var[{}]", var_index),
-                    "comment": "",
-                }));
-            }
-            opcode::STORE_VAR_I32 => {
-                let var_index = read_u16(bytecode, pc + 1);
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STORE_VAR_I32",
-                    "operands": format!("var[{}]", var_index),
-                    "comment": "",
-                }));
-            }
-            opcode::ADD_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "ADD_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::SUB_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "SUB_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::MUL_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "MUL_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::DIV_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "DIV_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::MOD_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "MOD_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::NEG_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "NEG_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::EQ_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "EQ_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::NE_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "NE_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::LT_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LT_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::LE_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LE_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::GT_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "GT_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::GE_I32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "GE_I32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BOOL_AND => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BOOL_AND",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BOOL_OR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BOOL_OR",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BOOL_XOR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BOOL_XOR",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BOOL_NOT => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BOOL_NOT",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BIT_AND_32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BIT_AND_32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BIT_OR_32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BIT_OR_32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BIT_XOR_32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BIT_XOR_32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BIT_NOT_32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BIT_NOT_32",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BIT_AND_64 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BIT_AND_64",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BIT_OR_64 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BIT_OR_64",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BIT_XOR_64 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BIT_XOR_64",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::BIT_NOT_64 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BIT_NOT_64",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
+        instructions.push(match Instruction::decode(opcode_byte) {
+            Some(instruction) => decode_instruction(instruction, bytecode, pc, size, container),
+            None => instruction_json(
+                pc,
+                &format!("UNKNOWN(0x{opcode_byte:02X})"),
+                String::new(),
+                String::new(),
+            ),
+        });
 
-            opcode::JMP => {
-                let jump_offset = read_i16(bytecode, pc + 1);
-                let target = (pc as isize + size as isize + jump_offset as isize) as usize;
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "JMP",
-                    "operands": format!("offset: {}", format_jump_offset(jump_offset)),
-                    "comment": format!("-> 0x{:04X}", target),
-                }));
-            }
-            opcode::JMP_IF_NOT => {
-                let jump_offset = read_i16(bytecode, pc + 1);
-                let target = (pc as isize + size as isize + jump_offset as isize) as usize;
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "JMP_IF_NOT",
-                    "operands": format!("offset: {}", format_jump_offset(jump_offset)),
-                    "comment": format!("-> 0x{:04X}", target),
-                }));
-            }
-            opcode::BUILTIN => {
-                let func_id = read_u16(bytecode, pc + 1);
-                let operand = match func_id {
-                    opcode::builtin::EXPT_I32 => format!("EXPT_I32 (0x{:04X})", func_id),
-                    opcode::builtin::EXPT_F32 => format!("EXPT_F32 (0x{:04X})", func_id),
-                    opcode::builtin::EXPT_F64 => format!("EXPT_F64 (0x{:04X})", func_id),
-                    opcode::builtin::ABS_I32 => format!("ABS_I32 (0x{:04X})", func_id),
-                    opcode::builtin::ABS_F32 => format!("ABS_F32 (0x{:04X})", func_id),
-                    opcode::builtin::ABS_F64 => format!("ABS_F64 (0x{:04X})", func_id),
-                    opcode::builtin::MIN_I32 => format!("MIN_I32 (0x{:04X})", func_id),
-                    opcode::builtin::MIN_F32 => format!("MIN_F32 (0x{:04X})", func_id),
-                    opcode::builtin::MIN_F64 => format!("MIN_F64 (0x{:04X})", func_id),
-                    opcode::builtin::MAX_I32 => format!("MAX_I32 (0x{:04X})", func_id),
-                    opcode::builtin::MAX_F32 => format!("MAX_F32 (0x{:04X})", func_id),
-                    opcode::builtin::MAX_F64 => format!("MAX_F64 (0x{:04X})", func_id),
-                    opcode::builtin::LIMIT_I32 => format!("LIMIT_I32 (0x{:04X})", func_id),
-                    opcode::builtin::LIMIT_F32 => format!("LIMIT_F32 (0x{:04X})", func_id),
-                    opcode::builtin::LIMIT_F64 => format!("LIMIT_F64 (0x{:04X})", func_id),
-                    opcode::builtin::SEL_I32 => format!("SEL_I32 (0x{:04X})", func_id),
-                    opcode::builtin::SHL_I32 => format!("SHL_I32 (0x{:04X})", func_id),
-                    opcode::builtin::SHL_I64 => format!("SHL_I64 (0x{:04X})", func_id),
-                    opcode::builtin::SHR_I32 => format!("SHR_I32 (0x{:04X})", func_id),
-                    opcode::builtin::SHR_I64 => format!("SHR_I64 (0x{:04X})", func_id),
-                    opcode::builtin::ROL_I32 => format!("ROL_I32 (0x{:04X})", func_id),
-                    opcode::builtin::ROL_I64 => format!("ROL_I64 (0x{:04X})", func_id),
-                    opcode::builtin::ROR_I32 => format!("ROR_I32 (0x{:04X})", func_id),
-                    opcode::builtin::ROR_I64 => format!("ROR_I64 (0x{:04X})", func_id),
-                    opcode::builtin::ROL_U8 => format!("ROL_U8 (0x{:04X})", func_id),
-                    opcode::builtin::ROL_U16 => format!("ROL_U16 (0x{:04X})", func_id),
-                    opcode::builtin::ROR_U8 => format!("ROR_U8 (0x{:04X})", func_id),
-                    opcode::builtin::ROR_U16 => format!("ROR_U16 (0x{:04X})", func_id),
-                    opcode::builtin::SEL_F32 => format!("SEL_F32 (0x{:04X})", func_id),
-                    opcode::builtin::SEL_F64 => format!("SEL_F64 (0x{:04X})", func_id),
-                    opcode::builtin::SQRT_F32 => format!("SQRT_F32 (0x{:04X})", func_id),
-                    opcode::builtin::SQRT_F64 => format!("SQRT_F64 (0x{:04X})", func_id),
-                    opcode::builtin::BCD_TO_INT_8 => {
-                        format!("BCD_TO_INT_8 (0x{:04X})", func_id)
-                    }
-                    opcode::builtin::BCD_TO_INT_16 => {
-                        format!("BCD_TO_INT_16 (0x{:04X})", func_id)
-                    }
-                    opcode::builtin::BCD_TO_INT_32 => {
-                        format!("BCD_TO_INT_32 (0x{:04X})", func_id)
-                    }
-                    opcode::builtin::BCD_TO_INT_64 => {
-                        format!("BCD_TO_INT_64 (0x{:04X})", func_id)
-                    }
-                    opcode::builtin::INT_TO_BCD_8 => {
-                        format!("INT_TO_BCD_8 (0x{:04X})", func_id)
-                    }
-                    opcode::builtin::INT_TO_BCD_16 => {
-                        format!("INT_TO_BCD_16 (0x{:04X})", func_id)
-                    }
-                    opcode::builtin::INT_TO_BCD_32 => {
-                        format!("INT_TO_BCD_32 (0x{:04X})", func_id)
-                    }
-                    opcode::builtin::INT_TO_BCD_64 => {
-                        format!("INT_TO_BCD_64 (0x{:04X})", func_id)
-                    }
-                    opcode::builtin::TRUNC_F64 => format!("TRUNC_F64 (0x{:04X})", func_id),
-                    opcode::builtin::MOD_F64 => format!("MOD_F64 (0x{:04X})", func_id),
-                    opcode::builtin::TRUNC_F32 => format!("TRUNC_F32 (0x{:04X})", func_id),
-                    opcode::builtin::MOD_F32 => format!("MOD_F32 (0x{:04X})", func_id),
-                    id if opcode::builtin::is_mux(id) => {
-                        let n = opcode::builtin::mux_info(id).unwrap();
-                        let width = if id >= opcode::builtin::MUX_F64_BASE {
-                            "F64"
-                        } else if id >= opcode::builtin::MUX_F32_BASE {
-                            "F32"
-                        } else if id >= opcode::builtin::MUX_I64_BASE {
-                            "I64"
-                        } else {
-                            "I32"
-                        };
-                        format!("MUX_{width}({n}) (0x{id:04X})")
-                    }
-                    _ => format!("0x{:04X}", func_id),
-                };
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "BUILTIN",
-                    "operands": operand,
-                    "comment": "",
-                }));
-            }
-            opcode::RET => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "RET",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::RET_VOID => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "RET_VOID",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::POP => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "POP",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::DUP => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "DUP",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::SWAP => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "SWAP",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::FB_LOAD_INSTANCE => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "FB_LOAD_INSTANCE",
-                    "operands": format!("var[{}]", read_u16(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::FB_STORE_PARAM => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "FB_STORE_PARAM",
-                    "operands": format!("field[{}]", bytecode[pc + 1]),
-                    "comment": "",
-                }));
-            }
-            opcode::FB_LOAD_PARAM => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "FB_LOAD_PARAM",
-                    "operands": format!("field[{}]", bytecode[pc + 1]),
-                    "comment": "",
-                }));
-            }
-            opcode::FB_CALL => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "FB_CALL",
-                    "operands": format!("type[{}]", read_u16(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::METHOD_CALL => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "METHOD_CALL",
-                    "operands": format!(
-                        "func[{}], fields[{}..+{}], params[{}]",
-                        read_u16(bytecode, pc + 1),
-                        read_u16(bytecode, pc + 3),
-                        bytecode[pc + 5],
-                        read_u16(bytecode, pc + 6)
-                    ),
-                    "comment": "",
-                }));
-            }
-            opcode::LOAD_CONST_STR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_CONST_STR",
-                    "operands": format!("pool[{}]", read_u16(bytecode, pc + 1)),
-                    "comment": lookup_const_comment(container, read_u16(bytecode, pc + 1)),
-                }));
-            }
-            opcode::STR_INIT => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STR_INIT",
-                    "operands": format!("data[{}], max_len: {}, char_width: {}", read_u32(bytecode, pc + 1), read_u16(bytecode, pc + 5), bytecode[pc + 7]),
-                    "comment": "",
-                }));
-            }
-            opcode::STR_LOAD_VAR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STR_LOAD_VAR",
-                    "operands": format!("data[{}]", read_u32(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::STR_STORE_VAR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STR_STORE_VAR",
-                    "operands": format!("data[{}]", read_u32(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::LEN_STR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LEN_STR",
-                    "operands": format!("data[{}]", read_u32(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-
-            opcode::FIND_STR => {
-                let in1 = read_u32(bytecode, pc + 1);
-                let in2 = read_u32(bytecode, pc + 5);
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "FIND_STR",
-                    "operands": format!("data[{}], data[{}]", in1, in2),
-                    "comment": "",
-                }));
-            }
-            opcode::REPLACE_STR => {
-                let in1 = read_u32(bytecode, pc + 1);
-                let in2 = read_u32(bytecode, pc + 5);
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "REPLACE_STR",
-                    "operands": format!("data[{}], data[{}]", in1, in2),
-                    "comment": "",
-                }));
-            }
-            opcode::INSERT_STR => {
-                let in1 = read_u32(bytecode, pc + 1);
-                let in2 = read_u32(bytecode, pc + 5);
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "INSERT_STR",
-                    "operands": format!("data[{}], data[{}]", in1, in2),
-                    "comment": "",
-                }));
-            }
-            opcode::DELETE_STR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "DELETE_STR",
-                    "operands": format!("data[{}]", read_u32(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::LEFT_STR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LEFT_STR",
-                    "operands": format!("data[{}]", read_u32(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::RIGHT_STR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "RIGHT_STR",
-                    "operands": format!("data[{}]", read_u32(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::MID_STR => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "MID_STR",
-                    "operands": format!("data[{}]", read_u32(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::CONCAT_STR => {
-                let in1 = read_u32(bytecode, pc + 1);
-                let in2 = read_u32(bytecode, pc + 5);
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "CONCAT_STR",
-                    "operands": format!("data[{}], data[{}]", in1, in2),
-                    "comment": "",
-                }));
-            }
-            opcode::STR_INIT_ARRAY => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STR_INIT_ARRAY",
-                    "operands": format!("var[{}], desc[{}]", read_u16(bytecode, pc + 1), read_u16(bytecode, pc + 3)),
-                    "comment": "",
-                }));
-            }
-            opcode::STR_LOAD_ARRAY_ELEM => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STR_LOAD_ARRAY_ELEM",
-                    "operands": format!("var[{}], desc[{}]", read_u16(bytecode, pc + 1), read_u16(bytecode, pc + 3)),
-                    "comment": "",
-                }));
-            }
-            opcode::STR_STORE_ARRAY_ELEM => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STR_STORE_ARRAY_ELEM",
-                    "operands": format!("var[{}], desc[{}]", read_u16(bytecode, pc + 1), read_u16(bytecode, pc + 3)),
-                    "comment": "",
-                }));
-            }
-            opcode::LOAD_ARRAY => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_ARRAY",
-                    "operands": format!("var[{}], desc[{}]", read_u16(bytecode, pc + 1), read_u16(bytecode, pc + 3)),
-                    "comment": "",
-                }));
-            }
-            opcode::STORE_ARRAY => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STORE_ARRAY",
-                    "operands": format!("var[{}], desc[{}]", read_u16(bytecode, pc + 1), read_u16(bytecode, pc + 3)),
-                    "comment": "",
-                }));
-            }
-            opcode::LOAD_ARRAY_DEREF => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_ARRAY_DEREF",
-                    "operands": format!("ref[{}], desc[{}]", read_u16(bytecode, pc + 1), read_u16(bytecode, pc + 3)),
-                    "comment": "",
-                }));
-            }
-            opcode::STORE_ARRAY_DEREF => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STORE_ARRAY_DEREF",
-                    "operands": format!("ref[{}], desc[{}]", read_u16(bytecode, pc + 1), read_u16(bytecode, pc + 3)),
-                    "comment": "",
-                }));
-            }
-            opcode::TRUNC_I8 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "TRUNC_I8",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::TRUNC_U8 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "TRUNC_U8",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::TRUNC_I16 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "TRUNC_I16",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::TRUNC_U16 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "TRUNC_U16",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::LOAD_CONST_I64 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_CONST_I64",
-                    "operands": format!("pool[{}]", read_u16(bytecode, pc + 1)),
-                    "comment": lookup_const_comment(container, read_u16(bytecode, pc + 1)),
-                }));
-            }
-            opcode::LOAD_CONST_F32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_CONST_F32",
-                    "operands": format!("pool[{}]", read_u16(bytecode, pc + 1)),
-                    "comment": lookup_const_comment(container, read_u16(bytecode, pc + 1)),
-                }));
-            }
-            opcode::LOAD_CONST_F64 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_CONST_F64",
-                    "operands": format!("pool[{}]", read_u16(bytecode, pc + 1)),
-                    "comment": lookup_const_comment(container, read_u16(bytecode, pc + 1)),
-                }));
-            }
-            opcode::LOAD_VAR_I64 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_VAR_I64",
-                    "operands": format!("var[{}]", read_u16(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::LOAD_VAR_F32 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_VAR_F32",
-                    "operands": format!("var[{}]", read_u16(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::LOAD_VAR_F64 => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_VAR_F64",
-                    "operands": format!("var[{}]", read_u16(bytecode, pc + 1)),
-                    "comment": "",
-                }));
-            }
-            opcode::LOAD_INDIRECT => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "LOAD_INDIRECT",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::STORE_INDIRECT => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "STORE_INDIRECT",
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-            opcode::CMP_BR_I32 | opcode::CMP_BR_I64 => {
-                let cmp_op_byte = bytecode[pc + 1];
-                let var_idx = read_u16(bytecode, pc + 2);
-                let const_idx = read_u16(bytecode, pc + 4);
-                let jump_offset = read_i16(bytecode, pc + 6);
-                let target = (pc as isize + size as isize + jump_offset as isize) as usize;
-                let mnemonic = if opcode_byte == opcode::CMP_BR_I32 {
-                    "CMP_BR_I32"
-                } else {
-                    "CMP_BR_I64"
-                };
-                let cmp_str = match cmp_op_byte {
-                    opcode::cmp_op::EQ => "EQ",
-                    opcode::cmp_op::NE => "NE",
-                    opcode::cmp_op::LT_S => "LT_S",
-                    opcode::cmp_op::LE_S => "LE_S",
-                    opcode::cmp_op::GT_S => "GT_S",
-                    opcode::cmp_op::GE_S => "GE_S",
-                    _ => "INVALID",
-                };
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": mnemonic,
-                    "operands": format!("{}, var[{}], const[{}], offset: {}", cmp_str, var_idx, const_idx, format_jump_offset(jump_offset)),
-                    "comment": format!("-> 0x{:04X}", target),
-                }));
-            }
-            opcode::COPY_REGION => {
-                let dst_var = read_u16(bytecode, pc + 1);
-                let dst_desc = read_u16(bytecode, pc + 3);
-                let src_desc = read_u16(bytecode, pc + 5);
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": "COPY_REGION",
-                    "operands": format!("var[{}], desc[{}], desc[{}]", dst_var, dst_desc, src_desc),
-                    "comment": "size from descriptors; source offset from stack",
-                }));
-            }
-            unknown => {
-                instructions.push(json!({
-                    "offset": offset,
-                    "opcode": format!("UNKNOWN(0x{:02X})", unknown),
-                    "operands": "",
-                    "comment": "",
-                }));
-            }
-        }
         pc += size;
     }
 
     instructions
+}
+
+/// Decodes one instruction: its mnemonic, its operands in order, and whatever
+/// comments those operands contribute (a constant's value, a branch target).
+fn decode_instruction(
+    instruction: Instruction,
+    bytecode: &[u8],
+    pc: usize,
+    size: usize,
+    container: &Container,
+) -> Value {
+    // A truncated container can end part-way through an instruction. Say so
+    // rather than reading past the end of the function's bytecode.
+    if pc + size > bytecode.len() {
+        return instruction_json(
+            pc,
+            instruction.mnemonic,
+            "<truncated>".to_string(),
+            String::new(),
+        );
+    }
+
+    let mut operands = Vec::new();
+    let mut comments = Vec::new();
+    let mut at = pc + 1;
+
+    if !instruction.note.is_empty() {
+        comments.push(instruction.note.to_string());
+    }
+
+    for &operand in instruction.operands {
+        let (text, comment) = format_operand(operand, bytecode, at, pc + size, container);
+        operands.push(text);
+        comments.extend(comment);
+        at += operand.width();
+    }
+
+    instruction_json(
+        pc,
+        instruction.mnemonic,
+        operands.join(", "),
+        comments.join(", "),
+    )
+}
+
+/// Renders the operand at byte offset `at`, and the comment it contributes.
+///
+/// The match is exhaustive over [`Operand`] with no catch-all, so an operand
+/// shape added to the instruction set does not compile until it is rendered
+/// here. `next_pc` is the offset of the following instruction, which is what
+/// a branch offset is measured from.
+fn format_operand(
+    operand: Operand,
+    bytecode: &[u8],
+    at: usize,
+    next_pc: usize,
+    container: &Container,
+) -> (String, Option<String>) {
+    match operand {
+        Operand::ConstIndex => {
+            let pool_index = read_u16(bytecode, at);
+            (
+                format!("pool[{pool_index}]"),
+                Some(lookup_const_comment(container, pool_index)),
+            )
+        }
+        Operand::VarIndex => (format!("var[{}]", read_u16(bytecode, at)), None),
+        Operand::RefIndex => (format!("ref[{}]", read_u16(bytecode, at)), None),
+        Operand::ArrayDescIndex => (format!("desc[{}]", read_u16(bytecode, at)), None),
+        Operand::DataOffset => (format!("data[{}]", read_u32(bytecode, at)), None),
+        Operand::FieldIndex => (format!("field[{}]", bytecode[at]), None),
+        Operand::FbTypeId => (format!("type[{}]", read_u16(bytecode, at)), None),
+        Operand::FunctionId => {
+            let function_id = read_u16(bytecode, at);
+            (
+                format!("func[{function_id}]"),
+                lookup_function_comment(container, function_id),
+            )
+        }
+        Operand::BuiltinId => (format_builtin(read_u16(bytecode, at)), None),
+        Operand::JumpOffset => {
+            let jump_offset = read_i16(bytecode, at);
+            let target = (next_pc as isize + jump_offset as isize) as usize;
+            (
+                format!("offset: {}", format_jump_offset(jump_offset)),
+                Some(format!("-> 0x{target:04X}")),
+            )
+        }
+        Operand::CmpOp => (format_cmp_op(bytecode[at]).to_string(), None),
+        Operand::MaxLength => (format!("max_len: {}", read_u16(bytecode, at)), None),
+        Operand::CharWidth => (format!("char_width: {}", bytecode[at]), None),
+        Operand::NumFields => (format!("num_fields: {}", bytecode[at]), None),
+        Operand::FieldVarOffset => (format!("fields[{}]", read_u16(bytecode, at)), None),
+        Operand::ParamVarOffset => (format!("params[{}]", read_u16(bytecode, at)), None),
+    }
+}
+
+/// Builds the JSON object for one decoded instruction.
+fn instruction_json(offset: usize, opcode: &str, operands: String, comment: String) -> Value {
+    json!({
+        "offset": offset,
+        "opcode": opcode,
+        "operands": operands,
+        "comment": comment,
+    })
+}
+
+/// Names the comparison operator a `CMP_BR_*` instruction branches on.
+fn format_cmp_op(cmp_op: u8) -> &'static str {
+    match cmp_op {
+        opcode::cmp_op::EQ => "EQ",
+        opcode::cmp_op::NE => "NE",
+        opcode::cmp_op::LT_S => "LT_S",
+        opcode::cmp_op::LE_S => "LE_S",
+        opcode::cmp_op::GT_S => "GT_S",
+        opcode::cmp_op::GE_S => "GE_S",
+        _ => "INVALID",
+    }
+}
+
+/// Names the built-in a `BUILTIN` instruction calls, falling back to its raw
+/// ID.
+fn format_builtin(func_id: u16) -> String {
+    match func_id {
+        opcode::builtin::EXPT_I32 => format!("EXPT_I32 (0x{:04X})", func_id),
+        opcode::builtin::EXPT_F32 => format!("EXPT_F32 (0x{:04X})", func_id),
+        opcode::builtin::EXPT_F64 => format!("EXPT_F64 (0x{:04X})", func_id),
+        opcode::builtin::ABS_I32 => format!("ABS_I32 (0x{:04X})", func_id),
+        opcode::builtin::ABS_F32 => format!("ABS_F32 (0x{:04X})", func_id),
+        opcode::builtin::ABS_F64 => format!("ABS_F64 (0x{:04X})", func_id),
+        opcode::builtin::MIN_I32 => format!("MIN_I32 (0x{:04X})", func_id),
+        opcode::builtin::MIN_F32 => format!("MIN_F32 (0x{:04X})", func_id),
+        opcode::builtin::MIN_F64 => format!("MIN_F64 (0x{:04X})", func_id),
+        opcode::builtin::MAX_I32 => format!("MAX_I32 (0x{:04X})", func_id),
+        opcode::builtin::MAX_F32 => format!("MAX_F32 (0x{:04X})", func_id),
+        opcode::builtin::MAX_F64 => format!("MAX_F64 (0x{:04X})", func_id),
+        opcode::builtin::LIMIT_I32 => format!("LIMIT_I32 (0x{:04X})", func_id),
+        opcode::builtin::LIMIT_F32 => format!("LIMIT_F32 (0x{:04X})", func_id),
+        opcode::builtin::LIMIT_F64 => format!("LIMIT_F64 (0x{:04X})", func_id),
+        opcode::builtin::SEL_I32 => format!("SEL_I32 (0x{:04X})", func_id),
+        opcode::builtin::SHL_I32 => format!("SHL_I32 (0x{:04X})", func_id),
+        opcode::builtin::SHL_I64 => format!("SHL_I64 (0x{:04X})", func_id),
+        opcode::builtin::SHR_I32 => format!("SHR_I32 (0x{:04X})", func_id),
+        opcode::builtin::SHR_I64 => format!("SHR_I64 (0x{:04X})", func_id),
+        opcode::builtin::ROL_I32 => format!("ROL_I32 (0x{:04X})", func_id),
+        opcode::builtin::ROL_I64 => format!("ROL_I64 (0x{:04X})", func_id),
+        opcode::builtin::ROR_I32 => format!("ROR_I32 (0x{:04X})", func_id),
+        opcode::builtin::ROR_I64 => format!("ROR_I64 (0x{:04X})", func_id),
+        opcode::builtin::ROL_U8 => format!("ROL_U8 (0x{:04X})", func_id),
+        opcode::builtin::ROL_U16 => format!("ROL_U16 (0x{:04X})", func_id),
+        opcode::builtin::ROR_U8 => format!("ROR_U8 (0x{:04X})", func_id),
+        opcode::builtin::ROR_U16 => format!("ROR_U16 (0x{:04X})", func_id),
+        opcode::builtin::SEL_F32 => format!("SEL_F32 (0x{:04X})", func_id),
+        opcode::builtin::SEL_F64 => format!("SEL_F64 (0x{:04X})", func_id),
+        opcode::builtin::SQRT_F32 => format!("SQRT_F32 (0x{:04X})", func_id),
+        opcode::builtin::SQRT_F64 => format!("SQRT_F64 (0x{:04X})", func_id),
+        opcode::builtin::BCD_TO_INT_8 => {
+            format!("BCD_TO_INT_8 (0x{:04X})", func_id)
+        }
+        opcode::builtin::BCD_TO_INT_16 => {
+            format!("BCD_TO_INT_16 (0x{:04X})", func_id)
+        }
+        opcode::builtin::BCD_TO_INT_32 => {
+            format!("BCD_TO_INT_32 (0x{:04X})", func_id)
+        }
+        opcode::builtin::BCD_TO_INT_64 => {
+            format!("BCD_TO_INT_64 (0x{:04X})", func_id)
+        }
+        opcode::builtin::INT_TO_BCD_8 => {
+            format!("INT_TO_BCD_8 (0x{:04X})", func_id)
+        }
+        opcode::builtin::INT_TO_BCD_16 => {
+            format!("INT_TO_BCD_16 (0x{:04X})", func_id)
+        }
+        opcode::builtin::INT_TO_BCD_32 => {
+            format!("INT_TO_BCD_32 (0x{:04X})", func_id)
+        }
+        opcode::builtin::INT_TO_BCD_64 => {
+            format!("INT_TO_BCD_64 (0x{:04X})", func_id)
+        }
+        opcode::builtin::TRUNC_F64 => format!("TRUNC_F64 (0x{:04X})", func_id),
+        opcode::builtin::MOD_F64 => format!("MOD_F64 (0x{:04X})", func_id),
+        opcode::builtin::TRUNC_F32 => format!("TRUNC_F32 (0x{:04X})", func_id),
+        opcode::builtin::MOD_F32 => format!("MOD_F32 (0x{:04X})", func_id),
+        id if opcode::builtin::is_mux(id) => {
+            let n = opcode::builtin::mux_info(id).unwrap();
+            let width = if id >= opcode::builtin::MUX_F64_BASE {
+                "F64"
+            } else if id >= opcode::builtin::MUX_F32_BASE {
+                "F32"
+            } else if id >= opcode::builtin::MUX_I64_BASE {
+                "I64"
+            } else {
+                "I32"
+            };
+            format!("MUX_{width}({n}) (0x{id:04X})")
+        }
+        _ => format!("0x{:04X}", func_id),
+    }
 }
 
 /// Reads a little-endian u16 from the bytecode at the given position.
@@ -1028,6 +503,19 @@ fn read_u32(bytecode: &[u8], pos: usize) -> u32 {
 fn format_jump_offset(value: i16) -> String {
     let sign = if value < 0 { "-" } else { "+" };
     format!("{}0x{:04X}", sign, value.unsigned_abs())
+}
+
+/// Looks up a called function's name in the debug section, if the container
+/// carries one, and returns it as a display comment.
+fn lookup_function_comment(container: &Container, function_id: u16) -> Option<String> {
+    let name = &container
+        .debug_section
+        .as_ref()?
+        .func_names
+        .iter()
+        .find(|entry| entry.function_id.raw() == function_id)?
+        .name;
+    Some(format!("= {name}"))
 }
 
 /// Looks up a constant pool entry by index and returns a display comment.
@@ -1078,10 +566,9 @@ mod tests {
         Container::read_from(&mut Cursor::new(buf)).unwrap()
     }
 
-    /// Without an arm the instruction renders as `UNKNOWN(0xFC)`. The stream
-    /// stays aligned either way -- `pc` advances by `instruction_size` -- but
-    /// this pins both the decoded name and the alignment, so a future arm
-    /// that advances `pc` itself (as the arms here once did) is caught.
+    /// Pins both the decoded name and the alignment: an operand layout that
+    /// disagreed with the instruction's real length would render the row but
+    /// leave everything after it at the wrong offset.
     #[test]
     fn decode_instructions_when_copy_region_then_decodes_and_stays_aligned() {
         let container = copy_region_container();
@@ -1134,10 +621,14 @@ mod tests {
 
     /// Builds a minimal container whose single function contains the given bytecode.
     ///
-    /// The container has no constants and no variables. Round-trips through
+    /// The container has three constants -- enough for a pool operand to
+    /// resolve to a value -- and no variables. Round-trips through
     /// serialization so all section offsets are populated correctly.
     fn container_with_bytecode(bytecode: Vec<u8>) -> Container {
         let container = ContainerBuilder::new()
+            .add_i32_constant(10)
+            .add_i32_constant(32)
+            .add_i32_constant(99)
             .add_function(FunctionId::new(0), &bytecode, 4, 0, 0)
             .build();
         let mut buf = Vec::new();
@@ -1507,24 +998,24 @@ mod tests {
         "CMP_BR_I32",
         opcode::cmp_op::LT_S,
         -3,
-        "LT_S, var[1], const[2], offset: -0x0003",
-        "-> 0x0005"
+        "LT_S, var[1], pool[2], offset: -0x0003",
+        "= 99, -> 0x0005"
     )]
     #[case::i64_forward(
         opcode::CMP_BR_I64,
         "CMP_BR_I64",
         opcode::cmp_op::EQ,
         2,
-        "EQ, var[1], const[2], offset: +0x0002",
-        "-> 0x000A"
+        "EQ, var[1], pool[2], offset: +0x0002",
+        "= 99, -> 0x000A"
     )]
     #[case::i32_zero(
         opcode::CMP_BR_I32,
         "CMP_BR_I32",
         opcode::cmp_op::GE_S,
         0,
-        "GE_S, var[1], const[2], offset: +0x0000",
-        "-> 0x0008"
+        "GE_S, var[1], pool[2], offset: +0x0000",
+        "= 99, -> 0x0008"
     )]
     fn decode_when_cmp_br_then_operand_is_sign_and_magnitude(
         #[case] opcode_byte: u8,
@@ -1622,9 +1113,112 @@ mod tests {
         assert_eq!(instructions[0]["opcode"], "METHOD_CALL");
         assert_eq!(
             instructions[0]["operands"],
-            "func[3], fields[7..+2], params[9]"
+            "func[3], fields[7], num_fields: 2, params[9]"
         );
         assert_eq!(instructions[1]["opcode"], "RET_VOID");
+    }
+
+    // ---------------------------------------------------------------
+    // decode_instructions: completeness over the assigned opcode space
+    // ---------------------------------------------------------------
+
+    /// Builds a one-instruction buffer for `op` with all-zero operands.
+    fn single_instruction(op: u8) -> Vec<u8> {
+        let mut bytecode = vec![op];
+        bytecode.resize(opcode::instruction_size(op), 0);
+        bytecode
+    }
+
+    #[test]
+    fn decode_when_opcode_assigned_then_renders_its_mnemonic() {
+        // Every opcode the instruction set assigns must render as itself.
+        // `UNKNOWN(0x..)` is reserved for bytes that are not opcodes at all.
+        for op in 0..=u8::MAX {
+            if !opcode::is_assigned(op) {
+                continue;
+            }
+            let instr = first_instruction(single_instruction(op));
+            let rendered = instr["opcode"].as_str().unwrap();
+            assert_eq!(
+                rendered,
+                Instruction::decode(op).unwrap().mnemonic,
+                "opcode 0x{op:02X} rendered as {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn decode_when_opcode_assigned_then_consumes_the_whole_instruction() {
+        // A row that renders but mis-reads its operands would leave the
+        // decoder mid-instruction and garble every row after it.
+        for op in 0..=u8::MAX {
+            if !opcode::is_assigned(op) {
+                continue;
+            }
+            let mut bytecode = single_instruction(op);
+            bytecode.push(opcode::RET_VOID);
+            let container = container_with_bytecode(bytecode);
+            let result = disassemble(&container);
+            let instructions = result["functions"][0]["instructions"].as_array().unwrap();
+            assert_eq!(instructions.len(), 2, "opcode 0x{op:02X}");
+            assert_eq!(
+                instructions[1]["offset"],
+                opcode::instruction_size(op),
+                "opcode 0x{op:02X}"
+            );
+        }
+    }
+
+    // Opcodes that rendered as UNKNOWN before the viewer became table-driven:
+    // a function call, 64-bit and float arithmetic, unsigned comparison, and
+    // the typed stores whose matching loads were already handled.
+    #[rstest]
+    #[case::call(opcode::CALL, "CALL", "func[0], params[0]")]
+    #[case::add_i64(opcode::ADD_I64, "ADD_I64", "")]
+    #[case::div_u32(opcode::DIV_U32, "DIV_U32", "")]
+    #[case::ge_u64(opcode::GE_U64, "GE_U64", "")]
+    #[case::add_f64(opcode::ADD_F64, "ADD_F64", "")]
+    #[case::neg_f32(opcode::NEG_F32, "NEG_F32", "")]
+    #[case::lt_f64(opcode::LT_F64, "LT_F64", "")]
+    #[case::store_var_i64(opcode::STORE_VAR_I64, "STORE_VAR_I64", "var[0]")]
+    #[case::store_var_f32(opcode::STORE_VAR_F32, "STORE_VAR_F32", "var[0]")]
+    #[case::store_var_f64(opcode::STORE_VAR_F64, "STORE_VAR_F64", "var[0]")]
+    fn decode_when_previously_unhandled_opcode_then_named_with_operands(
+        #[case] opcode_byte: u8,
+        #[case] expected_opcode: &str,
+        #[case] expected_operands: &str,
+    ) {
+        let instr = first_instruction(single_instruction(opcode_byte));
+        assert_eq!(instr["opcode"], expected_opcode);
+        assert_eq!(instr["operands"], expected_operands);
+    }
+
+    #[test]
+    fn decode_when_call_and_debug_section_names_callee_then_comment_shows_name() {
+        // CALL func_id=1, param base 4.
+        let bytecode = vec![opcode::CALL, 0x01, 0x00, 0x04, 0x00, opcode::RET_VOID];
+        let container = ContainerBuilder::new()
+            .add_function(FunctionId::new(0), &bytecode, 2, 0, 0)
+            .add_func_name(ironplc_container::FuncNameEntry {
+                function_id: FunctionId::new(1),
+                name: "COMPUTE".to_string(),
+            })
+            .build();
+        let mut buf = Vec::new();
+        container.write_to(&mut buf).unwrap();
+        let container = Container::read_from(&mut Cursor::new(&buf)).unwrap();
+        let instr = &disassemble(&container)["functions"][0]["instructions"][0];
+        assert_eq!(instr["opcode"], "CALL");
+        assert_eq!(instr["operands"], "func[1], params[4]");
+        assert_eq!(instr["comment"], "= COMPUTE");
+    }
+
+    #[test]
+    fn decode_when_instruction_runs_past_end_of_bytecode_then_marks_truncated() {
+        // A 3-byte LOAD_VAR_I32 with only one operand byte present.
+        let instr = first_instruction(vec![opcode::LOAD_VAR_I32, 0x00]);
+        assert_eq!(instr["opcode"], "LOAD_VAR_I32");
+        assert_eq!(instr["operands"], "<truncated>");
     }
 
     // ---------------------------------------------------------------
