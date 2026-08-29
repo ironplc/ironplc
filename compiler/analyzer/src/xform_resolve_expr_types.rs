@@ -932,7 +932,7 @@ END_PROGRAM";
 
     // -----------------------------------------------------------------
     // AND_THEN short-circuit boolean operator.
-    // See specs/plans/2026-07-20-twincat-and-then-operator.md.
+    // See specs/design/beckhoff-twincat-dialect.md §3.4.
     // -----------------------------------------------------------------
 
     #[test]

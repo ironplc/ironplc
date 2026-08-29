@@ -2,8 +2,6 @@
 //! plain variables in the same `VAR`/`VAR_INPUT`/`VAR_OUTPUT` block,
 //! enabled by `--allow-mixed-located-var-declarations`.
 //!
-//! See specs/plans/2026-07-19-twincat-mixed-located-var-declarations.md.
-//!
 //! Codegen does not special-case `VariableIdentifier::Direct` at all (it's
 //! allocated and read/written exactly like any other variable slot), so
 //! these tests focus on proving the *plain* sibling in a mixed block still

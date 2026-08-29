@@ -581,7 +581,7 @@ fn end_to_end_when_struct_init_value_is_expression_then_returns_not_implemented(
     // plus member access -- fully parses and analyzes, but codegen does
     // not yet implement evaluating it at instance construction time.
     // `ironplcc check` already fully supports this; only codegen refuses.
-    // See specs/plans/2026-07-26-twincat-struct-init-expression-value.md.
+    // See issue #1477.
     let source = "
 FUNCTION_BLOCK FB_Device
 VAR_INPUT

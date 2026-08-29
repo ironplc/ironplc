@@ -217,8 +217,7 @@ pub fn resolve_types(
 
     // Fold constant-expression VAR initializers (e.g. `scaled : LREAL := SCALE*4.0;`)
     // back into ordinary literal initializers, or diagnose. Must run before
-    // any other pass touches `InitialValueAssignmentKind::SimpleExpr` — see
-    // specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
+    // any other pass touches `InitialValueAssignmentKind::SimpleExpr`.
     // Recoverable: a diagnosed initializer is still normalized, so the
     // transformed library must be kept even when diagnostics are present —
     // reverting would leak `SimpleExpr` nodes to later passes.
@@ -447,8 +446,7 @@ END_FUNCTION_BLOCK";
     // A diagnosed constant-expression initializer must report only its own
     // problem. The initializer-fold transform used to be reverted when it
     // diagnosed, leaking `SimpleExpr` nodes to later rules and raising a
-    // P9998 internal error after every legitimate P4037. See
-    // specs/plans/2026-08-06-twincat-initializer-dialect-and-fold-revert-fixes.md.
+    // P9998 internal error after every legitimate P4037.
     // ---------------------------------------------------------------------
 
     #[test]
@@ -515,7 +513,6 @@ END_FUNCTION_BLOCK
 
     // ---------------------------------------------------------------------
     // Constant-expression VAR initializers.
-    // See specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
     // ---------------------------------------------------------------------
 
     fn opts_with_constant_initializer_expressions() -> CompilerOptions {

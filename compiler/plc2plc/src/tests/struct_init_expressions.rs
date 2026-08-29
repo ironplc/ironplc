@@ -1,6 +1,5 @@
 //! Round-tripping of general expressions used as struct/FB-instance
 //! initializer values, e.g. `tonDelta : TON := (PT := pDevice^.Delta);`.
-//! See specs/plans/2026-07-26-twincat-struct-init-expression-value.md.
 
 use super::common::*;
 

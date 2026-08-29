@@ -772,7 +772,6 @@ mod test {
 
     // -----------------------------------------------------------------
     // Multi-workspace-folder initialization.
-    // See specs/plans/2026-07-20-twincat-lsp-multi-workspace-folder.md.
     // -----------------------------------------------------------------
 
     fn workspace_folder(dir: &std::path::Path) -> lsp_types::WorkspaceFolder {
