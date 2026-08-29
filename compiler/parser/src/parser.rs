@@ -1950,8 +1950,7 @@ parser! {
     // BitStringLiteral instead of a SignedInteger). Radix-prefixed
     // literals are already lexically distinct tokens from plain decimal
     // digits, so this alternative can only ever fire for the genuinely
-    // new shape. See
-    // specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+    // new shape.
     rule case_bit_string_literal() -> BitStringLiteral = value:(bi:binary_integer() { bi } / oi:octal_integer() { oi } / hi:hex_integer() { hi }) {
       BitStringLiteral { value, data_type: None }
     }

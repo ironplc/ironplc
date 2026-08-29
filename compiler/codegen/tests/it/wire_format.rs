@@ -24,8 +24,6 @@
 //! 3. **Per-shape golden encodings.** A handful of small programs
 //!    compile to known-exact byte sequences, guarding operand widths,
 //!    little-endian operand encoding, and per-shape layout.
-//!
-//! See `specs/plans/2026-05-02-codegen-test-wire-format-split.md`.
 
 use ironplc_container::opcode;
 use ironplc_parser::options::CompilerOptions;

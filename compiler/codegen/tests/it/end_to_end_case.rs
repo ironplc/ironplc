@@ -124,8 +124,7 @@ fn opts_with_bit_string_case_labels() -> CompilerOptions {
 }
 
 // Real motivating shape: a private test corpus file uses radix-prefixed
-// bit-string literals (16#D012:) as CASE labels. See
-// specs/plans/2026-07-26-twincat-case-label-bit-string-literals.md.
+// bit-string literals (16#D012:) as CASE labels.
 // The selector is assigned the decimal equivalent (16#D012 == 53266) so
 // that everything but the label form stays standard.
 e2e_i32_with!(

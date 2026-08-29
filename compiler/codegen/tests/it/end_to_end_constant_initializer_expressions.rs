@@ -1,8 +1,6 @@
 //! End-to-end integration tests for constant-expression `VAR` initializers
 //! (e.g. `scaled : LREAL := SCALE*4.0;`), enabled by
 //! `--allow-constant-initializer-expressions`.
-//!
-//! See specs/plans/2026-07-19-twincat-var-initializer-expressions.md.
 
 use ironplc_parser::options::CompilerOptions;
 
