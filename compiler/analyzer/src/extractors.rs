@@ -217,7 +217,7 @@ impl SemanticContext {
             .get_programs()
             .into_iter()
             .map(|(name, info)| {
-                let scope = ScopeKind::Named(name.clone());
+                let scope = ScopeKind::Named(name.clone().into());
                 let variables = self.symbols().variables_in_scope(&scope);
                 ProgramSymbol {
                     name,
@@ -235,7 +235,7 @@ impl SemanticContext {
             .get_function_blocks()
             .into_iter()
             .map(|(name, info)| {
-                let scope = ScopeKind::Named(name.clone());
+                let scope = ScopeKind::Named(name.clone().into());
                 let variables = self.symbols().variables_in_scope(&scope);
                 FunctionBlockSymbol {
                     name,
