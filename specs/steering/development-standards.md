@@ -82,7 +82,11 @@ Rules:
 
 Each requirement **must** have a corresponding conformance test annotated with `#[spec_test(REQ_<AREA>_<crate_slug>_NNN)]` in the owning crate. The build system enforces this bidirectionally: removing a requirement from the spec causes a compile error; adding a requirement without a test causes that crate's completeness meta-test to fail.
 
-See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism.
+The completeness half is weaker than it reads. A requirement counts as tested when its marker appears anywhere in the crate, so an empty or `#[ignore]`d body satisfies it without asserting anything. Write a real assertion; a marker on an empty test is worse than no marker, because it reports the requirement as covered.
+
+**Fix divergence opportunistically.** When a design document and the code disagree, reconcile that section as part of whatever work brought you there, rather than scheduling an audit of everything. `/project:reconcile-spec` does one section at a time.
+
+See [Spec Conformance Testing](../design/spec-conformance-testing.md) for the full enforcement mechanism, and [ADR-0043](../adrs/0043-spec-conformance-tests-over-a-workflow-framework.md) for why this mechanism rather than a spec-driven-development framework.
 
 ### Planning Requirement
 
@@ -278,7 +282,7 @@ Error handling is **critical** for developer experience. Follow these rules:
 1. **Unique codes**: Each problem gets its own unique P#### code - never reuse codes
 2. **Descriptive names**: Problem enum variants should clearly describe the issue
 3. **Shared definitions**: Problem codes are defined in `compiler/problems/resources/problem-codes.csv`
-4. **Documentation required**: Every problem code MUST have documentation in `docs/compiler/problems/P####.rst`
+4. **Documentation required**: Every problem code MUST have documentation in `docs/reference/compiler/problems/P####.rst`
 
 ### Problem Code Format
 ```csv
@@ -320,14 +324,14 @@ All IronPLC documentation follows the **Documentation Quadrants** approach, orga
 - **Audience**: People studying and learning
 - **Content**: Step-by-step lessons that work reliably
 - **Examples**: "Getting Started with IronPLC", "Your First PLC Program"
-- **Location**: `docs/tutorials/`
+- **Location**: `docs/quickstart/`
 
 #### 2. How-To Guides (Problem-Oriented)
 - **Purpose**: Show how to solve specific real-world problems
 - **Audience**: Practitioners at work who need to accomplish something
 - **Content**: Series of steps focused on achieving a goal
 - **Examples**: "How to Debug Compilation Errors", "How to Add a New Data Type"
-- **Location**: `docs/how-to/`
+- **Location**: `docs/how-to-guides/`
 
 #### 3. Technical Reference (Information-Oriented)
 - **Purpose**: Describe the machinery and how to operate it
@@ -396,7 +400,7 @@ All Sphinx documentation must use the correct RST roles for consistent rendering
 | Commands and executables | `:program:` | `:program:\`ironplcc --version\`` |
 | Code keywords | `:code:` | `:code:\`PROGRAM\`` |
 | User-typed text | `:samp:` | `:samp:\`IronPLC\`` |
-| Cross-document links | `:doc:` | `:doc:\`/compiler/problems/index\`` |
+| Cross-document links | `:doc:` | `:doc:\`/reference/compiler/problems/index\`` |
 
 **Menu paths** use ` --> ` as separator: `:menuselection:\`File --> Preferences --> Settings\``
 
@@ -426,7 +430,7 @@ Two Sphinx directives are available (defined in `docs/extensions/ironplc_playgro
 ```
 
 **When NOT to use playground directives:**
-- Problem code documentation (`docs/compiler/problems/`) — these show invalid code that would fail compilation
+- Problem code documentation (`docs/reference/compiler/problems/`) — these show invalid code that would fail compilation
 - Partial syntax fragments that are not runnable
 
 **Source of truth for the playground:**
@@ -453,7 +457,7 @@ Some IEC 61131-3 features require the user to enable a specific edition of the s
 The centralized explanation page at `docs/explanation/enabling-dialects-and-features.rst` covers how to enable editions in both the CLI and VS Code. Individual feature pages link there rather than duplicating instructions.
 
 ### Problem Documentation Format
-Each problem code must have a corresponding `.rst` file in `docs/compiler/problems/` with:
+Each problem code must have a corresponding `.rst` file in `docs/reference/compiler/problems/` with:
 
 ```rst
 =====
@@ -487,8 +491,8 @@ File extensions and format details are listed in **two** canonical locations. Al
 
 1. **Compiler source** - `compiler/sources/src/file_type.rs` (the source of truth for detection)
 2. **VS Code extension** - `integrations/vscode/package.json` (language contributions) and `integrations/vscode/src/extension.ts` (document selector)
-3. **Source format reference page** - the format-specific page in `docs/compiler/source-formats/` (e.g., `twincat.rst`)
-4. **VS Code overview** - `docs/vscode/overview.rst` (Supported Languages section)
+3. **Source format reference page** - the format-specific page in `docs/reference/compiler/source-formats/` (e.g., `twincat.rst`)
+4. **Editor overview** - `docs/reference/editor/overview.rst` (Supported Languages section)
 
 ### README Synchronization
 The project has multiple README files that must stay synchronized:

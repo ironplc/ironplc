@@ -181,6 +181,7 @@ ironplc_redirects = {
     "reference/language/data-types/subrange-types.html": "reference/language/data-types/derived/subrange-types.html",
 
     # /vscode/* moved under /reference/editor/* (and troubleshooting joined how-to-guides).
+    "vscode/index.html": "reference/editor/index.html",
     "vscode/overview.html": "reference/editor/overview.html",
     "vscode/settings.html": "reference/editor/settings.html",
     "vscode/troubleshooting.html": "how-to-guides/troubleshoot-editor.html",
