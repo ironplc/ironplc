@@ -1232,9 +1232,9 @@ The VS Code extension registers a debug adapter in `package.json`:
                                 "default": true
                             },
                             "scanLimit": {
-                                "type": "number",
-                                "description": "Maximum scan cycles before auto-stop (0 = unlimited)",
-                                "default": 0
+                                "type": "integer",
+                                "description": "Maximum scan cycles before auto-stop; omit to run unbounded",
+                                "minimum": 1
                             }
                         }
                     }

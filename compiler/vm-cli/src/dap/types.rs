@@ -18,7 +18,7 @@
 
 use ironplc_container::{SourceColumn, SourceLine};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Number, Value};
 
 /// Serde glue between DAP's JSON numbers and the container's source-coordinate
 /// newtypes.
@@ -208,9 +208,15 @@ pub struct LaunchRequestArguments {
     #[serde(default)]
     pub stop_on_entry: bool,
     /// Upper bound on scan cycles, to bound a runaway program (the
-    /// single-threaded loop has no interactive `pause`).
+    /// single-threaded loop has no interactive `pause`). Absent means no
+    /// bound; there is no sentinel value that spells "unlimited".
+    ///
+    /// Held as the raw JSON number the client sent so `launch::check_scan_limit`
+    /// can report what is wrong with it. Deserializing straight into an integer
+    /// would fail the *whole* argument parse on a negative or fractional value,
+    /// which the server can only report as a missing `program`.
     #[serde(default)]
-    pub scan_limit: Option<u64>,
+    pub scan_limit: Option<Number>,
     /// Cycle time to assume for a program whose task declares no `INTERVAL`,
     /// in milliseconds. Defaults to 100 ms. A freewheeling task has no rate of
     /// its own, so the debugger has nothing to advance program time by; the
@@ -526,6 +532,19 @@ mod tests {
         assert_eq!(args.program, "demo.iplc");
         assert!(!args.stop_on_entry);
         assert!(args.scan_limit.is_none());
+    }
+
+    #[test]
+    fn launch_arguments_when_scan_limit_negative_then_parses_for_validation_to_reject() {
+        // A negative `scanLimit` must not fail the whole argument parse: the
+        // server would then report it as a missing `program` (see #1515).
+        let args: LaunchRequestArguments =
+            serde_json::from_value(json!({ "program": "demo.iplc", "scanLimit": -1 })).unwrap();
+        assert_eq!(args.program, "demo.iplc");
+        assert_eq!(
+            args.scan_limit.map(|n| n.to_string()).as_deref(),
+            Some("-1")
+        );
     }
 
     #[test]

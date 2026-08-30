@@ -85,8 +85,8 @@ Attributes
      - Pause before the first scan cycle begins. Defaults to ``false``.
    * - ``scanLimit``
      - number
-     - Stop the session after this many scan cycles. ``0`` means unlimited.
-       See `Limiting a Run`_.
+     - Stop the session after this many scan cycles. Must be a whole number of
+       at least ``1``; omit it to run without a bound. See `Limiting a Run`_.
 
 Only the ``launch`` request is supported. There is no ``attach``
 configuration: the debugger starts the program it debugs.
@@ -133,6 +133,11 @@ Set ``scanLimit`` to end the session after a fixed number of scan cycles:
      "program": "${file}",
      "scanLimit": 1
    }
+
+Leave ``scanLimit`` out of the configuration to run without a bound --- there
+is no value that means unlimited. ``0`` and ``-1`` are rejected before the
+session starts (see :doc:`/reference/runtime/problems/V6011`) rather than
+treated as either extreme.
 
 Breakpoints
 ===========

@@ -311,8 +311,9 @@
                 "default": false
               },
               "scanLimit": {
-                "type": "number",
-                "description": "Maximum number of scan cycles to run before disconnecting (runaway prevention). 0 means unlimited."
+                "type": "integer",
+                "description": "Maximum number of scan cycles to run before disconnecting (runaway prevention). Must be a whole number of at least 1; omit this setting to run without a bound.",
+                "minimum": 1
               },
               "freewheelingIntervalMs": {
                 "type": "number",

@@ -56,7 +56,8 @@ The ``launch`` request accepts these arguments:
      - Pause before the first scan cycle begins. Defaults to ``false``.
    * - ``scanLimit``
      - number
-     - Stop after this many scan cycles. ``0`` means unlimited.
+     - Stop after this many scan cycles. Must be a whole number of at least
+       ``1``; omit it to run without a bound. See :doc:`problems/V6011`.
    * - ``freewheelingIntervalMs``
      - number
      - Cycle time to assume for a program whose task declares no

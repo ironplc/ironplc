@@ -9,3 +9,4 @@ V6007,LogConfig,Unable to configure the logger
 V6008,LaunchNoProgram,Launch request did not specify a program container path
 V6009,LaunchNoDebugInfo,Container was compiled without debug information
 V6010,LaunchMultiInstance,Container declares multiple program instances
+V6011,LaunchInvalidScanLimit,Launch request scanLimit is not a positive whole number of scan cycles

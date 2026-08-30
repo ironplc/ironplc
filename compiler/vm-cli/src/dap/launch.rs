@@ -11,13 +11,18 @@
 //! 2. There must be exactly one program instance, else
 //!    [`LaunchError::MultiInstanceUnsupported`] (the v1 limitation described in
 //!    `specs/design/debugger-support.md` §"Multi-instance: not supported in v1").
+//!
+//! The `launch` arguments are checked here too: [`check_scan_limit`] validates
+//! the optional run bound before the VM is built.
 
 use std::fmt;
 use std::fs::File;
+use std::num::NonZeroU64;
 use std::path::Path;
 
 use ironplc_container::Container;
 use ironplc_vm::{Vm, VmBuffers, VmRunning};
+use serde_json::Number;
 
 use super::problem_codes;
 
@@ -40,6 +45,9 @@ pub enum LaunchError {
     /// The container declares more than one program instance; v1 debugs
     /// single-instance programs only. Carries the declared instance count.
     MultiInstanceUnsupported(usize),
+    /// The `launch` arguments carried a `scanLimit` that is not a whole number
+    /// of at least one scan cycle. Carries the value as the client wrote it.
+    ScanLimitNotPositive(String),
     /// The VM could not be started (an init function trapped). Carries the
     /// trap's own V-code and its description.
     VmStartFailed {
@@ -51,7 +59,7 @@ pub enum LaunchError {
 impl LaunchError {
     /// The stable V-code for this failure. File errors reuse the CLI's existing
     /// `V6001`/`V6002`; a start-time trap surfaces the trap's own `V4xxx`/
-    /// `V9xxx`; the launch-specific preconditions use the `V6008`–`V6010` codes.
+    /// `V9xxx`; the launch-specific preconditions use the `V6008`–`V6011` codes.
     pub fn v_code(&self) -> &'static str {
         match self {
             LaunchError::ProgramArgMissing => problem_codes::LAUNCH_NO_PROGRAM,
@@ -59,6 +67,7 @@ impl LaunchError {
             LaunchError::ContainerRead(_) => problem_codes::CONTAINER_READ,
             LaunchError::NoDebugInfo => problem_codes::LAUNCH_NO_DEBUG_INFO,
             LaunchError::MultiInstanceUnsupported(_) => problem_codes::LAUNCH_MULTI_INSTANCE,
+            LaunchError::ScanLimitNotPositive(_) => problem_codes::LAUNCH_INVALID_SCAN_LIMIT,
             LaunchError::VmStartFailed { v_code, .. } => v_code,
         }
     }
@@ -78,6 +87,10 @@ impl LaunchError {
                 "MultiInstanceUnsupported: this program declares {count} program instances; \
                  the v1 debugger supports single-instance programs only. Multi-instance \
                  debugging is planned for a future phase."
+            ),
+            LaunchError::ScanLimitNotPositive(given) => format!(
+                "scanLimit must be a whole number of at least 1 scan cycle, but was {given}; \
+                 omit scanLimit to run without a bound"
             ),
             LaunchError::VmStartFailed { detail, .. } => {
                 format!("launch failed to start the VM: {detail}")
@@ -116,6 +129,35 @@ pub fn check_preconditions(container: &Container) -> Result<(), LaunchError> {
         return Err(LaunchError::MultiInstanceUnsupported(instances));
     }
     Ok(())
+}
+
+/// Validates the `launch` request's optional `scanLimit` argument.
+///
+/// An absent argument is the only way to ask for an unbounded run: the session
+/// then scans until the client disconnects. A present value must be a whole
+/// number of at least one scan cycle.
+///
+/// Zero and negative values are rejected rather than reinterpreted. Both are
+/// conventional "unlimited" sentinels, but this argument already spells
+/// unlimited by being absent, and a second spelling would leave the reader
+/// guessing which one a config meant. Zero read literally is "run no scans",
+/// which the debugger cannot honour either -- the bound is tested after a scan
+/// completes, so the shortest run it can produce is one cycle.
+///
+/// Returning [`NonZeroU64`] makes a bound of zero unrepresentable downstream
+/// rather than merely unreached.
+pub fn check_scan_limit(scan_limit: Option<&Number>) -> Result<Option<NonZeroU64>, LaunchError> {
+    let Some(requested) = scan_limit else {
+        return Ok(None);
+    };
+    // `as_u64` also rejects a negative and a fractional value, both of which
+    // are "not a whole number of at least 1 scan cycle" as far as the message
+    // is concerned.
+    requested
+        .as_u64()
+        .and_then(NonZeroU64::new)
+        .map(Some)
+        .ok_or_else(|| LaunchError::ScanLimitNotPositive(requested.to_string()))
 }
 
 /// Loads the container, starts the VM into the caller-owned `bufs`, and returns
@@ -273,6 +315,49 @@ mod tests {
         assert_eq!(err.v_code(), "V4001");
         assert!(err.message().contains("launch failed to start"));
         assert!(err.to_string().starts_with("V4001 - "));
+    }
+
+    /// The JSON number a client would have sent for `scanLimit: literal`.
+    fn scan_limit_arg(literal: &str) -> Number {
+        serde_json::from_str(literal).expect("a JSON number literal")
+    }
+
+    #[test]
+    fn check_scan_limit_when_absent_then_no_bound() {
+        assert_eq!(check_scan_limit(None).unwrap(), None);
+    }
+
+    #[test]
+    fn check_scan_limit_when_positive_then_that_many_cycles() {
+        let limit = check_scan_limit(Some(&scan_limit_arg("3"))).unwrap();
+        assert_eq!(limit, NonZeroU64::new(3));
+    }
+
+    #[test]
+    fn check_scan_limit_when_zero_then_rejected_rather_than_unlimited() {
+        // Zero is not a second spelling of "unlimited": omitting the argument
+        // is (see #1515).
+        let err = check_scan_limit(Some(&scan_limit_arg("0"))).unwrap_err();
+        assert!(matches!(err, LaunchError::ScanLimitNotPositive(_)));
+        assert_eq!(err.v_code(), "V6011");
+        assert!(err.message().contains("was 0"));
+        // The message names the way to actually ask for an unbounded run.
+        assert!(err.message().contains("omit scanLimit"));
+        assert!(err.to_string().starts_with("V6011 - "));
+    }
+
+    #[test]
+    fn check_scan_limit_when_negative_then_rejected() {
+        let err = check_scan_limit(Some(&scan_limit_arg("-1"))).unwrap_err();
+        assert!(matches!(err, LaunchError::ScanLimitNotPositive(_)));
+        assert!(err.message().contains("was -1"));
+    }
+
+    #[test]
+    fn check_scan_limit_when_fractional_then_rejected() {
+        let err = check_scan_limit(Some(&scan_limit_arg("2.5"))).unwrap_err();
+        assert!(matches!(err, LaunchError::ScanLimitNotPositive(_)));
+        assert!(err.message().contains("was 2.5"));
     }
 
     #[test]
