@@ -70,7 +70,24 @@ plan-citations:
   # saying "the plan" is referring to itself.
   prose=$(git grep -nE "[Tt]he plan'?s?\b" -- . \
     "${common_excludes[@]}" ':!*.md' || true)
-  hits=$(printf '%s\n%s' "$hits" "$prose" | grep -v '^$' || true)
+  # A plan can also be cited by bare filename, with no directory at all
+  # ("see foo-plan.md"). That dangles on deletion like any other form and is
+  # invisible to both patterns above, so check each plan's own basename.
+  # Skip any basename that also names a real file elsewhere (several plans
+  # share a name with the design document they implement), and require the
+  # match to start at a filename boundary so a plan name that is a suffix of
+  # an ADR filename does not trip it.
+  bare=""
+  for plan in specs/plans/*.md; do
+    [ -e "$plan" ] || continue
+    base=$(basename "$plan")
+    if [ "$(git ls-files "*/$base" "$base" | grep -vc '^specs/plans/')" != "0" ]; then
+      continue
+    fi
+    found=$(git grep -nE "(^|[^A-Za-z0-9._/-])$base" -- . "${common_excludes[@]}" || true)
+    [ -n "$found" ] && bare=$(printf '%s\n%s' "$bare" "$found")
+  done
+  hits=$(printf '%s\n%s\n%s' "$hits" "$prose" "$bare" | grep -v '^$' || true)
   if [ -n "$hits" ]; then
     echo "error: specs/plans/ is cited outside specs/plans/ itself." >&2
     echo "A plan is deleted before its PR merges and is not a stable reference" >&2
