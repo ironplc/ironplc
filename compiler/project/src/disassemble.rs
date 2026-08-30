@@ -393,84 +393,23 @@ fn format_cmp_op(cmp_op: u8) -> &'static str {
 }
 
 /// Names the built-in a `BUILTIN` instruction calls, falling back to its raw
-/// ID.
+/// ID for a byte no built-in claims.
+///
+/// The names come from the instruction set's own built-in table rather than a
+/// list kept here, so a built-in added there is named here by virtue of
+/// existing. MUX is the one built-in whose ID encodes its arity, so it is
+/// named from its type and IN count.
 fn format_builtin(func_id: u16) -> String {
-    match func_id {
-        opcode::builtin::EXPT_I32 => format!("EXPT_I32 (0x{:04X})", func_id),
-        opcode::builtin::EXPT_F32 => format!("EXPT_F32 (0x{:04X})", func_id),
-        opcode::builtin::EXPT_F64 => format!("EXPT_F64 (0x{:04X})", func_id),
-        opcode::builtin::ABS_I32 => format!("ABS_I32 (0x{:04X})", func_id),
-        opcode::builtin::ABS_F32 => format!("ABS_F32 (0x{:04X})", func_id),
-        opcode::builtin::ABS_F64 => format!("ABS_F64 (0x{:04X})", func_id),
-        opcode::builtin::MIN_I32 => format!("MIN_I32 (0x{:04X})", func_id),
-        opcode::builtin::MIN_F32 => format!("MIN_F32 (0x{:04X})", func_id),
-        opcode::builtin::MIN_F64 => format!("MIN_F64 (0x{:04X})", func_id),
-        opcode::builtin::MAX_I32 => format!("MAX_I32 (0x{:04X})", func_id),
-        opcode::builtin::MAX_F32 => format!("MAX_F32 (0x{:04X})", func_id),
-        opcode::builtin::MAX_F64 => format!("MAX_F64 (0x{:04X})", func_id),
-        opcode::builtin::LIMIT_I32 => format!("LIMIT_I32 (0x{:04X})", func_id),
-        opcode::builtin::LIMIT_F32 => format!("LIMIT_F32 (0x{:04X})", func_id),
-        opcode::builtin::LIMIT_F64 => format!("LIMIT_F64 (0x{:04X})", func_id),
-        opcode::builtin::SEL_I32 => format!("SEL_I32 (0x{:04X})", func_id),
-        opcode::builtin::SHL_I32 => format!("SHL_I32 (0x{:04X})", func_id),
-        opcode::builtin::SHL_I64 => format!("SHL_I64 (0x{:04X})", func_id),
-        opcode::builtin::SHR_I32 => format!("SHR_I32 (0x{:04X})", func_id),
-        opcode::builtin::SHR_I64 => format!("SHR_I64 (0x{:04X})", func_id),
-        opcode::builtin::ROL_I32 => format!("ROL_I32 (0x{:04X})", func_id),
-        opcode::builtin::ROL_I64 => format!("ROL_I64 (0x{:04X})", func_id),
-        opcode::builtin::ROR_I32 => format!("ROR_I32 (0x{:04X})", func_id),
-        opcode::builtin::ROR_I64 => format!("ROR_I64 (0x{:04X})", func_id),
-        opcode::builtin::ROL_U8 => format!("ROL_U8 (0x{:04X})", func_id),
-        opcode::builtin::ROL_U16 => format!("ROL_U16 (0x{:04X})", func_id),
-        opcode::builtin::ROR_U8 => format!("ROR_U8 (0x{:04X})", func_id),
-        opcode::builtin::ROR_U16 => format!("ROR_U16 (0x{:04X})", func_id),
-        opcode::builtin::SEL_F32 => format!("SEL_F32 (0x{:04X})", func_id),
-        opcode::builtin::SEL_F64 => format!("SEL_F64 (0x{:04X})", func_id),
-        opcode::builtin::SQRT_F32 => format!("SQRT_F32 (0x{:04X})", func_id),
-        opcode::builtin::SQRT_F64 => format!("SQRT_F64 (0x{:04X})", func_id),
-        opcode::builtin::BCD_TO_INT_8 => {
-            format!("BCD_TO_INT_8 (0x{:04X})", func_id)
-        }
-        opcode::builtin::BCD_TO_INT_16 => {
-            format!("BCD_TO_INT_16 (0x{:04X})", func_id)
-        }
-        opcode::builtin::BCD_TO_INT_32 => {
-            format!("BCD_TO_INT_32 (0x{:04X})", func_id)
-        }
-        opcode::builtin::BCD_TO_INT_64 => {
-            format!("BCD_TO_INT_64 (0x{:04X})", func_id)
-        }
-        opcode::builtin::INT_TO_BCD_8 => {
-            format!("INT_TO_BCD_8 (0x{:04X})", func_id)
-        }
-        opcode::builtin::INT_TO_BCD_16 => {
-            format!("INT_TO_BCD_16 (0x{:04X})", func_id)
-        }
-        opcode::builtin::INT_TO_BCD_32 => {
-            format!("INT_TO_BCD_32 (0x{:04X})", func_id)
-        }
-        opcode::builtin::INT_TO_BCD_64 => {
-            format!("INT_TO_BCD_64 (0x{:04X})", func_id)
-        }
-        opcode::builtin::TRUNC_F64 => format!("TRUNC_F64 (0x{:04X})", func_id),
-        opcode::builtin::MOD_F64 => format!("MOD_F64 (0x{:04X})", func_id),
-        opcode::builtin::TRUNC_F32 => format!("TRUNC_F32 (0x{:04X})", func_id),
-        opcode::builtin::MOD_F32 => format!("MOD_F32 (0x{:04X})", func_id),
-        id if opcode::builtin::is_mux(id) => {
-            let n = opcode::builtin::mux_info(id).unwrap();
-            let width = if id >= opcode::builtin::MUX_F64_BASE {
-                "F64"
-            } else if id >= opcode::builtin::MUX_F32_BASE {
-                "F32"
-            } else if id >= opcode::builtin::MUX_I64_BASE {
-                "I64"
-            } else {
-                "I32"
-            };
-            format!("MUX_{width}({n}) (0x{id:04X})")
-        }
-        _ => format!("0x{:04X}", func_id),
+    if let Some(name) = opcode::builtin::name(func_id) {
+        return format!("{name} (0x{func_id:04X})");
     }
+    if let (Some(width), Some(n)) = (
+        opcode::builtin::mux_type_name(func_id),
+        opcode::builtin::mux_info(func_id),
+    ) {
+        return format!("MUX_{width}({n}) (0x{func_id:04X})");
+    }
+    format!("0x{func_id:04X}")
 }
 
 /// Reads a little-endian u16 from the bytecode at the given position.
@@ -1066,6 +1005,46 @@ mod tests {
     #[case::sqrt_f32(opcode::builtin::SQRT_F32, "SQRT_F32 (0x035E)")]
     #[case::unknown_id(0x00FF, "0x00FF")]
     fn decode_when_builtin_then_operand_shows_name(
+        #[case] func_id: u16,
+        #[case] expected_operands: &str,
+    ) {
+        let instr = builtin_instruction(func_id);
+        assert_eq!(instr["operands"], expected_operands);
+    }
+
+    #[test]
+    fn format_builtin_when_builtin_declared_then_never_renders_bare_hex() {
+        // Every built-in the instruction set declares is named here. Bare hex
+        // is reserved for an ID no built-in claims -- a corrupt container, or
+        // one from a newer compiler.
+        for func_id in 0..=u16::MAX {
+            let Some(name) = opcode::builtin::name(func_id) else {
+                continue;
+            };
+            assert_eq!(
+                format_builtin(func_id),
+                format!("{name} (0x{func_id:04X})"),
+                "builtin 0x{func_id:04X}"
+            );
+        }
+    }
+
+    #[test]
+    fn format_builtin_when_id_is_not_a_builtin_then_renders_hex() {
+        assert_eq!(format_builtin(0x00FF), "0x00FF");
+    }
+
+    // Built-ins that rendered as bare hex before the viewer read the
+    // instruction set's own table.
+    #[rstest]
+    #[case::conv_f32_to_f64(opcode::builtin::CONV_F32_TO_F64, "CONV_F32_TO_F64 (0x038E)")]
+    #[case::ln_f32(opcode::builtin::LN_F32, "LN_F32 (0x036C)")]
+    #[case::sin_f64(opcode::builtin::SIN_F64, "SIN_F64 (0x0373)")]
+    #[case::atan2_f32(opcode::builtin::ATAN2_F32, "ATAN2_F32 (0x039B)")]
+    #[case::cmp_str(opcode::builtin::CMP_STR, "CMP_STR (0x03A2)")]
+    #[case::expt_i64(opcode::builtin::EXPT_I64, "EXPT_I64 (0x0360)")]
+    #[case::min_u32(opcode::builtin::MIN_U32, "MIN_U32 (0x0366)")]
+    fn decode_when_previously_unnamed_builtin_then_operand_shows_name(
         #[case] func_id: u16,
         #[case] expected_operands: &str,
     ) {

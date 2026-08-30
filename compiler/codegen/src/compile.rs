@@ -111,6 +111,7 @@ pub(crate) const MAX_DATA_REGION_SLOTS: u32 = 32768;
 /// `Str` holds Latin-1 bytes (narrow STRING); `WStr` holds UTF-16LE bytes
 /// (wide WSTRING). The encoding is tagged per pool entry so the VM can verify
 /// it against the destination (ADR-0034).
+#[derive(Debug, PartialEq)]
 pub(crate) enum PoolConstant {
     I32(i32),
     I64(i64),
@@ -472,6 +473,24 @@ pub(crate) struct CompiledFunction {
     pub(crate) line_map: Vec<crate::emit::EmittedLineMapEntry>,
 }
 
+/// Returns the index of `value` in `constants`, appending it if absent.
+///
+/// Free-standing rather than a `CompileContext` method because the peephole
+/// optimizer interns constants while holding only the pool — it has no
+/// context to reach through. `CompileContext::add_i32_constant` delegates
+/// here so both paths dedupe against the same pool.
+pub(crate) fn intern_i32_constant(constants: &mut Vec<PoolConstant>, value: i32) -> u16 {
+    if let Some(i) = constants
+        .iter()
+        .position(|c| matches!(c, PoolConstant::I32(v) if *v == value))
+    {
+        return i as u16;
+    }
+    let index = constants.len() as u16;
+    constants.push(PoolConstant::I32(value));
+    index
+}
+
 /// Holds the finalized bytecode and stack depth for a single emitted function.
 ///
 /// Returned by [`finalize_function`] to centralize the
@@ -492,19 +511,20 @@ pub(crate) struct FinalizedFunction {
 
 /// Finalizes an emitter into ready-to-store bytecode plus stack depth.
 ///
-/// `emitter.bytecode()` must be called before `max_stack_depth()` because the
-/// peephole optimizer (run inside `bytecode()`) may increase max_stack_depth.
-pub(crate) fn finalize_function(emitter: &mut Emitter, ctx: &CompileContext) -> FinalizedFunction {
+pub(crate) fn finalize_function(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+) -> Result<FinalizedFunction, Diagnostic> {
     let raw_line_map = emitter.take_line_map();
-    let (bytecode, offset_map) = crate::optimize::optimize(emitter.bytecode(), &ctx.constants);
+    let (bytecode, offset_map) = crate::optimize::optimize(emitter.bytecode(), &mut ctx.constants);
     let max_stack_depth = emitter.max_stack_depth();
     let line_map =
-        crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16);
-    FinalizedFunction {
+        crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16)?;
+    Ok(FinalizedFunction {
         bytecode,
         max_stack_depth,
         line_map,
-    }
+    })
 }
 
 /// The AST inputs that [`compile_program_with_functions`] operates on,
@@ -762,6 +782,7 @@ fn compile_program_with_functions(
         ctx.string_vars = saved_scope.string_vars;
         ctx.array_vars = saved_scope.array_vars;
         ctx.struct_vars = saved_scope.struct_vars;
+        ctx.struct_array_vars = saved_scope.struct_array_vars;
         ctx.fb_instances = saved_scope.fb_instances;
     }
 
@@ -805,18 +826,6 @@ fn compile_program_with_functions(
         }
     }
 
-    // Add constants to the pool.
-    for constant in &ctx.constants {
-        match constant {
-            PoolConstant::I32(v) => builder = builder.add_i32_constant(*v),
-            PoolConstant::I64(v) => builder = builder.add_i64_constant(*v),
-            PoolConstant::F32(v) => builder = builder.add_f32_constant(*v),
-            PoolConstant::F64(v) => builder = builder.add_f64_constant(*v),
-            PoolConstant::Str(v) => builder = builder.add_str_constant(v),
-            PoolConstant::WStr(v) => builder = builder.add_wstr_constant(v),
-        }
-    }
-
     // Compute the max stack depth needed by any user-defined FB body or
     // METHOD. The scan function's reported max_stack_depth must include
     // it because FB_CALL / METHOD_CALL recursively enter execute() on
@@ -829,7 +838,7 @@ fn compile_program_with_functions(
         .unwrap_or(0);
 
     // Function 0: init, Function 1: scan
-    let init = finalize_function(&mut init_emitter, &ctx);
+    let init = finalize_function(&mut init_emitter, &mut ctx)?;
     builder = builder.add_function(
         FunctionId::INIT,
         &init.bytecode,
@@ -839,7 +848,7 @@ fn compile_program_with_functions(
     );
     builder = add_line_map_entries(builder, FunctionId::INIT, &init.line_map);
 
-    let scan = finalize_function(&mut scan_emitter, &ctx);
+    let scan = finalize_function(&mut scan_emitter, &mut ctx)?;
     builder = builder.add_function(
         FunctionId::SCAN,
         &scan.bytecode,
@@ -968,6 +977,25 @@ fn compile_program_with_functions(
         });
     }
 
+    // Add constants to the pool.
+    //
+    // This must come after every `finalize_function` call, not merely after
+    // the last `compile_*` one: the peephole optimizer interns constants of
+    // its own (folding `LOAD_CONST_I32; TRUNC_*` to an already-truncated
+    // value), so the pool is still growing until the final function has been
+    // finalized. Emitting it earlier leaves those loads pointing past the end
+    // of the emitted pool, which the VM rejects as `InvalidConstantIndex`.
+    for constant in &ctx.constants {
+        match constant {
+            PoolConstant::I32(v) => builder = builder.add_i32_constant(*v),
+            PoolConstant::I64(v) => builder = builder.add_i64_constant(*v),
+            PoolConstant::F32(v) => builder = builder.add_f32_constant(*v),
+            PoolConstant::F64(v) => builder = builder.add_f64_constant(*v),
+            PoolConstant::Str(v) => builder = builder.add_str_constant(v),
+            PoolConstant::WStr(v) => builder = builder.add_wstr_constant(v),
+        }
+    }
+
     let container = builder.build();
 
     // Verify operand-stack discipline before the container escapes codegen.
@@ -1042,6 +1070,7 @@ pub(crate) struct SavedFbScope {
     pub(crate) string_vars: HashMap<Id, StringVarInfo>,
     pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
+    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
     pub(crate) fb_instances: HashMap<Id, FbInstanceInfo>,
 }
 
@@ -1126,6 +1155,9 @@ pub(crate) struct CompileContext {
     pub(crate) array_vars: HashMap<Id, crate::compile_array::ArrayVarInfo>,
     /// Maps structure variable identifiers to their metadata.
     pub(crate) struct_vars: HashMap<Id, crate::compile_struct::StructVarInfo>,
+    /// Maps top-level `ARRAY OF <struct>` variable identifiers to their metadata.
+    /// Kept apart from `array_vars`, whose elements occupy a single slot each.
+    pub(crate) struct_array_vars: HashMap<Id, crate::compile_array_struct::StructArrayVarInfo>,
     /// Pre-computed ordinal mappings for named enumeration types.
     pub(crate) enum_map: crate::compile_enum::EnumOrdinalMap,
     /// Next available byte offset in the data region.
@@ -1197,6 +1229,7 @@ impl CompileContext {
             fb_instances: HashMap::new(),
             array_vars: HashMap::new(),
             struct_vars: HashMap::new(),
+            struct_array_vars: HashMap::new(),
             data_region_offset: 0,
             max_string_capacity: 0,
             has_wide_string: false,
@@ -1283,10 +1316,7 @@ impl CompileContext {
 
     /// Adds an i32 constant to the pool and returns its index.
     pub(crate) fn add_i32_constant(&mut self, value: i32) -> u16 {
-        self.intern_constant(
-            |c| matches!(c, PoolConstant::I32(v) if *v == value),
-            PoolConstant::I32(value),
-        )
+        intern_i32_constant(&mut self.constants, value)
     }
 
     /// Adds an f32 constant to the pool and returns its index.

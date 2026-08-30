@@ -72,13 +72,14 @@ not defined for unsigned types in the standard).
 
 ## Changes Per Layer
 
-### container/src/opcode.rs
-- Add 12 new `pub const` entries in the `builtin` module (0x0360-0x036B).
-  `0x036C` onward is already allocated to the math builtins (`LN_F32`
-  through the trigonometric functions) -- see
+### container/src/builtin.rs
+- Add 12 rows to `declare_builtins!` (0x0360-0x036B), each giving the name,
+  the func_id and the argument count. `0x036C` onward is already allocated to
+  the math builtins (`LN_F32` through the trigonometric functions) -- see
   [bytecode-instruction-set.md](bytecode-instruction-set.md). func_ids are
   wire format, so a collision here is permanent.
-- Extend `arg_count()` match arms
+- The macro derives the ID constant, the disassembler name and the argument
+  count from the same row, so there is nothing further to extend by hand.
 
 ### codegen/src/compile.rs
 - Change `lookup_builtin` signature to accept `(name, op_width, signedness)`

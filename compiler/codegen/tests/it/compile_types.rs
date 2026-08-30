@@ -9,17 +9,22 @@ use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_sint_then_produces_trunc_i8() {
+    // The value is computed at run time. A constant would be truncated at
+    // compile time instead, leaving no TRUNC_I8 at all — see
+    // compile_const_trunc.rs.
     let source = "
 PROGRAM main
   VAR
     x : SINT;
+    n : SINT;
   END_VAR
-  x := 42;
+  x := n + 1;
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // LOAD_CONST_I32 pool:0, TRUNC_I8, STORE_VAR_I32 var:0, RET_VOID
+    // LOAD_VAR_I32 var:1, LOAD_CONST_I32 pool:0, ADD_I32, TRUNC_I8,
+    // STORE_VAR_I32 var:0, RET_VOID
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -27,9 +32,11 @@ END_PROGRAM
     assert_bytecode!(
         bytecode,
         [
-            bc::load_const_i32(0), // pool:0 (42)
+            bc::load_var_i32(1),   // var:1 (n)
+            bc::load_const_i32(0), // pool:0 (1)
+            bc::add_i32(),
             bc::trunc_i8(),
-            bc::store_var_i32(0), // var:0
+            bc::store_var_i32(0), // var:0 (x)
             bc::ret_void(),
         ]
     );
@@ -37,17 +44,20 @@ END_PROGRAM
 
 #[test]
 fn compile_when_uint_then_produces_trunc_u16() {
+    // As above, the value is computed at run time so the TRUNC_U16 survives.
     let source = "
 PROGRAM main
   VAR
     x : UINT;
+    n : UINT;
   END_VAR
-  x := 1000;
+  x := n + 1;
 END_PROGRAM
 ";
     let container = parse_and_compile(source, &CompilerOptions::default());
 
-    // LOAD_CONST_I32 pool:0, TRUNC_U16, STORE_VAR_I32 var:0, RET_VOID
+    // LOAD_VAR_I32 var:1, LOAD_CONST_I32 pool:0, ADD_I32, TRUNC_U16,
+    // STORE_VAR_I32 var:0, RET_VOID
     let bytecode = container
         .code
         .get_function_bytecode(ironplc_container::FunctionId::new(1))
@@ -55,9 +65,11 @@ END_PROGRAM
     assert_bytecode!(
         bytecode,
         [
-            bc::load_const_i32(0), // pool:0 (1000)
+            bc::load_var_i32(1),   // var:1 (n)
+            bc::load_const_i32(0), // pool:0 (1)
+            bc::add_i32(),
             bc::trunc_u16(),
-            bc::store_var_i32(0), // var:0
+            bc::store_var_i32(0), // var:0 (x)
             bc::ret_void(),
         ]
     );
