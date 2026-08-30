@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn build_response_when_code_has_no_fix_section_then_none() {
-        // P9999 has "Known Limitations" but no "To fix this error" paragraph.
+        // P9999 has a "Reporting the program" section but no "To fix this error" paragraph.
         let resp = build_response("P9999");
         assert!(resp.ok);
         assert!(resp.found);

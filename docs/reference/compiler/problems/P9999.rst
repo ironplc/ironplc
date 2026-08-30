@@ -33,20 +33,5 @@ do — there are two ways, and no GitHub account is required:
    IronPLC team and **may become public** — for example in a GitHub issue.
    Do not submit anything confidential.
 
-Known Limitations
------------------
-
-The following features are not yet supported in code generation and will
-produce this error:
-
-* ``ARRAY`` element access
-* ``STRUCT`` member access
-* ``FUNCTION_BLOCK`` with SFC bodies
-* ``STRING`` pass-by-reference (``VAR_IN_OUT``)
-* Direct variables (hardware-mapped I/O such as ``%IX0.0``)
-* Enumerated values in expressions and ``CASE`` selectors
-* :doc:`Object-oriented programming </reference/language/object-orientation/index>`
-  constructs (``EXTENDS``, ``IMPLEMENTS``, ``ABSTRACT``, ``INTERFACE``)
-
 .. _IronPLC Playground: https://playground.ironplc.com/
 .. _GitHub issue: https://github.com/ironplc/ironplc/issues/new?template=todo_report.md
