@@ -29,21 +29,19 @@
 //! ```
 use ironplc_dsl::{
     common::*,
-    core::{Id, Located},
+    core::Located,
     diagnostic::{Diagnostic, Label},
     textual::*,
     visitor::Visitor,
 };
 use ironplc_problems::Problem;
-use std::collections::HashMap;
 use std::convert::Infallible;
 
 use crate::{
-    intermediate_type::IntermediateType,
     result::SemanticResult,
     rule_support::{run_rule, DiagnosticVisitor},
     semantic_context::SemanticContext,
-    type_environment::TypeEnvironment,
+    variable_type::{self, DeclaredVariables},
 };
 use ironplc_parser::options::CompilerOptions;
 
@@ -55,7 +53,7 @@ pub fn apply(
     run_rule(
         RuleBitAccessRange {
             type_environment: context.types(),
-            var_initializers: HashMap::new(),
+            declarations: DeclaredVariables::new(),
             diagnostics: Vec::new(),
         },
         lib,
@@ -64,8 +62,8 @@ pub fn apply(
 
 struct RuleBitAccessRange<'a> {
     type_environment: &'a crate::type_environment::TypeEnvironment,
-    /// Maps variable names to their declared initializers within the current scope.
-    var_initializers: HashMap<Id, InitialValueAssignmentKind>,
+    /// The variable declarations visible in the POU being visited.
+    declarations: DeclaredVariables,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -76,24 +74,12 @@ impl DiagnosticVisitor for RuleBitAccessRange<'_> {
 }
 
 impl RuleBitAccessRange<'_> {
-    fn collect_var_types(&mut self, variables: &[VarDecl]) {
-        for var in variables {
-            if let VariableIdentifier::Symbol(id) = &var.identifier {
-                self.var_initializers
-                    .insert(id.clone(), var.initializer.clone());
-            }
-        }
-    }
-
     fn check_partial_access(&mut self, node: &PartialAccessVariable) {
-        let resolved_type = match resolve_variable_type(
-            &node.variable,
-            &self.var_initializers,
-            self.type_environment,
-        ) {
-            Some(t) => t,
-            None => return,
-        };
+        let resolved_type =
+            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
+                Some(t) => t,
+                None => return,
+            };
 
         let base_bytes = match resolved_type.size_in_bytes() {
             Some(bytes) => bytes as u128,
@@ -149,14 +135,11 @@ impl RuleBitAccessRange<'_> {
 
     fn check_bit_access(&mut self, node: &BitAccessVariable) {
         // Resolve the type of the variable being bit-accessed
-        let resolved_type = match resolve_variable_type(
-            &node.variable,
-            &self.var_initializers,
-            self.type_environment,
-        ) {
-            Some(t) => t,
-            None => return,
-        };
+        let resolved_type =
+            match variable_type::of(&node.variable, &self.declarations, self.type_environment) {
+                Some(t) => t,
+                None => return,
+            };
 
         let bit_width = match resolved_type.size_in_bytes() {
             Some(bytes) => bytes as u128 * 8,
@@ -184,106 +167,13 @@ impl RuleBitAccessRange<'_> {
     }
 }
 
-/// Resolves the `IntermediateType` for a named variable from its initializer.
-fn resolve_initializer_type(
-    init: &InitialValueAssignmentKind,
-    type_env: &TypeEnvironment,
-) -> Option<IntermediateType> {
-    match init {
-        InitialValueAssignmentKind::Simple(si) => {
-            Some(type_env.get(&si.type_name)?.representation.clone())
-        }
-        InitialValueAssignmentKind::LateResolvedType(tn) => {
-            Some(type_env.get(tn)?.representation.clone())
-        }
-        InitialValueAssignmentKind::Structure(si) => {
-            Some(type_env.get(&si.type_name)?.representation.clone())
-        }
-        InitialValueAssignmentKind::Array(ai) => match &ai.spec {
-            SpecificationKind::Named(tn) => Some(type_env.get(tn)?.representation.clone()),
-            SpecificationKind::Inline(subranges) => {
-                let element_type = type_env
-                    .get(&subranges.type_name.to_type_name())?
-                    .representation
-                    .clone();
-                Some(IntermediateType::Array {
-                    element_type: Box::new(element_type),
-                    dimensions: vec![],
-                })
-            }
-        },
-        _ => None,
-    }
-}
-
-/// Resolves the `IntermediateType` for a `SymbolicVariableKind` by walking through
-/// struct field accesses and array subscripts to find the type of the leaf expression.
-fn resolve_variable_type(
-    kind: &SymbolicVariableKind,
-    var_initializers: &HashMap<Id, InitialValueAssignmentKind>,
-    type_env: &TypeEnvironment,
-) -> Option<IntermediateType> {
-    match kind {
-        SymbolicVariableKind::Named(named) => {
-            let init = var_initializers.get(&named.name)?;
-            resolve_initializer_type(init, type_env)
-        }
-        SymbolicVariableKind::Structured(structured) => {
-            let record_type =
-                resolve_variable_type(&structured.record, var_initializers, type_env)?;
-            find_struct_field_type(&record_type, &structured.field)
-        }
-        SymbolicVariableKind::Array(array) => {
-            let array_type =
-                resolve_variable_type(&array.subscripted_variable, var_initializers, type_env)?;
-            match array_type {
-                IntermediateType::Array { element_type, .. } => Some(*element_type),
-                _ => None,
-            }
-        }
-        SymbolicVariableKind::BitAccess(bit_access) => {
-            resolve_variable_type(&bit_access.variable, var_initializers, type_env)
-        }
-        SymbolicVariableKind::PartialAccess(partial) => {
-            resolve_variable_type(&partial.variable, var_initializers, type_env)
-        }
-        SymbolicVariableKind::SelfRef(_) => {
-            // Typing a member of THIS^/SUPER^ needs function-block member
-            // resolution, which does not exist yet. Unreachable in practice:
-            // `visit_self_ref_variable` below reports the construct before
-            // any range check runs. See issue #1406.
-            None
-        }
-        SymbolicVariableKind::Deref(deref) => {
-            resolve_variable_type(&deref.variable, var_initializers, type_env)
-        }
-    }
-}
-
-/// Finds the type of a field within a structure or function block type.
-fn find_struct_field_type(
-    parent_type: &IntermediateType,
-    field_name: &Id,
-) -> Option<IntermediateType> {
-    let fields = match parent_type {
-        IntermediateType::Structure { fields } => fields,
-        IntermediateType::FunctionBlock { fields, .. } => fields,
-        _ => return None,
-    };
-    fields
-        .iter()
-        .find(|f| f.name == *field_name)
-        .map(|f| f.field_type.clone())
-}
-
 impl Visitor<Infallible> for RuleBitAccessRange<'_> {
     type Value = ();
 
     fn visit_function_declaration(&mut self, node: &FunctionDeclaration) -> Result<(), Infallible> {
-        self.var_initializers.clear();
-        self.collect_var_types(&node.variables);
+        self.declarations.enter_pou(&node.variables);
         let ret = node.recurse_visit(self);
-        self.var_initializers.clear();
+        self.declarations.exit_pou();
         ret
     }
 
@@ -291,18 +181,16 @@ impl Visitor<Infallible> for RuleBitAccessRange<'_> {
         &mut self,
         node: &FunctionBlockDeclaration,
     ) -> Result<(), Infallible> {
-        self.var_initializers.clear();
-        self.collect_var_types(&node.variables);
+        self.declarations.enter_pou(&node.variables);
         let ret = node.recurse_visit(self);
-        self.var_initializers.clear();
+        self.declarations.exit_pou();
         ret
     }
 
     fn visit_program_declaration(&mut self, node: &ProgramDeclaration) -> Result<(), Infallible> {
-        self.var_initializers.clear();
-        self.collect_var_types(&node.variables);
+        self.declarations.enter_pou(&node.variables);
         let ret = node.recurse_visit(self);
-        self.var_initializers.clear();
+        self.declarations.exit_pou();
         ret
     }
 
