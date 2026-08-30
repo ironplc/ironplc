@@ -54,6 +54,10 @@ Well-known intrinsic type IDs (e.g., `FB_TYPE_TON: u16 = 0x0010`).
 
 **Variable allocation**: FB instance variables get a variable table slot (holding the data region byte offset) and a contiguous region in the data region (each field = 8 bytes).
 
+**Declaring an instance with member initial values**: `timer : TON := (PT := T#100MS);` declares a function block *instance* whose members start at the given values. The parser cannot see that: `x : T := (a := 1)` is the same production for every `T`, and no type declaration is in scope yet, so it always produces a structure initializer. `xform_resolve_late_bound_type_initializer` is what decides — a type name that resolves to a function block (a standard library block in the type environment, a recognized-but-unsupported standard type, or a `FUNCTION_BLOCK` declaration in the compilation unit) turns the structure initializer into `InitialValueAssignmentKind::FunctionBlock`, carrying the member list across unchanged. That is the only place the distinction is made; codegen sees an instance and never a structure.
+
+Each member initial value is emitted in the setup block as the same `FB_LOAD_INSTANCE` / value / `FB_STORE_PARAM` / `POP` sequence an equivalent assignment statement emits, after the instance's data region offset has been stored into its variable slot. An invocation that also passes the member as an argument overwrites it, because invocation arguments are stored on every scan and the initializer runs once.
+
 **FB call emission** for `myTimer(IN := start, PT := T#5s); elapsed := myTimer.ET;`:
 ```
 FB_LOAD_INSTANCE  <var_index>     -- push fb_ref from variable table

@@ -36,7 +36,12 @@ The following code will generate error P4043:
    END_VAR
    END_FUNCTION_BLOCK
 
-To fix this error, either use a constant value:
+``REF_TO`` is itself a dialect extension, so this example additionally needs
+``--allow-ref-to`` (or a dialect that enables it, such as
+``--dialect=codesys``). Under ``--dialect=twincat``, which does not enable
+``REF_TO``, write the pointer as ``POINTER TO FB_Device`` instead.
+
+To fix this error, use a constant value:
 
 .. code-block::
 
@@ -50,3 +55,20 @@ Or enable the extension:
 
 .. |flag| replace:: ``--allow-struct-initializer-expressions``
 .. include:: /includes/enabled-by-flag.rst
+
+What counts as a constant here
+------------------------------
+
+This error keys on the *shape* of the value, not on whether the value could
+be computed at compile time. A single literal (``(x := 1)``, ``(x := -1)``)
+is a ``constant`` in the standard grammar and is always accepted; an
+arithmetic expression over literals (``(x := 1 + 1)``) is not, and produces
+this error even though its result is fixed.
+
+That is the difference from
+:doc:`P4037 </reference/compiler/problems/P4037>` and
+``--allow-constant-initializer-expressions``, which cover a plain ``VAR``
+initializer and *do* fold the expression to a literal. A structured
+initializer value is not folded, because the extension exists for values
+that genuinely cannot be -- a pointer dereference read when the instance is
+created. Write the computed value as a literal, or enable the flag above.
