@@ -315,7 +315,23 @@ IF (ptr <> 0 AND_THEN ptr^ = 99) THEN
 END_IF;
 ```
 
-**Design:** Add `AndThen` and `OrElse` as keyword tokens. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST, they map to new boolean operator variants. Semantically they are identical to `AND`/`OR` except for evaluation order, which is a code generation concern.
+**Design:** Add `AndThen` and `OrElse` as keyword tokens, demoted to identifiers unless `--allow-short-circuit-operators` is set. These are binary operators with the same precedence as `AND` and `OR` respectively. In the AST they are `CompareOp::AndThen` and `CompareOp::OrElse` — deliberately *not* normalized to `And`/`Or`, since the evaluation-order difference is real and externally visible. Type resolution treats them like `AND`/`OR`.
+
+**Code generation:** Each lowers to a conditional branch around the right operand, so the right operand is not evaluated when the left one already decides the answer:
+
+```text
+    <left>                  ; push left
+    JMP_IF_NOT alt          ; pops left
+    <then-arm>              ; AND_THEN: <right>     OR_ELSE: LOAD_TRUE
+    JMP end
+alt:
+    <else-arm>              ; AND_THEN: LOAD_FALSE  OR_ELSE: <right>
+end:
+```
+
+Exactly one arm runs, so exactly one value reaches the merge. The emitter tracks operand-stack depth in emission order and would otherwise charge for both arms, so it resets to the pre-arm depth between them; what ships is verified against the real control-flow graph by the stack-balance pass.
+
+Short-circuiting applies only when both operands are `BOOL`. `AND`/`OR` are also the bit-string operators, and skipping the right operand has no meaning for a bit-string result — short-circuiting `2#1010 AND_THEN 2#0110` would yield `2#0110` where the bitwise answer is `2#0010` — so non-`BOOL` operands compile to the same eager bitwise op `AND`/`OR` produce.
 
 #### 3.5 `OVERRIDE` and `CONTINUE` Keywords
 
@@ -711,8 +727,9 @@ pub enum StmtKind {
 ### New Operator Variants
 
 ```rust
-// For AND_THEN / OR_ELSE short-circuit operators:
-pub enum Operator {
+// For AND_THEN / OR_ELSE short-circuit operators. These join the other
+// boolean/bitwise combinators, which live in CompareOp rather than Operator:
+pub enum CompareOp {
     // ... existing variants ...
     AndThen,   // AND_THEN — short-circuit AND
     OrElse,    // OR_ELSE — short-circuit OR

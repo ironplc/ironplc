@@ -2,7 +2,7 @@
 
 use ironplc_parser::options::CompilerOptions;
 
-use crate::common::{bc, parse_and_compile, try_parse_and_compile};
+use crate::common::{bc, parse_and_compile};
 
 #[test]
 fn compile_when_and_expression_then_produces_bool_and_bytecode() {
@@ -156,12 +156,11 @@ END_PROGRAM
 }
 
 #[test]
-fn compile_when_and_then_expression_then_returns_not_implemented() {
-    // AND_THEN needs short-circuit (conditional-branch) codegen that
-    // doesn't exist yet -- rather than silently emit eager (behaviorally
-    // wrong) bytecode, compilation must fail clearly. `ironplcc check`
-    // already fully supports AND_THEN; only codegen refuses.
-    // See specs/design/beckhoff-twincat-dialect.md §3.4 and issue #1476.
+fn compile_when_and_then_expression_then_branches_past_right_operand() {
+    // AND_THEN must not evaluate its right operand when the left one is
+    // FALSE, so it compiles to a branch rather than to BOOL_AND over two
+    // eagerly-evaluated values.
+    // See specs/design/beckhoff-twincat-dialect.md §3.4.
     let source = "
 PROGRAM main
   VAR
@@ -176,10 +175,111 @@ END_PROGRAM
         allow_short_circuit_operators: true,
         ..CompilerOptions::default()
     };
-    let result = try_parse_and_compile(source, &options);
+    let container = parse_and_compile(source, &options);
 
-    assert!(result.is_err(), "expected compilation to fail for AND_THEN");
-    assert_eq!(result.unwrap_err().code, "P9999");
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_i32(0), // pool:0 (10)
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1), // pool:1 (0)
+            bc::gt_i32(),
+            bc::jmp_if_not(10),    // left FALSE -> LOAD_FALSE, skipping `x < 10`
+            bc::load_var_i32(0),   // var:0
+            bc::load_const_i32(0), // pool:0 (10)
+            bc::lt_i32(),
+            bc::jmp(1),
+            bc::load_false(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
+        ]
+    );
+}
+
+#[test]
+fn compile_when_or_else_expression_then_branches_past_right_operand() {
+    // OR_ELSE is the dual: a TRUE left operand answers TRUE without
+    // evaluating the right operand.
+    let source = "
+PROGRAM main
+  VAR
+    x : DINT;
+    y : DINT;
+  END_VAR
+  x := 10;
+  y := x > 0 OR_ELSE x < 10;
+END_PROGRAM
+";
+    let options = CompilerOptions {
+        allow_short_circuit_operators: true,
+        ..CompilerOptions::default()
+    };
+    let container = parse_and_compile(source, &options);
+
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_const_i32(0), // pool:0 (10)
+            bc::dup(),             // (store-load optimization)
+            bc::store_var_i32(0),  // var:0
+            bc::load_const_i32(1), // pool:1 (0)
+            bc::gt_i32(),
+            bc::jmp_if_not(4), // left FALSE -> evaluate `x < 10`
+            bc::load_true(),
+            bc::jmp(7),
+            bc::load_var_i32(0),   // var:0
+            bc::load_const_i32(0), // pool:0 (10)
+            bc::lt_i32(),
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
+        ]
+    );
+}
+
+#[test]
+fn compile_when_and_then_operands_are_bit_strings_then_emits_eager_bitwise_and() {
+    // Short-circuiting has no meaning for a bit-string result -- skipping the
+    // right operand would produce the left operand's bits rather than their
+    // conjunction -- so a non-BOOL AND_THEN degenerates to eager BIT_AND.
+    let source = "
+PROGRAM main
+  VAR
+    x : BYTE;
+    y : BYTE;
+  END_VAR
+  y := x AND_THEN x;
+END_PROGRAM
+";
+    let options = CompilerOptions {
+        allow_short_circuit_operators: true,
+        ..CompilerOptions::default()
+    };
+    let container = parse_and_compile(source, &options);
+
+    let bytecode = container
+        .code
+        .get_function_bytecode(ironplc_container::FunctionId::new(1))
+        .unwrap();
+    assert_bytecode!(
+        bytecode,
+        [
+            bc::load_var_i32(0), // var:0
+            bc::dup(),           // (consecutive-load optimization)
+            bc::bit_and_32(),
+            bc::trunc_u8(),       // BYTE is 8-bit storage
+            bc::store_var_i32(1), // var:1
+            bc::ret_void(),
+        ]
+    );
 }
 
 #[test]

@@ -23,6 +23,7 @@ use super::compile::{
 };
 use super::compile_call::compile_function_call;
 use super::compile_setup::resolve_type_name;
+use super::compile_short_circuit::{compile_short_circuit, ShortCircuitOp};
 use super::compile_string::compile_string_compare;
 use crate::emit::Emitter;
 
@@ -68,6 +69,14 @@ pub(crate) fn concrete_op_type_from_expr(expr: &Expr) -> Option<OpType> {
     }
     let info = resolve_type_name(&resolved.name)?;
     Some((info.op_width, info.signedness))
+}
+
+/// Returns `true` if the expression's resolved type is BOOL.
+pub(crate) fn expr_is_bool(expr: &Expr) -> bool {
+    expr.resolved_type
+        .as_ref()
+        .and_then(|t| ElementaryTypeName::try_from(&t.name).ok())
+        .is_some_and(|e| matches!(e, ElementaryTypeName::BOOL))
 }
 
 /// Returns `true` if the expression's resolved type is STRING.
@@ -220,6 +229,13 @@ fn compile_compare(
     compare: &CompareExpr,
     op_type: OpType,
 ) -> Result<(), Diagnostic> {
+    // AND_THEN and OR_ELSE must not evaluate their right operand when the
+    // left one already decides the answer, so they branch instead of
+    // evaluating both operands into an eager bitwise op.
+    if let Some(short_circuit) = ShortCircuitOp::for_expr(compare) {
+        return compile_short_circuit(emitter, ctx, compare, short_circuit);
+    }
+
     // String comparisons need a completely different code path because
     // strings live in the data region, not on the operand stack.
     if expr_is_string(&compare.left) {
@@ -249,18 +265,11 @@ fn compile_compare(
         CompareOp::And => emit_and(emitter, operand_op_type),
         CompareOp::Or => emit_or(emitter, operand_op_type),
         CompareOp::Xor => emit_xor(emitter, operand_op_type),
-        CompareOp::AndThen | CompareOp::OrElse => {
-            // AND_THEN and OR_ELSE require short-circuit
-            // (conditional-branch) codegen -- emitting eager bytecode
-            // here would be silently wrong (exactly the null-deref
-            // crash they exist to prevent), so refuse explicitly
-            // rather than miscompile. `ironplcc check` already
-            // fully supports them; only `ironplcc compile` hits this.
-            return Err(Diagnostic::not_implemented(Label::span(
-                ironplc_dsl::core::SourceSpan::join(&compare.left.span(), &compare.right.span()),
-                "short-circuit evaluation is not yet supported in codegen",
-            )));
-        }
+        // Only reached for non-BOOL operands, where there is no boolean to
+        // short-circuit on and the operator degenerates to its eager
+        // counterpart. See `ShortCircuitOp::for_expr`.
+        CompareOp::AndThen => emit_and(emitter, operand_op_type),
+        CompareOp::OrElse => emit_or(emitter, operand_op_type),
     }
     Ok(())
 }
