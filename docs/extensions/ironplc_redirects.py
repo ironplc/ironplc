@@ -10,6 +10,12 @@ treats the stub itself as throwaway and consolidates link signals on the target.
 
 The stubs are written after Sphinx finishes building, into the output directory
 alongside the rest of the site.
+
+The script carries the query string across, because runtime and compiler URLs
+arrive with ``?version=&channel=`` that analytics reads for attribution; a
+redirect that drops it silently loses the campaign parameters. The meta refresh
+is the no-JavaScript fallback and cannot preserve them. ``ironplc_problemcode``
+does the same for the redirects it generates -- keep the two in step.
 '''
 from pathlib import Path
 
@@ -25,6 +31,7 @@ _TEMPLATE = '''<!DOCTYPE html>
 </head>
 <body>
 <p>This page has moved. <a href="{new_url}">Continue to the new location</a>.</p>
+<script>window.location.replace('{new_url}' + window.location.search);</script>
 </body>
 </html>
 '''
