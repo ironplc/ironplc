@@ -22,8 +22,7 @@ It is the follow-on work deferred by
 [reference-to-twincat.md](reference-to-twincat.md) and supersedes the
 "out of scope" pointer notes there and the parse-only sketch in
 [beckhoff-twincat-dialect.md](beckhoff-twincat-dialect.md) §2.1
-(`TypeSpec::PointerTo`). The implementation plan is
-[2026-08-11-adr-operator-and-pointer-to.md](../plans/2026-08-11-adr-operator-and-pointer-to.md).
+(`TypeSpec::PointerTo`).
 
 References: [Beckhoff ADR](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529015179.html),
 [Beckhoff POINTER](https://infosys.beckhoff.com/content/1033/tc3_plc_intro/2529453451.html),

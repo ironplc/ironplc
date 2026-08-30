@@ -18,11 +18,9 @@ by the same machinery user source does.
 > **Requirement markers.** This document carries `REQ-CL-*` requirement markers
 > (area `CL` = compatibility libraries) for each testable claim, per the
 > [design requirement](../steering/development-standards.md). They become
-> build-enforced only once a crate's `build.rs` lists this doc; the
-> [implementation plan](../plans/2026-08-04-compatibility-libraries.md) wires
-> each owning crate and adds the matching `#[spec_test]` conformance tests
-> (using `#[ignore]` for claims not yet implemented). Until then the markers are
-> inert.
+> build-enforced: the owning crates — `sources`, `analyzer`, `plc2plc` and
+> `playground` — list this document in their `build.rs` and carry the matching
+> `#[spec_test]` conformance tests.
 
 ## The Portability Promise
 
@@ -451,10 +449,9 @@ No open questions remain for the first increment.
 ## Implementation
 
 The on-disk package format and installation/discovery are specified separately in
-[Compatibility Library Format](compatibility-library-format.md) (`REQ-LF-*`). The
-[implementation plan](../plans/2026-08-04-compatibility-libraries.md) delivers
-`.plcproj` library-list reading and the `Tc2_System` library (defining `PI`) in its
-early phases and wires each `REQ-CL-*` / `REQ-LF-*` marker to a `#[spec_test]`.
+[Compatibility Library Format](compatibility-library-format.md) (`REQ-LF-*`).
+`.plcproj` library-list reading and the bundled libraries have shipped, and each
+`REQ-CL-*` / `REQ-LF-*` marker is wired to a `#[spec_test]` in its owning crate.
 
 ## Appendix: `.plcproj` library-reference shapes
 

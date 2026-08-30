@@ -139,7 +139,3 @@ VS Code and the message shown in docs come from the same CSV row.
 2. **Generated file in git**: Gitignored, generated on build. This mirrors the
    compiler's approach where `problems.rs` is generated into `OUT_DIR` and not
    committed.
-
-## Implementation Plan
-
-See [Implementation Plan: Extension Error Code Consolidation](../plans/extension-error-code-consolidation-impl.md) for the detailed implementation steps.

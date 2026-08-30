@@ -655,10 +655,6 @@ The diagnostic interface should be extended to expose per-task information:
 | Program instances | instance_id, task_id, entry_function_id | On request |
 | Ready queue | Currently ready tasks and their order | On request |
 
-## Implementation Plan
-
-See [Implementation Plan: IEC 61131-3 Task Support](../plans/61131-task-support-impl.md) for the phased implementation roadmap.
-
 ## Open Questions (Resolved)
 
 These questions were identified during design and resolved through comparative research across CODESYS, TwinCAT 3, Siemens S7, B&R Automation Runtime, and OpenPLC.
