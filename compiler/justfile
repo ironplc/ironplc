@@ -55,7 +55,10 @@ plan-citations:
   #!/usr/bin/env bash
   set -euo pipefail
   cd {{justfile_directory()}}/..
-  hits=$(git grep -n "specs/plans" -- . \
+  # Matches both the repo-relative form (specs/plans/...) and relative links
+  # such as ../plans/foo.md or ../../plans/foo.md, which markdown cross-links
+  # inside specs/ use and which a literal "specs/plans" search misses entirely.
+  hits=$(git grep -nE "specs/plans|\.\./plans/|\.\./\.\./plans/" -- . \
     ':!specs/plans' \
     ':!CLAUDE.md' ':!CURSOR.md' ':!CONTRIBUTING.md' \
     ':!.cursor' ':!specs/steering' \
