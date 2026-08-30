@@ -30,7 +30,7 @@ mod rewrite;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
@@ -105,15 +105,22 @@ pub(crate) fn remap_line_map(
 /// offset map that covers the whole pipeline.
 struct Pipeline {
     bytecode: Vec<u8>,
+    /// Offsets in `bytecode` no pass may remove or rewrite — the positions
+    /// the function's jumps land on. Remapped after every pass so it always
+    /// describes the current bytes.
+    protected: HashSet<usize>,
     /// Maps original offsets to offsets in `bytecode`. `None` until the first
     /// pass has run, after which it is that pass's own map.
     map: Option<OffsetMap>,
 }
 
 impl Pipeline {
-    fn run(&mut self, pass: impl FnOnce(&[u8]) -> (Vec<u8>, OffsetMap)) {
-        let (bytecode, map) = pass(&self.bytecode);
+    fn run(&mut self, pass: impl FnOnce(&[u8], &HashSet<usize>) -> (Vec<u8>, OffsetMap)) {
+        let (bytecode, map) = pass(&self.bytecode, &self.protected);
         self.bytecode = bytecode;
+        // A protected offset is an instruction boundary that no pass may
+        // remove, so the map carries it to the boundary it now occupies.
+        self.protected = self.protected.iter().map(|offset| map[offset]).collect();
         // Composition is total: every value in the accumulated map is an
         // offset this pass's input had an instruction boundary at (or its
         // length), because both are accumulated from surviving instruction
@@ -142,6 +149,7 @@ pub(crate) fn optimize(bytecode: &[u8], constants: &mut Vec<PoolConstant>) -> (V
     }
 
     let mut pipeline = Pipeline {
+        protected: rewrite::jump_targets(bytecode),
         bytecode: bytecode.to_vec(),
         map: None,
     };
@@ -152,10 +160,10 @@ pub(crate) fn optimize(bytecode: &[u8], constants: &mut Vec<PoolConstant>) -> (V
     // place to add a fixed-point loop, if one is ever needed. Nothing needs
     // one today.
     pipeline.run(pass_self_assign::apply);
-    pipeline.run(|bytecode| pass_arith_identity::apply(bytecode, constants));
+    pipeline.run(|bytecode, protected| pass_arith_identity::apply(bytecode, protected, constants));
     // Runs last of the three: it is the only pass that appends to the constant
     // pool, so nothing after it can be reading a stale pool.
-    pipeline.run(|bytecode| pass_const_trunc::apply(bytecode, constants));
+    pipeline.run(|bytecode, protected| pass_const_trunc::apply(bytecode, protected, constants));
 
     (
         pipeline.bytecode,

@@ -50,11 +50,9 @@ fn is_cmp_br(op: u8) -> bool {
     op == opcode::CMP_BR_I32 || op == opcode::CMP_BR_I64
 }
 
-/// Decode raw bytecode into a list of instructions and the set of jump
-/// target offsets (relative to the original bytecode).
-fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
+/// Decode raw bytecode into a list of instructions.
+fn decode(bytecode: &[u8]) -> Vec<Instruction> {
     let mut instructions = Vec::new();
-    let mut jump_targets = HashSet::new();
     let mut pc = 0;
 
     while pc < bytecode.len() {
@@ -65,34 +63,49 @@ fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
             offset: pc,
             bytes: bytecode[pc..end].to_vec(),
         });
+        pc = end;
+    }
+
+    instructions
+}
+
+/// Recovers the offsets branch instructions in `bytecode` target.
+///
+/// The branch offset is relative to the end of the instruction carrying it,
+/// so the target is recovered by adding the instruction's size back in.
+pub(super) fn jump_targets(bytecode: &[u8]) -> HashSet<usize> {
+    let mut targets = HashSet::new();
+    let mut pc = 0;
+
+    while pc < bytecode.len() {
+        let op = bytecode[pc];
+        let end = (pc + opcode::instruction_size(op)).min(bytecode.len());
 
         if (op == opcode::JMP || op == opcode::JMP_IF_NOT) && end - pc >= 3 {
             let rel = i16::from_le_bytes([bytecode[pc + 1], bytecode[pc + 2]]);
-            let target = (pc as isize + 3 + rel as isize) as usize;
-            jump_targets.insert(target);
+            targets.insert((pc as isize + 3 + rel as isize) as usize);
         }
         // CMP_BR is a branch too: its target must be protected from removal
         // and its offset rewritten, exactly like JMP/JMP_IF_NOT.
         if is_cmp_br(op) && end - pc >= CMP_BR_SIZE {
             let rel = i16::from_le_bytes([bytecode[pc + 6], bytecode[pc + 7]]);
-            let target = (pc as isize + CMP_BR_SIZE as isize + rel as isize) as usize;
-            jump_targets.insert(target);
+            targets.insert((pc as isize + CMP_BR_SIZE as isize + rel as isize) as usize);
         }
 
         pc = end;
     }
 
-    (instructions, jump_targets)
+    targets
 }
 
 /// Runs one peephole pass over `bytecode`.
 ///
 /// `matches` is asked about each adjacent instruction pair in turn. Returning
 /// `Some` applies one [`Action`] to each instruction of the pair; returning
-/// `None` leaves both alone. Instructions that are the target of a jump are
-/// never offered to `matches` and so are never rewritten; this preserves
-/// basic-block boundaries and guarantees jump targets always map to a valid
-/// new offset.
+/// `None` leaves both alone. Instructions starting at an offset in
+/// `protected` are never offered to `matches` and so are never rewritten;
+/// callers put every jump target there, which preserves basic-block
+/// boundaries and guarantees jump targets always map to a valid new offset.
 ///
 /// Returns the rewritten bytes along with an old→new offset map. The map
 /// covers every instruction's start offset plus the one-past-the-end position,
@@ -101,9 +114,10 @@ fn decode(bytecode: &[u8]) -> (Vec<Instruction>, HashSet<usize>) {
 /// occupies, so a span that lands on one snaps forward rather than dangling.
 pub(super) fn apply_peephole(
     bytecode: &[u8],
+    protected: &HashSet<usize>,
     mut matches: impl FnMut(&Instruction, &Instruction) -> Option<[Action; 2]>,
 ) -> (Vec<u8>, OffsetMap) {
-    let (instructions, jump_targets) = decode(bytecode);
+    let instructions = decode(bytecode);
 
     // First pass: decide what happens to each instruction of a matched pair.
     let mut actions: Vec<Action> = instructions.iter().map(|_| Action::Keep).collect();
@@ -113,7 +127,7 @@ pub(super) fn apply_peephole(
         let b = &instructions[i + 1];
 
         // Never touch instructions that are the target of a jump.
-        if jump_targets.contains(&a.offset) || jump_targets.contains(&b.offset) {
+        if protected.contains(&a.offset) || protected.contains(&b.offset) {
             i += 1;
             continue;
         }
