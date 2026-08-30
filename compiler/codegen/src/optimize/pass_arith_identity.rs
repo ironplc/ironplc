@@ -7,14 +7,20 @@
 //! These are only visible once the full instruction stream exists, which is
 //! why the emitter's own in-line peepholes cannot catch them.
 
+use std::collections::HashSet;
+
 use ironplc_container::opcode;
 
 use super::rewrite::{apply_peephole, Action, Instruction};
 use super::OffsetMap;
 use crate::compile::PoolConstant;
 
-pub(super) fn apply(bytecode: &[u8], constants: &[PoolConstant]) -> (Vec<u8>, OffsetMap) {
-    apply_peephole(bytecode, |a, b| is_identity(a, b, constants))
+pub(super) fn apply(
+    bytecode: &[u8],
+    protected: &HashSet<usize>,
+    constants: &[PoolConstant],
+) -> (Vec<u8>, OffsetMap) {
+    apply_peephole(bytecode, protected, |a, b| is_identity(a, b, constants))
 }
 
 /// Returns true if the numeric constant at `pool_index` is zero.

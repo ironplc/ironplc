@@ -423,6 +423,54 @@
 #                            ^ source.61131-3-st
 #                             ^^^^^ source.61131-3-st constant.language.boolean.st
 #                                  ^ source.61131-3-st punctuation.separator.st
+>    myBool := (input1 <> 0) AND_THEN (input2 = 0);
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^^ source.61131-3-st keyword.operator.assignment.st
+#             ^ source.61131-3-st
+#              ^ source.61131-3-st punctuation.section.parens.st
+#               ^^^^^^ source.61131-3-st variable.other.st
+#                     ^ source.61131-3-st
+#                      ^^ source.61131-3-st keyword.operator.comparison.st
+#                        ^ source.61131-3-st
+#                         ^ source.61131-3-st constant.numeric.decimal.st
+#                          ^ source.61131-3-st punctuation.section.parens.st
+#                           ^ source.61131-3-st
+#                            ^^^^^^^^ source.61131-3-st keyword.operator.logical.st
+#                                    ^ source.61131-3-st
+#                                     ^ source.61131-3-st punctuation.section.parens.st
+#                                      ^^^^^^ source.61131-3-st variable.other.st
+#                                            ^ source.61131-3-st
+#                                             ^ source.61131-3-st keyword.operator.comparison.st
+#                                              ^ source.61131-3-st
+#                                               ^ source.61131-3-st constant.numeric.decimal.st
+#                                                ^ source.61131-3-st punctuation.section.parens.st
+#                                                 ^ source.61131-3-st punctuation.separator.st
+>    myBool := (input1 = 0) OR_ELSE (input2 <> 0);
+#^^^^ source.61131-3-st
+#    ^^^^^^ source.61131-3-st variable.other.st
+#          ^ source.61131-3-st
+#           ^^ source.61131-3-st keyword.operator.assignment.st
+#             ^ source.61131-3-st
+#              ^ source.61131-3-st punctuation.section.parens.st
+#               ^^^^^^ source.61131-3-st variable.other.st
+#                     ^ source.61131-3-st
+#                      ^ source.61131-3-st keyword.operator.comparison.st
+#                       ^ source.61131-3-st
+#                        ^ source.61131-3-st constant.numeric.decimal.st
+#                         ^ source.61131-3-st punctuation.section.parens.st
+#                          ^ source.61131-3-st
+#                           ^^^^^^^ source.61131-3-st keyword.operator.logical.st
+#                                  ^ source.61131-3-st
+#                                   ^ source.61131-3-st punctuation.section.parens.st
+#                                    ^^^^^^ source.61131-3-st variable.other.st
+#                                          ^ source.61131-3-st
+#                                           ^^ source.61131-3-st keyword.operator.comparison.st
+#                                             ^ source.61131-3-st
+#                                              ^ source.61131-3-st constant.numeric.decimal.st
+#                                               ^ source.61131-3-st punctuation.section.parens.st
+#                                                ^ source.61131-3-st punctuation.separator.st
 >    myBool := input1 < input2;
 #^^^^ source.61131-3-st
 #    ^^^^^^ source.61131-3-st variable.other.st

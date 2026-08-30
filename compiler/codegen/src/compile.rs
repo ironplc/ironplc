@@ -494,10 +494,10 @@ pub(crate) fn intern_i32_constant(constants: &mut Vec<PoolConstant>, value: i32)
 /// Holds the finalized bytecode and stack depth for a single emitted function.
 ///
 /// Returned by [`finalize_function`] to centralize the
-/// `emitter.bytecode()` → optimize → `max_stack_depth()` sequence shared by
-/// every code path that emits a function (init, scan, user functions, FB
-/// bodies). Centralizing this makes future cross-cutting additions (e.g.
-/// source-map plumbing) a one-site change.
+/// optimize → patch jumps → `max_stack_depth()` sequence shared by every
+/// code path that emits a function (init, scan, user functions, FB bodies).
+/// Centralizing this makes future cross-cutting additions (e.g. source-map
+/// plumbing) a one-site change.
 pub(crate) struct FinalizedFunction {
     pub(crate) bytecode: Vec<u8>,
     pub(crate) max_stack_depth: u16,
@@ -511,12 +511,19 @@ pub(crate) struct FinalizedFunction {
 
 /// Finalizes an emitter into ready-to-store bytecode plus stack depth.
 ///
+/// The optimizer runs before the emitter patches its jumps, so it works on
+/// symbolic edges: it is told which offsets the jumps target and reports
+/// where every instruction moved, and the emitter then resolves each jump
+/// against the new positions.
 pub(crate) fn finalize_function(
     emitter: &mut Emitter,
     ctx: &mut CompileContext,
 ) -> Result<FinalizedFunction, Diagnostic> {
     let raw_line_map = emitter.take_line_map();
-    let (bytecode, offset_map) = crate::optimize::optimize(emitter.bytecode(), &mut ctx.constants);
+    let (optimized, offset_map) =
+        crate::optimize::optimize(emitter.unpatched_code(), &mut ctx.constants);
+    emitter.apply_optimized(optimized, &offset_map);
+    let bytecode = emitter.bytecode().to_vec();
     let max_stack_depth = emitter.max_stack_depth();
     let line_map =
         crate::optimize::remap_line_map(raw_line_map, &offset_map, bytecode.len() as u16)?;
