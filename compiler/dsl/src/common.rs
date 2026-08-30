@@ -42,6 +42,57 @@ impl ConstantKind {
             data_type: None,
         }))
     }
+
+    /// Returns the constant with `span` recorded as its position in the
+    /// source text.
+    ///
+    /// Every literal kind carries its own span rather than the enumeration
+    /// carrying one, because a literal is also reachable outside a
+    /// `ConstantKind` (a subrange bound, a case label). Setting them all in
+    /// one place is what keeps `Located for ConstantKind` -- and so
+    /// `Located for ExprKind`, which joins the spans of an expression's
+    /// operands -- from reporting position 0 for an expression built from
+    /// literals.
+    pub fn with_span(self, span: SourceSpan) -> Self {
+        match self {
+            ConstantKind::IntegerLiteral(mut lit) => {
+                lit.value.value.span = span;
+                ConstantKind::IntegerLiteral(lit)
+            }
+            ConstantKind::BitStringLiteral(mut lit) => {
+                lit.value.span = span;
+                ConstantKind::BitStringLiteral(lit)
+            }
+            ConstantKind::RealLiteral(mut lit) => {
+                lit.span = span;
+                ConstantKind::RealLiteral(lit)
+            }
+            ConstantKind::Boolean(mut lit) => {
+                lit.span = span;
+                ConstantKind::Boolean(lit)
+            }
+            ConstantKind::CharacterString(mut lit) => {
+                lit.span = span;
+                ConstantKind::CharacterString(lit)
+            }
+            ConstantKind::Duration(mut lit) => {
+                lit.span = span;
+                ConstantKind::Duration(lit)
+            }
+            ConstantKind::TimeOfDay(mut lit) => {
+                lit.span = span;
+                ConstantKind::TimeOfDay(lit)
+            }
+            ConstantKind::Date(mut lit) => {
+                lit.span = span;
+                ConstantKind::Date(lit)
+            }
+            ConstantKind::DateAndTime(mut lit) => {
+                lit.span = span;
+                ConstantKind::DateAndTime(lit)
+            }
+        }
+    }
 }
 
 impl Located for ConstantKind {
@@ -49,13 +100,13 @@ impl Located for ConstantKind {
         match self {
             ConstantKind::IntegerLiteral(lit) => lit.value.value.span(),
             ConstantKind::BitStringLiteral(lit) => lit.value.span(),
-            ConstantKind::RealLiteral(_)
-            | ConstantKind::Boolean(_)
-            | ConstantKind::CharacterString(_)
-            | ConstantKind::Duration(_)
-            | ConstantKind::TimeOfDay(_)
-            | ConstantKind::Date(_)
-            | ConstantKind::DateAndTime(_) => SourceSpan::default(),
+            ConstantKind::RealLiteral(lit) => lit.span.clone(),
+            ConstantKind::Boolean(lit) => lit.span.clone(),
+            ConstantKind::CharacterString(lit) => lit.span.clone(),
+            ConstantKind::Duration(lit) => lit.span.clone(),
+            ConstantKind::TimeOfDay(lit) => lit.span.clone(),
+            ConstantKind::Date(lit) => lit.span.clone(),
+            ConstantKind::DateAndTime(lit) => lit.span.clone(),
         }
     }
 }
@@ -513,6 +564,8 @@ impl From<Integer> for FixedPoint {
 pub struct RealLiteral {
     pub value: f64,
     pub data_type: Option<RealTypeName>,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl RealLiteral {
@@ -528,6 +581,7 @@ impl RealLiteral {
             .map(|value| RealLiteral {
                 value,
                 data_type: tn,
+                span: SourceSpan::default(),
             })
             .map_err(|_e| "real")
     }
@@ -545,11 +599,16 @@ impl fmt::Display for RealLiteral {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BooleanLiteral {
     pub value: Boolean,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl BooleanLiteral {
     pub fn new(value: Boolean) -> Self {
-        Self { value }
+        Self {
+            value,
+            span: SourceSpan::default(),
+        }
     }
 }
 
@@ -570,6 +629,8 @@ pub struct CharacterStringLiteral {
     /// initializes because a literal also appears in statement bodies, where
     /// there is no declaration to borrow it from.
     pub width: StringType,
+    /// The literal's position in the source text.
+    pub span: SourceSpan,
 }
 
 impl CharacterStringLiteral {
@@ -578,6 +639,7 @@ impl CharacterStringLiteral {
         Self {
             value,
             width: StringType::String,
+            span: SourceSpan::default(),
         }
     }
 
@@ -586,6 +648,7 @@ impl CharacterStringLiteral {
         Self {
             value,
             width: StringType::WString,
+            span: SourceSpan::default(),
         }
     }
 }
@@ -3207,12 +3270,14 @@ mod tests {
         let rl1 = RealLiteral {
             value: 1.23,
             data_type: None,
+            span: SourceSpan::default(),
         };
         let rl2 = rl1.clone();
         assert_eq!(rl1, rl2);
         let rl3 = RealLiteral {
             value: 2.34,
             data_type: None,
+            span: SourceSpan::default(),
         };
         assert_ne!(rl1, rl3);
     }
@@ -3239,11 +3304,13 @@ mod tests {
     fn test_boolean_literal_partial_eq_and_clone() {
         let bl1 = BooleanLiteral {
             value: Boolean::True,
+            span: SourceSpan::default(),
         };
         let bl2 = bl1.clone();
         assert_eq!(bl1, bl2);
         let bl3 = BooleanLiteral {
             value: Boolean::False,
+            span: SourceSpan::default(),
         };
         assert_ne!(bl1, bl3);
     }
@@ -3564,6 +3631,7 @@ mod tests {
         let rl = RealLiteral {
             value: 3.25,
             data_type: Some(RealTypeName::REAL),
+            span: SourceSpan::default(),
         };
         assert_eq!(format!("{rl}"), "REAL#3.25");
     }
@@ -3573,6 +3641,7 @@ mod tests {
         let rl = RealLiteral {
             value: 2.5,
             data_type: None,
+            span: SourceSpan::default(),
         };
         assert_eq!(format!("{rl}"), "2.5");
     }
@@ -3581,6 +3650,7 @@ mod tests {
     fn display_when_boolean_literal_then_value() {
         let bl = BooleanLiteral {
             value: Boolean::True,
+            span: SourceSpan::default(),
         };
         assert_eq!(format!("{bl}"), "TRUE");
     }
@@ -3673,6 +3743,7 @@ mod tests {
         let ck = ConstantKind::RealLiteral(RealLiteral {
             value: 1.5,
             data_type: None,
+            span: SourceSpan::default(),
         });
         assert_eq!(format!("{ck}"), "1.5");
     }
@@ -3681,6 +3752,7 @@ mod tests {
     fn display_when_constant_kind_boolean_then_formatted() {
         let ck = ConstantKind::Boolean(BooleanLiteral {
             value: Boolean::True,
+            span: SourceSpan::default(),
         });
         assert_eq!(format!("{ck}"), "TRUE");
     }

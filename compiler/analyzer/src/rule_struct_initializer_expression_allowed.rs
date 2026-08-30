@@ -207,4 +207,29 @@ END_VAR
 END_FUNCTION_BLOCK",
         Problem::StructInitializerExpressionNotAllowed
     );
+
+    /// ADR-0040 requires a dialect violation to point at the construct's real
+    /// span. A compound expression used to report byte offset 0, because
+    /// every literal kind but two carried a default span and
+    /// `Located for ExprKind` joins its operands' spans.
+    #[test]
+    fn apply_when_value_is_compound_expression_then_label_spans_the_expression() {
+        const PROGRAM: &str = "TYPE MyStruct : STRUCT x : INT; END_STRUCT; END_TYPE
+PROGRAM main
+VAR
+    s : MyStruct := (x := 1 + 1);
+END_VAR
+END_PROGRAM";
+        let opts = CompilerOptions::default();
+        let (library, context) = crate::test_helpers::resolve_fresh_with(PROGRAM, &opts);
+        let diagnostics = super::apply(&library, &context, &opts).unwrap_err();
+
+        assert_eq!(1, diagnostics.len());
+        let location = &diagnostics[0].primary.location;
+        assert_eq!(
+            "1 + 1",
+            &PROGRAM[location.start..location.end],
+            "label should span the expression, not start at byte 0"
+        );
+    }
 }

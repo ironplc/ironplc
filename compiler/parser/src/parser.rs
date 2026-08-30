@@ -117,7 +117,7 @@ fn resolve_initializer_expr(type_name: TypeName, e: ExprKind) -> InitialValueAss
 
 /// Parses a IEC 61131-3 library into object form.
 pub fn parse_library(tokens: Vec<Token>) -> Result<Vec<LibraryElementKind>, Diagnostic> {
-    plc_parser::library(&SliceByRef(&tokens[..])).map_err(|e| {
+    plc_parser::library(&SliceByRef(&tokens[..]), &tokens[..]).map_err(|e| {
         let token_index = e.location;
 
         let expected = Vec::from_iter(e.expected.tokens()).join(" | ");
@@ -147,7 +147,7 @@ pub fn parse_statements(tokens: Vec<Token>) -> Result<Vec<StmtKind>, Diagnostic>
         return Ok(vec![]);
     }
 
-    plc_parser::statement_list(&SliceByRef(&tokens[..])).map_err(|e| {
+    plc_parser::statement_list(&SliceByRef(&tokens[..]), &tokens[..]).map_err(|e| {
         let token_index = e.location;
 
         let expected = Vec::from_iter(e.expected.tokens()).join(" | ");
@@ -207,6 +207,20 @@ enum ProgramConfigurationKind {
     FbTask(FunctionBlockTask),
 }
 
+/// Returns the source span covering tokens `start..end` (end exclusive).
+///
+/// `position!()` yields a token index, not a byte offset, so a rule that
+/// wants the span of everything it matched has to map those indices back
+/// through the token list -- which is why the grammar takes the token slice
+/// as an argument.
+fn span_of_tokens(tokens: &[Token], start: usize, end: usize) -> SourceSpan {
+    match (tokens.get(start), tokens.get(end.saturating_sub(1))) {
+        (Some(first), Some(last)) => SourceSpan::join(&first.span, &last.span),
+        (Some(only), None) => only.span.clone(),
+        _ => SourceSpan::default(),
+    }
+}
+
 /// The default implementation of the parsing traits for `[T]` expects `T` to be
 /// `Copy`, as in the `[u8]` or simple enum cases. This wrapper exposes the
 /// elements by `&T` reference, which is `Copy`.
@@ -239,7 +253,7 @@ impl<'a, T: 'a> ParseElem<'a> for SliceByRef<'a, T> {
 }
 
 parser! {
-  grammar plc_parser<'a>() for SliceByRef<'a, Token> {
+  grammar plc_parser<'a>(tokens: &'a [Token]) for SliceByRef<'a, Token> {
 
     /// Rule to enable optional tracing rule for pegviz markers that makes
     /// working with the parser easier in the terminal.
@@ -337,7 +351,15 @@ parser! {
         / t:tok(TokenType::AnyDate) { TypeName { name: Id::from("ANY_DATE").with_position(t.span.clone()) } }
 
     // B.1.2 Constants
-    rule constant() -> ConstantKind =
+    // Every literal kind records the span of the tokens it matched. Doing it
+    // once here, rather than in each literal's own rule, is what guarantees
+    // no kind is left span-less: `Located for ExprKind` joins the spans of
+    // an expression's operands, so a single span-less literal makes the
+    // whole expression report position 0.
+    rule constant() -> ConstantKind = start:position!() c:constant__unspanned() end:position!() {
+        c.with_span(span_of_tokens(tokens, start, end))
+    }
+    rule constant__unspanned() -> ConstantKind =
         real:real_literal() { ConstantKind::RealLiteral(real) }
         / integer:integer_literal() { ConstantKind::IntegerLiteral(integer) }
         / c:character_string_literal() { ConstantKind::CharacterString(c) }
@@ -380,6 +402,7 @@ parser! {
         RealLiteral {
           value: node.value * sign,
           data_type: node.data_type,
+          span: node.span,
         }
       })
     }
@@ -438,7 +461,7 @@ parser! {
     rule dt_sep(val: &str) -> &'input Token = [t if t.token_type == TokenType::Identifier && t.text.eq_ignore_ascii_case(val)]
 
     pub rule duration() -> DurationLiteral = start:position!() (tok(TokenType::Time) / tok(TokenType::Ltime) / dt_sep("T")) tok(TokenType::Hash) s:(tok(TokenType::Minus))? i:interval() end:position!() {
-      let span = SourceSpan::range(start, end);
+      let span = span_of_tokens(tokens, start, end);
       let interval = match s {
         Some(sign) => i.interval * -1,
         None => i.interval,
