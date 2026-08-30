@@ -11,8 +11,8 @@ use ironplc_dsl::common::{
 use ironplc_dsl::core::{Id, Located};
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 use ironplc_dsl::textual::{
-    ArrayVariable, BitAccessVariable, CompareOp, Expr, ExprKind, Operator, PartialAccessVariable,
-    StructuredVariable, SymbolicVariableKind, UnaryOp, Variable,
+    ArrayVariable, BitAccessVariable, CompareExpr, CompareOp, Expr, ExprKind, Operator,
+    PartialAccessVariable, StructuredVariable, SymbolicVariableKind, UnaryOp, Variable,
 };
 use ironplc_problems::Problem;
 use paste::paste;
@@ -174,55 +174,7 @@ pub(crate) fn compile_expr(
             Ok(())
         }
         ExprKind::Expression(inner) => compile_expr(emitter, ctx, inner, op_type),
-        ExprKind::Compare(compare) => {
-            // String comparisons need a completely different code path because
-            // strings live in the data region, not on the operand stack.
-            if expr_is_string(&compare.left) {
-                return compile_string_compare(emitter, ctx, compare);
-            }
-
-            // A comparison's result is BOOL, but its operands may be a different
-            // type (e.g. REAL for `in < 0.0`). Derive the operand type from a
-            // concrete (non-generic) resolved type, preferring the left operand.
-            // When one side is a literal (generic type like ANY_INT) and the other
-            // is a typed variable (e.g. DWORD), we use the concrete type to ensure
-            // correct signedness. This also applies to AND/OR/XOR which can be
-            // either boolean (BOOL operands) or bitwise (e.g. DWORD operands).
-            let operand_op_type = concrete_op_type_from_expr(&compare.left)
-                .or_else(|| concrete_op_type_from_expr(&compare.right))
-                .or_else(|| op_type_from_expr(&compare.left))
-                .unwrap_or(op_type);
-            compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
-            compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
-            match compare.op {
-                CompareOp::Eq => emit_eq(emitter, operand_op_type),
-                CompareOp::Ne => emit_ne(emitter, operand_op_type),
-                CompareOp::Lt => emit_lt(emitter, operand_op_type),
-                CompareOp::Gt => emit_gt(emitter, operand_op_type),
-                CompareOp::LtEq => emit_le(emitter, operand_op_type),
-                CompareOp::GtEq => emit_ge(emitter, operand_op_type),
-                CompareOp::And => emit_and(emitter, operand_op_type),
-                CompareOp::Or => emit_or(emitter, operand_op_type),
-                CompareOp::Xor => emit_xor(emitter, operand_op_type),
-                CompareOp::AndThen => {
-                    // AND_THEN requires short-circuit (conditional-branch)
-                    // codegen -- emitting eager bytecode here would be
-                    // silently wrong (exactly the null-deref crash
-                    // AND_THEN exists to prevent), so refuse explicitly
-                    // rather than miscompile. `ironplcc check` already
-                    // fully supports AND_THEN; only `ironplcc compile`
-                    // hits this.
-                    return Err(Diagnostic::not_implemented(Label::span(
-                        ironplc_dsl::core::SourceSpan::join(
-                            &compare.left.span(),
-                            &compare.right.span(),
-                        ),
-                        "AND_THEN short-circuit evaluation is not yet supported in codegen",
-                    )));
-                }
-            }
-            Ok(())
-        }
+        ExprKind::Compare(compare) => compile_compare(emitter, ctx, compare, op_type),
         ExprKind::EnumeratedValue(enum_val) => {
             // REQ-EN-codegen-030: Push the enum value's ordinal as an i32 constant.
             let ordinal = crate::compile_enum::resolve_enum_ordinal(&ctx.enum_map, enum_val)?;
@@ -252,6 +204,64 @@ pub(crate) fn compile_expr(
             Ok(())
         }
     }
+}
+
+/// Compiles a comparison, logical, or bitwise binary expression, leaving the
+/// result on the stack.
+///
+/// `op_type` is the type context the enclosing expression supplies; it is only
+/// a fallback, because a comparison's own result is BOOL while its operands may
+/// be any type.
+fn compile_compare(
+    emitter: &mut Emitter,
+    ctx: &mut CompileContext,
+    compare: &CompareExpr,
+    op_type: OpType,
+) -> Result<(), Diagnostic> {
+    // String comparisons need a completely different code path because
+    // strings live in the data region, not on the operand stack.
+    if expr_is_string(&compare.left) {
+        return compile_string_compare(emitter, ctx, compare);
+    }
+
+    // A comparison's result is BOOL, but its operands may be a different
+    // type (e.g. REAL for `in < 0.0`). Derive the operand type from a
+    // concrete (non-generic) resolved type, preferring the left operand.
+    // When one side is a literal (generic type like ANY_INT) and the other
+    // is a typed variable (e.g. DWORD), we use the concrete type to ensure
+    // correct signedness. This also applies to AND/OR/XOR which can be
+    // either boolean (BOOL operands) or bitwise (e.g. DWORD operands).
+    let operand_op_type = concrete_op_type_from_expr(&compare.left)
+        .or_else(|| concrete_op_type_from_expr(&compare.right))
+        .or_else(|| op_type_from_expr(&compare.left))
+        .unwrap_or(op_type);
+    compile_expr(emitter, ctx, &compare.left, operand_op_type)?;
+    compile_expr(emitter, ctx, &compare.right, operand_op_type)?;
+    match compare.op {
+        CompareOp::Eq => emit_eq(emitter, operand_op_type),
+        CompareOp::Ne => emit_ne(emitter, operand_op_type),
+        CompareOp::Lt => emit_lt(emitter, operand_op_type),
+        CompareOp::Gt => emit_gt(emitter, operand_op_type),
+        CompareOp::LtEq => emit_le(emitter, operand_op_type),
+        CompareOp::GtEq => emit_ge(emitter, operand_op_type),
+        CompareOp::And => emit_and(emitter, operand_op_type),
+        CompareOp::Or => emit_or(emitter, operand_op_type),
+        CompareOp::Xor => emit_xor(emitter, operand_op_type),
+        CompareOp::AndThen => {
+            // AND_THEN requires short-circuit (conditional-branch)
+            // codegen -- emitting eager bytecode here would be
+            // silently wrong (exactly the null-deref crash
+            // AND_THEN exists to prevent), so refuse explicitly
+            // rather than miscompile. `ironplcc check` already
+            // fully supports AND_THEN; only `ironplcc compile`
+            // hits this.
+            return Err(Diagnostic::not_implemented(Label::span(
+                ironplc_dsl::core::SourceSpan::join(&compare.left.span(), &compare.right.span()),
+                "AND_THEN short-circuit evaluation is not yet supported in codegen",
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Compiles a constant literal, pushing it onto the stack.
