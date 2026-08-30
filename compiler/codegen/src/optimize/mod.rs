@@ -2,8 +2,13 @@
 //!
 //! Runs an ordered sequence of passes over the raw bytecode buffer produced by
 //! the emitter. Each pass matches adjacent instruction pairs against one family
-//! of identity/no-op patterns and removes them; jump offsets are adjusted to
-//! account for removed bytes.
+//! of identity/no-op patterns and removes them.
+//!
+//! The buffer arrives before the emitter has patched its jumps, so no pass
+//! sees an encoded branch offset and none needs to adjust one. What the
+//! optimizer is given instead is the set of offsets the jumps target; it
+//! returns an old→new offset map, and the emitter resolves every jump
+//! against the new positions afterwards.
 //!
 //! These passes run after the emitter's own in-line peephole optimizations
 //! (consecutive load -> DUP, store-load -> DUP+STORE) and complement them by
@@ -36,6 +41,7 @@ use ironplc_dsl::core::FileId;
 use ironplc_dsl::diagnostic::{Diagnostic, Label};
 
 use crate::compile::PoolConstant;
+use crate::emit::UnpatchedCode;
 
 /// Maps every old (pre-optimization) byte offset to its new offset in the
 /// optimized bytecode. Includes one-past-the-end so spans that touch the end
@@ -135,22 +141,27 @@ impl Pipeline {
     }
 }
 
-/// Runs the peephole optimizer on `bytecode`.
+/// Runs the peephole optimizer on un-patched emitter output.
 ///
 /// Returns the optimized byte vector along with an old→new offset map. The
 /// offset map covers every original instruction's start offset plus the
 /// one-past-the-end position, so callers can remap any span that points into
-/// (or just past) the original bytecode. If no patterns are found, the
-/// output bytes equal the input and the map is the identity over instruction
-/// boundaries.
-pub(crate) fn optimize(bytecode: &[u8], constants: &mut Vec<PoolConstant>) -> (Vec<u8>, OffsetMap) {
-    if bytecode.is_empty() {
-        return (Vec::new(), OffsetMap::new());
+/// (or just past) the original bytecode — including the emitter's own labels
+/// and pending jump patches. If no patterns are found, the output bytes equal
+/// the input and the map is the identity over instruction boundaries.
+pub(crate) fn optimize(
+    code: UnpatchedCode<'_>,
+    constants: &mut Vec<PoolConstant>,
+) -> (Vec<u8>, OffsetMap) {
+    if code.bytecode.is_empty() {
+        // Still map the one-past-the-end position, which for empty bytecode
+        // is 0: a label may be bound there even when nothing was emitted.
+        return (Vec::new(), OffsetMap::from([(0, 0)]));
     }
 
     let mut pipeline = Pipeline {
-        protected: rewrite::jump_targets(bytecode),
-        bytecode: bytecode.to_vec(),
+        bytecode: code.bytecode.to_vec(),
+        protected: code.jump_targets,
         map: None,
     };
 
